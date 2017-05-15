@@ -25,7 +25,7 @@ namespace str_util {
 
 static char hex_char[] = "0123456789abcdef";
 
-string CEscape(const string& src) {
+string CEscape(StringPiece src) {
   string dest;
 
   for (unsigned char c : src) {

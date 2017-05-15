@@ -21,57 +21,60 @@ canned ${tf.estimator.Estimator}s.
 When using FeatureColumns with `Estimators`, the type of feature column you
 should choose depends on (1) the feature type and (2) the model type.
 
-(1) Feature type:
+1. Feature type:
 
- * Continuous features can be represented by `numeric_column`.
- * Categorical features can be represented by any `categorical_column_with_*`
- column:
-  - `categorical_column_with_keys`
-  - `categorical_column_with_vocabulary_file`
-  - `categorical_column_with_hash_bucket`
-  - `categorical_column_with_integerized_feature`
+  * Continuous features can be represented by `numeric_column`.
+  * Categorical features can be represented by any `categorical_column_with_*`
+  column:
+    - `categorical_column_with_vocabulary_list`
+    - `categorical_column_with_vocabulary_file`
+    - `categorical_column_with_hash_bucket`
+    - `categorical_column_with_identity`
+    - `weighted_categorical_column`
 
-(2) Model type:
+2. Model type:
 
- * Deep neural network models (`DNNClassifier`, `DNNRegressor`).
+  * Deep neural network models (`DNNClassifier`, `DNNRegressor`).
 
-   Continuous features can be directly fed into deep neural network models.
+    Continuous features can be directly fed into deep neural network models.
 
-     age_column = numeric_column("age")
+      age_column = numeric_column("age")
 
-   To feed sparse features into DNN models, wrap the column with
-   `embedding_column` or `indicator_column`. `indicator_column` is recommended
-   for features with only a few possible values. For features with many possible
-   values, `embedding_column` is recommended.
+    To feed sparse features into DNN models, wrap the column with
+    `embedding_column` or `indicator_column`. `indicator_column` is recommended
+    for features with only a few possible values. For features with many
+    possible values, to reduce the size of your model, `embedding_column` is
+    recommended.
 
-     embedded_dept_column = embedding_column(
-       categorical_column_with_keys("department", ["math", "philosphy", ...]),
-       dimension=10)
+      embedded_dept_column = embedding_column(
+          categorical_column_with_vocabulary_list(
+              "department", ["math", "philosphy", ...]), dimension=10)
 
-* Wide (aka linear) models (`LinearClassifier`, `LinearRegressor`).
+  * Wide (aka linear) models (`LinearClassifier`, `LinearRegressor`).
 
-   Sparse features can be fed directly into linear models. They behave like an
-   indicator column but with an efficient implementation.
+    Sparse features can be fed directly into linear models. They behave like an
+    indicator column but with an efficient implementation.
 
-     dept_column = categorical_column_with_keys("department",
-       ["math", "philosophy", "english"])
+      dept_column = categorical_column_with_vocabulary_list("department",
+          ["math", "philosophy", "english"])
 
-   It is recommended that continuous features be bucketized before being
-   fed into linear models.
+    It is recommended that continuous features be bucketized before being
+    fed into linear models.
 
-     bucketized_age_column = bucketized_column(
-      source_column=age_column,
-      boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
+      bucketized_age_column = bucketized_column(
+          source_column=age_column,
+          boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
 
-   Sparse features can be crossed (also known as conjuncted or combined) in
-   order to form non-linearities, and then fed into linear models.
+    Sparse features can be crossed (also known as conjuncted or combined) in
+    order to form non-linearities, and then fed into linear models.
 
-    cross_dept_age_column = crossed_column(
-      columns=[department_column, bucketized_age_column],
-      hash_bucket_size=1000)
+      cross_dept_age_column = crossed_column(
+          columns=["department", bucketized_age_column],
+          hash_bucket_size=1000)
 
 Example of building canned `Estimator`s using FeatureColumns:
 
+  ```python
   # Define features and transformations
   deep_feature_columns = [age_column, embedded_dept_column]
   wide_feature_columns = [dept_column, bucketized_age_column,
@@ -94,24 +97,27 @@ Example of building canned `Estimator`s using FeatureColumns:
       dnn_feature_columns=deep_feature_columns,
       dnn_hidden_units=[500, 250, 50])
   estimator.train(...)
+  ```
 
 
 FeatureColumns can also be transformed into a generic input layer for
-custom models using `input_from_feature_columns`.
+custom models using `input_layer`.
 
 Example of building model using FeatureColumns, this can be used in a
 `model_fn` which is given to the {tf.estimator.Estimator}:
 
+  ```python
   # Building model via layers
 
   deep_feature_columns = [age_column, embedded_dept_column]
   columns_to_tensor = parse_feature_columns_from_examples(
       serialized=my_data,
       feature_columns=deep_feature_columns)
-  first_layer = input_from_feature_columns(
-      columns_to_tensors=columns_to_tensor,
+  first_layer = input_layer(
+      features=columns_to_tensor,
       feature_columns=deep_feature_columns)
   second_layer = fully_connected(first_layer, ...)
+  ```
 
 NOTE: Functions prefixed with "_" indicate experimental or private parts of
 the API subject to change, and should not be relied upon!
@@ -165,23 +171,24 @@ def input_layer(features,
   price = numeric_column('price')
   keywords_embedded = embedding_column(
       categorical_column_with_hash_bucket("keywords", 10K), dimensions=16)
-  all_feature_columns = [price, keywords_embedded, ...]
-  dense_tensor = input_layer(features, all_feature_columns)
+  columns = [price, keywords_embedded, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  dense_tensor = input_layer(features, columns)
   for units in [128, 64, 32]:
     dense_tensor = tf.layers.dense(dense_tensor, units, tf.nn.relu)
   prediction = tf.layers.dense(dense_tensor, 1)
   ```
 
   Args:
-    features: A mapping from key to tensors. `FeatureColumn`s look up via these
-      keys. For example `numeric_column('price') will look at 'price' key in
+    features: A mapping from key to tensors. `_FeatureColumn`s look up via these
+      keys. For example `numeric_column('price')` will look at 'price' key in
       this dict. Values can be a `SparseTensor` or a `Tensor` depends on
-      corresponding `FeatureColumn`.
-    feature_columns: An iterable containing all the `FeatureColumn`s. All items
-      should be instances of classes derived from `_DenseColumn` such as
-      `numeric_column`, `embedding_column`, `bucketized_column`,
-      `indicator_column`. If you have categorical features, you can wrap them
-      with with an `embedding_column` or `indicator_column`.
+      corresponding `_FeatureColumn`.
+    feature_columns: An iterable containing the FeatureColumns to use as inputs
+      to your model. All items should be instances of classes derived from
+      `_DenseColumn` such as `numeric_column`, `embedding_column`,
+      `bucketized_column`, `indicator_column`. If you have categorical features,
+      you can wrap them with an `embedding_column` or `indicator_column`.
     weight_collections: A list of collection names to which the Variable will be
       added. Note that, variables will also be added to collections
       `tf.GraphKeys.GLOBAL_VARIABLES` and `ops.GraphKeys.MODEL_VARIABLES`.
@@ -250,17 +257,20 @@ def linear_model(features,
   price = numeric_column('price')
   price_buckets = bucketized_column(price, boundaries=[0., 10., 100., 1000.])
   keywords = categorical_column_with_hash_bucket("keywords", 10K)
-  all_feature_columns = [price_buckets, keywords, ...]
-  prediction = linear_model(features, all_feature_columns)
+  keywords_price = crossed_column('keywords', price_buckets, ...)
+  columns = [price_buckets, keywords, keywords_price ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  prediction = linear_model(features, columns)
   ```
 
   Args:
-    features: A mapping from key to tensors. `FeatureColumn`s look up via these
+    features: A mapping from key to tensors. `_FeatureColumn`s look up via these
       keys. For example `numeric_column('price')` will look at 'price' key in
       this dict. Values are `Tensor` or `SparseTensor` depending on
-      corresponding `FeatureColumn`.
-    feature_columns: An iterable containing all the FeatureColumns. All items
-      should be instances of classes derived from FeatureColumn.
+      corresponding `_FeatureColumn`.
+    feature_columns: An iterable containing the FeatureColumns to use as inputs
+      to your model. All items should be instances of classes derived from
+      `_FeatureColumn`s.
     units: An integer, dimensionality of the output space. Default value is 1.
     sparse_combiner: A string specifying how to reduce if a sparse column is
       multivalent. Currently "mean", "sqrtn" and "sum" are supported, with "sum"
@@ -347,14 +357,14 @@ def _transform_features(features, feature_columns):
   ```
 
   Args:
-    features: A mapping from key to tensors. `FeatureColumn`s look up via these
-      keys. For example `numeric_column('price') will look at 'price' key in
+    features: A mapping from key to tensors. `_FeatureColumn`s look up via these
+      keys. For example `numeric_column('price')` will look at 'price' key in
       this dict. Values can be a `SparseTensor` or a `Tensor` depends on
-      corresponding `FeatureColumn`.
-    feature_columns: An iterable containing all the `FeatureColumn`s.
+      corresponding `_FeatureColumn`.
+    feature_columns: An iterable containing all the `_FeatureColumn`s.
 
   Returns:
-    A `dict` mapping FeatureColumn to `Tensor` and `SparseTensor` values.
+    A `dict` mapping `_FeatureColumn` to `Tensor` and `SparseTensor` values.
   """
   _check_feature_columns(feature_columns)
   outputs = {}
@@ -376,14 +386,13 @@ def make_parse_example_spec(feature_columns):
 
   ```python
   # Define features and transformations
-  feature_a = categorical_column_with_vocabulary_file(...)
   feature_b = numeric_column(...)
   feature_c_bucketized = bucketized_column(numeric_column("feature_c"), ...)
   feature_a_x_feature_c = crossed_column(
-    columns=[feature_a, feature_c_bucketized], ...)
+      columns=["feature_a", feature_c_bucketized], ...)
 
   feature_columns = set(
-    [feature_b, feature_c_bucketized, feature_a_x_feature_c])
+      [feature_b, feature_c_bucketized, feature_a_x_feature_c])
   features = tf.parse_example(
       serialized=serialized_examples,
       features=make_parse_example_spec(feature_columns))
@@ -433,17 +442,15 @@ def embedding_column(
   Use this when your inputs are sparse, but you want to convert them to a dense
   representation (e.g., to feed to a DNN).
 
-  Inputs must be `SparseTensor` by way of the provided
-  `categorical_column._get_sparse_tensors`.
-
-  Any of the `categorical_column_*` columns can be provided as input. Here is an
-  example embedding of an identity column for a DNN model:
+  Inputs must be a `_CategoricalColumn` created by any of the
+  `categorical_column_*` function. Here is an example embedding of an identity
+  column for a DNN model:
 
   ```python
   video_id = categorical_column_with_identity(
       key='video_id', num_buckets=1000000, default_value=0)
   columns = [embedding_column(video_id, 9),...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   dense_tensor = input_layer(features, columns)
   ```
 
@@ -461,8 +468,8 @@ def embedding_column(
     initializer: A variable initializer function to be used in embedding
       variable initialization. If not specified, defaults to
       `tf.truncated_normal_initializer` with mean `0.0` and standard deviation
-      `1/sqrt(categorical_column._num_buckets)`.
-    ckpt_to_load_from: String representing checkpoint name/pattern fromwhich to
+      `1/sqrt(dimension)`.
+    ckpt_to_load_from: String representing checkpoint name/pattern from which to
       restore column weights. Required if `tensor_name_in_ckpt` is not `None`.
     tensor_name_in_ckpt: Name of the `Tensor` in `ckpt_to_load_from` from
       which to restore the column weights. Required if `ckpt_to_load_from` is
@@ -547,11 +554,11 @@ def numeric_column(key,
       value of the tensor after `default_value` is applied for parsing.
       Normalizer function takes the input `Tensor` as its argument, and returns
       the output `Tensor`. (e.g. lambda x: (x - 3.0) / 4.2). Please note that
-      even though most common use case of this function is normalization, it can
-      be used for any kind of Tensorflow transformations.
+      even though the most common use case of this function is normalization, it
+      can be used for any kind of Tensorflow transformations.
 
   Returns:
-    A _NumericColumn.
+    A `_NumericColumn`.
 
   Raises:
     TypeError: if any dimension in shape is not an int
@@ -619,8 +626,9 @@ def bucketized_column(source_column, boundaries):
   bucketized_price = bucketized_column(price, boundaries=[...])
   # 'keywords' is a string feature.
   price_x_keywords = crossed_column([bucketized_price, 'keywords'], 50K)
-  all_feature_columns = [price_x_keywords, ...]
-  linear_prediction = linear_model(features, all_feature_columns)
+  columns = [price_x_keywords, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction = linear_model(features, columns)
   ```
 
   Args:
@@ -668,9 +676,10 @@ def categorical_column_with_hash_bucket(key,
   want to distribute your inputs into a finite number of buckets by hashing.
   output_id = Hash(input_feature_string) % bucket_size
 
-  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
-  values can be represented by `-1` for int and `''` for string. Note that these
-  values are independent of the `default_value` argument.
+  For input dictionary `features`, `features[key]` is either `Tensor` or
+  `SparseTensor`. If `Tensor`, missing values can be represented by `-1` for int
+  and `''` for string. Note that these values are independent of the
+  `default_value` argument.
 
   Example:
 
@@ -725,9 +734,10 @@ def categorical_column_with_vocabulary_file(
   `num_oov_buckets` and `default_value` to specify how to include
   out-of-vocabulary values.
 
-  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
-  values can be represented by `-1` for int and `''` for string. Note that these
-  values are independent of the `default_value` argument.
+  For input dictionary `features`, `features[key]` is either `Tensor` or
+  `SparseTensor`. If `Tensor`, missing values can be represented by `-1` for int
+  and `''` for string. Note that these values are independent of the
+  `default_value` argument.
 
   Example with `num_oov_buckets`:
   File '/us/states.txt' contains 50 lines, each with a 2-character U.S. state
@@ -755,6 +765,7 @@ def categorical_column_with_vocabulary_file(
   columns = [states, ...]
   features = tf.parse_example(..., features=make_parse_example_spec(columns))
   linear_prediction, _, _ = linear_model(features, columns)
+  ```
 
   And to make an embedding with either:
   ```python
@@ -777,7 +788,7 @@ def categorical_column_with_vocabulary_file(
       the input value. A positive `num_oov_buckets` can not be specified with
       `default_value`.
     default_value: The integer ID value to return for out-of-vocabulary feature
-      values, defaults to -1. This can not be specified with a positive
+      values, defaults to `-1`. This can not be specified with a positive
       `num_oov_buckets`.
     dtype: The type of features. Only string and integer types are supported.
 
@@ -818,16 +829,17 @@ def categorical_column_with_vocabulary_list(
   """A `_CategoricalColumn` with in-memory vocabulary.
 
   Logic for feature f is:
-  id = f in vocabulary_list ? vocabulary_list.index_of(f) : default_value
+  id = vocabulary_list.index_of(f) if f in vocabulary_list else default_value
 
   Use this when your inputs are in string or integer format, and you have an
   in-memory vocabulary mapping each value to an integer ID. By default,
   out-of-vocabulary values are ignored. Use `default_value` to specify how to
   include out-of-vocabulary values.
 
-  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
-  values can be represented by `-1` for int and `''` for string. Note that these
-  values are independent of the `default_value` argument.
+  For input dictionary `features`, `features[key]` is either `Tensor` or
+  `SparseTensor`. If `Tensor`, missing values can be represented by `-1` for int
+  and `''` for string. Note that these values are independent of the
+  `default_value` argument.
 
   In the following examples, each input in `vocabulary_list` is assigned an ID
   0-4 corresponding to its index (e.g., input 'B' produces output 2). All other
@@ -903,9 +915,10 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
   it doesn't have to be. This might be inefficient, however, if many of IDs
   are unused. Consider `categorical_column_with_hash_bucket` in that case.
 
-  `features[key]` is either `Tensor` or `SparseTensor`. If `Tensor`, missing
-  values can be represented by `-1` for int and `''` for string. Note that these
-  values are independent of the `default_value` argument.
+  For input dictionary `features`, `features[key]` is either `Tensor` or
+  `SparseTensor`. If `Tensor`, missing values can be represented by `-1` for int
+  and `''` for string. Note that these values are independent of the
+  `default_value` argument.
 
   In the following examples, each input in the range `[0, 1000000)` is assigned
   the same value. All other inputs are assigned `default_value` 0. Note that a
@@ -958,13 +971,15 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
 def indicator_column(categorical_column):
   """Represents multi-hot representation of given categorical column.
 
-  Used to wrap any `categorical_column_*`.
+  Used to wrap any `categorical_column_*` (e.g., to feed to DNN). Use
+  `embedding_column` if the inputs are sparse.
 
   ```python
   name = indicator_column(categorical_column_with_vocabulary_list('name',
       ['bob', 'george', 'wanda'])
-  all_feature_columns = [name, ...]
-  dense_tensor = input_layer(features, all_feature_columns)
+  columns = [name, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  dense_tensor = input_layer(features, columns)
 
   dense_tensor == [[1, 0, 0]]  # If "name" bytes_list is ["bob"]
   dense_tensor == [[1, 0, 1]]  # If "name" bytes_list is ["bob", "wanda"]
@@ -973,7 +988,7 @@ def indicator_column(categorical_column):
 
   Args:
     categorical_column: A `_CategoricalColumn` which is created by
-      `categorical_column_with_*` or crossed_column functions.
+      `categorical_column_with_*` or `crossed_column` functions.
 
   Returns:
     An `_IndicatorColumn`.
@@ -1022,7 +1037,7 @@ def weighted_categorical_column(
   weighted_column = weighted_categorical_column(
       categorical_column=categorical_column, weight_feature_key='frequencies')
   columns = [weighted_column, ...]
-  features = tf.parse_example(..., features=parse_example_spec(columns))
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
   linear_prediction, _, _ = linear_model(features, columns)
   ```
 
@@ -1078,8 +1093,9 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
   Here is an example to create a linear model with crosses of string features:
   ```python
   keywords_x_doc_terms = crossed_column(['keywords', 'doc_terms'], 50K)
-  all_feature_columns = [keywords_x_doc_terms, ...]
-  linear_prediction = linear_model(features, all_feature_columns)
+  columns = [keywords_x_doc_terms, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction = linear_model(features, columns)
   ```
 
   You could also use vocabulary lookup before crossing:
@@ -1087,8 +1103,9 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
   keywords = categorical_column_with_vocabulary_file(
       'keywords', '/path/to/vocabulary/file', vocabulary_size=1K)
   keywords_x_doc_terms = crossed_column([keywords, 'doc_terms'], 50K)
-  all_feature_columns = [keywords_x_doc_terms, ...]
-  linear_prediction = linear_model(features, all_feature_columns)
+  columns = [keywords_x_doc_terms, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction = linear_model(features, columns)
   ```
 
   If an input feature is of numeric type, you can use
@@ -1100,8 +1117,9 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
   # bucketized_column converts numerical feature to a categorical one.
   bucketized_price = bucketized_column(price, boundaries=[...])
   vertical_id_x_price = crossed_column([vertical_id, bucketized_price], 50K)
-  all_feature_columns = [vertical_id_x_price, ...]
-  linear_prediction = linear_model(features, all_feature_columns)
+  columns = [vertical_id_x_price, ...]
+  features = tf.parse_example(..., features=make_parse_example_spec(columns))
+  linear_prediction = linear_model(features, columns)
   ```
 
   To use crossed column in DNN model, you need to add it in an embedding column
@@ -1337,16 +1355,24 @@ def _create_categorical_column_weighted_sum(
       builder,
       weight_collections=weight_collections,
       trainable=trainable)
+  id_tensor = sparse_ops.sparse_reshape(sparse_tensors.id_tensor, [
+      array_ops.shape(sparse_tensors.id_tensor)[0], -1
+  ])
+  weight_tensor = sparse_tensors.weight_tensor
+  if weight_tensor is not None:
+    weight_tensor = sparse_ops.sparse_reshape(
+        weight_tensor, [array_ops.shape(weight_tensor)[0], -1])
+
   weight = variable_scope.get_variable(
-      name='weight',
+      name='weights',
       shape=(column._num_buckets, units),  # pylint: disable=protected-access
       initializer=init_ops.zeros_initializer(),
       trainable=trainable,
       collections=weight_collections)
   return _safe_embedding_lookup_sparse(
       weight,
-      sparse_tensors.id_tensor,
-      sparse_weights=sparse_tensors.weight_tensor,
+      id_tensor,
+      sparse_weights=weight_tensor,
       combiner=sparse_combiner,
       name='weighted_sum')
 
@@ -1354,7 +1380,7 @@ def _create_categorical_column_weighted_sum(
 class _LazyBuilder(object):
   """Handles caching of transformations while building the model.
 
-  `FeatureColumn` specifies how to digest an input column to the network. Some
+  `_FeatureColumn` specifies how to digest an input column to the network. Some
   feature columns require data transformations. This class caches those
   transformations.
 
@@ -1365,12 +1391,12 @@ class _LazyBuilder(object):
   `_LazyBuilder` caches all previously transformed columns.
 
   Example:
-  We're trying to use the following `FeatureColumns`:
+  We're trying to use the following `_FeatureColumn`s:
 
   ```python
     bucketized_age = fc.bucketized_column(fc.numeric_column("age"), ...)
     keywords = fc.categorical_column_with_hash_buckets("keywords", ...)
-    age_X_keywords = fc.crossed_column([bucketized_age, keywords])
+    age_X_keywords = fc.crossed_column([bucketized_age, "keywords"])
     ... = linear_model(features,
                             [bucketized_age, keywords, age_X_keywords]
   ```
@@ -1387,8 +1413,8 @@ class _LazyBuilder(object):
       features: A mapping from feature column to objects that are `Tensor` or
         `SparseTensor`, or can be converted to same via
         `sparse_tensor.convert_to_tensor_or_sparse_tensor`. A `string` key
-        signifies a base feature (not-transformed). A `FeatureColumn` key
-        means that this `Tensor` is the output of an existing `FeatureColumn`
+        signifies a base feature (not-transformed). A `_FeatureColumn` key
+        means that this `Tensor` is the output of an existing `_FeatureColumn`
         which can be reused.
     """
     self._features = features.copy()

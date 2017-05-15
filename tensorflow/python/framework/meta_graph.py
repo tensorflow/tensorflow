@@ -503,6 +503,9 @@ def import_scoped_meta_graph(meta_graph_or_file,
         input_graph_def, name=(import_scope or ""), input_map=input_map,
         producer_op_list=producer_op_list)
 
+    scope_to_prepend_to_names = "/".join(
+        [part for part in [graph.get_name_scope(), import_scope] if part])
+
     # Restores all the other collections.
     for key, col_def in meta_graph_def.collection_def.items():
       # Don't add unbound_inputs to the new graph.
@@ -524,13 +527,13 @@ def import_scoped_meta_graph(meta_graph_or_file,
           proto = proto_type()
           proto.ParseFromString(value)
           graph.add_to_collection(
-              key, from_proto(proto, import_scope=import_scope))
+              key, from_proto(proto, import_scope=scope_to_prepend_to_names))
       else:
         field = getattr(col_def, kind)
         if kind == "node_list":
           for value in field.value:
             col_op = graph.as_graph_element(
-                ops.prepend_name_scope(value, import_scope))
+                ops.prepend_name_scope(value, scope_to_prepend_to_names))
             graph.add_to_collection(key, col_op)
         elif kind == "int64_list":
           # NOTE(opensource): This force conversion is to work around the fact
@@ -541,13 +544,13 @@ def import_scoped_meta_graph(meta_graph_or_file,
         else:
           for value in field.value:
             graph.add_to_collection(
-                key, ops.prepend_name_scope(value, import_scope))
+                key, ops.prepend_name_scope(value, scope_to_prepend_to_names))
 
     var_list = {}
     variables = graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
-                                     scope=import_scope)
+                                     scope=scope_to_prepend_to_names)
     for v in variables:
-      var_list[ops.strip_name_scope(v.name, import_scope)] = v
+      var_list[ops.strip_name_scope(v.name, scope_to_prepend_to_names)] = v
 
   return var_list
 

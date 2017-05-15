@@ -37,6 +37,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_ops_2
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resources
@@ -1053,18 +1054,28 @@ class ComparisonTest(test_util.TensorFlowTestCase):
 class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
-    g = ops.Graph()
-    a = _apply_op(g, "const", [], [dtypes.float32])
-    b = _apply_op(g, "const", [], [dtypes.float32])
-    with g.control_dependencies([a]):
-      c = _apply_op(g, "const", [], [dtypes.float32])
-      d = _apply_op(g, "identity", [b], [dtypes.float32])
-      e = _apply_op(g, "identity", [c], [dtypes.float32])
+    ops._USE_C_API = True
+    try:
+      g = ops.Graph()
+      with g.as_default():
+        # Creating unregistered ops with _apply_op() doesn't work with the C API
+        # TODO(skyewm): address this more consistently. Possible solutions are
+        # to use registered ops in all tests, create a way to register ops in
+        # Python tests, or conditionally disable the op registration check in
+        # the C API.
+        a = constant_op.constant(1.0)
+        b = constant_op.constant(1.0)
+        with g.control_dependencies([a]):
+          c = constant_op.constant(1.0)
+          d = array_ops.identity(b)
+          e = array_ops.identity(c)
 
-    self.assertEqual(c.op.control_inputs, [a.op])
-    self.assertEqual(d.op.control_inputs, [a.op])
-    # e should be dominated by c.
-    self.assertEqual(e.op.control_inputs, [])
+      self.assertEqual(c.op.control_inputs, [a.op])
+      self.assertEqual(d.op.control_inputs, [a.op])
+      # e should be dominated by c.
+      self.assertEqual(e.op.control_inputs, [])
+    finally:
+      ops._USE_C_API = False
 
   def testBasicWithConversion(self):
     g = ops.Graph()

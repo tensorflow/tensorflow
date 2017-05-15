@@ -27,8 +27,6 @@ limitations under the License.
 namespace tensorflow {
 namespace strings {
 
-AlphaNum gEmptyAlphaNum("");
-
 AlphaNum::AlphaNum(const Eigen::half &f)
     : piece_(digits_, strlen(FloatToBuffer(static_cast<float>(f), digits_))) {}
 

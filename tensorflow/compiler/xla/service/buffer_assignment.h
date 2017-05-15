@@ -400,13 +400,10 @@ class BufferAssigner {
   // Build and return a BufferAssignment for the given module. The given
   // HloOrdering is used to determine buffer liveness. buffer_size is a function
   // which returns the size of a LogicalBuffer. Alignment is the the minimum
-  // alignment of any buffer. If hlos_to_allocate is not null then only
-  // instructions in this vector are considered for buffer assignment. If
-  // hlos_to_allocate is null then all instructions are considered.
+  // alignment of any buffer.
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      LogicalBuffer::SizeFunction buffer_size, int64 alignment,
-      const std::vector<const HloInstruction*>* hlos_to_allocate = nullptr);
+      LogicalBuffer::SizeFunction buffer_size, int64 alignment);
 
  private:
   explicit BufferAssigner(LogicalBuffer::SizeFunction buffer_size,
@@ -416,18 +413,14 @@ class BufferAssigner {
 
   // Create a buffer assignment.
   StatusOr<std::unique_ptr<BufferAssignment>> CreateAssignment(
-      const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      const std::vector<const HloInstruction*>* hlos_to_allocate = nullptr);
+      const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering);
 
   // Assigns buffers to the instructions in the given computation. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is
   // true, then all assigned buffers have the is_thread_local flag set to
-  // true. If hlos_to_allocate is not null it indicates which HLOs to include in
-  // buffer assignment. If null, all instructions in the computation are
-  // included.
+  // true.
   Status AssignBuffersForComputation(
       const HloComputation* computation, bool is_thread_local,
-      const tensorflow::gtl::FlatSet<const HloInstruction*>* hlos_to_allocate,
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>& colocated_buffers,
       const tensorflow::gtl::FlatSet<BufferAllocation::Index>&
           colocated_allocations,
