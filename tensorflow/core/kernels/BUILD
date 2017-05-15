@@ -108,6 +108,7 @@ tf_kernel_library(
     deps = [
         ":bounds_check",
         ":ops_util",
+        ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
