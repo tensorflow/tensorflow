@@ -7,3 +7,5 @@ xla/operation_semantics.md
 xla/shapes.md
 xla/tfcompile.md
 quantization.md
+benchmarks.md
+performance_models.md
