@@ -65,12 +65,15 @@ class SquareLinearOperatorCompositionTest(
       # feed_dict.
       matrices = sess.run(matrices)
       operator = linalg.LinearOperatorComposition(
-          [linalg.LinearOperatorFullMatrix(m_ph) for m_ph in matrices_ph])
+          [linalg.LinearOperatorFullMatrix(m_ph) for m_ph in matrices_ph],
+          is_square=True)
       feed_dict = {m_ph: m for (m_ph, m) in zip(matrices_ph, matrices)}
     else:
       operator = linalg.LinearOperatorComposition(
           [linalg.LinearOperatorFullMatrix(m) for m in matrices])
       feed_dict = None
+      # Should be auto-set.
+      self.assertTrue(operator.is_square)
 
     # Convert back to Tensor.  Needed if use_placeholder, since then we have
     # already evaluated each matrix to a numpy array.

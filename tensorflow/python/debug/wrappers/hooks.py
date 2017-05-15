@@ -66,7 +66,7 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
     """Add a tensor filter.
 
     See doc of `LocalCLIDebugWrapperSession.add_tensor_filter()` for details.
-    Override default behavior to accomodate the possibility of this method being
+    Override default behavior to accommodate the possibility of this method being
     called prior to the initialization of the underlying
     `LocalCLIDebugWrapperSession` object.
 
@@ -130,6 +130,8 @@ class LocalCLIDebugHook(session_run_hook.SessionRunHook,
                   on_run_start_response.tensor_dtype_regex_whitelist),
               tolerate_debug_op_creation_failures=(
                   on_run_start_response.tolerate_debug_op_creation_failures)))
+    elif self._performed_action == framework.OnRunStartAction.PROFILE_RUN:
+      self._decorate_run_options_for_profile(run_args.options)
     elif self._performed_action == framework.OnRunStartAction.INVOKE_STEPPER:
       # The _finalized property must be set to False so that the NodeStepper
       # can insert ops for retrieving TensorHandles.

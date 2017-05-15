@@ -64,8 +64,16 @@ def write_docs(output_dir, parser_config, yaml_toc):
     parser_config: A `parser.ParserConfig` object, containing all the necessary
       indices.
     yaml_toc: Set to `True` to generate a "_toc.yaml" file.
+
+  Raises:
+    ValueError: if `output_dir` is not an absolute path
   """
   # Make output_dir.
+  if not os.path.isabs(output_dir):
+    raise ValueError(
+        "'output_dir' must be an absolute path.\n"
+        "    output_dir='%s'" % output_dir)
+
   try:
     if not os.path.exists(output_dir):
       os.makedirs(output_dir)
@@ -148,7 +156,8 @@ def write_docs(output_dir, parser_config, yaml_toc):
                 + '\n')
 
         symbols_in_module = module_children.get(module, [])
-        symbols_in_module.sort(key=lambda a: a.upper())
+        # Sort case-insensitive, if equal sort case sensitive (upper first)
+        symbols_in_module.sort(key=lambda a: (a.upper(), a))
 
         for full_name in symbols_in_module:
           f.write('    - title: ' + full_name[len(module) + 1:] + '\n'
@@ -189,7 +198,6 @@ def _get_default_do_not_descend_map():
           'tensor_forest',
           'tensorboard',
           'testing',
-          'training',
           'tfprof',
       ],
       'contrib.bayesflow': [
@@ -257,6 +265,14 @@ class _DocInfo(object):
 def build_doc_index(src_dir):
   """Build an index from a keyword designating a doc to _DocInfo objects."""
   doc_index = {}
+  if not os.path.isabs(src_dir):
+    raise ValueError("'src_dir' must be an absolute path.\n"
+                     "    src_dir='%s'" % src_dir)
+
+  if not os.path.exists(src_dir):
+    raise ValueError("'src_dir' path must exist.\n"
+                     "    src_dir='%s'" % src_dir)
+
   for dirpath, _, filenames in os.walk(src_dir):
     suffix = os.path.relpath(path=dirpath, start=src_dir)
     for base_name in filenames:

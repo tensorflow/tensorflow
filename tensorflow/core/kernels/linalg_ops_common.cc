@@ -97,10 +97,6 @@ void LinearAlgebraOp<Scalar>::Compute(OpKernelContext* context) {
   PrepareOutputs(context, input_matrix_shapes, batch_shape, &outputs,
                  &output_matrix_shapes);
 
-  // Perform batch-wide pre-computions, if any.
-  BatchPreCompute(context, inputs, input_matrix_shapes, outputs,
-                  output_matrix_shapes);
-
   // Process the individual matrix problems in parallel using a threadpool.
   auto shard = [this, &inputs, &input_matrix_shapes, &outputs,
                 &output_matrix_shapes, context](int64 begin, int64 end) {
@@ -113,9 +109,6 @@ void LinearAlgebraOp<Scalar>::Compute(OpKernelContext* context) {
   Shard(worker_threads.num_threads, worker_threads.workers,
         batch_shape.num_elements(), GetCostPerUnit(input_matrix_shapes), shard);
 
-  // Perform batch-wide post-computions, if any.
-  BatchPostCompute(context, inputs, input_matrix_shapes, outputs,
-                   output_matrix_shapes);
 }
 
 template <typename Scalar>
@@ -155,7 +148,8 @@ void LinearAlgebraOp<Scalar>::AnalyzeInputs(OpKernelContext* context,
     const int col_dimension = input_rank - 1;
     const int64 num_rows = in.dim_size(row_dimension);
     const int64 num_cols = in.dim_size(col_dimension);
-    input_matrix_shapes->emplace_back(std::initializer_list<int64>({num_rows, num_cols}));
+    input_matrix_shapes->emplace_back(
+        std::initializer_list<int64>({num_rows, num_cols}));
     inputs->emplace_back(&in);
   }
   // Have the derived class validate that the inputs are as expected.
@@ -233,8 +227,7 @@ void LinearAlgebraOp<Scalar>::ComputeTensorSlice(
     matrix_inputs.emplace_back(
         inputs[i]->flat<Scalar>().data() +
             matrix_index * input_matrix_shapes[i].num_elements(),
-        input_matrix_shapes[i].dim_size(0),
-        input_matrix_shapes[i].dim_size(1));
+        input_matrix_shapes[i].dim_size(0), input_matrix_shapes[i].dim_size(1));
   }
 
   MatrixMaps matrix_outputs;

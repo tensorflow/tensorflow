@@ -44,6 +44,8 @@ See @{$python/contrib.rnn} guide.
 @@NASCell
 @@PhasedLSTMCell
 @@BasicConvLSTMCell
+@@HighwayWrapper
+@@GLSTMCell
 
 ### RNNCell wrappers
 @@AttentionCellWrapper

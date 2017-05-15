@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import contextlib
 
 from tensorflow.contrib import framework as contrib_framework
@@ -25,6 +26,7 @@ from tensorflow.contrib.linalg.python.ops import linear_operator_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
 
 __all__ = ["LinearOperator"]
 
@@ -50,11 +52,9 @@ class LinearOperator(object):
 
   #### Performance contract
 
-  Subclasses should implement a method only if it can be done with a reasonable
-  performance increase over generic dense operations, either in time, parallel
-  scalability, or memory usage.  For example, if the determinant can only be
-  computed using `tf.matrix_determinant(self.to_dense())`, then determinants
-  should not be implemented.
+  Subclasses should only implement the assert methods
+  (e.g. `assert_non_singular`) if they can be done in less than `O(N^3)`
+  time.
 
   Class docstrings should contain an explanation of computational complexity.
   Since this is a high-performance library, attention should be paid to detail,
@@ -100,7 +100,7 @@ class LinearOperator(object):
   operator.shape()
   ==> [2, 4, 4]
 
-  operator.log_determinant()
+  operator.log_abs_determinant()
   ==> Shape [2] Tensor
 
   x = ... Shape [2, 4, 5] Tensor
@@ -131,6 +131,7 @@ class LinearOperator(object):
   * If `is_X == None` (the default), callers should have no expectation either
     way.
   """
+  __metaclass__ = abc.ABCMeta
 
   def __init__(self,
                dtype,
@@ -167,16 +168,22 @@ class LinearOperator(object):
       ValueError:  If hints are set incorrectly.
     """
     # Check and auto-set flags.
-    if is_square is False:
-      if is_non_singular or is_positive_definite:
-        raise ValueError(
-            "A non-singular or positive definite operator is always square.")
-    self._is_square_set_by_user = is_square
-
     if is_positive_definite:
       if is_non_singular is False:
         raise ValueError("A positive definite matrix is always non-singular.")
       is_non_singular = True
+
+    if is_non_singular:
+      if is_square is False:
+        raise ValueError("A non-singular matrix is always square.")
+      is_square = True
+
+    if is_self_adjoint:
+      if is_square is False:
+        raise ValueError("A self-adjoint matrix is always square.")
+      is_square = True
+
+    self._is_square_set_or_implied_by_hints = is_square
 
     graph_parents = [] if graph_parents is None else graph_parents
     for i, t in enumerate(graph_parents):
@@ -239,15 +246,16 @@ class LinearOperator(object):
     """Return `True/False` depending on if this operator is square."""
     # Static checks done after __init__.  Why?  Because domain/range dimension
     # sometimes requires lots of work done in the derived class after init.
-    static_square_check = self.domain_dimension == self.range_dimension
-    if self._is_square_set_by_user is False and static_square_check:
+    auto_square_check = self.domain_dimension == self.range_dimension
+    if self._is_square_set_or_implied_by_hints is False and auto_square_check:
       raise ValueError(
           "User set is_square hint to False, but the operator was square.")
-    if self._is_square_set_by_user is None:
-      return static_square_check
+    if self._is_square_set_or_implied_by_hints is None:
+      return auto_square_check
 
-    return self._is_square_set_by_user
+    return self._is_square_set_or_implied_by_hints
 
+  @abc.abstractmethod
   def _shape(self):
     # Write this in derived class to enable all static shape methods.
     raise NotImplementedError("_shape is not implemented.")
@@ -265,6 +273,7 @@ class LinearOperator(object):
     """
     return self._shape()
 
+  @abc.abstractmethod
   def _shape_tensor(self):
     raise NotImplementedError("_shape_tensor is not implemented.")
 
@@ -367,8 +376,7 @@ class LinearOperator(object):
           self._cached_tensor_rank_tensor = ops.convert_to_tensor(
               self.tensor_rank)
         else:
-          self._cached_tensor_rank_tensor = array_ops.size(
-              self.shape_tensor())
+          self._cached_tensor_rank_tensor = array_ops.size(self.shape_tensor())
       return self._cached_tensor_rank_tensor
 
   @property
@@ -486,9 +494,10 @@ class LinearOperator(object):
     """Check that arg.dtype == self.dtype."""
     if arg.dtype != self.dtype:
       raise TypeError(
-          "Expected argument to have dtype %s.  Found: %s in tensor %s"
-          % (self.dtype, arg.dtype, arg))
+          "Expected argument to have dtype %s.  Found: %s in tensor %s" %
+          (self.dtype, arg.dtype, arg))
 
+  @abc.abstractmethod
   def _apply(self, x, adjoint=False, adjoint_arg=False):
     raise NotImplementedError("_apply is not implemented.")
 
@@ -517,7 +526,9 @@ class LinearOperator(object):
       return self._apply(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
   def _determinant(self):
-    raise NotImplementedError("_det is not implemented.")
+    if self._can_use_cholesky():
+      return math_ops.exp(self.log_abs_determinant())
+    return linalg_ops.matrix_determinant(self._matrix)
 
   def determinant(self, name="det"):
     """Determinant for every batch member.
@@ -539,7 +550,11 @@ class LinearOperator(object):
       return self._determinant()
 
   def _log_abs_determinant(self):
-    raise NotImplementedError("_log_abs_det is not implemented.")
+    if self._can_use_cholesky():
+      diag = array_ops.matrix_diag_part(self._get_cached_chol())
+      return 2 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
+    abs_det = math_ops.abs(self.determinant())
+    return math_ops.log(abs_det)
 
   def log_abs_determinant(self, name="log_abs_det"):
     """Log absolute value of determinant for every batch member.
@@ -561,13 +576,20 @@ class LinearOperator(object):
       return self._log_abs_determinant()
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
-    # Since this is an exact solve method for all rhs, this will only be
-    # available for non-singular (batch) operators, in particular the operator
-    # must be square.
-    raise NotImplementedError("_solve is not implemented.")
+    if self.is_square is False:
+      raise NotImplementedError(
+          "Solve is not yet implemented for non-square operators.")
+    rhs = linear_operator_util.matrix_adjoint(rhs) if adjoint_arg else rhs
+    if self._can_use_cholesky():
+      return linalg_ops.cholesky_solve(self._get_cached_chol(), rhs)
+    return linalg_ops.matrix_solve(
+        self._get_cached_dense_matrix(), rhs, adjoint=adjoint)
 
   def solve(self, rhs, adjoint=False, adjoint_arg=False, name="solve"):
-    """Solve `R` (batch) systems of equations exactly: `A X = rhs`.
+    """Solve `R` (batch) systems of equations with best effort: `A X = rhs`.
+
+    The solution may not be exact, and in this case it will be close in some
+    sense (see class docstring for details).
 
     Examples:
 
@@ -689,3 +711,20 @@ class LinearOperator(object):
       x = ops.convert_to_tensor(x, name="x")
       self._check_input_dtype(x)
       return self._add_to_tensor(x)
+
+  def _can_use_cholesky(self):
+    # TODO(langmore) Add complex types when tf.cholesky can use them.
+    return (not self.dtype.is_complex and self.is_self_adjoint and
+            self.is_positive_definite)
+
+  def _get_cached_dense_matrix(self):
+    if not hasattr(self, "_cached_dense_matrix"):
+      self._cached_dense_matrix = self.to_dense()
+    return self._cached_dense_matrix
+
+  def _get_cached_chol(self):
+    if not self._can_use_cholesky():
+      return None
+    if not hasattr(self, "_cached_chol"):
+      self._cached_chol = linalg_ops.cholesky(self._get_cached_dense_matrix())
+    return self._cached_chol

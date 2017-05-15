@@ -37,32 +37,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-class GraphNode : public ShowNode {
- public:
-  explicit GraphNode(TFNode* node) : ShowNode(node) {
-    mutable_proto()->set_inputs(node->inputs().size());
-    mutable_proto()->set_total_inputs(0);
-  }
-
-  void AggregateTotalStats(GraphNode* node) {
-    ShowNode::AggregateTotalStats(node);
-    mutable_proto()->set_total_inputs(proto().total_inputs() +
-                                      node->proto().total_inputs() + 1);
-  }
-
-  void AddSelfToTotalStats() {
-    ShowNode::AddSelfToTotalStats();
-    mutable_proto()->set_total_inputs(proto().total_inputs() +
-                                      proto().inputs());
-  }
-
-  void ResetTotalStats() {
-    ShowNode::ResetTotalStats();
-    mutable_proto()->set_total_inputs(0);
-  }
-
-  std::vector<GraphNode*> children;
-};
 
 // Organize tensorflow ops in a graph structure, pointing from output ops
 // to input ops.
@@ -72,12 +46,13 @@ class TFGraph : public TFShow {
       : TFShow(ckpt_reader) {}
   ~TFGraph() override {}
 
-  void AddNode(TFNode* node) override;
+  void AddNode(TFGraphNode* node) override;
 
   void Build() override;
 
  private:
-  const ShowNode* ShowInternal(const Options& opts) override;
+  const ShowNode* ShowInternal(const Options& opts,
+                               Timeline* timeline) override;
 
   bool ShouldShowIfExtra(ShowNode* node, const Options& opts,
                          int depth) override {
@@ -99,14 +74,14 @@ class TFGraph : public TFShow {
   std::vector<GraphNode*> GenerateGraphDot(
       GraphNode* root, GraphNode* last_shown, const Options& opts, int depth,
       int hidden, std::set<string>* declared_nodes,
-      std::set<string>* declared_edges, TFProfNode* parent);
+      std::set<string>* declared_edges, TFGraphNodeProto* parent);
 
   void Account(const std::vector<GraphNode*>& roots, const Options& opts,
                std::map<string, int64>* visits);
 
   std::vector<GraphNode*> roots_;
   std::vector<std::unique_ptr<NodeDef>> node_defs_;
-  std::map<string, std::unique_ptr<TFNode>> parent_nodes_;
+  std::map<string, std::unique_ptr<TFGraphNode>> parent_nodes_;
   std::map<string, std::unique_ptr<GraphNode>> nodes_map_;
 };
 

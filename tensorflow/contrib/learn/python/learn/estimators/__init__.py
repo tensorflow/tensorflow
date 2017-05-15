@@ -323,6 +323,7 @@ from tensorflow.contrib.learn.python.learn.estimators.metric_key import MetricKe
 from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModeKeys
 from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModelFnOps
 from tensorflow.contrib.learn.python.learn.estimators.prediction_key import PredictionKey
+from tensorflow.contrib.learn.python.learn.estimators.rnn_common import PredictionType
 from tensorflow.contrib.learn.python.learn.estimators.run_config import ClusterConfig
 from tensorflow.contrib.learn.python.learn.estimators.run_config import Environment
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig

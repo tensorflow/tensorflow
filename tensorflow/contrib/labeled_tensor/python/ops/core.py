@@ -810,7 +810,7 @@ def axis_order_scope(axis_order=None):
   Example usage:
 
     with lt.axis_order_scope(['x', 'y', 'z']):
-      # result is guranteed to have the correct axis order
+      # result is guaranteed to have the correct axis order
       result = w + b
 
   You can nest scopes, in which case only the inner-most scope applies, e.g.,

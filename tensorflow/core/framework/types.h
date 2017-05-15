@@ -82,7 +82,7 @@ typedef gtl::InlinedVector<DeviceType, 4> DeviceTypeVector;
 
 // Convert the enums to strings for errors:
 string DataTypeString(DataType dtype);
-string DeviceTypeString(DeviceType device_type);
+string DeviceTypeString(const DeviceType& device_type);
 string DataTypeSliceString(const DataTypeSlice dtypes);
 inline string DataTypeVectorString(const DataTypeVector& dtypes) {
   return DataTypeSliceString(dtypes);

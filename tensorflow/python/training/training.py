@@ -186,8 +186,8 @@ from tensorflow.python.training.learning_rate_decay import *
 # pylint: enable=wildcard-import
 
 # Distributed computing support.
-from tensorflow.core.protobuf.tensorflow_server_pb2 import ClusterDef
-from tensorflow.core.protobuf.tensorflow_server_pb2 import JobDef
+from tensorflow.core.protobuf.cluster_pb2 import ClusterDef
+from tensorflow.core.protobuf.cluster_pb2 import JobDef
 from tensorflow.core.protobuf.tensorflow_server_pb2 import ServerDef
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.training.server_lib import Server
@@ -196,32 +196,32 @@ from tensorflow.python.training.server_lib import Server
 _allowed_symbols = [
     # TODO(cwhipkey): review these and move to contrib or expose through
     # documentation.
-    "generate_checkpoint_state_proto",   # Used internally by saver.
+    "generate_checkpoint_state_proto",  # Used internally by saver.
     "checkpoint_exists",  # Only used in test?
     "get_checkpoint_mtimes",  # Only used in test?
 
     # Legacy: remove.
     "do_quantize_training_on_graphdef",  # At least use grah_def, not graphdef.
-                                         # No uses within tensorflow.
+    # No uses within tensorflow.
     "queue_runner",  # Use tf.train.start_queue_runner etc directly.
-                     # This is also imported internally.
+    # This is also imported internally.
 
     # TODO(drpng): document these. The reference in howtos/distributed does
     # not link.
     "SyncReplicasOptimizer",
     # Protobufs:
-    "BytesList",          # from example_pb2.
+    "BytesList",  # from example_pb2.
     "ClusterDef",
-    "Example",            # from example_pb2
-    "Feature",            # from example_pb2
-    "Features",           # from example_pb2
-    "FeatureList",        # from example_pb2
-    "FeatureLists",       # from example_pb2
-    "FloatList",          # from example_pb2.
-    "Int64List",          # from example_pb2.
+    "Example",  # from example_pb2
+    "Feature",  # from example_pb2
+    "Features",  # from example_pb2
+    "FeatureList",  # from example_pb2
+    "FeatureLists",  # from example_pb2
+    "FloatList",  # from example_pb2.
+    "Int64List",  # from example_pb2.
     "JobDef",
-    "SaverDef",           # From saver_pb2.
-    "SequenceExample",    # from example_pb2.
+    "SaverDef",  # From saver_pb2.
+    "SequenceExample",  # from example_pb2.
     "ServerDef",
 ]
 # Include extra modules for docstrings because:

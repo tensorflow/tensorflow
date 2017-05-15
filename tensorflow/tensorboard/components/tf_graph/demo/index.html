@@ -15,32 +15,78 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 -->
+<script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
+<link rel="import" href="../tf-graph.html">
+<link rel="import" href="../../tf-graph-common/tf-graph-common.html">
+<link rel="import" href="../../tf-graph-loader/tf-graph-loader.html">
+<link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
+<title>TF Graph Demo</title>
+<style>
+  #demo-container {
+    border: 2px solid #808080;
+    width: 1000px;
+    height: 600px;
+  }
+</style>
+<demo-snippet>
+  <template>
+    <dom-module id="tf-graph-demo">
+      <template>
+        <!-- We first use the graph loader to load and parse a pbtxt file into a graph object. -->
+        <tf-graph-loader
+            id="loader"
+            datasets="[[_datasets]]"
+            selected-dataset="[[_selectedDataset]]"
+            out-graph="{{_graph}}">
+        </tf-graph-loader>
 
-<html>
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1.0, user-scalable=yes">
-    <title>tf-graph Demo</title>
-    <!-- Libraries that should be imported in TensorBoard when the Graph visualizer ports to TensorBoard -->
-    <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
-    <script src="../../es6-promise/promise.min.js"></script>
-    <link rel="import" href="tf-graph-demo.html">
-    <style>
-      html {
-        width: 100%;
-        height: 100%;
-      }
+        <!-- We color ops in the graph by XLA cluster. -->
+        <tf-graph id="graph" color-by="xla_cluster"></tf-graph>
+      </template>
+      <script>
+        "use strict";
 
-      body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-      }
-    </style>
-  </head>
+        Polymer({
+          is: "tf-graph-demo",
+          properties: {
+            // We tell the graph loader to load a specific pbtxt file.
+            _datasets: {
+              type: Array,
+              value: [{
+                "name": "Graph with XLA Clusters Specified",
+                "path": "data/graph.pbtxt"
+              }],
+            },
+            _selectedDataset: {
+              type: Number,
+              value: 0,
+            },
 
-  <body unresolved>
-    <tf-graph-demo></tf-graph-demo>
-  </body>
-</html>
+            // This property will be updated by the graph loader.
+            _graph: {
+              type: Object,
+            },
+          },
+          observers: [
+            '_graphUpdated(_graph)',
+          ],
+          _graphUpdated: function(slimGraph) {
+            const tracker = tf.graph.util.getTracker(this.$.loader);
+            const hierarchyTracker = tf.graph.util.getSubtaskTracker(
+                tracker, 100, 'Namespace hierarchy');
+            const hierarchyOptions = {};
+            tf.graph.hierarchy.build(slimGraph, hierarchyOptions, hierarchyTracker).then(
+                function(graphHierarchy) {
+              // We have parsed and built the graph object from a pbtxt file. Render the graph.
+              this.$.graph.set('basicGraph', slimGraph);
+              this.$.graph.set('graphHierarchy', graphHierarchy);
+            }.bind(this));
+          },
+        });
+      </script>
+    </dom-module>
+    <div id='demo-container'>
+      <tf-graph-demo></tf-graph-demo>
+    </div>
+  </template>
+</demo-snippet>

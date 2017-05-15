@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
-#include "tensorflow/core/debug/debug_graph_utils.h"
+#include "tensorflow/core/debug/debugger_state_impl.h"
 
 namespace tensorflow {
 namespace {
@@ -30,10 +30,18 @@ class DebuggerStateRegistration {
     return std::unique_ptr<DebuggerStateInterface>(new DebuggerState(options));
   }
 
+  static std::unique_ptr<DebugGraphDecoratorInterface>
+  CreateDebugGraphDecorator(const DebugOptions& options) {
+    return std::unique_ptr<DebugGraphDecoratorInterface>(
+        new DebugGraphDecorator(options));
+  }
+
   DebuggerStateRegistration() {
     DebuggerStateRegistry::RegisterFactory(CreateDebuggerState);
+    DebugGraphDecoratorRegistry::RegisterFactory(CreateDebugGraphDecorator);
   }
 };
+
 static DebuggerStateRegistration register_debugger_state_implementation;
 
 }  // end namespace

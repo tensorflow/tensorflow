@@ -85,6 +85,10 @@ class SoftplusTest(test.TestCase):
     print("softplus (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  def testWarnInts(self):
+    # Running the op triggers address sanitizer errors, so we just make it
+    nn_ops.softplus(constant_op.constant(7))
+
 
 if __name__ == "__main__":
   test.main()

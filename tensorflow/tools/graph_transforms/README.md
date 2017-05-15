@@ -81,10 +81,10 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --out_graph=optimized_inception_graph.pb \
 --inputs='Mul:0' \
 --outputs='softmax:0' \
---transforms='\
-strip_unused_nodes(type=float, shape="1,299,299,3") \
-remove_nodes(op=Identity, op=CheckNumerics) \
-fold_old_batch_norms \
+--transforms='
+strip_unused_nodes(type=float, shape="1,299,299,3")
+remove_nodes(op=Identity, op=CheckNumerics)
+fold_old_batch_norms
 '
 ```
 
@@ -94,7 +94,10 @@ transforms to modify the graph with. The transforms are given as a list of
 names, and can each have arguments themselves. These transforms define the
 pipeline of modifications that are applied in order to produce the output.
 Sometimes you need some transforms to happen before others, and the ordering
-within the list lets you specify which happen first.
+within the list lets you specify which happen first. 
+Note that the optimization 
+`remove_nodes(op=Identity, op=CheckNumerics)` will break the model with control 
+flow operations, such as `tf.cond`, `tf.map_fn`, and `tf.while`.
 
 ## Inspecting Graphs
 
@@ -212,7 +215,7 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --out_graph=optimized_inception_graph.pb \
 --inputs='Mul' \
 --outputs='softmax' \
---transforms='\
+--transforms='
   strip_unused_nodes(type=float, shape="1,299,299,3")
   fold_constants(ignore_errors=true)
   fold_batch_norms
@@ -428,12 +431,11 @@ graph:
 ```bash
 bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
---logtostderr \
 --in_graph=/tmp/quantized_inception.pb \
 --out_graph=/tmp/logged_quantized_inception.pb \
 --inputs=Mul \
 --outputs=softmax \
---transforms='\
+--transforms='
 insert_logging(op=RequantizationRange, show_name=true, message="__requant_min_max:")\
 '
 ```
@@ -447,12 +449,10 @@ log:
 bazel build tensorflow/examples/label_image:label_image
 bazel-bin/tensorflow/examples/label_image/label_image \
 --image=${HOME}/Downloads/grace_hopper.jpg \
---logtostderr \
 --input_layer=Mul \
 --output_layer=softmax \
 --graph=/tmp/logged_quantized_inception.pb \
 --labels=${HOME}/Downloads/imagenet_comp_graph_label_strings.txt \
---logtostderr \
 2>/tmp/min_max_log_small.txt
 ```
 

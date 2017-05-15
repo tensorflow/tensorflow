@@ -25,6 +25,7 @@ projective transforms (including rotation) are supported.
 @@compose_transforms
 @@rotate
 @@transform
+@@bipartite_match
 @@single_image_random_dot_stereograms
 """
 from __future__ import absolute_import

@@ -173,7 +173,7 @@ class FeatureColumnTest(test.TestCase):
     for i in range(len(b1_value)):
       self.assertAllClose(b1_value[i], b2_value[i])
 
-    # Test the case when a shared_embedding_name is explictly specified.
+    # Test the case when a shared_embedding_name is explicitly specified.
     d = fc.shared_embedding_columns(
         [a1, a2],
         dimension=4,
@@ -441,7 +441,7 @@ class FeatureColumnTest(test.TestCase):
     sparse_tensor = sparse_tensor_lib.SparseTensor(
         values=[2.0, 5.0], indices=[[0, 0], [2, 0]], dense_shape=[3, 1])
     with self.assertRaisesRegexp(
-        ValueError, "Calling an abstract method."):
+        ValueError, "Set is_sparse to False"):
       real_valued_column._to_dnn_input_layer(sparse_tensor)
 
   def testRealValuedColumnDeepCopy(self):

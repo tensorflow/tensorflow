@@ -50,6 +50,11 @@ class PluginGamma(GenericContentPlugin):
 
 class PluginAssetUtilitiesTest(test.TestCase):
 
+  def testGetPluginDirectory(self):
+    self.assertEqual(
+        os.path.join("logdir", "plugins", "x"),
+        plugin_asset_util.PluginDirectory("logdir", "x"))
+
   def testNonExistentDirectory(self):
     tempdir = self.get_temp_dir()
     fake_dir = os.path.join(tempdir, "nonexistent_dir")

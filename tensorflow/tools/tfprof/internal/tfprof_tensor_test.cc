@@ -57,10 +57,10 @@ class TFProfTensorTest : public ::testing::Test {
 TEST_F(TFProfTensorTest, Basics) {
   Options opts(3, 0, 0, 0, 0, {".*"}, "name", {"VariableV2"}, {".*"}, {""},
                {".*"}, {""}, false, {"tensor_value"},  // show the tensor value.
-               false);
-  const TFProfNode& root = tf_stats_->PrintGraph("scope", opts);
+               "", {});
+  const TFGraphNodeProto& root = tf_stats_->PrintGraph("scope", opts);
 
-  TFProfNode expected;
+  TFGraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
       "0\ntotal_exec_micros: 0\ntotal_requested_bytes: 0\ntotal_parameters: "

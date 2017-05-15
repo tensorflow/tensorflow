@@ -39,6 +39,13 @@ limitations under the License.
 
 namespace xla {
 
+// Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
+// the bounds and indices. And for the rare cases of ranks greater than 8,
+// the InlinedVector will just behave like an std::vector<> and allocate the
+// memory to store its values.
+static constexpr int kInlineRank = 8;
+using DimensionVector = tensorflow::gtl::InlinedVector<int64, kInlineRank>;
+
 // RAII timer that logs with a given label the wall clock time duration in human
 // readable form. This differs from base's ElapsedTimer primarily in that it
 // spits out the human-readable duration form.
@@ -139,6 +146,18 @@ bool ContainersEqual(const Container1T& c1, const Container2T& c2,
           std::equal(std::begin(c1), std::end(c1), std::begin(c2), p));
 }
 
+// Performs a copy of count values from src to dest, using different strides for
+// source and destination. The source starting index is src_base, while the
+// destination one is dest_base.
+template <typename D, typename S>
+void StridedCopy(tensorflow::gtl::MutableArraySlice<D> dest, int64 dest_base,
+                 int64 dest_stride, tensorflow::gtl::ArraySlice<S> src,
+                 int64 src_base, int64 src_stride, int64 count) {
+  for (; count > 0; --count, dest_base += dest_stride, src_base += src_stride) {
+    dest[dest_base] = static_cast<D>(src[src_base]);
+  }
+}
+
 // Adds some context information to the error message in a
 // Status.  This is useful as Statuses are
 // propagated upwards.
@@ -165,6 +184,9 @@ Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 string Reindent(tensorflow::StringPiece original,
                 tensorflow::StringPiece indentation);
 
+// Checks whether permutation is a permutation of the [0, rank) integer range.
+bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank);
+
 // Applies `permutation` on `input` and returns the permuted array.
 // For each i, output[permutation[i]] = input[i].
 //
@@ -175,12 +197,11 @@ template <template <typename...> class C, typename T>
 std::vector<T> Permute(tensorflow::gtl::ArraySlice<int64> permutation,
                        C<T> input_) {
   tensorflow::gtl::ArraySlice<T> input(input_);
-  CHECK_EQ(permutation.size(), input.size());
+  CHECK(IsPermutation(permutation, input.size()));
   std::vector<T> output(input.size());
   for (size_t i = 0; i < permutation.size(); ++i) {
     output[permutation[i]] = input[i];
   }
-  DCHECK(std::is_permutation(input.begin(), input.end(), output.begin()));
   return output;
 }
 
@@ -243,6 +264,10 @@ string VectorString(const std::initializer_list<T>& c) {
 
 // Returns a PaddingConfig object that represents no padding for the given rank.
 PaddingConfig MakeNoPaddingConfig(int64 rank);
+
+// Returns true if the padding configuration has at least one dimension with
+// non-zero interior padding.
+bool HasInteriorPadding(const PaddingConfig& config);
 
 // Imports the templated FloorOfRatio math function from the TensorFlow
 // namespace, as it is very commonly used.

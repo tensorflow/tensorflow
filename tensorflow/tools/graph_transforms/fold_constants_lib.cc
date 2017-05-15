@@ -152,9 +152,9 @@ Status FoldConstants(const GraphDef& input_graph_def,
       &input_graph, context.input_names, context.output_names, {},
       device_attributes, false /* use_function_convention */, &metadata));
   bool was_mutated;
-  TF_RETURN_IF_ERROR(DoConstantFoldingWithStatus(
-      ConstantFoldingOptions(), nullptr, Env::Default(), nullptr, &input_graph,
-      &was_mutated));
+  TF_RETURN_IF_ERROR(ConstantFold(ConstantFoldingOptions(), nullptr,
+                                  Env::Default(), nullptr, &input_graph,
+                                  &was_mutated));
   GraphDef folded_graph_def;
   input_graph.ToGraphDef(&folded_graph_def);
   GraphDef send_recvs_replaced;

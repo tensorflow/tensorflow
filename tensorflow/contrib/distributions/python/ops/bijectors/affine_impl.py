@@ -22,7 +22,6 @@ from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 from tensorflow.contrib.distributions.python.ops import operator_pd_diag
 from tensorflow.contrib.distributions.python.ops import operator_pd_identity
 from tensorflow.contrib.distributions.python.ops import operator_pd_vdvt_update
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector
 from tensorflow.contrib.distributions.python.ops.shape import _DistributionShape
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,6 +31,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import bijector
 
 
 __all__ = [

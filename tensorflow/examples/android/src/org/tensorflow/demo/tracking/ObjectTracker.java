@@ -48,7 +48,18 @@ import org.tensorflow.demo.env.Size;
  * ObjectTracker still exists.
  */
 public class ObjectTracker {
-  private final Logger logger = new Logger();
+  private static final Logger LOGGER = new Logger();
+
+  private static boolean libraryFound = false;
+
+  static {
+    try {
+      System.loadLibrary("tensorflow_demo");
+      libraryFound = true;
+    } catch (UnsatisfiedLinkError e) {
+      LOGGER.e("libtensorflow_demo.so not found, tracking unavailable");
+    }
+  }
 
   private static final boolean DRAW_TEXT = false;
 
@@ -194,6 +205,13 @@ public class ObjectTracker {
 
   public static synchronized ObjectTracker getInstance(
       final int frameWidth, final int frameHeight, final int rowStride, final boolean alwaysTrack) {
+    if (!libraryFound) {
+      LOGGER.e(
+          "Native object tracking support not found. "
+              + "See tensorflow/examples/android/README.md for details.");
+      return null;
+    }
+
     if (instance == null) {
       instance = new ObjectTracker(frameWidth, frameHeight, rowStride, alwaysTrack);
       instance.init();
@@ -519,7 +537,7 @@ public class ObjectTracker {
       checkValidObject();
       synchronized (ObjectTracker.this) {
         if (lastExternalPositionTime > timestamp) {
-          logger.w("Tried to use older position time!");
+          LOGGER.w("Tried to use older position time!");
           return;
         }
         final RectF externalPosition = downscaleRect(position);
@@ -640,8 +658,4 @@ public class ObjectTracker {
 
   protected static native void downsampleImageNative(
       int width, int height, int rowStride, byte[] input, int factor, byte[] output);
-
-  static {
-    System.loadLibrary("tensorflow_demo");
-  }
 }

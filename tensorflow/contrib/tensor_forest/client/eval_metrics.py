@@ -27,8 +27,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 
-INFERENCE_PROB_NAME = prediction_key.PredictionKey.CLASSES
-INFERENCE_PRED_NAME = prediction_key.PredictionKey.PROBABILITIES
+INFERENCE_PROB_NAME = prediction_key.PredictionKey.PROBABILITIES
+INFERENCE_PRED_NAME = prediction_key.PredictionKey.CLASSES
 
 FEATURE_IMPORTANCE_NAME = 'global_feature_importance'
 

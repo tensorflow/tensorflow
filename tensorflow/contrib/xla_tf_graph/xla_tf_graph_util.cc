@@ -195,7 +195,6 @@ Status ConvertOpRequestToXlaNode(const xla::OperationRequest& operation_request,
 }
 
 void SetupXlaCpuClient(std::unique_ptr<FunctionLibraryDefinition>* flib_def,
-                       std::unique_ptr<FunctionLibraryRuntime>* flr,
                        std::unique_ptr<XlaCompiler>* compiler) {
   xla::Client* client = xla::ClientLibrary::LocalClientOrDie();
   XlaOpRegistry::RegisterCompilationKernels();
@@ -205,14 +204,11 @@ void SetupXlaCpuClient(std::unique_ptr<FunctionLibraryDefinition>* flib_def,
 
   // Setup compiler options
   XlaCompiler::Options options;
-  options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
+  DeviceType device_type(DEVICE_CPU_XLA_JIT);
+  options.device_type = &device_type;
+  options.flib_def = flib_def->get();
   options.client = client;
   compiler->reset(new XlaCompiler(options));
-
-  flr->reset(NewFunctionLibraryRuntime(
-      compiler->get()->device_mgr(), /*env=*/nullptr, compiler->get()->device(),
-      TF_GRAPH_DEF_VERSION, flib_def->get(), OptimizerOptions(),
-      /*custom_kernel_creator=*/nullptr));
 }
 
 }  // namespace
@@ -223,17 +219,16 @@ ConvertTfGraphToXlaSessionModule(const std::vector<XlaCompiler::Argument>& args,
   CHECK(graph);
 
   std::unique_ptr<FunctionLibraryDefinition> flib_def;
-  std::unique_ptr<FunctionLibraryRuntime> flr;
   std::unique_ptr<XlaCompiler> compiler;
 
-  SetupXlaCpuClient(&flib_def, &flr, &compiler);
+  SetupXlaCpuClient(&flib_def, &compiler);
 
   // Compile graph and build computation
   XlaCompiler::CompilationResult result;
-  TF_CHECK_OK(compiler->CompileGraph(GRAPH_NAME, std::move(graph), flr.get(),
-                                     args, &result));
+  TF_CHECK_OK(compiler->CompileGraph(XlaCompiler::CompileOptions(), GRAPH_NAME,
+                                     std::move(graph), args, &result));
 
-  return result.computation.Snapshot();
+  return result.computation->Snapshot();
 }
 
 xla::StatusOr<std::unordered_map<int64, XlaNode>>
