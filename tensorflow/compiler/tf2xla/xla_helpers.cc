@@ -92,6 +92,7 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     case xla::F16:
       literal = *xla::LiteralUtil::CreateR0<xla::half>(
               static_cast<xla::half>(value));
+      break;
     case xla::TUPLE:
       LOG(FATAL) << "tuple element type is not integral";
     case xla::OPAQUE:
