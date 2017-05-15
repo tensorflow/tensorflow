@@ -2087,21 +2087,6 @@ cuda_py_test(
     ],
 )
 
-tf_py_test(
-    name = "neon_depthwise_conv_op_test",
-    size = "medium",
-    srcs = ["neon_depthwise_conv_op_test.py"],
-    additional_deps = [
-        "//third_party/py/numpy",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:nn",
-        "//tensorflow/python:nn_grad",
-        "//tensorflow/python:nn_ops",
-    ],
-)
-
 cuda_py_test(
     name = "division_future_test",
     size = "medium",
