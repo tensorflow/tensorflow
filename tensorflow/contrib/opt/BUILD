@@ -17,8 +17,8 @@ py_library(
         "python/training/drop_stale_gradient_optimizer.py",
         "python/training/external_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
-        "python/training/nadam_optimizer.py",
         "python/training/moving_average_optimizer.py",
+        "python/training/nadam_optimizer.py",
         "python/training/variable_clipping_optimizer.py",
     ],
     srcs_version = "PY2AND3",
@@ -137,7 +137,6 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-
     ],
 )
 
