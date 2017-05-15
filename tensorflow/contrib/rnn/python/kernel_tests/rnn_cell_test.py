@@ -880,9 +880,9 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(res[1].c, expected_state_c)
         self.assertAllClose(res[1].h, expected_state_h)
 
-  def testBasicConvLSTMCell(self):
+  def testConv2DLSTMCell(self):
     with self.test_session() as sess:
-      shape = [2,2]
+      shape = [2,2,1]
       filter_size = [3,3]
       num_features = 1
       batch_size = 2
@@ -901,7 +901,7 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(1.0/4.0)):
         x = array_ops.zeros([batch_size, 2, 2, 1])
-        cell = rnn_cell.BasicConvLSTMCell(shape=shape, filter_size=filter_size, num_features=num_features)
+        cell = rnn_cell.Conv2DLSTMCell(input_shape=shape, kernel_shape=filter_size, output_channels=num_features)
         hidden = cell.zero_state(batch_size, dtypes.float32)
         output, state = cell(x, hidden)
 
@@ -1000,7 +1000,6 @@ class RNNCellTest(test.TestCase):
                             h_res, 1e-5)
         self.assertAllClose(gh_res[:, int(num_units / number_of_groups):],
                             h_res, 1e-5)
->>>>>>> f2047a3570aabbde03230343adb6fc1a5604a1fd
 
 class LayerNormBasicLSTMCellTest(test.TestCase):
 

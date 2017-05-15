@@ -1940,81 +1940,117 @@ class PhasedLSTMCell(core_rnn_cell.RNNCell):
 
       return new_h, new_state
 
-class BasicConvLSTMCell(core_rnn_cell.RNNCell):
+class ConvLSTMCell(core_rnn_cell.RNNCell):
   """Basic Convolutional LSTM recurrent network cell.
 
   https://arxiv.org/pdf/1506.04214v1.pdf
   """
 
   def __init__(self,
-               shape,
-               filter_size,
-               num_features,
+               conv_ndims,
+               input_shape,
+               output_channels,
+               kernel_shape,
+               use_bias=True,
+               skip_connection=False,
                forget_bias=1.0,
-               activation=math_ops.tanh,
-               reuse=None):
-    """Initialize the basic Conv LSTM cell.
+               initializers=None,
+               name="conv_lstm"):
+    """Construct ConvLSTMCell.
     Args:
-      shape: int tuple thats the height and width of the cell
-      filter_size: int tuple thats the height and width of the filter
-      num_features: int thats the depth of the cell 
-      forget_bias: float, The bias added to forget gates (see above).
-      input_size: Deprecated and unused.
-      state_is_tuple: If True, accepted and returned states are 2-tuples of
-        the `c_state` and `m_state`.  If False, they are concatenated
-        along the column axis.  The latter behavior will soon be deprecated.
-      activation: Activation function of the inner states.
+      conv_ndims: Convolution dimensionality (1, 2 or 3).
+      input_shape: Shape of the input as tuple, excluding the batch size.
+      output_channels: Number of output channels of the conv LSTM.
+      kernel_shape: Sequence of kernel sizes (of size 1,2 or 3).
+      use_bias: Use bias in convolutions.
+      skip_connection: If set to `True`, concatenate the input to the output
+          of the conv LSTM. Default: `False`.
+      forget_bias: Forget bias.
+      name: Name of the module.
+    Raises:
+      ValueError: If `skip_connection` is `True` and stride is different from 1
+        or if `input_shape` is incompatible with `conv_ndims`.
     """
-    self._shape = shape 
-    self._filter_size = filter_size
-    self._num_features = num_features 
-    self._forget_bias = forget_bias
-    self._reuse = reuse
-    self._activation = activation
+    super(ConvLSTMCell, self).__init__(name=name)
 
-  @property
-  def state_size(self):
-    return core_rnn_cell.LSTMStateTuple(self._shape + [self._filter_size], self._shape + [self._filter_size])
+    if conv_ndims != len(input_shape)-1:
+      raise ValueError("Invalid input_shape {} for conv_ndims={}.".format(
+          input_shape, conv_ndims))
+
+    self._conv_ndims = conv_ndims
+    self._input_shape = input_shape
+    self._output_channels = output_channels
+    self._kernel_shape = kernel_shape
+    self._use_bias = use_bias
+    self._forget_bias = forget_bias
+    self._skip_connection = skip_connection
+
+    self._total_output_channels = output_channels
+    if self._skip_connection:
+      self._total_output_channels += self._input_shape[-1]
 
   @property
   def output_size(self):
-    return self._shape + [self._filter_size]
+    return self._input_shape[:-1] + [self._total_output_channels]
+
+  @property
+  def state_size(self):
+    return self._input_shape[:-1] + [self._output_channels]
 
   def zero_state(self, batch_size, dtype):
-    shape = self._shape 
-    num_features = self._num_features
-    zero_c = array_ops.zeros([batch_size, shape[0], shape[1], num_features], dtype=dtype)
-    zero_h = array_ops.zeros([batch_size, shape[0], shape[1], num_features], dtype=dtype)
-    zero_state = core_rnn_cell.LSTMStateTuple(zero_c, zero_h)
+    shape = self._input_shape[:-1] + [self._total_output_channels]
+    zero_cell = array_ops.zeros([batch_size] + shape, dtype=dtype)
+    zero_hidden = array_ops.zeros([batch_size] + shape, dtype=dtype)
+    zero_state = core_rnn_cell.LSTMStateTuple(zero_cell, zero_hidden)
     return zero_state
 
-  def __call__(self, inputs, state, scope=None):
-    """Long short-term memory cell (LSTM)."""
-    with vs.variable_scope(scope or "conv_lstm_cell", reuse=self._reuse):  # "BasicLSTMCell"
-      # Parameters of gates are concatenated into one multiply for efficiency.
-      (c, h) = state
+  def call(self, inputs, state, scope=None):
+    cell, hidden = state
+    new_hidden = _conv([inputs, hidden], self._kernel_shape, 4*self._output_channels, self._use_bias)
+    gates = array_ops.split(value=new_hidden, num_or_size_splits=4,
+                     axis=self._conv_ndims+1)
 
-      concat = _conv_linear([inputs, h], self._filter_size, self._num_features * 4, True)
+    input_gate, new_input, forget_gate, output_gate = gates
+    new_cell = math_ops.sigmoid(forget_gate + self._forget_bias) * cell
+    new_cell += math_ops.sigmoid(input_gate) * math_ops.tanh(new_input)
+    output = math_ops.tanh(new_cell) * math_ops.sigmoid(output_gate)
 
-      i, j, f, o = array_ops.split(axis=3, num_or_size_splits=4, value=concat)
+    if self._skip_connection:
+      output = array_ops.concat([output, inputs], axis=-1)
+    new_state = core_rnn_cell.LSTMStateTuple(new_cell, output)
+    return output, new_state
 
-      new_c = (c * math_ops.sigmoid(f + self._forget_bias) + math_ops.sigmoid(i) *
-               self._activation(j))
-      new_h = self._activation(new_c) * math_ops.sigmoid(o)
+class Conv1DLSTMCell(ConvLSTMCell):
+  """1D convolutional LSTM."""
 
-      new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
-      return new_h, new_state
+  def __init__(self, name="conv_1d_lstm", **kwargs):
+    """Construct Conv1DLSTM. See `snt.ConvLSTM` for more details."""
+    super(Conv1DLSTMCell, self).__init__(conv_ndims=1, **kwargs)
 
-def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=None):
+class Conv2DLSTMCell(ConvLSTMCell):
+  """2D convolutional LSTM."""
+
+  def __init__(self, name="conv_2d_lstm", **kwargs):
+    """Construct Conv2DLSTM. See `snt.ConvLSTM` for more details."""
+    super(Conv2DLSTMCell, self).__init__(conv_ndims=2, **kwargs)
+
+class Conv3DLSTMCell(ConvLSTMCell):
+  """3D convolutional LSTM."""
+
+  def __init__(self, name="conv_3d_lstm", **kwargs):
+    """Construct Conv3DLSTM. See `snt.ConvLSTM` for more details."""
+    super(Conv3DLSTMCell, self).__init__(conv_ndims=3, **kwargs)
+
+def _conv(args, filter_size, num_features, bias, bias_start=0.0, scope=None):
   """convolution:
   Args:
-    args: a 4D Tensor or a list of 4D, batch x n, Tensors.
+    args: a Tensor or a list of Tensors of dimension 3D, 4D or 5D, batch x n, Tensors.
     filter_size: int tuple of filter height and width.
     num_features: int, number of features.
     bias_start: starting value to initialize the bias; 0 by default.
     scope: VariableScope for the created subgraph; defaults to "Linear".
   Returns:
-    A 4D Tensor with shape [batch h w num_features]
+    A 3D, 4D, or 5D Tensor with shape [batch ... num_features]
   Raises:
     ValueError: if some of the arguments has unspecified or wrong shape.
   """
@@ -2022,24 +2058,33 @@ def _conv_linear(args, filter_size, num_features, bias, bias_start=0.0, scope=No
   # Calculate the total size of arguments on dimension 1.
   total_arg_size_depth = 0
   shapes = [a.get_shape().as_list() for a in args]
+  shape_length = len(shapes[0])
   for shape in shapes:
-    if len(shape) != 4:
-      raise ValueError("Conv Linear is expecting 4D arguments: %s" % str(shapes))
-    if not shape[3]:
-      raise ValueError("Conv Linear expects shape[4] of arguments: %s" % str(shapes))
+    if len(shape) not in [3,4,5]:
+      raise ValueError("Conv Linear expects 3D, 4D or 5D arguments: %s" % str(shapes))
+    if len(shape) != len(shapes[0]):
+      raise ValueError("Conv Linear expects all args to be of same Dimensiton: %s" % str(shapes))
     else:
-      total_arg_size_depth += shape[3]
+      total_arg_size_depth += shape[-1]
 
   dtype = [a.dtype for a in args][0]
 
+  # determine correct conv operation
+  if   shape_length == 3:
+    conv_op = nn_ops.conv1d
+  elif shape_length == 4:
+    conv_op = nn_ops.conv2d
+  elif shape_length == 5:
+    conv_op = nn_ops.conv3d
+
   # Now the computation.
-  with vs.variable_scope(scope or "Conv"):
+  with vs.variable_scope(scope or "Conv_%sD" % str(shape_length-2)):
     matrix = vs.get_variable(
-        "Matrix", [filter_size[0], filter_size[1], total_arg_size_depth, num_features], dtype=dtype)
+        "Matrix", filter_size + [total_arg_size_depth, num_features], dtype=dtype)
     if len(args) == 1:
-      res = nn_ops.conv2d(args[0], matrix, strides=[1, 1, 1, 1], padding='SAME')
+      res = conv_op(args[0], matrix, strides=shape_length*[1], padding='SAME')
     else:
-      res = nn_ops.conv2d(array_ops.concat(axis=3, values=args), matrix, strides=[1, 1, 1, 1], padding='SAME')
+      res = conv_op(array_ops.concat(axis=shape_length-1, values=args), matrix, strides=shape_length*[1], padding='SAME')
     if not bias:
       return res
     bias_term = vs.get_variable(

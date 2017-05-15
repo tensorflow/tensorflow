@@ -43,7 +43,9 @@ See @{$python/contrib.rnn} guide.
 @@BidirectionalGridLSTMCell
 @@NASCell
 @@PhasedLSTMCell
-@@BasicConvLSTMCell
+@@Conv1DLSTMCell
+@@Conv2DLSTMCell
+@@Conv3DLSTMCell
 @@HighwayWrapper
 @@GLSTMCell
 
