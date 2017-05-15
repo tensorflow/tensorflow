@@ -106,7 +106,7 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
   auto f32_lit = LiteralUtil::CreateR0<float>(3.14f);
   ASSERT_EQ("3.14", LiteralUtil::ToString(*f32_lit));
 
-  auto f16_lit = LiteralUtil::CreateR0<half>((half)0.5f);
+  auto f16_lit = LiteralUtil::CreateR0<half>(static_cast<half>(0.5f));
   ASSERT_EQ("0.5", LiteralUtil::ToString(*f16_lit));
 }
 
@@ -376,8 +376,8 @@ TEST_F(LiteralUtilTest, IsAll) {
   EXPECT_FALSE(
       LiteralUtil::IsAll(*LiteralUtil::CreateR2<uint64>({{9, 8}, {8, 8}}), 8));
 
-  half h8 = (half)8.0f;
-  half h9 = (half)9.0f;
+  half h8(8.0f);
+  half h9(9.0f);
   EXPECT_TRUE(
       LiteralUtil::IsAll(*LiteralUtil::CreateR2<half>({{h8}, {h8}}), 8));
   EXPECT_FALSE(
@@ -673,7 +673,7 @@ TEST_F(LiteralUtilTest, PopulateWithValueR2U64) {
 
 TEST_F(LiteralUtilTest, PopulateWithValueR0F16) {
   Literal output;
-  half h = (half)0.25f;
+  half h(0.25f);
   LiteralUtil::PopulateWithValue<half>(h, {}, &output);
   auto expected = LiteralUtil::CreateR0<half>(h);
   EXPECT_TRUE(LiteralUtil::Equal(output, *expected));
@@ -681,7 +681,7 @@ TEST_F(LiteralUtilTest, PopulateWithValueR0F16) {
 
 TEST_F(LiteralUtilTest, PopulateWithValueR1F16) {
   Literal output;
-  half h = (half)0.5f;
+  half h(0.5f);
   LiteralUtil::PopulateWithValue<half>(h, {3}, &output);
   auto expected = LiteralUtil::CreateR1<half>({h, h, h});
   EXPECT_TRUE(LiteralUtil::Equal(output, *expected));
@@ -689,7 +689,7 @@ TEST_F(LiteralUtilTest, PopulateWithValueR1F16) {
 
 TEST_F(LiteralUtilTest, PopulateWithValueR2F16) {
   Literal output;
-  half h = (half)2.0f;
+  half h(2.0f);
   LiteralUtil::PopulateWithValue<half>(h, {2, 2}, &output);
   auto expected = LiteralUtil::CreateR2<half>({{h, h}, {h, h}});
   EXPECT_TRUE(LiteralUtil::Equal(output, *expected));
@@ -784,8 +784,8 @@ TEST_F(LiteralUtilTest, F16) {
   EXPECT_EQ(LiteralUtil::InternalData(*l1),
             LiteralUtil::MutableInternalData(l1));
 
-  half h1 = (half)1.0f;
-  half h2 = (half)2.0f;
+  half h1(1.0f);
+  half h2(2.0f);
   auto m2 = LiteralUtil::CreateR2<half>({{h1, h2}, {h2, h1}});
   Literal* l2 = m2.get();
   const char* d2 = (const char*)LiteralUtil::InternalData(*l2);
