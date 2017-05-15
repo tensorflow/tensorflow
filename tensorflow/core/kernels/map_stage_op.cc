@@ -29,26 +29,48 @@ namespace tensorflow {
 
 namespace {
 
+struct KeyTensorLess {
+  bool operator()(const Tensor & lhs, const Tensor & rhs) const {
+    return std::less<int64>{}(lhs.scalar<int64>()(),
+                              rhs.scalar<int64>()());
+  }
+};
+
+struct KeyTensorEqual {
+  bool operator()(const Tensor & lhs, const Tensor & rhs) const {
+    return std::equal_to<int64>{}(lhs.scalar<int64>()(),
+                                  rhs.scalar<int64>()());
+  }
+};
+
+struct KeyTensorHash {
+  std::size_t operator()(const Tensor & key) const {
+    return std::hash<int64>{}(key.scalar<int64>()());
+  }
+};
+
+
 // General Template Definition
-template <bool Ordered, typename Key, typename Data>
+template <bool Ordered, typename Data>
 struct MapTraits {};
 
 // Partially specialise for ordered
-template <typename Key, typename Data>
-struct MapTraits<true, Key, Data>
+template <typename Data>
+struct MapTraits<true, Data>
 {
-  typedef Key key_type;
+  typedef Tensor key_type;
   typedef Data data_type;
-  typedef std::map<Key, Data> map_type;
+  typedef std::map<key_type, Data, KeyTensorLess> map_type;
 };
 
 // Partially specialise for unordered
-template <typename Key, typename Data>
-struct MapTraits<false, Key, Data>
+template <typename Data>
+struct MapTraits<false, Data>
 {
-  typedef Key key_type;
+  typedef Tensor key_type;
   typedef Data data_type;
-  typedef std::unordered_map<Key, Data> map_type;
+  typedef std::unordered_map<key_type, Data,
+                            KeyTensorHash, KeyTensorEqual> map_type;
 };
 
 // Wrapper around map/unordered_map
@@ -57,7 +79,7 @@ class StagingMap : public ResourceBase
 {
 public:
   // Public typedefs
-  typedef MapTraits<Ordered, int64, std::vector<Tensor>> map_traits;
+  typedef MapTraits<Ordered, std::vector<Tensor>> map_traits;
   typedef typename map_traits::map_type map_type;
   typedef typename map_traits::key_type key_type;
   typedef typename map_traits::data_type Tuple;
@@ -156,7 +178,7 @@ public:
     return Status::OK();
   }
 
-  Status get(key_type* key, Tuple* tuple)
+  Status get(const key_type* key, Tuple* tuple)
   {
     mutex_lock l(mu_);
 
@@ -178,7 +200,7 @@ public:
     return Status::OK();
   }
 
-  Status pop(key_type* key, Tuple* tuple)
+  Status pop(const key_type* key, Tuple* tuple)
   {
     mutex_lock l(mu_);
 
@@ -292,8 +314,8 @@ class MapStageOp : public OpKernel
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input_list("values", &values_tensor));
 
-    // Obtain the key
-    auto key = key_tensor->scalar<typename StagingMap<Ordered>::key_type>()();
+    // Create copy for insertion into Staging Area
+    Tensor key(*key_tensor);
 
     // Create the tuple to store
     for (int i = 0; i < values_tensor.size(); ++i) {
@@ -342,10 +364,7 @@ class MapUnstageOp : public OpKernel
     OpInputList values_tensor;
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
-
-    auto key = key_tensor->scalar<typename StagingMap<Ordered>::key_type>()();
-
-    OP_REQUIRES_OK(ctx, map->pop(&key, &tuple));
+    OP_REQUIRES_OK(ctx, map->pop(key_tensor, &tuple));
 
     OP_REQUIRES(
         ctx, tuple.size() == (size_t)ctx->num_outputs(),
@@ -393,10 +412,7 @@ class MapPeekOp : public OpKernel
     OpInputList values_tensor;
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
-
-    auto key = key_tensor->scalar<typename StagingMap<Ordered>::key_type>()();
-
-    OP_REQUIRES_OK(ctx, map->get(&key, &tuple));
+    OP_REQUIRES_OK(ctx, map->get(key_tensor, &tuple));
 
     OP_REQUIRES(
         ctx, tuple.size() == (size_t)ctx->num_outputs(),
@@ -444,14 +460,11 @@ class MapUnstageNoKeyOp : public OpKernel
     // Pop a random (key, value) off the map
     typename StagingMap<Ordered>::key_type key;
     typename StagingMap<Ordered>::Tuple tuple;
+
     OP_REQUIRES_OK(ctx, map->popitem(&key, &tuple));
 
     // Allocate a key tensor and assign the key as the first output
-    Tensor * key_tensor = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}),
-                                                     &key_tensor));
-    key_tensor->scalar<typename StagingMap<Ordered>::key_type>()() = key;
-    ctx->set_output(0, *key_tensor);
+    ctx->set_output(0, key);
 
     // Set the rest of the outputs to the tuple Tensors
     OP_REQUIRES(ctx,
