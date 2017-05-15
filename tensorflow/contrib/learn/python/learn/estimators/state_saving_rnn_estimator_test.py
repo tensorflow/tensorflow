@@ -525,7 +525,7 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     num_classes = 2
     num_unroll = 32
     sequence_length = 32
-    train_steps = 200
+    train_steps = 300
     eval_steps = 20
     num_units = [4]
     learning_rate = 0.5
