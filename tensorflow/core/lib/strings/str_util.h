@@ -85,6 +85,11 @@ string Uppercase(StringPiece s);
 // set of characters that can be used as word boundaries.
 void TitlecaseString(string* s, StringPiece delimiters);
 
+// Replaces the first occurrence (if replace_all is false) or all occurrences
+// (if replace_all is true) of oldsub in s with newsub.
+string StringReplace(StringPiece s, StringPiece oldsub, StringPiece newsub,
+                     bool replace_all);
+
 // Join functionality
 template <typename T>
 string Join(const T& s, const char* sep);

@@ -50,43 +50,58 @@ class ProfileDatum(object):
     self.node_exec_stats = node_exec_stats
     self.file_line = file_line
     self.op_type = op_type
+    self.start_time = self.node_exec_stats.all_start_micros
     self.op_time = (self.node_exec_stats.op_end_rel_micros -
                     self.node_exec_stats.op_start_rel_micros)
 
   @property
   def exec_time(self):
-    """Measures compute function exection time plus pre- and post-processing."""
+    """Measures compute function execution time plus pre- and post-processing."""
     return self.node_exec_stats.all_end_rel_micros
 
 
 class ProfileDataTableView(object):
   """Table View of profiling data."""
 
-  def __init__(self, profile_datum_list):
+  def __init__(self, profile_datum_list, time_unit=cli_shared.TIME_UNIT_US):
     """Constructor.
 
     Args:
       profile_datum_list: List of `ProfileDatum` objects.
+      time_unit: must be in cli_shared.TIME_UNITS.
     """
     self._profile_datum_list = profile_datum_list
+    self.formatted_start_time = [
+        datum.start_time for datum in profile_datum_list]
     self.formatted_op_time = [
-        cli_shared.time_to_readable_str(datum.op_time)
+        cli_shared.time_to_readable_str(datum.op_time,
+                                        force_time_unit=time_unit)
         for datum in profile_datum_list]
     self.formatted_exec_time = [
         cli_shared.time_to_readable_str(
-            datum.node_exec_stats.all_end_rel_micros)
+            datum.node_exec_stats.all_end_rel_micros,
+            force_time_unit=time_unit)
         for datum in profile_datum_list]
-    self._column_sort_ids = [SORT_OPS_BY_OP_NAME, SORT_OPS_BY_OP_TIME,
-                             SORT_OPS_BY_EXEC_TIME, SORT_OPS_BY_LINE]
+
+    self._column_names = ["Node",
+                          "Start Time (us)",
+                          "Op Time (%s)" % time_unit,
+                          "Exec Time (%s)" % time_unit,
+                          "Filename:Lineno(function)"]
+    self._column_sort_ids = [SORT_OPS_BY_OP_NAME, SORT_OPS_BY_START_TIME,
+                             SORT_OPS_BY_OP_TIME, SORT_OPS_BY_EXEC_TIME,
+                             SORT_OPS_BY_LINE]
 
   def value(self, row, col):
     if col == 0:
       return self._profile_datum_list[row].node_exec_stats.node_name
     elif col == 1:
-      return self.formatted_op_time[row]
+      return self.formatted_start_time[row]
     elif col == 2:
-      return self.formatted_exec_time[row]
+      return self.formatted_op_time[row]
     elif col == 3:
+      return self.formatted_exec_time[row]
+    elif col == 4:
       return self._profile_datum_list[row].file_line
     else:
       raise IndexError("Invalid column index %d." % col)
@@ -95,10 +110,10 @@ class ProfileDataTableView(object):
     return len(self._profile_datum_list)
 
   def column_count(self):
-    return 4
+    return len(self._column_names)
 
   def column_names(self):
-    return ["Node", "Op Time", "Exec Time", "Filename:Lineno(function)"]
+    return self._column_names
 
   def column_sort_id(self, col):
     return self._column_sort_ids[col]
@@ -246,6 +261,12 @@ class ProfileAnalyzer(object):
         dest="reverse",
         action="store_true",
         help="sort the data in reverse (descending) order")
+    ap.add_argument(
+        "--time_unit",
+        dest="time_unit",
+        type=str,
+        default=cli_shared.TIME_UNIT_US,
+        help="Time unit (" + " | ".join(cli_shared.TIME_UNITS) + ")")
 
     self._arg_parsers["list_profile"] = ap
 
@@ -294,7 +315,7 @@ class ProfileAnalyzer(object):
         output.extend(
             self._get_list_profile_lines(
                 device_stats.device, index, device_count,
-                profile_data, parsed.sort_by, parsed.reverse))
+                profile_data, parsed.sort_by, parsed.reverse, parsed.time_unit))
     return output
 
   def _get_profile_data_generator(self):
@@ -328,7 +349,7 @@ class ProfileAnalyzer(object):
 
   def _get_list_profile_lines(
       self, device_name, device_index, device_count,
-      profile_datum_list, sort_by, sort_reverse):
+      profile_datum_list, sort_by, sort_reverse, time_unit):
     """Get `RichTextLines` object for list_profile command for a given device.
 
     Args:
@@ -341,20 +362,24 @@ class ProfileAnalyzer(object):
           SORT_OPS_BY_MEMORY or SORT_OPS_BY_LINE.
       sort_reverse: (bool) Whether to sort in descending instead of default
           (ascending) order.
+      time_unit: time unit, must be in cli_shared.TIME_UNITS.
 
     Returns:
       `RichTextLines` object containing a table that displays profiling
       information for each op.
     """
-    profile_data = ProfileDataTableView(profile_datum_list)
+    profile_data = ProfileDataTableView(profile_datum_list, time_unit=time_unit)
 
     # Calculate total time early to calculate column widths.
     total_op_time = sum(datum.op_time for datum in profile_datum_list)
     total_exec_time = sum(datum.node_exec_stats.all_end_rel_micros
                           for datum in profile_datum_list)
     device_total_row = [
-        "Device Total", cli_shared.time_to_readable_str(total_op_time),
-        cli_shared.time_to_readable_str(total_exec_time)]
+        "Device Total", "",
+        cli_shared.time_to_readable_str(total_op_time,
+                                        force_time_unit=time_unit),
+        cli_shared.time_to_readable_str(total_exec_time,
+                                        force_time_unit=time_unit)]
 
     # Calculate column widths.
     column_widths = [

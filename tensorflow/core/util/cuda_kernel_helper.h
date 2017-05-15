@@ -63,6 +63,28 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
   return config;
 }
 
+// Calculate the Cuda launch config we should use for a kernel launch. This
+// variant takes the resource limits of func into account to maximize occupancy.
+template <typename DeviceFunc>
+inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
+                                            const GPUDevice& d, DeviceFunc func,
+                                            size_t dynamic_shared_memory_size) {
+  int block_count = 0;
+  int thread_per_block = 0;
+  cudaOccupancyMaxPotentialBlockSize(&block_count, &thread_per_block, func,
+                                     dynamic_shared_memory_size,
+                                     work_element_count);
+  block_count =
+      std::min(block_count,
+               (work_element_count + thread_per_block - 1) / thread_per_block);
+
+  CudaLaunchConfig config;
+  config.virtual_thread_count = work_element_count;
+  config.thread_per_block = thread_per_block;
+  config.block_count = block_count;
+  return config;
+}
+
 struct Cuda2DLaunchConfig {
   dim3 virtual_thread_count;
   dim3 thread_per_block;

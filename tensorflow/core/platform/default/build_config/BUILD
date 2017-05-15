@@ -58,6 +58,22 @@ cc_library(
     ],
 )
 
+# Dummy stream executor cuda plugins.
+cc_library(
+    name = "cublas_plugin",
+    srcs = [],
+)
+
+cc_library(
+    name = "cufft_plugin",
+    srcs = [],
+)
+
+cc_library(
+    name = "cudnn_plugin",
+    srcs = [],
+)
+
 # OSX framework for device driver access
 cc_library(
     name = "IOKit",

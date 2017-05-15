@@ -18,7 +18,7 @@ to help control the training process.
 
 ## Training on Flowers
 
-![Daisies by Kelly Sikkema](../images/daisies.jpg)
+![Daisies by Kelly Sikkema](https://www.tensorflow.org/images/daisies.jpg)
 [Image by Kelly Sikkema](https://www.flickr.com/photos/95072945@N05/9922116524/)
 
 Before you start any training, you'll need a set of images to teach the network
@@ -174,7 +174,7 @@ you do that and pass the root folder of the subdirectories as the argument to
 Here's what the folder structure of the flowers archive looks like, to give you
 and example of the kind of layout the script is looking for:
 
-![Folder Structure](../images/folder_structure.png)
+![Folder Structure](https://www.tensorflow.org/images/folder_structure.png)
 
 In practice it may take some work to get the accuracy you want. I'll try to
 guide you through some of the common problems you might encounter below.

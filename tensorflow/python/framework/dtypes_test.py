@@ -45,8 +45,8 @@ class TypesTest(test_util.TensorFlowTestCase):
     for datatype_enum in types_pb2.DataType.values():
       if datatype_enum == types_pb2.DT_INVALID:
         continue
-      self.assertEqual(datatype_enum,
-                       dtypes.as_dtype(datatype_enum).as_datatype_enum)
+      dt = dtypes.as_dtype(datatype_enum)
+      self.assertEqual(datatype_enum, dt.as_datatype_enum)
 
   def testAllTypesConvertibleToNumpyDtype(self):
     for datatype_enum in types_pb2.DataType.values():

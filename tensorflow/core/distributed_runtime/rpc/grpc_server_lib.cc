@@ -63,10 +63,8 @@ class NoReusePortOption : public ::grpc::ServerBuilderOption {
 };
 
 // static utility function
-RendezvousMgrInterface* NewRpcRendezvousMgr(
-    const WorkerEnv* env, const string& worker_name,
-    WorkerCacheInterface* worker_cache) {
-  return new RpcRendezvousMgr(env, worker_name, worker_cache);
+RendezvousMgrInterface* NewRpcRendezvousMgr(const WorkerEnv* env) {
+  return new RpcRendezvousMgr(env);
 }
 
 }  // namespace
@@ -84,6 +82,9 @@ GrpcServer::~GrpcServer() {
   // TODO(mrry): Refactor the *Env classes so that it is less fiddly
   // to destroy them.
 
+  // Shut down all outstanding rendezvous.
+  delete worker_env_.rendezvous_mgr;
+
   // We must delete graph_mgr before device_mgr, due to shared
   // ownership of OpKernels in the executors. (The graph_mgr will
   // free all stateless OpKernels, and pass over borrowed stateful
@@ -91,8 +92,10 @@ GrpcServer::~GrpcServer() {
   // OpSegments.)
   if (worker_env_.session_mgr != nullptr) {
     delete worker_env_.session_mgr;  // Deletes graph_mgr's.
+  } else {
+    // Note: session_mgr's legacy_session_ deletes device_mgr now.
+    delete worker_env_.device_mgr;
   }
-  delete worker_env_.device_mgr;
 
   // Do not delete (as these are not owned by the server):
   // - master_env_.env
@@ -100,8 +103,9 @@ GrpcServer::~GrpcServer() {
   // - worker_env_.compute_pool
 }
 
-Status GrpcServer::Init(ServiceInitFunction service_func,
-                        RendezvousMgrCreationFunction rendevous_mgr_func) {
+Status GrpcServer::Init(
+    ServiceInitFunction service_func,
+    const RendezvousMgrCreationFunction& rendezvous_mgr_func) {
   mutex_lock l(mu_);
   CHECK_EQ(state_, NEW);
   master_env_.env = env_;
@@ -117,7 +121,11 @@ Status GrpcServer::Init(ServiceInitFunction service_func,
                       "/task:", server_def_.task_index());
   TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(sess_opts, name_prefix,
                                                &master_env_.local_devices));
-  worker_env_.device_mgr = new DeviceMgr(master_env_.local_devices);
+  worker_env_.local_devices = master_env_.local_devices;
+  worker_env_.device_mgr = new DeviceMgr(worker_env_.local_devices);
+  worker_env_.rendezvous_mgr = rendezvous_mgr_func == nullptr
+                                   ? new RpcRendezvousMgr(&worker_env_)
+                                   : rendezvous_mgr_func(&worker_env_);
   string unused;
   string default_worker_name;
   if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
@@ -189,20 +197,18 @@ Status GrpcServer::Init(ServiceInitFunction service_func,
   }
 
   WorkerCacheInterface* worker_cache;
-  TF_RETURN_IF_ERROR(WorkerCacheFactory(server_def_, &worker_cache));
+  WorkerCacheFactoryOptions worker_cache_factory_options(server_def_);
+  TF_RETURN_IF_ERROR(
+      WorkerCacheFactory(worker_cache_factory_options, &worker_cache));
   CHECK_NE(nullptr, worker_cache);
 
   // Set up worker environment.
-  std::unique_ptr<RendezvousMgrInterface> rendezvous_mgr(
-      rendevous_mgr_func == nullptr ?
-      new RpcRendezvousMgr(&worker_env_, name_prefix, worker_cache) :
-      rendevous_mgr_func(&worker_env_, name_prefix, worker_cache));
   worker_env_.session_mgr = new SessionMgr(
       &worker_env_, SessionMgr::WorkerNameFromServerDef(server_def_),
       std::unique_ptr<WorkerCacheInterface>(worker_cache),
-      std::move(rendezvous_mgr),
       [this](const ServerDef& server_def, WorkerCacheInterface** worker_cache) {
-        return WorkerCacheFactory(server_def, worker_cache);
+        WorkerCacheFactoryOptions options(server_def);
+        return WorkerCacheFactory(options, worker_cache);
       });
   worker_env_.compute_pool = ComputePool(sess_opts);
 
@@ -212,10 +218,18 @@ Status GrpcServer::Init(ServiceInitFunction service_func,
   master_env_.master_session_factory =
       [config](
           SessionOptions options, const MasterEnv* env,
-          std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs) {
+          std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
+          std::unique_ptr<WorkerCacheInterface> worker_cache,
+          std::unique_ptr<DeviceSet> device_set) {
         options.config.MergeFrom(config);
         return new MasterSession(options, env, std::move(remote_devs),
+                                 std::move(worker_cache), std::move(device_set),
                                  CreateNoOpStatsPublisher);
+      };
+  master_env_.worker_cache_factory =
+      [this](const WorkerCacheFactoryOptions& options,
+             WorkerCacheInterface** worker_cache) {
+        return WorkerCacheFactory(options, worker_cache);
       };
 
   // Provide direct access to the master from in-process clients.
@@ -225,13 +239,11 @@ Status GrpcServer::Init(ServiceInitFunction service_func,
   return Status::OK();
 }
 
-Status GrpcServer::Init() {
-  return Init(nullptr, nullptr);
-}
+Status GrpcServer::Init() { return Init(nullptr, nullptr); }
 
-Status GrpcServer::ParseChannelSpec(const ServerDef& server_def,
+Status GrpcServer::ParseChannelSpec(const WorkerCacheFactoryOptions& options,
                                     GrpcChannelSpec* channel_spec) {
-  for (const auto& job : server_def.cluster().job()) {
+  for (const auto& job : options.cluster_def->job()) {
     std::map<int, string> host_ports;
     for (const auto& task : job.tasks()) {
       string& host_port = host_ports[task.first];
@@ -241,8 +253,7 @@ Status GrpcServer::ParseChannelSpec(const ServerDef& server_def,
                                        task.first, "\": ", host_port, " and ",
                                        task.second);
       }
-      if (job.name() == server_def.job_name() &&
-          task.first == server_def.task_index()) {
+      if (job.name() == *options.job_name && task.first == options.task_index) {
         host_port = strings::StrCat("localhost:", bound_port_);
       } else {
         host_port = task.second;
@@ -253,17 +264,26 @@ Status GrpcServer::ParseChannelSpec(const ServerDef& server_def,
   return Status::OK();
 }
 
-Status GrpcServer::WorkerCacheFactory(const ServerDef& server_def,
+Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
                                       WorkerCacheInterface** worker_cache) {
-  string name_prefix =
-      strings::StrCat("/job:", server_def.job_name(), "/replica:0",
-                      "/task:", server_def.task_index());
+  if (options.job_name == nullptr || options.job_name->empty()) {
+    Status s = errors::InvalidArgument(
+        "The master (current machine) is not included in the provided "
+        "cluster_def. ",
+        options.cluster_def->DebugString());
+    LOG(WARNING) << s;
+    return s;
+  }
 
   GrpcChannelSpec channel_spec;
-  TF_RETURN_IF_ERROR(ParseChannelSpec(server_def, &channel_spec));
+  TF_RETURN_IF_ERROR(ParseChannelSpec(options, &channel_spec));
 
-  std::unique_ptr<GrpcChannelCache> channel_cache(NewGrpcChannelCache(
-      channel_spec, GetChannelCreationFunction(server_def)));
+  std::unique_ptr<GrpcChannelCache> channel_cache(
+      NewGrpcChannelCache(channel_spec, GetChannelCreationFunction()));
+
+  string name_prefix = strings::StrCat("/job:", *options.job_name, "/replica:0",
+                                       "/task:", options.task_index);
+
   const string host_port = channel_cache->TranslateTask(name_prefix);
   int requested_port;
 
@@ -349,8 +369,7 @@ std::shared_ptr<::grpc::ServerCredentials> GrpcServer::GetServerCredentials(
   return ::grpc::InsecureServerCredentials();
 }
 
-ChannelCreationFunction GrpcServer::GetChannelCreationFunction(
-    const ServerDef& server_def) const {
+ChannelCreationFunction GrpcServer::GetChannelCreationFunction() const {
   // We can do this because SparseGrpcChannelCache is robust to nullptr being
   // returned by the channel creation function
   return ConvertToChannelCreationFunction(NewHostPortGrpcChannel);

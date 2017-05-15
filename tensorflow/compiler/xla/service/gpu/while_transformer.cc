@@ -168,7 +168,7 @@ class MatcherBase {
   virtual ~MatcherBase() {}
 
   // Attempts to match each ExprTree in 'expr_trees_'.
-  // Returns OK on the first succesful match, error status otherwise.
+  // Returns OK on the first successful match, error status otherwise.
   virtual tensorflow::Status Run() {
     Status status;
     for (const ExprTree& expr_tree : expr_trees_) {

@@ -20,71 +20,45 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse_tensor_dense_matmul_op.h"
 
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-namespace generator {
-
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
-class SparseTensorDenseMatMulGPUGenerator {
- public:
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE SparseTensorDenseMatMulGPUGenerator(
-      typename TTypes<T, 2>::Tensor32Bit out,
-      typename TTypes<const Tindices, 2>::Tensor32Bit a_indices,
-      typename TTypes<const T, 1>::Tensor32Bit a_values,
-      typename TTypes<const T, 2>::Tensor32Bit b)
-      : out_(out),
-        lhs_index_a_(ADJ_A ? 1 : 0),
-        rhs_index_a_(ADJ_A ? 0 : 1),
-        a_indices_(a_indices),
-        a_values_(a_values),
-        lhs_right_size(ADJ_B ? b.dimension(1) : b.dimension(0)),
-        maybe_adjoint_b_(
-            functor::MaybeAdjoint<typename TTypes<const T, 2>::Tensor32Bit,
-                                  ADJ_B>(b)) {}
-
-  EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
-  operator()(const Eigen::array<int, 2>& j_and_ix) const {
-#ifdef __CUDA_ARCH__
-    const int j = j_and_ix[0];
-    const int ix = j_and_ix[1];
-    int m = a_indices_(ix, lhs_index_a_);
-    int k = a_indices_(ix, rhs_index_a_);
-    assert(k < lhs_right_size);
-    assert(m < out_.dimension(0));
-    // If asserts are disabled, the caller is violating the sparse
-    // tensor index contract, and so we return invalid results.
-    // Force returning NaNs to try to signal that something is amiss.
-    T b_value;
-    if (k >= lhs_right_size || m >= out_.dimension(0)) {
-      m = 0;
-      k = 0;
-      b_value = std::numeric_limits<T>::quiet_NaN();
-    } else {
-      b_value = maybe_adjoint_b_(k, j);
+__global__ void SparseTensorDenseMatMulKernel(int nnz, int m, int b_rows,
+                                              int b_cols, int p,
+                                              const Tindices* a_indices,
+                                              const T* a_values, const T* b,
+                                              T* out) {
+  // out_{ij} = sum_k {a_ik b_kj}
+  // out = A * B', out_{ij} = sum_k {a_ik (b')_kj}; b'_{kj} = b_{jk}
+  const int n = (ADJ_B) ? b_cols : b_rows;
+  CUDA_1D_KERNEL_LOOP(index, nnz * p) {
+    const int a_ix = index / p;
+    const int j = index % p;
+    const int i = ldg(a_indices + 2 * a_ix + ((ADJ_A) ? 1 : 0));
+    const int k = ldg(a_indices + 2 * a_ix + ((ADJ_A) ? 0 : 1));
+    if (!FastBoundsCheck(i, m)) {
+      continue;  // Nowhere to signal an error :(
     }
-    atomicAdd(&out_(m, j), a_values_(ix) * b_value);
-#else
-    assert(false && "This should only be run on the device");
-#endif
-    // Return something
-    return T(0);
+    // out[i, j]
+    T* out_location = out + i * p + j;
+    if (!FastBoundsCheck(k, n)) {
+      CudaAtomicAdd(out_location, std::numeric_limits<T>::quiet_NaN());
+      continue;
+    }
+
+    // a_value == (ADJ_A) ? a[k, i] : a[i, k]
+    const T a_value = ldg(a_values + a_ix);
+
+    // b_value == (ADJ_B) ? b[j, k] : b[k, j]
+    const T b_value = ldg(b + ((ADJ_B) ? j * b_cols + k : k * b_cols + j));
+    CudaAtomicAdd(out_location, a_value * b_value);
   }
-
- private:
-  mutable typename TTypes<T, 2>::Tensor32Bit out_;
-  const int lhs_index_a_;
-  const int rhs_index_a_;
-  typename TTypes<const Tindices, 2>::Tensor32Bit a_indices_;
-  typename TTypes<const T, 1>::Tensor32Bit a_values_;
-  const int lhs_right_size;
-  functor::MaybeAdjoint<typename TTypes<const T, 2>::Tensor32Bit, ADJ_B>
-      maybe_adjoint_b_;
-};
-
-}  // namespace generator
+}
 
 namespace functor {
 
@@ -94,51 +68,23 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
   Compute(const GPUDevice& d, typename TTypes<T>::Matrix out,
           typename TTypes<Tindices>::ConstMatrix a_indices,
           typename TTypes<T>::ConstVec a_values,
-          typename TTypes<T>::ConstMatrix b, typename TTypes<T>::Vec scratch) {
-    generator::SparseTensorDenseMatMulGPUGenerator<T, Tindices, ADJ_A, ADJ_B>
-        sparse_tensor_dense_matmul_generator(To32Bit(out), To32Bit(a_indices),
-                                             To32Bit(a_values), To32Bit(b));
-    To32Bit(out).device(d) = To32Bit(out).constant(T(0));
+          typename TTypes<T>::ConstMatrix b) {
+    out.device(d) = out.constant(T(0));
     int nnz = a_values.size();
-    int n = (ADJ_B) ? b.dimension(0) : b.dimension(1);
+    // out = A * B, A is [m x n] and B is [n x p], out is [m x p]
+    int m = out.dimension(0);
+    int p = out.dimension(1);
+    int b_rows = b.dimension(0);
+    int b_cols = b.dimension(1);
 
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::Tensor<int, 2>::Dimensions matrix_1_by_nnz{{ 1, nnz }};
-    Eigen::array<int, 2> n_by_1{{ n, 1 }};
-    Eigen::array<int, 1> reduce_on_rows{{ 0 }};
-#else
-    Eigen::IndexList<Eigen::type2index<1>, int> matrix_1_by_nnz;
-    matrix_1_by_nnz.set(1, nnz);
-    Eigen::IndexList<int, Eigen::type2index<1> > n_by_1;
-    n_by_1.set(0, n);
-    Eigen::IndexList<Eigen::type2index<0> > reduce_on_rows;
-#endif
+    // TODO(ebrevdo): Should this be alpha * nnz instead of
+    // out.size()?  Perhaps p * nnz ?
+    CudaLaunchConfig config = GetCudaLaunchConfig(p * nnz, d);
 
-    // How this works: the generator iterates over (j, ix) where j
-    // iterates from 0 .. n - 1 and ix iterates from
-    // 0 .. nnz - 1.  A side effect of the generator is to accumulate
-    // the products of values in A and B into the appropriate location
-    // in the dense matrix out.  In order to run the iteration,
-    // we take a smaller variable and broadcast to a size (n, nnz).
-    // This is the scratch variable.  In order to enforce execution,
-    // we have to perform assignment back into scratch (taking the sum).
-    // We don't care what gets assigned to scratch - only the side effect
-    // of the execution in the generator.
-    //
-    // Note it's not sufficient that scratch be a scalar, and to
-    // broadcast it to a matrix.  Eigen splits the computation not
-    // based on the largest intermediate shape (the size of the
-    // broadcast of scratch) but based on the output shape.  So
-    // scratch needs to be a vector at least.
-    //
-    // Note also that only float type is supported because the
-    // atomicAdd operation is only supported for floats in hardware.
-    To32Bit(scratch).device(d) =
-        To32Bit(scratch)
-            .reshape(matrix_1_by_nnz)
-            .broadcast(n_by_1)
-            .generate(sparse_tensor_dense_matmul_generator)
-            .sum(reduce_on_rows);
+    SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            nnz, m, b_rows, b_cols, p, a_indices.data(), a_values.data(),
+            b.data(), out.data());
 
     return Status::OK();
   }

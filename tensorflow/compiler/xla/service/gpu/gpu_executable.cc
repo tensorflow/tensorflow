@@ -107,13 +107,17 @@ class HloExecutionProfiler {
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
-GpuExecutable::GpuExecutable(tensorflow::StringPiece ptx,
+GpuExecutable::GpuExecutable(tensorflow::StringPiece cubin,
+                             tensorflow::StringPiece ptx,
+                             std::pair<int, int> compute_capability,
                              std::unique_ptr<ThunkSchedule> thunk_schedule,
                              std::unique_ptr<HloModule> hlo_module,
                              std::unique_ptr<HloModuleConfig> module_config,
                              std::unique_ptr<BufferAssignment> assignment)
     : Executable(std::move(hlo_module), std::move(module_config)),
+      cubin_(cubin),
       ptx_(ptx),
+      compute_capability_(compute_capability),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {}
 
@@ -185,6 +189,13 @@ StatusOr<se::DeviceMemoryBase> GpuExecutable::ExecuteOnStream(
   // This ExecuteOnStream overload should only be called if has_hybrid_result is
   // false.
   TF_RET_CHECK(!module_config().has_hybrid_result());
+
+  // Ensure the compute capability of the cubin and the stream match.
+  std::pair<int, int> stream_compute_compatibility;
+  stream->parent()->GetDeviceDescription().cuda_compute_capability(
+      &stream_compute_compatibility.first,
+      &stream_compute_compatibility.second);
+  TF_RET_CHECK(stream_compute_compatibility == compute_capability_);
 
   BufferAllocations::Builder buffer_allocations_builder;
   for (BufferAllocation::Index i = 0; i < assignment_->Allocations().size();

@@ -170,7 +170,7 @@ class DocGeneratorVisitor(object):
     master names to a lexicographically sorted list of all aliases for that name
     (incl. the master name).
 
-    All these are computed and set as fields if they haven't aready.
+    All these are computed and set as fields if they haven't already.
     """
     if self._reverse_index is not None:
       return

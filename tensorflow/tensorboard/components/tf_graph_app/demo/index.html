@@ -15,31 +15,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 -->
-
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="import" href="../tf-graph-app.html">
-    <link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
-  <style>
-  body {
-    margin: 0;
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="import" href="../tf-graph-app.html">
+<link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
+<style>
+  /** Make the graph app tall enough so the bottom legend does not overlap with the top. */
+  tf-graph-app, .container.tf-graph-app {
+    display: block;
+    height: 700px;
   }
-  </style>
-</head>
-<body>
-  <h3>Answer to the Ultimate Question of Life, the Universe, and Everything</h3>
-  <demo-snippet>
-    <template>
-      <tf-graph-app id="tfgraph"></tf-graph-app>
-      <script>
-        let g = document.querySelector("#tfgraph");
-        fetch("graph.pbtxt", {credentials: "include"}).then(r => r.text()).then(pbtxt => {
-          g.pbtxt = pbtxt;
-        });
-      </script>
-    </template>
-  </demo-snippet>
-</body>
-</html>
+</style>
+<h3>Answer to the Ultimate Question of Life, the Universe, and Everything</h3>
+<demo-snippet>
+  <template>
+    <tf-graph-app pbtxt-file-location="data/graph.pbtxt"></tf-graph-app>
+  </template>
+</demo-snippet>

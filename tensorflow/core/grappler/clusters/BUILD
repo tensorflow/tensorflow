@@ -17,6 +17,8 @@ filegroup(
     srcs = glob(
         [
             "cluster.*",
+            "utils.*",
+            "virtual_cluster.*",
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
@@ -26,6 +28,21 @@ alias(
     name = "android_srcs",
     actual = ":mobile_srcs",
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = [
+        "utils.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -45,6 +62,20 @@ cc_library(
 )
 
 cc_library(
+    name = "virtual_cluster",
+    srcs = ["virtual_cluster.cc"],
+    hdrs = [
+        "virtual_cluster.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":cluster",
+        ":utils",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "single_machine",
     srcs = ["single_machine.cc"],
     hdrs = [
@@ -53,11 +84,13 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",
+        ":utils",
         "//tensorflow/cc:coordinator",
         "//tensorflow/cc:queue_runner",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
     ],

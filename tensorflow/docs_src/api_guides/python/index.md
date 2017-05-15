@@ -40,7 +40,7 @@
 *   [Losses (contrib)](contrib.losses.md)
 *   [Metrics (contrib)](contrib.metrics.md)
 *   [Optimization (contrib)](contrib.opt.md)
-*   [Random variable transformations (contrib)](contrib.distributions.bijector.md)
+*   [Random variable transformations (contrib)](contrib.distributions.bijectors.md)
 *   [RNN and Cells (contrib)](contrib.rnn.md)
 *   [Seq2seq Library (contrib)](contrib.seq2seq.md)
 *   [Staging (contrib)](contrib.staging.md)

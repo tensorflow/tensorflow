@@ -4,6 +4,7 @@ tensorflow/core/kernels/variable_ops.cc
 tensorflow/core/kernels/unpack_op.cc
 tensorflow/core/kernels/transpose_op.cc
 tensorflow/core/kernels/transpose_functor_cpu.cc
+tensorflow/core/kernels/training_op_helpers.cc
 tensorflow/core/kernels/training_ops.cc
 tensorflow/core/kernels/topk_op.cc
 tensorflow/core/kernels/tile_ops.cc
@@ -73,6 +74,7 @@ tensorflow/core/kernels/reduction_ops_mean.cc
 tensorflow/core/kernels/reduction_ops_max.cc
 tensorflow/core/kernels/reduction_ops_common.cc
 tensorflow/core/kernels/reduction_ops_any.cc
+tensorflow/core/kernels/reduction_ops_all.cc
 tensorflow/core/kernels/queue_ops.cc
 tensorflow/core/kernels/queue_base.cc
 tensorflow/core/kernels/pooling_ops_common.cc
@@ -137,12 +139,15 @@ tensorflow/core/kernels/cwise_op_less.cc
 tensorflow/core/kernels/cwise_op_isfinite.cc
 tensorflow/core/kernels/cwise_op_greater_equal.cc
 tensorflow/core/kernels/cwise_op_greater.cc
+tensorflow/core/kernels/cwise_op_floor_div.cc
+tensorflow/core/kernels/cwise_op_floor.cc
 tensorflow/core/kernels/cwise_op_exp.cc
 tensorflow/core/kernels/cwise_op_equal_to_2.cc
 tensorflow/core/kernels/cwise_op_equal_to_1.cc
 tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_add_2.cc
 tensorflow/core/kernels/cwise_op_add_1.cc
+tensorflow/core/kernels/cwise_op_abs.cc
 tensorflow/core/kernels/ctc_decoder_ops.cc
 tensorflow/core/kernels/crop_and_resize_op.cc
 tensorflow/core/kernels/conv_ops_using_gemm.cc
@@ -224,4 +229,4 @@ tensorflow/core/ops/array_grad.cc
 tensorflow/core/kernels/spacetobatch_functor.cc
 tensorflow/core/kernels/spacetobatch_op.cc
 tensorflow/core/kernels/batchtospace_op.cc
-
+tensorflow/core/kernels/warn_about_ints.cc

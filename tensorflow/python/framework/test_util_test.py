@@ -252,8 +252,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertArrayNear(a, b, 0.001)
 
   def testForceGPU(self):
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Cannot assign a device to node"):
+    with self.assertRaises(errors.InvalidArgumentError):
       with self.test_session(force_gpu=True):
         # this relies on us not having a GPU implementation for assert, which
         # seems sensible

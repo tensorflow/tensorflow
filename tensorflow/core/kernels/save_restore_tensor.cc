@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include <utility>
 #include <vector>
 #include "tensorflow/core/kernels/save_restore_tensor.h"
 
@@ -79,7 +80,7 @@ void SaveTensors(
   VLOG(1) << "About to save tensors to file " << filename_t.flat<string>()(0)
           << "...";
   checkpoint::TensorSliceWriter writer(filename_t.flat<string>()(0),
-                                       builder_func);
+                                       std::move(builder_func));
 
   Status s;
   auto tensor_names_flat = tensor_names_t.flat<string>();
