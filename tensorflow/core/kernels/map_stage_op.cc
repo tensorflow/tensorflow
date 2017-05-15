@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -79,19 +80,27 @@ class StagingMap : public ResourceBase
 {
 public:
   // Public typedefs
-  typedef MapTraits<Ordered, std::vector<Tensor>> map_traits;
+  typedef std::vector<Tensor> Tuple;
+  typedef gtl::optional<Tensor> OptionalTensor;
+  typedef std::vector<OptionalTensor> IncompleteTuple;
+
+  typedef MapTraits<Ordered, Tuple> map_traits;
   typedef typename map_traits::map_type map_type;
   typedef typename map_traits::key_type key_type;
-  typedef typename map_traits::data_type Tuple;
+
+  typedef MapTraits<false, IncompleteTuple> incomplete_traits;
+  typedef typename incomplete_traits::map_type incomplete_type;
 
 private:
   // Private variables
+  DataTypeVector dtypes_;
   int capacity_;
   int memory_limit_;
   int current_bytes_;
   mutex mu_;
   condition_variable not_empty_;
   condition_variable full_;
+  incomplete_type incomplete_ GUARDED_BY(mu_);
   map_type map_ GUARDED_BY(mu_);
 
 private:
@@ -124,6 +133,7 @@ private:
   bool is_capacity_full()
     { return map_.size() >= capacity_; }
 
+  // Get number of bytes in the tuple
   int get_tuple_bytes(const Tuple & tuple)
   {
     return std::accumulate(tuple.begin(), tuple.end(), int(0),
@@ -135,7 +145,9 @@ private:
 
 public:
   // public methods
-  explicit StagingMap(int capacity, int memory_limit) :
+  explicit StagingMap(const DataTypeVector & dtypes,
+          int capacity, int memory_limit) :
+      dtypes_(dtypes),
       capacity_(capacity),
       memory_limit_(memory_limit),
       current_bytes_(0) {}
@@ -281,11 +293,13 @@ Status GetStagingMap(OpKernelContext* ctx,
   // Lambda for creating the Staging Area
   auto create_fn = [&ndef](StagingMap<Ordered>** ret) -> Status
   {
+    DataTypeVector dtypes;
     int capacity;
     int memory_limit;
+    TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "dtypes", &dtypes));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "memory_limit", &memory_limit));
-    *ret = new StagingMap<Ordered>(capacity, memory_limit);
+    *ret = new StagingMap<Ordered>(dtypes, capacity, memory_limit);
     return Status::OK();
   };
 
