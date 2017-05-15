@@ -453,12 +453,11 @@ export function translate(selection, x0: number, y0: number) {
  */
 export function positionRect(rect, cx: number, cy: number, width: number,
     height: number) {
-  rect.transition().attr({
-    x: cx - width / 2,
-    y: cy - height / 2,
-    width: width,
-    height: height
-  });
+  rect.transition()
+    .attr('x', cx - width / 2)
+    .attr('y', cy - height / 2)
+    .attr('width', width)
+    .attr('height', height);
 };
 
 /**
@@ -499,12 +498,11 @@ export function positionButton(button, renderNode: render.RenderNodeInfo) {
  */
 export function positionEllipse(ellipse, cx: number, cy: number,
     width: number, height: number) {
-  ellipse.transition().attr({
-    cx: cx,
-    cy: cy,
-    rx: width / 2,
-    ry: height / 2
-  });
+  ellipse.transition()
+    .attr('cx', cx)
+    .attr('cy', cy)
+    .attr('rx', width / 2)
+    .attr('ry', height / 2);
 };
 
 /**
