@@ -154,6 +154,9 @@ template <typename T>
     case F64:
       return CopyRange<double>(src_literal, src_base, dest_literal, dest_base,
                                copy_size);
+    case F16:
+      return CopyRange<half>(src_literal, src_base, dest_literal, dest_base,
+                             copy_size);
     case PRED:
       return CopyRange<bool>(src_literal, src_base, dest_literal, dest_base,
                              copy_size);
@@ -698,7 +701,7 @@ template <typename T>
     case F64:
       Resize<double>(num_elements, 0, literal);
     case F16:
-      Resize<half>(num_elements * 2, 0, literal);
+      Resize<half>(num_elements, (half)1.0f, literal);
       break;
     default:
       LOG(FATAL) << "primitive type not supported in literals: "
@@ -930,6 +933,17 @@ LiteralUtil::GetMutableArraySlice(Literal* literal) {
 }
 
 template <>
+/* static */ tensorflow::gtl::MutableArraySlice<half>
+LiteralUtil::GetMutableArraySlice<half>(Literal* literal) {
+  CHECK(literal->shape().element_type() == F16);
+  // C++11 standard, basic_string 21.4.1.5, values should be stored
+  // contiguously. From C++17 a mutable data() member will be provided.
+  auto values = literal->mutable_f16s();
+  return tensorflow::gtl::MutableArraySlice<half>(
+          reinterpret_cast<half*>(&(*values)[0]), values->size() / 2);
+}
+
+template <>
 /* static */ tensorflow::gtl::ArraySlice<bool> LiteralUtil::GetArraySlice<bool>(
     const Literal& literal) {
   CHECK_EQ(literal.shape().element_type(), PRED);
@@ -976,16 +990,6 @@ LiteralUtil::GetArraySlice<int32>(const Literal& literal) {
 }
 
 template <>
-/* static */ const tensorflow::gtl::MutableArraySlice<half>
-LiteralUtil::GetMutableArraySlice<half>(Literal* literal) {
-  CHECK(literal->shape().element_type() == F16);
-  const auto& repeated_field = literal->mutable_f16s();
-  return tensorflow::gtl::MutableArraySlice<half>(
-          (half*)repeated_field->data(),
-          repeated_field->size() / 2);
-}
-
-template <>
 /* static */ tensorflow::gtl::ArraySlice<int64>
 LiteralUtil::GetArraySlice<int64>(const Literal& literal) {
   CHECK_EQ(literal.shape().element_type(), S64);
@@ -997,6 +1001,15 @@ template <>
 LiteralUtil::GetArraySlice<double>(const Literal& literal) {
   CHECK_EQ(literal.shape().element_type(), F64);
   return literal.f64s();
+}
+
+template <>
+/* static */ tensorflow::gtl::ArraySlice<half>
+LiteralUtil::GetArraySlice<half>(const Literal& literal) {
+  CHECK_EQ(literal.shape().element_type(), F16);
+  return tensorflow::gtl::ArraySlice<half>(
+          reinterpret_cast<const half*>(literal.f16s().data()),
+          literal.f16s().size() / 2);
 }
 
 template <typename NativeT>
@@ -1153,6 +1166,17 @@ template <>
                                               Literal* literal) {
   CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
   literal->mutable_f64s()->Resize(num_elements, value);
+}
+
+template <>
+/* static */ void LiteralUtil::Resize<half>(int64 num_elements, half value,
+                                            Literal* literal) {
+  CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
+  literal->mutable_f16s()->resize(num_elements * 2);
+  auto data = GetMutableArraySlice<half>(literal);
+  for (int i = 0; i< num_elements; i++) {
+    data[i] = value;
+  }
 }
 
 }  // namespace xla

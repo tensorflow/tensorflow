@@ -796,6 +796,7 @@ TEST_F(LiteralUtilTest, F16) {
   EXPECT_EQ(d2[7], 0x3C);
   EXPECT_EQ(LiteralUtil::InternalData(*l2),
             LiteralUtil::MutableInternalData(l2));
+}
 
 TEST_F(LiteralUtilTest, Populate) {
   struct PopulateData {
