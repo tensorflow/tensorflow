@@ -12,22 +12,12 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-filegroup(
-    name = "mobile_srcs",
-    srcs = glob(
-        [
-            "cluster.*",
-            "utils.*",
-            "virtual_cluster.*",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-alias(
-    name = "android_srcs",
-    actual = ":mobile_srcs",
-    visibility = ["//tensorflow:__subpackages__"],
+config_setting(
+    name = "xsmm",
+    licenses = ["notice"],
+    values = {
+        "define": "tensorflow_xsmm=1",
+    },
 )
 
 cc_library(
@@ -38,11 +28,14 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        "//third_party/eigen3",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//third_party/eigen3",
-    ],
+    ] + select({
+        ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(

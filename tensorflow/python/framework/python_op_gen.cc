@@ -391,8 +391,25 @@ string AttrValueToPython(const string& type, const AttrValue& value) {
   }
 }
 
-static string GetPythonOp(const OpDef& op_def, bool is_hidden,
-                          const string& op_name) {
+void GenerateLowerCaseOpName(const string& str, string* result) {
+  const char joiner = '_';
+  const int last_index = str.size() - 1;
+  for (int i = 0; i <= last_index; ++i) {
+    const char c = str[i];
+    // Emit a joiner only if a previous-lower-to-now-upper or a
+    // now-upper-to-next-lower transition happens.
+    if (isupper(c) && (i > 0)) {
+      if (islower(str[i - 1]) || ((i < last_index) && islower(str[i + 1]))) {
+        result->push_back(joiner);
+      }
+    }
+    result->push_back(tolower(c));
+  }
+}
+
+}  // namespace
+
+string GetPythonOp(const OpDef& op_def, bool is_hidden, const string& op_name) {
   string result;
   // Map from attr name to the first input arg it is inferred from.
   std::unordered_map<string, string> inferred_attrs;
@@ -628,24 +645,6 @@ static string GetPythonOp(const OpDef& op_def, bool is_hidden,
   strings::Appendf(&result, "\n\n");
   return result;
 }
-
-void GenerateLowerCaseOpName(const string& str, string* result) {
-  const char joiner = '_';
-  const int last_index = str.size() - 1;
-  for (int i = 0; i <= last_index; ++i) {
-    const char c = str[i];
-    // Emit a joiner only if a previous-lower-to-now-upper or a
-    // now-upper-to-next-lower transition happens.
-    if (isupper(c) && (i > 0)) {
-      if (islower(str[i - 1]) || ((i < last_index) && islower(str[i + 1]))) {
-        result->push_back(joiner);
-      }
-    }
-    result->push_back(tolower(c));
-  }
-}
-
-}  // namespace
 
 string GetPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
                     bool require_shapes) {

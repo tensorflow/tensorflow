@@ -409,9 +409,9 @@ export function joinStatsInfoWithGraph(
       // Lookup the node in the graph by its original name, e.g. A. If not
       // found, lookup by the rewritten name A/(A) in case the name is both
       // a namespace and a node name.
-      let nodeName = nodeStats.node_name in graph.nodes ? nodeStats.node_name :
-                                                          nodeStats.node_name +
-              NAMESPACE_DELIM + '(' + nodeStats.node_name + ')';
+      const nodeName = nodeStats.node_name in graph.nodes ?
+          nodeStats.node_name :
+          getStrictName(nodeStats.node_name);
 
       // Couldn't find a matching node.
       if (!(nodeName in graph.nodes)) {

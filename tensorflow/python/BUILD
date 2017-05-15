@@ -81,7 +81,7 @@ py_library(
         ":weights_broadcast_ops",
         "//third_party/py/numpy",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/feature_column:feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/saved_model",
@@ -1332,6 +1332,7 @@ py_library(
     deps = [
         ":array_ops",
         ":clip_ops",
+        ":data_flow_grad",
         ":data_flow_ops",
         ":framework",
         ":framework_for_generated_wrappers",
@@ -2184,6 +2185,7 @@ cuda_py_test(
     srcs = ["ops/math_ops_test.py"],
     additional_deps = [
         ":array_ops",
+        ":errors",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
         ":gradients",
