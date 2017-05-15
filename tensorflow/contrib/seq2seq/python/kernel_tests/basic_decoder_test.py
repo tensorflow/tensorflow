@@ -124,7 +124,7 @@ class BasicDecoderTest(test.TestCase):
     vocabulary_size = 7
     cell_depth = vocabulary_size  # cell's logits must match vocabulary size
     input_depth = 10
-    start_tokens = [0] * batch_size
+    start_tokens = np.random.randint(0, vocabulary_size, size=batch_size)
     end_token = 1
 
     with self.test_session(use_gpu=True) as sess:

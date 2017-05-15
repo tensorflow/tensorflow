@@ -293,6 +293,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "feature_column"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "flags"
     mtype: "<type \'module\'>"
   }

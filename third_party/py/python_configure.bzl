@@ -149,6 +149,39 @@ def _genrule(src_dir, genrule_name, command, outs):
   )
 
 
+def _get_python_lib(repository_ctx, python_bin):
+  """Gets the python lib path."""
+  print_lib = ("<<END\n" +
+      "from __future__ import print_function\n" +
+      "import site\n" +
+      "import os\n" +
+      "\n" +
+      "try:\n" +
+      "  input = raw_input\n" +
+      "except NameError:\n" +
+      "  pass\n" +
+      "\n" +
+      "python_paths = []\n" +
+      "if os.getenv('PYTHONPATH') is not None:\n" +
+      "  python_paths = os.getenv('PYTHONPATH').split(':')\n" +
+      "try:\n" +
+      "  library_paths = site.getsitepackages()\n" +
+      "except AttributeError:\n" +
+      " from distutils.sysconfig import get_python_lib\n" +
+      " library_paths = [get_python_lib()]\n" +
+      "all_paths = set(python_paths + library_paths)\n" +
+      "paths = []\n" +
+      "for path in all_paths:\n" +
+      "  if os.path.isdir(path):\n" +
+      "    paths.append(path)\n" +
+      "if len(paths) >=1:\n" +
+      "  print(paths[0])\n" +
+      "END")
+  cmd = '%s - %s' % (python_bin, print_lib)
+  result = repository_ctx.execute(["bash", "-c", cmd])
+  return result.stdout.strip('\n')
+
+
 def _check_python_lib(repository_ctx, python_lib):
   """Checks the python lib path."""
   cmd = 'test -d "%s" -a -x "%s"' % (python_lib, python_lib)
@@ -201,19 +234,10 @@ def _create_local_python_repository(repository_ctx):
   if repository_ctx.attr.local_checks:
     python_bin = _get_env_var(repository_ctx, _PYTHON_BIN_PATH)
     _check_python_bin(repository_ctx, python_bin)
-    python_lib = _get_env_var(repository_ctx, _PYTHON_LIB_PATH, '')
-    if python_lib == '':
-      # If we could not find the python lib we will create an empty config that
-      # will allow non-compilation targets to build correctly (e.g., smoke
-      # tests).
-      empty_config = True
-      _python_configure_warning('PYTHON_LIB_PATH was not set;' +
-                                ' python setup cannot complete successfully.' +
-                                ' Please run ./configure.')
-    else:
-      _check_python_lib(repository_ctx, python_lib)
-      python_include = _get_python_include(repository_ctx, python_bin)
-      numpy_include = _get_numpy_include(repository_ctx, python_bin) + '/numpy'
+    python_lib = _get_env_var(repository_ctx, _PYTHON_LIB_PATH, _get_python_lib(repository_ctx, python_bin))
+    _check_python_lib(repository_ctx, python_lib)
+    python_include = _get_python_include(repository_ctx, python_bin)
+    numpy_include = _get_numpy_include(repository_ctx, python_bin) + '/numpy'
   else:
     # Otherwise, we assume user provides all paths (via ENV or attrs)
     python_include = _get_env_var(repository_ctx, _PYTHON_INCLUDE_PATH,

@@ -33,7 +33,7 @@ from tensorflow.python.util import nest
 
 
 # pylint: disable=protected-access
-_state_size_with_prefix = rnn_cell_impl._state_size_with_prefix
+_concat = rnn_cell_impl._concat
 # pylint: enable=protected-access
 
 
@@ -660,7 +660,7 @@ def _dynamic_rnn_loop(cell,
 
   # Prepare dynamic conditional copying of state & output
   def _create_zero_arrays(size):
-    size = _state_size_with_prefix(size, prefix=[batch_size])
+    size = _concat(batch_size, size)
     return array_ops.zeros(
         array_ops.stack(size), _infer_state_dtype(dtype, state))
 
@@ -746,8 +746,8 @@ def _dynamic_rnn_loop(cell,
 
   # Restore some shape information
   for output, output_size in zip(final_outputs, flat_output_size):
-    shape = _state_size_with_prefix(
-        output_size, prefix=[const_time_steps, const_batch_size])
+    shape = _concat(
+        [const_time_steps, const_batch_size], output_size, static=True)
     output.set_shape(shape)
 
   final_outputs = nest.pack_sequence_as(
@@ -981,9 +981,7 @@ def raw_rnn(cell, loop_fn,
     emit_ta = nest.pack_sequence_as(structure=emit_structure,
                                     flat_sequence=flat_emit_ta)
     flat_zero_emit = [
-        array_ops.zeros(
-            _state_size_with_prefix(size_i, prefix=[batch_size]),
-            dtype_i)
+        array_ops.zeros(_concat(batch_size, size_i), dtype_i)
         for size_i, dtype_i in zip(flat_emit_size, flat_emit_dtypes)]
     zero_emit = nest.pack_sequence_as(structure=emit_structure,
                                       flat_sequence=flat_zero_emit)

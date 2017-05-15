@@ -103,9 +103,9 @@ class Tensor {
   /// Copy constructor.
   Tensor(const Tensor& other);
 
-  /// \brief Move constructor. After this call, <other> is safely destructible and can
-  /// be assigned to, but other calls on it (e.g. shape manipulation) are not
-  /// valid.
+  /// \brief Move constructor. After this call, <other> is safely destructible
+  /// and can be assigned to, but other calls on it (e.g. shape manipulation)
+  /// are not valid.
   Tensor(Tensor&& other);
 
   ~Tensor();
@@ -542,7 +542,6 @@ typename TTypes<T, NDIMS>::ConstTensor Tensor::tensor() const {
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::bit_casted_tensor() {
   CHECK(IsAligned());
-  ;
   return typename TTypes<T, NDIMS>::Tensor(base<T>(),
                                            shape().AsEigenDSizes<NDIMS>());
 }
@@ -550,7 +549,6 @@ typename TTypes<T, NDIMS>::Tensor Tensor::bit_casted_tensor() {
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::bit_casted_tensor() const {
   CHECK(IsAligned());
-  ;
   return typename TTypes<T, NDIMS>::ConstTensor(base<const T>(),
                                                 shape().AsEigenDSizes<NDIMS>());
 }
@@ -581,7 +579,6 @@ template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::bit_casted_shaped(
     gtl::ArraySlice<int64> new_sizes) {
   CHECK(IsAligned());
-  ;
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape<NDIMS>(new_sizes, &dims);
   return typename TTypes<T, NDIMS>::Tensor(base<T>(), dims);
@@ -622,7 +619,6 @@ template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::bit_casted_shaped(
     gtl::ArraySlice<int64> new_sizes) const {
   CHECK(IsAligned());
-  ;
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape(&dims, new_sizes);
   return typename TTypes<T, NDIMS>::ConstTensor(base<T>(), dims);
