@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
@@ -89,7 +90,9 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     case xla::U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case xla::F16:
-      LOG(FATAL) << "f16 literals not yet implemented";
+      literal = *xla::LiteralUtil::CreateR0<xla::half>(
+              static_cast<xla::half>(value));
+      break;
     case xla::TUPLE:
       LOG(FATAL) << "tuple element type is not integral";
     case xla::OPAQUE:
@@ -112,6 +115,9 @@ xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
       break;
     case xla::F64:
       return b->ConstantR0<double>(value);
+      break;
+    case xla::F16:
+      return b->ConstantR0<xla::half>(static_cast<xla::half>(value));
       break;
     default:
       LOG(FATAL) << "unhandled element type " << type;
