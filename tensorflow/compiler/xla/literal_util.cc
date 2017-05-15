@@ -701,7 +701,7 @@ template <typename T>
     case F64:
       Resize<double>(num_elements, 0, literal);
     case F16:
-      Resize<half>(num_elements, (half)1.0f, literal);
+      Resize<half>(num_elements, (half)0.0f, literal);
       break;
     default:
       LOG(FATAL) << "primitive type not supported in literals: "
@@ -935,7 +935,6 @@ LiteralUtil::GetMutableArraySlice(Literal* literal) {
 template <>
 /* static */ tensorflow::gtl::MutableArraySlice<half>
 LiteralUtil::GetMutableArraySlice<half>(Literal* literal) {
-  CHECK(literal->shape().element_type() == F16);
   // C++11 standard, basic_string 21.4.1.5, values should be stored
   // contiguously. From C++17 a mutable data() member will be provided.
   auto values = literal->mutable_f16s();
@@ -1072,6 +1071,8 @@ static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
       return AllElementsEqualValue<float>(literal, value);
     case F64:
       return AllElementsEqualValue<double>(literal, value);
+    case F16:
+      return AllElementsEqualValue<half>(literal, (half)value);
     default:
       return false;
   }

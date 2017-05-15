@@ -865,13 +865,6 @@ template <>
   (*literal->mutable_u64s())[linear_index] = value;
 }
 
-template <>
-/* static */ inline void LiteralUtil::Set(
-        Literal* literal, tensorflow::gtl::ArraySlice<int64> multi_index,
-        half value) {
-  return Set<half>(literal, multi_index, value);
-}
-
 // Returns an identity matrix (rank 2) with the given row and column count.
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::MakeIdentityR2(int64 size) {
