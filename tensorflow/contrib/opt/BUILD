@@ -121,6 +121,8 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
         "//third_party/py/numpy",
+    ],
+)
 
 tf_py_test(
     name = "drop_stale_gradient_optimizer_test",
