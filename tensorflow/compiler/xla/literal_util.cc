@@ -148,15 +148,15 @@ template <typename T>
     case S64:
       return CopyRange<int64>(src_literal, src_base, dest_literal, dest_base,
                               copy_size);
+    case F16:
+      return CopyRange<half>(src_literal, src_base, dest_literal, dest_base,
+                             copy_size);
     case F32:
       return CopyRange<float>(src_literal, src_base, dest_literal, dest_base,
                               copy_size);
     case F64:
       return CopyRange<double>(src_literal, src_base, dest_literal, dest_base,
                                copy_size);
-    case F16:
-      return CopyRange<half>(src_literal, src_base, dest_literal, dest_base,
-                             copy_size);
     case PRED:
       return CopyRange<bool>(src_literal, src_base, dest_literal, dest_base,
                              copy_size);
@@ -181,6 +181,8 @@ template <typename T>
       return *LiteralUtil::CreateR0<int32>(0);
     case S64:
       return *LiteralUtil::CreateR0<int64>(0);
+    case F16:
+      return *LiteralUtil::CreateR0<half>(static_cast<half>(0.0f));
     case F32:
       return *LiteralUtil::CreateR0<float>(0);
     case F64:
@@ -190,8 +192,6 @@ template <typename T>
     case S16:
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
-    case F16:
-      return *LiteralUtil::CreateR0<half>((half)0.0f);
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 0";
     case OPAQUE:
@@ -740,7 +740,7 @@ template <typename T>
       actual = literal.f64s_size();
       break;
     case F16:
-      actual = literal.f16s().size() / 2;
+      actual = literal.f16s().size() / sizeof(half);
       break;
     default:
       return tensorflow::errors::Unimplemented(
@@ -937,9 +937,12 @@ template <>
 LiteralUtil::GetMutableArraySlice<half>(Literal* literal) {
   // C++11 standard, basic_string 21.4.1.5, values should be stored
   // contiguously. From C++17 a mutable data() member will be provided.
+  // TODO - there is an endianess problem here. fix it, or wait for uint16
+  //        support in protobuf
   auto values = literal->mutable_f16s();
   return tensorflow::gtl::MutableArraySlice<half>(
-          reinterpret_cast<half*>(&(*values)[0]), values->size() / 2);
+          reinterpret_cast<half*>(&(*values)[0]),
+          values->size() / sizeof(half));
 }
 
 template <>
@@ -1008,7 +1011,7 @@ LiteralUtil::GetArraySlice<half>(const Literal& literal) {
   CHECK_EQ(literal.shape().element_type(), F16);
   return tensorflow::gtl::ArraySlice<half>(
           reinterpret_cast<const half*>(literal.f16s().data()),
-          literal.f16s().size() / 2);
+          literal.f16s().size() / sizeof(half));
 }
 
 template <typename NativeT>
@@ -1051,7 +1054,7 @@ static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
     case F64:
       return AllElementsEqualValue<double>(literal, value);
     case F16:
-      return AllElementsEqualValue<half>(literal, (half)value);
+      return AllElementsEqualValue<half>(literal, static_cast<half>(value));
     case PRED:
       if (value == 0) {
         return AllElementsEqualValue<bool>(literal, false);
@@ -1072,7 +1075,7 @@ static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
     case F64:
       return AllElementsEqualValue<double>(literal, value);
     case F16:
-      return AllElementsEqualValue<half>(literal, (half)value);
+      return AllElementsEqualValue<half>(literal, static_cast<half>(value));
     default:
       return false;
   }
@@ -1098,7 +1101,7 @@ static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
     case F64:
       return Get<double>(literal, indices) == 0.0;
     case F16:
-      return Get<half>(literal, indices) == (half)0.0f;
+      return Get<half>(literal, indices) == static_cast<half>(0.0f);
     case PRED:
       return Get<bool>(literal, indices) == false;
     default:
@@ -1175,7 +1178,7 @@ template <>
   CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
   literal->mutable_f16s()->resize(num_elements * 2);
   auto data = GetMutableArraySlice<half>(literal);
-  for (int i = 0; i< num_elements; i++) {
+  for (int i = 0; i < num_elements; i++) {
     data[i] = value;
   }
 }

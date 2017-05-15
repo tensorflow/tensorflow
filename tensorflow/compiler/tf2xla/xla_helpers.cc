@@ -110,14 +110,14 @@ xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   switch (type) {
+    case xla::F16:
+      return b->ConstantR0<xla::half>(static_cast<xla::half>(value));
+      break;
     case xla::F32:
       return b->ConstantR0<float>(static_cast<float>(value));
       break;
     case xla::F64:
       return b->ConstantR0<double>(value);
-      break;
-    case xla::F16:
-      return b->ConstantR0<xla::half>(static_cast<xla::half>(value));
       break;
     default:
       LOG(FATAL) << "unhandled element type " << type;
