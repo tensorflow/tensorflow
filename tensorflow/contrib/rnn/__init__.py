@@ -47,6 +47,9 @@ See @{$python/contrib.rnn} guide.
 @@PhasedLSTMCell
 @@HighwayWrapper
 @@GLSTMCell
+@@MultiplicativeIntegrationRNNCell
+@@MultiplicativeIntegrationGRUCell
+@@MultiplicativeIntegrationLSTMCell
 
 ### RNNCell wrappers
 @@AttentionCellWrapper
