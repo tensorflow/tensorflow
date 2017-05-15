@@ -347,7 +347,8 @@ class ScopedMetaGraphTest(test.TestCase):
         imported_variables = meta_graph.import_scoped_meta_graph(
             meta_graph_def, import_scope="bar")
         self.assertEqual(len(imported_variables), 1)
-        self.assertEqual(imported_variables.values()[0].name, "foo/bar/myvar:0")
+        self.assertEqual(list(imported_variables.values())[0].name,
+                         "foo/bar/myvar:0")
 
   def testScopedImportWithSelectedCollections(self):
     meta_graph_filename = os.path.join(
