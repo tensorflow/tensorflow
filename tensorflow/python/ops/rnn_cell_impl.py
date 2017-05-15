@@ -998,7 +998,6 @@ def _linear(args,
     args = [args]
 
   # Calculate the total size of arguments on dimension 1.
-  total_arg_size = 0
   shapes = [a.get_shape() for a in args]
   for shape in shapes:
     if shape.ndims != 2:
@@ -1006,22 +1005,40 @@ def _linear(args,
     if shape[1].value is None:
       raise ValueError("linear expects shape[1] to be provided for shape %s, "
                        "but saw %s" % (shape, shape[1]))
-    else:
-      total_arg_size += shape[1].value
+    if shape[0] != shapes[0][0] or shape[1] != shapes[0][1]:
+      raise ValueError("all shapes in `args` must be equal (batch x n)")
 
   dtype = [a.dtype for a in args][0]
+  num_args = len(args)
+  if output_size % num_args:
+    raise ValueError("output_size must a multiple of len(args)")
+  batch_size, input_size = shapes[0].as_list()
 
   # Now the computation.
   scope = vs.get_variable_scope()
   with vs.variable_scope(scope) as outer_scope:
-    weights = vs.get_variable(
-        _WEIGHTS_VARIABLE_NAME, [total_arg_size, output_size],
+    if num_args == 1:
+      weights = vs.get_variable(
+        _WEIGHTS_VARIABLE_NAME, [input_size, output_size],
         dtype=dtype,
         initializer=kernel_initializer)
-    if len(args) == 1:
       res = math_ops.matmul(args[0], weights)
     else:
-      res = math_ops.matmul(array_ops.concat(args, 1), weights)
+      weights = vs.get_variable(
+        _WEIGHTS_VARIABLE_NAME,
+        [num_args, input_size, output_size / num_args], dtype=dtype)
+
+      """
+      Below, we'll reshape our output such that:
+      res.shape == (num_args, batch_size, output_size / num_args)           (1)
+                -> (batch_size, num_args, output_size / num_args)           (2)
+                -> (batch_size, output_size)                                (3)
+      In a typical use case of _linear, the output is split into num_args
+      chunks, which is why we need to transpose in the exact order of (2).
+      """
+      res = math_ops.matmul(array_ops.stack(args, axis=0), weights)       # (1)
+      res = array_ops.transpose(res, [1, 0, 2])                           # (2)
+      res = array_ops.reshape(res, [batch_size, output_size])             # (3)
     if not bias:
       return res
     with vs.variable_scope(outer_scope) as inner_scope:
