@@ -221,6 +221,10 @@ class Node {
     NC_OTHER  // Not a special kind of node
   };
 
+  static const std::unordered_map<string, NodeClass>& kNodeClassTable;
+
+  static NodeClass GetNodeClassForOp(const string& ts);
+
   int id_;       // -1 until Initialize() is called
   int cost_id_;  // -1 if there is no corresponding cost accounting node
   NodeClass class_;

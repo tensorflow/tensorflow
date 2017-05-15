@@ -149,6 +149,34 @@ public class OperationBuilderTest {
     }
   }
 
+  @Test
+  public void addControlInput() {
+    try (Graph g = new Graph();
+         Session s = new Session(g);
+         Tensor yes = Tensor.create(true);
+         Tensor no = Tensor.create(false)) {
+      Output placeholder = TestUtil.placeholder(g, "boolean", DataType.BOOL);
+      Operation check = g.opBuilder("Assert", "assert")
+          .addInput(placeholder)
+          .addInputList(new Output[]{placeholder})
+          .build();
+      Operation noop = g.opBuilder("NoOp", "noop")
+          .addControlInput(check)
+          .build();
+
+      // No problems when the Assert check succeeds
+      s.runner().feed(placeholder, yes).addTarget(noop).run();
+
+      // Exception thrown by the execution of the Assert node
+      try {
+        s.runner().feed(placeholder, no).addTarget(noop).run();
+        fail("Did not run control operation.");
+      } catch (IllegalArgumentException e) {
+        // expected
+      }
+    }
+  }
+
   private static boolean hasNode(Graph g, String name) {
     return g.operation(name) != null;
   }

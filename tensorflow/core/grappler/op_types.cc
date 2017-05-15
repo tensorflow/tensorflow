@@ -46,5 +46,10 @@ bool IsVariable(const NodeDef& node) {
          op == "VarHandleOp";
 }
 
+bool IsMerge(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Merge";
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

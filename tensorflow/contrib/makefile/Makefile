@@ -281,6 +281,10 @@ ifeq ($(TARGET),ANDROID)
 		CXXFLAGS += -DUSE_HEXAGON_LIBS
 	endif
 
+	ifdef ENABLE_EXPERIMENTAL_HEXNN_OPS
+		CXXFLAGS += -DENABLE_EXPERIMENTAL_HEXNN_OPS
+	endif
+
 endif  # ANDROID
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 

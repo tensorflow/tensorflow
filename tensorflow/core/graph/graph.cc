@@ -30,6 +30,45 @@ const int Graph::kControlSlot = -1;
 
 // Node
 
+#define REF_CLASS(key, value) \
+  {key, value}, { "Ref" key, value }
+
+const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
+    *new std::unordered_map<string, Node::NodeClass>({
+        // Keep in same order as NodeClass values
+        REF_CLASS("Switch", NC_SWITCH),
+        REF_CLASS("Merge", NC_MERGE),
+        REF_CLASS("Enter", NC_ENTER),
+        REF_CLASS("Exit", NC_EXIT),
+        REF_CLASS("NextIteration", NC_NEXT_ITERATION),
+        {"LoopCond", NC_LOOP_COND},
+        {"ControlTrigger", NC_CONTROL_TRIGGER},
+        {"_Send", NC_SEND},
+        {"_HostSend", NC_HOST_SEND},
+        {"_Recv", NC_RECV},
+        {"_HostRecv", NC_HOST_RECV},
+        {"Const", NC_CONSTANT},
+        {"HostConst", NC_CONSTANT},
+        {"Variable", NC_VARIABLE},
+        {"VariableV2", NC_VARIABLE},
+        REF_CLASS("Identity", NC_IDENTITY),
+        {"GetSessionHandle", NC_GET_SESSION_HANDLE},
+        {"GetSessionHandleV2", NC_GET_SESSION_HANDLE},
+        {"GetSessionTensor", NC_GET_SESSION_TENSOR},
+        {"DeleteSessionTensor", NC_DELETE_SESSION_TENSOR},
+    });
+
+#undef REF_CLASS
+
+Node::NodeClass Node::GetNodeClassForOp(const string& ts) {
+  auto it = kNodeClassTable.find(ts);
+  if (it != kNodeClassTable.end()) {
+    return it->second;
+  } else {
+    return NC_OTHER;
+  }
+}
+
 string Node::DebugString() const {
   string ret = strings::StrCat("{name:'", name(), "' id:", id_);
   if (IsSource()) {
@@ -70,41 +109,7 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   }
   props_ = props;
   // Initialize the class_ based on the type string
-  const string& ts = this->type_string();
-  class_ = NC_UNINITIALIZED;
-
-#define SET_CLASS(enum_val, ts, str1, str2)        \
-  do {                                             \
-    if ((((ts) == (str1)) || ((ts) == (str2)))) {  \
-      /* Cannot be member of more than one class*/ \
-      CHECK(class_ == NC_UNINITIALIZED);           \
-      class_ = (enum_val);                         \
-    }                                              \
-  } while (0)
-
-  SET_CLASS(NC_SWITCH, ts, "Switch", "RefSwitch");
-  SET_CLASS(NC_MERGE, ts, "Merge", "RefMerge");
-  SET_CLASS(NC_ENTER, ts, "Enter", "RefEnter");
-  SET_CLASS(NC_EXIT, ts, "Exit", "RefExit");
-  SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "RefNextIteration");
-  SET_CLASS(NC_LOOP_COND, ts, "LoopCond", "");
-  SET_CLASS(NC_CONTROL_TRIGGER, ts, "ControlTrigger", "");
-  SET_CLASS(NC_SEND, ts, "_Send", "");
-  SET_CLASS(NC_HOST_SEND, ts, "_HostSend", "");
-  SET_CLASS(NC_RECV, ts, "_Recv", "");
-  SET_CLASS(NC_HOST_RECV, ts, "_HostRecv", "");
-  SET_CLASS(NC_CONSTANT, ts, "Const", "HostConst");
-  SET_CLASS(NC_VARIABLE, ts, "Variable", "");
-  SET_CLASS(NC_VARIABLE, ts, "VariableV2", "");
-  SET_CLASS(NC_IDENTITY, ts, "Identity", "RefIdentity");
-  SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandle", "");
-  SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandleV2", "");
-  SET_CLASS(NC_GET_SESSION_TENSOR, ts, "GetSessionTensor", "");
-  SET_CLASS(NC_DELETE_SESSION_TENSOR, ts, "DeleteSessionTensor", "");
-  if (class_ == NC_UNINITIALIZED) {
-    class_ = NC_OTHER;  // Catch all
-  }
-#undef SET_CLASS
+  class_ = GetNodeClassForOp(props->node_def_.op());
 }
 
 void Node::Clear() {

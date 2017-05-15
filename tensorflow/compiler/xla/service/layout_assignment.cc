@@ -1041,7 +1041,7 @@ StatusOr<Layout> InferArrayLayout(
                                   *first_buffer_layout)) {
       // The points-to set is ambiguous for this index and the different source
       // buffers have different layouts. This case is possible in valid XLA
-      // computations because we do not propagate BufferLayoutConstaints to all
+      // computations because we do not propagate BufferLayoutConstraints to all
       // LogicalBuffers which may alias the constrained LogicalBuffer at some
       // point in the computation.
       return FailedPrecondition(
@@ -1254,7 +1254,7 @@ Status LayoutAssignment::RunOnComputation(
   TF_ASSIGN_OR_RETURN(auto points_to_analysis,
                       TuplePointsToAnalysis::Run(computation->parent()));
 
-  // Construct LayoutConstaints with all layout constraints of the computation.
+  // Construct LayoutConstraints with all layout constraints of the computation.
   LayoutConstraints constraints(*points_to_analysis, computation);
 
   // Add constraints required for correctness on all backends (eg, entry

@@ -21,9 +21,9 @@ limitations under the License.
 namespace tensorflow {
 
 // Used for testing the grad+indices handling for SparseApplyXYZ tests.
-static void TestGradAndIndicesErrorHandling(ShapeInferenceTestOp op,
+static void TestGradAndIndicesErrorHandling(const ShapeInferenceTestOp& op,
                                             string shape_spec_middle,
-                                            string shape_spec_end = "") {
+                                            const string& shape_spec_end = "") {
   auto shape_spec = [&shape_spec_middle, shape_spec_end](
       const char* var_spec, const char* grad_indices_spec) {
     return strings::StrCat(var_spec, ";", shape_spec_middle, ";",

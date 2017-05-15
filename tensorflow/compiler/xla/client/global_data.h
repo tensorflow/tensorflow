@@ -23,13 +23,15 @@ limitations under the License.
 
 namespace xla {
 
-// Wraps a GlobalDataHandle with a lifetime.
+// A GlobalData object represents a globally-accessible allocation of
+// data in the associated XLA service.
 class GlobalData {
  public:
   // Gives ownership of the global data handle to this object.
   GlobalData(ServiceInterface* parent, GlobalDataHandle handle);
 
-  // Unregisters the wrapped handle.
+  // Unregisters the wrapped handle, which causes the service to
+  // deallocate the associated data.
   ~GlobalData();
 
   const GlobalDataHandle& handle() const { return handle_; }

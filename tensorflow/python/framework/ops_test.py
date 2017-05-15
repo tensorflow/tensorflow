@@ -22,6 +22,7 @@ import gc
 import weakref
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import common_shapes
@@ -355,6 +356,32 @@ class OperationTest(test_util.TensorFlowTestCase):
     op = ops.Operation(
         ops._NodeDef("noop", "op1"), ops.Graph(), [], [dtypes.float32])
     self.assertEqual("<tf.Operation 'op1' type=noop>", repr(op))
+
+  def testGetAttr(self):
+    list_value = attr_value_pb2.AttrValue.ListValue()
+    list_value.type.append(types_pb2.DT_STRING)
+    list_value.type.append(types_pb2.DT_DOUBLE)
+    op = ops.Operation(
+        ops._NodeDef(
+            "noop",
+            "op1",
+            attrs={
+                "value": attr_value_pb2.AttrValue(i=32),
+                "dtype": attr_value_pb2.AttrValue(type=types_pb2.DT_INT32),
+                "list": attr_value_pb2.AttrValue(list=list_value)
+            }), ops.Graph(), [], [dtypes.int32])
+    self.assertEqual(32, op.get_attr("value"))
+
+    d = op.get_attr("dtype")
+    # First check that d is a DType, because the assertEquals will
+    # work no matter what since DType overrides __eq__
+    self.assertIsInstance(d, dtypes.DType)
+    self.assertEqual(dtypes.int32, d)
+
+    l = op.get_attr("list")
+    for x in l:
+      self.assertIsInstance(x, dtypes.DType)
+    self.assertEqual([dtypes.string, dtypes.double], l)
 
 
 class CreateOpTest(test_util.TensorFlowTestCase):

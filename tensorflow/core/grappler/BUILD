@@ -28,6 +28,7 @@ filegroup(
         "//tensorflow/core/grappler/clusters:android_srcs",
         "//tensorflow/core/grappler/inputs:android_srcs",
         "//tensorflow/core/grappler/optimizers:android_srcs",
+        "//tensorflow/core/grappler/utils:android_srcs",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )

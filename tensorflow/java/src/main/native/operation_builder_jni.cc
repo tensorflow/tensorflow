@@ -115,6 +115,20 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addInputList(
   TF_AddInputList(d, o.get(), n);
 }
 
+JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addControlInput(
+    JNIEnv* env, jclass clazz, jlong handle, jlong op_handle) {
+  if (op_handle == 0) {
+    throwException(env, kIllegalStateException,
+                   "control input is not valid, "
+                   "perhaps the Graph containing it has been closed()?");
+    return;
+  }
+  TF_Operation* control = reinterpret_cast<TF_Operation*>(op_handle);
+  TF_OperationDescription* d = requireHandle(env, handle);
+  if (d == nullptr) return;
+  TF_AddControlInput(d, control);
+}
+
 JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setDevice(
     JNIEnv* env, jclass clazz, jlong handle, jstring device) {
   TF_OperationDescription* d = requireHandle(env, handle);

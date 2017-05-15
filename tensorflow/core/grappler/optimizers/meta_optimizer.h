@@ -46,7 +46,7 @@ class MetaOptimizer : public GraphOptimizer {
 bool MetaOptimizerEnabled(const RewriterConfig& cfg);
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
-                        GraphDef* optimized_graph);
+                        Cluster* cluster, GraphDef* optimized_graph);
 
 }  // namespace grappler
 }  // namespace tensorflow

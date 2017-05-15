@@ -299,13 +299,14 @@ class ShapeUtil {
   // pre-order starting with the entire shape (index {}).
   using VisitorFunction = std::function<Status(const Shape& /*subshape*/,
                                                const ShapeIndex& /*index*/)>;
-  static Status ForEachSubshape(const Shape& shape, VisitorFunction func);
+  static Status ForEachSubshape(const Shape& shape,
+                                const VisitorFunction& func);
 
   // Mutating variant of ForEachSubshape.
   using MutatingVisitorFunction =
       std::function<Status(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
   static Status ForEachMutableSubshape(Shape* shape,
-                                       MutatingVisitorFunction func);
+                                       const MutatingVisitorFunction& func);
 
   // Removes all degenerate dimensions (size one) from the given shape. The
   // stripped minor_to_major preserves the relative ordering of non-degenerate

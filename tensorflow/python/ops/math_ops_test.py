@@ -28,6 +28,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
+ops._USE_C_API = True
+
 exp = np.exp
 log = np.log
 

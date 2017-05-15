@@ -18,6 +18,10 @@
   If at all unsure, first test your code with TF 1.1; ensure it raises no
   errors, and then upgrade to TF 1.2.
 
+## Bug Fixes and Other Changes
+* In python, `Operation.get_attr` on type attributes returns the Python DType
+  version of the type to match expected get_attr documentation rather than the
+  protobuf enum.
 
 # Release 1.1.0
 

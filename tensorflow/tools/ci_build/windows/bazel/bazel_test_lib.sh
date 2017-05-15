@@ -175,6 +175,9 @@ function run_configure_for_cpu_build {
   if [ -z "$CC_OPT_FLAGS" ]; then
     export CC_OPT_FLAGS="-march=native"
   fi
+  if [ -z "$TF_NEED_MKL" ]; then
+    export TF_NEED_MKL=0
+  fi
   echo "" | ./configure
 }
 

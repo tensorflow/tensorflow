@@ -37,6 +37,26 @@ INPUT_MATRIX = np.array(
      [0.0, 4.1, 0.0, 0.0, 4.4, 0.0, 4.6]]).astype(np.float32)
 
 
+def remove_empty_rows_columns(np_matrix):
+  """Simple util to remove empty rows and columns of a matrix.
+
+  Args:
+    np_matrix: A numpy array.
+  Returns:
+    A tuple consisting of:
+    mat: A numpy matrix obtained by removing empty rows and columns from
+      np_matrix.
+    nz_row_ids: A numpy array of the ids of non-empty rows, such that
+      nz_row_ids[i] is the old row index corresponding to new index i.
+    nz_col_ids: A numpy array of the ids of non-empty columns, such that
+      nz_col_ids[j] is the old column index corresponding to new index j.
+  """
+  nz_row_ids = np.where(np.sum(np_matrix, axis=1) != 0)[0]
+  nz_col_ids = np.where(np.sum(np_matrix, axis=0) != 0)[0]
+  mat = np_matrix[np.ix_(nz_row_ids, nz_col_ids)]
+  return mat, nz_row_ids, nz_col_ids
+
+
 def np_matrix_to_tf_sparse(np_matrix,
                            row_slices=None,
                            col_slices=None,
