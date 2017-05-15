@@ -25,8 +25,6 @@ introduced by:
 
 The key difference of the full preactivation 'v2' variant compared to the
 'v1' variant in [1] is the use of batch normalization before every weight layer.
-Another difference is that 'v2' ResNets do not include an activation function in
-the main pathway. Also see [2; Fig. 4e].
 
 Typical use:
 

@@ -19,7 +19,6 @@ RUN /install/install_golang.sh
 
 # Set up the master bazelrc configuration file.
 COPY install/.bazelrc /etc/bazel.bazelrc
-RUN echo "import %workspace%/.tf_configure.bazelrc" >> /etc/bazel.bazelrc
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
 # Configure the build for our CUDA configuration.

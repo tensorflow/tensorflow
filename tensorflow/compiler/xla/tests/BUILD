@@ -200,11 +200,13 @@ cc_library(
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/compiler/xla/service:local_service",
         "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xla/service:pool",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+        "//third_party/eigen3",
     ],
 )
 
@@ -1362,6 +1364,7 @@ cc_test(
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/service:computation_tracker",
         "//tensorflow/compiler/xla/service:local_service",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
     ],
 )

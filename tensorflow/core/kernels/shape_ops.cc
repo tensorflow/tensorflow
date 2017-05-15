@@ -82,6 +82,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                           ShapeOp<int64>);
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_CALL_bool(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
@@ -131,6 +132,7 @@ REGISTER_KERNEL_BUILDER(Name("ShapeN")
                           ShapeNOp<int64>)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_CALL_bool(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
@@ -277,6 +279,7 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                               .HostMemory("output"),             \
                           SizeOp<int64>);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_CALL_bool(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.
@@ -351,6 +354,7 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                               .HostMemory("dim"),            \
                           ExpandDimsOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_CALL_bool(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 REGISTER_KERNEL_BUILDER(Name("ExpandDims")
@@ -395,6 +399,7 @@ REGISTER_KERNEL_BUILDER(Name("Squeeze").Device(DEVICE_CPU), SqueezeOp);
       Name("Squeeze").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
       SqueezeOp);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
+TF_CALL_bool(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
 
 // A special GPU kernel for int32.

@@ -516,6 +516,7 @@ CostGraphDef* InMemoryRunGraphResponse::mutable_cost_graph() {
 
 RunGraphResponse* InMemoryRunGraphResponse::get_proto() {
   LOG(FATAL) << "Cannot get a mutable protobuf for an InMemoryRunGraphResponse";
+  return NULL;
 }
 
 size_t OwnedProtoRunGraphResponse::num_recvs() const {
@@ -634,6 +635,7 @@ RunMetadata* InMemoryRunStepResponse::mutable_metadata() { return &metadata_; }
 
 RunStepResponse* InMemoryRunStepResponse::get_proto() {
   LOG(FATAL) << "Cannot get a mutable protobuf for an InMemoryRunStepResponse";
+  return NULL;
 }
 
 size_t OwnedProtoRunStepResponse::num_tensors() const {

@@ -1293,11 +1293,11 @@ class Operation(object):
         grouped_inputs = self._inputs
 
       self._c_op = self._create_c_op(self._graph, self._node_def,
-                                     grouped_inputs)
+                                     grouped_inputs, self._control_inputs)
     else:
       self._c_op = None
 
-  def _create_c_op(self, graph, node_def, inputs):
+  def _create_c_op(self, graph, node_def, inputs, control_inputs):
     """Creates a TF_Operation.
 
     Arguments:
@@ -1307,6 +1307,7 @@ class Operation(object):
         `Tensor`s (corresponding to sequence inputs, e.g. "int64 * N",
         "list(int64)"). The length of the list should be equal to the number of
         inputs specified by this operation's op def.
+      control_inputs: A list of `Operation`s to set as control dependencies.
 
     Returns:
       A wrapped TF_Operation*.
@@ -1315,14 +1316,19 @@ class Operation(object):
     op_desc = c_api.TF_NewOperation(graph._c_graph.g,
                                     compat.as_str(node_def.op),
                                     compat.as_str(node_def.name))
-
+    # Add inputs
     for op_input in inputs:
       if isinstance(op_input, (list, tuple)):
         c_api.TF_AddInputList(op_desc, [t._as_tf_output() for t in op_input])
       else:
         c_api.TF_AddInput(op_desc, op_input._as_tf_output())
+
+    # Add control inputs
+    for control_input in control_inputs:
+      c_api.TF_AddControlInput(op_desc, control_input._c_op)
     # pylint: enable=protected-access
 
+    # Add attrs
     for name, attr_value in node_def.attr.items():
       serialized = attr_value.SerializeToString()
       # TODO(skyewm): this creates and deletes a new TF_Status for every attr.

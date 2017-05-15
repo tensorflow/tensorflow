@@ -62,19 +62,19 @@ TEST_F(StaticScheduleTest, BasicGraph) {
 
   for (auto time : completion_times) {
     if (time.first->name() == "Const/Const") {
-      EXPECT_EQ(Costs::NanoSeconds(0), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(1), time.second);
     } else if (time.first->name() == "x") {
-      EXPECT_EQ(Costs::NanoSeconds(250000), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(250001), time.second);
     } else if (time.first->name() == "AddN") {
-      EXPECT_EQ(Costs::NanoSeconds(1500000), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(1500001), time.second);
     } else if (time.first->name() == "AddN_1") {
-      EXPECT_EQ(Costs::NanoSeconds(2750000), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(2750001), time.second);
     } else if (time.first->name() == "AddN_2") {
-      EXPECT_EQ(Costs::NanoSeconds(4000000), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(4000001), time.second);
     } else if (time.first->name() == "AddN_3") {
-      EXPECT_EQ(Costs::NanoSeconds(5250000), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(5250001), time.second);
     } else if (time.first->name() == "y") {
-      EXPECT_EQ(Costs::NanoSeconds(6500000), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(6500001), time.second);
     }
   }
 }
@@ -108,15 +108,15 @@ TEST_F(StaticScheduleTest, BasicGraphWithCtrlDependencies) {
 
   for (auto time : completion_times) {
     if (time.first->name() == "a") {
-      EXPECT_EQ(Costs::NanoSeconds(0), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(1), time.second);
     } else if (time.first->name() == "b") {
-      EXPECT_EQ(Costs::NanoSeconds(12500000), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(12500001), time.second);
     } else if (time.first->name() == "c") {
-      EXPECT_EQ(Costs::NanoSeconds(12500000), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(12500002), time.second);
     } else if (time.first->name() == "d") {
-      EXPECT_EQ(Costs::NanoSeconds(12500000), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(12500003), time.second);
     } else if (time.first->name() == "e") {
-      EXPECT_EQ(Costs::NanoSeconds(25000000), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(25000003), time.second);
     }
   }
 }

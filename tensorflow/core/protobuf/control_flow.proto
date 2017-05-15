@@ -62,8 +62,8 @@ message WhileContextDef {
   repeated string loop_exit_names = 8;
 
   // List of names for enter tensors.
-  repeated string loop_enter_names = 9;
+  repeated string loop_enter_names = 10;
 
   // Values and external values in control flow context.
-  ValuesDef values_def = 10;
+  ValuesDef values_def = 9;
 }
