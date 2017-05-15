@@ -1035,6 +1035,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",  # http://b/31032996
+        "notap",  # TODO(b/37950026): Test is flaky
     ],
     deps = [
         ":learn",
