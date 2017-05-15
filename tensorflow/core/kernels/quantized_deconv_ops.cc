@@ -73,15 +73,15 @@ class ReferenceDeconvFunctor {
                      int output_mult)
   {
     // TODO: add support for padding
-    // TODO: add support for stride
     
     int output_depth = filter_depth;
+    // Just copied from quantized_conv_ops
     int filter_left_offset =
       ((input_width - 1) * stride + filter_width - output_width + 1) / 2;
     int filter_top_offset =
       ((input_height - 1) * stride + filter_height - output_height + 1) / 2;
-    LOG(INFO) << filter_left_offset;
-    LOG(INFO) << filter_top_offset;
+    // LOG(INFO) << filter_left_offset;
+    // LOG(INFO) << filter_top_offset;
 
     for (int batch = 0; batch < input_batches; batch ++) {
 
@@ -242,8 +242,8 @@ class QuantizedDeconv2DOp: public OpKernel {
       // with the VALID padding condition
       const int expected_input_rows = ceil((float) (out_rows - filter_rows + 1) / stride);
       const int expected_input_cols = ceil((float) (out_cols - filter_cols + 1) / stride);
-      LOG(INFO) << expected_input_rows;
-      LOG(INFO) << expected_input_cols;
+      // LOG(INFO) << expected_input_rows;
+      // LOG(INFO) << expected_input_cols;
       CHECK_EQ(expected_input_rows, input_rows);
       CHECK_EQ(expected_input_cols, input_cols);
 
