@@ -64,29 +64,12 @@ cc_binary(
 
 py_library(
     name = "util_py",
-    srcs = glob(
-        ["**/*.py"],
-        exclude = ["**/*_test.py"],
-    ),
+    srcs = glob(["**/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "create_example_test",
-    srcs = ["create_example_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":util_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:platform_test",
-        "//third_party/py/numpy",
     ],
 )
 
