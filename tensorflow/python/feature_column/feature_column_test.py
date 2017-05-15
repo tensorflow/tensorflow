@@ -26,7 +26,12 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
-from tensorflow.python.feature_column import feature_column as fc
+from tensorflow.python.feature_column import feature_column_lib as fc
+from tensorflow.python.feature_column.feature_column import _CategoricalColumn
+from tensorflow.python.feature_column.feature_column import _DenseColumn
+from tensorflow.python.feature_column.feature_column import _FeatureColumn
+from tensorflow.python.feature_column.feature_column import _LazyBuilder
+from tensorflow.python.feature_column.feature_column import _transform_features
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -51,7 +56,7 @@ class LazyColumnTest(test.TestCase):
 
   def test_transormations_called_once(self):
 
-    class TransformCounter(fc._FeatureColumn):
+    class TransformCounter(_FeatureColumn):
 
       def __init__(self):
         self.num_transform = 0
@@ -68,7 +73,7 @@ class LazyColumnTest(test.TestCase):
       def _parse_example_spec(self):
         pass
 
-    builder = fc._LazyBuilder(features={'a': [[2], [3.]]})
+    builder = _LazyBuilder(features={'a': [[2], [3.]]})
     column = TransformCounter()
     self.assertEqual(0, column.num_transform)
     builder.get(column)
@@ -78,7 +83,7 @@ class LazyColumnTest(test.TestCase):
 
   def test_returns_transform_output(self):
 
-    class Transformer(fc._FeatureColumn):
+    class Transformer(_FeatureColumn):
 
       @property
       def name(self):
@@ -91,14 +96,14 @@ class LazyColumnTest(test.TestCase):
       def _parse_example_spec(self):
         pass
 
-    builder = fc._LazyBuilder(features={'a': [[2], [3.]]})
+    builder = _LazyBuilder(features={'a': [[2], [3.]]})
     column = Transformer()
     self.assertEqual('Output', builder.get(column))
     self.assertEqual('Output', builder.get(column))
 
   def test_does_not_pollute_given_features_dict(self):
 
-    class Transformer(fc._FeatureColumn):
+    class Transformer(_FeatureColumn):
 
       @property
       def name(self):
@@ -112,19 +117,19 @@ class LazyColumnTest(test.TestCase):
         pass
 
     features = {'a': [[2], [3.]]}
-    builder = fc._LazyBuilder(features=features)
+    builder = _LazyBuilder(features=features)
     builder.get(Transformer())
     self.assertEqual(['a'], list(features.keys()))
 
   def test_error_if_feature_is_not_found(self):
-    builder = fc._LazyBuilder(features={'a': [[2], [3.]]})
+    builder = _LazyBuilder(features={'a': [[2], [3.]]})
     with self.assertRaisesRegexp(ValueError,
                                  'bbb is not in features dictionary'):
       builder.get('bbb')
 
   def test_not_supported_feature_column(self):
 
-    class NotAProperColumn(fc._FeatureColumn):
+    class NotAProperColumn(_FeatureColumn):
 
       @property
       def name(self):
@@ -138,7 +143,7 @@ class LazyColumnTest(test.TestCase):
       def _parse_example_spec(self):
         pass
 
-    builder = fc._LazyBuilder(features={'a': [[2], [3.]]})
+    builder = _LazyBuilder(features={'a': [[2], [3.]]})
     with self.assertRaisesRegexp(ValueError,
                                  'NotAProperColumn is not supported'):
       builder.get(NotAProperColumn())
@@ -148,7 +153,7 @@ class LazyColumnTest(test.TestCase):
     class NotAFeatureColumn(object):
       pass
 
-    builder = fc._LazyBuilder(features={'a': [[2], [3.]]})
+    builder = _LazyBuilder(features={'a': [[2], [3.]]})
     with self.assertRaisesRegexp(
         TypeError, '"key" must be either a "str" or "_FeatureColumn".'):
       builder.get(NotAFeatureColumn())
@@ -275,7 +280,7 @@ class NumericColumnTest(test.TestCase):
       return input_tensor + 2.
 
     price = fc.numeric_column('price', shape=[2], normalizer_fn=_increment_two)
-    output = fc._transform_features({'price': [[1., 2.], [5., 6.]]}, [price])
+    output = _transform_features({'price': [[1., 2.], [5., 6.]]}, [price])
     with self.test_session():
       self.assertAllEqual([[3., 4.], [7., 8.]], output[price].eval())
 
@@ -285,14 +290,12 @@ class NumericColumnTest(test.TestCase):
       return input_tensor + 2.
 
     price = fc.numeric_column('price', shape=[2], normalizer_fn=_increment_two)
-    builder = fc._LazyBuilder({
-        'price': [[1., 2.], [5., 6.]]
-    })
+    builder = _LazyBuilder({'price': [[1., 2.], [5., 6.]]})
     self.assertEqual(builder.get(price), price._get_dense_tensor(builder))
 
   def test_sparse_tensor_not_supported(self):
     price = fc.numeric_column('price')
-    builder = fc._LazyBuilder({
+    builder = _LazyBuilder({
         'price':
             sparse_tensor.SparseTensor(
                 indices=[[0, 0]], values=[0.3], dense_shape=[1, 1])
@@ -401,7 +404,7 @@ class BucketizedColumnTest(test.TestCase):
     price = fc.numeric_column('price', shape=[2])
     bucketized_price = fc.bucketized_column(price, boundaries=[0, 2, 4, 6])
     with ops.Graph().as_default():
-      transformed_tensor = fc._transform_features({
+      transformed_tensor = _transform_features({
           'price': [[-1., 1.], [5., 6.]]
       }, [bucketized_price])
       with _initialized_session():
@@ -413,9 +416,7 @@ class BucketizedColumnTest(test.TestCase):
     price = fc.numeric_column('price', shape=[1])
     bucketized_price = fc.bucketized_column(price, boundaries=[0, 2, 4, 6])
     with ops.Graph().as_default():
-      builder = fc._LazyBuilder({
-          'price': [[-1.], [1.], [5.], [6.]]
-      })
+      builder = _LazyBuilder({'price': [[-1.], [1.], [5.], [6.]]})
       with _initialized_session():
         bucketized_price_tensor = bucketized_price._get_dense_tensor(builder)
         self.assertAllClose(
@@ -431,9 +432,7 @@ class BucketizedColumnTest(test.TestCase):
     price = fc.numeric_column('price', shape=[2])
     bucketized_price = fc.bucketized_column(price, boundaries=[0, 2, 4, 6])
     with ops.Graph().as_default():
-      builder = fc._LazyBuilder({
-          'price': [[-1., 1.], [5., 6.]]
-      })
+      builder = _LazyBuilder({'price': [[-1., 1.], [5., 6.]]})
       with _initialized_session():
         bucketized_price_tensor = bucketized_price._get_dense_tensor(builder)
         self.assertAllClose(
@@ -447,9 +446,7 @@ class BucketizedColumnTest(test.TestCase):
     price = fc.numeric_column('price', shape=[1])
     bucketized_price = fc.bucketized_column(price, boundaries=[0, 2, 4, 6])
     with ops.Graph().as_default():
-      builder = fc._LazyBuilder({
-          'price': [[-1.], [1.], [5.], [6.]]
-      })
+      builder = _LazyBuilder({'price': [[-1.], [1.], [5.], [6.]]})
       with _initialized_session() as sess:
         id_weight_pair = bucketized_price._get_sparse_tensors(builder)
         self.assertIsNone(id_weight_pair.weight_tensor)
@@ -464,9 +461,7 @@ class BucketizedColumnTest(test.TestCase):
     price = fc.numeric_column('price', shape=[2])
     bucketized_price = fc.bucketized_column(price, boundaries=[0, 2, 4, 6])
     with ops.Graph().as_default():
-      builder = fc._LazyBuilder({
-          'price': [[-1., 1.], [5., 6.]]
-      })
+      builder = _LazyBuilder({'price': [[-1., 1.], [5., 6.]]})
       with _initialized_session() as sess:
         id_weight_pair = bucketized_price._get_sparse_tensors(builder)
         self.assertIsNone(id_weight_pair.weight_tensor)
@@ -481,7 +476,7 @@ class BucketizedColumnTest(test.TestCase):
   def test_sparse_tensor_input_not_supported(self):
     price = fc.numeric_column('price')
     bucketized_price = fc.bucketized_column(price, boundaries=[0, 1])
-    builder = fc._LazyBuilder({
+    builder = _LazyBuilder({
         'price':
             sparse_tensor.SparseTensor(
                 indices=[[0, 0]], values=[0.3], dense_shape=[1, 1])
@@ -623,7 +618,7 @@ class HashedCategoricalColumnTest(test.TestCase):
         values=['omar', 'stringer', 'marlo'],
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
-    outputs = fc._transform_features({'wire': wire_tensor}, [hashed_sparse])
+    outputs = _transform_features({'wire': wire_tensor}, [hashed_sparse])
     output = outputs[hashed_sparse]
     # Check exact hashed output. If hashing changes this test will break.
     expected_values = [6, 4, 1]
@@ -653,7 +648,7 @@ class HashedCategoricalColumnTest(test.TestCase):
         values=[101.],
         indices=[[0, 0]],
         dense_shape=[1, 1])
-    builder = fc._LazyBuilder({
+    builder = _LazyBuilder({
         'a_int': int_tensor,
         'a_string': string_tensor,
         'a_float': float_tensor
@@ -668,7 +663,7 @@ class HashedCategoricalColumnTest(test.TestCase):
         'wire', 10, dtype=dtypes.int64)
     wire_tensor = sparse_tensor.SparseTensor(
         values=['omar'], indices=[[0, 0]], dense_shape=[1, 1])
-    builder = fc._LazyBuilder({'wire': wire_tensor})
+    builder = _LazyBuilder({'wire': wire_tensor})
     with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
       builder.get(hashed_sparse)
 
@@ -679,7 +674,7 @@ class HashedCategoricalColumnTest(test.TestCase):
         values=[101, 201, 301],
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
-    builder = fc._LazyBuilder({'wire': wire_tensor})
+    builder = _LazyBuilder({'wire': wire_tensor})
     output = builder.get(hashed_sparse)
     # Check exact hashed output. If hashing changes this test will break.
     expected_values = [3, 7, 5]
@@ -693,7 +688,7 @@ class HashedCategoricalColumnTest(test.TestCase):
         values=constant_op.constant([101, 201, 301], dtype=dtypes.int32),
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
-    builder = fc._LazyBuilder({'wire': wire_tensor})
+    builder = _LazyBuilder({'wire': wire_tensor})
     output = builder.get(hashed_sparse)
     # Check exact hashed output. If hashing changes this test will break.
     expected_values = [3, 7, 5]
@@ -702,11 +697,12 @@ class HashedCategoricalColumnTest(test.TestCase):
 
   def test_get_sparse_tensors(self):
     hashed_sparse = fc.categorical_column_with_hash_bucket('wire', 10)
-    builder = fc._LazyBuilder({
-        'wire': sparse_tensor.SparseTensor(
-            values=['omar', 'stringer', 'marlo'],
-            indices=[[0, 0], [1, 0], [1, 1]],
-            dense_shape=[2, 2])
+    builder = _LazyBuilder({
+        'wire':
+            sparse_tensor.SparseTensor(
+                values=['omar', 'stringer', 'marlo'],
+                indices=[[0, 0], [1, 0], [1, 1]],
+                dense_shape=[2, 2])
     })
     id_weight_pair = hashed_sparse._get_sparse_tensors(builder)
     self.assertIsNone(id_weight_pair.weight_tensor)
@@ -719,7 +715,9 @@ class HashedCategoricalColumnTest(test.TestCase):
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
     column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}), weight_collections=('my_weights',))
+        _LazyBuilder({
+            'aaa': inputs
+        }), weight_collections=('my_weights',))
 
     self.assertItemsEqual(
         [], ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
@@ -727,9 +725,7 @@ class HashedCategoricalColumnTest(test.TestCase):
 
   def test_get_sparse_tensors_dense_input(self):
     hashed_sparse = fc.categorical_column_with_hash_bucket('wire', 10)
-    builder = fc._LazyBuilder({
-        'wire': (('omar', ''), ('stringer', 'marlo'))
-    })
+    builder = _LazyBuilder({'wire': (('omar', ''), ('stringer', 'marlo'))})
     id_weight_pair = hashed_sparse._get_sparse_tensors(builder)
     self.assertIsNone(id_weight_pair.weight_tensor)
     self.assertEqual(builder.get(hashed_sparse), id_weight_pair.id_tensor)
@@ -882,7 +878,7 @@ class CrossedColumnTest(test.TestCase):
             indices=[[0, 0], [1, 0], [1, 1]],
             dense_shape=[2, 2]),
     }
-    outputs = fc._transform_features(features, [price_cross_wire])
+    outputs = _transform_features(features, [price_cross_wire])
     output = outputs[price_cross_wire]
     with self.test_session() as sess:
       output_val = sess.run(output)
@@ -898,20 +894,24 @@ class CrossedColumnTest(test.TestCase):
     crossed1 = fc.crossed_column(['d1', 'd2'], 10)
     crossed2 = fc.crossed_column([b, 'c', crossed1], 15, hash_key=5)
     with ops.Graph().as_default():
-      builder = fc._LazyBuilder({
-          'a': constant_op.constant(((-1., .5), (.5, 1.))),
-          'c': sparse_tensor.SparseTensor(
-              indices=((0, 0), (1, 0), (1, 1)),
-              values=['cA', 'cB', 'cC'],
-              dense_shape=(2, 2)),
-          'd1': sparse_tensor.SparseTensor(
-              indices=((0, 0), (1, 0), (1, 1)),
-              values=['d1A', 'd1B', 'd1C'],
-              dense_shape=(2, 2)),
-          'd2': sparse_tensor.SparseTensor(
-              indices=((0, 0), (1, 0), (1, 1)),
-              values=['d2A', 'd2B', 'd2C'],
-              dense_shape=(2, 2)),
+      builder = _LazyBuilder({
+          'a':
+              constant_op.constant(((-1., .5), (.5, 1.))),
+          'c':
+              sparse_tensor.SparseTensor(
+                  indices=((0, 0), (1, 0), (1, 1)),
+                  values=['cA', 'cB', 'cC'],
+                  dense_shape=(2, 2)),
+          'd1':
+              sparse_tensor.SparseTensor(
+                  indices=((0, 0), (1, 0), (1, 1)),
+                  values=['d1A', 'd1B', 'd1C'],
+                  dense_shape=(2, 2)),
+          'd2':
+              sparse_tensor.SparseTensor(
+                  indices=((0, 0), (1, 0), (1, 1)),
+                  values=['d2A', 'd2B', 'd2C'],
+                  dense_shape=(2, 2)),
       })
       id_weight_pair = crossed2._get_sparse_tensors(builder)
       with _initialized_session():
@@ -934,12 +934,14 @@ class CrossedColumnTest(test.TestCase):
     b = fc.bucketized_column(a, boundaries=(0, 1))
     crossed = fc.crossed_column([b, 'c'], hash_bucket_size=5, hash_key=5)
     with ops.Graph().as_default():
-      builder = fc._LazyBuilder({
-          'a': constant_op.constant(((-1., .5), (.5, 1.))),
-          'c': sparse_tensor.SparseTensor(
-              indices=((0, 0), (1, 0), (1, 1)),
-              values=['cA', 'cB', 'cC'],
-              dense_shape=(2, 2)),
+      builder = _LazyBuilder({
+          'a':
+              constant_op.constant(((-1., .5), (.5, 1.))),
+          'c':
+              sparse_tensor.SparseTensor(
+                  indices=((0, 0), (1, 0), (1, 1)),
+                  values=['cA', 'cB', 'cC'],
+                  dense_shape=(2, 2)),
       })
       id_weight_pair = crossed._get_sparse_tensors(builder)
       with _initialized_session():
@@ -983,7 +985,7 @@ class CrossedColumnTest(test.TestCase):
         self.assertAllClose(((3.1,), (14.1,)), predictions.eval())
 
   def test_linear_model_with_weights(self):
-    class _TestColumnWithWeights(fc._CategoricalColumn):
+    class _TestColumnWithWeights(_CategoricalColumn):
       """Produces sparse IDs and sparse weights."""
 
       @property
@@ -1010,7 +1012,7 @@ class CrossedColumnTest(test.TestCase):
                               trainable=None):
         """Populates both id_tensor and weight_tensor."""
         ids_and_weights = inputs.get(self)
-        return fc._CategoricalColumn.IdWeightPair(
+        return _CategoricalColumn.IdWeightPair(
             id_tensor=ids_and_weights[0], weight_tensor=ids_and_weights[1])
 
     t = _TestColumnWithWeights()
@@ -1058,7 +1060,7 @@ class LinearModelTest(test.TestCase):
 
   def test_should_be_dense_or_categorical_column(self):
 
-    class NotSupportedColumn(fc._FeatureColumn):
+    class NotSupportedColumn(_FeatureColumn):
 
       @property
       def name(self):
@@ -1143,7 +1145,7 @@ class LinearModelTest(test.TestCase):
   def test_dense_and_sparse_column(self):
     """When the column is both dense and sparse, uses sparse tensors."""
 
-    class _DenseAndSparseColumn(fc._DenseColumn, fc._CategoricalColumn):
+    class _DenseAndSparseColumn(_DenseColumn, _CategoricalColumn):
 
       @property
       def name(self):
@@ -1174,7 +1176,7 @@ class LinearModelTest(test.TestCase):
             indices=[[0, 0], [1, 0], [1, 1]],
             values=[2, 0, 3],
             dense_shape=[2, 2])
-        return fc._CategoricalColumn.IdWeightPair(sp_tensor, None)
+        return _CategoricalColumn.IdWeightPair(sp_tensor, None)
 
     dense_and_sparse_column = _DenseAndSparseColumn()
     with ops.Graph().as_default():
@@ -1664,9 +1666,9 @@ class InputLayerTest(test.TestCase):
 
 class MakeParseExampleSpecTest(test.TestCase):
 
-  class _TestFeatureColumn(
-      fc._FeatureColumn,
-      collections.namedtuple('_TestFeatureColumn', ['parse_spec'])):
+  class _TestFeatureColumn(_FeatureColumn,
+                           collections.namedtuple('_TestFeatureColumn',
+                                                  ['parse_spec'])):
 
     @property
     def _parse_example_spec(self):
@@ -1815,7 +1817,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
-    column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+    column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     with self.assertRaisesRegexp(errors.OpError, 'file_does_not_exist'):
       with self.test_session():
         lookup_ops.tables_initializer().run()
@@ -1843,7 +1845,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
-    column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+    column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     with self.assertRaisesRegexp(errors.OpError, 'Invalid vocab_size'):
       with self.test_session():
         lookup_ops.tables_initializer().run()
@@ -1881,7 +1883,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         values=(12, 24, 36),
         dense_shape=(2, 2))
     with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
-      column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+      column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   def test_invalid_input_dtype_string(self):
     column = fc.categorical_column_with_vocabulary_file(
@@ -1894,7 +1896,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
     with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
-      column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+      column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   def test_parse_example(self):
     a = fc.categorical_column_with_vocabulary_file(
@@ -1927,8 +1929,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -1948,7 +1949,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
-    id_tensor = fc._transform_features({'aaa': inputs}, [column])[column]
+    id_tensor = _transform_features({'aaa': inputs}, [column])[column]
     with _initialized_session():
       _assert_sparse_tensor_value(self,
                                   sparse_tensor.SparseTensorValue(
@@ -1968,7 +1969,9 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
     column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}), weight_collections=('my_weights',))
+        _LazyBuilder({
+            'aaa': inputs
+        }), weight_collections=('my_weights',))
 
     self.assertItemsEqual(
         [], ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
@@ -1979,9 +1982,10 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         key='aaa',
         vocabulary_file=self._wire_vocabulary_file_name,
         vocabulary_size=self._wire_vocabulary_size)
-    id_weight_pair = column._get_sparse_tensors(fc._LazyBuilder({
-        'aaa': (('marlo', ''), ('skywalker', 'omar'))
-    }))
+    id_weight_pair = column._get_sparse_tensors(
+        _LazyBuilder({
+            'aaa': (('marlo', ''), ('skywalker', 'omar'))
+        }))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2002,8 +2006,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2024,8 +2027,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1), (1, 2)),
         values=('marlo', 'skywalker', 'omar', 'heisenberg'),
         dense_shape=(2, 3))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2048,8 +2050,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2070,8 +2071,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1), (2, 2)),
         values=(11, 100, 30, 22),
         dense_shape=(3, 3))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2090,9 +2090,10 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         vocabulary_size=self._warriors_vocabulary_size,
         dtype=dtypes.int32,
         default_value=default_value)
-    id_weight_pair = column._get_sparse_tensors(fc._LazyBuilder({
-        'aaa': ((11, -1, -1), (100, 30, -1), (-1, -1, 22))
-    }))
+    id_weight_pair = column._get_sparse_tensors(
+        _LazyBuilder({
+            'aaa': ((11, -1, -1), (100, 30, -1), (-1, -1, 22))
+        }))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2114,8 +2115,7 @@ class VocabularyFileCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1), (2, 2)),
         values=(11, 100, 30, 22),
         dense_shape=(3, 3))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2242,7 +2242,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         values=(12, 24, 36),
         dense_shape=(2, 2))
     with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
-      column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+      column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   def test_invalid_input_dtype_string(self):
     column = fc.categorical_column_with_vocabulary_list(
@@ -2253,7 +2253,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
     with self.assertRaisesRegexp(ValueError, 'dtype must be compatible'):
-      column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+      column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   def test_parse_example_string(self):
     a = fc.categorical_column_with_vocabulary_list(
@@ -2307,8 +2307,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2327,7 +2326,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
-    id_tensor = fc._transform_features({'aaa': inputs}, [column])[column]
+    id_tensor = _transform_features({'aaa': inputs}, [column])[column]
     with _initialized_session():
       _assert_sparse_tensor_value(
           self,
@@ -2346,7 +2345,9 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         indices=[[0, 0], [1, 0], [1, 1]],
         dense_shape=[2, 2])
     column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}), weight_collections=('my_weights',))
+        _LazyBuilder({
+            'aaa': inputs
+        }), weight_collections=('my_weights',))
 
     self.assertItemsEqual(
         [], ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
@@ -2356,9 +2357,10 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
     column = fc.categorical_column_with_vocabulary_list(
         key='aaa',
         vocabulary_list=('omar', 'stringer', 'marlo'))
-    id_weight_pair = column._get_sparse_tensors(fc._LazyBuilder({
-        'aaa': (('marlo', ''), ('skywalker', 'omar'))
-    }))
+    id_weight_pair = column._get_sparse_tensors(
+        _LazyBuilder({
+            'aaa': (('marlo', ''), ('skywalker', 'omar'))
+        }))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2378,8 +2380,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=('marlo', 'skywalker', 'omar'),
         dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2399,8 +2400,7 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1), (2, 2)),
         values=np.array((11, 100, 30, 22), dtype=np.int32),
         dense_shape=(3, 3))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2418,11 +2418,12 @@ class VocabularyListCategoricalColumnTest(test.TestCase):
         vocabulary_list=np.array((30, 35, 11, 23, 22), dtype=np.int32),
         dtype=dtypes.int32,
         default_value=default_value)
-    id_weight_pair = column._get_sparse_tensors(fc._LazyBuilder({
-        'aaa': np.array(
-            ((11, -1, -1), (100, 30, -1), (-1, -1, 22)),
-            dtype=np.int32)
-    }))
+    id_weight_pair = column._get_sparse_tensors(
+        _LazyBuilder({
+            'aaa':
+                np.array(
+                    ((11, -1, -1), (100, 30, -1), (-1, -1, 22)), dtype=np.int32)
+        }))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2501,7 +2502,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
     with self.assertRaisesRegexp(ValueError, 'Invalid input, not integer'):
-      column._get_sparse_tensors(fc._LazyBuilder({'aaa': inputs}))
+      column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
 
   def test_parse_example(self):
     a = fc.categorical_column_with_identity(key='aaa', num_buckets=30)
@@ -2530,8 +2531,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(0, 1, 0),
         dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2548,7 +2548,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(0, 1, 0),
         dense_shape=(2, 2))
-    id_tensor = fc._transform_features({'aaa': inputs}, [column])[column]
+    id_tensor = _transform_features({'aaa': inputs}, [column])[column]
     with _initialized_session():
       _assert_sparse_tensor_value(
           self,
@@ -2565,7 +2565,9 @@ class IdentityCategoricalColumnTest(test.TestCase):
         values=(0, 1, 0),
         dense_shape=(2, 2))
     column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}), weight_collections=('my_weights',))
+        _LazyBuilder({
+            'aaa': inputs
+        }), weight_collections=('my_weights',))
 
     self.assertItemsEqual(
         [], ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
@@ -2573,9 +2575,10 @@ class IdentityCategoricalColumnTest(test.TestCase):
 
   def test_get_sparse_tensors_dense_input(self):
     column = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
-    id_weight_pair = column._get_sparse_tensors(fc._LazyBuilder({
-        'aaa': ((0, -1), (1, 0))
-    }))
+    id_weight_pair = column._get_sparse_tensors(
+        _LazyBuilder({
+            'aaa': ((0, -1), (1, 0))
+        }))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2592,8 +2595,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(1, -1, 0),
         dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       with self.assertRaisesRegexp(
@@ -2606,8 +2608,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(1, 99, 0),
         dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       with self.assertRaisesRegexp(
@@ -2621,8 +2622,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(1, -1, 99),
         dense_shape=(2, 2))
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2643,8 +2643,7 @@ class IdentityCategoricalColumnTest(test.TestCase):
         indices=input_indices,
         values=input_values,
         dense_shape=input_shape)
-    id_weight_pair = column._get_sparse_tensors(
-        fc._LazyBuilder({'aaa': inputs}))
+    id_weight_pair = column._get_sparse_tensors(_LazyBuilder({'aaa': inputs}))
     self.assertIsNone(id_weight_pair.weight_tensor)
     with _initialized_session():
       _assert_sparse_tensor_value(
@@ -2698,8 +2697,8 @@ class TransformFeaturesTest(test.TestCase):
                   indices=[[0, 0], [1, 0], [1, 1]],
                   dense_shape=[2, 2])
       }
-      transformed = fc._transform_features(features,
-                                           [bucketized_price, hashed_sparse])
+      transformed = _transform_features(features,
+                                        [bucketized_price, hashed_sparse])
       with _initialized_session():
         self.assertIn(bucketized_price.name, transformed[bucketized_price].name)
         self.assertAllEqual([[0], [3]], transformed[bucketized_price].eval())
@@ -2709,7 +2708,7 @@ class TransformFeaturesTest(test.TestCase):
   def test_column_order(self):
     """When the column is both dense and sparse, uses sparse tensors."""
 
-    class _LoggerColumn(fc._FeatureColumn):
+    class _LoggerColumn(_FeatureColumn):
 
       def __init__(self, name):
         self._name = name
@@ -2732,12 +2731,12 @@ class TransformFeaturesTest(test.TestCase):
       column1 = _LoggerColumn('1')
       column2 = _LoggerColumn('2')
       call_logger = {'count': 0}
-      fc._transform_features({}, [column1, column2])
+      _transform_features({}, [column1, column2])
       self.assertEqual(0, column1.call_order)
       self.assertEqual(1, column2.call_order)
 
       call_logger = {'count': 0}
-      fc._transform_features({}, [column2, column1])
+      _transform_features({}, [column2, column1])
       self.assertEqual(0, column1.call_order)
       self.assertEqual(1, column2.call_order)
 
@@ -2757,7 +2756,7 @@ class IndicatorColumnTest(test.TestCase):
 
   def test_1D_shape_fails(self):
     with self.assertRaisesRegexp(ValueError, 'must have rank 2'):
-      fc._LazyBuilder({
+      _LazyBuilder({
           'animal':
               sparse_tensor.SparseTensor(
                   indices=[0], values=['fox'], dense_shape=[1])
@@ -2767,7 +2766,7 @@ class IndicatorColumnTest(test.TestCase):
     # TODO(ispir/cassandrax): Swith to categorical_column_with_keys when ready.
     animal = fc.indicator_column(
         fc.categorical_column_with_hash_bucket('animal', 4))
-    builder = fc._LazyBuilder({
+    builder = _LazyBuilder({
         'animal':
             sparse_tensor.SparseTensor(
                 indices=[[0, 0], [1, 0]],
@@ -2782,7 +2781,7 @@ class IndicatorColumnTest(test.TestCase):
     animal = fc.indicator_column(
         fc.categorical_column_with_identity('animal', num_buckets=4))
 
-    builder = fc._LazyBuilder({
+    builder = _LazyBuilder({
         'animal':
             sparse_tensor.SparseTensor(
                 indices=[[0, 0], [0, 1]], values=[1, 1], dense_shape=[1, 2])
@@ -2794,7 +2793,7 @@ class IndicatorColumnTest(test.TestCase):
   def test_multi_hot2(self):
     animal = fc.indicator_column(
         fc.categorical_column_with_identity('animal', num_buckets=4))
-    builder = fc._LazyBuilder({
+    builder = _LazyBuilder({
         'animal':
             sparse_tensor.SparseTensor(
                 indices=[[0, 0], [0, 1]], values=[1, 2], dense_shape=[1, 2])
@@ -2844,8 +2843,7 @@ class IndicatorColumnTest(test.TestCase):
             values=('marlo', 'skywalker', 'omar'),
             dense_shape=(2, 2))
     }
-    indicator_tensor = fc._transform_features(
-        features, [a_indicator])[a_indicator]
+    indicator_tensor = _transform_features(features, [a_indicator])[a_indicator]
     with _initialized_session():
       self.assertAllEqual([[0, 0, 1], [1, 0, 0]], indicator_tensor.eval())
 
@@ -2997,7 +2995,7 @@ class EmbeddingColumnTest(test.TestCase):
             values=(0, 1, 0),
             dense_shape=(2, 2))
     }
-    outputs = fc._transform_features(features, [a, a_embedded])
+    outputs = _transform_features(features, [a, a_embedded])
     output_a = outputs[a]
     output_embedded = outputs[a_embedded]
     with _initialized_session():
@@ -3049,9 +3047,10 @@ class EmbeddingColumnTest(test.TestCase):
         initializer=_initializer)
 
     # Provide sparse input and get dense result.
-    embedding_lookup = embedding_column._get_dense_tensor(fc._LazyBuilder({
-        'aaa': sparse_input
-    }))
+    embedding_lookup = embedding_column._get_dense_tensor(
+        _LazyBuilder({
+            'aaa': sparse_input
+        }))
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
@@ -3108,9 +3107,10 @@ class EmbeddingColumnTest(test.TestCase):
         initializer=_initializer)
 
     # Provide sparse input and get dense result.
-    embedding_lookup = embedding_column._get_dense_tensor(fc._LazyBuilder({
-        'aaa': sparse_input
-    }))
+    embedding_lookup = embedding_column._get_dense_tensor(
+        _LazyBuilder({
+            'aaa': sparse_input
+        }))
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
@@ -3136,9 +3136,10 @@ class EmbeddingColumnTest(test.TestCase):
     embedding_column = fc.embedding_column(categorical_column, dimension=2)
 
     # Provide sparse input and get dense result.
-    embedding_column._get_dense_tensor(fc._LazyBuilder({
-        'aaa': sparse_input
-    }), weight_collections=('my_vars',))
+    embedding_column._get_dense_tensor(
+        _LazyBuilder({
+            'aaa': sparse_input
+        }), weight_collections=('my_vars',))
 
     # Assert expected embedding variable and lookups.
     self.assertItemsEqual(
@@ -3195,12 +3196,14 @@ class EmbeddingColumnTest(test.TestCase):
     input_indices = array_ops.placeholder(dtype=dtypes.int64)
     input_values = array_ops.placeholder(dtype=dtypes.int64)
     input_shape = array_ops.placeholder(dtype=dtypes.int64)
-    embedding_lookup = embedding_column._get_dense_tensor(fc._LazyBuilder({
-        'aaa': sparse_tensor.SparseTensorValue(
-            indices=input_indices,
-            values=input_values,
-            dense_shape=input_shape)
-    }))
+    embedding_lookup = embedding_column._get_dense_tensor(
+        _LazyBuilder({
+            'aaa':
+                sparse_tensor.SparseTensorValue(
+                    indices=input_indices,
+                    values=input_values,
+                    dense_shape=input_shape)
+        }))
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
@@ -3259,9 +3262,10 @@ class EmbeddingColumnTest(test.TestCase):
         tensor_name_in_ckpt=ckpt_tensor)
 
     # Provide sparse input and get dense result.
-    embedding_lookup = embedding_column._get_dense_tensor(fc._LazyBuilder({
-        'aaa': sparse_input
-    }))
+    embedding_lookup = embedding_column._get_dense_tensor(
+        _LazyBuilder({
+            'aaa': sparse_input
+        }))
 
     # Assert expected embedding variable and lookups.
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
@@ -3519,7 +3523,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
         values=('omar', 'stringer', 'marlo'),
         dense_shape=(2, 2))
     with self.assertRaisesRegexp(ValueError, 'Bad dtype'):
-      fc._transform_features({'ids': strings, 'values': strings}, (column,))
+      _transform_features({'ids': strings, 'values': strings}, (column,))
 
   def test_column_name_collision(self):
     with self.assertRaisesRegexp(ValueError, r'Parse config.*already exists'):
@@ -3539,7 +3543,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
         dense_shape=(2, 2))
     with self.assertRaisesRegexp(
         ValueError, 'values is not in features dictionary'):
-      fc._transform_features({'ids': inputs}, (column,))
+      _transform_features({'ids': inputs}, (column,))
 
   def test_parse_example(self):
     a = fc.categorical_column_with_vocabulary_list(
@@ -3588,7 +3592,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(0.5, 1.0, 0.1),
         dense_shape=(2, 2))
-    id_tensor, weight_tensor = fc._transform_features({
+    id_tensor, weight_tensor = _transform_features({
         'ids': inputs,
         'values': weights,
     }, (column,))[column]
@@ -3617,7 +3621,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(0.5, 1.0, 0.1),
         dense_shape=(2, 2))
-    id_tensor, weight_tensor = fc._transform_features({
+    id_tensor, weight_tensor = _transform_features({
         'ids': ((0, -1), (1, 0)),
         'values': weights,
     }, (column,))[column]
@@ -3646,7 +3650,7 @@ class WeightedCategoricalColumnTest(test.TestCase):
         indices=((0, 0), (1, 0), (1, 1)),
         values=(2, 1, 0),
         dense_shape=(2, 2))
-    id_tensor, weight_tensor = fc._transform_features({
+    id_tensor, weight_tensor = _transform_features({
         'ids': inputs,
         'values': ((.5, 0.), (1., .1)),
     }, (column,))[column]
