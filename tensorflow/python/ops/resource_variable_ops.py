@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import variables
 # go/tf-wildcard-import
@@ -434,6 +435,31 @@ class ResourceVariable(object):
             self.handle,
             ops.convert_to_tensor(value, dtype=self.dtype), name=name)]):
       return self.read_value()
+
+  def _strided_slice_assign(self,
+                            begin,
+                            end,
+                            strides,
+                            value,
+                            name,
+                            begin_mask,
+                            end_mask,
+                            ellipsis_mask,
+                            new_axis_mask,
+                            shrink_axis_mask):
+    with ops.control_dependencies([gen_array_ops.resource_strided_slice_assign(
+        ref=self.handle,
+        begin=begin,
+        end=end,
+        strides=strides,
+        value=value,
+        name=name,
+        begin_mask=begin_mask,
+        end_mask=end_mask,
+        ellipsis_mask=ellipsis_mask,
+        new_axis_mask=new_axis_mask,
+        shrink_axis_mask=shrink_axis_mask)]):
+      return self.value()
 
 
 # pylint: disable=unused-argument,protected-access

@@ -96,14 +96,14 @@ class ParallelCpuExecutable : public Executable {
   // Calls the generated functions in 'function_names_', performing the
   // computation with the given arguments using the supplied buffers.
   Status ExecuteComputeFunctions(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           buffers,
       HloExecutionProfile* hlo_execution_profile);
   Status ExecuteComputeFunctions(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           buffers,

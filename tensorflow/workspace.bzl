@@ -498,11 +498,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/13790c8735a78a029dec92d80f5633418d9ffdd6.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/13790c8735a78a029dec92d80f5633418d9ffdd6.tar.gz",
+          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/c978c0ff91f7c4ea58cfbd8f378e51c6af2c2b4b.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/c978c0ff91f7c4ea58cfbd8f378e51c6af2c2b4b.tar.gz",
       ],
-      sha256 = "da4fc7147f1e2706977822934d1b245dcb6248930f8089129362ada14f6119dd",
-      strip_prefix = "llvm-13790c8735a78a029dec92d80f5633418d9ffdd6",
+      sha256 = "42c57d798a037d9dea692ce1da8ff4d24966ab5a40494015b374341e43411a37",
+      strip_prefix = "llvm-c978c0ff91f7c4ea58cfbd8f378e51c6af2c2b4b",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
   )
@@ -811,7 +811,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   filegroup_external(
       name = "io_github_cpettitt_graphlib",
-      # no @license header
       licenses = ["notice"],  # MIT
       sha256_urls = {
           "772045d412b1513b549be991c2e1846c38019429d43974efcae943fbe83489bf": [
@@ -2675,5 +2674,5 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "https://github.com/PolymerElements/test-fixture/archive/v2.0.1.tar.gz",
       ],
       path = "/test-fixture",
-      suppress = ["strictDependencies"],
+      exclude = ["test/**"],
   )

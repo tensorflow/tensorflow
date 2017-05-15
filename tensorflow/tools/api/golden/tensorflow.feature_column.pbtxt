@@ -1,0 +1,55 @@
+path: "tensorflow.feature_column"
+tf_module {
+  member_method {
+    name: "bucketized_column"
+    argspec: "args=[\'source_column\', \'boundaries\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "categorical_column_with_hash_bucket"
+    argspec: "args=[\'key\', \'hash_bucket_size\', \'dtype\'], varargs=None, keywords=None, defaults=[\"<dtype: \'string\'>\"], "
+  }
+  member_method {
+    name: "categorical_column_with_identity"
+    argspec: "args=[\'key\', \'num_buckets\', \'default_value\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "categorical_column_with_vocabulary_file"
+    argspec: "args=[\'key\', \'vocabulary_file\', \'vocabulary_size\', \'num_oov_buckets\', \'default_value\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \"<dtype: \'string\'>\"], "
+  }
+  member_method {
+    name: "categorical_column_with_vocabulary_list"
+    argspec: "args=[\'key\', \'vocabulary_list\', \'dtype\', \'default_value\'], varargs=None, keywords=None, defaults=[\'None\', \'-1\'], "
+  }
+  member_method {
+    name: "crossed_column"
+    argspec: "args=[\'keys\', \'hash_bucket_size\', \'hash_key\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "embedding_column"
+    argspec: "args=[\'categorical_column\', \'dimension\', \'combiner\', \'initializer\', \'ckpt_to_load_from\', \'tensor_name_in_ckpt\', \'max_norm\', \'trainable\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'None\', \'None\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "indicator_column"
+    argspec: "args=[\'categorical_column\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "input_layer"
+    argspec: "args=[\'features\', \'feature_columns\', \'weight_collections\', \'trainable\'], varargs=None, keywords=None, defaults=[\'None\', \'True\'], "
+  }
+  member_method {
+    name: "linear_model"
+    argspec: "args=[\'features\', \'feature_columns\', \'units\', \'sparse_combiner\', \'weight_collections\', \'trainable\'], varargs=None, keywords=None, defaults=[\'1\', \'sum\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "make_parse_example_spec"
+    argspec: "args=[\'feature_columns\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "numeric_column"
+    argspec: "args=[\'key\', \'shape\', \'default_value\', \'dtype\', \'normalizer_fn\'], varargs=None, keywords=None, defaults=[\'(1,)\', \'None\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "weighted_categorical_column"
+    argspec: "args=[\'categorical_column\', \'weight_feature_key\', \'dtype\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\"], "
+  }
+}
