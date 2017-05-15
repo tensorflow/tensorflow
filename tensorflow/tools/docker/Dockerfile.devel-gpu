@@ -66,8 +66,6 @@ RUN echo "startup --batch" >>/etc/bazel.bazelrc
 #   https://github.com/bazelbuild/bazel/issues/418
 RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/etc/bazel.bazelrc
-RUN echo "import %workspace%/.tf_configure.bazelrc" >> /etc/bazel.bazelrc
-
 # Install the most recent bazel release.
 ENV BAZEL_VERSION 0.4.5
 WORKDIR /
