@@ -59,19 +59,19 @@ struct MapTraits {};
 template <typename Data>
 struct MapTraits<true, Data>
 {
-  typedef Tensor key_type;
-  typedef Data data_type;
-  typedef std::map<key_type, Data, KeyTensorLess> map_type;
+  typedef Tensor KeyType;
+  typedef Data DataType;
+  typedef std::map<KeyType, Data, KeyTensorLess> MapType;
 };
 
 // Partially specialise for unordered
 template <typename Data>
 struct MapTraits<false, Data>
 {
-  typedef Tensor key_type;
-  typedef Data data_type;
-  typedef std::unordered_map<key_type, Data,
-                            KeyTensorHash, KeyTensorEqual> map_type;
+  typedef Tensor KeyType;
+  typedef Data DataType;
+  typedef std::unordered_map<KeyType, Data,
+                            KeyTensorHash, KeyTensorEqual> MapType;
 };
 
 // Wrapper around map/unordered_map
@@ -84,12 +84,12 @@ public:
   typedef gtl::optional<Tensor> OptionalTensor;
   typedef std::vector<OptionalTensor> IncompleteTuple;
 
-  typedef MapTraits<Ordered, Tuple> map_traits;
-  typedef typename map_traits::map_type map_type;
-  typedef typename map_traits::key_type key_type;
+  typedef MapTraits<Ordered, Tuple> MapTraits_;
+  typedef typename MapTraits_::MapType MapType;
+  typedef typename MapTraits_::KeyType KeyType;
 
-  typedef MapTraits<false, IncompleteTuple> incomplete_traits;
-  typedef typename incomplete_traits::map_type incomplete_type;
+  typedef MapTraits<false, IncompleteTuple> IncompleteTraits;
+  typedef typename IncompleteTraits::MapType IncompleteType;
 
 private:
   // Private variables
@@ -100,8 +100,8 @@ private:
   mutex mu_;
   condition_variable not_empty_;
   condition_variable full_;
-  incomplete_type incomplete_ GUARDED_BY(mu_);
-  map_type map_ GUARDED_BY(mu_);
+  IncompleteType incomplete_ GUARDED_BY(mu_);
+  MapType map_ GUARDED_BY(mu_);
 
 private:
   // private methods
@@ -152,7 +152,7 @@ public:
       memory_limit_(memory_limit),
       current_bytes_(0) {}
 
-  Status put(key_type* key, Tuple* tuple)
+  Status put(KeyType* key, Tuple* tuple)
   {
     mutex_lock l(mu_);
 
@@ -190,11 +190,11 @@ public:
     return Status::OK();
   }
 
-  Status get(const key_type* key, Tuple* tuple)
+  Status get(const KeyType* key, Tuple* tuple)
   {
     mutex_lock l(mu_);
 
-    typename map_type::const_iterator it;
+    typename MapType::const_iterator it;
 
     // Wait until the element with the requested key is present
     not_empty_.wait(l, [&, this]() {
@@ -212,11 +212,11 @@ public:
     return Status::OK();
   }
 
-  Status pop(const key_type* key, Tuple* tuple)
+  Status pop(const KeyType* key, Tuple* tuple)
   {
     mutex_lock l(mu_);
 
-    typename map_type::iterator it;
+    typename MapType::iterator it;
 
     // Wait until the element with the requested key is present
     not_empty_.wait(l, [&, this]() {
@@ -238,7 +238,7 @@ public:
     return Status::OK();
   }
 
-  Status popitem(key_type* key, Tuple* tuple)
+  Status popitem(KeyType* key, Tuple* tuple)
   {
     mutex_lock l(mu_);
 
@@ -472,7 +472,7 @@ class MapUnstageNoKeyOp : public OpKernel
     core::ScopedUnref scope(map);
 
     // Pop a random (key, value) off the map
-    typename StagingMap<Ordered>::key_type key;
+    typename StagingMap<Ordered>::KeyType key;
     typename StagingMap<Ordered>::Tuple tuple;
 
     OP_REQUIRES_OK(ctx, map->popitem(&key, &tuple));
