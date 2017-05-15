@@ -1031,6 +1031,7 @@ py_test(
 py_test(
     name = "export_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["python/learn/utils/export_test.py"],
     srcs_version = "PY2AND3",
     tags = [
