@@ -59,6 +59,8 @@ SingleMachine::~SingleMachine() {
   // Reset the thread-pool so that there are no outstanding Session::Run(...)s
   // when we delete the session.
   thread_pool_.reset();
+
+  Reset(options_, {}).IgnoreError();
 }
 
 Status SingleMachine::Provision() {

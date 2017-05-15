@@ -2485,6 +2485,32 @@ shape must be exactly the shape produced by the slice of `ref`.
 // broadcasting.
 // --------------------------------------------------------------------------
 
+REGISTER_OP("ResourceStridedSliceAssign")
+    .Input("ref: resource")
+    .Input("begin: Index")
+    .Input("end: Index")
+    .Input("strides: Index")
+    .Input("value: T")
+    .Attr("T: type")
+    .Attr("Index: {int32, int64}")
+    .Attr("begin_mask: int = 0")
+    .Attr("end_mask: int = 0")
+    .Attr("ellipsis_mask: int = 0")
+    .Attr("new_axis_mask: int = 0")
+    .Attr("shrink_axis_mask: int = 0")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Assign `value` to the sliced l-value reference of `ref`.
+
+The values of `value` are assigned to the positions in the variable
+`ref` that are selected by the slice parameters. The slice parameters
+`begin, `end`, `strides`, etc. work exactly as in `StridedSlice`.
+
+NOTE this op currently does not support broadcasting and so `value`'s
+shape must be exactly the shape produced by the slice of `ref`.
+
+)doc");
+
 REGISTER_OP("Tile")
     .Input("input: T")
     .Input("multiples: Tmultiples")

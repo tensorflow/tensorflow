@@ -28,6 +28,9 @@ namespace grappler {
 
 // Compute the earliest time as which the execution of each node in the graph
 // can complete.
+// In our estimation, we ensure that each node takes at least one nanosecond to
+// execute: therefore the execution times can be used to derive a topological
+// ordering of the graph (at least as long as there is no loop in the graph).
 Status EstimateEarliestExecutionTimes(
     const GrapplerItem& item, const Cluster* cluster,
     std::unordered_map<const NodeDef*, Costs::NanoSeconds>* execution_times);

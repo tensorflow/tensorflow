@@ -673,8 +673,7 @@ def strided_slice(input_,
     if name is None:
       name = parent_name + "_assign"
 
-    return gen_array_ops.strided_slice_assign(
-        ref=var,
+    return var._strided_slice_assign(
         begin=begin,
         end=end,
         strides=strides,

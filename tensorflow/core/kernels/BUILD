@@ -108,6 +108,7 @@ tf_kernel_library(
     deps = [
         ":bounds_check",
         ":ops_util",
+        ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
@@ -1624,9 +1625,7 @@ cc_library(
         ":attention_ops",
         ":colorspace_op",
         ":crop_and_resize_op",
-        ":decode_gif_op",
-        ":decode_jpeg_op",
-        ":decode_png_op",
+        ":decode_image_op",
         ":draw_bounding_box_op",
         ":encode_jpeg_op",
         ":encode_png_op",
@@ -1691,20 +1690,8 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "decode_jpeg_op",
-    prefix = "decode_jpeg_op",
-    deps = IMAGE_DEPS,
-)
-
-tf_kernel_library(
-    name = "decode_png_op",
-    prefix = "decode_png_op",
-    deps = IMAGE_DEPS,
-)
-
-tf_kernel_library(
-    name = "decode_gif_op",
-    prefix = "decode_gif_op",
+    name = "decode_image_op",
+    prefix = "decode_image_op",
     deps = IMAGE_DEPS,
 )
 
@@ -4305,11 +4292,9 @@ filegroup(
             "sparse_cross_op.*",
             "text_line_reader_op.*",
             "summary_image_op.*",
+            "decode_image_op.*",
             "encode_png_op.*",
-            "decode_png_op.*",
             "encode_jpeg_op.*",
-            "decode_jpeg_op.*",
-            "decode_gif_op.*",
             "identity_reader_op.*",
             "remote_fused_graph_execute_op.*",
             "fixed_length_record_reader_op.*",

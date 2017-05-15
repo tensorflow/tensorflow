@@ -144,8 +144,6 @@ class AlphaNum {
   TF_DISALLOW_COPY_AND_ASSIGN(AlphaNum);
 };
 
-extern AlphaNum gEmptyAlphaNum;
-
 // ----------------------------------------------------------------------
 // StrCat()
 //    This merges the given strings or numbers, with no delimiter.  This

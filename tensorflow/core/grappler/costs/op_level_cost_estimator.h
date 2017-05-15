@@ -132,7 +132,7 @@ class OpLevelCostEstimator {
       const TensorShapeProto& original_filter_shape, const OpInfo& op_features,
       bool* found_unknown_shapes);
 
- private:
+ protected:
   typedef std::function<Costs(const OpInfo& op_feature)> CostImpl;
   std::map<string, CostImpl> device_cost_impl_;
 };
