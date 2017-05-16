@@ -167,8 +167,7 @@ class SYCLDevice : public LocalDevice {
       : LocalDevice(
             options,
             Device::BuildDeviceAttributes(name, DEVICE_SYCL, memory_limit,
-                                          locality, physical_device_desc),
-            sycl_allocator),
+                                          locality, physical_device_desc)),
         cpu_allocator_(cpu_allocator),
         sycl_allocator_(sycl_allocator),
         device_context_(ctx) {
