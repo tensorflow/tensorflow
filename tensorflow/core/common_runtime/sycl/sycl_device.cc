@@ -70,6 +70,14 @@ Status SYCLDevice::MakeTensorFromProto(const TensorProto &tensor_proto,
     *tensor = parsed;
   } else {
     Tensor copy(GetAllocator(alloc_attrs), parsed.dtype(), parsed.shape());
+
+    // If the tensor is not initialized, we likely ran out of memory.
+    if (!copy.IsInitialized()) {
+      return errors::ResourceExhausted(
+          "OOM when allocating tensor of shape ", parsed.shape().DebugString(),
+          " and type ", DataTypeString(parsed.dtype()));
+    }
+
     device_context_->CopyCPUTensorToDevice(
         &parsed, this, &copy, [&status](const Status &s) { status = s; });
     *tensor = copy;
