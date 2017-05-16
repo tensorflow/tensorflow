@@ -155,7 +155,7 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     'node-toggle-expand': '_handleNodeToggleExpand',
   },
   observers: [
-    '_maybeFetchHealthPillsAtSpecificStep(allStepsModeEnabled, specificHealthPillStep)',
+    '_maybeFetchHealthPills(allStepsModeEnabled, specificHealthPillStep)',
     '_maybeInitializeDashboard(backend, _isAttached)',
   ],
   attached: function() {
@@ -165,19 +165,16 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     this.set('_isAttached', false);
   },
   reload: function() {
-    if (!this.debuggerDataEnabled ||
-        !this.healthPillsToggledOn ||
-        !this._renderHierarchy ||
-        this._datasetsEmpty(this._datasets)) {
-      // Do not load debugger data if the feature is disabled, if the user toggled off the feature,
-      // or if the graph itself has not loaded yet. We need the graph to load so that we know which
-      // nodes to request health pills for.
-      return;
-    }
-
-    // Request debugger data on graph reloads, but do not re-request the graph itself. The graph
-    // would not change across reloads.
-    this._requestHealthPills();
+    this._maybeFetchHealthPills();
+  },
+  _shouldRequestHealthPills: function() {
+    // Do not load debugger data if the feature is disabled, if the user toggled off the feature,
+    // or if the graph itself has not loaded yet. We need the graph to load so that we know which
+    // nodes to request health pills for.
+    return this.debuggerDataEnabled &&
+        this.healthPillsToggledOn &&
+        this._renderHierarchy &&
+        !this._datasetsEmpty(this._datasets);
   },
   _maybeInitializeDashboard: function(backend, isAttached) {
     if (this._initialized || !backend || !isAttached) {
@@ -279,7 +276,7 @@ TF.Dashboard.TfGraphDashboard = Polymer({
   },
   _handleNodeToggleExpand: function() {
     // Nodes were toggled. We may need to request health pills for more nodes.
-    this._requestHealthPills();
+    this._maybeFetchHealthPills();
   },
   _healthPillsToggledOnChanged: function(healthPillsToggledOn) {
     if (healthPillsToggledOn) {
@@ -291,9 +288,8 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     }
   },
   // Fetch health pills for a specific step if applicable.
-  _maybeFetchHealthPillsAtSpecificStep: function(allStepsModeEnabled, specificHealthPillStep) {
-    if (!this._renderHierarchy) {
-      // The graph is not ready yet.
+  _maybeFetchHealthPills: function() {
+    if (!this._shouldRequestHealthPills()) {
       return;
     }
 
