@@ -115,61 +115,40 @@ class FFTCPU : public FFTBase {
 
   void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
              Tensor* out) override {
+    // Create the axes (which are always trailing).
+    auto axes = Eigen::ArrayXi::LinSpaced(FFTRank, 1, FFTRank);
+    auto device = ctx->eigen_device<CPUDevice>();
+
     if (!IsReal()) {
       auto input = ((Tensor) in).flat_inner_dims<complex64, FFTRank + 1>();
-
-      // Apply the functor.
-      FFTFunctor<CPUDevice, complex64, complex64, Eigen::BothParts,
-                Forward ? Eigen::FFT_FORWARD : Eigen::FFT_REVERSE,
-                FFTRank> functor;
-      functor(ctx->eigen_device<CPUDevice>(),
-              out->flat_inner_dims<complex64, FFTRank + 1>(), input);
+      // Compute the FFT using eigen.
+      auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
+      output.device(device) = input.template fft<Eigen::BothParts,
+        Forward ? Eigen::FFT_FORWARD : Eigen::FFT_REVERSE>(axes);
     }
     else {
       if (IsForward()) {
         auto input = ((Tensor) in).flat_inner_dims<float, FFTRank + 1>();
-        // Create a temporary placeholder for the full FFT.
+        auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
+        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> startIndices;
+
+        // Compute the full FFT using a temporary tensor.
         Tensor temp;
         OP_REQUIRES_OK(ctx,ctx->allocate_temp(
           DataTypeToEnum<complex64>::v(), in.shape(), &temp
         ));
         auto full_fft = temp.flat_inner_dims<complex64, FFTRank + 1>();
-        // Apply the functor.
-        FFTFunctor<CPUDevice, float, complex64, Eigen::BothParts,
-                  Eigen::FFT_FORWARD, FFTRank> functor;
-        functor(ctx->eigen_device<CPUDevice>(), full_fft, input);
-        // Create zero indices for slicing.
-        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> startIndices;
-        // Convert output to tensor and get tensor size for slicing.
-        auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
-        auto sizes = output.dimensions();
-        // Slice the full FFT to get the non-negative frequency components only.
-        output.slice(startIndices, sizes) =
-          full_fft.slice(startIndices, sizes);
+        full_fft.device(device) = input.template fft<Eigen::BothParts,
+          Eigen::FFT_FORWARD>(axes);
+
+        // Slice away the negative frequency components
+        output.device(device) = full_fft.slice(startIndices, output.dimensions());
       }
       else {
-        auto input = ((Tensor) in).flat_inner_dims<complex64, FFTRank + 1>();
-        // The first dimension contains the zero-frequency component which we
-        // do not want to duplicate. So we reconstruct the complex signal by
-        // (1) slicing from the second element, (2) reversing the order,
-        // (3) taking the complex conjugate, (4) concatenating with the original
-        // input. Note that for an even input length, the last element is the
-        // Nyquist frequency which we also do not want to duplicate.
-        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> startIndices;
-        startIndices[FFTRank] = 1;
-        auto sizes = input.dimensions();
-        if (sizes[FFTRank] % 2 == 0) {
-          sizes[FFTRank] -= 1;
-        }
-        auto cc = input.slice(startIndices, sizes).conjugate()
-          .reverse(FFTRank);
-        auto full_fft = input.concatenate(cc, FFTRank);
-
-        // Evaluate the IFFT
-        auto output = out->flat_inner_dims<float, FFTRank + 1>();
-        FFTFunctor<CPUDevice, complex64, float, Eigen::RealPart,
-                  Eigen::FFT_REVERSE, FFTRank> functor;
-        functor(ctx->eigen_device<CPUDevice>(), output, full_fft);
+        // TODO: reconstruct the full fft and take the inverse
+        ctx->CtxFailureWithWarning(errors::Unimplemented(
+          "IRFFT is not implemented as a CPU kernel"
+        ));
       }
     }
   }
@@ -188,16 +167,10 @@ REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_CPU),
                         FFTCPU<false, false, 3>);
 
 REGISTER_KERNEL_BUILDER(Name("RFFT").Device(DEVICE_CPU), FFTCPU<true, true, 1>);
-REGISTER_KERNEL_BUILDER(Name("IRFFT").Device(DEVICE_CPU),
-                        FFTCPU<false, false, 1>);
 REGISTER_KERNEL_BUILDER(Name("RFFT2D").Device(DEVICE_CPU),
                         FFTCPU<true, true, 2>);
-REGISTER_KERNEL_BUILDER(Name("IRFFT2D").Device(DEVICE_CPU),
-                        FFTCPU<false, false, 2>);
 REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU),
                         FFTCPU<true, true, 3>);
-REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU),
-                        FFTCPU<false, false, 3>);
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"

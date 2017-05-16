@@ -47,7 +47,6 @@ class BaseFFTOpsTest(test.TestCase):
     else:
       x_tf = self._tfFFT(x, rank, fft_length, use_gpu=True)
 
-    # GPU/Forward
     self.assertAllClose(x_np, x_tf, rtol=1e-4, atol=1e-4)
 
   def _CompareBackward(self, x, rank, fft_length=None, use_placeholder=False):
@@ -59,7 +58,6 @@ class BaseFFTOpsTest(test.TestCase):
     else:
       x_tf = self._tfIFFT(x, rank, fft_length, use_gpu=True)
 
-    # GPU/Backward
     self.assertAllClose(x_np, x_tf, rtol=1e-4, atol=1e-4)
 
   def _checkGradComplex(self, func, x, y, result_is_complex=True,
@@ -213,6 +211,11 @@ class FFTOpsTest(BaseFFTOpsTest):
 
 class RFFTOpsTest(BaseFFTOpsTest):
 
+  def _CompareBackward(self, x, rank, fft_length=None, use_placeholder=False):
+    if test.is_gpu_available(cuda_only=True):
+      super(RFFTOpsTest, self)._CompareBackward(x, rank, fft_length,
+                                                use_placeholder)
+
   def _tfFFT(self, x, rank, fft_length=None, use_gpu=False, feed_dict=None):
     with self.test_session(use_gpu=use_gpu):
       return self._tfFFTForRank(rank)(x, fft_length).eval(feed_dict=feed_dict)
@@ -262,12 +265,12 @@ class RFFTOpsTest(BaseFFTOpsTest):
       raise ValueError("invalid rank")
 
   def testEmpty(self):
-    if test.is_gpu_available(cuda_only=True):
-      for rank in VALID_FFT_RANKS:
-        for dims in xrange(rank, rank + 3):
-          x = np.zeros((0,) * dims).astype(np.float32)
-          self.assertEqual(x.shape, self._tfFFT(x, rank).shape)
-          x = np.zeros((0,) * dims).astype(np.complex64)
+    for rank in VALID_FFT_RANKS:
+      for dims in xrange(rank, rank + 3):
+        x = np.zeros((0,) * dims).astype(np.float32)
+        self.assertEqual(x.shape, self._tfFFT(x, rank).shape)
+        x = np.zeros((0,) * dims).astype(np.complex64)
+        if test.is_gpu_available(cuda_only=True):
           self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
 
   def testBasic(self):
@@ -321,36 +324,35 @@ class RFFTOpsTest(BaseFFTOpsTest):
           self._CompareBackward(gen_complex(complex_dims), rank, (size,) * rank)
 
   def testError(self):
-    if test.is_gpu_available(cuda_only=True):
-      for rank in VALID_FFT_RANKS:
-        for dims in xrange(0, rank):
-          x = np.zeros((1,) * dims).astype(np.complex64)
-          with self.assertRaisesWithPredicateMatch(
-              ValueError, "Shape must be .*rank {}.*".format(rank)):
-            self._tfFFT(x, rank)
-          with self.assertRaisesWithPredicateMatch(
-              ValueError, "Shape must be .*rank {}.*".format(rank)):
-            self._tfIFFT(x, rank)
-        for dims in xrange(rank, rank + 2):
-          x = np.zeros((1,) * rank)
+    for rank in VALID_FFT_RANKS:
+      for dims in xrange(0, rank):
+        x = np.zeros((1,) * dims).astype(np.complex64)
+        with self.assertRaisesWithPredicateMatch(
+            ValueError, "Shape must be .*rank {}.*".format(rank)):
+          self._tfFFT(x, rank)
+        with self.assertRaisesWithPredicateMatch(
+            ValueError, "Shape must be .*rank {}.*".format(rank)):
+          self._tfIFFT(x, rank)
+      for dims in xrange(rank, rank + 2):
+        x = np.zeros((1,) * rank)
 
-          # Test non-rank-1 fft_length produces an error.
-          fft_length = np.zeros((1, 1)).astype(np.int32)
-          with self.assertRaisesWithPredicateMatch(ValueError,
-                                                   "Shape must be .*rank 1"):
-            self._tfFFT(x, rank, fft_length)
-          with self.assertRaisesWithPredicateMatch(ValueError,
-                                                   "Shape must be .*rank 1"):
-            self._tfIFFT(x, rank, fft_length)
+        # Test non-rank-1 fft_length produces an error.
+        fft_length = np.zeros((1, 1)).astype(np.int32)
+        with self.assertRaisesWithPredicateMatch(ValueError,
+                                                  "Shape must be .*rank 1"):
+          self._tfFFT(x, rank, fft_length)
+        with self.assertRaisesWithPredicateMatch(ValueError,
+                                                  "Shape must be .*rank 1"):
+          self._tfIFFT(x, rank, fft_length)
 
-          # Test wrong fft_length length.
-          fft_length = np.zeros((rank + 1,)).astype(np.int32)
-          with self.assertRaisesWithPredicateMatch(
-              ValueError, "Dimension must be .*but is {}.*".format(rank + 1)):
-            self._tfFFT(x, rank, fft_length)
-          with self.assertRaisesWithPredicateMatch(
-              ValueError, "Dimension must be .*but is {}.*".format(rank + 1)):
-            self._tfIFFT(x, rank, fft_length)
+        # Test wrong fft_length length.
+        fft_length = np.zeros((rank + 1,)).astype(np.int32)
+        with self.assertRaisesWithPredicateMatch(
+            ValueError, "Dimension must be .*but is {}.*".format(rank + 1)):
+          self._tfFFT(x, rank, fft_length)
+        with self.assertRaisesWithPredicateMatch(
+            ValueError, "Dimension must be .*but is {}.*".format(rank + 1)):
+          self._tfIFFT(x, rank, fft_length)
 
   def testGrad_Simple(self):
     if test.is_gpu_available(cuda_only=True):
