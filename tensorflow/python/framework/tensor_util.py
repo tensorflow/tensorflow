@@ -368,9 +368,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
       np_dt = dtype.as_numpy_dtype
     else:
       np_dt = None
-    # if shape is None, numpy.prod returns None when dtype is not set, but raise
+    # If shape is None, numpy.prod returns None when dtype is not set, but raises
     # exception when dtype is set to np.int64
-    if not(shape is None) and np.prod(shape, dtype=np.int64) == 0:
+    if shape is not None and np.prod(shape, dtype=np.int64) == 0:
       nparray = np.empty(shape, dtype=np_dt)
     else:
       _AssertCompatible(values, dtype)
