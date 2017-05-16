@@ -36,6 +36,13 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util import nest
 
 
+def _like_rnncell(cell):
+  """Checks that a given object is an RNNCell by using duck typing."""
+  conditions = [hasattr(cell, "output_size"), hasattr(cell, "state_size"),
+                hasattr(cell, "zero_state"), callable(cell)]
+  return all(conditions)
+
+
 def _concat(prefix, suffix, static=False):
   """Concat that enables int, Tensor, or TensorShape values.
 
