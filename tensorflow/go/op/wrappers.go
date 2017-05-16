@@ -6462,7 +6462,10 @@ func OnesLike(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// Returns element-wise remainder of division.
+// Returns element-wise remainder of division. This emulates C semantics in that
+//
+// the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+// y + truncate_mod(x, y) = x`.
 //
 // *NOTE*: `Mod` supports broadcasting. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -12926,12 +12929,12 @@ func IRFFT2D(scope *Scope, input tf.Output, fft_length tf.Output) (output tf.Out
 	return op.Output(0)
 }
 
-// Returns element-wise remainder of division. This emulates C semantics where
+// Returns element-wise remainder of division. This emulates C semantics in that
 //
-// true, this follows C semantics in that the result here is consistent
-// with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+// the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+// y + truncate_mod(x, y) = x`.
 //
-// *NOTE*: `Mod` supports broadcasting. More about broadcasting
+// *NOTE*: `TruncateMod` supports broadcasting. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 func TruncateMod(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
