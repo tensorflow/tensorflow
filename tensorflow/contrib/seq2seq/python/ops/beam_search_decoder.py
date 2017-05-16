@@ -503,7 +503,11 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
       lambda: scores[:, 0])
 
   # Pick the next beams according to the specified successors function
-  next_beam_size = min(beam_width, scores_flat.shape[-1].value)
+  next_beam_size = math_ops.minimum(
+      ops.convert_to_tensor(
+          beam_width, dtype=dtypes.int32, name="beam_width"),
+      ops.convert_to_tensor(
+          scores_flat.shape[-1], dtype=dtypes.int32, name="num_available"))
   next_beam_scores, word_indices = nn_ops.top_k(scores_flat, k=next_beam_size)
   next_beam_scores.set_shape([static_batch_size, beam_width])
   word_indices.set_shape([static_batch_size, beam_width])
