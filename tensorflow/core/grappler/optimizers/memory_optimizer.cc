@@ -20,8 +20,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/optimizers/graph_rewriter.h"
+#include "tensorflow/core/grappler/optimizers/static_schedule.h"
 #include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
@@ -101,26 +103,178 @@ std::pair<NodeDef*, NodeDef*> BuildSwapPair(NodeDef* node, int input_to_swap,
   return std::make_pair(swap_out_node, swap_in_node);
 }
 
+static int64 EstimateSize(const OpInfo::TensorProperties& t) {
+  DataType dtype = t.dtype();
+  int64 size = DataTypeSize(dtype);
+  TensorShapeProto shape = t.shape();
+  if (shape.unknown_rank()) {
+    // Can't infer the size if the rank is unknown. It has to be at least a
+    // scalar though.
+    return size;
+  }
+  // If one of the dimensions is unknown statically, assume it's at least one.
+  for (int i = 0; i < shape.dim_size(); ++i) {
+    if (shape.dim(i).size() < 0) {
+      shape.mutable_dim(i)->set_size(1);
+    }
+  }
+  int64 num_elems = TensorShape(shape).num_elements();
+  return num_elems * size;
+}
+
+struct SwapInfo {
+  std::vector<int> inputs_to_swap;
+  Costs::NanoSeconds time_to_swap = 0;
+};
+
+static const NodeDef* FindSwapTrigger(
+    const NodeDef* node, const SwapInfo& swap_info,
+    const std::unordered_map<string, const NodeDef*>& name_map,
+    const std::unordered_map<const NodeDef*, Costs::NanoSeconds>&
+        execution_times) {
+  // max_trigger_time stores the time before which the swap operation needs to
+  // be started in order to load the data back onto the accelerator without
+  // delaying the downstream computation.
+  Costs::NanoSeconds max_trigger_time(0);
+  std::set<string> possible_inputs;
+  for (int i = 0; i < node->input_size(); ++i) {
+    const string input_node_name = NodeName(node->input(i));
+    auto it1 = name_map.find(input_node_name);
+    if (it1 == name_map.end()) {
+      return nullptr;
+    }
+    const NodeDef* input_node = it1->second;
+
+    auto it2 = execution_times.find(input_node);
+    if (it2 == execution_times.end()) {
+      return nullptr;
+    }
+    max_trigger_time = std::max(max_trigger_time, it2->second);
+    possible_inputs.insert(input_node_name);
+  }
+
+  for (const int i : swap_info.inputs_to_swap) {
+    const string input_node_name = NodeName(node->input(i));
+    possible_inputs.erase(input_node_name);
+  }
+  if (possible_inputs.empty()) {
+    return nullptr;
+  }
+
+  max_trigger_time -= swap_info.time_to_swap;
+
+  std::map<Costs::NanoSeconds, const NodeDef*> candidates;
+  while (!possible_inputs.empty()) {
+    const string input_node_name = *possible_inputs.begin();
+    possible_inputs.erase(possible_inputs.begin());
+    auto it1 = name_map.find(input_node_name);
+    if (it1 == name_map.end()) {
+      return nullptr;
+    }
+    const NodeDef* input_node = it1->second;
+    // Don't jump over frames, since adding a control dependency from one frame
+    // to the next isn't supported. Don't go through branches, since we don't
+    // know whether they'll be executed or not.
+    if (input_node->op() == "NextIteration" || input_node->op() == "Switch" ||
+        input_node->op() == "Merge") {
+      continue;
+    }
+    auto it2 = execution_times.find(input_node);
+    if (it2 == execution_times.end()) {
+      return nullptr;
+    }
+    if (it2->second < max_trigger_time) {
+      candidates[it2->second] = input_node;
+    } else {
+      for (const string& fanin : input_node->input()) {
+        possible_inputs.insert(NodeName(fanin));
+      }
+    }
+  }
+
+  // Select the candidate that will execute last, since we want to swap the data
+  // back at the last minute while still allowing enough time for data to be
+  // swapped back timely to feed the downstream nodes.
+  if (!candidates.empty()) {
+    return candidates.rbegin()->second;
+  }
+  return nullptr;
+}
+
 Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
 
+  // Figure out what needs to be swapped;
+  std::unordered_map<NodeDef*, SwapInfo> nodes_to_swap;
   for (auto& node : *optimized_graph->mutable_node()) {
-    if (node.attr().count("swap_to_host") == 0) {
+    if (node.attr().count("_swap_to_host") != 0) {
+      SwapInfo& swap_info = nodes_to_swap[&node];
+      const AttrValue& val = node.attr().at("_swap_to_host");
+      if (val.has_list()) {
+        for (int64 input_id : val.list().i()) {
+          swap_info.inputs_to_swap.push_back(input_id);
+        }
+      } else {
+        int64 input_id = val.i();
+        swap_info.inputs_to_swap.push_back(input_id);
+      }
+    }
+  }
+  if (nodes_to_swap.empty()) {
+    // Nothing to do.
+    return Status::OK();
+  }
+
+  {
+    // Estimate the size of the data to swap for each node.
+    GraphProperties properties(item);
+    TF_RETURN_IF_ERROR(properties.InferStatically());
+    for (auto& swap : nodes_to_swap) {
+      const NodeDef* node = swap.first;
+      std::vector<OpInfo::TensorProperties> props =
+          properties.GetInputProperties(node->name());
+      SwapInfo& swap_info = swap.second;
+      int64 bytes_to_swap = 0;
+      for (int64 input_id : swap_info.inputs_to_swap) {
+        const OpInfo::TensorProperties& t = props[input_id];
+        bytes_to_swap += EstimateSize(t);
+      }
+      // Let's assume we're going to swap over PCIe running at 16 GBps.
+      swap_info.time_to_swap = bytes_to_swap / 16;
+    }
+  }
+
+  std::unordered_map<const NodeDef*, Costs::NanoSeconds> execution_times;
+  TF_RETURN_IF_ERROR(
+      EstimateEarliestExecutionTimes(item, cluster, &execution_times));
+
+  std::unordered_map<string, const NodeDef*> name_map;
+  for (const auto& node : item.graph.node()) {
+    name_map[node.name()] = &node;
+  }
+
+  for (auto& swap : nodes_to_swap) {
+    NodeDef* node = swap.first;
+    SwapInfo& swap_info = swap.second;
+
+    // Make sure the tensor isn't swapped back in right away: look for node that
+    // will execute just before we need to swap the data back, and add a control
+    // dependency from that node to the swap node.
+    const NodeDef* trigger =
+        FindSwapTrigger(node, swap_info, name_map, execution_times);
+    if (!trigger) {
       continue;
     }
-
     // Swap all the tensors that are marked with the 'swap_to_host' attribute.
-    for (int input_id : node.attr().at("swap_to_host").list().i()) {
+    for (int input_id : swap_info.inputs_to_swap) {
       std::pair<NodeDef*, NodeDef*> swap_nodes =
-          BuildSwapPair(&node, input_id, optimized_graph);
-      *swap_nodes.first->add_input() = node.input(input_id);
-      *node.mutable_input(input_id) = swap_nodes.second->name();
+          BuildSwapPair(node, input_id, optimized_graph);
+      *swap_nodes.first->add_input() = node->input(input_id);
+      *node->mutable_input(input_id) = swap_nodes.second->name();
 
-      // TODO(bsteiner): Make sure the tensor isn't swapped back in right away
-      // by adding a control dependency to delay the execution of the swap.
-      // string trigger;
-      //*swap_nodes.second->add_input() = strings::StrCat("^", trigger);
+      // Add the control dependency needed to delay the execution of the swap.
+      *swap_nodes.second->add_input() = strings::StrCat("^", trigger->name());
     }
   }
 

@@ -1019,6 +1019,27 @@ cc_library(
     alwayslink = 1,
 )
 
+# Android library for use with the SELECTIVE_REGISTRATION feature with
+# no proto_rtti.
+cc_library(
+    name = "android_tensorflow_lib_selective_registration_nortti",
+    srcs = if_android(["//tensorflow/core:android_srcs"]),
+    copts = tf_copts() + tf_opts_nortti_if_android() + [
+        "-Os",
+        "-DSUPPORT_SELECTIVE_REGISTRATION",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protos_cc",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
 filegroup(
     name = "android_op_registrations_and_gradients",
     srcs = glob(

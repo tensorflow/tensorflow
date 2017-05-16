@@ -67,7 +67,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
   ==> scalar Tensor
 
   x = ... Shape [2, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 5 linear operators.
@@ -83,7 +83,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
   # Create a shape [2, 3, 6, 2] vector.
   x = tf.random_normal(shape=[2, 3, 6, 2])
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 3, 4, 2] Tensor
   ```
 
@@ -117,8 +117,8 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
     r"""Initialize a `LinearOperatorComposition`.
 
     `LinearOperatorComposition` is initialized with a list of operators
-    `[op_1,...,op_J]`.  For the `apply` method to be well defined, the
-    composition `op_i.apply(op_{i+1}(x))` must be defined.  Other methods have
+    `[op_1,...,op_J]`.  For the `matmul` method to be well defined, the
+    composition `op_i.matmul(op_{i+1}(x))` must be defined.  Other methods have
     similar constraints.
 
     Args:
@@ -228,19 +228,19 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
     return array_ops.concat((batch_shape, matrix_shape), 0)
 
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
     # If self.operators = [A, B], and not adjoint, then
-    # apply_order_list = [B, A].
-    # As a result, we return A.apply(B.apply(x))
+    # matmul_order_list = [B, A].
+    # As a result, we return A.matmul(B.matmul(x))
     if adjoint:
-      apply_order_list = self.operators
+      matmul_order_list = self.operators
     else:
-      apply_order_list = list(reversed(self.operators))
+      matmul_order_list = list(reversed(self.operators))
 
-    result = apply_order_list[0].apply(
+    result = matmul_order_list[0].matmul(
         x, adjoint=adjoint, adjoint_arg=adjoint_arg)
-    for operator in apply_order_list[1:]:
-      result = operator.apply(result, adjoint=adjoint)
+    for operator in matmul_order_list[1:]:
+      result = operator.matmul(result, adjoint=adjoint)
     return result
 
   def _determinant(self):
