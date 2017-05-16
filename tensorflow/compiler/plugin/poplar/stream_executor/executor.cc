@@ -102,7 +102,8 @@ host::HostStream *AsPoplarStream(Stream *stream) {
 }
 
 PoplarExecutor::PoplarExecutor(const PluginConfig &plugin_config)
-    : plugin_config_(plugin_config) {
+    : plugin_config_(plugin_config),
+      report_counter(0) {
 }
 
 PoplarExecutor::~PoplarExecutor() {}
@@ -366,8 +367,12 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
       engine->run(0);
 
       try {
-        const char *report_filename = getenv("TF_POPLAR_REPORT_FILENAME");
-        if (report_filename != NULL) {
+        const char *report_prefix = getenv("TF_POPLAR_REPORT_FILENAME");
+        if (report_prefix != NULL) {
+          std::string report_filename(report_prefix);
+          report_filename.append(
+                  tensorflow::strings::Printf("_%d", report_counter));
+
           std::ofstream stream;
           stream.open(report_filename);
 

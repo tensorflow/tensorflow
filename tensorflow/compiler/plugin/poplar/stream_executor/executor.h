@@ -229,6 +229,8 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
   poplar::Engine* current_engine_;
 
   std::list<TensorControl*> allocations_;
+
+  unsigned int report_counter;
 };
 
 }  // namespace poplarplugin
