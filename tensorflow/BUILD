@@ -458,7 +458,7 @@ filegroup(
 
 filegroup(
     name = "docs_src",
-    data = glob(["docs_src/**/*.md"]),
+    srcs = glob(["docs_src/**/*.md"]),
 )
 
 # -------------------------------------------
