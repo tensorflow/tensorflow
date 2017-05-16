@@ -99,6 +99,41 @@ std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
   return uses;
 }
 
+// Returns true if there is exactly one use of 'operand' at 'operand_index'
+// in 'fusion.fused_instructions', where the singleton use is the fused
+// root at operand index 'use_operand_index'. Returns false otherwise.
+//
+// REQUIRES: 'fusion' opcode is a kFusion instruction.
+bool HasUniqueFusedUseOfOperandAt(
+    HloInstruction* operand, const ShapeIndex& operand_index,
+    HloInstruction* fusion, const int64 use_operand_index,
+    const TuplePointsToAnalysis& points_to_analysis) {
+  CHECK_EQ(HloOpcode::kFusion, fusion->opcode());
+  // Check that 'operand' is unique in the operand list of 'fusion'.
+  if (fusion->OperandIndices(operand).size() > 1) {
+    return false;
+  }
+  // Find fusion parameter associated with 'operand'.
+  const auto& fused_params = fusion->fused_parameters();
+  auto fused_param_it = std::find_if(
+      fused_params.begin(), fused_params.end(),
+      [&](HloInstruction* fused_param) {
+        return fusion->operand(fused_param->parameter_number()) == operand;
+      });
+  if (fused_param_it == fused_params.end()) {
+    return false;
+  }
+  auto* fused_param = *fused_param_it;
+  // Get all uses of 'operand' at 'index' from 'fusion.fused_instructions'.
+  auto fused_param_uses = GetAllUsesOfInstructionAtIndex(
+      fused_param, operand_index, points_to_analysis);
+  // Return true iff there is exactly one use of 'operand' at 'index', and
+  // this singleton use is the fused root (at index in 'use_operand_indices').
+  return fused_param_uses.size() == 1 &&
+         fused_param_uses[0].first == fusion->fused_expression_root() &&
+         fused_param_uses[0].second == use_operand_index;
+}
+
 }  // namespace
 
 // User and operand can share buffers iff both instructions emit the same shape
@@ -107,6 +142,9 @@ std::vector<std::pair<HloInstruction*, int64>> GetAllUsesOfInstructionAtIndex(
 // *) Is a loop fusion instruction where the only use of 'operand' at 'index'
 //    in the set 'user.fused_instructions' is a DynamicUpdateSlice fused root
 //    at operand 0. Or...
+// *) Is a kDot -> kAdd (or fused kTransposeDot -> kAdd) output fusion
+//    instruction where the only use of 'operand' at 'index' in the set
+//    'user.fused_instructions' is a kAdd fused root at operand 0 or 1. Or...
 // *) The 'user' of 'operand' is DynamicUpdateSlice or While at operand index 0.
 bool CanShareOperandBufferWithUser(
     HloInstruction* operand, const ShapeIndex& operand_index,
@@ -126,30 +164,46 @@ bool CanShareOperandBufferWithUser(
   if (user->opcode() == HloOpcode::kCopy) {
     return false;
   }
-  // Check if 'user' is a loop fusion instruction with a kDynamicUpdateSlice
-  // fused root instruction.
-  if (user->opcode() == HloOpcode::kFusion &&
-      user->fusion_kind() == HloInstruction::FusionKind::kLoop &&
-      user->fused_expression_root()->opcode() ==
-          HloOpcode::kDynamicUpdateSlice) {
-    for (auto& fused_param : user->fused_parameters()) {
-      // Find fusion parameter associated with 'operand'.
-      if (user->operand(fused_param->parameter_number()) != operand) {
-        continue;
+  if (user->opcode() == HloOpcode::kFusion) {
+    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop &&
+        user->fused_expression_root()->opcode() ==
+            HloOpcode::kDynamicUpdateSlice) {
+      // Loop fusion with kDynamicUpdateSlice fused root.
+      //
+      // Returns true iff there is exactly one use of 'operand' at shape index
+      // 'operand_index', and this singleton use is the fused root at operand
+      // index 0.
+      return HasUniqueFusedUseOfOperandAt(operand, operand_index, user, 0,
+                                          points_to_analysis);
+    } else if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
+               user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
+      // Output fusion with kAdd fused root.
+
+      // Check if one operand of kAdd fused root is either kDot, or nested
+      // kFusion of kind kTransposeDot.
+      auto* add = user->fused_expression_root();
+      auto add_operand_it =
+          std::find_if(add->operands().begin(), add->operands().end(),
+                       [&](HloInstruction* operand) {
+                         return operand->opcode() == HloOpcode::kDot ||
+                                (operand->opcode() == HloOpcode::kFusion &&
+                                 operand->fusion_kind() ==
+                                     HloInstruction::FusionKind::kTransposeDot);
+                       });
+      if (add_operand_it == add->operands().end()) {
+        return false;
       }
-      // Get all uses of 'operand' at 'index' from 'user.fused_instructions'.
-      auto fused_param_uses = GetAllUsesOfInstructionAtIndex(
-          fused_param, operand_index, points_to_analysis);
-      // Return true iff there is exactly one use of 'operand' at 'index', and
-      // this singleton use is the fused root at operand index 0.
-      if (fused_param_uses.size() == 1 &&
-          fused_param_uses[0].first == user->fused_expression_root() &&
-          fused_param_uses[0].second == 0) {
-        return true;
-      }
-      break;
+      auto* matched_add_operand = *add_operand_it;
+      // Calculate operand index of 'add' operand which was not matched above.
+      const int64 other_add_operand_index =
+          matched_add_operand == add->operand(0) ? 1 : 0;
+      // Returns true iff there is exactly one use of 'operand' at shape index
+      // 'operand_index', and this singleton use is the fused root (at operand
+      // index 'other_add_operand_index').
+      return HasUniqueFusedUseOfOperandAt(operand, operand_index, user,
+                                          other_add_operand_index,
+                                          points_to_analysis);
     }
-    return false;
   }
   if (user->opcode() == HloOpcode::kDynamicUpdateSlice ||
       user->opcode() == HloOpcode::kWhile) {

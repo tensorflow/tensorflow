@@ -479,8 +479,10 @@ REGISTER_OP("MutableDenseHashTable")
     .SetIsStateful()
     .SetShapeFn(TwoElementOutput)
     .Doc(R"doc(
-Creates an empty hash table that uses tensors as the backing store. It uses
-"open addressing" with quadratic reprobing to resolve collisions.
+Creates an empty hash table that uses tensors as the backing store.
+
+It uses "open addressing" with quadratic reprobing to resolve
+collisions.
 
 This op creates a mutable hash table, specifying the type of its keys and
 values. Each value must be a scalar. Data can be inserted into the table using
@@ -516,8 +518,10 @@ REGISTER_OP("MutableDenseHashTableV2")
     .SetIsStateful()
     .SetShapeFn(ScalarOutput)
     .Doc(R"doc(
-Creates an empty hash table that uses tensors as the backing store. It uses
-"open addressing" with quadratic reprobing to resolve collisions.
+Creates an empty hash table that uses tensors as the backing store.
+
+It uses "open addressing" with quadratic reprobing to resolve
+collisions.
 
 This op creates a mutable hash table, specifying the type of its keys and
 values. Each value must be a scalar. Data can be inserted into the table using

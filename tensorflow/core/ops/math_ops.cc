@@ -1270,6 +1270,8 @@ REGISTER_OP("ArgMax")
     .Doc(R"doc(
 Returns the index with the largest value across dimensions of a tensor.
 
+Note that in case of ties the identity of the return value is not guaranteed.
+
 dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
   of the input Tensor to reduce across. For vectors, use dimension = 0.
 )doc");
@@ -1283,6 +1285,8 @@ REGISTER_OP("ArgMin")
     .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the smallest value across dimensions of a tensor.
+
+Note that in case of ties the identity of the return value is not guaranteed.
 
 dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
   of the input Tensor to reduce across. For vectors, use dimension = 0.

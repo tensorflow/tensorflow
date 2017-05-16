@@ -94,7 +94,7 @@ class OpTestBuilder {
   explicit OpTestBuilder(const string& op_name);
 
   // Adds an input 'tensor'.
-  OpTestBuilder& Input(Tensor tensor);
+  OpTestBuilder& Input(const Tensor& tensor);
 
   // Sets an attribute.
   template <class T>
@@ -111,8 +111,8 @@ class OpTestBuilder {
   // sets it to the NodeDef of the operator under test. Fills 'inputs' and
   // 'outputs' with the names of the input placeholder nodes and the output
   // identity nodes, respectively.
-  Status BuildGraph(string name_prefix, string device, bool use_jit,
-                    GraphDef* graphdef, NodeDef** test_node_def,
+  Status BuildGraph(const string& name_prefix, const string& device,
+                    bool use_jit, GraphDef* graphdef, NodeDef** test_node_def,
                     std::vector<string>* inputs,
                     std::vector<string>* outputs) const;
 
@@ -127,7 +127,7 @@ OpTestBuilder::OpTestBuilder(const string& op_name) {
   node_def_.set_op(op_name);
 }
 
-OpTestBuilder& OpTestBuilder::Input(Tensor tensor) {
+OpTestBuilder& OpTestBuilder::Input(const Tensor& tensor) {
   VLOG(1) << "Adding input: " << tensor.DebugString();
   inputs_.push_back(tensor);
   return *this;
@@ -146,9 +146,9 @@ OpTestBuilder& OpTestBuilder::Attr(StringPiece attr_name,
   return *this;
 }
 
-Status OpTestBuilder::BuildGraph(string name_prefix, string device,
-                                 bool use_jit, GraphDef* graphdef,
-                                 NodeDef** test_node_def,
+Status OpTestBuilder::BuildGraph(const string& name_prefix,
+                                 const string& device, bool use_jit,
+                                 GraphDef* graphdef, NodeDef** test_node_def,
                                  std::vector<string>* inputs,
                                  std::vector<string>* outputs) const {
   OpRegistryInterface* op_registry = OpRegistry::Global();
@@ -209,7 +209,7 @@ class OpTest : public ::testing::Test {
 
   // Runs 'fn' up to --tf_xla_test_repetitions times, or until a failure occurs;
   // whichever happens first.
-  void Repeatedly(std::function<void(void)> fn);
+  void Repeatedly(const std::function<void(void)>& fn);
 
   // Select a random element from 'candidates'.
   template <typename T>
@@ -315,7 +315,7 @@ OpTest::OpTest() {
   TF_CHECK_OK(session_->Create(def));
 }
 
-void OpTest::Repeatedly(std::function<void(void)> fn) {
+void OpTest::Repeatedly(const std::function<void(void)>& fn) {
   int const max_repetitions = tf_xla_test_repetitions;
   for (int i = 0; !HasFailure() && i < max_repetitions; ++i) {
     fn();

@@ -129,6 +129,12 @@ class FileIoTest(test.TestCase):
     self.assertItemsEqual(
         file_io.get_matching_files(os.path.join(dir_path, "file*.txt")),
         expected_match)
+    self.assertItemsEqual(file_io.get_matching_files(tuple()), [])
+    files_subset = [
+        os.path.join(dir_path, files[0]), os.path.join(dir_path, files[2])
+    ]
+    self.assertItemsEqual(
+        file_io.get_matching_files(files_subset), files_subset)
     file_io.delete_recursively(dir_path)
     self.assertFalse(file_io.file_exists(os.path.join(dir_path, "file3.txt")))
 

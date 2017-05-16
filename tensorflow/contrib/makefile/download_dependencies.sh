@@ -30,9 +30,13 @@ RE2_URL="$(grep -o 'http.*github.com/google/re2/.*tar\.gz' "${BZL_FILE_PATH}" | 
 replace_by_sed() {
   local regex="${1}"
   shift
-  if echo "${OSTYPE}" | grep -q darwin; then
+  # Detect the version of sed by the return value of "--version" flag. GNU-sed
+  # supports "--version" while BSD-sed doesn't.
+  if ! sed --version >/dev/null 2>&1; then
+    # BSD-sed.
     sed -i '' -e "${regex}" "$@"
   else
+    # GNU-sed.
     sed -i -e "${regex}" "$@"
   fi
 }

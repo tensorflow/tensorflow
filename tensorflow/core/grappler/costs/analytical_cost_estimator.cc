@@ -73,7 +73,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     std::vector<OpInfo::TensorProperties> inputs =
         properties.GetInputProperties(node->name());
 
-    OpInfo::DeviceProperties device = placer.get_device(*node);
+    DeviceProperties device = placer.get_device(*node);
     OpInfo op_info;
     op_info.set_op(node->op());
     *op_info.mutable_attr() = node->attr();

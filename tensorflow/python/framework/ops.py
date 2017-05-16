@@ -34,8 +34,10 @@ from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
+from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
@@ -44,6 +46,24 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import tf_contextlib
+
+
+# Temporary global switch determining if we should enable the work-in-progress
+# calls to the C API. Currently disabled by default but can be manually enabled
+# e.g. in tests. This will be removed once all functionality is supported and
+# there's no performance penalty with it enabled.
+#
+# TODO(skyewm) before we can remove this:
+# - functions
+# - import_graph_def() incrementally adds inputs to ops (i.e. creates an
+#   Operation and then calls _add_input()). The current code requires that all
+#   inputs be specified when creating the Operation (since we call
+#   TF_FinishOperation()).
+# - ops_test.py (and others?) create unregistered op types
+# - while loop
+# - performance (e.g. delete/refactor redundant Python functionality, switch to
+#   new session API)
+_USE_C_API = False
 
 
 def _override_helper(clazz_object, operator, func):
@@ -466,6 +486,13 @@ class Tensor(_TensorLike):
       return self._op.name
     else:
       return "%s:%d" % (self._op.name, self._value_index)
+
+  def _as_tf_output(self):
+    assert self.op._c_op  # pylint: disable=protected-access
+    tf_output = c_api.TF_Output()
+    tf_output.oper = self.op._c_op  # pylint: disable=protected-access
+    tf_output.index = self.value_index
+    return tf_output
 
   def __str__(self):
     return "Tensor(\"%s\"%s%s%s)" % (
@@ -1252,6 +1279,98 @@ class Operation(object):
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._recompute_node_def()
 
+    if _USE_C_API:
+      assert self._graph._c_graph, (  # pylint: disable=protected-access
+          "_USE_C_API set to False when creating Graph, you may need to "
+          "manually set 'ops._USE_C_API = True' before creating the Graph")
+      if self._op_def:
+        # TODO(skyewm): op_def_library.apply_op() flattens the incoming
+        # inputs. Refactor so we don't have to do this here.
+        grouped_inputs = self._reconstruct_sequence_inputs(
+            self._op_def, self._inputs, self._node_def.attr)
+      else:
+        # If no OpDef is specified, assume all inputs are scalar.
+        grouped_inputs = self._inputs
+
+      self._c_op = self._create_c_op(self._graph, self._node_def,
+                                     grouped_inputs)
+    else:
+      self._c_op = None
+
+  def _create_c_op(self, graph, node_def, inputs):
+    """Creates a TF_Operation.
+
+    Arguments:
+      graph: a `Graph`.
+      node_def: `node_def_pb2.NodeDef` for the operation to create.
+      inputs: A list of `Tensor`s (corresponding to scalar inputs) and lists of
+        `Tensor`s (corresponding to sequence inputs, e.g. "int64 * N",
+        "list(int64)"). The length of the list should be equal to the number of
+        inputs specified by this operation's op def.
+
+    Returns:
+      A wrapped TF_Operation*.
+    """
+    # pylint: disable=protected-access
+    op_desc = c_api.TF_NewOperation(graph._c_graph.g,
+                                    compat.as_str(node_def.op),
+                                    compat.as_str(node_def.name))
+
+    for op_input in inputs:
+      if isinstance(op_input, (list, tuple)):
+        c_api.TF_AddInputList(op_desc, [t._as_tf_output() for t in op_input])
+      else:
+        c_api.TF_AddInput(op_desc, op_input._as_tf_output())
+    # pylint: enable=protected-access
+
+    for name, attr_value in node_def.attr.items():
+      serialized = attr_value.SerializeToString()
+      # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
+      # It might be worth creating a convenient way to re-use the same status.
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.TF_SetAttrValueProto(op_desc, compat.as_str(name), serialized,
+                                   status)
+
+    with errors.raise_exception_on_not_ok_status() as status:
+      c_op = c_api.TF_FinishOperation(op_desc, status)
+
+    return c_op
+
+  def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
+    """Regroups a flat list of input tensors into scalar and sequence inputs.
+
+    Arguments:
+      op_def: The `op_def_pb2.OpDef` (for knowing the input types)
+      inputs: a list of input `Tensor`s to the op.
+      attrs: mapping from attr name to `attr_value_pb2.AttrValue` (these define
+        how long each sequence is)
+
+    Returns:
+      A list of `Tensor`s (corresponding to scalar inputs) and lists of
+      `Tensor`s (corresponding to sequence inputs).
+    """
+    grouped_inputs = []
+    i = 0
+    for input_arg in op_def.input_arg:
+      if input_arg.number_attr:
+        input_len = attrs[input_arg.number_attr].i
+        is_sequence = True
+      elif input_arg.type_list_attr:
+        input_len = len(attrs[input_arg.type_list_attr].list.type)
+        is_sequence = True
+      else:
+        input_len = 1
+        is_sequence = False
+
+      if is_sequence:
+        grouped_inputs.append(inputs[i:i + input_len])
+      else:
+        grouped_inputs.append(inputs[i])
+      i += input_len
+
+    assert i == len(inputs)
+    return grouped_inputs
+
   def colocation_groups(self):
     """Returns the list of colocation groups of the op."""
     default_colocation_group = [compat.as_bytes("loc:@%s" %
@@ -1547,12 +1666,18 @@ class Operation(object):
     if x.HasField("list"):
       for f in fields:
         if getattr(x.list, f):
-          return list(getattr(x.list, f))
+          if f == "type":
+            return [dtypes.as_dtype(x) for x in list(getattr(x.list, f))]
+          else:
+            return list(getattr(x.list, f))
       return []
     else:
       for f in fields:
         if x.HasField(f):
-          return getattr(x, f)
+          if f == "type":
+            return dtypes.as_dtype(getattr(x, f))
+          else:
+            return getattr(x, f)
       assert False, "Unsupported field type in " + str(x)
 
   def run(self, feed_dict=None, session=None):
@@ -1911,6 +2036,15 @@ def _name_from_scope_name(name):
   return name[:-1] if name[-1] == "/" else name
 
 
+class _ScopedTF_Graph(object):
+
+  def __init__(self):
+    self.g = c_api.TF_NewGraph()
+
+  def __del__(self):
+    c_api.TF_DeleteGraph(self.g)
+
+
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
@@ -2023,6 +2157,13 @@ class Graph(object):
     # Resource container.
     self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
+
+    # TODO(skyewm): fold as much of the above as possible into the C
+    # implementation
+    if _USE_C_API:
+      self._c_graph = _ScopedTF_Graph()
+    else:
+      self._c_graph = None
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.

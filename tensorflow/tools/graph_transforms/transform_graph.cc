@@ -48,6 +48,11 @@ Status ParseTransformParameters(const string& transforms_string,
       func_parameters.clear();
       // Eat up any leading spaces.
       Scanner(remaining).AnySpace().GetResult(&remaining, &match);
+      if (remaining.empty()) {
+        // Nothing remains after consuming trailing spaces.
+        // Consumed all transform parameter string without errors.
+        return Status::OK();
+      }
       // See if we have a valid transform name.
       const bool found_transform_name =
           Scanner(remaining)

@@ -152,8 +152,10 @@ class EstimatorConstructorTest(test.TestCase):
     def model_fn(features, labels):
       _, _ = features, labels
 
-    est = estimator.Estimator(model_fn=model_fn)
-    self.assertTrue(est.model_dir is not None)
+    with test.mock.patch.object(tempfile, 'mkdtemp', return_value=_TMP_DIR):
+      est = estimator.Estimator(model_fn=model_fn)
+      self.assertEqual(_TMP_DIR, est.config.model_dir)
+      self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_model_dir_in_constructor(self):
 
@@ -161,6 +163,7 @@ class EstimatorConstructorTest(test.TestCase):
       _, _ = features, labels
 
     est = estimator.Estimator(model_fn=model_fn, model_dir=_TMP_DIR)
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_model_dir_in_run_config(self):
@@ -175,6 +178,7 @@ class EstimatorConstructorTest(test.TestCase):
       _, _ = features, labels
 
     est = estimator.Estimator(model_fn=model_fn, config=FakeConfig())
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_same_model_dir_in_constructor_and_run_config(self):
@@ -190,6 +194,7 @@ class EstimatorConstructorTest(test.TestCase):
 
     est = estimator.Estimator(
         model_fn=model_fn, config=FakeConfig(), model_dir=_TMP_DIR)
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
     self.assertEqual(_TMP_DIR, est.model_dir)
 
   def test_different_model_dir_in_constructor_and_run_config(self):
@@ -250,6 +255,17 @@ class EstimatorConstructorTest(test.TestCase):
     new_model_fn = lambda features, labels: model_fn(  # pylint: disable=g-long-lambda
         features, labels, 'something')
     estimator.Estimator(model_fn=new_model_fn)
+
+  def test_if_model_fn_is_a_member_function_of_a_class(self):
+
+    class ModelFnClass(object):
+      def __init__(self):
+        estimator.Estimator(model_fn=self.model_fn)
+
+      def model_fn(self, features, labels, mode):
+        _, _, _ = features, labels, mode
+
+    ModelFnClass()
 
 
 def dummy_input_fn():

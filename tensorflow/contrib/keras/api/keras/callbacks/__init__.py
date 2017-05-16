@@ -29,6 +29,7 @@ from tensorflow.contrib.keras.python.keras.callbacks import ModelCheckpoint
 from tensorflow.contrib.keras.python.keras.callbacks import ProgbarLogger
 from tensorflow.contrib.keras.python.keras.callbacks import ReduceLROnPlateau
 from tensorflow.contrib.keras.python.keras.callbacks import RemoteMonitor
+from tensorflow.contrib.keras.python.keras.callbacks import TensorBoard
 
 del absolute_import
 del division

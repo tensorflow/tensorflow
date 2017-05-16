@@ -4,7 +4,7 @@
 
 A selection of image classification models were tested across multiple platforms
 to create a point of reference for the TensorFlow community. The
-[Methodology](#methodology) section details how the test were executed and has
+[Methodology](#methodology) section details how the tests were executed and has
 links to the scripts used.
 
 ## Results for image classification models
@@ -355,7 +355,7 @@ ResNet-50   | distributed_replicated | n/a                    | True
 ResNet-152  | distributed_replicated | n/a                    | True
 
 To simplify server setup, EC2 instances (p2.8xlarge) running worker servers also
-ran parameter servers. Equal numbers of parameter servers and work servers were
+ran parameter servers. Equal numbers of parameter servers and worker servers were
 used with the following exceptions:
 
 *   InceptionV3: 8 instances / 6 parameter servers

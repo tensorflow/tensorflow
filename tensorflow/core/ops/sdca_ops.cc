@@ -105,7 +105,7 @@ example_weights: a vector which contains the weight associated with each
 example_labels: a vector which contains the label/target associated with each
   example.
 sparse_indices: a list of vectors where each value is the indices which has
-  corresponding weights in sparse_weights. This field maybe ommitted for the
+  corresponding weights in sparse_weights. This field maybe omitted for the
   dense approach.
 sparse_weights: a list of vectors where each value is the weight associated with
   a sparse feature group.

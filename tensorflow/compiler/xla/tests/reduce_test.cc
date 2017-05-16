@@ -61,7 +61,7 @@ namespace {
 class ReduceTest : public ClientLibraryTestBase {
  protected:
   ReduceTest() {
-    // Implementation note: layed out z >> y >> x by default.
+    // Implementation note: laid out z >> y >> x by default.
     // clang-format off
     literal_2d_ = LiteralUtil::CreateR2<float>({
       // x0   x1   x2

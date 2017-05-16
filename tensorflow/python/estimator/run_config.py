@@ -18,6 +18,47 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
+import six
+
+
+# A list of the property names in RunConfig user allows to change.
+_DEFAULT_REPLACEABLE_LIST = [
+    'model_dir',
+    'tf_random_seed',
+    'save_summary_steps',
+    'save_checkpoints_steps',
+    'save_checkpoints_secs',
+    'session_config',
+    'keep_checkpoint_max',
+    'keep_checkpoint_every_n_hours',
+]
+
+_SAVE_CKPT_ERR = (
+    '`save_checkpoints_steps` and `save_checkpoints_secs` cannot be both set.'
+)
+
+
+def _validate_save_ckpt(new_copy, replaced_keys):
+  """Validates the save ckpt properties."""
+  # Ensure one (and only one) of save_steps and save_secs is not None.
+  # Also, if user sets one save ckpt property, say steps, the other one (secs)
+  # should be set as None to improve usability.
+
+  save_steps = new_copy.save_checkpoints_steps
+  save_secs = new_copy.save_checkpoints_secs
+  if ('save_checkpoints_steps' in replaced_keys and
+      'save_checkpoints_secs' in replaced_keys):
+    # If user sets both properties explicitly, we need to error out if both
+    # are set or neither of them are set.
+    if save_steps is not None and save_secs is not None:
+      raise ValueError(_SAVE_CKPT_ERR)
+  elif 'save_checkpoints_steps' in replaced_keys and save_steps is not None:
+    new_copy._save_checkpoints_secs = None  # pylint: disable=protected-access
+  elif 'save_checkpoints_secs' in replaced_keys and save_secs is not None:
+    new_copy._save_checkpoints_steps = None  # pylint: disable=protected-access
+
 
 class TaskType(object):
   MASTER = 'master'
@@ -27,6 +68,16 @@ class TaskType(object):
 
 class RunConfig(object):
   """This class specifies the configurations for an `Estimator` run."""
+
+  def __init__(self):
+    self._model_dir = None
+    self._tf_random_seed = 1
+    self._save_summary_steps = 100
+    self._save_checkpoints_secs = 600
+    self._save_checkpoints_steps = None
+    self._session_config = None
+    self._keep_checkpoint_max = 5
+    self._keep_checkpoint_every_n_hours = 10000
 
   @property
   def cluster_spec(self):
@@ -62,32 +113,97 @@ class RunConfig(object):
 
   @property
   def tf_random_seed(self):
-    return 1
+    return self._tf_random_seed
 
   @property
   def save_summary_steps(self):
-    return 100
+    return self._save_summary_steps
 
   @property
   def save_checkpoints_secs(self):
-    return 600
+    return self._save_checkpoints_secs
 
   @property
   def session_config(self):
-    return None
+    return self._session_config
 
   @property
   def save_checkpoints_steps(self):
-    return None
+    return self._save_checkpoints_steps
 
   @property
   def keep_checkpoint_max(self):
-    return 5
+    return self._keep_checkpoint_max
 
   @property
   def keep_checkpoint_every_n_hours(self):
-    return 10000
+    return self._keep_checkpoint_every_n_hours
 
   @property
   def model_dir(self):
-    return None
+    return self._model_dir
+
+  def replace(self, **kwargs):
+    """Returns a new instance of `RunConfig` replacing specified properties.
+
+    Only the properties in the following list are allowed to be replaced:
+      - `model_dir`.
+      - `tf_random_seed`,
+      - `save_summary_steps`,
+      - `save_checkpoints_steps`,
+      - `save_checkpoints_secs`,
+      - `session_config`,
+      - `keep_checkpoint_max`,
+      - `keep_checkpoint_every_n_hours`,
+
+    In addition, either `save_checkpoints_steps` or `save_checkpoints_secs`
+    can be set (should not be both).
+
+    Args:
+      **kwargs: keyword named properties with new values.
+
+    Raises:
+      ValueError: If any property name in `kwargs` does not exist or is not
+        allowed to be replaced, or both `save_checkpoints_steps` and
+        `save_checkpoints_secs` are set.
+
+    Returns:
+      a new instance of `RunConfig`.
+    """
+    return self._replace(
+        allowed_properties_list=_DEFAULT_REPLACEABLE_LIST, **kwargs)
+
+  def _replace(self, allowed_properties_list=None, **kwargs):
+    """See `replace`.
+
+    N.B.: This implementation assumes that for key named "foo", the underlying
+    property the RunConfig holds is "_foo" (with one leading underscore).
+
+    Args:
+      allowed_properties_list: The property name list allowed to be replaced.
+      **kwargs: keyword named properties with new values.
+
+    Raises:
+      ValueError: If any property name in `kwargs` does not exist or is not
+        allowed to be replaced, or both `save_checkpoints_steps` and
+        `save_checkpoints_secs` are set.
+
+    Returns:
+      a new instance of `RunConfig`.
+    """
+
+    new_copy = copy.deepcopy(self)
+
+    allowed_properties_list = allowed_properties_list or []
+
+    for key, new_value in six.iteritems(kwargs):
+      if key in allowed_properties_list:
+        setattr(new_copy, '_' + key, new_value)
+        continue
+
+      raise ValueError(
+          'Replacing {} is not supported. Allowed properties are {}.'.format(
+              key, allowed_properties_list))
+
+    _validate_save_ckpt(new_copy, kwargs.keys())
+    return new_copy

@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 
-#include <map>
 #include <stdint.h>
 #include <stdlib.h>
+#include <map>
 #include <set>
+#include <utility>
 
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/lib/casts.h"
@@ -453,7 +454,8 @@ static port::Status InternalInit() {
   return true;
 }
 
-bool DeviceOptionsToContextFlags(DeviceOptions device_options, int *flags) {
+bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
+                                 int *flags) {
   static_assert(DeviceOptions::kMask == 0xf,
                 "needs update for new device options");
 

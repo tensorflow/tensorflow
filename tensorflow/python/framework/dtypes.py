@@ -270,6 +270,9 @@ class DType(object):
     """Returns the string name for this `DType`."""
     return _TYPE_TO_STRING[self._type_enum]
 
+  def __int__(self):
+    return self._type_enum
+
   def __str__(self):
     return "<dtype: %r>" % self.name
 

@@ -13,9 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import * as _ from 'lodash'
-
-import {getObjectInitializer, getObjectObserver, getStringInitializer, getStringObserver} from '../tf_storage_d3v4/storage'
+import * as _ from 'lodash';
+import * as storage from '../tf-storage/storage';
 
 Polymer({
   is: 'tf-multi-checkbox',
@@ -28,7 +27,7 @@ Polymer({
     },  // All the runs in consideration
     regexInput: {
       type: String,
-      value: getStringInitializer('regexInput', ''),
+      value: storage.getStringInitializer('regexInput', ''),
       observer: '_regexInputObserver',
     },  // Regex for filtering the runs
     regex: {type: Object, computed: '_makeRegex(regexInput)'},
@@ -40,7 +39,7 @@ Polymer({
       // if a run is explicitly enabled, True, if explicitly disabled, False.
       // if undefined, default value (enable for first k runs, disable after).
       type: Object,
-      value: getObjectInitializer('runSelectionState', {}),
+      value: storage.getObjectInitializer('runSelectionState', {}),
       observer: '_storeRunToIsCheckedMapping',
     },
     // (Allows state to persist across regex filtering)
@@ -91,7 +90,8 @@ Polymer({
   observers: [
     '_setIsolatorIcon(runSelectionState, names)',
   ],
-  _storeRunToIsCheckedMapping: getObjectObserver('runSelectionState', {}),
+  _storeRunToIsCheckedMapping:
+      storage.getObjectObserver('runSelectionState', {}),
   _makeRegex: function(regex) {
     try {
       return new RegExp(regex)
@@ -176,7 +176,7 @@ Polymer({
   _isChecked: function(item, outSelectedChange) {
     return this.outSelected.indexOf(item) != -1;
   },
-  _regexInputObserver: getStringObserver('regexInput', ''),
+  _regexInputObserver: storage.getStringObserver('regexInput', ''),
   toggleAll: function() {
     var _this = this;
     var anyToggledOn = this.namesMatchingRegex.some(function(n) {
