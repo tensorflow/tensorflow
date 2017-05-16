@@ -24,20 +24,35 @@ class IpuXlaF16Test(test_util.TensorFlowTestCase):
                 result = sess.run(output, fd)
                 self.assertAllClose(result, [[-1.,-1.],[-2.,-3.]])
 
-    # def testAdd(self):
-    #     with tf.device("/device:XLA_IPU:0"):
-    #         with tf.Session() as sess:
-    #             pa = tf.placeholder(tf.float16, [2,2], name="a")
-    #             pb = tf.placeholder(tf.float16, [2,2], name="b")
-    #             output = pa + pb
-    #
-    #             fd = {pa: [[1.,1.],[2.,3.]], pb: [[0.,1.],[4.,5.]]}
-    #             result = sess.run(output, fd)
-    #             self.assertAllClose(result, [[1.,2.],[6.,8.]])
-    #
-    #             fd = {pa: [[0.,0.],[1.,1.]], pb: [[2.,1.],[4.,5.]]}
-    #             result = sess.run(output, fd)
-    #             self.assertAllClose(result, [[2.,1.],[5.,6.]])
+    def testAdd(self):
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                pa = tf.placeholder(tf.float16, [2,2], name="a")
+                pb = tf.placeholder(tf.float16, [2,2], name="b")
+                output = pa + pb
+
+                fd = {pa: [[1.,1.],[2.,3.]], pb: [[0.,1.],[4.,5.]]}
+                result = sess.run(output, fd)
+                self.assertAllClose(result, [[1.,2.],[6.,8.]])
+
+                fd = {pa: [[0.,0.],[1.,1.]], pb: [[2.,1.],[4.,5.]]}
+                result = sess.run(output, fd)
+                self.assertAllClose(result, [[2.,1.],[5.,6.]])
+
+    def testSubConstant(self):
+        with tf.device("/device:XLA_IPU:0"):
+            with tf.Session() as sess:
+                pa = tf.placeholder(tf.float16, [2,2], name="a")
+                pb = tf.constant([[1.,2.],[3.,4.]], tf.float16)
+                output = pa - pb
+
+                fd = {pa: [[1.,1.],[2.,3.]]}
+                result = sess.run(output, fd)
+                self.assertAllClose(result, [[0.,-1.],[-1.,-1.]])
+
+                fd = {pa: [[0.,0.],[1.,1.]]}
+                result = sess.run(output, fd)
+                self.assertAllClose(result, [[-1.,-2.],[-2.,-3.]])
 
 if __name__ == "__main__":
     googletest.main()
