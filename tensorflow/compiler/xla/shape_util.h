@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -377,6 +378,15 @@ class ShapeUtil {
   // bitcast.
   static bool ReshapeIsBitcast(const Shape& input_shape,
                                const Shape& output_shape);
+
+  // Find a physical layout for 'output_shape' such that
+  // ShapeUtil::ReshapeIsBitcast(input_shape, output_shape_with_layout) returns
+  // true (where 'output_shape_with_layout' is 'output_shape' with the found
+  // layout). The layout of 'input_shape' is kept fixed. Returns
+  // 'output_shape_with_layout' if such a layout can be found, and an error
+  // otherwise.
+  static tensorflow::gtl::optional<Shape> AlignLayouts(
+      const Shape& input_shape, const Shape& output_shape);
 
   // Returns a shape with the given dimension deleted.
   // For example:

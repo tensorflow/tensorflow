@@ -51,8 +51,8 @@ class LinearOperator(object):
   To enable a public method, subclasses should implement the leading-underscore
   version of the method.  The argument signature should be identical except for
   the omission of `name="..."`.  For example, to enable
-  `apply(x, adjoint=False, name="apply")` a subclass should implement
-  `_apply(x, adjoint=False)`.
+  `matmul(x, adjoint=False, name="matmul")` a subclass should implement
+  `_matmul(x, adjoint=False)`.
 
   #### Performance contract
 
@@ -72,7 +72,7 @@ class LinearOperator(object):
 
   An example is:
 
-  `x` is a batch matrix with compatible shape for `apply` if
+  `x` is a batch matrix with compatible shape for `matmul` if
 
   ```
   operator.shape = [B1,...,Bb] + [M, N],  b >= 0,
@@ -109,7 +109,7 @@ class LinearOperator(object):
 
   x = ... Shape [2, 4, 5] Tensor
 
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 4, 5] Tensor
   ```
 
@@ -151,7 +151,7 @@ class LinearOperator(object):
     **Subclasses should copy-paste this `__init__` documentation.**
 
     Args:
-      dtype: The type of the this `LinearOperator`.  Arguments to `apply` and
+      dtype: The type of the this `LinearOperator`.  Arguments to `matmul` and
         `solve` will have to be this type.
       graph_parents: Python list of graph prerequisites of this `LinearOperator`
         Typically tensors that are passed during initialization.
@@ -577,11 +577,25 @@ class LinearOperator(object):
           (self.dtype, arg.dtype, arg))
 
   @abc.abstractmethod
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
-    raise NotImplementedError("_apply is not implemented.")
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
+    raise NotImplementedError("_matmul is not implemented.")
 
-  def apply(self, x, adjoint=False, adjoint_arg=False, name="apply"):
-    """Transform `x` with left multiplication:  `x --> Ax`.
+  def matmul(self, x, adjoint=False, adjoint_arg=False, name="matmul"):
+    """Transform [batch] matrix `x` with left multiplication:  `x --> Ax`.
+
+    ```python
+    # Make an operator acting like batch matrix A.  Assume A.shape = [..., M, N]
+    operator = LinearOperator(...)
+    operator.shape = [..., M, N]
+
+    X = ... # shape [..., N, R], batch matrix, R > 0.
+
+    Y = operator.matmul(X)
+    Y.shape
+    ==> [..., M, R]
+
+    Y[..., :, r] = sum_j A[..., :, j] X[j, r]
+    ```
 
     Args:
       x: `Tensor` with compatible shape and same `dtype` as `self`.
@@ -602,7 +616,46 @@ class LinearOperator(object):
       arg_dim = -1 if adjoint_arg else -2
       self.shape[self_dim].assert_is_compatible_with(x.get_shape()[arg_dim])
 
-      return self._apply(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
+      return self._matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
+
+  def _matvec(self, x, adjoint=False):
+    x_mat = array_ops.expand_dims(x, axis=-1)
+    y_mat = self.matmul(x_mat, adjoint=adjoint)
+    return array_ops.squeeze(y_mat, axis=-1)
+
+  def matvec(self, x, adjoint=False, name="matvec"):
+    """Transform [batch] vector `x` with left multiplication:  `x --> Ax`.
+
+    ```python
+    # Make an operator acting like batch matric A.  Assume A.shape = [..., M, N]
+    operator = LinearOperator(...)
+
+    X = ... # shape [..., N], batch vector
+
+    Y = operator.matvec(X)
+    Y.shape
+    ==> [..., M]
+
+    Y[..., :] = sum_j A[..., :, j] X[..., j]
+    ```
+
+    Args:
+      x: `Tensor` with compatible shape and same `dtype` as `self`.
+        `x` is treated as a [batch] vector meaning for every set of leading
+        dimensions, the last dimension defines a vector.
+        See class docstring for definition of compatibility.
+      adjoint: Python `bool`.  If `True`, left multiply by the adjoint: `A^H x`.
+      name:  A name for this `Op.
+
+    Returns:
+      A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
+    """
+    with self._name_scope(name, values=[x]):
+      x = ops.convert_to_tensor(x, name="x")
+      self._check_input_dtype(x)
+      self_dim = -2 if adjoint else -1
+      self.shape[self_dim].assert_is_compatible_with(x.get_shape()[-1])
+      return self._matvec(x, adjoint=adjoint)
 
   def _determinant(self):
     logging.warn(
@@ -675,30 +728,33 @@ class LinearOperator(object):
         self._get_cached_dense_matrix(), rhs, adjoint=adjoint)
 
   def solve(self, rhs, adjoint=False, adjoint_arg=False, name="solve"):
-    """Solve `R` (batch) systems of equations with best effort: `A X = rhs`.
+    """Solve (exact or approx) `R` (batch) systems of equations: `A X = rhs`.
 
-    The solution may not be exact, and in this case it will be close in some
-    sense (see class docstring for details).
+    The returned `Tensor` will be close to an exact solution if `A` is well
+    conditioned. Otherwise closeness will vary. See class docstring for details.
 
     Examples:
 
     ```python
-    # Create an operator acting like a 10 x 2 x 2 matrix.
+    # Make an operator acting like batch matrix A.  Assume A.shape = [..., M, N]
     operator = LinearOperator(...)
-    operator.shape # = 10 x 2 x 2
+    operator.shape = [..., M, N]
 
-    # Solve one linear system (R = 1) for every member of the length 10 batch.
-    RHS = ... # shape 10 x 2 x 1
-    X = operator.solve(RHS)  # shape 10 x 2 x 1
+    # Solve R > 0 linear systems for every member of the batch.
+    RHS = ... # shape [..., M, R]
 
-    # Solve five linear systems (R = 5) for every member of the length 10 batch.
-    RHS = ... # shape 10 x 2 x 5
     X = operator.solve(RHS)
-    X[3, :, 2]  # Solution to the linear system A[3, :, :] X = RHS[3, :, 2]
+    # X[..., :, r] is the solution to the r'th linear system
+    # sum_j A[..., :, j] X[..., j, r] = RHS[..., :, r]
+
+    operator.matmul(X)
+    ==> RHS
     ```
 
     Args:
       rhs: `Tensor` with same `dtype` as this operator and compatible shape.
+        `rhs` is treated like a [batch] matrix meaning for every set of leading
+        dimensions, the last two dimensions defines a matrix.
         See class docstring for definition of compatibility.
       adjoint: Python `bool`.  If `True`, solve the system involving the adjoint
         of this `LinearOperator`:  `A^H X = rhs`.
@@ -730,6 +786,59 @@ class LinearOperator(object):
 
       return self._solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
+  def _solvevec(self, rhs, adjoint=False):
+    """Default implementation of _solvevec."""
+    rhs_mat = array_ops.expand_dims(rhs, axis=-1)
+    solution_mat = self.solve(rhs_mat, adjoint=adjoint)
+    return array_ops.squeeze(solution_mat, axis=-1)
+
+  def solvevec(self, rhs, adjoint=False, name="solve"):
+    """Solve single equation with best effort: `A X = rhs`.
+
+    The returned `Tensor` will be close to an exact solution if `A` is well
+    conditioned. Otherwise closeness will vary. See class docstring for details.
+
+    Examples:
+
+    ```python
+    # Make an operator acting like batch matrix A.  Assume A.shape = [..., M, N]
+    operator = LinearOperator(...)
+    operator.shape = [..., M, N]
+
+    # Solve one linear system for every member of the batch.
+    RHS = ... # shape [..., M]
+
+    X = operator.solvevec(RHS)
+    # X is the solution to the linear system
+    # sum_j A[..., :, j] X[..., j] = RHS[..., :]
+
+    operator.matvec(X)
+    ==> RHS
+    ```
+
+    Args:
+      rhs: `Tensor` with same `dtype` as this operator.
+        `rhs` is treated like a [batch] vector meaning for every set of leading
+        dimensions, the last dimension defines a vector.  See class docstring
+        for definition of compatibility regarding batch dimensions.
+      adjoint: Python `bool`.  If `True`, solve the system involving the adjoint
+        of this `LinearOperator`:  `A^H X = rhs`.
+      name:  A name scope to use for ops added by this method.
+
+    Returns:
+      `Tensor` with shape `[...,N]` and same `dtype` as `rhs`.
+
+    Raises:
+      NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
+    """
+    with self._name_scope(name, values=[rhs]):
+      rhs = ops.convert_to_tensor(rhs, name="rhs")
+      self._check_input_dtype(rhs)
+      self_dim = -1 if adjoint else -2
+      self.shape[self_dim].assert_is_compatible_with(rhs.get_shape()[-1])
+
+      return self._solvevec(rhs, adjoint=adjoint)
+
   def _to_dense(self):
     """Generic and often inefficient implementation.  Override often."""
     logging.warn("Using (possibly slow) default implementation of to_dense."
@@ -745,7 +854,7 @@ class LinearOperator(object):
       n = self.domain_dimension_tensor()
 
     eye = linalg_ops.eye(num_rows=n, batch_shape=batch_shape, dtype=self.dtype)
-    return self.apply(eye)
+    return self.matmul(eye)
 
   def to_dense(self, name="to_dense"):
     """Return a dense (batch) matrix representing this operator."""

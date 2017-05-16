@@ -266,7 +266,7 @@ class VectorLaplaceLinearOperator(
     if distribution_util.is_diagonal_scale(self.scale):
       return 2. * array_ops.matrix_diag(math_ops.square(self.scale.diag_part()))
     else:
-      return 2. * self.scale.apply(self.scale.to_dense(), adjoint_arg=True)
+      return 2. * self.scale.matmul(self.scale.to_dense(), adjoint_arg=True)
 
   def _variance(self):
     if distribution_util.is_diagonal_scale(self.scale):
@@ -274,10 +274,10 @@ class VectorLaplaceLinearOperator(
     elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate)
           and self.scale.is_self_adjoint):
       return array_ops.matrix_diag_part(
-          2. * self.scale.apply(self.scale.to_dense()))
+          2. * self.scale.matmul(self.scale.to_dense()))
     else:
       return 2. * array_ops.matrix_diag_part(
-          self.scale.apply(self.scale.to_dense(), adjoint_arg=True))
+          self.scale.matmul(self.scale.to_dense(), adjoint_arg=True))
 
   def _stddev(self):
     if distribution_util.is_diagonal_scale(self.scale):
@@ -285,10 +285,10 @@ class VectorLaplaceLinearOperator(
     elif (isinstance(self.scale, linalg.LinearOperatorUDVHUpdate)
           and self.scale.is_self_adjoint):
       return np.sqrt(2) * math_ops.sqrt(array_ops.matrix_diag_part(
-          self.scale.apply(self.scale.to_dense())))
+          self.scale.matmul(self.scale.to_dense())))
     else:
       return np.sqrt(2) * math_ops.sqrt(array_ops.matrix_diag_part(
-          self.scale.apply(self.scale.to_dense(), adjoint_arg=True)))
+          self.scale.matmul(self.scale.to_dense(), adjoint_arg=True)))
 
   def _mode(self):
     return self._mean()

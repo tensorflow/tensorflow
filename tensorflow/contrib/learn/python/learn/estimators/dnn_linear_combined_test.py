@@ -36,6 +36,7 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.contrib.metrics.python.ops import metric_ops
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -409,6 +410,52 @@ class DNNLinearCombinedClassifierTest(test.TestCase):
     ]
     linear_features.append(
         feature_column.sparse_column_with_hash_bucket(
+            'dummy_sparse_column', hash_bucket_size=100))
+
+    classifier = dnn_linear_combined.DNNLinearCombinedClassifier(
+        linear_feature_columns=linear_features,
+        dnn_feature_columns=cont_features,
+        dnn_hidden_units=[3, 3])
+
+    classifier.fit(input_fn=_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_input_fn, steps=100)
+    _assert_metrics_in_range(('accuracy', 'auc'), scores)
+
+  def testEstimatorWithCoreFeatureColumns(self):
+    """Tests binary classification using Tensor data as input."""
+
+    def _input_fn():
+      iris = test_data.prepare_iris_data_for_logistic_regression()
+      features = {}
+      for i in range(4):
+        # The following shows how to provide the Tensor data for
+        # RealValuedColumns.
+        features.update({
+            str(i):
+                array_ops.reshape(
+                    constant_op.constant(iris.data[:, i], dtype=dtypes.float32),
+                    [-1, 1])
+        })
+      # The following shows how to provide the SparseTensor data for
+      # a SparseColumn.
+      features['dummy_sparse_column'] = sparse_tensor.SparseTensor(
+          values=['en', 'fr', 'zh'],
+          indices=[[0, 0], [0, 1], [60, 0]],
+          dense_shape=[len(iris.target), 2])
+      labels = array_ops.reshape(
+          constant_op.constant(iris.target, dtype=dtypes.int32), [-1, 1])
+      return features, labels
+
+    iris = test_data.prepare_iris_data_for_logistic_regression()
+    cont_features = [fc_core.numeric_column(str(i)) for i in range(4)]
+    linear_features = [
+        fc_core.bucketized_column(
+            cont_features[i],
+            sorted(set(test_data.get_quantile_based_buckets(
+                iris.data[:, i], 10)))) for i in range(4)
+    ]
+    linear_features.append(
+        fc_core.categorical_column_with_hash_bucket(
             'dummy_sparse_column', hash_bucket_size=100))
 
     classifier = dnn_linear_combined.DNNLinearCombinedClassifier(

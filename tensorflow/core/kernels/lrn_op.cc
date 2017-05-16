@@ -79,11 +79,11 @@ struct LaunchLRN<CPUDevice, T> {
     const int rows = static_cast<int>(in.dim_size(1));
     const int cols = static_cast<int>(in.dim_size(2));
     const int depth = static_cast<int>(in.dim_size(3));
-    const int nodes = cols * rows;
 
 #if defined(IS_MOBILE_PLATFORM)
     SingleThreadedLRN(in, batch, rows, cols, depth, output);
 #else
+    const int nodes = cols * rows;
     if (depth > kSingleThreadedLRNDepthCutoff &&
         (beta_ == T(0.5) || beta_ == T(1))) {
       SingleThreadedLRN(in, batch, rows, cols, depth, output);
