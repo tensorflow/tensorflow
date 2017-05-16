@@ -54,6 +54,7 @@ toolchain {
   cxx_builtin_include_directory: "/usr/include"
 
   cxx_builtin_include_directory: "%{computecpp_toolkit_path}"
+  cxx_builtin_include_directory: "%{python_lib_path}"
 
   tool_path { name: "gcov" path: "/usr/bin/gcov" }
 
@@ -149,6 +150,7 @@ toolchain {
   cxx_builtin_include_directory: "/usr/include"
 
   cxx_builtin_include_directory: "%{computecpp_toolkit_path}"
+  cxx_builtin_include_directory: "%{python_lib_path}"
 
   tool_path { name: "gcov" path: "/usr/bin/gcov" }
 
