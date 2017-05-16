@@ -1085,8 +1085,9 @@ class Estimator(BaseEstimator):
       # Check number of arguments of the given function matches requirements.
       model_fn_args = _model_fn_args(model_fn)
       if params is not None and 'params' not in model_fn_args:
-        raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
-                         'arguments, but not None params (%s) are passed.' %
+        raise ValueError('Estimator\'s model_fn (%s) does not have a params '
+                         'argument, but params (%s) were passed to the '
+                         'Estimator\'s constructor.' %
                          (model_fn, params))
       if params is None and 'params' in model_fn_args:
         logging.warning('Estimator\'s model_fn (%s) includes params '
