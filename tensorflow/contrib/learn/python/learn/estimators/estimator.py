@@ -330,6 +330,8 @@ def _write_dict_to_summary(output_dir,
   for key in dictionary:
     if dictionary[key] is None:
       continue
+    if key  == "global_step":
+      continue
     value = summary_proto.value.add()
     value.tag = key
     if (isinstance(dictionary[key], np.float32) or 
