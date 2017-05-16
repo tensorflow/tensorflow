@@ -151,18 +151,3 @@ filegroup(
         ],
     ),
 )
-
-genrule(
-    name = "python_docs",
-    srcs = ["//tensorflow:docs_src"],
-    outs = ["python_docs.tgz"],
-    cmd = "STARTDIR=$$(pwd); " +
-          "TMP=$$(mktemp -d $${TMPDIR:-/tmp}/docs.XXXXXXXXXX); " +
-          "cd $$TMP; " +
-          "$$STARTDIR/$(location :generate) --src_dir=$$STARTDIR/third_party/tensorflow/docs_src --output_dir=docs_out; " +
-          "tar -czf $$STARTDIR/$@ docs_out; " +
-          "cd $$STARTDIR; " +
-          "rm -rf $$TMP; ",
-    tools = [":generate"],
-    visibility = ["//visibility:public"],
-)
