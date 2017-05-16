@@ -57,7 +57,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   ==> scalar Tensor
 
   x = ... Shape [2, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
@@ -68,7 +68,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   #### Shape compatibility
 
   This operator acts on [batch] matrix with compatible shape.
-  `x` is a batch matrix with compatible shape for `apply` and `solve` if
+  `x` is a batch matrix with compatible shape for `matmul` and `solve` if
 
   ```
   operator.shape = [B1,...,Bb] + [N, N],  with b >= 0
@@ -80,7 +80,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
   Suppose `operator` is a `LinearOperatorTriL` of shape `[N, N]`,
   and `x.shape = [N, R]`.  Then
 
-  * `operator.apply(x)` involves `N^2 * R` multiplications.
+  * `operator.matmul(x)` involves `N^2 * R` multiplications.
   * `operator.solve(x)` involves `N * R` size `N` back-substitutions.
   * `operator.determinant()` involves a size `N` `reduce_prod`.
 
@@ -182,7 +182,7 @@ class LinearOperatorTriL(linear_operator.LinearOperator):
         self._diag,
         message="Singular operator:  Diagonal contained zero values.")
 
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
     return math_ops.matmul(
         self._tril, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 

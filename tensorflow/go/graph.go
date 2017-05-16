@@ -185,11 +185,11 @@ func (g *Graph) AddOperation(args OpSpec) (*Operation, error) {
 			return nil, fmt.Errorf("%v (memory will be leaked)", err)
 		}
 	}
-	op := &Operation{
-		c: C.TF_FinishOperation(cdesc, status.c),
-		g: g,
+	c := C.TF_FinishOperation(cdesc, status.c)
+	if err := status.Err(); err != nil {
+		return nil, err
 	}
-	return op, status.Err()
+	return &Operation{c, g}, nil
 }
 
 func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, value interface{}) error {

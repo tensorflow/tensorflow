@@ -24,6 +24,7 @@ from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
@@ -32,6 +33,7 @@ from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
@@ -125,11 +127,20 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
         "input_from_feature_columns",
         values=tuple(six.itervalues(features)),
         partitioner=input_layer_partitioner) as input_layer_scope:
-      net = layers.input_from_feature_columns(
-          columns_to_tensors=features,
-          feature_columns=feature_columns,
-          weight_collections=[parent_scope],
-          scope=input_layer_scope)
+      if all([
+          isinstance(fc, feature_column._FeatureColumn)  # pylint: disable=protected-access
+          for fc in feature_columns
+      ]):
+        net = layers.input_from_feature_columns(
+            columns_to_tensors=features,
+            feature_columns=feature_columns,
+            weight_collections=[parent_scope],
+            scope=input_layer_scope)
+      else:
+        net = fc_core.input_layer(
+            features=features,
+            feature_columns=feature_columns,
+            weight_collections=[parent_scope])
 
     for layer_id, num_hidden_units in enumerate(hidden_units):
       with variable_scope.variable_scope(

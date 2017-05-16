@@ -48,9 +48,9 @@ class ConstantFoldingTest : public ::testing::Test {
                        TensorShape shape) {
     EXPECT_TRUE(n->IsConstant());
     const TensorProto* tensor_proto;
-    TF_EXPECT_OK(GetNodeAttr(n->def(), "value", &tensor_proto));
+    TF_EXPECT_OK(GetNodeAttr(n->attrs(), "value", &tensor_proto));
     DataType dtype;
-    TF_EXPECT_OK(GetNodeAttr(n->def(), "dtype", &dtype));
+    TF_EXPECT_OK(GetNodeAttr(n->attrs(), "dtype", &dtype));
     Tensor t(dtype);
     EXPECT_TRUE(t.FromProto(*tensor_proto));
     test::ExpectClose(t, test::AsTensor(values, shape));
@@ -61,9 +61,9 @@ class ConstantFoldingTest : public ::testing::Test {
                        TensorShape shape) {
     EXPECT_TRUE(n->IsConstant());
     const TensorProto* tensor_proto;
-    TF_EXPECT_OK(GetNodeAttr(n->def(), "value", &tensor_proto));
+    TF_EXPECT_OK(GetNodeAttr(n->attrs(), "value", &tensor_proto));
     DataType dtype;
-    TF_EXPECT_OK(GetNodeAttr(n->def(), "dtype", &dtype));
+    TF_EXPECT_OK(GetNodeAttr(n->attrs(), "dtype", &dtype));
     Tensor t(dtype);
     EXPECT_TRUE(t.FromProto(*tensor_proto));
     test::ExpectTensorEqual<T>(t, test::AsTensor(values, shape));

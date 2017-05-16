@@ -1564,6 +1564,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
