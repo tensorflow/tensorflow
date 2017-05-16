@@ -188,52 +188,41 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   return pipeline.Run(hlo_module).status();
 }
 
-// Invokes the ptxas tool on the given PTX string, and stores the resulting
-// SASS in *cubin. If -v 2 or greater, runs ptxas with -v and dumps the
-// resulting stderr (which contains register allocation info, etc.)
-// to VLOG(2). If ptxas binary is not found *sass is set to "".
-Status CompilePTX(const string& ptx, int cc_major, int cc_minor,
-                  string* cubin) {
-  *cubin = "";
-
+// Invokes the ptxas tool on the given PTX string, and dumps its output.
+void DumpPtxasInfo(const string& ptx) {
   const string ptxas_path =
       tensorflow::io::JoinPath(tensorflow::CudaRoot(), "bin/ptxas");
-
   // Do not log PTX stats if ptxas is not found at the given path.
-  LOG(INFO) << "Invoking ptxas at path \"" << ptxas_path << "\".";
-  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->FileExists(ptxas_path));
+  if (!tensorflow::Env::Default()->FileExists(ptxas_path).ok()) {
+    LOG(WARNING)
+        << "Failed to dump PTX stats because ptxas is not found at path \""
+        << ptxas_path << "\".";
+    return;
+  }
 
   // Write `ptx` into a temporary file.
   char tempdir_template[] = "/tmp/ptxXXXXXX";
   char* tempdir_name = mkdtemp(tempdir_template);
   CHECK_NOTNULL(tempdir_name);
   string ptx_path = tensorflow::io::JoinPath(tempdir_name, "ptx");
-
   TF_CHECK_OK(
       tensorflow::WriteStringToFile(tensorflow::Env::Default(), ptx_path, ptx));
   LOG(INFO) << "ptx file written to: " << ptx_path;
 
   // Invoke ptxas and collect its output.
-  tensorflow::SubProcess ptxas_info;
-  string arch = tensorflow::strings::StrCat("sm_", cc_major, cc_minor);
-  string cubin_path = tensorflow::io::JoinPath(tempdir_name, "cubin");
-
-  if (VLOG_IS_ON(2)) {
-    ptxas_info.SetProgram(ptxas_path, {ptxas_path, "-v", "-o", cubin_path,
-                                       "-arch", arch, ptx_path});
-  } else {
-    ptxas_info.SetProgram(
-        ptxas_path, {ptxas_path, "-o", cubin_path, "-arch", arch, ptx_path});
-  }
-  ptxas_info.SetChannelAction(tensorflow::CHAN_STDERR, tensorflow::ACTION_PIPE);
-  CHECK(ptxas_info.Start());
+  tensorflow::SubProcess ptxas_info_dumper;
+  ptxas_info_dumper.SetProgram(ptxas_path, {ptxas_path, ptx_path, "-o",
+                                            "/dev/null", "-v", "-arch=sm_35"});
+  ptxas_info_dumper.SetChannelAction(tensorflow::CHAN_STDERR,
+                                     tensorflow::ACTION_PIPE);
+  CHECK(ptxas_info_dumper.Start());
   string stderr_output;
-  int ptxas_exit_status = ptxas_info.Communicate(
+  int exit_status = ptxas_info_dumper.Communicate(
       /*stdin_input=*/nullptr, /*stdout_output=*/nullptr, &stderr_output);
-
-  TF_RET_CHECK(ptxas_exit_status == 0);
-  return tensorflow::ReadFileToString(tensorflow::Env::Default(), cubin_path,
-                                      cubin);
+  XLA_LOG_LINES(tensorflow::INFO, stderr_output);
+  if (exit_status != 0) {
+    LOG(FATAL) << "Invalid PTX. See the error message above for reasons.";
+  }
 }
 
 }  // namespace
@@ -309,14 +298,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
   // Reserve space for the PTX to be generated for this module.
   string* ptx;
-  string* cubin;
   {
     tensorflow::mutex_lock lock(mutex_);
     generated_ptxes_.emplace_back(MakeUnique<string>());
     ptx = generated_ptxes_.back().get();
-
-    generated_cubins_.emplace_back(MakeUnique<string>());
-    cubin = generated_cubins_.back().get();
   }
   int cc_major, cc_minor;
   if (!stream_exec->GetDeviceDescription().cuda_compute_capability(&cc_major,
@@ -333,6 +318,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));
   VLOG(2) << "PTX:";
   XLA_VLOG_LINES(2, *ptx);
+  if (VLOG_IS_ON(2)) {
+    DumpPtxasInfo(*ptx);
+  }
 
   auto thunk_schedule = MakeUnique<ThunkSchedule>(
       ir_emitter.ConsumeThunkSequence(), std::move(stream_assignment),
@@ -340,13 +328,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   VLOG(2) << "Printing the thunk schedule...";
   XLA_VLOG_LINES(2, thunk_schedule->ToString());
 
-  TF_RET_CHECK(CompilePTX(*ptx, cc_major, cc_minor, cubin).ok());
-
   auto* gpu_executable =
-      new GpuExecutable(*cubin, *ptx, {cc_major, cc_minor},
-                        std::move(thunk_schedule), std::move(hlo_module),
+      new GpuExecutable(*ptx, std::move(thunk_schedule), std::move(hlo_module),
                         std::move(module_config), std::move(buffer_assignment));
-
   if (flags->xla_gpu_embed_ir) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);

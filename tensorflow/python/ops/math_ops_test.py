@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -55,7 +56,8 @@ class ReduceTest(test_util.TensorFlowTestCase):
   def testReduceInvalidAxis(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     axis = np.array([[0], [1]])
-    with self.assertRaisesRegexp(ValueError, "must be at most rank 1"):
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "must be at most rank 1"):
       math_ops.reduce_sum(x, axis)
 
 
@@ -280,7 +282,8 @@ class AddNTest(test_util.TensorFlowTestCase):
     for _ in range(98):
       partials.append(math_ops.add_n([constant_op.constant(1)]))
     partials.append(
-        math_ops.add_n([constant_op.constant(1), constant_op.constant(1)]))
+        math_ops.add_n([constant_op.constant(1),
+                        constant_op.constant(1)]))
 
     res = math_ops.add_n(partials) + constant_op.constant(0)
     with self.test_session(use_gpu=True):

@@ -45,7 +45,9 @@ static Costs::NanoSeconds PredictExecutionTime(
 
   Costs::NanoSeconds estimate =
       estimator.PredictCosts(op_features).execution_time;
-  return estimate;
+
+  // Make sure our estimates are at least one nanosecond per node.
+  return std::max(estimate, Costs::NanoSeconds(1));
 }
 
 Status EstimateEarliestExecutionTimes(

@@ -29,10 +29,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/graph/validate.h"
-#include "tensorflow/core/grappler/clusters/utils.h"
-#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
-#include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -40,6 +36,13 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
+
+#ifndef IS_MOBILE_PLATFORM
+#include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#endif  // IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
@@ -236,6 +239,8 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   GraphDef optimized_graph;
   const RewriterConfig& rewrite_options =
       session_options_->config.graph_options().rewrite_options();
+
+#ifndef IS_MOBILE_PLATFORM
   if (grappler::MetaOptimizerEnabled(rewrite_options)) {
     // Adding this functionalty in steps. The first step is to make sure
     // we don't break dependencies. The second step will be to turn the
@@ -282,6 +287,7 @@ Status SimpleGraphExecutionState::InitBaseGraph(
       graph_def = &optimized_graph;
     }
   }
+#endif  // IS_MOBILE_PLATFORM
 
   std::unique_ptr<Graph> new_graph(new Graph(OpRegistry::Global()));
   GraphConstructorOptions opts;

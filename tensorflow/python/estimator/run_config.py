@@ -22,6 +22,8 @@ import copy
 
 import six
 
+from tensorflow.core.protobuf import config_pb2
+
 
 # A list of the property names in RunConfig user allows to change.
 _DEFAULT_REPLACEABLE_LIST = [
@@ -40,7 +42,7 @@ _SAVE_CKPT_ERR = (
 )
 
 
-def _validate_save_ckpt(new_copy, replaced_keys):
+def _validate_save_ckpt_with_replaced_keys(new_copy, replaced_keys):
   """Validates the save ckpt properties."""
   # Ensure one (and only one) of save_steps and save_secs is not None.
   # Also, if user sets one save ckpt property, say steps, the other one (secs)
@@ -48,6 +50,7 @@ def _validate_save_ckpt(new_copy, replaced_keys):
 
   save_steps = new_copy.save_checkpoints_steps
   save_secs = new_copy.save_checkpoints_secs
+
   if ('save_checkpoints_steps' in replaced_keys and
       'save_checkpoints_secs' in replaced_keys):
     # If user sets both properties explicitly, we need to error out if both
@@ -58,6 +61,37 @@ def _validate_save_ckpt(new_copy, replaced_keys):
     new_copy._save_checkpoints_secs = None  # pylint: disable=protected-access
   elif 'save_checkpoints_secs' in replaced_keys and save_secs is not None:
     new_copy._save_checkpoints_steps = None  # pylint: disable=protected-access
+
+
+def _validate_properties(run_config):
+  """Validates the properties."""
+  def _validate(property_name, cond, message):
+    property_value = getattr(run_config, property_name)
+    if property_value is not None and not cond(property_value):
+      raise ValueError(message)
+
+  _validate('model_dir', lambda dir: dir,
+            message='model_dir should be non-empty')
+
+  _validate('save_summary_steps', lambda steps: steps >= 0,
+            message='save_summary_steps should be >= 0')
+
+  _validate('save_checkpoints_steps', lambda steps: steps >= 0,
+            message='save_checkpoints_steps should be >= 0')
+  _validate('save_checkpoints_secs', lambda secs: secs >= 0,
+            message='save_checkpoints_secs should be >= 0')
+
+  _validate('session_config',
+            lambda sc: isinstance(sc, config_pb2.ConfigProto),
+            message='session_config must be instance of ConfigProto')
+
+  _validate('keep_checkpoint_max', lambda keep_max: keep_max >= 0,
+            message='keep_checkpoint_max should be >= 0')
+  _validate('keep_checkpoint_every_n_hours', lambda keep_hours: keep_hours > 0,
+            message='keep_checkpoint_every_n_hours should be > 0')
+
+  _validate('tf_random_seed', lambda seed: isinstance(seed, six.integer_types),
+            message='tf_random_seed must be integer.')
 
 
 class TaskType(object):
@@ -78,6 +112,7 @@ class RunConfig(object):
     self._session_config = None
     self._keep_checkpoint_max = 5
     self._keep_checkpoint_every_n_hours = 10000
+    _validate_properties(self)
 
   @property
   def cluster_spec(self):
@@ -205,5 +240,6 @@ class RunConfig(object):
           'Replacing {} is not supported. Allowed properties are {}.'.format(
               key, allowed_properties_list))
 
-    _validate_save_ckpt(new_copy, kwargs.keys())
+    _validate_save_ckpt_with_replaced_keys(new_copy, kwargs.keys())
+    _validate_properties(new_copy)
     return new_copy
