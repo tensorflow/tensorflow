@@ -491,10 +491,10 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
        i < context->retvals().size(); ++i) {
     const XlaContext::HandleOrConstant& retval = context->retvals()[i];
     if (!retval.is_constant) {
-      CHECK_LT(computation_output, num_nonconst_outputs);
+      CHECK_LT(computation_output, num_computation_outputs);
       OutputDescription& output = result->outputs[i];
       output.is_constant = false;
-      if (num_nonconst_outputs > 1) {
+      if (num_computation_outputs > 1) {
         output.shape =
             XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(
                 result->xla_output_shape, computation_output));

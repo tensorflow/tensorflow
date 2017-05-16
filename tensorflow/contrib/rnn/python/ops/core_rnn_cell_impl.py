@@ -42,15 +42,20 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 
 from tensorflow.python.ops.math_ops import sigmoid
 from tensorflow.python.ops.math_ops import tanh
-from tensorflow.python.ops.rnn_cell_impl import _RNNCell as RNNCell
 
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
+
+# pylint: disable=protected-access
+RNNCell = rnn_cell_impl._RNNCell  # pylint: disable=invalid-name
+_like_rnncell = rnn_cell_impl._like_rnncell
+# pylint: enable=protected-access
 
 _BIAS_VARIABLE_NAME = "biases"
 _WEIGHTS_VARIABLE_NAME = "weights"
@@ -424,7 +429,7 @@ class OutputProjectionWrapper(RNNCell):
       ValueError: if output_size is not positive.
     """
     super(OutputProjectionWrapper, self).__init__(_reuse=reuse)
-    if not isinstance(cell, RNNCell):
+    if not _like_rnncell(cell):
       raise TypeError("The parameter cell is not RNNCell.")
     if output_size < 1:
       raise ValueError("Parameter output_size must be > 0: %d." % output_size)
@@ -480,7 +485,7 @@ class InputProjectionWrapper(RNNCell):
     super(InputProjectionWrapper, self).__init__(_reuse=reuse)
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated.", self)
-    if not isinstance(cell, RNNCell):
+    if not _like_rnncell(cell):
       raise TypeError("The parameter cell is not RNNCell.")
     self._cell = cell
     self._num_proj = num_proj
@@ -556,7 +561,7 @@ class DropoutWrapper(RNNCell):
       TypeError: if cell is not an RNNCell.
       ValueError: if any of the keep_probs are not between 0 and 1.
     """
-    if not isinstance(cell, RNNCell):
+    if not _like_rnncell(cell):
       raise TypeError("The parameter cell is not a RNNCell.")
     with ops.name_scope("DropoutWrapperInit"):
       def tensor_and_const_value(v):
@@ -791,7 +796,7 @@ class EmbeddingWrapper(RNNCell):
       ValueError: if embedding_classes is not positive.
     """
     super(EmbeddingWrapper, self).__init__(_reuse=reuse)
-    if not isinstance(cell, RNNCell):
+    if not _like_rnncell(cell):
       raise TypeError("The parameter cell is not RNNCell.")
     if embedding_classes <= 0 or embedding_size <= 0:
       raise ValueError("Both embedding_classes and embedding_size must be > 0: "

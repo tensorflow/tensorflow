@@ -37,6 +37,7 @@ from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer as sdca_optimizer_lib
 from tensorflow.contrib.metrics.python.ops import metric_ops
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
@@ -231,6 +232,32 @@ class LinearClassifierTest(test.TestCase):
 
     classifier = linear.LinearClassifier(feature_columns=[feature_column])
 
+    classifier.fit(input_fn=_input_fn, steps=100)
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertGreater(scores['accuracy'], 0.9)
+
+  def testEstimatorWithCoreFeatureColumns(self):
+
+    def _input_fn(num_epochs=None):
+      features = {
+          'age':
+              input_lib.limit_epochs(
+                  constant_op.constant([[.8], [0.2], [.1]]),
+                  num_epochs=num_epochs),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      return features, constant_op.constant([[1], [0], [0]], dtype=dtypes.int32)
+
+    language_column = fc_core.categorical_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [language_column, fc_core.numeric_column('age')]
+
+    classifier = linear.LinearClassifier(feature_columns=feature_columns)
     classifier.fit(input_fn=_input_fn, steps=100)
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
     self.assertGreater(scores['accuracy'], 0.9)
