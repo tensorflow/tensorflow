@@ -225,7 +225,7 @@ template <typename T>
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
-      return *LiteralUtil::CreateR0<half>((half)1.0f);
+      return *LiteralUtil::CreateR0<half>(static_cast<half>(1.0f));
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 1";
     case OPAQUE:
@@ -261,8 +261,8 @@ template <typename T>
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
-      return *LiteralUtil::CreateR0<half>((half)
-              -std::numeric_limits<float>::infinity());
+      return *LiteralUtil::CreateR0<half>(
+              static_cast<half>(-std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no minimum value";
     case OPAQUE:
@@ -298,8 +298,8 @@ template <typename T>
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
-      return *LiteralUtil::CreateR0<half>((half)
-              std::numeric_limits<float>::infinity());
+      return *LiteralUtil::CreateR0<half>(
+              static_cast<half>(std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no maximum value";
     case OPAQUE:
@@ -701,7 +701,7 @@ template <typename T>
     case F64:
       Resize<double>(num_elements, 0, literal);
     case F16:
-      Resize<half>(num_elements, (half)0.0f, literal);
+      Resize<half>(num_elements, static_cast<half>(0.0f), literal);
       break;
     default:
       LOG(FATAL) << "primitive type not supported in literals: "
@@ -1176,7 +1176,7 @@ template <>
 /* static */ void LiteralUtil::Resize<half>(int64 num_elements, half value,
                                             Literal* literal) {
   CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
-  literal->mutable_f16s()->resize(num_elements * 2);
+  literal->mutable_f16s()->resize(num_elements * sizeof(half));
   auto data = GetMutableArraySlice<half>(literal);
   for (int i = 0; i < num_elements; i++) {
     data[i] = value;
