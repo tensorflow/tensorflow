@@ -69,10 +69,10 @@ def assert_zero_imag_part(x, message=None, name="assert_zero_imag_part"):
 
 
 def assert_compatible_matrix_dimensions(operator, x):
-  """Assert that an argument to solve/apply has proper domain dimension.
+  """Assert that an argument to solve/matmul has proper domain dimension.
 
   If `operator.shape[-2:] = [M, N]`, and `x.shape[-2:] = [Q, R]`, then
-  `operator.apply(x)` is defined only if `N = Q`.  This `Op` returns an
+  `operator.matmul(x)` is defined only if `N = Q`.  This `Op` returns an
   `Assert` that "fires" if this is not the case.  Static checks are already
   done by the base class `LinearOperator`.
 
