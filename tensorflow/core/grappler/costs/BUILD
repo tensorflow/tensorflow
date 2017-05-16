@@ -226,7 +226,6 @@ cc_library(
         ":utils",
         ":virtual_placer",
         ":virtual_scheduler",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
