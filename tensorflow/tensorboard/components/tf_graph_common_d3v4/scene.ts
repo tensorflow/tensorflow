@@ -155,7 +155,7 @@ module tf.graph.scene {
         .scale(scale)
         .translate(params.padding.paddingLeft, params.padding.paddingTop);
 
-    d3.select(zoomG)
+    d3.select(svg)
         .transition()
         .duration(500)
         .call(d3zoom.transform, transform)

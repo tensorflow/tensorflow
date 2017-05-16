@@ -649,12 +649,12 @@ Polymer({
     },
     /** Keeps track of the starting coordinates of a graph zoom/pan */
     _zoomStartCoords: {
-      type: Array,
+      type: Object,
       value: null
     },
     /** Keeps track of the current coordinates of a graph zoom/pan */
-    _zoomCoords: {
-      type: Array,
+    _zoomTransform: {
+      type: Object,
       value: null
     },
     /** Maximum distance of a zoom event for it to be interpreted as a click */
@@ -797,8 +797,8 @@ Polymer({
           // is ignored (as this mouse click was part of a zooming, and should
           // not be used to indicate an actual click on the graph).
           var dragDistance = Math.sqrt(
-            Math.pow(this._zoomStartCoords[0] - this._zoomCoords[0], 2) +
-            Math.pow(this._zoomStartCoords[1] - this._zoomCoords[1], 2));
+            Math.pow(this._zoomStartCoords.x - this._zoomTransform.x, 2) +
+            Math.pow(this._zoomStartCoords.y - this._zoomTransform.y, 2));
           if (dragDistance < this._maxZoomDistanceForClick) {
             this._fireEnableClick();
           } else {
@@ -808,8 +808,8 @@ Polymer({
         this._zoomStartCoords = null;
       }.bind(this))
       .on('zoom', function() {
-        // Store the coordinates of the zoom event
-        this._zoomCoords = [d3.event.transform.x, d3.event.transform.y];
+        // Store the coordinates of the zoom event.
+        this._zoomTransform = d3.event.transform;
 
         // If this is the first zoom event after a zoom-end, then
         // store the coordinates as the start coordinates as well,
@@ -818,7 +818,7 @@ Polymer({
         // event on mouse-down, even if there has been no dragging
         // done to translate the graph around.
         if (!this._zoomStartCoords) {
-          this._zoomStartCoords = this._zoomCoords;
+          this._zoomStartCoords = this._zoomTransform;
           this.fire('disable-click');
         }
         this._zoomed = true;
