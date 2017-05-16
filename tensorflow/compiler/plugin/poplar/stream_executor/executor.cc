@@ -379,6 +379,8 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
           poplar::Engine::ReportOptions opts;
           opts.doLayerWiseProfile = true;
           engine->report(stream, opts);
+
+          report_counter++;
         }
       } catch (std::logic_error e) {
         LOG(WARNING) << "Error producing execution report: " << e.what();
