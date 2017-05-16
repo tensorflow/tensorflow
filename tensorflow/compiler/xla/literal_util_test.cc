@@ -105,6 +105,9 @@ TEST_F(LiteralUtilTest, LiteralScalarToString) {
 
   auto f32_lit = LiteralUtil::CreateR0<float>(3.14f);
   ASSERT_EQ("3.14", LiteralUtil::ToString(*f32_lit));
+
+  auto f16_lit = LiteralUtil::CreateR0<half>(static_cast<half>(0.5f));
+  ASSERT_EQ("0.5", LiteralUtil::ToString(*f16_lit));
 }
 
 TEST_F(LiteralUtilTest, LiteralVectorToString) {
@@ -372,6 +375,15 @@ TEST_F(LiteralUtilTest, IsAll) {
       LiteralUtil::IsAll(*LiteralUtil::CreateR2<uint64>({{8, 8}, {8, 9}}), 8));
   EXPECT_FALSE(
       LiteralUtil::IsAll(*LiteralUtil::CreateR2<uint64>({{9, 8}, {8, 8}}), 8));
+
+  half h8(8.0f);
+  half h9(9.0f);
+  EXPECT_TRUE(
+      LiteralUtil::IsAll(*LiteralUtil::CreateR2<half>({{h8}, {h8}}), 8));
+  EXPECT_FALSE(
+      LiteralUtil::IsAll(*LiteralUtil::CreateR2<half>({{h8}, {h9}}), 8));
+  EXPECT_FALSE(
+      LiteralUtil::IsAll(*LiteralUtil::CreateR2<half>({{h9}, {h8}}), 8));
 
   auto uint64_max = std::numeric_limits<uint64>::max();
   EXPECT_FALSE(LiteralUtil::IsAll(
@@ -659,6 +671,30 @@ TEST_F(LiteralUtilTest, PopulateWithValueR2U64) {
   EXPECT_TRUE(LiteralUtil::Equal(output, *expected));
 }
 
+TEST_F(LiteralUtilTest, PopulateWithValueR0F16) {
+  Literal output;
+  half h(0.25f);
+  LiteralUtil::PopulateWithValue<half>(h, {}, &output);
+  auto expected = LiteralUtil::CreateR0<half>(h);
+  EXPECT_TRUE(LiteralUtil::Equal(output, *expected));
+}
+
+TEST_F(LiteralUtilTest, PopulateWithValueR1F16) {
+  Literal output;
+  half h(0.5f);
+  LiteralUtil::PopulateWithValue<half>(h, {3}, &output);
+  auto expected = LiteralUtil::CreateR1<half>({h, h, h});
+  EXPECT_TRUE(LiteralUtil::Equal(output, *expected));
+}
+
+TEST_F(LiteralUtilTest, PopulateWithValueR2F16) {
+  Literal output;
+  half h(2.0f);
+  LiteralUtil::PopulateWithValue<half>(h, {2, 2}, &output);
+  auto expected = LiteralUtil::CreateR2<half>({{h, h}, {h, h}});
+  EXPECT_TRUE(LiteralUtil::Equal(output, *expected));
+}
+
 TEST_F(LiteralUtilTest, ReplicateR2U32) {
   auto input = LiteralUtil::CreateR2<uint32>(
       {{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}});
@@ -728,6 +764,41 @@ TEST_F(LiteralUtilTest, CopyScalars) {
   EXPECT_EQ(LiteralUtil::Get<uint32>(*zero, {}), 17);
   TF_EXPECT_OK(LiteralUtil::Copy(*zero, {}, vect.get(), {4}, {}));
   EXPECT_EQ(LiteralUtil::Get<uint32>(*vect, {4}), 17);
+}
+
+TEST_F(LiteralUtilTest, F16) {
+  // Verify that the internal data views are consistent and that they
+  // are in little endian format
+  // TODO - modify if we make the data format machine endianess dependent
+  auto m1 = LiteralUtil::CreateFromShape(ShapeUtil::MakeShape(F16, {2, 2}));
+  Literal* l1 = m1.get();
+  const char* d1 = (const char*)LiteralUtil::InternalData(*l1);
+  EXPECT_EQ(d1[0], 0);
+  EXPECT_EQ(d1[1], 0);
+  EXPECT_EQ(d1[2], 0);
+  EXPECT_EQ(d1[3], 0);
+  EXPECT_EQ(d1[4], 0);
+  EXPECT_EQ(d1[5], 0);
+  EXPECT_EQ(d1[6], 0);
+  EXPECT_EQ(d1[7], 0);
+  EXPECT_EQ(LiteralUtil::InternalData(*l1),
+            LiteralUtil::MutableInternalData(l1));
+
+  half h1(1.0f);
+  half h2(2.0f);
+  auto m2 = LiteralUtil::CreateR2<half>({{h1, h2}, {h2, h1}});
+  Literal* l2 = m2.get();
+  const char* d2 = (const char*)LiteralUtil::InternalData(*l2);
+  EXPECT_EQ(d2[0], 0);
+  EXPECT_EQ(d2[1], 0x3C);
+  EXPECT_EQ(d2[2], 0);
+  EXPECT_EQ(d2[3], 0x40);
+  EXPECT_EQ(d2[4], 0);
+  EXPECT_EQ(d2[5], 0x40);
+  EXPECT_EQ(d2[6], 0);
+  EXPECT_EQ(d2[7], 0x3C);
+  EXPECT_EQ(LiteralUtil::InternalData(*l2),
+            LiteralUtil::MutableInternalData(l2));
 }
 
 TEST_F(LiteralUtilTest, Populate) {
