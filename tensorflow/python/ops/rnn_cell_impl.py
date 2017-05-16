@@ -24,6 +24,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -66,8 +68,9 @@ def _concat(prefix, suffix, static=False):
                        "but saw tensor: %s" % p)
   else:
     p = tensor_shape.as_shape(prefix)
-    p = p.as_list() if p.ndims is not None else None
-    p_static = p
+    p_static = p.as_list() if p.ndims is not None else None
+    p = (constant_op.constant(p.as_list(), dtype=dtypes.int32)
+         if p.is_fully_defined() else None)
   if isinstance(suffix, ops.Tensor):
     s = suffix
     s_static = tensor_util.constant_value(suffix)
@@ -78,8 +81,9 @@ def _concat(prefix, suffix, static=False):
                        "but saw tensor: %s" % s)
   else:
     s = tensor_shape.as_shape(suffix)
-    s = s.as_list() if s.ndims is not None else None
-    s_static = s
+    s_static = s.as_list() if s.ndims is not None else None
+    s = (constant_op.constant(s.as_list(), dtype=dtypes.int32)
+         if s.is_fully_defined() else None)
 
   if static:
     shape = tensor_shape.as_shape(p_static).concatenate(s_static)
