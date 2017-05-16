@@ -16,6 +16,7 @@ limitations under the License.
 // Functions to read images in GIF format.
 
 #include "tensorflow/core/lib/gif/gif_io.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/gif.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
@@ -26,7 +27,7 @@ namespace gif {
 
 int input_callback(GifFileType* gif_file, GifByteType* buf, int size) {
   if (gif_file->UserData && memcpy(buf, gif_file->UserData, size)) {
-    gif_file->UserData = ((uint8_t*)gif_file->UserData) + size;
+    gif_file->UserData = reinterpret_cast<uint8_t*>(gif_file->UserData) + size;
     return size;
   }
   return 0;
@@ -37,6 +38,13 @@ uint8* Decode(const void* srcdata, int datasize,
   int error_code = D_GIF_SUCCEEDED;
   GifFileType* gif_file =
       DGifOpen(const_cast<void*>(srcdata), &input_callback, &error_code);
+  const auto cleanup = gtl::MakeCleanup([gif_file]() {
+    int error_code = D_GIF_SUCCEEDED;
+    if (gif_file && DGifCloseFile(gif_file, &error_code) != GIF_OK) {
+      LOG(WARNING) << "Fail to close gif file, reason: "
+                   << GifErrorString(error_code);
+    }
+  });
   if (error_code != D_GIF_SUCCEEDED) {
     LOG(ERROR) << "Fail to open gif file, reason: "
                << GifErrorString(error_code);
@@ -52,12 +60,13 @@ uint8* Decode(const void* srcdata, int datasize,
     return nullptr;
   }
 
-  int num_frames = gif_file->ImageCount;
-  int width = gif_file->SWidth;
-  int height = gif_file->SHeight;
-  int channel = 3;
+  const int num_frames = gif_file->ImageCount;
+  const int width = gif_file->SWidth;
+  const int height = gif_file->SHeight;
+  const int channel = 3;
 
-  uint8* dstdata = allocate_output(num_frames, width, height, channel);
+  uint8* const dstdata = allocate_output(num_frames, width, height, channel);
+  if (!dstdata) return nullptr;
   for (int k = 0; k < num_frames; k++) {
     SavedImage* this_image = &gif_file->SavedImages[k];
     GifImageDesc* img_desc = &this_image->ImageDesc;
@@ -84,10 +93,6 @@ uint8* Decode(const void* srcdata, int datasize,
     }
   }
 
-  if (DGifCloseFile(gif_file, &error_code) != GIF_OK) {
-    LOG(WARNING) << "Fail to close gif file, reason: "
-                 << GifErrorString(error_code);
-  }
   return dstdata;
 }
 

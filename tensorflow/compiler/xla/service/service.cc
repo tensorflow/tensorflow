@@ -112,6 +112,16 @@ ServiceOptions& ServiceOptions::set_number_of_replicas(int number_of_replicas) {
 
 int ServiceOptions::number_of_replicas() const { return number_of_replicas_; }
 
+ServiceOptions& ServiceOptions::set_intra_op_parallelism_threads(
+    int num_threads) {
+  intra_op_parallelism_threads_ = num_threads;
+  return *this;
+}
+
+int ServiceOptions::intra_op_parallelism_threads() const {
+  return intra_op_parallelism_threads_;
+}
+
 /* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
     perftools::gputools::Platform* platform) {
   ServiceOptions default_options;
@@ -126,9 +136,10 @@ int ServiceOptions::number_of_replicas() const { return number_of_replicas_; }
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
-  TF_ASSIGN_OR_RETURN(
-      execute_backend,
-      Backend::CreateBackend(platform, options.number_of_replicas()));
+  BackendOptions backend_options;
+  backend_options.set_platform(platform);
+  backend_options.set_number_of_replicas(options.number_of_replicas());
+  TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
                       CreateComputeConstantBackend());
   std::unique_ptr<Service> service(new Service(
@@ -142,7 +153,10 @@ Service::CreateComputeConstantBackend() {
                       PlatformUtil::GetSupportedPlatforms());
   for (auto* platform : platforms) {
     if (platform->id() == se::host::kHostPlatformId) {
-      return Backend::CreateBackend(platform, /*replica_count=*/1);
+      BackendOptions backend_options;
+      backend_options.set_platform(platform);
+      backend_options.set_number_of_replicas(1);
+      return Backend::CreateBackend(backend_options);
     }
   }
   return NotFound("CPU platform not found");
@@ -573,7 +587,8 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     options.set_inter_op_thread_pool(backend->inter_op_thread_pool());
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
-    run_options.emplace_back(options, backend->StreamBorrower());
+    run_options.emplace_back(options, backend->StreamBorrower(),
+                             backend->inter_op_thread_pool());
   }
 
   perftools::gputools::DeviceMemoryBase result;

@@ -159,13 +159,17 @@ XlaLocalLaunchOp::XlaLocalLaunchOp(OpKernelConstruction* ctx)
   }
 }
 
-Status XlaLocalLaunchOp::BuildCompilationCache(XlaCompilationCache** cache) {
+Status XlaLocalLaunchOp::BuildCompilationCache(OpKernelContext* ctx,
+                                               XlaCompilationCache** cache) {
   auto platform = gpu::MultiPlatformManager::PlatformWithId(platform_id_);
   if (!platform.ok()) {
     return StreamExecutorUtil::ConvertStatus(platform.status());
   }
-  auto client =
-      xla::ClientLibrary::GetOrCreateLocalClient(platform.ValueOrDie());
+  xla::LocalClientOptions client_options;
+  client_options.set_platform(platform.ValueOrDie());
+  client_options.set_intra_op_parallelism_threads(
+      ctx->device()->tensorflow_cpu_worker_threads()->num_threads);
+  auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
   if (!client.ok()) {
     return client.status();
   }
@@ -194,8 +198,8 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   XlaCompilationCache* cache;
   OP_REQUIRES_OK(ctx, rm->LookupOrCreate<XlaCompilationCache>(
                           rm->default_container(), "xla_cache", &cache,
-                          [this](XlaCompilationCache** cache) {
-                            return BuildCompilationCache(cache);
+                          [this, ctx](XlaCompilationCache** cache) {
+                            return BuildCompilationCache(ctx, cache);
                           }));
   // Hold the reference to the JIT during evaluation. (We could probably
   // free it sooner because the ResourceMgr will retain a reference, but
@@ -264,8 +268,6 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     xla::ExecutableRunOptions run_options;
     run_options.set_stream(stream);
     run_options.set_allocator(&xla_allocator);
-    run_options.set_inter_op_thread_pool(
-        ctx->device()->tensorflow_cpu_worker_threads()->workers);
     run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
     Env* env = Env::Default();
     auto start_time = env->NowMicros();

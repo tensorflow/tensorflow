@@ -31,7 +31,7 @@ from tensorflow.python.util import nest
 
 
 # pylint: disable=protected-access
-_state_size_with_prefix = rnn_cell_impl._state_size_with_prefix
+_concat = rnn_cell_impl._concat
 _infer_state_dtype = rnn._infer_state_dtype
 _reverse_seq = rnn._reverse_seq
 _rnn_step = rnn._rnn_step
@@ -159,11 +159,10 @@ def static_rnn(cell, inputs, initial_state=None, dtype=None,
             "sequence_length must be a vector of length batch_size")
       def _create_zero_output(output_size):
         # convert int to TensorShape if necessary
-        size = _state_size_with_prefix(output_size, prefix=[batch_size])
+        size = _concat(batch_size, output_size)
         output = array_ops.zeros(
             array_ops.stack(size), _infer_state_dtype(dtype, state))
-        shape = _state_size_with_prefix(
-            output_size, prefix=[fixed_batch_size.value])
+        shape = _concat(fixed_batch_size.value, output_size, static=True)
         output.set_shape(tensor_shape.TensorShape(shape))
         return output
 

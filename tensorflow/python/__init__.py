@@ -75,6 +75,7 @@ from tensorflow.python.ops.standard_ops import *
 
 # Bring in subpackages.
 from tensorflow.python.estimator import estimator_lib as estimator
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import metrics
@@ -212,6 +213,7 @@ _allowed_symbols.extend([
     'compat',
     'errors',
     'estimator',
+    'feature_column',
     'flags',
     'gfile',
     'graph_util',

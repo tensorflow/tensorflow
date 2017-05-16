@@ -12,21 +12,6 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-filegroup(
-    name = "mobile_srcs",
-    srcs = [
-        "scc.cc",
-        "scc.h",
-    ],
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-alias(
-    name = "android_srcs",
-    actual = ":mobile_srcs",
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "scc",
     srcs = ["scc.cc"],

@@ -1101,14 +1101,14 @@ static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
 
     if (status->status.ok()) {
       // Run shape inference function for newly added node.
-      //
-      // TODO(b/28152992): Enable returning the result of this
-      // code-path once we have converted all python shape functions
-      // to call their C++ versions.
-      desc->graph->refiner.AddNode(ret).IgnoreError();
-
+      status->status = desc->graph->refiner.AddNode(ret);
+    }
+    if (status->status.ok()) {
       // Add the node to the name-to-node mapping.
       desc->graph->name_map[ret->name()] = ret;
+    } else if (ret != nullptr) {
+      desc->graph->graph.RemoveNode(ret);
+      ret = nullptr;
     }
   }
 

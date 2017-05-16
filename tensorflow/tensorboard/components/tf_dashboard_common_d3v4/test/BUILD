@@ -30,7 +30,7 @@ tensorboard_typescript_genrule(
     typings = [
         "@org_definitelytyped//:chai.d.ts",
         "@org_definitelytyped//:mocha.d.ts",
-        "//tensorflow/tensorboard/components/tf_dashboard_common_d3v4:bundle.d.ts",
+        "//tensorflow/tensorboard/components/tf_dashboard_common_d3v4:tf-categorizer-bundle.d.ts",
     ],
 )
 
@@ -38,6 +38,7 @@ tensorboard_typescript_bundle(
     name = "bundle",
     out = "bundle.ts",
     namespace_srcs = {"TF.Dashboard": ["tf-categorizer-tests.ts"]},
+    namespace_symbol_aliases = {"TF.Dashboard": {"cat": "TF.Dashboard.Categorizer"}},
 )
 
 filegroup(
