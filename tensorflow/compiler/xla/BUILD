@@ -45,6 +45,9 @@ xla_proto_library(
     ],
 )
 
+# This is a headers target that extra XLA devices can use to prevent
+# circular dependencies.  Devices that are compiled as separate shared
+# objects can also use it to prevent linking of library code.
 cc_header_only_library(
     name = "xla_headers_lib",
     visibility = ["//visibility:public"],
