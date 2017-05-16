@@ -34,6 +34,7 @@ from tensorflow.python.util import nest
 
 # pylint: disable=protected-access
 _concat = rnn_cell_impl._concat
+_like_rnncell = rnn_cell_impl._like_rnncell
 # pylint: enable=protected-access
 
 
@@ -361,12 +362,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell_fw, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell_fw):
     raise TypeError("cell_fw must be an instance of RNNCell")
-  if not isinstance(cell_bw, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell_bw):
     raise TypeError("cell_bw must be an instance of RNNCell")
-  # pylint: enable=protected-access
 
   with vs.variable_scope(scope or "bidirectional_rnn"):
     # Forward direction
@@ -507,10 +506,8 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     ValueError: If inputs is None or an empty list.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
-  # pylint: enable=protected-access
 
   # By default, time_major==False and inputs are batch-major: shaped
   #   [batch, time, depth]
@@ -921,10 +918,8 @@ def raw_rnn(cell, loop_fn,
       a `callable`.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
-  # pylint: enable=protected-access
   if not callable(loop_fn):
     raise TypeError("loop_fn must be a callable")
 

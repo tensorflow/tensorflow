@@ -1082,8 +1082,6 @@ _OverrideBinaryOperatorHelper(_mul_dispatch, "mul")
 _OverrideBinaryOperatorHelper(_div_python2, "div")
 _OverrideBinaryOperatorHelper(_truediv_python3, "truediv")
 _OverrideBinaryOperatorHelper(floordiv, "floordiv")
-# TODO(aselle): Switch mod to floor_mod when ready
-# _OverrideBinaryOperatorHelper(gen_math_ops.floor_mod, "mod")
 _OverrideBinaryOperatorHelper(gen_math_ops._floor_mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
 

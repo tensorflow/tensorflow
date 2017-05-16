@@ -34,6 +34,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -1057,7 +1058,7 @@ class AttentionCellWrapper(core_rnn_cell.RNNCell):
           `state_is_tuple` is `False` or if attn_length is zero or less.
     """
     super(AttentionCellWrapper, self).__init__(_reuse=reuse)
-    if not isinstance(cell, core_rnn_cell.RNNCell):
+    if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
       raise TypeError("The parameter cell is not RNNCell.")
     if nest.is_sequence(cell.state_size) and not state_is_tuple:
       raise ValueError("Cell returns tuple of states, but the flag "

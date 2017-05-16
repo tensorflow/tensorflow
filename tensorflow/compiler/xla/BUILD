@@ -216,7 +216,7 @@ cc_test(
         ":test_helpers",
         ":types",
         ":util",
-        "//tensorflow/core:test",
+        ":xla_data_proto",
         "//tensorflow/core:test_main",
     ],
 )

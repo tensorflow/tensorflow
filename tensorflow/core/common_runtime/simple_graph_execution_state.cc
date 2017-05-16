@@ -236,11 +236,12 @@ Status SimpleGraphExecutionState::InitBaseGraph(
     const BuildGraphOptions& options) {
   const GraphDef* graph_def = &original_graph_def_;
 
+#ifndef IS_MOBILE_PLATFORM
   GraphDef optimized_graph;
+
   const RewriterConfig& rewrite_options =
       session_options_->config.graph_options().rewrite_options();
 
-#ifndef IS_MOBILE_PLATFORM
   if (grappler::MetaOptimizerEnabled(rewrite_options)) {
     // Adding this functionalty in steps. The first step is to make sure
     // we don't break dependencies. The second step will be to turn the
