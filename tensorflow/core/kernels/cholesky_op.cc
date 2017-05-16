@@ -151,7 +151,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
     }
 
     // Register callback to check info after kernels finish.
-    auto info_checker = [context, done](
+    auto info_checker = [context, dev_info, done](
                             const Status& status,
                             const std::vector<HostLapackInfo>& /* unused */) {
       Status full_status = status;
