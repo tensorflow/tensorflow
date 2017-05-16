@@ -39,12 +39,11 @@ prefix=${TF_PREFIX}
 exec_prefix=\${prefix}
 libdir=\${exec_prefix}/lib
 includedir=\${prefix}/include
-modules=1
 
 Name: TensorFlow
 Version: ${TF_VERSION}
 Description: Library for computation using data flow graphs for scalable machine learning
 Requires:
 Libs: -L\${libdir} -ltensorflow
-Cflags: -I\${includedir}/tensorflow
+Cflags: -I\${includedir}
 EOF
