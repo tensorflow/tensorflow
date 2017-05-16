@@ -30,6 +30,9 @@ limitations under the License.
 // the top of the main() function.
 //
 // The googlenet_graph.pb file included by default is created from Inception.
+//
+// Note that, for GIF inputs, to reuse existing code, only single-frame ones
+// are supported.
 
 #include <fstream>
 #include <utility>
