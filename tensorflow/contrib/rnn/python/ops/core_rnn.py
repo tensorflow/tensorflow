@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -32,6 +31,7 @@ from tensorflow.python.util import nest
 
 # pylint: disable=protected-access
 _concat = rnn_cell_impl._concat
+_like_rnncell = rnn_cell_impl._like_rnncell
 _infer_state_dtype = rnn._infer_state_dtype
 _reverse_seq = rnn._reverse_seq
 _rnn_step = rnn._rnn_step
@@ -99,7 +99,7 @@ def static_rnn(cell, inputs, initial_state=None, dtype=None,
       (column size) cannot be inferred from inputs via shape inference.
   """
 
-  if not isinstance(cell, core_rnn_cell.RNNCell):
+  if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
   if not nest.is_sequence(inputs):
     raise TypeError("inputs must be a sequence")
@@ -319,9 +319,9 @@ def static_bidirectional_rnn(cell_fw, cell_bw, inputs,
     ValueError: If inputs is None or an empty list.
   """
 
-  if not isinstance(cell_fw, core_rnn_cell.RNNCell):
+  if not _like_rnncell(cell_fw):
     raise TypeError("cell_fw must be an instance of RNNCell")
-  if not isinstance(cell_bw, core_rnn_cell.RNNCell):
+  if not _like_rnncell(cell_bw):
     raise TypeError("cell_bw must be an instance of RNNCell")
   if not nest.is_sequence(inputs):
     raise TypeError("inputs must be a sequence")

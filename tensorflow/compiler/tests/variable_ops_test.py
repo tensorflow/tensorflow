@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -35,6 +36,21 @@ from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
 
 class VariableOpsTest(XLATestCase):
   """Test cases for resource variable operators."""
+
+  def testOneWriteOneOutput(self):
+    # Regression test for a bug where computations with one non-constant
+    # output and one variable update were mishandled.
+    for dtype in self.numeric_types:
+      init = np.array([[1, 2], [3, 4]], dtype=dtype)
+      with self.test_session() as sess, self.test_scope():
+        v = resource_variable_ops.ResourceVariable(init)
+        sess.run(variables.variables_initializer([v]))
+        p = array_ops.placeholder(dtype)
+        x = v.assign_add(p)
+        with ops.control_dependencies([x]):
+          y = v.read_value()
+        self.assertAllClose(np.array([[2, 3], [4, 5]], dtype=dtype),
+                            sess.run(y, {p: 1}))
 
   def testReadWrite(self):
     """Tests initialization, reading, and writing a resource variable."""
