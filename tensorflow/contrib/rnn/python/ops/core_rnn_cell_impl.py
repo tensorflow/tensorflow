@@ -83,12 +83,15 @@ class BasicRNNCell(RNNCell):
 class GRUCell(RNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078)."""
 
-  def __init__(self, num_units, input_size=None, activation=tanh, reuse=None):
+  def __init__(self, num_units, input_size=None, activation=tanh, reuse=None,
+               kernel_initializer=None, bias_initializer=None):
     super(GRUCell, self).__init__(_reuse=reuse)
     if input_size is not None:
       logging.warn("%s: The input_size parameter is deprecated.", self)
     self._num_units = num_units
     self._activation = activation
+    self._kernel_initializer = kernel_initializer
+    self._bias_initializer = bias_initializer
 
   @property
   def state_size(self):
@@ -102,10 +105,16 @@ class GRUCell(RNNCell):
     """Gated recurrent unit (GRU) with nunits cells."""
     with vs.variable_scope("gates"):  # Reset gate and update gate.
       # We start with bias of 1.0 to not reset and not update.
-      value = sigmoid(_linear([inputs, state], 2 * self._num_units, True, 1.0))
+      bias_ones = self._bias_initializer
+      if self._bias_initializer is None:
+        dtype = [a.dtype for a in [inputs, state]][0]
+        bias_ones = init_ops.constant_initializer(1.0, dtype=dtype)
+      value = sigmoid(_linear([inputs, state], 2 * self._num_units, True,
+          bias_ones, self._kernel_initializer))
       r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
     with vs.variable_scope("candidate"):
-      c = self._activation(_linear([inputs, r * state], self._num_units, True))
+      c = self._activation(_linear([inputs, r * state], self._num_units, True,
+          self._bias_initializer, self._kernel_initializer))
     new_h = u * state + (1 - u) * c
     return new_h, new_h
 
@@ -963,14 +972,16 @@ class _SlimRNNCell(RNNCell):
     return output, state
 
 
-def _linear(args, output_size, bias, bias_start=0.0):
+def _linear(args, output_size, bias, bias_initializer=None,
+            kernel_initializer=None):
   """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
 
   Args:
     args: a 2D Tensor or a list of 2D, batch x n, Tensors.
     output_size: int, second dimension of W[i].
     bias: boolean, whether to add a bias term or not.
-    bias_start: starting value to initialize the bias; 0 by default.
+    bias_initializer: starting value to initialize the bias; None by default.
+    kernel_initializer: starting value to initialize the weight; None by default.
 
   Returns:
     A 2D Tensor with shape [batch x output_size] equal to
@@ -1002,7 +1013,8 @@ def _linear(args, output_size, bias, bias_start=0.0):
   scope = vs.get_variable_scope()
   with vs.variable_scope(scope) as outer_scope:
     weights = vs.get_variable(
-        _WEIGHTS_VARIABLE_NAME, [total_arg_size, output_size], dtype=dtype)
+        _WEIGHTS_VARIABLE_NAME, [total_arg_size, output_size], dtype=dtype,
+        initializer=kernel_initializer)
     if len(args) == 1:
       res = math_ops.matmul(args[0], weights)
     else:
@@ -1011,8 +1023,10 @@ def _linear(args, output_size, bias, bias_start=0.0):
       return res
     with vs.variable_scope(outer_scope) as inner_scope:
       inner_scope.set_partitioner(None)
+      if bias_initializer is None:
+        bias_initializer = init_ops.constant_initializer(0.0, dtype=dtype)
       biases = vs.get_variable(
           _BIAS_VARIABLE_NAME, [output_size],
           dtype=dtype,
-          initializer=init_ops.constant_initializer(bias_start, dtype=dtype))
+          initializer=bias_initializer)
     return nn_ops.bias_add(res, biases)
