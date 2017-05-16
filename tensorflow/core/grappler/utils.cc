@@ -116,10 +116,7 @@ bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
   });
   const bool notified =
       WaitForNotificationWithTimeout(done.get(), timeout_in_ms * 1000);
-  if (!notified) {
-    return false;
-  }
-  return true;
+  return notified;
 }
 
 }  // end namespace grappler
