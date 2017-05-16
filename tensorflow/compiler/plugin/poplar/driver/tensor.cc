@@ -75,7 +75,7 @@ AddConstantTensorTyped(poplar::Graph&graph,
   const TYPE* data(static_cast<const TYPE*>(LiteralUtil::InternalData(literal)));
 
   if (num_elements == 0) {
-    tensor = graph.addConstantTensor(type, {0}, 0);
+    tensor = graph.addConstantTensor(type, {0}, (TYPE)0);
   } else if (num_elements == 1) {
     tensor = graph.addConstantTensor(type, dim, data[0]);
   } else {
