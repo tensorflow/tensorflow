@@ -78,7 +78,7 @@ string Node::DebugString() const {
   } else {
     strings::StrAppend(&ret, " op device:");
     strings::StrAppend(&ret, "{", assigned_device_name_, "}");
-    strings::StrAppend(&ret, " def:{", SummarizeNode(*this), "}}");
+    strings::StrAppend(&ret, " def:{", SummarizeNodeDef(def()), "}}");
   }
   return ret;
 }
@@ -474,7 +474,7 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
     for (size_t i = 0; i < inputs.size(); ++i) {
       const Edge* edge = inputs[i];
       if (edge == nullptr) {
-        node_def->add_input(node->requested_inputs()[i]);
+        node_def->add_input(node->def().input(i));
       } else {
         const Node* src = edge->src();
         if (!src->IsOp()) continue;

@@ -122,6 +122,7 @@ cc_library(
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
     ] + if_cuda([
         "//tensorflow/core:cuda",
@@ -226,7 +227,6 @@ cc_library(
         ":utils",
         ":virtual_placer",
         ":virtual_scheduler",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",

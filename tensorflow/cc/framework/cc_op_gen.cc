@@ -740,10 +740,11 @@ void OpInfo::GetOutput(string* out) const {
     return;
   }
   strings::StrAppend(out, "  ::tensorflow::NameRangeMap _outputs_range;\n");
-  strings::StrAppend(out,
-                     "  ::tensorflow::Status _status_ = "
-                     "::tensorflow::NameRangesForNode(*ret, ret->op_def(), "
-                     "nullptr, &_outputs_range);\n");
+  strings::StrAppend(
+      out,
+      "  ::tensorflow::Status _status_ = "
+      "::tensorflow::NameRangesForNode(ret->def(), ret->op_def(), "
+      "nullptr, &_outputs_range);\n");
   strings::StrAppend(out, "  if (!_status_.ok()) {\n", "    ", scope_str,
                      ".UpdateStatus(_status_);\n", "    return;\n");
   strings::StrAppend(out, "  }\n\n");

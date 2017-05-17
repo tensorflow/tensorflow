@@ -71,7 +71,6 @@ class AvgPool2DTest(test.TestCase):
     height, width = 3, 6
     images = np.random.uniform(size=(5, 2, height, width))
     output = _layers.avg_pool2d(images, [3, 3], data_format='NCHW')
-    self.assertEquals(output.op.name, 'AvgPool2D/AvgPool')
     self.assertListEqual(output.get_shape().as_list(), [5, 2, 1, 2])
 
   def testCollectOutputs(self):
@@ -2692,7 +2691,6 @@ class MaxPool2DTest(test.TestCase):
     height, width = 3, 6
     images = np.random.uniform(size=(5, 3, height, width)).astype(np.float32)
     output = _layers.max_pool2d(images, [3, 3], data_format='NCHW')
-    self.assertEquals(output.op.name, 'MaxPool2D/MaxPool')
     self.assertListEqual(output.get_shape().as_list(), [5, 3, 1, 2])
 
   def testCollectOutputs(self):

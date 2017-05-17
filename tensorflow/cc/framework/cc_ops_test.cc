@@ -35,8 +35,8 @@ Output Linear(const Scope& scope, Input x, Input w, Input b) {
 void GetColocationConstraints(const Output& tensor,
                               std::vector<string>* constraints) {
   constraints->clear();
-  TF_EXPECT_OK(GetNodeAttr(tensor.op().node()->attrs(), kColocationAttrName,
-                           constraints));
+  TF_EXPECT_OK(
+      GetNodeAttr(tensor.op().node()->def(), kColocationAttrName, constraints));
 }
 
 }  // namespace
@@ -159,11 +159,11 @@ TEST(CCOpTest, KernelLabel) {
   Scope root = Scope::NewRootScope();
   auto add = Add(root.WithKernelLabel("AddWithKernelLabel"), 1.0f, 2.0f);
   TF_EXPECT_OK(root.status());
-  AttrSlice attrs = add.z.op().node()->attrs();
-  const auto* kernel_attr = attrs.Find("_kernel");
-  ASSERT_TRUE(kernel_attr);
-  TF_EXPECT_OK(AttrValueHasType(*kernel_attr, "string"));
-  EXPECT_EQ(kernel_attr->s(), "AddWithKernelLabel");
+  const auto& attrs = add.z.op().node()->def().attr();
+  ASSERT_TRUE(attrs.find("_kernel") != attrs.end());
+  auto kernel_attr = attrs.find("_kernel")->second;
+  TF_EXPECT_OK(AttrValueHasType(kernel_attr, "string"));
+  EXPECT_EQ(kernel_attr.s(), "AddWithKernelLabel");
 }
 
 TEST(CCOpTest, ColocateWith) {
@@ -190,7 +190,8 @@ TEST(CCOpTest, ColocateWith) {
 
   Scope with_colocate = root.ColocateWith(c3).ColocateWith(c4);
   auto c6 = Const(with_colocate.WithOpName("c6").ClearColocation(), 7);
-  EXPECT_FALSE(c6.op().node()->attrs().Find("_class"));
+  const auto& attrs = c6.op().node()->def().attr();
+  EXPECT_TRUE(attrs.find("_class") == attrs.end());
 }
 
 TEST(CCOpTest, TemplatedConst) {

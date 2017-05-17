@@ -503,6 +503,7 @@ tf_gen_op_libs(
         "control_flow_ops",
         "ctc_ops",
         "data_flow_ops",
+        "dataset_ops",
         "function_ops",
         "functional_ops",
         "image_ops",
@@ -580,6 +581,7 @@ cc_library(
         ":control_flow_ops_op_lib",
         ":ctc_ops_op_lib",
         ":data_flow_ops_op_lib",
+        ":dataset_ops_op_lib",
         ":function_ops_op_lib",
         ":functional_ops_op_lib",
         ":image_ops_op_lib",
@@ -707,6 +709,7 @@ cc_library(
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:ctc_ops",
         "//tensorflow/core/kernels:data_flow",
+        "//tensorflow/core/kernels:dataset_ops",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
         "//tensorflow/core/kernels:image",
@@ -880,7 +883,6 @@ filegroup(
             "**/*main.cc",
             "debug/**/*",
             "framework/op_gen_*",
-            "framework/reader_base.*",
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
@@ -931,6 +933,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",
+        ":reader_base_proto_cc",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -1408,11 +1411,6 @@ tf_cuda_library(
             "framework/**/*.cc",
             "util/**/*.h",
             "util/**/*.cc",
-        ] + [
-            "graph/edgeset.h",
-            "graph/edgeset.cc",
-            "graph/graph.h",
-            "graph/graph.cc",
         ],
         exclude = [
             "**/*test*",
@@ -1553,6 +1551,8 @@ tf_cuda_library(
         "graph/colors.cc",
         "graph/control_flow.cc",
         "graph/costmodel.cc",
+        "graph/edgeset.cc",
+        "graph/graph.cc",
         "graph/graph_constructor.cc",
         "graph/graph_def_builder.cc",
         "graph/graph_partition.cc",
@@ -2874,6 +2874,8 @@ filegroup(
         "lib/gif/testdata/scan.gif",
         # GIF data with optimization
         "lib/gif/testdata/optimized.gif",
+        # BMP data
+        "lib/bmp/testdata/lena.bmp",
     ],
     visibility = ["//visibility:public"],
 )

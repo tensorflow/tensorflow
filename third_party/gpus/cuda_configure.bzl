@@ -787,7 +787,7 @@ def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name,
     if dest_files[i] != "":
       # If we have only one file to link we do not want to use the dest_dir, as
       # $(@D) will include the full path to the file.
-      dest = ' $(@D)/' + dest_dir + dest_files[i] if len(dest_files) != 1 else ' $(@D)' + dest_files[i]
+      dest = ' $(@D)/' + dest_dir + dest_files[i] if len(dest_files) != 1 else ' $(@D)/' + dest_files[i]
       command.append('ln -s ' + src_files[i] + dest)
       outs.append('      "' + dest_dir + dest_files[i] + '",')
   genrule = _genrule(src_dir, genrule_name, " && ".join(command),
@@ -875,8 +875,8 @@ def _create_cuda_repository(repository_ctx):
   included_files = _read_dir(repository_ctx, cuda_include_path).replace(
       cuda_include_path, '').splitlines()
   if '/cudnn.h' not in included_files:
-    genrules.append(_symlink_genrule_for_dir(repository_ctx, None, "",
-        "cudnn-include", [cudnn_header_dir + "/cudnn.h"], ["include/cudnn.h"]))
+    genrules.append(_symlink_genrule_for_dir(repository_ctx, None, "include/",
+        "cudnn-include", [cudnn_header_dir + "/cudnn.h"], ["cudnn.h"]))
   else:
     genrules.append(
             'filegroup(\n' +

@@ -14,6 +14,23 @@ For prebuilt libraries, see the
 [nightly Android build artifacts](https://ci.tensorflow.org/view/Nightly/job/nightly-android/)
 page for a recent build.
 
+The TensorFlow Inference Interface is also available as a
+[JCenter package](https://bintray.com/google/tensorflow/tensorflow-android) and
+can be included quite simply in your android project with a couple of lines in
+the project's `build.gradle` file:
+
+```
+allprojects {
+    repositories {
+        jcenter()
+    }
+}
+
+dependencies {
+    compile 'org.tensorflow:tensorflow-android:1.2.0-preview'
+}
+```
+
 To build the libraries yourself (if, for example, you want to support custom
 TensorFlow operators), pick your preferred approach below:
 
