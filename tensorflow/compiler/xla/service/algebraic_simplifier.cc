@@ -1,4 +1,3 @@
-
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -168,6 +167,8 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
   Status HandleReverse(HloInstruction* reverse,
                        HloInstruction* operand) override;
   Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
+  Status HandleDynamicSlice(HloInstruction* slice, HloInstruction* operand,
+                            HloInstruction* start_indices) override;
   Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
                                   HloInstruction* operand,
                                   HloInstruction* update,
@@ -1021,6 +1022,15 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice,
   // Delete no-op slices, i.e. where shape = operand shape.
   if (ReplaceInstructionIfSameShape(slice, operand)) {
     return Status::OK();
+  }
+  return Status::OK();
+}
+
+Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
+    HloInstruction* dynamic_slice, HloInstruction* operand,
+    HloInstruction* start_indices) {
+  if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
+    return ReplaceInstruction(dynamic_slice, operand);
   }
   return Status::OK();
 }
