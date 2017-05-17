@@ -55,7 +55,7 @@ XlaDeviceLaunchOp::XlaDeviceLaunchOp(OpKernelConstruction* ctx)
   OP_REQUIRES_OK(ctx, ctx->GetAttr("function", &func));
   function_ = *func;
   VLOG(1) << "XlaDeviceLaunch created function="
-          << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
+          << Canonicalize(function_.name(), function_.attr());
   DataTypeVector constant_types;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("Tconstants", &constant_types));
   num_constant_args_ = constant_types.size();
@@ -81,7 +81,7 @@ std::vector<OptionalTensor> SnapshotResourceVariables(OpKernelContext* ctx,
 
 void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XlaDeviceLaunch::Compute "
-          << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
+          << Canonicalize(function_.name(), function_.attr());
   // We store information about the JIT-compiled XLA computation
   // in the ResourceMgr.
   ResourceMgr* rm = ctx->resource_manager();

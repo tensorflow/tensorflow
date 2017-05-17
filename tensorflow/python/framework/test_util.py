@@ -27,6 +27,7 @@ import tempfile
 import threading
 
 import numpy as np
+import portpicker
 import six
 
 from google.protobuf import descriptor_pool
@@ -45,6 +46,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util.protobuf import compare
 
@@ -776,3 +778,57 @@ class TensorFlowTestCase(googletest.TestCase):
     assertItemsEqual = googletest.TestCase.assertCountEqual
 
     # pylint: enable=invalid-name
+
+
+def create_local_cluster(num_workers, num_ps, protocol="grpc"):
+  """Create and start local servers and return the associated `Server` objects.
+
+  Example:
+  ```python
+  workers, _ = tf.test.create_local_cluster(num_workers=2, num_ps=2)
+
+  worker_sessions = [tf.Session(w.target) for w in workers]
+
+  with tf.device("/job:ps/task:0"):
+    ...
+  with tf.device("/job:ps/task:1"):
+    ...
+  with tf.device("/job:worker/task:0"):
+    ...
+  with tf.device("/job:worker/task:1"):
+    ...
+
+  worker_sessions[0].run(...)
+  ```
+
+  Args:
+    num_workers: Number of worker servers to start.
+    num_ps: Number of PS servers to start.
+    protocol: Communication protocol.  Allowed values are documented in
+      the documentation of `tf.train.Server`.
+
+  Returns:
+    A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list
+    of `num_workers` objects of type `tf.train.Server` (all running locally);
+    and `ps_servers` is a list of `num_ps` objects of similar type.
+  """
+  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
+  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
+  cluster_dict = {
+      "worker": ["localhost:%s" % port for port in worker_ports],
+      "ps": ["localhost:%s" % port for port in ps_ports]
+  }
+  cs = server_lib.ClusterSpec(cluster_dict)
+
+  workers = [
+      server_lib.Server(
+          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
+      for ix in range(num_workers)
+  ]
+  ps_servers = [
+      server_lib.Server(
+          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
+      for ix in range(num_ps)
+  ]
+
+  return workers, ps_servers

@@ -186,7 +186,7 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
   if (!node) {
     return false;
   }
-  let translate = d3zoom.translate();
+  let transform = d3.zoomTransform(node);
   // Check if the selected node is off-screen in either
   // X or Y dimension in either direction.
   let nodeBox = node.getBBox();
@@ -214,7 +214,7 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
     let centerY = (pointTL.y + pointBR.y) / 2;
     let dx = ((svgRect.width / 2) - centerX);
     let dy = ((svgRect.height / 2) - centerY);
-    let zoomEvent = d3zoom.translate([translate[0] + dx, translate[1] + dy])
+    let zoomEvent = d3zoom.translate([transform.x + dx, transform.y + dy])
         .event;
     d3.select(zoomG).transition().duration(500).call(zoomEvent);
     return true;

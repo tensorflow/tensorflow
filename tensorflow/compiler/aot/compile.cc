@@ -203,14 +203,14 @@ Status RewriteAndPruneGraph(Graph* graph, const Config& config,
   for (const Node* n : graph->nodes()) {
     if (n->type_string() == kArgOp) {
       string feed_id;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFeedIdAttr, &feed_id));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), kFeedIdAttr, &feed_id));
       if (missing_feeds.erase(feed_id) == 0) {
         return errors::Aborted(kArgOp,
                                " node found with unknown feed id: ", feed_id);
       }
     } else if (n->type_string() == kRetvalOp) {
       string fetch_id;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFetchIdAttr, &fetch_id));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), kFetchIdAttr, &fetch_id));
       if (missing_fetches.erase(fetch_id) == 0) {
         return errors::Aborted(kRetvalOp,
                                " node found with unknown fetch id: ", fetch_id);
@@ -234,7 +234,7 @@ Status CollectArgNodes(const Graph& graph, std::vector<Node*>* arg_nodes) {
   for (Node* n : graph.nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
       auto insert_result = indexed_arg_nodes.insert({index, n});
       if (!insert_result.second) {
         const Node* dup = insert_result.first->second;
@@ -264,9 +264,9 @@ Status CreateXlaArgs(const Graph& graph,
   for (const Node* node : arg_nodes) {
     XlaCompiler::Argument arg;
     arg.kind = XlaCompiler::Argument::kParameter;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &arg.type));
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kShapeAttr, &arg.shape));
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kDebugNameAttr, &arg.name));
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "T", &arg.type));
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kShapeAttr, &arg.shape));
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kDebugNameAttr, &arg.name));
     xla_args->push_back(arg);
   }
   return Status::OK();
