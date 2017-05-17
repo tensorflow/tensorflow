@@ -55,7 +55,7 @@ class ResourceVariableReadPass : public GraphOptimizationPass {
     }
     for (Node* read : matches) {
       DataType dtype;
-      TF_RETURN_IF_ERROR(GetNodeAttr(read->attrs(), "dtype", &dtype));
+      TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(read->def()), "dtype", &dtype));
       std::vector<Node*> in_control_edges;
       std::vector<std::pair<Node*, int>> in_edges;
       for (const Edge* edge : read->in_edges()) {

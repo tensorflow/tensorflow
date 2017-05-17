@@ -192,9 +192,9 @@ Status ConnectVariablesToSaveOp(Graph* graph, Node* save_op,
   Tensor tensor_names;
   Tensor shape_and_slices;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(tensor_names_op->attrs(), "value", &tensor_names));
-  TF_RETURN_IF_ERROR(
-      GetNodeAttr(shape_and_slices_op->attrs(), "value", &shape_and_slices));
+      GetNodeAttr(AttrSlice(tensor_names_op->def()), "value", &tensor_names));
+  TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(shape_and_slices_op->def()), "value",
+                                 &shape_and_slices));
 
   int tn_size = tensor_names.NumElements();
   int var_size = added_variables.size();
