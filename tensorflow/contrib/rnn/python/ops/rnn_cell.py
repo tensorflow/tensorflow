@@ -1320,10 +1320,10 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
   def _linear(self, args):
     out_size = 4 * self._num_units
     proj_size = args.get_shape()[-1]
-    weights = vs.get_variable("weights", [proj_size, out_size])
+    weights = vs.get_variable("kernel", [proj_size, out_size])
     out = math_ops.matmul(args, weights)
     if not self._layer_norm:
-      bias = vs.get_variable("biases", [out_size])
+      bias = vs.get_variable("bias", [out_size])
       out = nn_ops.bias_add(out, bias)
     return out
 
@@ -1439,10 +1439,10 @@ class NASCell(core_rnn_cell.RNNCell):
     # Variables for the NAS cell. W_m is all matrices multiplying the
     # hiddenstate and W_inputs is all matrices multiplying the inputs.
     concat_w_m = vs.get_variable(
-        "recurrent_weights", [num_proj, 8 * self._num_units],
+        "recurrent_kernel", [num_proj, 8 * self._num_units],
         dtype)
     concat_w_inputs = vs.get_variable(
-        "weights", [input_size.value, 8 * self._num_units],
+        "kernel", [input_size.value, 8 * self._num_units],
         dtype)
 
     m_matrix = math_ops.matmul(m_prev, concat_w_m)

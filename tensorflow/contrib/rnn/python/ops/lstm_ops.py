@@ -353,8 +353,8 @@ class LSTMBlockCell(core_rnn_cell.RNNCell):
     self._forget_bias = forget_bias
     self._use_peephole = use_peephole
     self._names = {
-        "W": "weights",
-        "b": "biases",
+        "W": "kernel",
+        "b": "bias",
         "wci": "w_i_diag",
         "wco": "w_o_diag",
         "wcf": "w_f_diag",
@@ -625,10 +625,10 @@ class LSTMBlockFusedCell(LSTMBlockWrapper):
       time_len = array_ops.shape(inputs)[0]
     input_size = inputs_shape[2].value
     w = vs.get_variable(
-        "weights",
+        "kernel",
         [input_size + self._num_units, self._num_units * 4], dtype=dtype)
     b = vs.get_variable(
-        "biases", [w.get_shape().with_rank(2)[1]],
+        "bias", [w.get_shape().with_rank(2)[1]],
         initializer=init_ops.constant_initializer(0.0),
         dtype=dtype)
     if self._use_peephole:
