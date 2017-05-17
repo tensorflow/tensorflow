@@ -61,6 +61,8 @@ Status PoplarMapVisitor::FinishVisit(HloInstruction* inst) {
     output_.push_back(out);
   }
 
+  tensor_map.clear();
+
   return Status::OK();
 }
 

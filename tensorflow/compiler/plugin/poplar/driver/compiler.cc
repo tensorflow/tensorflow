@@ -100,6 +100,8 @@ public:
       }
     }
 
+    tensor_map.clear();
+
     return Status::OK();
   }
 
