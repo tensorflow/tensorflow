@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+namespace {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
@@ -89,11 +90,11 @@ static inline float ComputeIOU(typename TTypes<float, 2>::ConstTensor boxes,
   return intersection_area / (area_i + area_j - intersection_area);
 }
 
-static void DoNonMaxSuppressionOp(OpKernelContext* context,
-                                  const Tensor& boxes,
-                                  const Tensor& scores,
-                                  const Tensor& max_output_size,
-                                  const float iou_threshold) {
+void DoNonMaxSuppressionOp(OpKernelContext* context,
+                           const Tensor& boxes,
+                           const Tensor& scores,
+                           const Tensor& max_output_size,
+                           const float iou_threshold) {
   OP_REQUIRES(context, iou_threshold >= 0 && iou_threshold <= 1,
       errors::InvalidArgument("iou_threshold must be in [0, 1]"));
   
@@ -143,6 +144,8 @@ static void DoNonMaxSuppressionOp(OpKernelContext* context,
       output->tensor<int, 1>();
   std::copy_n(selected.begin(), selected.size(), selected_indices_data.data());
 }
+
+} // namespace
 
 template <typename Device>
 class NonMaxSuppressionOp : public OpKernel {
