@@ -66,9 +66,9 @@ static Status ReplaceNodeWithXlaLaunch(Graph* graph, Node* node) {
 
   int num_constant_args, num_resource_args;
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(node->attrs(), kXlaNumConstantArgsAttr, &num_constant_args));
+      GetNodeAttr(node->def(), kXlaNumConstantArgsAttr, &num_constant_args));
   TF_RETURN_IF_ERROR(
-      GetNodeAttr(node->attrs(), kXlaNumResourceArgsAttr, &num_resource_args));
+      GetNodeAttr(node->def(), kXlaNumResourceArgsAttr, &num_resource_args));
 
   if (num_constant_args < 0 || num_resource_args < 0 ||
       num_constant_args + num_resource_args > node->num_inputs()) {
@@ -88,7 +88,7 @@ static Status ReplaceNodeWithXlaLaunch(Graph* graph, Node* node) {
   Node* launch_node;
   TF_RETURN_IF_ERROR(BuildLaunchNode(
       graph->NewName(node->name()), node->type_string(), node->def().attr(),
-      node->requested_device(), const_dtypes, num_resource_args, arg_dtypes,
+      node->def().device(), const_dtypes, num_resource_args, arg_dtypes,
       node->output_types(), graph, &launch_node));
   launch_node->set_assigned_device_name(node->assigned_device_name());
 
@@ -173,8 +173,7 @@ Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& ndef,
   FunctionLibraryRuntime::Handle handle;
   // If ndef is not instantiable, e.g., the function does not exist,
   // simply bail out.
-  TF_RETURN_IF_ERROR(
-      flr->Instantiate(ndef.op(), AttrSlice(&ndef.attr()), &handle));
+  TF_RETURN_IF_ERROR(flr->Instantiate(ndef.op(), ndef.attr(), &handle));
   const FunctionBody* fbody = flr->GetFunctionBody(handle);
   CHECK(fbody);  // Can't be nullptr since we just instantiated it.
   std::vector<bool> const_args(fbody->arg_types.size());

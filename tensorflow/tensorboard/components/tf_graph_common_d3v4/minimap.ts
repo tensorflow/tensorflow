@@ -129,8 +129,9 @@ export class Minimap {
     // new viewpoint.
     let mainX = - this.viewpointCoord.x * this.scaleMain / this.scaleMinimap;
     let mainY = - this.viewpointCoord.y * this.scaleMain / this.scaleMinimap;
-    this.mainZoom.translateBy(d3.select(this.zoomG), mainX, mainY);
-
+    d3.select(this.svg).call(
+        this.mainZoom.transform,
+        d3.zoomIdentity.translate(mainX, mainY).scale(this.scaleMain));
   }
 
   /**

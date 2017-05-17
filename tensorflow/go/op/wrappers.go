@@ -365,33 +365,6 @@ func QuantizedInstanceNorm(scope *Scope, x tf.Output, x_min tf.Output, x_max tf.
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// Concatenates quantized tensors along one dimension.
-//
-// Arguments:
-//	concat_dim: 0-D.  The dimension along which to concatenate.  Must be in the
-// range [0, rank(values)).
-//	values: The `N` Tensors to concatenate. Their ranks and types must match,
-// and their sizes must match in all dimensions except `concat_dim`.
-//	input_mins: The minimum scalar values for each of the input tensors.
-//	input_maxes: The maximum scalar values for each of the input tensors.
-//
-// Returns A `Tensor` with the concatenation of values stacked along the
-// `concat_dim` dimension.  This tensor's shape matches that of `values` except
-// in `concat_dim` where it has the sum of the sizes.The float value that the minimum quantized output value represents.The float value that the maximum quantized output value represents.
-func QuantizedConcat(scope *Scope, concat_dim tf.Output, values []tf.Output, input_mins []tf.Output, input_maxes []tf.Output) (output tf.Output, output_min tf.Output, output_max tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "QuantizedConcat",
-		Input: []tf.Input{
-			concat_dim, tf.OutputList(values), tf.OutputList(input_mins), tf.OutputList(input_maxes),
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
 // QuantizeAndDequantizeAttr is an optional argument to QuantizeAndDequantize.
 type QuantizeAndDequantizeAttr func(optionalAttr)
 
@@ -3577,23 +3550,6 @@ func TensorArrayWriteV2(scope *Scope, handle tf.Output, index tf.Output, value t
 	return op.Output(0)
 }
 
-// Deprecated. Use TensorArrayGradV3
-func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source string) (grad_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"source": source}
-	opspec := tf.OpSpec{
-		Type: "TensorArrayGradV2",
-		Input: []tf.Input{
-			handle, flow_in,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // ResourceGatherAttr is an optional argument to ResourceGather.
 type ResourceGatherAttr func(optionalAttr)
 
@@ -3999,37 +3955,6 @@ func TensorArrayGradV3(scope *Scope, handle tf.Output, flow_in tf.Output, source
 	return op.Output(0), op.Output(1)
 }
 
-// TensorArrayConcatV2Attr is an optional argument to TensorArrayConcatV2.
-type TensorArrayConcatV2Attr func(optionalAttr)
-
-// TensorArrayConcatV2ElementShapeExcept0 sets the optional element_shape_except0 attribute to value.
-// If not specified, defaults to <unknown_rank:true >
-func TensorArrayConcatV2ElementShapeExcept0(value tf.Shape) TensorArrayConcatV2Attr {
-	return func(m optionalAttr) {
-		m["element_shape_except0"] = value
-	}
-}
-
-// Deprecated. Use TensorArrayConcatV3
-func TensorArrayConcatV2(scope *Scope, handle tf.Output, flow_in tf.Output, dtype tf.DataType, optional ...TensorArrayConcatV2Attr) (value tf.Output, lengths tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorArrayConcatV2",
-		Input: []tf.Input{
-			handle, flow_in,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
-}
-
 // Returns the batched diagonal part of a batched tensor.
 //
 // This operation returns a tensor with the `diagonal` part
@@ -4078,50 +4003,6 @@ func MatrixDiagPart(scope *Scope, input tf.Output) (diagonal tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
-}
-
-// QueueCloseV2Attr is an optional argument to QueueCloseV2.
-type QueueCloseV2Attr func(optionalAttr)
-
-// QueueCloseV2CancelPendingEnqueues sets the optional cancel_pending_enqueues attribute to value.
-//
-// value: If true, all pending enqueue requests that are
-// blocked on the given queue will be cancelled.
-// If not specified, defaults to false
-func QueueCloseV2CancelPendingEnqueues(value bool) QueueCloseV2Attr {
-	return func(m optionalAttr) {
-		m["cancel_pending_enqueues"] = value
-	}
-}
-
-// Closes the given queue.
-//
-// This operation signals that no more elements will be enqueued in the
-// given queue. Subsequent Enqueue(Many) operations will fail.
-// Subsequent Dequeue(Many) operations will continue to succeed if
-// sufficient elements remain in the queue. Subsequent Dequeue(Many)
-// operations that would block will fail immediately.
-//
-// Arguments:
-//	handle: The handle to a queue.
-//
-// Returns the created operation.
-func QueueCloseV2(scope *Scope, handle tf.Output, optional ...QueueCloseV2Attr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QueueCloseV2",
-		Input: []tf.Input{
-			handle,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
 }
 
 // Concatenates tensors along one dimension.
@@ -5002,6 +4883,325 @@ func DynamicStitch(scope *Scope, indices []tf.Output, data []tf.Output) (merged 
 	return op.Output(0)
 }
 
+// QueueCloseV2Attr is an optional argument to QueueCloseV2.
+type QueueCloseV2Attr func(optionalAttr)
+
+// QueueCloseV2CancelPendingEnqueues sets the optional cancel_pending_enqueues attribute to value.
+//
+// value: If true, all pending enqueue requests that are
+// blocked on the given queue will be cancelled.
+// If not specified, defaults to false
+func QueueCloseV2CancelPendingEnqueues(value bool) QueueCloseV2Attr {
+	return func(m optionalAttr) {
+		m["cancel_pending_enqueues"] = value
+	}
+}
+
+// Closes the given queue.
+//
+// This operation signals that no more elements will be enqueued in the
+// given queue. Subsequent Enqueue(Many) operations will fail.
+// Subsequent Dequeue(Many) operations will continue to succeed if
+// sufficient elements remain in the queue. Subsequent Dequeue(Many)
+// operations that would block will fail immediately.
+//
+// Arguments:
+//	handle: The handle to a queue.
+//
+// Returns the created operation.
+func QueueCloseV2(scope *Scope, handle tf.Output, optional ...QueueCloseV2Attr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QueueCloseV2",
+		Input: []tf.Input{
+			handle,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Releases any resources used by the given iterator.
+//
+// Returns the created operation.
+func IteratorDispose(scope *Scope, iterator tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IteratorDispose",
+		Input: []tf.Input{
+			iterator,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Gets the next output from the given iterator.
+func IteratorGetNext(scope *Scope, iterator tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "IteratorGetNext",
+		Input: []tf.Input{
+			iterator,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("IteratorGetNext", err)
+		return
+	}
+	return components
+}
+
+// Makes a new iterator from the given `dataset` and stores it in `iterator`.
+//
+// This operation may be executed multiple times. Each execution will reset the
+// iterator in `iterator` to the first element of `dataset`.
+//
+// Returns the created operation.
+func MakeIterator(scope *Scope, dataset tf.Output, iterator tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MakeIterator",
+		Input: []tf.Input{
+			dataset, iterator,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Creates a dataset that emits the records from one or more TFRecord files.
+//
+// Arguments:
+//	filenames: A scalar or vector containing the name(s) of the file(s) to be
+// read.
+//	compression_type: A scalar containing either (i) the empty string (no
+// compression), (ii) "ZLIB", or (iii) "GZIP".
+func TFRecordDataset(scope *Scope, filenames tf.Output, compression_type tf.Output) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TFRecordDataset",
+		Input: []tf.Input{
+			filenames, compression_type,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Concatenates quantized tensors along one dimension.
+//
+// Arguments:
+//	concat_dim: 0-D.  The dimension along which to concatenate.  Must be in the
+// range [0, rank(values)).
+//	values: The `N` Tensors to concatenate. Their ranks and types must match,
+// and their sizes must match in all dimensions except `concat_dim`.
+//	input_mins: The minimum scalar values for each of the input tensors.
+//	input_maxes: The maximum scalar values for each of the input tensors.
+//
+// Returns A `Tensor` with the concatenation of values stacked along the
+// `concat_dim` dimension.  This tensor's shape matches that of `values` except
+// in `concat_dim` where it has the sum of the sizes.The float value that the minimum quantized output value represents.The float value that the maximum quantized output value represents.
+func QuantizedConcat(scope *Scope, concat_dim tf.Output, values []tf.Output, input_mins []tf.Output, input_maxes []tf.Output) (output tf.Output, output_min tf.Output, output_max tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizedConcat",
+		Input: []tf.Input{
+			concat_dim, tf.OutputList(values), tf.OutputList(input_mins), tf.OutputList(input_maxes),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Creates a dataset that emits the records from one or more binary files.
+//
+// Arguments:
+//	filenames: A scalar or a vector containing the name(s) of the file(s) to be
+// read.
+//	header_bytes: A scalar representing the number of bytes to skip at the
+// beginning of a file.
+//	record_bytes: A scalar representing the number of bytes in each record.
+//	footer_bytes: A scalar representing the number of bytes to skip at the end
+// of a file.
+func FixedLengthRecordDataset(scope *Scope, filenames tf.Output, header_bytes tf.Output, record_bytes tf.Output, footer_bytes tf.Output) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FixedLengthRecordDataset",
+		Input: []tf.Input{
+			filenames, header_bytes, record_bytes, footer_bytes,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Deprecated. Use TensorArrayGradV3
+func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source string) (grad_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"source": source}
+	opspec := tf.OpSpec{
+		Type: "TensorArrayGradV2",
+		Input: []tf.Input{
+			handle, flow_in,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that yields a SparseTensor for each element of the input.
+//
+// Arguments:
+//	input_dataset: A handle to an input dataset. Must have a single component.
+//	batch_size: A scalar representing the number of elements to accumulate in a
+// batch.
+//	row_shape: A vector representing the dense shape of each row in the produced
+// SparseTensor.
+//
+//
+func DenseToSparseBatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, row_shape tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "DenseToSparseBatchDataset",
+		Input: []tf.Input{
+			input_dataset, batch_size, row_shape,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that batches and pads `batch_size` elements from the input.
+//
+// Arguments:
+//
+//	batch_size: A scalar representing the number of elements to accumulate in a
+// batch.
+//	padded_shapes: A list of int64 tensors representing the desired padded shapes
+// of the corresponding output components. These shapes may be partially
+// specified, using `-1` to indicate that a particular dimension should be
+// padded to the maximum size of all batch elements.
+//	padding_values: A list of scalars containing the padding value to use for
+// each of the outputs.
+//
+func PaddedBatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, padded_shapes []tf.Output, padding_values []tf.Output, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "PaddedBatchDataset",
+		Input: []tf.Input{
+			input_dataset, batch_size, tf.OutputList(padded_shapes), tf.OutputList(padding_values),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// TensorArrayConcatV2Attr is an optional argument to TensorArrayConcatV2.
+type TensorArrayConcatV2Attr func(optionalAttr)
+
+// TensorArrayConcatV2ElementShapeExcept0 sets the optional element_shape_except0 attribute to value.
+// If not specified, defaults to <unknown_rank:true >
+func TensorArrayConcatV2ElementShapeExcept0(value tf.Shape) TensorArrayConcatV2Attr {
+	return func(m optionalAttr) {
+		m["element_shape_except0"] = value
+	}
+}
+
+// Deprecated. Use TensorArrayConcatV3
+func TensorArrayConcatV2(scope *Scope, handle tf.Output, flow_in tf.Output, dtype tf.DataType, optional ...TensorArrayConcatV2Attr) (value tf.Output, lengths tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorArrayConcatV2",
+		Input: []tf.Input{
+			handle, flow_in,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// Creates a dataset that emits the outputs of `input_dataset` `count` times.
+//
+// Arguments:
+//
+//	count: A scalar representing the number of times that `input_dataset` should
+// be repeated. A value of `-1` indicates that it should be repeated infinitely.
+//
+//
+func RepeatDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "RepeatDataset",
+		Input: []tf.Input{
+			input_dataset, count,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that splits a SparseTensor into elements row-wise.
+func SparseTensorSliceDataset(scope *Scope, indices tf.Output, values tf.Output, dense_shape tf.Output) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseTensorSliceDataset",
+		Input: []tf.Input{
+			indices, values, dense_shape,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // CropAndResizeGradBoxesAttr is an optional argument to CropAndResizeGradBoxes.
 type CropAndResizeGradBoxesAttr func(optionalAttr)
 
@@ -5048,6 +5248,35 @@ func CropAndResizeGradBoxes(scope *Scope, grads tf.Output, image tf.Output, boxe
 		Type: "CropAndResizeGradBoxes",
 		Input: []tf.Input{
 			grads, image, boxes, box_ind,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that shuffles elements from `input_dataset` pseudorandomly.
+//
+// Arguments:
+//
+//	buffer_size: The number of output elements to buffer in an iterator over
+// this dataset. Compare with the `min_after_dequeue` attr when creating a
+// `RandomShuffleQueue`.
+//	seed: A scalar seed for the random number generator. If either seed or
+// seed2 is set to be non-zero, the random number generator is seeded
+// by the given seed.  Otherwise, a random seed is used.
+//	seed2: A second scalar seed to avoid seed collision.
+//
+//
+func ShuffleDataset(scope *Scope, input_dataset tf.Output, buffer_size tf.Output, seed tf.Output, seed2 tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ShuffleDataset",
+		Input: []tf.Input{
+			input_dataset, buffer_size, seed, seed2,
 		},
 		Attrs: attrs,
 	}
@@ -5104,6 +5333,24 @@ func CropAndResizeGradImage(scope *Scope, grads tf.Output, boxes tf.Output, box_
 		Input: []tf.Input{
 			grads, boxes, box_ind, image_size,
 		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// A container for an iterator resource.
+//
+// Returns A handle to the iterator that can be passed to a "MakeIterator"
+// or "IteratorGetNext" op.
+func Iterator(scope *Scope, shared_name string, container string, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"shared_name": shared_name, "container": container, "output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "Iterator",
+
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
@@ -6462,7 +6709,10 @@ func OnesLike(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
-// Returns element-wise remainder of division.
+// Returns element-wise remainder of division. This emulates C semantics in that
+//
+// the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+// y + truncate_mod(x, y) = x`.
 //
 // *NOTE*: `Mod` supports broadcasting. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -11433,6 +11683,31 @@ func DepthwiseConv2dNativeBackpropInput(scope *Scope, input_sizes tf.Output, fil
 	return op.Output(0)
 }
 
+// Creates a dataset that contains `count` elements from the `input_dataset`.
+//
+// Arguments:
+//
+//	count: A scalar representing the number of elements from the `input_dataset`
+// that should be taken. A value of `-1` indicates that all of `input_dataset`
+// is taken.
+//
+//
+func TakeDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "TakeDataset",
+		Input: []tf.Input{
+			input_dataset, count,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Computes gradients for the exponential linear (Elu) operation.
 //
 // Arguments:
@@ -12315,6 +12590,30 @@ func FixedLengthRecordReaderV2(scope *Scope, record_bytes int64, optional ...Fix
 	return op.Output(0)
 }
 
+// Creates a dataset that batches `batch_size` elements from `input_dataset`.
+//
+// Arguments:
+//
+//	batch_size: A scalar representing the number of elements to accumulate in a
+// batch.
+//
+//
+func BatchDataset(scope *Scope, input_dataset tf.Output, batch_size tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "BatchDataset",
+		Input: []tf.Input{
+			input_dataset, batch_size,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ResourceSparseApplyCenteredRMSPropAttr is an optional argument to ResourceSparseApplyCenteredRMSProp.
 type ResourceSparseApplyCenteredRMSPropAttr func(optionalAttr)
 
@@ -12926,12 +13225,12 @@ func IRFFT2D(scope *Scope, input tf.Output, fft_length tf.Output) (output tf.Out
 	return op.Output(0)
 }
 
-// Returns element-wise remainder of division. This emulates C semantics where
+// Returns element-wise remainder of division. This emulates C semantics in that
 //
-// true, this follows C semantics in that the result here is consistent
-// with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
+// the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+// y + truncate_mod(x, y) = x`.
 //
-// *NOTE*: `Mod` supports broadcasting. More about broadcasting
+// *NOTE*: `TruncateMod` supports broadcasting. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 func TruncateMod(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
@@ -13857,6 +14156,23 @@ func SparseDenseCwiseMul(scope *Scope, sp_indices tf.Output, sp_values tf.Output
 	return op.Output(0)
 }
 
+// Creates a dataset that emits `components` as a tuple of tensors once.
+func TensorDataset(scope *Scope, components []tf.Output, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "TensorDataset",
+		Input: []tf.Input{
+			tf.OutputList(components),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // NonMaxSuppressionAttr is an optional argument to NonMaxSuppression.
 type NonMaxSuppressionAttr func(optionalAttr)
 
@@ -14197,6 +14513,23 @@ func ReaderReadV2(scope *Scope, reader_handle tf.Output, queue_handle tf.Output)
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Creates a dataset that zips together `input_datasets`.
+func ZipDataset(scope *Scope, input_datasets []tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ZipDataset",
+		Input: []tf.Input{
+			tf.OutputList(input_datasets),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // MutableDenseHashTableV2Attr is an optional argument to MutableDenseHashTableV2.
@@ -16122,6 +16455,30 @@ func IRFFT(scope *Scope, input tf.Output, fft_length tf.Output) (output tf.Outpu
 	return op.Output(0)
 }
 
+// Creates a dataset with a range of values. Corresponds to python's xrange.
+//
+// Arguments:
+//	start: corresponds to start in python's xrange().
+//	stop: corresponds to stop in python's xrange().
+//	step: corresponds to step in python's xrange().
+//
+//
+func RangeDataset(scope *Scope, start tf.Output, stop tf.Output, step tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "RangeDataset",
+		Input: []tf.Input{
+			start, stop, step,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Saves tensors in V2 checkpoint format.
 //
 // By default, saves the named tensors in full.  If the caller wishes to save
@@ -16631,6 +16988,30 @@ func UniqueWithCounts(scope *Scope, x tf.Output, optional ...UniqueWithCountsAtt
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// Creates a dataset that skips `count` elements from the `input_dataset`.
+//
+// Arguments:
+//
+//	count: A scalar representing the number of elements from the `input_dataset`
+// that should be skipped.  If count is -1, skips everything.
+//
+//
+func SkipDataset(scope *Scope, input_dataset tf.Output, count tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "SkipDataset",
+		Input: []tf.Input{
+			input_dataset, count,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ComplexAttr is an optional argument to Complex.
 type ComplexAttr func(optionalAttr)
 
@@ -16735,6 +17116,25 @@ func SdcaFprint(scope *Scope, input tf.Output) (output tf.Output) {
 		Type: "SdcaFprint",
 		Input: []tf.Input{
 			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that emits the lines of one or more text files.
+//
+// Arguments:
+//	filenames: A scalar or a vector containing the name(s) of the file(s) to be
+// read.
+func TextLineDataset(scope *Scope, filenames tf.Output) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TextLineDataset",
+		Input: []tf.Input{
+			filenames,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -18350,6 +18750,23 @@ func Cos(scope *Scope, x tf.Output) (y tf.Output) {
 		Input: []tf.Input{
 			x,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that emits each dim-0 slice of `components` once.
+func TensorSliceDataset(scope *Scope, components []tf.Output, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "TensorSliceDataset",
+		Input: []tf.Input{
+			tf.OutputList(components),
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

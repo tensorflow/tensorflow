@@ -48,6 +48,12 @@ class Cluster {
   // of the requested resources are available.
   virtual Status Provision() = 0;
 
+  // Attempts to shutdown the cluster.
+  // Returns OK iff there are no pending calls to the Run() method and all the
+  // resources used by the cluster could be released. Returns an error
+  // otherwise.
+  virtual Status Shutdown() { return Status::OK(); }
+
   // Whether soft placement is allowed. If allow_soft_placement is true,
   // an op will be placed on CPU if there's no GPU implementation for the OP
   // or if no GPU devices are known or registered or if we need to co-locate
@@ -58,7 +64,8 @@ class Cluster {
   // before Provision().
   void SetNumWarmupSteps(int num_steps);
 
-  // Disable the collection of detailed statistics.
+  // Disable the collection of detailed statistics. Must be called
+  // before Provision().
   void DisableDetailedStats(bool disable);
 
   // Return the list of TensorFlow devices that are available to execute a

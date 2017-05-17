@@ -81,7 +81,7 @@ class SubgraphTest : public ::testing::Test {
     for (const string& s : expected_nodes) {
       Node* n = FindNode(s);
       EXPECT_TRUE(n != nullptr) << s;
-      if (n->type_string() == "_Send" || n->type_string() == "_Recv") {
+      if (n->def().op() == "_Send" || n->def().op() == "_Recv") {
         EXPECT_EQ(device_info_.name(), n->assigned_device_name()) << s;
       }
     }
@@ -367,7 +367,7 @@ TEST_F(SubgraphTest, FedOutputsPreservesOutputShapes) {
   for (Node* node : graph()->nodes()) {
     if (node->name() == "_recv_input_1") {
       std::vector<PartialTensorShape> shapes;
-      TF_ASSERT_OK(GetNodeAttr(node->attrs(), "_output_shapes", &shapes));
+      TF_ASSERT_OK(GetNodeAttr(node->def(), "_output_shapes", &shapes));
       ASSERT_EQ(1, shapes.size());
       EXPECT_TRUE(PartialTensorShape({23}).IsIdenticalTo(shapes[0]));
       break;

@@ -60,6 +60,8 @@ class Layer(object):
     variables: List of all variables of this layer, trainable and non-trainable.
     updates: List of update ops of this layer.
     losses: List of losses added by this layer.
+    input_spec: Object specifying the constraints on inputs that can be
+      accepted by the layer.
   """
 
   def __init__(self, trainable=True, name=None,
@@ -91,6 +93,7 @@ class Layer(object):
     self._per_input_losses = {}
     self._per_input_updates = {}
     self.dtype = dtypes.as_dtype(dtype).name
+    self.input_spec = None
 
     # Determine layer name (non-unique).
     if isinstance(name, vs.VariableScope):
@@ -307,6 +310,9 @@ class Layer(object):
     """Computes the output shape of the layer given the input shape.
 
     Assumes that the layer will be built to match that input shape.
+    If this method is not implemented by child classes, the default
+    assumption will be that the layer does not alter the shape of the tensors
+    passing through it.
 
     Args:
       input_shape: A (possibly nested tuple of) `TensorShape`.  It need not
@@ -321,7 +327,7 @@ class Layer(object):
       ValueError: if `input_shape` is incomplete or is incompatible with the
         the layer.
     """
-    raise NotImplementedError
+    return input_shape
 
   def _set_scope(self, scope=None):
     if self._scope is None:
@@ -416,6 +422,8 @@ class Layer(object):
                            reuse=self.built or self._reuse) as scope:
       with ops.name_scope(scope.original_name_scope):
         if not self.built:
+          # Check input assumptions set before layer building, e.g. input rank.
+          self._assert_input_compatibility(inputs)
           input_list = [
               ops.convert_to_tensor(x, name='input')
               for x in nest.flatten(inputs)]
@@ -426,6 +434,8 @@ class Layer(object):
             self.build(input_shapes)
         if 'scope' in tf_inspect.getargspec(self.call).args:
           kwargs['scope'] = scope
+        # Check input assumptions set after layer building, e.g. input shape.
+        self._assert_input_compatibility(inputs)
         outputs = self.call(inputs, *args, **kwargs)
 
         # Apply activity regularization.
@@ -478,6 +488,139 @@ class Layer(object):
       Output tensor(s).
     """
     return self.__call__(inputs, *args, **kwargs)
+
+  def _assert_input_compatibility(self, inputs):
+    """Checks compatibility between the layer and provided inputs.
+
+    This checks that the tensor(s) `inputs` verify the input assumptions
+    of the layer (if any). If not, a clear and actional exception gets raised.
+
+    Arguments:
+        inputs: input tensor or list of input tensors.
+
+    Raises:
+        ValueError: in case of mismatch between
+            the provided inputs and the expectations of the layer.
+    """
+    if not self.input_spec:
+      return
+    if not isinstance(self.input_spec, (list, tuple)):
+      input_spec = _to_list(self.input_spec)
+    else:
+      input_spec = self.input_spec
+    inputs = _to_list(inputs)
+    if len(inputs) != len(input_spec):
+      raise ValueError('Layer ' + self.name + ' expects ' +
+                       str(len(input_spec)) + ' inputs, '
+                       'but it received ' + str(len(inputs)) +
+                       ' input tensors. Inputs received: ' + str(inputs))
+    for input_index, (x, spec) in enumerate(zip(inputs, input_spec)):
+      if spec is None:
+        continue
+
+      if (spec.ndim is not None or
+          spec.min_ndim is not None or
+          spec.max_ndim is not None):
+        if x.get_shape().ndims is None:
+          raise ValueError('Input ' + str(input_index) + ' of layer ' +
+                           self.name + ' is incompatible with the layer: '
+                           'its rank is undefined, by the layer requires a '
+                           'defined rank.')
+
+      # Check ndim.
+      if spec.ndim is not None:
+        ndim = x.get_shape().ndims
+        if ndim != spec.ndim:
+          raise ValueError('Input ' + str(input_index) + ' of layer ' +
+                           self.name + ' is incompatible with the layer: '
+                           'expected ndim=' + str(spec.ndim) + ', found ndim='
+                           + str(ndim) + '. Full shape received: ' +
+                           str(x.get_shape().as_list()))
+      if spec.max_ndim is not None:
+        ndim = x.get_shape().ndims
+        if ndim is not None and ndim > spec.max_ndim:
+          raise ValueError('Input ' + str(input_index) + ' of layer ' +
+                           self.name + ' is incompatible with the layer: '
+                           'expected max_ndim=' + str(spec.max_ndim) +
+                           ', found ndim=' + str(ndim))
+      if spec.min_ndim is not None:
+        ndim = x.get_shape().ndims
+        if ndim is not None and ndim < spec.min_ndim:
+          raise ValueError('Input ' + str(input_index) + ' of layer ' +
+                           self.name + ' is incompatible with the layer: '
+                           ': expected min_ndim=' + str(spec.min_ndim) +
+                           ', found ndim=' + str(ndim) +
+                           '. Full shape received: ' +
+                           str(x.get_shape().as_list()))
+      # Check dtype.
+      if spec.dtype is not None:
+        if x.dtype != spec.dtype:
+          raise ValueError('Input ' + str(input_index) + ' of layer ' +
+                           self.name + ' is incompatible with the layer: '
+                           'expected dtype=' + str(spec.dtype) +
+                           ', found dtype=' + str(x.dtype))
+      # Check specific shape axes.
+      if spec.axes:
+        shape = x.get_shape().as_list()
+        if shape is not None:
+          for axis, value in spec.axes.items():
+            if hasattr(value, 'value'):
+              value = value.value
+            if value is not None and shape[int(axis)] not in {value, None}:
+              raise ValueError(
+                  'Input ' + str(input_index) + ' of layer ' + self.name + ' is'
+                  ' incompatible with the layer: expected axis ' + str(axis) +
+                  ' of input shape to have value ' + str(value) +
+                  ' but received input with shape ' + str(shape))
+      # Check shape.
+      if spec.shape is not None:
+        shape = x.get_shape().as_list()
+        if shape is not None:
+          for spec_dim, dim in zip(spec.shape, shape):
+            if spec_dim is not None and dim is not None:
+              if spec_dim != dim:
+                raise ValueError('Input ' + str(input_index) +
+                                 ' is incompatible with layer ' + self.name +
+                                 ': expected shape=' + str(spec.shape) +
+                                 ', found shape=' + str(shape))
+
+
+class InputSpec(object):
+  """Specifies the ndim, dtype and shape of every input to a layer.
+
+  Every layer should expose (if appropriate) an `input_spec` attribute:
+  a list of instances of InputSpec (one per input tensor).
+
+  A None entry in a shape is compatible with any dimension,
+  a None shape is compatible with any shape.
+
+  Arguments:
+      dtype: Expected DataType of the input.
+      shape: Shape tuple, expected shape of the input
+          (may include None for unchecked axes).
+      ndim: Integer, expected rank of the input.
+      max_ndim: Integer, maximum rank of the input.
+      min_ndim: Integer, minimum rank of the input.
+      axes: Dictionary mapping integer axes to
+          a specific dimension value.
+  """
+
+  def __init__(self,
+               dtype=None,
+               shape=None,
+               ndim=None,
+               max_ndim=None,
+               min_ndim=None,
+               axes=None):
+    self.dtype = dtype
+    self.shape = shape
+    if shape is not None:
+      self.ndim = len(shape)
+    else:
+      self.ndim = ndim
+    self.max_ndim = max_ndim
+    self.min_ndim = min_ndim
+    self.axes = axes or {}
 
 
 def _to_snake_case(name):
