@@ -37,7 +37,7 @@ CreateConv2D(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(kernel, FindInstructionInput(tensor_map, inst, 1, 0));
 
   popconv::ConvOptions opts;
-  opts.cache = &res.convCache;
+  opts.cache = &res.convolution_cache;
 
   const Window& window(inst->window());
 

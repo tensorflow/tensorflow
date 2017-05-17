@@ -29,7 +29,9 @@ namespace poplarplugin {
 using ComputationMap = std::map<HloInstruction*, CallVisitor>;
 
 struct CompilerResources {
-  popconv::PlanningCache convCache;
+  ComputationMap computation_map;
+
+  popconv::PlanningCache convolution_cache;
 };
 
 }  // namespace poplarplugin
