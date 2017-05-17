@@ -134,10 +134,10 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
                      HloInstruction* /*operand*/) override {
     return DefaultAction(slice);
   }
-  Status HandleDynamicSlice(
-      HloInstruction* slice,
-      tensorflow::gtl::ArraySlice<HloInstruction*> /*operands*/) override {
-    return DefaultAction(slice);
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                            HloInstruction* /*operand*/,
+                            HloInstruction* /*start_indices*/) override {
+    return DefaultAction(dynamic_slice);
   }
   Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
                                   HloInstruction* /*operand*/,

@@ -89,9 +89,9 @@ class HloCostAnalysis : public DfsHloVisitor {
                           tensorflow::gtl::ArraySlice<HloInstruction*> operands,
                           tensorflow::StringPiece custom_call_target) override;
   Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
-  Status HandleDynamicSlice(
-      HloInstruction* slice,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                            HloInstruction* operand,
+                            HloInstruction* start_indices) override;
   Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
                                   HloInstruction* operand,
                                   HloInstruction* update,

@@ -179,10 +179,14 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
                             output_ptrs_base, n, &dev_info.back(), batch_size),
         done);
 
-    // Register callback to check info after kernels finish.
-    auto info_checker = [context, done](
-                            const Status& status,
-                            const std::vector<HostLapackInfo>& host_infos) {
+    // Register callback to check info after kernels finish. Also capture the
+    // temporary Tensors/ScratchSpace so they don't get deallocated before the
+    // kernels run. TODO(rmlarsen): Use move capture once C++14 becomes
+    // available.
+    auto info_checker = [context, dev_info, input_copy, pivots, input_copy_ptrs,
+                         output_ptrs,
+                         done](const Status& status,
+                               const std::vector<HostLapackInfo>& host_infos) {
       if (!status.ok() && errors::IsInvalidArgument(status) &&
           !host_infos.empty()) {
         for (int i = 0; i < host_infos[0].size(); ++i) {

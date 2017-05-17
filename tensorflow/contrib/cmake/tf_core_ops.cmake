@@ -18,6 +18,7 @@ set(tf_op_lib_names
     "control_flow_ops"
     "ctc_ops"
     "data_flow_ops"
+    "dataset_ops"
     "functional_ops"
     "image_ops"
     "io_ops"

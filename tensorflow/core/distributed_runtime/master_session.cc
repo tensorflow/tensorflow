@@ -188,7 +188,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
                       const RunState* run_state,
                       SimpleGraphExecutionState* execution_state);
 
-  string DetailText(const Node& node, const NodeExecStats& ns) {
+  string DetailText(const NodeDef& def, const NodeExecStats& ns) {
     int64 tot = 0;
     for (auto& no : ns.output()) {
       tot += no.tensor_description().allocation_description().requested_bytes();
@@ -197,8 +197,12 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     if (tot >= 0.1 * 1048576.0) {
       bytes = strings::Printf("[%.1fMB] ", tot / 1048576.0);
     }
-    return strings::StrCat(bytes, node.name(), " = ", node.type_string(), "(",
-                           str_util::Join(node.requested_inputs(), ", "), ")");
+    return strings::StrCat(
+        bytes, def.name(), " = ", def.op(), "(",
+        str_util::Join(
+            std::vector<StringPiece>(def.input().begin(), def.input().end()),
+            ", "),
+        ")");
   }
 
  private:
@@ -786,7 +790,7 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
       if (!ns.timeline_label().empty()) {
         details = ns.timeline_label();
       } else if (found_node_in_graph) {
-        details = DetailText(*node, ns);
+        details = DetailText(node->def(), ns);
       } else {
         // Leave details string empty
       }

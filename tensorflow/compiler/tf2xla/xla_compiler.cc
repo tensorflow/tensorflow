@@ -106,8 +106,7 @@ Status XlaCompiler::CompileFunction(
     const XlaCompiler::CompileOptions& options, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
     XlaCompiler::CompilationResult* result) {
-  const string function_id =
-      Canonicalize(function.name(), AttrSlice(&function.attr()));
+  const string function_id = Canonicalize(function.name(), function.attr());
   VLOG(1) << "XlaCompiler::CompileFunction " << function_id;
 
   auto it = cache_.find({function_id, args});
@@ -117,8 +116,8 @@ Status XlaCompiler::CompileFunction(
   }
 
   FunctionLibraryRuntime::Handle handle;
-  TF_RETURN_IF_ERROR(flib_runtime_->Instantiate(
-      function.name(), AttrSlice(&function.attr()), &handle));
+  TF_RETURN_IF_ERROR(
+      flib_runtime_->Instantiate(function.name(), function.attr(), &handle));
 
   const FunctionBody* fbody = flib_runtime_->GetFunctionBody(handle);
   CHECK(fbody);

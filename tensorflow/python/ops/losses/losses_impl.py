@@ -690,7 +690,7 @@ def _remove_squeezable_dimensions(
     # Use dynamic rank.
     rank_diff = array_ops.rank(weights) - array_ops.rank(labels)
     if (weights_rank is None) or (
-        weights_shape.dims[-1].is_compatible_with(1)):
+        weights_rank > 0 and weights_shape.dims[-1].is_compatible_with(1)):
       weights = control_flow_ops.cond(
           math_ops.equal(1, rank_diff),
           lambda: array_ops.squeeze(weights, [-1]),
