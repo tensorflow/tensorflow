@@ -349,6 +349,9 @@ The attr `ratio` allows downscaling the image by an integer factor during
 decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
 downscaling the image later.
 
+This op also supports decoding PNGs and non-animated GIFs since the interface is
+the same, though it is cleaner to use `tf.image.decode_image`.
+
 contents: 0-D.  The JPEG-encoded image.
 channels: Number of color channels for the decoded image.
 ratio: Downscaling ratio.
@@ -525,6 +528,9 @@ Accepted values are:
 If needed, the PNG-encoded image is transformed to match the requested number
 of color channels.
 
+This op also supports decoding JPEGs and non-animated GIFs since the interface
+is the same, though it is cleaner to use `tf.image.decode_image`.
+
 contents: 0-D.  The PNG-encoded image.
 channels: Number of color channels for the decoded image.
 image: 3-D with shape `[height, width, channels]`.
@@ -576,7 +582,10 @@ Decode the first frame of a GIF-encoded image to a uint8 tensor.
 GIF with frame or transparency compression are not supported
 convert animated GIF from compressed to uncompressed by:
 
-convert $src.gif -coalesce $dst.gif
+    convert $src.gif -coalesce $dst.gif
+
+This op also supports decoding JPEGs and PNGs, though it is cleaner to use
+`tf.image.decode_image`.
 
 contents: 0-D.  The GIF-encoded image.
 image: 4-D with shape `[num_frames, height, width, 3]`. RGB order
@@ -963,11 +972,50 @@ method: A string specifying the interpolation method. Only 'bilinear' is
 // --------------------------------------------------------------------------
 
 REGISTER_OP("NonMaxSuppression")
+  .Input("boxes: float")
+  .Input("scores: float")
+  .Input("max_output_size: int32")
+  .Output("selected_indices: int32")
+  .Attr("iou_threshold: float = 0.5")
+  .SetShapeFn([](InferenceContext* c) {
+      c->set_output(0, c->Vector(c->UnknownDim()));
+      return Status::OK();
+    })
+  .Doc(R"doc(
+Greedily selects a subset of bounding boxes in descending order of score,
+pruning away boxes that have high intersection-over-union (IOU) overlap
+with previously selected boxes.  Bounding boxes are supplied as
+[y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+diagonal pair of box corners and the coordinates can be provided as normalized
+(i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+is agnostic to where the origin is in the coordinate system.  Note that this
+algorithm is invariant to orthogonal transformations and translations
+of the coordinate system; thus translating or reflections of the coordinate
+system result in the same boxes being selected by the algorithm.
+The output of this operation is a set of integers indexing into the input
+collection of bounding boxes representing the selected boxes.  The bounding
+box coordinates corresponding to the selected indices can then be obtained
+using the `tf.gather operation`.  For example:
+  selected_indices = tf.image.non_max_suppression(
+      boxes, scores, max_output_size, iou_threshold)
+  selected_boxes = tf.gather(boxes, selected_indices)
+boxes: A 2-D float tensor of shape `[num_boxes, 4]`.
+scores: A 1-D float tensor of shape `[num_boxes]` representing a single
+  score corresponding to each box (each row of boxes).
+max_output_size: A scalar integer tensor representing the maximum number of
+  boxes to be selected by non max suppression.
+iou_threshold: A float representing the threshold for deciding whether boxes
+  overlap too much with respect to IOU.
+selected_indices: A 1-D integer tensor of shape `[M]` representing the selected
+  indices from the boxes tensor, where `M <= max_output_size`.
+)doc");
+
+REGISTER_OP("NonMaxSuppressionV2")
     .Input("boxes: float")
     .Input("scores: float")
     .Input("max_output_size: int32")
+    .Input("iou_threshold: float")
     .Output("selected_indices: int32")
-    .Attr("iou_threshold: float = 0.5")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->Vector(c->UnknownDim()));
       return Status::OK();
@@ -989,7 +1037,7 @@ collection of bounding boxes representing the selected boxes.  The bounding
 box coordinates corresponding to the selected indices can then be obtained
 using the `tf.gather operation`.  For example:
 
-  selected_indices = tf.image.non_max_suppression(
+  selected_indices = tf.image.non_max_suppression_v2(
       boxes, scores, max_output_size, iou_threshold)
   selected_boxes = tf.gather(boxes, selected_indices)
 
@@ -998,8 +1046,8 @@ scores: A 1-D float tensor of shape `[num_boxes]` representing a single
   score corresponding to each box (each row of boxes).
 max_output_size: A scalar integer tensor representing the maximum number of
   boxes to be selected by non max suppression.
-iou_threshold: A float representing the threshold for deciding whether boxes
-  overlap too much with respect to IOU.
+iou_threshold: A 0-D float tensor representing the threshold for deciding whether
+  boxes overlap too much with respect to IOU.
 selected_indices: A 1-D integer tensor of shape `[M]` representing the selected
   indices from the boxes tensor, where `M <= max_output_size`.
 )doc");

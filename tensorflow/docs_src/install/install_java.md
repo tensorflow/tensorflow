@@ -50,7 +50,7 @@ As an example, these steps will create a Maven project that uses TensorFlow:
          <project>
              <modelVersion>4.0.0</modelVersion>
              <groupId>org.myorg</groupId>
-             <artifactId>label-image</artifactId>
+             <artifactId>hellotf</artifactId>
              <version>1.0-SNAPSHOT</version>
              <properties>
                <exec.mainClass>HelloTF</exec.mainClass>
@@ -106,7 +106,7 @@ As an example, these steps will create a Maven project that uses TensorFlow:
 
 
 The preceding command should output <tt>Hello from <i>version</i></tt>. If it
-does, you've succesfully set up TensorFlow for Java and are ready to use it in
+does, you've successfully set up TensorFlow for Java and are ready to use it in
 Maven projects. If not, check
 [Stack Overflow](http://stackoverflow.com/questions/tagged/tensorflow)
 for possible solutions.  You can skip reading the rest of this document.
@@ -211,15 +211,20 @@ two files are available to the JVM:
   * the downloaded `.jar` file
   * the extracted JNI library
 
-For example, the following command line executes the `HelloTF` program:
+For example, the following command line executes the `HelloTF` program on Linux
+and Mac OS X:
 
 <pre><b>java -cp libtensorflow-1.1.0.jar:. -Djava.library.path=./jni HelloTF</b></pre>
+
+And the following comand line executes the `HelloTF` program on Windows:
+
+<pre><b>java -cp libtensorflow-1.1.0.jar;. -Djava.library.path=jni HelloTF</b></pre>
 
 If the program prints <tt>Hello from <i>version</i></tt>, you've successfully
 installed TensorFlow for Java and are ready to use the API.  If the program
 outputs something else, check
-[Stack Overflow](http://stackoverflow.com/questions/tagged/tensorflow)
-for possible solutions.
+[Stack Overflow](http://stackoverflow.com/questions/tagged/tensorflow) for
+possible solutions.
 
 
 ### Advanced Example

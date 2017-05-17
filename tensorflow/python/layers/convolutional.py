@@ -37,14 +37,14 @@ from tensorflow.python.layers import base
 from tensorflow.python.layers import utils
 
 
-class _Conv(base._Layer):  # pylint: disable=protected-access
+class _Conv(base.Layer):
   """Abstract nD convolution layer (private, used as implementation base).
 
   This layer creates a convolution kernel that is convolved
   (actually cross-correlated) with the layer input to produce a tensor of
-  outputs. If `use_bias` is True (and a `bias_initializer` is provided),
-  a bias vector is created and added to the outputs. Finally, if
-  `activation` is not `None`, it is applied to the outputs as well.
+  outputs. If `use_bias` is True, a bias vector is created and added to the
+  outputs. Finally, if `activation` is not `None`, it is applied to the outputs
+  as well.
 
   Arguments:
     rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
@@ -70,8 +70,8 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -130,21 +130,22 @@ class _Conv(base._Layer):  # pylint: disable=protected-access
     input_dim = input_shape[channel_axis].value
     kernel_shape = self.kernel_size + (input_dim, self.filters)
 
-    self.kernel = vs.get_variable('kernel',
-                                  shape=kernel_shape,
-                                  initializer=self.kernel_initializer,
-                                  regularizer=self.kernel_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+    self.kernel = self.add_variable(name='kernel',
+                                    shape=kernel_shape,
+                                    initializer=self.kernel_initializer,
+                                    regularizer=self.kernel_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     if self.use_bias:
-      self.bias = vs.get_variable('bias',
-                                  shape=(self.filters,),
-                                  initializer=self.bias_initializer,
-                                  regularizer=self.bias_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+      self.bias = self.add_variable(name='bias',
+                                    shape=(self.filters,),
+                                    initializer=self.bias_initializer,
+                                    regularizer=self.bias_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
     outputs = nn.convolution(
@@ -192,9 +193,9 @@ class Conv1D(_Conv):
 
   This layer creates a convolution kernel that is convolved
   (actually cross-correlated) with the layer input to produce a tensor of
-  outputs. If `use_bias` is True (and a `bias_initializer` is provided),
-  a bias vector is created and added to the outputs. Finally, if
-  `activation` is not `None`, it is applied to the outputs as well.
+  outputs. If `use_bias` is True, a bias vector is created and added to the
+  outputs. Finally, if `activation` is not `None`, it is applied to the outputs
+  as well.
 
   Arguments:
     filters: Integer, the dimensionality of the output space (i.e. the number
@@ -219,8 +220,8 @@ class Conv1D(_Conv):
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -285,9 +286,9 @@ def conv1d(inputs,
 
   This layer creates a convolution kernel that is convolved
   (actually cross-correlated) with the layer input to produce a tensor of
-  outputs. If `use_bias` is True (and a `bias_initializer` is provided),
-  a bias vector is created and added to the outputs. Finally, if
-  `activation` is not `None`, it is applied to the outputs as well.
+  outputs. If `use_bias` is True, a bias vector is created and added to the
+  outputs. Finally, if `activation` is not `None`, it is applied to the outputs
+  as well.
 
   Arguments:
     inputs: Tensor input.
@@ -313,8 +314,8 @@ def conv1d(inputs,
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -353,9 +354,9 @@ class Conv2D(_Conv):
 
   This layer creates a convolution kernel that is convolved
   (actually cross-correlated) with the layer input to produce a tensor of
-  outputs. If `use_bias` is True (and a `bias_initializer` is provided),
-  a bias vector is created and added to the outputs. Finally, if
-  `activation` is not `None`, it is applied to the outputs as well.
+  outputs. If `use_bias` is True, a bias vector is created and added to the
+  outputs. Finally, if `activation` is not `None`, it is applied to the outputs
+  as well.
 
   Arguments:
     filters: Integer, the dimensionality of the output space (i.e. the number
@@ -387,8 +388,8 @@ class Conv2D(_Conv):
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -453,9 +454,9 @@ def conv2d(inputs,
 
   This layer creates a convolution kernel that is convolved
   (actually cross-correlated) with the layer input to produce a tensor of
-  outputs. If `use_bias` is True (and a `bias_initializer` is provided),
-  a bias vector is created and added to the outputs. Finally, if
-  `activation` is not `None`, it is applied to the outputs as well.
+  outputs. If `use_bias` is True, a bias vector is created and added to the
+  outputs. Finally, if `activation` is not `None`, it is applied to the outputs
+  as well.
 
   Arguments:
     inputs: Tensor input.
@@ -488,8 +489,8 @@ def conv2d(inputs,
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -528,9 +529,9 @@ class Conv3D(_Conv):
 
   This layer creates a convolution kernel that is convolved
   (actually cross-correlated) with the layer input to produce a tensor of
-  outputs. If `use_bias` is True (and a `bias_initializer` is provided),
-  a bias vector is created and added to the outputs. Finally, if
-  `activation` is not `None`, it is applied to the outputs as well.
+  outputs. If `use_bias` is True, a bias vector is created and added to the
+  outputs. Finally, if `activation` is not `None`, it is applied to the outputs
+  as well.
 
   Arguments:
     filters: Integer, the dimensionality of the output space (i.e. the number
@@ -563,8 +564,8 @@ class Conv3D(_Conv):
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -629,9 +630,9 @@ def conv3d(inputs,
 
   This layer creates a convolution kernel that is convolved
   (actually cross-correlated) with the layer input to produce a tensor of
-  outputs. If `use_bias` is True (and a `bias_initializer` is provided),
-  a bias vector is created and added to the outputs. Finally, if
-  `activation` is not `None`, it is applied to the outputs as well.
+  outputs. If `use_bias` is True, a bias vector is created and added to the
+  outputs. Finally, if `activation` is not `None`, it is applied to the outputs
+  as well.
 
   Arguments:
     inputs: Tensor input.
@@ -665,8 +666,8 @@ def conv3d(inputs,
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -703,11 +704,10 @@ def conv3d(inputs,
 class SeparableConv2D(Conv2D):
   """Depthwise separable 2D convolution.
 
-  This layer performs a depthwise convolution that acts separately on
-  channels, followed by a pointwise convolution that mixes channels.
-  If `use_bias` is True and a bias initializer is provided,
-  it adds a bias vector to the output.
-  It then optionally applies an activation function to produce the final output.
+  This layer performs a depthwise convolution that acts separately on channels,
+  followed by a pointwise convolution that mixes channels. If `use_bias` is
+  True, it adds a bias vector to the output. It then optionally applies an
+  activation function to produce the final output.
 
   Arguments:
     filters: Integer, the dimensionality of the output space (i.e. the number
@@ -741,8 +741,8 @@ class SeparableConv2D(Conv2D):
     use_bias: Boolean, whether the layer uses a bias.
     depthwise_initializer: An initializer for the depthwise convolution kernel.
     pointwise_initializer: An initializer for the pointwise convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     depthwise_regularizer: Optional regularizer for the depthwise
       convolution kernel.
     pointwise_regularizer: Optional regularizer for the pointwise
@@ -814,29 +814,30 @@ class SeparableConv2D(Conv2D):
                               self.depth_multiplier * input_dim,
                               self.filters)
 
-    self.depthwise_kernel = vs.get_variable(
-        'depthwise_kernel',
+    self.depthwise_kernel = self.add_variable(
+        name='depthwise_kernel',
         shape=depthwise_kernel_shape,
         initializer=self.depthwise_initializer,
         regularizer=self.depthwise_regularizer,
         trainable=True,
         dtype=self.dtype)
-    self.pointwise_kernel = vs.get_variable(
-        'pointwise_kernel',
+    self.pointwise_kernel = self.add_variable(
+        name='pointwise_kernel',
         shape=pointwise_kernel_shape,
         initializer=self.pointwise_initializer,
         regularizer=self.pointwise_regularizer,
         trainable=True,
         dtype=self.dtype)
     if self.use_bias:
-      self.bias = vs.get_variable('bias',
-                                  shape=(self.filters,),
-                                  initializer=self.bias_initializer,
-                                  regularizer=self.bias_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+      self.bias = self.add_variable(name='bias',
+                                    shape=(self.filters,),
+                                    initializer=self.bias_initializer,
+                                    regularizer=self.bias_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
     if self.data_format == 'channels_first':
@@ -889,11 +890,10 @@ def separable_conv2d(inputs,
                      reuse=None):
   """Functional interface for the depthwise separable 2D convolution layer.
 
-  This layer performs a depthwise convolution that acts separately on
-  channels, followed by a pointwise convolution that mixes channels.
-  If `use_bias` is True and a bias initializer is provided,
-  it adds a bias vector to the output.
-  It then optionally applies an activation function to produce the final output.
+  This layer performs a depthwise convolution that acts separately on channels,
+  followed by a pointwise convolution that mixes channels. If `use_bias` is
+  True, it adds a bias vector to the output. It then optionally applies an
+  activation function to produce the final output.
 
   Arguments:
     inputs: Input tensor.
@@ -928,8 +928,8 @@ def separable_conv2d(inputs,
     use_bias: Boolean, whether the layer uses a bias.
     depthwise_initializer: An initializer for the depthwise convolution kernel.
     pointwise_initializer: An initializer for the pointwise convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     depthwise_regularizer: Optional regularizer for the depthwise
       convolution kernel.
     pointwise_regularizer: Optional regularizer for the pointwise
@@ -972,12 +972,11 @@ def separable_conv2d(inputs,
 class Conv2DTranspose(Conv2D):
   """Transposed 2D convolution layer (sometimes called 2D Deconvolution).
 
-  The need for transposed convolutions generally arises
-  from the desire to use a transformation going in the opposite direction
-  of a normal convolution, i.e., from something that has the shape of the
-  output of some convolution to something that has the shape of its input
-  while maintaining a connectivity pattern that is compatible with
-  said convolution.
+  The need for transposed convolutions generally arises from the desire to use a
+  transformation going in the opposite direction of a normal convolution, i.e.,
+  from something that has the shape of the output of some convolution to
+  something that has the shape of its input while maintaining a connectivity
+  pattern that is compatible with said convolution.
 
   Arguments:
     filters: Integer, the dimensionality of the output space (i.e. the number
@@ -998,8 +997,8 @@ class Conv2DTranspose(Conv2D):
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -1055,21 +1054,22 @@ class Conv2DTranspose(Conv2D):
     input_dim = input_shape[channel_axis]
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
-    self.kernel = vs.get_variable('kernel',
-                                  shape=kernel_shape,
-                                  initializer=self.kernel_initializer,
-                                  regularizer=self.kernel_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+    self.kernel = self.add_variable(name='kernel',
+                                    shape=kernel_shape,
+                                    initializer=self.kernel_initializer,
+                                    regularizer=self.kernel_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     if self.use_bias:
-      self.bias = vs.get_variable('bias',
-                                  shape=(self.filters,),
-                                  initializer=self.bias_initializer,
-                                  regularizer=self.bias_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+      self.bias = self.add_variable(name='bias',
+                                    shape=(self.filters,),
+                                    initializer=self.bias_initializer,
+                                    regularizer=self.bias_regularizer,
+                                    trainable=True,
+                                    dtype=self.dtype)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -1106,10 +1106,10 @@ class Conv2DTranspose(Conv2D):
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
     out_shape[c_axis] = self.filters
-    out_shape[h_axis] = utils.get_deconv_dim(
-        out_shape[h_axis], stride_h, kernel_h, self.padding)
-    out_shape[w_axis] = utils.get_deconv_dim(
-        out_shape[w_axis], stride_w, kernel_w, self.padding)
+    out_shape[h_axis] = utils.get_deconv_dim(out_shape[h_axis], stride_h,
+                                             kernel_h, self.padding)
+    out_shape[w_axis] = utils.get_deconv_dim(out_shape[w_axis], stride_w,
+                                             kernel_w, self.padding)
     outputs.set_shape(out_shape)
 
     if self.bias:
@@ -1141,12 +1141,11 @@ def conv2d_transpose(inputs,
                      reuse=None):
   """Functional interface for transposed 2D convolution layer.
 
-  The need for transposed convolutions generally arises
-  from the desire to use a transformation going in the opposite direction
-  of a normal convolution, i.e., from something that has the shape of the
-  output of some convolution to something that has the shape of its input
-  while maintaining a connectivity pattern that is compatible with
-  said convolution.
+  The need for transposed convolutions generally arises from the desire to use a
+  transformation going in the opposite direction of a normal convolution, i.e.,
+  from something that has the shape of the output of some convolution to
+  something that has the shape of its input while maintaining a connectivity
+  pattern that is compatible with said convolution.
 
   Arguments:
     inputs: Input tensor.
@@ -1168,8 +1167,8 @@ def conv2d_transpose(inputs,
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If `None`, then no
-      bias will be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -1227,8 +1226,8 @@ class Conv3DTranspose(Conv3D):
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If `None`, then no
-      bias will be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -1237,7 +1236,8 @@ class Conv3DTranspose(Conv3D):
     name: A string, the name of the layer.
   """
 
-  def __init__(self, filters,
+  def __init__(self,
+               filters,
                kernel_size,
                strides=(1, 1, 1),
                padding='valid',
@@ -1266,12 +1266,13 @@ class Conv3DTranspose(Conv3D):
         bias_regularizer=bias_regularizer,
         activity_regularizer=activity_regularizer,
         trainable=trainable,
-        name=name, **kwargs)
+        name=name,
+        **kwargs)
 
   def build(self, input_shape):
     if len(input_shape) != 5:
-      raise ValueError('Inputs should have rank 5, ' +
-                       'received input shape:', str(input_shape))
+      raise ValueError('Inputs should have rank 5, received input shape:',
+                       str(input_shape))
     if self.data_format == 'channels_first':
       channel_axis = 1
     else:
@@ -1282,19 +1283,21 @@ class Conv3DTranspose(Conv3D):
     input_dim = input_shape[channel_axis]
     kernel_shape = self.kernel_size + (self.filters, input_dim)
 
-    self.kernel = vs.get_variable('kernel',
-                                  shape=kernel_shape,
-                                  initializer=self.kernel_initializer,
-                                  regularizer=self.kernel_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+    self.kernel = self.add_variable(
+        'kernel',
+        shape=kernel_shape,
+        initializer=self.kernel_initializer,
+        regularizer=self.kernel_regularizer,
+        trainable=True,
+        dtype=self.dtype)
     if self.use_bias:
-      self.bias = vs.get_variable('bias',
-                                  shape=(self.filters,),
-                                  initializer=self.bias_initializer,
-                                  regularizer=self.bias_regularizer,
-                                  trainable=True,
-                                  dtype=self.dtype)
+      self.bias = self.add_variable(
+          'bias',
+          shape=(self.filters,),
+          initializer=self.bias_initializer,
+          regularizer=self.bias_regularizer,
+          trainable=True,
+          dtype=self.dtype)
     else:
       self.bias = None
 
@@ -1339,26 +1342,26 @@ class Conv3DTranspose(Conv3D):
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
     out_shape[c_axis] = self.filters
-    out_shape[d_axis] = utils.get_deconv_dim(
-        out_shape[d_axis], stride_d, kernel_d, self.padding)
-    out_shape[h_axis] = utils.get_deconv_dim(
-        out_shape[h_axis], stride_h, kernel_h, self.padding)
-    out_shape[w_axis] = utils.get_deconv_dim(
-        out_shape[w_axis], stride_w, kernel_w, self.padding)
+    out_shape[d_axis] = utils.get_deconv_dim(out_shape[d_axis], stride_d,
+                                             kernel_d, self.padding)
+    out_shape[h_axis] = utils.get_deconv_dim(out_shape[h_axis], stride_h,
+                                             kernel_h, self.padding)
+    out_shape[w_axis] = utils.get_deconv_dim(out_shape[w_axis], stride_w,
+                                             kernel_w, self.padding)
     outputs.set_shape(out_shape)
 
     if self.bias:
       outputs_shape = outputs.shape.as_list()
       if self.data_format == 'channels_first':
-        outputs_4d = array_ops.reshape(outputs,
-                                       [outputs_shape[0], outputs_shape[1],
-                                        outputs_shape[2] * outputs_shape[3],
-                                        outputs_shape[4]])
+        outputs_4d = array_ops.reshape(outputs, [
+            outputs_shape[0], outputs_shape[1],
+            outputs_shape[2] * outputs_shape[3], outputs_shape[4]
+        ])
       else:
-        outputs_4d = array_ops.reshape(outputs,
-                                       [outputs_shape[0],
-                                        outputs_shape[1] * outputs_shape[2],
-                                        outputs_shape[3], outputs_shape[4]])
+        outputs_4d = array_ops.reshape(outputs, [
+            outputs_shape[0], outputs_shape[1] * outputs_shape[2],
+            outputs_shape[3], outputs_shape[4]
+        ])
       outputs_4d = nn.bias_add(
           outputs_4d,
           self.bias,
@@ -1408,8 +1411,8 @@ def conv3d_transpose(inputs,
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
     kernel_initializer: An initializer for the convolution kernel.
-    bias_initializer: An initializer for the bias vector. If None, no bias will
-      be applied.
+    bias_initializer: An initializer for the bias vector. Will be ignored if
+      `use_bias` is `False`.
     kernel_regularizer: Optional regularizer for the convolution kernel.
     bias_regularizer: Optional regularizer for the bias vector.
     activity_regularizer: Regularizer function for the output.
@@ -1456,4 +1459,3 @@ convolution3d = conv3d
 separable_convolution2d = separable_conv2d
 convolution2d_transpose = deconvolution2d = deconv2d = conv2d_transpose
 convolution3d_transpose = deconvolution3d = deconv3d = conv3d_transpose
-

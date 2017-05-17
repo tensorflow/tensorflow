@@ -108,13 +108,9 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
                                                 "ApplyAdam",
                                                 "ApplyRMSProp",
                                                 "ApplyCenteredRMSProp"};
-  const NodeDef* dequeue_node = nullptr;
   for (int i = 0; i < graph_.node_size(); i++) {
     all_nodes_.insert(
         std::make_pair(graph_.node(i).name(), graph_.mutable_node(i)));
-    if (IsDequeueOp(graph_.node(i))) {
-      dequeue_node = graph_.mutable_node(i);
-    }
     if (apply_gradients_ops.find(graph_.node(i).op()) !=
         apply_gradients_ops.end()) {
       apply_gradients_nodes_.insert(graph_.node(i).name());
@@ -151,6 +147,14 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
 
   auto train_nodes = ComputeTransitiveFanin(graph_, item.fetch);
   LOG(INFO) << "Number of training nodes: " << train_nodes.size();
+
+  const NodeDef* dequeue_node;
+  for (const auto& train_node : train_nodes) {
+    if (IsDequeueOp(*train_node)) {
+      dequeue_node = train_node;
+      break;
+    }
+  }
 
   std::vector<const NodeDef*> input_nodes;
   if (dequeue_node) {

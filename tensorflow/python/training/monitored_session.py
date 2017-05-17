@@ -26,7 +26,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -102,7 +102,8 @@ class Scaffold(object):
                ready_for_local_init_op=None,
                local_init_op=None,
                summary_op=None,
-               saver=None):
+               saver=None,
+               copy_from_scaffold=None):
     """Create a scaffold.
 
     Args:
@@ -125,10 +126,26 @@ class Scaffold(object):
         string tensor containing a serialized `Summary` proto.
       saver: Optional `tf.train.Saver` object to use to save and restore
         variables.
+      copy_from_scaffold: Optional scaffold object to copy fields from. Its
+        fields will be overwritten by the provided fields in this function.
     """
+    if copy_from_scaffold:
+      if not isinstance(copy_from_scaffold, Scaffold):
+        raise TypeError('copy_from_scaffold is not a Scaffold instance.')
+      init_op = init_op or copy_from_scaffold.init_op
+      init_feed_dict = init_feed_dict or copy_from_scaffold.init_feed_dict
+      # Use the original init_fn provided by the user to init the new Scaffold.
+      init_fn = init_fn or copy_from_scaffold._user_init_fn  # pylint: disable=protected-access
+      ready_op = ready_op or copy_from_scaffold.ready_op
+      ready_for_local_init_op = ready_for_local_init_op or (
+          copy_from_scaffold.ready_for_local_init_op)
+      local_init_op = local_init_op or copy_from_scaffold.local_init_op
+      summary_op = summary_op or copy_from_scaffold.summary_op
+      saver = saver or copy_from_scaffold.saver
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
     # hack to make it easy to find the saver.  Is there a better way?
+    self._user_init_fn = init_fn
     if init_fn:
       self._init_fn = lambda sess: init_fn(self, sess)
     else:
@@ -238,7 +255,7 @@ class Scaffold(object):
   @staticmethod
   def _default_local_init_op():
     return control_flow_ops.group(variables.local_variables_initializer(),
-                                  data_flow_ops.tables_initializer())
+                                  lookup_ops.tables_initializer())
 
 
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
@@ -422,7 +439,9 @@ class WorkerSessionCreator(SessionCreator):
   def create_session(self):
     self._scaffold.finalize()
     return self._get_session_manager().wait_for_session(
-        self._master, config=self._config)
+        self._master, config=self._config,
+        max_wait_secs=30 * 60  # Wait up to 30 mins for the session to be ready.
+    )
 
 
 class _MonitoredSession(object):
@@ -557,7 +576,7 @@ class MonitoredSession(_MonitoredSession):
 
   ```python
   saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
+  summary_hook = SummarySaverHook(...)
   with MonitoredSession(session_creator=ChiefSessionCreator(...),
                         hooks=[saver_hook, summary_hook]) as sess:
     while not sess.should_stop():
@@ -646,7 +665,7 @@ class SingularMonitoredSession(_MonitoredSession):
   Example usage:
   ```python
   saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
+  summary_hook = SummarySaverHook(...)
   with SingularMonitoredSession(hooks=[saver_hook, summary_hook]) as sess:
     while not sess.should_stop():
       sess.run(train_op)

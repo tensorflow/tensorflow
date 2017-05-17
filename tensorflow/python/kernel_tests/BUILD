@@ -403,6 +403,22 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "lookup_ops_test",
+    size = "small",
+    srcs = ["lookup_ops_test.py"],
+    additional_deps = [
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_py_test(
     name = "losses_test",
     size = "medium",
     srcs = ["losses_test.py"],
@@ -1548,6 +1564,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -2363,7 +2380,6 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:data_flow_grad",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",
@@ -2566,6 +2582,30 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+    ],
+)
+
+tf_py_test(
+    name = "bucketize_op_test",
+    size = "small",
+    srcs = ["bucketize_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+    ],
+)
+
+tf_py_test(
+    name = "sparse_cross_op_test",
+    size = "small",
+    srcs = ["sparse_cross_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:sparse_ops",
     ],
 )
 

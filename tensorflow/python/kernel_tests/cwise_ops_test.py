@@ -1106,15 +1106,17 @@ class BinaryOpTest(test.TestCase):
 
   def testAtan2SpecialValues(self):
     x1l, x2l = zip((+0.0, +0.0), (+0.0, -0.0), (-0.0, +0.0), (-0.0, -0.0),
-                    (1.2345, float('inf')), (1.2345, -float('inf')),
-                    (-4.321, float('inf')), (-4.125, -float('inf')),
-                    (float('inf'), float('inf')), (float('inf'), -float('inf')),
-                    (-float('inf'), float('inf')), (-float('inf'), -float('inf')))
+                   (1.2345, float("inf")), (1.2345, -float("inf")),
+                   (-4.321, float("inf")), (-4.125, -float("inf")),
+                   (float("inf"), float("inf")), (float("inf"), -float("inf")),
+                   (-float("inf"), float("inf")), (-float("inf"),
+                                                   -float("inf")))
     for dtype in np.float32, np.float64:
       x1 = np.array(x1l).astype(dtype)
       x2 = np.array(x2l).astype(dtype)
       self._compareCpu(x1, x2, np.arctan2, math_ops.atan2)
       self._compareGpu(x1, x2, np.arctan2, math_ops.atan2)
+
 
 class ComparisonOpTest(test.TestCase):
 

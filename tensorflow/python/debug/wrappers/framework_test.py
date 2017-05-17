@@ -384,18 +384,6 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
         ["a_init", "b_init"],
         [datum.node_name for datum in dump.dumped_tensor_data])
 
-  def testUsingNonDirectSessionRaisesNotImplementedError(self):
-    # TODO(cais): Remove this test once tfdbg is integrated with GrpcSession.
-    fake_non_direct_session = session.Session()
-    fake_non_direct_session._target = "foo"
-
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        r"Non-DirectSession support is not available from TensorFlow Debugger "
-        r"yet \(sess_str=foo\)"):
-      TestDebugWrapperSession(
-          fake_non_direct_session, self._dump_root, self._observer)
-
 
 if __name__ == "__main__":
   googletest.main()

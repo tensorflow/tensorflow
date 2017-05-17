@@ -659,44 +659,6 @@ LayoutAssignment::LayoutAssignment(ComputationLayout* entry_computation_layout)
   }
 }
 
-namespace {
-
-// Given a pemutation of `{0, 1, ..., n}` `indices`, returns a permutation of
-// `{0, 1, ..., n - to_delete.size() + to_insert.size()}` by deleting the
-// indices `to_delete` wherever in `indices` they are, and inserting the indices
-// `to_insert` arbitrarily at the back.
-tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>
-DeleteAndInsertIndices(
-    std::vector<int64> to_delete, std::vector<int64> to_insert,
-    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64> indices) {
-  std::sort(to_delete.begin(), to_delete.end(), std::greater<int64>());
-  std::sort(to_insert.begin(), to_insert.end(), std::less<int64>());
-  for (auto index : to_delete) {
-    auto i = indices.begin();
-    while (i != indices.end()) {
-      if (*i == index) {
-        i = indices.erase(i);
-      } else {
-        if (*i > index) {
-          (*i)--;
-        }
-        ++i;
-      }
-    }
-  }
-  for (auto index : to_insert) {
-    for (auto i = indices.begin(); i != indices.end(); ++i) {
-      if (*i >= index) {
-        (*i)++;
-      }
-    }
-    indices.Add(index);
-  }
-  return indices;
-}
-
-}  // namespace
-
 std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     const Layout& output_layout, const HloInstruction* instruction,
     int64 operand_no) {
@@ -705,7 +667,8 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   CHECK(ShapeUtil::IsArray(instruction->shape()) &&
         ShapeUtil::IsArray(operand->shape()));
 
-  if (instruction->IsElementwiseOnOperand(operand_no) &&
+  if ((instruction->IsElementwiseOnOperand(operand_no) ||
+       InstructionRequiresInputLayoutEqualToOutputLayout(instruction)) &&
       !ShapeUtil::IsScalar(operand->shape()) &&
       ShapeUtil::Rank(operand->shape()) ==
           ShapeUtil::Rank(instruction->shape())) {
@@ -719,21 +682,32 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   }
 
   if (instruction->opcode() == HloOpcode::kReshape) {
-    // Pick the operand layout that makes the reshape a bitcast. If the reshape
-    // only inserts or deletes degenerate dimensions, we can easily compute the
-    // desired layout by accordingly inserting and deleting the elements in the
-    // minor-to-major list.
-    bool merely_inserts_or_deletes_1_sized_dims;
-    std::vector<int64> inserted_indices, deleted_indices;
-    std::tie(merely_inserts_or_deletes_1_sized_dims, deleted_indices,
-             inserted_indices) =
-        instruction->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
-    if (merely_inserts_or_deletes_1_sized_dims) {
-      Layout operand_layout = LayoutUtil::MakeLayout(
-          AsInt64Slice(DeleteAndInsertIndices(inserted_indices, deleted_indices,
-                                              output_layout.minor_to_major())));
+    // Prefer the operand layout that makes the reshape an bitcast. If any
+    // dimension bound is 1 in the operand shape, there may be several such
+    // layouts. So if 'output_layout' is a MajorToMinor layout, try if the
+    // reshape is a bitcast when using the same layout. This may avoid copy
+    // operations.
+    const Shape& output_shape = instruction->shape();
+    Shape output_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
+        output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
+        AsInt64Slice(output_layout.minor_to_major()));
+    const Shape& operand_shape = operand->shape();
+    if (LayoutUtil::IsMonotonicWithDim0Major(output_layout)) {
+      Shape operand_shape_with_layout =
+          ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
+              operand_shape.element_type(),
+              AsInt64Slice(operand_shape.dimensions()));
+      if (ShapeUtil::ReshapeIsBitcast(operand_shape_with_layout,
+                                      output_shape_with_layout)) {
+        return MakeUnique<Layout>(operand_shape_with_layout.layout());
+      }
+    }
+    auto aligned_operand_shape =
+        ShapeUtil::AlignLayouts(output_shape_with_layout, operand_shape);
+    if (aligned_operand_shape) {
+      auto operand_layout = aligned_operand_shape.value().layout();
       TF_CHECK_OK(
-          LayoutUtil::ValidateLayoutForShape(operand_layout, operand->shape()));
+          LayoutUtil::ValidateLayoutForShape(operand_layout, operand_shape));
       return MakeUnique<Layout>(operand_layout);
     }
   }
@@ -768,18 +742,32 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
   }
 
   if (user->opcode() == HloOpcode::kReshape) {
-    // Pick the user layout that makes the reshape a bitcast.
-    bool merely_inserts_or_deletes_1_sized_dims;
-    std::vector<int64> inserted_indices, deleted_indices;
-    std::tie(merely_inserts_or_deletes_1_sized_dims, deleted_indices,
-             inserted_indices) =
-        user->ReshapeMerelyInsertsOrDeletes1SizedDimensions();
-    if (merely_inserts_or_deletes_1_sized_dims) {
-      Layout user_layout = LayoutUtil::MakeLayout(AsInt64Slice(
-          DeleteAndInsertIndices(deleted_indices, inserted_indices,
-                                 operand_layout.minor_to_major())));
+    // Prefer the user layout that makes the reshape an bitcast. If any
+    // dimension bound is 1 in the user shape, there may be several such
+    // layouts. So if 'operand_layout' is a MajorToMinor layout, try if the
+    // reshape is a bitcast when using the same layout. This may avoid copy
+    // operations.
+    Shape operand_shape_with_layout = ShapeUtil::MakeShapeWithLayout(
+        operand->shape().element_type(),
+        AsInt64Slice(operand->shape().dimensions()),
+        AsInt64Slice(operand_layout.minor_to_major()));
+    const Shape& output_shape = user->shape();
+    if (LayoutUtil::IsMonotonicWithDim0Major(operand_layout)) {
+      Shape output_shape_with_layout =
+          ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
+              output_shape.element_type(),
+              AsInt64Slice(output_shape.dimensions()));
+      if (ShapeUtil::ReshapeIsBitcast(output_shape_with_layout,
+                                      operand_shape_with_layout)) {
+        return MakeUnique<Layout>(output_shape_with_layout.layout());
+      }
+    }
+    auto aligned_user_shape =
+        ShapeUtil::AlignLayouts(operand_shape_with_layout, output_shape);
+    if (aligned_user_shape) {
+      auto user_layout = aligned_user_shape.value().layout();
       TF_CHECK_OK(
-          LayoutUtil::ValidateLayoutForShape(user_layout, user->shape()));
+          LayoutUtil::ValidateLayoutForShape(user_layout, output_shape));
       return MakeUnique<Layout>(user_layout);
     }
   }
@@ -1040,7 +1028,7 @@ StatusOr<Layout> InferArrayLayout(
                                   *first_buffer_layout)) {
       // The points-to set is ambiguous for this index and the different source
       // buffers have different layouts. This case is possible in valid XLA
-      // computations because we do not propagate BufferLayoutConstaints to all
+      // computations because we do not propagate BufferLayoutConstraints to all
       // LogicalBuffers which may alias the constrained LogicalBuffer at some
       // point in the computation.
       return FailedPrecondition(
@@ -1253,7 +1241,7 @@ Status LayoutAssignment::RunOnComputation(
   TF_ASSIGN_OR_RETURN(auto points_to_analysis,
                       TuplePointsToAnalysis::Run(computation->parent()));
 
-  // Construct LayoutConstaints with all layout constraints of the computation.
+  // Construct LayoutConstraints with all layout constraints of the computation.
   LayoutConstraints constraints(*points_to_analysis, computation);
 
   // Add constraints required for correctness on all backends (eg, entry

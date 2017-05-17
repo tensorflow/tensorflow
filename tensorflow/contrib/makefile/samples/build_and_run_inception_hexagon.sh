@@ -22,6 +22,7 @@ usage() {
   echo "Optional: NNLIB_DIR=<path to downloaded nnlib dir>"
   echo "-b build only"
   echo "-c test count"
+  echo "-E enable experimental hexnn ops"
   echo "-p use prebuilt hexagon binaries"
   echo "-s skip download if files already exist"
   exit 1
@@ -30,10 +31,11 @@ usage() {
 TEST_COUNT=1
 SKIP_DOWNLOAD_IF_EXIST=false
 
-while getopts "bc:ps" opt_name; do
+while getopts "bc:Eps" opt_name; do
   case "$opt_name" in
-    c) TEST_COUNT="${OPTARG}";;
     b) BUILD_ONLY="true";;
+    c) TEST_COUNT="${OPTARG}";;
+    E) ENABLE_EXPERIMENTAL_HEXNN_OPS="true";;
     p) USE_PREBUILT_HEXAOGON_BINARIES="true";;
     s) SKIP_DOWNLOAD_IF_EXIST="true";;
     *) usage;;
@@ -158,7 +160,11 @@ fi
 if [[ -d "${TF_ROOT_DIR}/tensorflow/contrib/makefile/gen/protobuf" &&
       -d "${TF_ROOT_DIR}/tensorflow/contrib/makefile/gen/protobuf-host" ]]; then
     echo "generated protobuf and protobuf-host found."
-    extra_args+=("-T")
+    EXTRA_ARGS+=("-T")
+fi
+
+if [[ "${ENABLE_EXPERIMENTAL_HEXNN_OPS}" == "true" ]]; then
+    EXTRA_ARGS+=("-E")
 fi
 
 if [[ -z "${CC_PREFIX}" ]]; then
@@ -168,7 +174,7 @@ fi
 CC_PREFIX=${CC_PREFIX} NDK_ROOT=${NDK_ROOT} "${BUILD_ALL_ANDROID_PATH}" \
 -x "${GEN_LIBS_DIR}" \
 -s "${TF_ROOT_DIR}/tensorflow/contrib/makefile/sub_makefiles/hexagon_graph_execution/Makefile.in" \
--t "hexagon_graph_execution" ${extra_args[@]}
+-t "hexagon_graph_execution" ${EXTRA_ARGS[@]}
 
 echo "Download and push inception image"
 HEXAGON_DOWNLOAD_PATH=\

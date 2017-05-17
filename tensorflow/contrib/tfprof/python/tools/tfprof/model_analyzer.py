@@ -45,7 +45,7 @@ TRAINABLE_VARS_PARAMS_STAT_OPTIONS = {
     'hide_name_regexes': [],
     'account_displayed_op_only': True,
     'select': ['params'],
-    'viz': False,
+    'output': 'stdout',
     'dump_to_file': ''
 }
 
@@ -65,7 +65,7 @@ FLOAT_OPS_OPTIONS = {
     'hide_name_regexes': [],
     'account_displayed_op_only': True,
     'select': ['float_ops'],
-    'viz': False,
+    'output': 'stdout',
     'dump_to_file': ''
 }
 
@@ -87,7 +87,7 @@ PRINT_PARAMS_ON_DEVICE = {
     'hide_name_regexes': [],
     'account_displayed_op_only': False,
     'select': ['device', 'params'],
-    'viz': False,
+    'output': 'stdout',
     'dump_to_file': ''
 }
 
@@ -107,7 +107,7 @@ PRINT_ALL_TIMING_MEMORY = {
     'hide_name_regexes': [],
     'account_displayed_op_only': True,
     'select': ['micros', 'bytes'],
-    'viz': False,
+    'output': 'stdout',
     'dump_to_file': ''
 }
 
@@ -123,7 +123,7 @@ def print_model_analysis(graph,
   """Print model statistics.
 
     Prints the model statistics to stdout. Also returns the results
-    in a TFProfNode proto. See go/tfprof or run tfprof tool:
+    in a TFGraphNodeProto proto. See go/tfprof or run tfprof tool:
     'bazel run third_party/tensorflow/tools/tfprof help'
 
     Examples:
@@ -142,15 +142,19 @@ def print_model_analysis(graph,
               'micros' and 'bytes'.
     op_log: tensorflow::tfprof::OpLog proto. users can use this proto to
             group together ops and use a op_type to select the group.
-    tfprof_cmd: string. Either 'scope' or 'graph'. 'scope' view organize
-                ops using their name scopes. 'graph' view organize ops using
-                their graph inputs.
+    tfprof_cmd: string. Either 'scope', 'graph', 'code'.
+                'scope' view organize outputs using ops' name scope.
+                'graph' view organize outputs using op's inputs/outputs.
+                'code' view organize outputs using Python call stack.
     tfprof_options: See 'tfprof help' for details.
   Returns:
-    TFProfNode proto. Side effect: a formatted output to stdout.
+    If tfprof_cmd is 'scope' or 'graph', returns TFGraphNodeProto proto.
+    If tfprof_cmd is 'code', returns TFCodeNodeProto proto.
+    Side effect: a formatted output to stdout.
   """
   # pylint: disable=protected-access
-  op_log = tfprof_logger._merge_default_with_oplog(graph, op_log, run_meta)
+  op_log = tfprof_logger._merge_default_with_oplog(
+      graph, op_log, run_meta, add_trace=tfprof_cmd == 'code')
   # pylint: enable=protected-access
   opts = tfprof_options_pb2.OptionsProto()
   opts.max_depth = tfprof_options['max_depth']
@@ -174,15 +178,28 @@ def print_model_analysis(graph,
   opts.account_displayed_op_only = tfprof_options['account_displayed_op_only']
   for p in tfprof_options['select']:
     opts.select.append(p)
-  opts.viz = tfprof_options['viz']
+  opts.output = tfprof_options['output']
   opts.dump_to_file = tfprof_options['dump_to_file']
 
   run_meta_str = run_meta.SerializeToString() if run_meta else b''
-  op_log_str = op_log.SerializeToString() if op_log else b''
 
-  tfprof_node = tfprof_output_pb2.TFProfNode()
-  tfprof_node.ParseFromString(
-      print_mdl.PrintModelAnalysis(
-          graph.as_graph_def().SerializeToString(), run_meta_str, op_log_str,
-          tfprof_cmd.encode('utf-8'), opts.SerializeToString()))
+  if tfprof_cmd == 'code':
+    tfprof_node = tfprof_output_pb2.TFCodeNodeProto()
+    tfprof_node.ParseFromString(
+        print_mdl.PrintModelAnalysis(
+            graph.as_graph_def().SerializeToString(),
+            run_meta_str,
+            op_log.SerializeToString(),
+            tfprof_cmd.encode('utf-8'),
+            opts.SerializeToString()))
+  else:
+    tfprof_node = tfprof_output_pb2.TFGraphNodeProto()
+    tfprof_node.ParseFromString(
+        print_mdl.PrintModelAnalysis(
+            graph.as_graph_def().SerializeToString(),
+            run_meta_str,
+            op_log.SerializeToString(),
+            tfprof_cmd.encode('utf-8'),
+            opts.SerializeToString()))
+
   return tfprof_node

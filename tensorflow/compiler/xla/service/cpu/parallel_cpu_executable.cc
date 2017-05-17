@@ -146,7 +146,7 @@ Status ParallelCpuExecutable::AllocateBuffers(
 }
 
 Status ParallelCpuExecutable::ExecuteComputeFunctions(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
     HloExecutionProfile* hlo_execution_profile) {
@@ -160,7 +160,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
 }
 
 Status ParallelCpuExecutable::ExecuteComputeFunctions(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
     HloExecutionProfile* hlo_execution_profile) {
@@ -214,7 +214,7 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
 
   void** temps_array = buffer_pointers.data();
   uint64* profile_counters_array = profile_counters.data();
-  auto* thread_pool = CHECK_NOTNULL(run_options->inter_op_thread_pool());
+  auto* thread_pool = CHECK_NOTNULL(run_options->xla_intra_op_thread_pool());
   tensorflow::mutex completion_queue_lock;
   tensorflow::condition_variable completion_queue_cv;
   std::deque<HloInstruction*> completion_queue;
@@ -251,11 +251,12 @@ Status ParallelCpuExecutable::ExecuteComputeFunctions(
                      });
       auto function = FindOrDie(functions, instruction);
       // The thread pool entry takes ownership of |operand_buffers|.
+      const auto* exec_run_options = &run_options->run_options();
       thread_pool->Schedule([instruction, &completion_queue,
                              &completion_queue_lock, &completion_queue_cv,
-                             result_buffer, run_options, operand_buffers,
+                             result_buffer, exec_run_options, operand_buffers,
                              temps_array, profile_counters_array, function] {
-        function(result_buffer, run_options, operand_buffers, temps_array,
+        function(result_buffer, exec_run_options, operand_buffers, temps_array,
                  profile_counters_array);
         delete[] operand_buffers;
         // Push the completed HLO instruction on the queue, the main thread
@@ -345,9 +346,8 @@ ParallelCpuExecutable::ExecuteOnStream(
   const BufferAllocation::Index result_index = result_slice.index();
   VLOG(3) << "result index: " << result_index;
 
-  TF_RETURN_IF_ERROR(ExecuteComputeFunctions(&run_options->run_options(),
-                                             arguments, device_allocations,
-                                             hlo_execution_profile));
+  TF_RETURN_IF_ERROR(ExecuteComputeFunctions(
+      run_options, arguments, device_allocations, hlo_execution_profile));
 
   // Mark the buffers that are actually live (used in the output) when the
   // computation finishes executing.
@@ -400,8 +400,8 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
 
-  TF_RETURN_IF_ERROR(ExecuteComputeFunctions(
-      &run_options->run_options(), arguments, buffers, hlo_execution_profile));
+  TF_RETURN_IF_ERROR(ExecuteComputeFunctions(run_options, arguments, buffers,
+                                             hlo_execution_profile));
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer which is returned to the caller.

@@ -295,7 +295,7 @@ itself, you'll see it's broken up into host and target sections. If you are
 cross-compiling, you should look at customizing the target settings to match
 what you need for your desired system.
 
-## Dependency Managment
+## Dependency Management
 
 The Makefile loads in a list of dependencies stored in text files. These files
 are generated from the main Bazel build by running 

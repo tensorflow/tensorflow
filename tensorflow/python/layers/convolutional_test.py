@@ -715,8 +715,8 @@ class Conv3DTransposeTest(test.TestCase):
     layer = conv_layers.Conv3DTranspose(
         32, volumes.get_shape()[1:4], padding='same')
     output = layer.apply(volumes)
-    self.assertListEqual(output.get_shape().as_list(), [5, depth, height,
-                                                        width, 32])
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, depth, height, width, 32])
 
   def testCreateConv3DTransposeWithStrides(self):
     depth, height, width = 4, 6, 8
@@ -729,8 +729,7 @@ class Conv3DTransposeTest(test.TestCase):
                          [5, depth * 2, height * 2, width * 2, 4])
 
     # Test strides integer.
-    layer = conv_layers.Conv3DTranspose(4, [3, 3, 3], strides=2,
-                                        padding='same')
+    layer = conv_layers.Conv3DTranspose(4, [3, 3, 3], strides=2, padding='same')
     output = layer.apply(volumes)
     self.assertListEqual(output.get_shape().as_list(),
                          [5, depth * 2, height * 2, width * 2, 4])
@@ -779,14 +778,14 @@ class Conv3DTransposeTest(test.TestCase):
     volumes = random_ops.random_uniform((5, depth, height, width, 32), seed=1)
     conv_layers.conv3d_transpose(volumes, 4, [3, 3, 3], name='deconv1')
     self.assertEqual(len(variables.trainable_variables()), 2)
-    conv_layers.conv3d_transpose(volumes, 4, [3, 3, 3], name='deconv1', reuse=True)
+    conv_layers.conv3d_transpose(
+        volumes, 4, [3, 3, 3], name='deconv1', reuse=True)
     self.assertEqual(len(variables.trainable_variables()), 2)
 
   def testFunctionalConv3DTransposeReuseFromScope(self):
     with variable_scope.variable_scope('scope'):
       depth, height, width = 5, 7, 9
-      volumes = random_ops.random_uniform((5, depth, height, width, 32),
-                                          seed=1)
+      volumes = random_ops.random_uniform((5, depth, height, width, 32), seed=1)
       conv_layers.conv3d_transpose(volumes, 4, [3, 3, 3], name='deconv1')
       self.assertEqual(len(variables.trainable_variables()), 2)
     with variable_scope.variable_scope('scope', reuse=True):
@@ -798,8 +797,8 @@ class Conv3DTransposeTest(test.TestCase):
       with variable_scope.variable_scope(
           'scope', initializer=init_ops.ones_initializer()):
         depth, height, width = 5, 7, 9
-        volumes = random_ops.random_uniform((5, depth, height, width, 32),
-                                            seed=1)
+        volumes = random_ops.random_uniform(
+            (5, depth, height, width, 32), seed=1)
         conv_layers.conv3d_transpose(volumes, 4, [3, 3, 3], name='deconv1')
         weights = variables.trainable_variables()
         # Check the names of weights in order.

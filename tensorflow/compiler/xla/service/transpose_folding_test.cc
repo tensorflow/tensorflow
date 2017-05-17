@@ -41,9 +41,7 @@ class TransposeFoldingTest : public ::testing::Test {
     TransposeFolding transpose_folding(
         [](const HloInstruction& dot,
            const TransposeFolding::OperandIndices& candidate_operands) {
-          return gpu::ImplementedAsGemm(dot)
-                     ? candidate_operands
-                     : TransposeFolding::OperandIndices{};
+          return candidate_operands;
         },
         [](const HloInstruction& convolution,
            const TransposeFolding::OperandIndices& candidate_operands) {
@@ -157,6 +155,50 @@ TEST_F(TransposeFoldingTest, FuseDotWithConstantOperands) {
 
   // The callee should contain 3 parameters and 3 binary operators.
   EXPECT_EQ(6, callee_computation->instructions().size());
+}
+
+TEST_F(TransposeFoldingTest, FoldDotTransposeInWhile) {
+  auto builder = HloComputation::Builder("entry_computation");
+  HloInstruction* x = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, ShapeUtil::MakeShape(F32, {2, 3}),
+      /*name=*/"x"));
+  HloInstruction* y = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, ShapeUtil::MakeShape(F32, {2, 3}),
+      /*name=*/"y"));
+  HloInstruction* transpose_y =
+      builder.AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(F32, {3, 2}), y, {1, 0}));
+  HloInstruction* dot = builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {2, 2}), /*opcode=*/HloOpcode::kDot,
+      /*lhs=*/x, /*rhs=*/transpose_y));
+
+  HloModule module("test_module");
+  HloComputation* entry_computation =
+      module.AddEntryComputation(builder.Build(dot));
+
+  HloInstruction* call = module.OutlineExpressionFromComputation(
+      {transpose_y, dot}, "outlined", entry_computation);
+
+  FoldTranspose(&module);
+
+  // Instructions after folding: x, y, and the fusion.
+  std::unordered_set<HloInstruction*> instruction_set;
+  for (auto& instruction : entry_computation->instructions()) {
+    instruction_set.insert(instruction.get());
+  }
+  CHECK_EQ(1, instruction_set.erase(x)) << "x is not in entry_computation.";
+  CHECK_EQ(1, instruction_set.erase(y)) << "y is not in entry_computation.";
+  CHECK_EQ(1, instruction_set.erase(call))
+      << "call is not in entry_computation.";
+  CHECK(instruction_set.empty())
+      << "entry_computation should contain exactly 3 instructions.";
+  HloInstruction* fusion =
+      call->called_computations().front()->root_instruction();
+  EXPECT_EQ(HloOpcode::kFusion, fusion->opcode());
+
+  // The fusion instruction should contain two parameters, one transpose and
+  // one dot.
+  EXPECT_EQ(4, fusion->fused_instructions().size());
 }
 
 // Test that a two dimension swap of the kernel gets folded into convolution.

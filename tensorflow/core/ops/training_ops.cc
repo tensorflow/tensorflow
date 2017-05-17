@@ -1174,6 +1174,7 @@ REGISTER_OP("ApplyAdam")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdamShapeFn(c, false /* sparse */);
     })
@@ -1199,6 +1200,7 @@ out: Same as "var".
 use_locking: If `True`, updating of the var, m, and v tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
+use_nesterov: If `True`, uses the nesterov update.
 )doc");
 
 REGISTER_OP("ResourceApplyAdam")
@@ -1214,6 +1216,7 @@ REGISTER_OP("ResourceApplyAdam")
     .Input("grad: T")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       return ApplyAdamShapeFn(c, false /* sparse */);
     })
@@ -1238,6 +1241,7 @@ grad: The gradient.
 use_locking: If `True`, updating of the var, m, and v tensors will be protected
   by a lock; otherwise the behavior is undefined, but may exhibit less
   contention.
+use_nesterov: If `True`, uses the nesterov update.
 )doc");
 
 static Status ApplyRMSPropShapeFn(InferenceContext* c, bool sparse) {

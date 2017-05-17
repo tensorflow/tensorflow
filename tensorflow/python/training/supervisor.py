@@ -27,7 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary as _summary
@@ -426,8 +426,10 @@ class Supervisor(object):
       local_init_op = self._get_first_op_from_collection(
           ops.GraphKeys.LOCAL_INIT_OP)
       if local_init_op is None:
-        op_list = [variables.local_variables_initializer(),
-                   data_flow_ops.tables_initializer()]
+        op_list = [
+            variables.local_variables_initializer(),
+            lookup_ops.tables_initializer()
+        ]
         if op_list:
           local_init_op = control_flow_ops.group(*op_list)
           ops.add_to_collection(ops.GraphKeys.LOCAL_INIT_OP, local_init_op)
@@ -994,7 +996,7 @@ class SVSummaryThread(coordinator.LooperThread):
       summary_strs = self._sess.run(self._sv.summary_op)
       global_step = None
     if self._sv.summary_writer:
-      logging.info("Recording summary at step %d.", global_step)
+      logging.info("Recording summary at step %s.", global_step)
       self._sv.summary_writer.add_summary(summary_strs, global_step)
 
 

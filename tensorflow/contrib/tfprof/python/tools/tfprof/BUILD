@@ -21,16 +21,34 @@ py_test(
     name = "model_analyzer_test",
     srcs = ["model_analyzer_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":model_analyzer",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
+        ":model_analyzer_testlib",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
+    ],
+)
+
+py_library(
+    name = "model_analyzer_testlib",
+    srcs = ["model_analyzer_testlib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":model_analyzer",
+        "//tensorflow/contrib/rnn:rnn_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
@@ -94,6 +112,29 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variable_scope",
         "//tensorflow/tools/tfprof:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "pprof_profiler",
+    srcs = ["pprof_profiler.py"],
+    srcs_version = "PY2AND3",
+    deps = ["@com_google_pprof//:pprof_proto_py"],
+)
+
+py_test(
+    name = "pprof_profiler_test",
+    srcs = ["pprof_profiler_test.py"],
+    main = "pprof_profiler_test.py",
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],  # TODO(annarev): get it working with pip.
+    deps = [
+        ":pprof_profiler",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "@com_google_pprof//:pprof_proto_py",
     ],
 )
 

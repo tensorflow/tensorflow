@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_bijective_and_finite
-from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_scalar_congruency
 from tensorflow.contrib.distributions.python.ops.bijectors.softplus import Softplus
+from tensorflow.python.ops.distributions.bijector_test_util import assert_bijective_and_finite
+from tensorflow.python.ops.distributions.bijector_test_util import assert_scalar_congruency
 from tensorflow.python.platform import test
 
 rng = np.random.RandomState(42)
@@ -41,12 +41,27 @@ class SoftplusBijectorTest(test.TestCase):
     """Inverse log det jacobian, before being reduced."""
     return -np.log(1 - np.exp(-y))
 
+  def testHingeSoftnessZeroRaises(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=0., validate_args=True)
+      with self.assertRaisesOpError("must be non-zero"):
+        bijector.forward([1., 1.]).eval()
+
   def testBijectorForwardInverseEventDimsZero(self):
     with self.test_session():
       bijector = Softplus(event_ndims=0)
       self.assertEqual("softplus", bijector.name)
       x = 2 * rng.randn(2, 10)
       y = self._softplus(x)
+
+      self.assertAllClose(y, bijector.forward(x).eval())
+      self.assertAllClose(x, bijector.inverse(y).eval())
+
+  def testBijectorForwardInverseWithHingeSoftnessEventDimsZero(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=1.5)
+      x = 2 * rng.randn(2, 10)
+      y = 1.5 * self._softplus(x / 1.5)
 
       self.assertAllClose(y, bijector.forward(x).eval())
       self.assertAllClose(x, bijector.inverse(y).eval())
@@ -85,11 +100,39 @@ class SoftplusBijectorTest(test.TestCase):
       assert_scalar_congruency(
           bijector, lower_x=-2., upper_x=2.)
 
+  def testScalarCongruencyWithPositiveHingeSoftness(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=1.3)
+      assert_scalar_congruency(
+          bijector, lower_x=-2., upper_x=2.)
+
+  def testScalarCongruencyWithNegativeHingeSoftness(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=-1.3)
+      assert_scalar_congruency(
+          bijector, lower_x=-2., upper_x=2.)
+
   def testBijectiveAndFinite32bit(self):
     with self.test_session():
       bijector = Softplus(event_ndims=0)
       x = np.linspace(-20., 20., 100).astype(np.float32)
       y = np.logspace(-10, 10, 100).astype(np.float32)
+      assert_bijective_and_finite(
+          bijector, x, y, rtol=1e-2, atol=1e-2)
+
+  def testBijectiveAndFiniteWithPositiveHingeSoftness32Bit(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=1.23)
+      x = np.linspace(-20., 20., 100).astype(np.float32)
+      y = np.logspace(-10, 10, 100).astype(np.float32)
+      assert_bijective_and_finite(
+          bijector, x, y, rtol=1e-2, atol=1e-2)
+
+  def testBijectiveAndFiniteWithNegativeHingeSoftness32Bit(self):
+    with self.test_session():
+      bijector = Softplus(event_ndims=0, hinge_softness=-0.7)
+      x = np.linspace(-20., 20., 100).astype(np.float32)
+      y = -np.logspace(-10, 10, 100).astype(np.float32)
       assert_bijective_and_finite(
           bijector, x, y, rtol=1e-2, atol=1e-2)
 

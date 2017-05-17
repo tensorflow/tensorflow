@@ -18,7 +18,7 @@
 
 This helper handles the plumbing in order to set up a feeder task to
 push generated inputs to a pool of remote consumers; or to run an
-identical feeding mechanism in a seperate thread in the same process.
+identical feeding mechanism in a separate thread in the same process.
 
 Example usage for distributed feeding:
 
@@ -331,7 +331,7 @@ class Feeder(object):
     they never close their queue. Second, they are added to the
     `Feeder.REMOTE_QUEUE_RUNNERS` collection, rather than
     `ops.GraphKeys.QUEUE_RUNNERS`, so they can be started/stopped
-    seperately.
+    separately.
 
     Args:
       queue: The queue.

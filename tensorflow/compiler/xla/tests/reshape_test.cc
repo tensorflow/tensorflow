@@ -67,12 +67,46 @@ XLA_TEST_F(ReshapeTest, SingleElementArrayToScalar) {
   ComputeAndCompareR0<float>(&builder, 1.0f, {}, zero_error_spec_);
 }
 
+XLA_TEST_F(ReshapeTest, ScalarToSingleElementArray) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR0<float>(1.0f);
+  std::unique_ptr<GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+
+  auto a = builder.Parameter(0, ShapeUtil::MakeShape(F32, {}), "param0");
+  a = builder.Neg(a);
+  auto reshape =
+      builder.Reshape(/*operand=*/a, /*dimensions=*/{}, /*new_sizes=*/{1});
+
+  ComputeAndCompareR1<float>(&builder, {-1.0f}, {param0_data.get()},
+                             zero_error_spec_);
+}
+
 XLA_TEST_F(ReshapeTest, Trivial0x3) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR2FromArray2D<float>(Array2D<float>(0, 3));
   auto result = builder.Collapse(/*operand=*/a, /*dimensions=*/{0, 1});
 
   ComputeAndCompareR1<float>(&builder, {}, {}, zero_error_spec_);
+}
+
+// TODO(b/29185393): Make this work with the GPU backend. The GPU backend
+// does not handle zero-sized shapes correctly. Failed last on 2017-05-15
+// with an incorrect result rank.
+XLA_TEST_F(ReshapeTest, DISABLED_ON_GPU(Trivial0x3WithParameter)) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> param0_literal =
+      LiteralUtil::CreateR2FromArray2D<float>(Array2D<float>(0, 3));
+  std::unique_ptr<GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+
+  auto a = builder.Parameter(0, ShapeUtil::MakeShape(F32, {0, 3}), "param0");
+  auto result = builder.Collapse(/*operand=*/a, /*dimensions=*/{0, 1});
+
+  ComputeAndCompareR1<float>(&builder, {}, {param0_data.get()},
+                             zero_error_spec_);
 }
 
 XLA_TEST_F(ReshapeTest, Trivial3x0) {

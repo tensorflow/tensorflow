@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
@@ -125,7 +126,7 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
   return inputs;
 }
 
-OpInfo::DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
+DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
   DeviceNameUtils::ParsedName parsed;
   if (DeviceNameUtils::ParseFullName(node.device(), &parsed)) {
     if (parsed.type == "GPU") {
@@ -134,71 +135,8 @@ OpInfo::DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
       return GetLocalCPUInfo();
     }
   }
-  OpInfo::DeviceProperties device;
+  DeviceProperties device;
   device.set_type("UNKNOWN");
-  return device;
-}
-
-OpInfo::DeviceProperties GetLocalCPUInfo() {
-  OpInfo::DeviceProperties device;
-  device.set_type("CPU");
-
-  device.set_vendor(port::CPUVendorIDString());
-  // Combine cpu family and model into the model string.
-  device.set_model(
-      strings::StrCat((port::CPUFamily() << 4) + port::CPUModelNum()));
-  device.set_frequency(port::NominalCPUFrequency());
-  device.set_num_cores(port::NumSchedulableCPUs());
-  device.set_l1_cache_size(Eigen::l1CacheSize());
-  device.set_l2_cache_size(Eigen::l2CacheSize());
-  device.set_l3_cache_size(Eigen::l3CacheSize());
-
-  (*device.mutable_environment())["cpu_instruction_set"] =
-      Eigen::SimdInstructionSetsInUse();
-
-  (*device.mutable_environment())["eigen"] = strings::StrCat(
-      EIGEN_WORLD_VERSION, ".", EIGEN_MAJOR_VERSION, ".", EIGEN_MINOR_VERSION);
-#ifdef EIGEN_USE_LIBXSMM
-  (*device.mutable_environment())["libxsmm"] = LIBXSMM_VERSION;
-#endif
-
-  return device;
-}
-
-OpInfo::DeviceProperties GetLocalGPUInfo(int gpu_id) {
-  OpInfo::DeviceProperties device;
-  device.set_type("GPU");
-
-#if GOOGLE_CUDA
-  cudaDeviceProp properties;
-  cudaError_t error = cudaGetDeviceProperties(&properties, gpu_id);
-  if (error == cudaSuccess) {
-    device.set_vendor("NVidia");
-    device.set_model(properties.name);
-    device.set_frequency(properties.clockRate / 1000);
-    device.set_num_cores(properties.multiProcessorCount);
-    device.set_num_registers(properties.regsPerMultiprocessor);
-    // For compute capability less than 5, l1 cache size is configurable to
-    // either 16 KB or 48 KB. We use the initial configuration 16 KB here. For
-    // compute capability larger or equal to 5, l1 cache (unified with texture
-    // cache) size is 24 KB. This number may need to be updated for future
-    // compute capabilities.
-    device.set_l1_cache_size((properties.major < 5) ? 16 * 1024 : 24 * 1024);
-    device.set_l2_cache_size(properties.l2CacheSize);
-    device.set_l3_cache_size(0);
-    device.set_shared_memory_size_per_multiprocessor(
-        properties.sharedMemPerMultiprocessor);
-    device.set_memory_size(properties.totalGlobalMem);
-    // 8 is the number of bits per byte. 2 is accounted for
-    // double data rate (DDR).
-    device.set_bandwidth(properties.memoryBusWidth / 8 *
-                         properties.memoryClockRate * 2);
-  }
-
-  (*device.mutable_environment())["cuda"] = strings::StrCat(CUDA_VERSION);
-  (*device.mutable_environment())["cudnn"] = strings::StrCat(CUDNN_VERSION);
-#endif
-
   return device;
 }
 

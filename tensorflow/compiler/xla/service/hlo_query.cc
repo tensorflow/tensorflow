@@ -32,6 +32,16 @@ bool IsConstantR0F32(HloInstruction* instruction, float* out) {
   return false;
 }
 
+bool AllOperandsAreParametersOrConstants(const HloInstruction& instruction) {
+  for (const auto& operand : instruction.operands()) {
+    if (operand->opcode() != HloOpcode::kParameter &&
+        operand->opcode() != HloOpcode::kConstant) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool AllOperandsAreParameters(const HloInstruction& instruction) {
   for (const auto& operand : instruction.operands()) {
     if (operand->opcode() != HloOpcode::kParameter) {

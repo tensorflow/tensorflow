@@ -265,6 +265,7 @@ class MklConcatOp : public OpKernel {
           s.GetDimension() > 0 ? s.GetSizes()[concat_dim] : 1;
     }
     mkl_context.MklCreateInputLayouts(context, input_shapes);
+    OP_REQUIRES_OK(context, context->status());
 
     CHECK_EQ(dnnConcatCreate_F32(&mkl_context.prim_concat, NULL, N,
                                  &mkl_context.lt_inputs[0]),
@@ -316,12 +317,14 @@ class MklConcatOp : public OpKernel {
 
     mkl_context.mkl_tmp_tensors.resize(N);
     mkl_context.MklPrepareConcatInputs(context, input_tensors);
+    OP_REQUIRES_OK(context, context->status());
 
     // Execute primitive.
     CHECK_EQ(dnnExecute_F32(mkl_context.prim_concat, mkl_context.concat_res),
              E_SUCCESS);
 
     mkl_context.MklCleanup();
+    OP_REQUIRES_OK(context, context->status());
   }
 
  private:
@@ -442,7 +445,7 @@ class MklConcatOp : public OpKernel {
                               .HostMemory("concat_dim")                     \
                               .Label(mkl_op_registry::kMklOpLabel),         \
                           MklConcatOp<CPUDevice, type, NAME_IS_CONCAT_DIM>) \
-  REGISTER_KERNEL_BUILDER(Name("_MklConcatV2")                               \
+  REGISTER_KERNEL_BUILDER(Name("_MklConcatV2")                              \
                               .Device(DEVICE_CPU)                           \
                               .TypeConstraint<type>("T")                    \
                               .TypeConstraint<int32>("Tidx")                \

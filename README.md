@@ -26,7 +26,7 @@ guidelines](CONTRIBUTING.md).**
 
 **We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
 tracking requests and bugs, but please see
-[Community](tensorflow/docs_src/about/index.md#community) for general questions
+[Community](https://www.tensorflow.org/community/) for general questions
 and discussion.**
 
 ## Installation

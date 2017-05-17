@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import beam_search_ops
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import dtypes
@@ -33,6 +32,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
 
@@ -143,10 +143,10 @@ class BeamSearchDecoder(decoder.Decoder):
       ValueError: If `start_tokens` is not a vector or
         `end_token` is not a scalar.
     """
-    if not isinstance(cell, core_rnn_cell.RNNCell):
+    if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
       raise TypeError("cell must be an RNNCell, received: %s" % type(cell))
     if (output_layer is not None
-        and not isinstance(output_layer, layers_base._Layer)):  # pylint: disable=protected-access
+        and not isinstance(output_layer, layers_base.Layer)):
       raise TypeError(
           "output_layer must be a Layer, received: %s" % type(output_layer))
     self._cell = cell
@@ -452,10 +452,12 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
     time: Beam search time step, should start at 0. At time 0 we assume
       that all beams are equal and consider only the first beam for
       continuations.
-    logits: Logits at the current time step. A tensor of shape `[B, vocab_size]`
-    beam_state: Current state of the beam search. An instance of `BeamState`
+    logits: Logits at the current time step. A tensor of shape
+      `[batch_size, beam_width, vocab_size]`
+    beam_state: Current state of the beam search.
+      An instance of `BeamSearchDecoderState`.
     batch_size: The batch size for this input.
-    beam_width: The size of the beams.
+    beam_width: Python int.  The size of the beams.
     end_token: The int32 end token.
     length_penalty_weight: Float weight to penalize length. Disabled with 0.0.
 
@@ -470,20 +472,22 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
 
   # Calculate the total log probs for the new hypotheses
   # Final Shape: [batch_size, beam_width, vocab_size]
-  probs = nn_ops.log_softmax(logits)
-  probs = _mask_probs(probs, end_token, previously_finished)
-  total_probs = array_ops.expand_dims(beam_state.log_probs, 2) + probs
+  step_log_probs = nn_ops.log_softmax(logits)
+  step_log_probs = _mask_probs(step_log_probs, end_token, previously_finished)
+  total_probs = array_ops.expand_dims(beam_state.log_probs, 2) + step_log_probs
 
   # Calculate the continuation lengths by adding to all continuing beams.
-  vocab_size = logits.get_shape().as_list()[-1]
+  vocab_size = logits.shape[-1].value
   lengths_to_add = array_ops.one_hot(
-      array_ops.tile(
+      indices=array_ops.tile(
           array_ops.reshape(end_token, [1, 1]), [batch_size, beam_width]),
-      vocab_size, 0, 1)
+      depth=vocab_size,
+      on_value=0,
+      off_value=1)
   add_mask = (1 - math_ops.to_int32(previously_finished))
   lengths_to_add = array_ops.expand_dims(add_mask, 2) * lengths_to_add
-  new_prediction_lengths = array_ops.expand_dims(prediction_lengths,
-                                                 2) + lengths_to_add
+  new_prediction_lengths = (
+      lengths_to_add + array_ops.expand_dims(prediction_lengths, 2))
 
   # Calculate the scores for each beam
   scores = _get_scores(
@@ -491,14 +495,24 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
       sequence_lengths=new_prediction_lengths,
       length_penalty_weight=length_penalty_weight)
 
-  scores_flat = array_ops.reshape(scores, [batch_size, -1])
+  time = ops.convert_to_tensor(time, name="time")
   # During the first time step we only consider the initial beam
+  scores_shape = array_ops.shape(scores)
   scores_flat = control_flow_ops.cond(
-      ops.convert_to_tensor(time) > 0, lambda: scores_flat,
+      time > 0,
+      lambda: array_ops.reshape(scores, [batch_size, -1]),
       lambda: scores[:, 0])
+  num_available_beam = control_flow_ops.cond(
+      time > 0,
+      lambda: math_ops.reduce_prod(scores_shape[1:]),
+      lambda: math_ops.reduce_prod(scores_shape[2:]))
 
   # Pick the next beams according to the specified successors function
-  next_beam_scores, word_indices = nn_ops.top_k(scores_flat, k=beam_width)
+  next_beam_size = math_ops.minimum(
+      ops.convert_to_tensor(
+          beam_width, dtype=dtypes.int32, name="beam_width"),
+      num_available_beam)
+  next_beam_scores, word_indices = nn_ops.top_k(scores_flat, k=next_beam_size)
   next_beam_scores.set_shape([static_batch_size, beam_width])
   word_indices.set_shape([static_batch_size, beam_width])
 
@@ -556,7 +570,8 @@ def _get_scores(log_probs, sequence_lengths, length_penalty_weight):
   """Calculates scores for beam search hypotheses.
 
   Args:
-    log_probs: The log probabilities with shape [batch_size, beam_width].
+    log_probs: The log probabilities with shape
+      `[batch_size, beam_width, vocab_size]`.
     sequence_lengths: The array of sequence lengths.
     length_penalty_weight: Float weight to penalize length. Disabled with 0.0.
 
@@ -579,7 +594,11 @@ def _length_penalty(sequence_lengths, penalty_factor):
   Returns:
     The length penalty factor, a tensor fo shape [beam_size].
   """
-  # TODO(ebrevdo): cleanup based on constant-value of penalty_factor.
+  penalty_factor = ops.convert_to_tensor(penalty_factor, name="penalty_factor")
+  penalty_factor.set_shape(())  # penalty should be a scalar.
+  static_penalty = tensor_util.constant_value(penalty_factor)
+  if static_penalty is not None and static_penalty == 0:
+    return 1.0
   return math_ops.div((5. + math_ops.to_float(sequence_lengths))
                       **penalty_factor, (5. + 1.)**penalty_factor)
 
@@ -613,9 +632,9 @@ def _mask_probs(probs, eos_token, finished):
   finished_row = array_ops.one_hot(
       eos_token,
       vocab_size,
-      dtype=dtypes.float32,
+      dtype=probs.dtype,
       on_value=0.,
-      off_value=dtypes.float32.min)
+      off_value=probs.dtype.min)
   finished_examples = (1. - finished_mask) * finished_row
   return finished_examples + non_finished_examples
 
