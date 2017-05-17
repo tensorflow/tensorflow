@@ -282,14 +282,8 @@ class MapStageTest(test.TestCase):
     n = 10
 
     with self.test_session(use_gpu=True) as sess:
-      # Keys 0..n-1
-      keys = list(six.moves.range(n))
-
-      # Shuffle them for random insert
-      shuffle_keys = list(reversed(keys))
-      random.shuffle(shuffle_keys)
-
-      self.assertTrue(shuffle_keys != keys)
+      # Keys n-1..0
+      keys = list(reversed(six.moves.range(n)))
 
       for i in keys:
         sess.run(stage, feed_dict={pi: i, x: i})
@@ -297,9 +291,9 @@ class MapStageTest(test.TestCase):
       self.assertTrue(sess.run(size) == n)
 
       # Check that key, values come out in ascending order
-      for k in keys:
+      for i, k in enumerate(reversed(keys)):
         get_key, values = sess.run(get)
-        self.assertTrue(k == get_key == values)
+        self.assertTrue(i == k == get_key == values)
 
       self.assertTrue(sess.run(size) == 0)
 
