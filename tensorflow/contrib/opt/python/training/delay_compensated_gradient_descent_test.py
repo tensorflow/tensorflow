@@ -20,11 +20,9 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training import delay_compensated_gradient_descent
-
+from tensorflow.contrib.opt.python.training import delay_compensated_gradient_descent
 
 class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
 

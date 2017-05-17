@@ -13,6 +13,7 @@ py_library(
     name = "opt_py",
     srcs = [
         "__init__.py",
+        "python/training/delay_compensated_gradient_descent.py",
         "python/training/external_optimizer.py",
         "python/training/lazy_adam_optimizer.py",
         "python/training/moving_average_optimizer.py",
@@ -31,6 +32,23 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "delay_compensated_gradient_descent_test",
+    srcs = ["python/training/delay_compensated_gradient_descent_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":opt_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
     ],
 )
 
