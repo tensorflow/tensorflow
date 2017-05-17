@@ -28,9 +28,9 @@ void ExpectNodeEqual(const Node* n, gtl::ArraySlice<T> values,
                      TensorShape shape) {
   EXPECT_TRUE(n->IsConstant());
   Tensor tensor;
-  TF_EXPECT_OK(GetNodeAttr(n->def(), "value", &tensor));
+  TF_EXPECT_OK(GetNodeAttr(n->attrs(), "value", &tensor));
   DataType dtype;
-  TF_EXPECT_OK(GetNodeAttr(n->def(), "dtype", &dtype));
+  TF_EXPECT_OK(GetNodeAttr(n->attrs(), "dtype", &dtype));
   EXPECT_EQ(tensor.dtype(), dtype);
   test::ExpectTensorEqual<T>(tensor, test::AsTensor(values, shape));
 }
@@ -39,9 +39,9 @@ void ExpectTypeAndShape(const Node* n, DataType expected_dtype,
                         TensorShape expected_shape) {
   EXPECT_TRUE(n->IsConstant());
   Tensor tensor;
-  TF_EXPECT_OK(GetNodeAttr(n->def(), "value", &tensor));
+  TF_EXPECT_OK(GetNodeAttr(n->attrs(), "value", &tensor));
   DataType dtype;
-  TF_EXPECT_OK(GetNodeAttr(n->def(), "dtype", &dtype));
+  TF_EXPECT_OK(GetNodeAttr(n->attrs(), "dtype", &dtype));
   EXPECT_EQ(dtype, expected_dtype);
   EXPECT_EQ(expected_shape, TensorShape(tensor.shape()));
 }

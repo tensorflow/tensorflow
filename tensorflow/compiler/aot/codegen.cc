@@ -365,7 +365,7 @@ Status GenerateHeader(const HeaderOpts& opts, const Config& config,
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace Eigen { class ThreadPoolDevice; }
+namespace Eigen { struct ThreadPoolDevice; }
 
 // (Implementation detail) Entry point to the function in the object file.
 extern "C" void {{ENTRY}}(

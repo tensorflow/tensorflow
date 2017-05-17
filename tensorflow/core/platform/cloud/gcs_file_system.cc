@@ -52,6 +52,8 @@ constexpr int kGetChildrenDefaultPageSize = 1000;
 constexpr uint64 kUploadRetryDelayMicros = 1000000L;
 // The HTTP response code "308 Resume Incomplete".
 constexpr uint64 HTTP_CODE_RESUME_INCOMPLETE = 308;
+// The environment variable that overrides the size of the readahead buffer.
+constexpr char kReadaheadBufferSize[] = "GCS_READAHEAD_BUFFER_SIZE_BYTES";
 
 // The file statistics returned by Stat() for directories.
 const FileStatistics DIRECTORY_STAT(0, 0, true);
@@ -585,7 +587,16 @@ class GcsReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 
 GcsFileSystem::GcsFileSystem()
     : auth_provider_(new GoogleAuthProvider()),
-      http_request_factory_(new HttpRequest::Factory()) {}
+      http_request_factory_(new HttpRequest::Factory()) {
+  // Apply the sys env override for the readahead buffer size if it's provided.
+  const char* readahead_buffer_size = std::getenv(kReadaheadBufferSize);
+  if (readahead_buffer_size) {
+    uint64 value;
+    if (strings::safe_strtou64(readahead_buffer_size, &value)) {
+      read_ahead_bytes_ = value;
+    }
+  }
+}
 
 GcsFileSystem::GcsFileSystem(
     std::unique_ptr<AuthProvider> auth_provider,

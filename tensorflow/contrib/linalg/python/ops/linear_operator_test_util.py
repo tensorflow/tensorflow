@@ -116,7 +116,7 @@ class LinearOperatorDerivedClassTest(test.TestCase):
 
   @abc.abstractmethod
   def _make_x(self, operator, adjoint):
-    """Make an 'x' appropriate for calling operator.apply(x).
+    """Make an 'x' appropriate for calling operator.matmul(x).
 
     Args:
       operator:  A `LinearOperator`
@@ -208,8 +208,8 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                 feed_dict=feed_dict)
             self.assertAC(op_log_abs_det_v, mat_log_abs_det_v)
 
-  def test_apply(self):
-    self._skip_if_tests_to_skip_contains("apply")
+  def test_matmul(self):
+    self._skip_if_tests_to_skip_contains("matmul")
     for use_placeholder in False, True:
       for shape in self._shapes_to_test:
         for dtype in self._dtypes_to_test:
@@ -222,18 +222,18 @@ class LinearOperatorDerivedClassTest(test.TestCase):
                 x = self._make_x(operator, adjoint=adjoint)
                 # If adjoint_arg, compute A X^H^H = A X.
                 if adjoint_arg:
-                  op_apply = operator.apply(
+                  op_matmul = operator.matmul(
                       linear_operator_util.matrix_adjoint(x),
                       adjoint=adjoint, adjoint_arg=adjoint_arg)
                 else:
-                  op_apply = operator.apply(x, adjoint=adjoint)
-                mat_apply = math_ops.matmul(mat, x, adjoint_a=adjoint)
+                  op_matmul = operator.matmul(x, adjoint=adjoint)
+                mat_matmul = math_ops.matmul(mat, x, adjoint_a=adjoint)
                 if not use_placeholder:
                   self.assertAllEqual(
-                      op_apply.get_shape(), mat_apply.get_shape())
-                op_apply_v, mat_apply_v = sess.run([op_apply, mat_apply],
-                                                   feed_dict=feed_dict)
-                self.assertAC(op_apply_v, mat_apply_v)
+                      op_matmul.get_shape(), mat_matmul.get_shape())
+                op_matmul_v, mat_matmul_v = sess.run(
+                    [op_matmul, mat_matmul], feed_dict=feed_dict)
+                self.assertAC(op_matmul_v, mat_matmul_v)
 
   def test_solve(self):
     self._skip_if_tests_to_skip_contains("solve")
@@ -376,7 +376,7 @@ class NonSquareLinearOperatorDerivedClassTest(LinearOperatorDerivedClassTest):
         "_make_rhs not implemented because we don't test solve")
 
   def _make_x(self, operator, adjoint):
-    # Return the number of systems for the argument 'x' for .apply(x)
+    # Return the number of systems for the argument 'x' for .matmul(x)
     r = self._get_num_systems(operator)
     # If operator.shape = [B1,...,Bb, M, N] this returns a random matrix of
     # shape [B1,...,Bb, N, R], R = 1 or 2.
