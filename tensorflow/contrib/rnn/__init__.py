@@ -42,6 +42,8 @@ See @{$python/contrib.rnn} guide.
 @@GridLSTMCell
 @@BidirectionalGridLSTMCell
 @@NASCell
+@@UGRNNCell
+@@IntersectionRNNCell
 @@PhasedLSTMCell
 @@Conv1DLSTMCell
 @@Conv2DLSTMCell
