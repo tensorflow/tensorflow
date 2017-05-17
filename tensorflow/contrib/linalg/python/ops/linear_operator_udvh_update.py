@@ -74,18 +74,18 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
   operator.shape
   ==> [3, 3]
 
-  operator.log_determinant()
+  operator.log_abs_determinant()
   ==> scalar Tensor
 
   x = ... Shape [3, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [3, 4] Tensor
   ```
 
   ### Shape compatibility
 
   This operator acts on [batch] matrix with compatible shape.
-  `x` is a batch matrix with compatible shape for `apply` and `solve` if
+  `x` is a batch matrix with compatible shape for `matmul` and `solve` if
 
   ```
   operator.shape = [B1,...,Bb] + [M, N],  with b >= 0
@@ -95,15 +95,15 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
   ### Performance
 
   Suppose `operator` is a `LinearOperatorUDVHUpdate` of shape `[M, N]`,
-  made from a rank `K` update of `base_operator` which performs `.apply(x)` on
-  `x` having `x.shape = [N, R]` with `O(L_apply*N*R)` complexity (and similarly
+  made from a rank `K` update of `base_operator` which performs `.matmul(x)` on
+  `x` having `x.shape = [N, R]` with `O(L_matmul*N*R)` complexity (and similarly
   for `solve`, `determinant`.  Then, if `x.shape = [N, R]`,
 
-  * `operator.apply(x)` is `O(L_apply*N*R + K*N*R)`
+  * `operator.matmul(x)` is `O(L_matmul*N*R + K*N*R)`
 
   and if `M = N`,
 
-  * `operator.solve(x)` is `O(L_apply*N*R + N*K*R + K^2*R + K^3)`
+  * `operator.solve(x)` is `O(L_matmul*N*R + N*K*R + K^2*R + K^3)`
   * `operator.determinant()` is `O(L_determinant + L_solve*N*K + K^2*N + K^3)`
 
   If instead `operator` and `x` have shape `[B1,...,Bb, M, N]` and
@@ -348,22 +348,22 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
     return array_ops.concat(
         [batch_shape, self.base_operator.shape_tensor()[-2:]], axis=0)
 
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
     u = self.u
     v = self.v
     l = self.base_operator
     d = self.diag_operator
 
-    leading_term = l.apply(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
+    leading_term = l.matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
     if adjoint:
       uh_x = math_ops.matmul(u, x, adjoint_a=True, adjoint_b=adjoint_arg)
-      d_uh_x = d.apply(uh_x, adjoint=adjoint)
+      d_uh_x = d.matmul(uh_x, adjoint=adjoint)
       v_d_uh_x = math_ops.matmul(v, d_uh_x)
       return leading_term + v_d_uh_x
     else:
       vh_x = math_ops.matmul(v, x, adjoint_a=True, adjoint_b=adjoint_arg)
-      d_vh_x = d.apply(vh_x, adjoint=adjoint)
+      d_vh_x = d.matmul(vh_x, adjoint=adjoint)
       u_d_vh_x = math_ops.matmul(u, d_vh_x)
       return leading_term + u_d_vh_x
 

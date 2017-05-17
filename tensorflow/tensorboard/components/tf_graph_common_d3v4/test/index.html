@@ -1,3 +1,4 @@
+<!doctype html>
 <!--
 @license
 Copyright 2016 The TensorFlow Authors. All Rights Reserved.
@@ -15,10 +16,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-<link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../tf-imports/d3.html">
-<link rel="import" href="../tf-imports/lodash.html">
-<link rel="import" href="../tf-storage/tf-storage.html">
-<link rel="import" href="../vz-sorting/vz-sorting.html">
-
-<script src="bundle.js"></script>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
+  <script src="../../web-component-tester/browser.js"></script>
+  <link rel="import" href="../tf-graph-common.html">
+</head>
+<body>
+  <script src="parser-test.js"></script>
+  <script src="graph-test.js"></script>
+  <script src="hierarchy-test.js"></script>
+  <script src="layout-test.js"></script>
+  <script src="util-test.js"></script>
+  <script src="util.js"></script>
+</body>
+</html>

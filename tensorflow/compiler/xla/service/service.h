@@ -63,9 +63,14 @@ class ServiceOptions {
   ServiceOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
 
+  // Sets the thread pool size for parallel execution of an individual operator.
+  ServiceOptions& set_intra_op_parallelism_threads(int num_threads);
+  int intra_op_parallelism_threads() const;
+
  private:
   perftools::gputools::Platform* platform_ = nullptr;
   int number_of_replicas_ = -1;
+  int intra_op_parallelism_threads_ = -1;
 };
 
 // The XLA service object, which is the same across all

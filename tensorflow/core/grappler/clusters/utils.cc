@@ -23,6 +23,10 @@ limitations under the License.
 #include "cuda/include/cudnn.h"
 #endif
 
+#ifdef EIGEN_USE_LIBXSMM
+#include "include/libxsmm.h"
+#endif
+
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"

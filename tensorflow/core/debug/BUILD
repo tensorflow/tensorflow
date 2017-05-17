@@ -227,6 +227,7 @@ tf_cc_test(
     size = "medium",
     srcs = ["grpc_session_debug_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["nomac"],  # b/38276817
     deps = [
         ":debug_grpc_testlib",
         ":debug_io_utils",

@@ -34,6 +34,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
@@ -1066,7 +1067,8 @@ class AttentionCellWrapper(core_rnn_cell.RNNCell):
       ValueError: if cell returns a state tuple but the flag
           `state_is_tuple` is `False` or if attn_length is zero or less.
     """
-    if not isinstance(cell, core_rnn_cell.RNNCell):
+    super(AttentionCellWrapper, self).__init__(_reuse=reuse)
+    if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
       raise TypeError("The parameter cell is not RNNCell.")
     if nest.is_sequence(cell.state_size) and not state_is_tuple:
       raise ValueError("Cell returns tuple of states, but the flag "
@@ -2072,19 +2074,22 @@ def _conv(args, filter_size, num_features, bias, bias_start=0.0, scope=None):
   # determine correct conv operation
   if   shape_length == 3:
     conv_op = nn_ops.conv1d
+    strides = 1
   elif shape_length == 4:
     conv_op = nn_ops.conv2d
+    strides = shape_length*[1]
   elif shape_length == 5:
     conv_op = nn_ops.conv3d
+    strides = shape_length*[1]
 
   # Now the computation.
   with vs.variable_scope(scope or "Conv_%sD" % str(shape_length-2)):
     matrix = vs.get_variable(
         "Matrix", filter_size + [total_arg_size_depth, num_features], dtype=dtype)
     if len(args) == 1:
-      res = conv_op(args[0], matrix, strides=shape_length*[1], padding='SAME')
+      res = conv_op(args[0], matrix, strides, padding='SAME')
     else:
-      res = conv_op(array_ops.concat(axis=shape_length-1, values=args), matrix, strides=shape_length*[1], padding='SAME')
+      res = conv_op(array_ops.concat(axis=shape_length-1, values=args), matrix, strides, padding='SAME')
     if not bias:
       return res
     bias_term = vs.get_variable(

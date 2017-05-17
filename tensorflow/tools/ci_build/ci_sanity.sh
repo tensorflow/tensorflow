@@ -92,6 +92,8 @@ do_pylint() {
   ERROR_WHITELIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
 "^tensorflow/python/platform/default/_gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function\salready\sdefined "\
+"^tensorflow/python/feature_column/feature_column_test\.py.*\[E0110.*abstract-class-instantiated "\
+"^tensorflow/contrib/layers/python/layers/feature_column\.py.*\[E0110.*abstract-class-instantiated "\
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator"
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""

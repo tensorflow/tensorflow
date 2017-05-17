@@ -81,7 +81,7 @@ py_library(
         ":weights_broadcast_ops",
         "//third_party/py/numpy",
         "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/feature_column:feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/saved_model",
@@ -1332,6 +1332,7 @@ py_library(
     deps = [
         ":array_ops",
         ":clip_ops",
+        ":data_flow_grad",
         ":data_flow_ops",
         ":framework",
         ":framework_for_generated_wrappers",
@@ -2184,6 +2185,7 @@ cuda_py_test(
     srcs = ["ops/math_ops_test.py"],
     additional_deps = [
         ":array_ops",
+        ":errors",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
         ":gradients",
@@ -3601,6 +3603,23 @@ py_test(
     srcs = ["grappler/tf_optimizer_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],  # tf_optimizer is not available in pip.
+    deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":tf_optimizer",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "memory_optimizer_test",
+    size = "medium",
+    srcs = [
+        "grappler/memory_optimizer_test.py",
+    ],
+    srcs_version = "PY2AND3",
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
