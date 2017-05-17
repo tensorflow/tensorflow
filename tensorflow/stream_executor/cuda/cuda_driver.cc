@@ -15,10 +15,11 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 
-#include <map>
 #include <stdint.h>
 #include <stdlib.h>
+#include <map>
 #include <set>
+#include <utility>
 
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
 #include "tensorflow/stream_executor/lib/casts.h"
@@ -227,7 +228,7 @@ string ToString(CUresult result) {
 // created by StreamExecutor (to ensure that the CUDA runtime didn't create a
 // context behind our backs).
 CUcontext CurrentContext() {
-  CUcontext current  = CUDADriver::CurrentContextOrDie();
+  CUcontext current = CUDADriver::CurrentContextOrDie();
   if (current != nullptr && !CreatedContexts::Has(current)) {
     LOG(FATAL) << "current context was not created by the StreamExecutor "
                   "cuda_driver API: "
@@ -453,7 +454,8 @@ static port::Status InternalInit() {
   return true;
 }
 
-bool DeviceOptionsToContextFlags(DeviceOptions device_options, int *flags) {
+bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
+                                 int *flags) {
   static_assert(DeviceOptions::kMask == 0xf,
                 "needs update for new device options");
 
@@ -480,27 +482,56 @@ bool DeviceOptionsToContextFlags(DeviceOptions device_options, int *flags) {
     CUdevice device, DeviceOptions device_options, CudaContext** context) {
   *context = nullptr;
 
-  CUcontext former_context = CurrentContext();
-  if (former_context != nullptr) {
-    LOG(WARNING) << "creating context when one is currently active; existing: "
-                 << former_context;
-  }
-
   int flags = 0;
   if (!DeviceOptionsToContextFlags(device_options, &flags)) {
     LOG(WARNING) << "could not convert all device options into context flags";
   }
 
   CUresult res;
+  CUcontext former_context;
   CUcontext new_context;
   {
     // TODO(leary) Need to see if NVIDIA can expunge the leakiness in their
     // context creation: see http://b/13248943
 
 #if CUDA_VERSION >= 7000
-    res = cuDevicePrimaryCtxSetFlags(device, flags);
+    {
+      unsigned int former_primary_context_flags;
+      int former_primary_context_is_active;
+      CHECK_EQ(CUDA_SUCCESS,
+               cuDevicePrimaryCtxGetState(device, &former_primary_context_flags,
+                                          &former_primary_context_is_active));
+      if (former_primary_context_flags != flags) {
+        if (former_primary_context_is_active) {
+          LOG(ERROR)
+              << "The primary context is active and has a different flag set ("
+              << former_primary_context_flags << ") than the desired flag set ("
+              << flags << ").";
+        } else {
+          CHECK_EQ(CUDA_SUCCESS, cuDevicePrimaryCtxSetFlags(device, flags));
+        }
+      }
+    }
+
+    former_context = CUDADriver::CurrentContextOrDie();
     res = cuDevicePrimaryCtxRetain(&new_context, device);
+    if (former_context != nullptr) {
+      if (former_context == new_context) {
+        VLOG(2) << "The primary context " << former_context
+                << " exists before initializing the StreamExecutor.";
+      } else {
+        LOG(WARNING) << "A non-primary context " << former_context
+                     << " exists before initializing the StreamExecutor. We "
+                        "haven't verified StreamExecutor works with that.";
+      }
+    }
 #else
+    former_context = CurrentContext();
+    if (former_context != nullptr) {
+      LOG(WARNING)
+          << "creating context when one is currently active; existing: "
+          << former_context;
+    }
     res = cuCtxCreate(&new_context, flags, device);
 #endif
   }

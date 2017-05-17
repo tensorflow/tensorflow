@@ -33,7 +33,8 @@ from tensorflow.python.util import nest
 
 
 # pylint: disable=protected-access
-_state_size_with_prefix = rnn_cell_impl._state_size_with_prefix
+_concat = rnn_cell_impl._concat
+_like_rnncell = rnn_cell_impl._like_rnncell
 # pylint: enable=protected-access
 
 
@@ -288,11 +289,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
                               swap_memory=False, time_major=False, scope=None):
   """Creates a dynamic version of bidirectional recurrent neural network.
 
-  Similar to the unidirectional case above (rnn) but takes input and builds
-  independent forward and backward RNNs. The input_size of forward and
-  backward cell must match. The initial state for both directions is zero by
-  default (but can be set optionally) and no intermediate states are ever
-  returned -- the network is fully unrolled for the given (passed in)
+  Takes input and builds independent forward and backward RNNs. The input_size
+  of forward and backward cell must match. The initial state for both directions
+  is zero by default (but can be set optionally) and no intermediate states are
+  ever returned -- the network is fully unrolled for the given (passed in)
   length(s) of the sequence(s) or completely unrolled if length(s) is not
   given.
 
@@ -362,12 +362,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell_fw, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell_fw):
     raise TypeError("cell_fw must be an instance of RNNCell")
-  if not isinstance(cell_bw, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell_bw):
     raise TypeError("cell_bw must be an instance of RNNCell")
-  # pylint: enable=protected-access
 
   with vs.variable_scope(scope or "bidirectional_rnn"):
     # Forward direction
@@ -419,12 +417,10 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
                 time_major=False, scope=None):
   """Creates a recurrent neural network specified by RNNCell `cell`.
 
-  This function is functionally identical to the function `rnn` above, but
-  performs fully dynamic unrolling of `inputs`.
+  Performs fully dynamic unrolling of `inputs`.
 
-  Unlike `rnn`, the input `inputs` is not a Python list of `Tensors`, one for
-  each frame.  Instead, `inputs` may be a single `Tensor` where
-  the maximum time is either the first or second dimension (see the parameter
+  `Inputs` may be a single `Tensor` where the maximum time is either the first
+  or second dimension (see the parameter
   `time_major`).  Alternatively, it may be a (possibly nested) tuple of
   Tensors, each of them having matching batch and time dimensions.
   The corresponding output is either a single `Tensor` having the same number
@@ -433,7 +429,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
   The parameter `sequence_length` is optional and is used to copy-through state
   and zero-out outputs when past a batch element's sequence length. So it's more
-  for correctness than performance, unlike in rnn().
+  for correctness than performance.
 
   Args:
     cell: An instance of RNNCell.
@@ -510,10 +506,8 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     ValueError: If inputs is None or an empty list.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
-  # pylint: enable=protected-access
 
   # By default, time_major==False and inputs are batch-major: shaped
   #   [batch, time, depth]
@@ -663,7 +657,7 @@ def _dynamic_rnn_loop(cell,
 
   # Prepare dynamic conditional copying of state & output
   def _create_zero_arrays(size):
-    size = _state_size_with_prefix(size, prefix=[batch_size])
+    size = _concat(batch_size, size)
     return array_ops.zeros(
         array_ops.stack(size), _infer_state_dtype(dtype, state))
 
@@ -749,8 +743,8 @@ def _dynamic_rnn_loop(cell,
 
   # Restore some shape information
   for output, output_size in zip(final_outputs, flat_output_size):
-    shape = _state_size_with_prefix(
-        output_size, prefix=[const_time_steps, const_batch_size])
+    shape = _concat(
+        [const_time_steps, const_batch_size], output_size, static=True)
     output.set_shape(shape)
 
   final_outputs = nest.pack_sequence_as(
@@ -924,10 +918,8 @@ def raw_rnn(cell, loop_fn,
       a `callable`.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
-  # pylint: enable=protected-access
   if not callable(loop_fn):
     raise TypeError("loop_fn must be a callable")
 
@@ -984,9 +976,7 @@ def raw_rnn(cell, loop_fn,
     emit_ta = nest.pack_sequence_as(structure=emit_structure,
                                     flat_sequence=flat_emit_ta)
     flat_zero_emit = [
-        array_ops.zeros(
-            _state_size_with_prefix(size_i, prefix=[batch_size]),
-            dtype_i)
+        array_ops.zeros(_concat(batch_size, size_i), dtype_i)
         for size_i, dtype_i in zip(flat_emit_size, flat_emit_dtypes)]
     zero_emit = nest.pack_sequence_as(structure=emit_structure,
                                       flat_sequence=flat_zero_emit)

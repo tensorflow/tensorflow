@@ -45,6 +45,8 @@ from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -2138,6 +2140,29 @@ class ControlFlowTest(test.TestCase):
       r = math_ops.add(r, rg)
       r = gradients_impl.gradients(r, y)[0]
       self.assertEqual(388.0, r.eval())
+
+  def testStopGradMultiFlows(self):
+    with self.test_session():
+      def body(i, y, r):
+        x = variable_scope.get_variable(
+            "x", shape=(), dtype=dtypes.float32,
+            initializer=init_ops.ones_initializer())
+        y *= x
+        return [i + 1, y, r + math_ops.reduce_sum(y)]
+
+      i0 = constant_op.constant(0)
+      y0 = array_ops.ones(5)
+      r0 = constant_op.constant(0.0)
+      cond = lambda i, y, r: i < 1
+      _, _, r = control_flow_ops.while_loop(
+          cond, body, [i0, y0, r0], back_prop=True)
+
+      vars_ = variables.global_variables()
+      grads = linalg_ops.norm(gradients_impl.gradients(r, vars_)[0])
+      z = math_ops.add(r, array_ops.stop_gradient(math_ops.reduce_sum(grads)))
+      result = gradients_impl.gradients(z, vars_)[0]
+      variables.global_variables_initializer().run()
+      self.assertEqual(5.0, result.eval())
 
   def testOneValueCond(self):
     with self.test_session():

@@ -52,7 +52,7 @@ class TfShouldUseTest(test.TestCase):
         h = tf_should_use._add_should_use_warning(c)
         del h
       in_this_function()
-    self.assertIn('Object was never used:', '\n'.join(captured))
+    self.assertIn('Object was never used', '\n'.join(captured))
     self.assertIn('blah:0', '\n'.join(captured))
     self.assertIn('in_this_function', '\n'.join(captured))
 
@@ -63,7 +63,7 @@ class TfShouldUseTest(test.TestCase):
       h = tf_should_use._add_should_use_warning(c)
       fn(h)
       del h
-    self.assertNotIn('Object was never used:', '\n'.join(captured))
+    self.assertNotIn('Object was never used', '\n'.join(captured))
     self.assertNotIn('blah:0', '\n'.join(captured))
 
   def testAddShouldUseWarningWhenUsedWithAdd(self):
@@ -83,7 +83,7 @@ class TfShouldUseTest(test.TestCase):
     captured = []
     with reroute_error(captured):
       return_const(0.0)
-    self.assertIn('Object was never used:', '\n'.join(captured))
+    self.assertIn('Object was never used', '\n'.join(captured))
     self.assertIn('blah:0', '\n'.join(captured))
     self.assertIn('return_const', '\n'.join(captured))
 
@@ -99,7 +99,7 @@ class TfShouldUseTest(test.TestCase):
         # unused op as being "used".
         v = constant_op.constant(1.0, name='meh')
         v.eval()
-    self.assertIn('Object was never used:', '\n'.join(captured))
+    self.assertIn('Object was never used', '\n'.join(captured))
     self.assertIn('blah:0', '\n'.join(captured))
     self.assertIn('return_const', '\n'.join(captured))
 

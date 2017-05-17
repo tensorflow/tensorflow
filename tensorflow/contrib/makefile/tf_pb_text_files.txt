@@ -1,6 +1,7 @@
 tensorflow/core/util/saved_tensor_slice.pb_text.cc
 tensorflow/core/util/memmapped_file_system.pb_text.cc
 tensorflow/core/protobuf/saver.pb_text.cc
+tensorflow/core/protobuf/cluster.pb_text.cc
 tensorflow/core/protobuf/config.pb_text.cc
 tensorflow/core/protobuf/debug.pb_text.cc
 tensorflow/core/protobuf/rewriter_config.pb_text.cc

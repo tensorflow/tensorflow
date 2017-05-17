@@ -226,7 +226,12 @@ module TF.Backend {
      */
     public healthPills(nodeNames: string[], step?: number):
         Promise<HealthPillsResponse> {
-      let postData = {'node_names': JSON.stringify(nodeNames)};
+      const postData = {
+        'node_names': JSON.stringify(nodeNames),
+
+        // Events files with debugger data fall under this special run.
+        'run': '__debugger_data__',
+      };
       if (step !== undefined) {
         // The user requested health pills for a specific step. This request
         // might be slow since the backend reads events sequentially from disk.

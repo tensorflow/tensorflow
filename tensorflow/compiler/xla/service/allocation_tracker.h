@@ -63,10 +63,10 @@ class Allocation {
     CHECK_GE(ref_count_, 0);
     return ref_count_;
   }
-  void increment_ref_count() {
+  void increment_ref_count(int inc) {
     CHECK_GT(ref_count_, 0);
-    CHECK_LT(ref_count_, INT_MAX);
-    ++ref_count_;
+    CHECK_LE(ref_count_, INT_MAX - inc);
+    ref_count_ += inc;
   }
   void decrement_ref_count() {
     CHECK_GT(ref_count_, 0);

@@ -266,6 +266,7 @@ class ReverseV2Op : public OpKernel {
                               .HostMemory("axis"),           \
                           ReverseV2Op<CPUDevice, T>)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
+TF_CALL_string(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
 #if GOOGLE_CUDA

@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -354,6 +355,9 @@ class BufferAssignment {
   void AddAssignment(BufferAllocation* allocation, const LogicalBuffer& buffer,
                      int64 offset, int64 size);
 
+  // Returns the HloModule used to construct this assignment.
+  const HloModule& module() { return *module_; }
+
   // Returns the BufferLiveness object used to construct this assignment.
   const BufferLiveness& liveness() { return *liveness_; }
 
@@ -396,13 +400,10 @@ class BufferAssigner {
   // Build and return a BufferAssignment for the given module. The given
   // HloOrdering is used to determine buffer liveness. buffer_size is a function
   // which returns the size of a LogicalBuffer. Alignment is the the minimum
-  // alignment of any buffer. If hlos_to_allocate is not null then only
-  // instructions in this vector are considered for buffer assignment. If
-  // hlos_to_allocate is null then all instructions are considered.
+  // alignment of any buffer.
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      LogicalBuffer::SizeFunction buffer_size, int64 alignment,
-      const std::vector<const HloInstruction*>* hlos_to_allocate = nullptr);
+      LogicalBuffer::SizeFunction buffer_size, int64 alignment);
 
  private:
   explicit BufferAssigner(LogicalBuffer::SizeFunction buffer_size,
@@ -412,29 +413,38 @@ class BufferAssigner {
 
   // Create a buffer assignment.
   StatusOr<std::unique_ptr<BufferAssignment>> CreateAssignment(
-      const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      const std::vector<const HloInstruction*>* hlos_to_allocate = nullptr);
+      const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering);
 
   // Assigns buffers to the instructions in the given computation. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is
   // true, then all assigned buffers have the is_thread_local flag set to
-  // true. If hlos_to_allocate is not null it indicates which HLOs to include in
-  // buffer assignment. If null, all instructions in the computation are
-  // included.
+  // true.
   Status AssignBuffersForComputation(
       const HloComputation* computation, bool is_thread_local,
-      const tensorflow::gtl::FlatSet<const HloInstruction*>* hlos_to_allocate,
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>& colocated_buffers,
       const tensorflow::gtl::FlatSet<BufferAllocation::Index>&
           colocated_allocations,
+      tensorflow::gtl::FlatMap<const HloComputation*,
+                               tensorflow::gtl::FlatSet<const LogicalBuffer*>>*
+          buffers_to_assign_sequentially,
       BufferAssignment* assignment);
 
-  // Assigns 'buffers_to_assign' assuming the HLO instructions will be executed
-  // in the given 'sequential_order'.
+  // Assigns 'buffers_to_assign_sequentially' using heap simulation, assuming
+  // the HLO instructions will be executed in the sequential order given by
+  // assignment->liveness().hlo_ordering().SequentialOrder. If
+  // 'run_whole_module_heap_simulation' is true, the heap simulation will be run
+  // assuming all global computations are sequentially ordered.
   Status AssignBuffersWithSequentialOrdering(
-      const std::vector<const HloInstruction*>& sequential_order,
-      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& buffers_to_assign,
-      const HloComputation& computation, BufferAssignment* assignment);
+      const tensorflow::gtl::FlatMap<
+          const HloComputation*,
+          tensorflow::gtl::FlatSet<const LogicalBuffer*>>&
+          buffers_to_assign_sequentially,
+      bool run_whole_module_heap_simulation, BufferAssignment* assignment);
+
+  // Uses the results of the heap simulator to create a single allocation, with
+  // LogicalBuffers packed to specific offsets.
+  void AssignBuffersFromHeapSimulator(const HeapSimulator::Result& result,
+                                      BufferAssignment* assignment);
 
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.
@@ -476,8 +486,6 @@ class BufferAssigner {
       const LogicalBuffer* while_init_buffer, const HloInstruction* while_hlo,
       const HloComputation& computation, const BufferLiveness& buffer_liveness,
       std::vector<ColocatedBufferSet>* colocated_buffer_sets);
-
-  const HloModule* module_;
 
   // Function which returns the buffer size for a given logical buffer (shape).
   LogicalBuffer::SizeFunction buffer_size_;

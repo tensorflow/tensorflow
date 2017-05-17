@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/liveness_util.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -319,6 +320,7 @@ Status InstructionCopier::RecordIndicesWhichInterfereWithOtherInstruction(
           if (liveness.MayInterfere(*instruction_buffer, *other_buffer)) {
             VLOG(2) << "Adding copy of buffer for instruction: "
                     << instruction_->name()
+                    << " instruction_buffer: " << instruction_buffer->ToString()
                     << " at index: " << tensorflow::str_util::Join(index, ",")
                     << " because of interference with buffer: "
                     << other_buffer->ToString();
@@ -351,6 +353,11 @@ Status InstructionCopier::RecordControlPredecessors(
           for (const BufferAlias& alias :
                points_to_analysis.GetBufferAliases(*buffer)) {
             for (HloInstruction* user : alias.instruction()->users()) {
+              if (DoesNotUseOperandBuffer(alias.instruction(), alias.index(),
+                                          user, points_to_analysis)) {
+                continue;
+              }
+
               if (user != instruction_) {
                 control_predecessors_.mutable_element(index)->push_back(user);
               }

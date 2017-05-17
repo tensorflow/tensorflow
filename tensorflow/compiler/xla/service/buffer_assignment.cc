@@ -488,11 +488,9 @@ Status GatherComputationsByAllocationType(
 /* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    LogicalBuffer::SizeFunction buffer_size, int64 alignment,
-    const std::vector<const HloInstruction*>* hlos_to_allocate) {
+    LogicalBuffer::SizeFunction buffer_size, int64 alignment) {
   BufferAssigner assigner(std::move(buffer_size), alignment);
-  return assigner.CreateAssignment(module, std::move(hlo_ordering),
-                                   hlos_to_allocate);
+  return assigner.CreateAssignment(module, std::move(hlo_ordering));
 }
 
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
@@ -545,24 +543,22 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 
 Status BufferAssigner::AssignBuffersForComputation(
     const HloComputation* computation, bool is_thread_local,
-    const FlatSet<const HloInstruction*>* hlos_to_allocate,
     const FlatSet<const LogicalBuffer*>& colocated_buffers,
     const FlatSet<BufferAllocation::Index>& colocated_allocations,
+    FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>*
+        buffers_to_assign_sequentially,
     BufferAssignment* assignment) {
   // Buffers are sorted and assigned to BufferAllocations in decreasing order of
   // size.
   std::vector<const LogicalBuffer*> sorted_buffers;
   for (auto& instruction : computation->instructions()) {
-    if (hlos_to_allocate == nullptr ||
-        hlos_to_allocate->count(instruction.get()) > 0) {
-      // Add all buffers which this instruction defines. Instruction which don't
-      // define buffers (eg, bitcast which just forwards a pointer) don't need
-      // any allocations.
-      for (const LogicalBuffer* buffer :
-           assignment->points_to_analysis().GetBuffersDefinedByInstruction(
-               instruction.get())) {
-        sorted_buffers.push_back(buffer);
-      }
+    // Add all buffers which this instruction defines. Instruction which don't
+    // define buffers (eg, bitcast which just forwards a pointer) don't need
+    // any allocations.
+    for (const LogicalBuffer* buffer :
+         assignment->points_to_analysis().GetBuffersDefinedByInstruction(
+             instruction.get())) {
+      sorted_buffers.push_back(buffer);
     }
   }
 
@@ -578,9 +574,16 @@ Status BufferAssigner::AssignBuffersForComputation(
   // If there is a sequential instruction ordering, we'll delay assignment of
   // temp buffers until after the main assignment loop.
   const BufferLiveness& liveness = assignment->liveness();
-  const std::vector<const HloInstruction*>* sequential_order =
-      liveness.hlo_ordering().SequentialOrder(*computation);
-  FlatSet<const LogicalBuffer*> unassigned_temp_buffers;
+  const bool has_sequential_order =
+      liveness.hlo_ordering().SequentialOrder(*computation) != nullptr;
+  if (has_sequential_order && buffers_to_assign_sequentially != nullptr) {
+    // Every sequential computation must get an entry in the
+    // buffers_to_assign_sequentially map, even if we end up with an empty set
+    // of buffers. This ensures we can correctly determine whether to run
+    // whole-module heap simulation.
+    buffers_to_assign_sequentially->emplace(computation,
+                                            FlatSet<const LogicalBuffer*>());
+  }
 
   // Sort the LogicalBuffers first by size. We assign the larger LogicalBuffers
   // first for simplicity. This means any previously created BufferAllocation is
@@ -599,7 +602,7 @@ Status BufferAssigner::AssignBuffersForComputation(
   // important reuse case where an elementwise instruction reuses one of its
   // operand's buffer. This improves locality.
   std::sort(sorted_buffers.begin(), sorted_buffers.end(),
-            [this, sequential_order, &liveness, &post_order_position](
+            [this, has_sequential_order, &liveness, &post_order_position](
                 const LogicalBuffer* a, const LogicalBuffer* b) {
               // Primary sort is by decreasing buffer size.
               const int64 a_size = buffer_size_(*a);
@@ -609,7 +612,7 @@ Status BufferAssigner::AssignBuffersForComputation(
               }
               // Otherwise live out buffers come before others, if the
               // instructions are sequentially ordered.
-              if (sequential_order != nullptr) {
+              if (has_sequential_order) {
                 const bool a_live_out = liveness.MaybeLiveOut(*a);
                 const bool b_live_out = liveness.MaybeLiveOut(*b);
                 if (a_live_out != b_live_out) {
@@ -746,7 +749,7 @@ Status BufferAssigner::AssignBuffersForComputation(
       }
     }
 
-    if (!assignment->HasAllocation(*buffer) && sequential_order != nullptr &&
+    if (!assignment->HasAllocation(*buffer) && has_sequential_order &&
         !liveness.MaybeLiveOut(*buffer)) {
       // There is a sequential instruction ordering, so we delay assignment of
       // temp buffers until after the loop. We do this right before we decide to
@@ -758,7 +761,7 @@ Status BufferAssigner::AssignBuffersForComputation(
       // for the definition of temp buffers.
       CHECK(!is_entry_parameter) << *buffer;
       CHECK(!is_thread_local) << *buffer;
-      unassigned_temp_buffers.insert(buffer);
+      (*buffers_to_assign_sequentially)[computation].insert(buffer);
       VLOG(3) << "Delaying assignment of temp buffer: " << *buffer;
       continue;
     }
@@ -772,27 +775,68 @@ Status BufferAssigner::AssignBuffersForComputation(
     }
   }
 
-  if (!unassigned_temp_buffers.empty()) {
-    TF_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
-        *sequential_order, unassigned_temp_buffers, *computation, assignment));
-  }
   return Status::OK();
 }
 
 Status BufferAssigner::AssignBuffersWithSequentialOrdering(
-    const std::vector<const HloInstruction*>& sequence,
-    const FlatSet<const LogicalBuffer*>& buffers_to_assign,
-    const HloComputation& computation, BufferAssignment* assignment) {
+    const FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>&
+        buffers_to_assign_sequentially,
+    bool run_whole_module_heap_simulation, BufferAssignment* assignment) {
   // Run the sequence of instructions through the heap simulator.  The heuristic
   // that seems to give the best results is lazy-best-fit, with all runs of
   // alloc / free calls sorted in decreasing size order.
-  TF_ASSIGN_OR_RETURN(
-      HeapSimulator::Result result,
-      HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                             MakeUnique<LazyBestFitHeap>(alignment_)),
-                         sequence, computation,
-                         assignment->points_to_analysis(), buffer_size_,
-                         &buffers_to_assign));
+  const HloOrdering& hlo_ordering = assignment->liveness().hlo_ordering();
+  if (run_whole_module_heap_simulation) {
+    // Run the heap simulation over the whole module. This reduces memory usage,
+    // since buffers for kCall and kWhile sub-computations are only live for the
+    // duration of their calling instructions.
+    VLOG(1) << "Running whole-module heap simulation";
+    SequentialHloOrdering::HloModuleSequence module_sequence;
+    FlatSet<const LogicalBuffer*> all_buffers_to_assign;
+    for (const auto& pair : buffers_to_assign_sequentially) {
+      const HloComputation* computation = pair.first;
+      const FlatSet<const LogicalBuffer*>& buffers_to_assign = pair.second;
+      const std::vector<const HloInstruction*>* instruction_sequence =
+          hlo_ordering.SequentialOrder(*computation);
+      CHECK(instruction_sequence != nullptr) << computation->name();
+      module_sequence[computation] = *instruction_sequence;
+      all_buffers_to_assign.insert(buffers_to_assign.begin(),
+                                   buffers_to_assign.end());
+    }
+    TF_ASSIGN_OR_RETURN(
+        const HeapSimulator::Result result,
+        HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
+                               MakeUnique<LazyBestFitHeap>(alignment_)),
+                           assignment->module(), module_sequence,
+                           assignment->points_to_analysis(), buffer_size_,
+                           &all_buffers_to_assign));
+    AssignBuffersFromHeapSimulator(result, assignment);
+  } else {
+    // Run the heap-simulation on a per-computation basis. Buffers for
+    // sub-computations are assigned disjoint BufferAllocations, assuming the
+    // worst-case that they may all be live concurrently.
+    VLOG(1) << "Running per-computation heap simulation";
+    for (const auto& pair : buffers_to_assign_sequentially) {
+      const HloComputation* computation = pair.first;
+      const FlatSet<const LogicalBuffer*>& buffers_to_assign = pair.second;
+      const std::vector<const HloInstruction*>* instruction_sequence =
+          hlo_ordering.SequentialOrder(*computation);
+      CHECK(instruction_sequence != nullptr) << computation->name();
+      TF_ASSIGN_OR_RETURN(
+          const HeapSimulator::Result result,
+          HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
+                                 MakeUnique<LazyBestFitHeap>(alignment_)),
+                             *computation, *instruction_sequence,
+                             assignment->points_to_analysis(), buffer_size_,
+                             &buffers_to_assign));
+      AssignBuffersFromHeapSimulator(result, assignment);
+    }
+  }
+  return Status::OK();
+}
+
+void BufferAssigner::AssignBuffersFromHeapSimulator(
+    const HeapSimulator::Result& result, BufferAssignment* assignment) {
   if (assignment->stats_.preallocated_temp_fragmentation_bytes == -1) {
     assignment->stats_.preallocated_temp_fragmentation_bytes =
         result.fragmentation_size;
@@ -801,8 +845,6 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         result.fragmentation_size;
   }
 
-  // Use the results of the heap simulator to create one allocation per
-  // computation, with LogicalBuffers packed to specific offsets.
   BufferAllocation* allocation = assignment->NewEmptyAllocation(
       result.heap_size, /*is_thread_local=*/false, /*is_reusable=*/true);
   for (const auto& buffer_chunk : result.chunk_map) {
@@ -810,7 +852,6 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     const HeapSimulator::Chunk& chunk = buffer_chunk.second;
     assignment->AddAssignment(allocation, buffer, chunk.offset, chunk.size);
   }
-  return Status::OK();
 }
 
 // Adds the 'colocated_set' of buffers to 'colocated_buffer_sets', maintaining
@@ -1103,34 +1144,14 @@ void BufferAssigner::AssignColocatedBufferSets(
 }
 
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
-    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    const std::vector<const HloInstruction*>* hlos_to_allocate) {
+    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferLiveness> liveness,
                       BufferLiveness::Run(module, std::move(hlo_ordering)));
 
-  std::vector<const HloComputation*> thread_local_computations;
-  std::vector<const HloComputation*> global_computations;
   VLOG(1) << "Assigning buffers to module " << module->name();
-  if (hlos_to_allocate != nullptr) {
-    VLOG(3) << "LogicalBuffer assignment restricted to hlos: ";
-    for (auto hlo : *hlos_to_allocate) {
-      VLOG(3) << "  " << hlo->parent()->name() << "::" << hlo->name();
-    }
-  }
-  XLA_VLOG_LINES(3, module->ToString());
+  XLA_VLOG_LINES(2, module->ToString());
   XLA_VLOG_LINES(3, liveness->ToString());
   XLA_VLOG_LINES(3, liveness->points_to_analysis().ToString());
-
-  TF_RETURN_IF_ERROR(GatherComputationsByAllocationType(
-      module, &thread_local_computations, &global_computations));
-
-  // Set of HLO's to allocate if hlos_to_allocate is given. Passed as a set to
-  // AssignBuffersForComputation for fast membership testing.
-  std::unique_ptr<FlatSet<const HloInstruction*>> hlo_set;
-  if (hlos_to_allocate != nullptr) {
-    hlo_set = MakeUnique<FlatSet<const HloInstruction*>>(
-        hlos_to_allocate->begin(), hlos_to_allocate->end());
-  }
 
   // Can't use MakeUnique because BufferAssignment constructor is private.
   std::unique_ptr<BufferAssignment> assignment(
@@ -1148,16 +1169,38 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   AssignColocatedBufferSets(colocated_buffer_sets, assignment.get(),
                             &colocated_buffers, &colocated_allocations);
 
+  std::vector<const HloComputation*> thread_local_computations;
+  std::vector<const HloComputation*> global_computations;
+  TF_RETURN_IF_ERROR(GatherComputationsByAllocationType(
+      module, &thread_local_computations, &global_computations));
+
+  // First assign buffers for global computatations. Temporary buffers for
+  // sequential computations are collected in 'buffers_to_assign_sequentially'.
+  FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>
+      buffers_to_assign_sequentially;
   for (auto* computation : global_computations) {
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, /*is_thread_local=*/false, hlo_set.get(),
-        colocated_buffers, colocated_allocations, assignment.get()));
+        computation, /*is_thread_local=*/false, colocated_buffers,
+        colocated_allocations, &buffers_to_assign_sequentially,
+        assignment.get()));
   }
+  // Assign buffers with sequential ordering, if any. If all global computations
+  // are sequential, we can run heap simuation on the whole module, which
+  // reduces memory usage.
+  const bool run_whole_module_heap_simulation =
+      buffers_to_assign_sequentially.size() == global_computations.size();
+  TF_RETURN_IF_ERROR(AssignBuffersWithSequentialOrdering(
+      buffers_to_assign_sequentially, run_whole_module_heap_simulation,
+      assignment.get()));
+
+  // Now assign buffers for thread-local computations. All LogicalBuffers get
+  // their own BufferAllocation.
   for (auto* computation : thread_local_computations) {
     TF_RET_CHECK(computation != module->entry_computation());
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, /*is_thread_local=*/true, hlo_set.get(), colocated_buffers,
-        colocated_allocations, assignment.get()));
+        computation, /*is_thread_local=*/true, colocated_buffers,
+        colocated_allocations, /*buffers_to_assign_sequentially=*/nullptr,
+        assignment.get()));
   }
 
   // Mark all buffers which may be live out of the entry computation as

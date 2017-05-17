@@ -85,7 +85,7 @@ def _init_clusters_random(data, num_clusters, random_seed):
         maxval=math_ops.cast(num_data, dtypes.int64),
         seed=random_seed,
         dtype=dtypes.int64)
-  indices = indices % math_ops.cast(num_data, dtypes.int64)
+  indices %= math_ops.cast(num_data, dtypes.int64)
   clusters_init = embedding_lookup(data, indices, partition_strategy='div')
   return clusters_init
 

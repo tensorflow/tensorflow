@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <deque>
+#include <utility>
 #include <vector>
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -95,7 +96,7 @@ Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
 
 Status Env::RegisterFileSystem(const string& scheme,
                                FileSystemRegistry::Factory factory) {
-  return file_system_registry_->Register(scheme, factory);
+  return file_system_registry_->Register(scheme, std::move(factory));
 }
 
 Status Env::NewRandomAccessFile(const string& fname,

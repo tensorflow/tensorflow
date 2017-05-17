@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_ENV_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_ENV_H_
 
+#include <vector>
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -24,8 +25,10 @@ namespace thread {
 class ThreadPool;
 }  // namespace thread
 
+class Device;
 class DeviceMgr;
 class Env;
+class RendezvousMgrInterface;
 class SessionMgr;
 
 // The worker environment class, which holds a bag of pointers to
@@ -38,9 +41,17 @@ struct WorkerEnv {
   // session_mgr encapsulates state for each session.
   SessionMgr* session_mgr = nullptr;
 
+  // The local devices of this worker. Devices are owned by the device_mgr.
+  //
+  // REQUIRES: !local_devices.empty().
+  std::vector<Device*> local_devices;
+
   // device_mgr manages local devices (cpu and gpu). The WorkerService
   // is the network interface for managed devices.
   DeviceMgr* device_mgr = nullptr;
+
+  // A set of rendezvous keyed by step ids.
+  RendezvousMgrInterface* rendezvous_mgr = nullptr;
 
   // A pool of threads for scheduling compute work.
   thread::ThreadPool* compute_pool = nullptr;

@@ -199,7 +199,7 @@ func (s *Session) NewPartialRun(feeds, fetches []Output, targets []*Operation) (
 		return nil, err
 	}
 	runtime.SetFinalizer(pr, func(pr *PartialRun) {
-		deletePRunHandle(pr.handle)
+		C.TF_DeletePRunHandle(pr.handle)
 	})
 	return pr, nil
 }

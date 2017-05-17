@@ -116,7 +116,7 @@ class Embedding(Layer):
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     self.embeddings = self.add_weight(
-        (self.input_dim, self.output_dim),
+        shape=(self.input_dim, self.output_dim),
         initializer=self.embeddings_initializer,
         name='embeddings',
         regularizer=self.embeddings_regularizer,

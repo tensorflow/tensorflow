@@ -595,7 +595,9 @@ REGISTER_OP("Mod")
     .Attr("T: {int32, int64, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. This emulates C semantics in that
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
 
 *NOTE*: `Mod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -623,12 +625,11 @@ REGISTER_OP("TruncateMod")
     .Attr("T: {int32, int64, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
-Returns element-wise remainder of division. This emulates C semantics where
+Returns element-wise remainder of division. This emulates C semantics in that
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
 
-true, this follows C semantics in that the result here is consistent
-with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
-
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+*NOTE*: `TruncateMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -662,13 +663,12 @@ Compute the upper regularized incomplete Gamma function `Q(a, x)`.
 
 The upper regularized incomplete Gamma function is defined as:
 
-```
-Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)
-```
+\\(Q(a, x) = Gamma(a, x) / Gamma(a) = 1 - P(a, x)\\)
+
 where
-```
-Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt
-```
+
+\\(Gamma(a, x) = int_{x}^{\infty} t^{a-1} exp(-t) dt\\)
+
 is the upper incomplete Gama function.
 
 Note, above `P(a, x)` (`Igamma`) is the lower regularized complete
@@ -686,13 +686,13 @@ Compute the lower regularized incomplete Gamma function `Q(a, x)`.
 
 The lower regularized incomplete Gamma function is defined as:
 
-```
-P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)
-```
+
+\\(P(a, x) = gamma(a, x) / Gamma(a) = 1 - Q(a, x)\\)
+
 where
-```
-gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt
-```
+
+\\(gamma(a, x) = int_{0}^{x} t^{a-1} exp(-t) dt\\)
+
 is the lower incomplete Gamma function.
 
 Note, above `Q(a, x)` (`Igammac`) is the upper regularized complete
@@ -710,9 +710,9 @@ Compute the Hurwitz zeta function \\(\zeta(x, q)\\).
 
 The Hurwitz zeta function is defined as:
 
-```
-\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}
-```
+
+\\(\zeta(x, q) = \sum_{n=0}^{\infty} (q + n)^{-x}\\)
+
 )doc");
 
 REGISTER_OP("Polygamma")
@@ -726,9 +726,9 @@ Compute the polygamma function \\(\psi^{(n)}(x)\\).
 
 The polygamma function is defined as:
 
-```
-\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)
-```
+
+\\(\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)\\)
+
 where \\(\psi(x)\\) is the digamma function.
 )doc");
 
@@ -790,14 +790,14 @@ Compute the regularized incomplete beta integral \\(I_x(a, b)\\).
 
 The regularized incomplete beta integral is defined as:
 
-```
-I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}
-```
+
+\\(I_x(a, b) = \frac{B(x; a, b)}{B(a, b)}\\)
+
 where
 
-```
-B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt
-```
+
+\\(B(x; a, b) = \int_0^x t^{a-1} (1 - t)^{b-1} dt\\)
+
 
 is the incomplete beta function and \\(B(a, b)\\) is the *complete*
 beta function.
@@ -1271,6 +1271,8 @@ REGISTER_OP("ArgMax")
     .Doc(R"doc(
 Returns the index with the largest value across dimensions of a tensor.
 
+Note that in case of ties the identity of the return value is not guaranteed.
+
 dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
   of the input Tensor to reduce across. For vectors, use dimension = 0.
 )doc");
@@ -1284,6 +1286,8 @@ REGISTER_OP("ArgMin")
     .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the smallest value across dimensions of a tensor.
+
+Note that in case of ties the identity of the return value is not guaranteed.
 
 dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
   of the input Tensor to reduce across. For vectors, use dimension = 0.
@@ -2369,6 +2373,37 @@ Tinput: The type of the input.
 output_min: The computed min output.
 output_max: the computed max output.
 
+)doc");
+
+// --------------------------------------------------------------------------
+
+REGISTER_OP("Bucketize")
+    .Input("input: T")
+    .Output("output: int32")
+    .Attr("T: {int32, int64, float, double}")
+    .Attr("boundaries: list(float)")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Bucketizes 'input' based on 'boundaries'.
+
+For example, if the inputs are
+    boundaries = [0, 10, 100]
+    input = [[-5, 10000]
+             [150,   10]
+             [5,    100]]
+
+then the output will be
+    output = [[0, 3]
+              [3, 2]
+              [1, 3]]
+
+input: Any shape of Tensor contains with int or float type.
+boundaries: A sorted list of floats gives the boundary of the buckets.
+output: Same shape with 'input', each value of input replaced with bucket index.
+
+@compatibility(numpy)
+Equivalent to np.digitize.
+@end_compatibility
 )doc");
 
 }  // namespace tensorflow

@@ -22,11 +22,21 @@ filegroup(
 )
 
 cc_library(
-    name = "periodic_function",
+    name = "periodic_function_dynamic",
     srcs = ["periodic_function.cc"],
     hdrs = ["periodic_function.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "periodic_function",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":periodic_function_dynamic",
         "//tensorflow/core:lib",
     ],
 )

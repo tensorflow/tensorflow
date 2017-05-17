@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/debug/debug_graph_utils.h"
 
 #include "tensorflow/core/common_runtime/memory_types.h"
-#include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -44,69 +43,6 @@ Status ParseBoolString(const string& bool_str, bool* bool_val) {
 }
 
 }  // namespace
-
-DebuggerState::DebuggerState(const DebugOptions& debug_options)
-    : watches(debug_options.debug_tensor_watch_opts()), debug_urls_() {
-  for (const DebugTensorWatch& watch : watches) {
-    for (const string& url : watch.debug_urls()) {
-      debug_urls_.insert(url);
-    }
-  }
-}
-
-DebuggerState::~DebuggerState() {
-  for (const string& debug_url : debug_urls_) {
-    DebugIO::CloseDebugURL(debug_url).IgnoreError();
-  }
-}
-
-const string DebuggerState::SummarizeDebugTensorWatches() {
-  std::ostringstream oss;
-
-  for (const DebugTensorWatch& watch : watches) {
-    string tensor_name =
-        strings::StrCat(watch.node_name(), ":", watch.output_slot());
-    if (watch.tolerate_debug_op_creation_failures()) {
-      oss << "(TOL)";  // Shorthand for "tolerate".
-    }
-    oss << tensor_name << "|";
-
-    for (const string& debug_op : watch.debug_ops()) {
-      oss << debug_op << ",";
-    }
-
-    oss << "@";
-    for (const string& debug_url : watch.debug_urls()) {
-      oss << debug_url << ",";
-    }
-
-    oss << ";";
-  }
-
-  return oss.str();
-}
-
-Status DebuggerState::DecorateGraphForDebug(Graph* graph, Device* device) {
-  Status status;
-
-  DebugNodeInserter::DeparallelizeWhileLoops(graph, device);
-  status.Update(DebugNodeInserter::InsertNodes(watches, graph, device));
-  if (status.ok()) {
-    status.Update(DebugIO::PublishGraph(*graph, debug_urls_));
-  }
-
-  return status;
-}
-
-Status DebuggerState::PublishDebugMetadata(
-    const int64 global_step, const int64 session_run_count,
-    const int64 executor_step_count, const std::vector<string>& input_names,
-    const std::vector<string>& output_names,
-    const std::vector<string>& target_nodes) {
-  return DebugIO::PublishDebugMetadata(global_step, session_run_count,
-                                       executor_step_count, input_names,
-                                       output_names, target_nodes, debug_urls_);
-}
 
 // static
 Status DebugNodeInserter::InsertNodes(
@@ -287,19 +223,16 @@ Status DebugNodeInserter::InsertNodes(
 void DebugNodeInserter::DeparallelizeWhileLoops(Graph* graph, Device* device) {
   for (Node* node : graph->nodes()) {
     if (node->IsEnter()) {
-      for (const auto& attr : node->def().attr()) {
-        if (attr.first == "parallel_iterations") {
-          if (attr.second.i() > 1) {
-            LOG(INFO) << "For debugging, tfdbg is changing the "
-                      << "parallel_iterations attribute of the Enter/RefEnter "
-                      << "node \"" << node->name() << "\" on device \""
-                      << device->name() << "\" from " << attr.second.i()
-                      << " to 1. (This does not affect subsequent non-debug "
-                      << "runs.)";
-            node->AddAttr<int64>("parallel_iterations", 1);
-          }
-          break;
-        }
+      const AttrValue* parallel_iterations =
+          node->attrs().Find("parallel_iterations");
+      if (parallel_iterations && parallel_iterations->i() > 1) {
+        LOG(INFO) << "For debugging, tfdbg is changing the "
+                  << "parallel_iterations attribute of the Enter/RefEnter "
+                  << "node \"" << node->name() << "\" on device \""
+                  << device->name() << "\" from " << parallel_iterations->i()
+                  << " to 1. (This does not affect subsequent non-debug "
+                  << "runs.)";
+        node->AddAttr<int64>("parallel_iterations", 1);
       }
     }
   }

@@ -91,14 +91,18 @@ class Estimator(object):
 
     Args:
       model_fn: Model function. Follows the signature:
+
         * Args:
-          * `features`: single `Tensor` or `dict` of `Tensor`s
-                 (depending on data passed to `train`),
-          * `labels`: `Tensor` or `dict` of `Tensor`s (for multi-head
-                 models). If mode is `ModeKeys.PREDICT`, `labels=None` will be
-                 passed. If the `model_fn`'s signature does not accept
-                 `mode`, the `model_fn` must still be able to handle
-                 `labels=None`.
+
+          * `features`: This is the first item returned from the `input_fn`
+                 passed to `train`, 'evaluate`, and `predict`. This should be a
+                 single `Tensor` or `dict` of same.
+          * `labels`: This is the second item returned from the `input_fn`
+                 passed to `train`, 'evaluate`, and `predict`. This should be a
+                 single `Tensor` or `dict` of same (for multi-head models). If
+                 mode is `ModeKeys.PREDICT`, `labels=None` will be passed. If
+                 the `model_fn`'s signature does not accept `mode`, the
+                 `model_fn` must still be able to handle `labels=None`.
           * `mode`: Optional. Specifies if this training, evaluation or
                  prediction. See `ModeKeys`.
           * `params`: Optional `dict` of hyperparameters.  Will receive what
@@ -111,6 +115,7 @@ class Estimator(object):
 
         * Returns:
           `EstimatorSpec`
+
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
         continue training a previously saved model. If `None`, the model_dir in
@@ -152,6 +157,8 @@ class Estimator(object):
       self._model_dir = tempfile.mkdtemp()
       logging.warning('Using temporary folder as model directory: %s',
                       self._model_dir)
+    if self._config.model_dir is None:
+      self._config = self._config.replace(model_dir=self._model_dir)
     logging.info('Using config: %s', str(vars(self._config)))
 
     if self._config.session_config is None:
@@ -732,7 +739,7 @@ def _model_fn_args(fn):
 
 def _verify_model_fn_args(model_fn, params):
   """Verifies model fn arguments."""
-  args = _model_fn_args(model_fn)
+  args = set(_model_fn_args(model_fn))
   if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
   if 'labels' not in args:
@@ -745,7 +752,10 @@ def _verify_model_fn_args(model_fn, params):
     logging.warning('Estimator\'s model_fn (%s) includes params '
                     'argument, but params are not passed to Estimator.',
                     model_fn)
-  non_valid_args = list(set(args) - _VALID_MODEL_FN_ARGS)
+  if tf_inspect.ismethod(model_fn):
+    if 'self' in args:
+      args.remove('self')
+  non_valid_args = list(args - _VALID_MODEL_FN_ARGS)
   if non_valid_args:
     raise ValueError('model_fn (%s) has following not expected args: %s' %
                      (model_fn, non_valid_args))
@@ -807,13 +817,19 @@ def _write_dict_to_summary(output_dir,
   for key in dictionary:
     if dictionary[key] is None:
       continue
+    if key  == "global_step":
+      continue
     value = summary_proto.value.add()
     value.tag = key
-    if (isinstance(dictionary[key], np.float32) or
+    if (isinstance(dictionary[key], np.float32) or 
         isinstance(dictionary[key], float)):
       value.simple_value = float(dictionary[key])
+    elif (isinstance(dictionary[key], np.int64) or
+          isinstance(dictionary[key], np.int32) or
+          isinstance(dictionary[key], int)):
+      value.simple_value = int(dictionary[key])
     else:
-      logging.warn('Skipping summary for %s, must be a float or np.float32.',
+      logging.warn('Skipping summary for %s, must be a float, np.float32, np.int64, np.int32 or int.',
                    key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()

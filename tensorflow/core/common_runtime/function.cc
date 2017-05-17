@@ -150,8 +150,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   ~FunctionLibraryRuntimeImpl() override;
 
-  Status Instantiate(const string& function_name,
-                     const InstantiateAttrValueMap& attrs,
+  Status Instantiate(const string& function_name, AttrSlice attrs,
                      Handle* handle) override;
 
   const FunctionBody* GetFunctionBody(Handle handle) override;
@@ -208,8 +207,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   };
   std::vector<Item*> items_;
 
-  Status FunctionDefToBody(const FunctionDef& fdef,
-                           const InstantiateAttrValueMap& attrs,
+  Status FunctionDefToBody(const FunctionDef& fdef, AttrSlice attrs,
                            FunctionBody** fbody);
   Status CreateItem(Handle handle, Item** item);
   Status GetOrCreateItem(Handle handle, Item** item);
@@ -324,7 +322,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   // Try to instantiate this function for the func/attr. Maybe its
   // cached already.
   Handle handle;
-  TF_RETURN_IF_ERROR(Instantiate(ndef.op(), ndef.attr(), &handle));
+  TF_RETURN_IF_ERROR(Instantiate(ndef.op(), AttrSlice(&ndef.attr()), &handle));
 
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
@@ -355,9 +353,9 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   return s;
 }
 
-Status FunctionLibraryRuntimeImpl::FunctionDefToBody(
-    const FunctionDef& fdef, const InstantiateAttrValueMap& attrs,
-    FunctionBody** fbody) {
+Status FunctionLibraryRuntimeImpl::FunctionDefToBody(const FunctionDef& fdef,
+                                                     AttrSlice attrs,
+                                                     FunctionBody** fbody) {
   // Instantiates the function template into a graph def.
   InstantiationResult result;
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig_, &result));
@@ -390,11 +388,13 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
     // TODO(josh11b): Should filter out the attrs from func that aren't used
     // by the gradient function.
     TF_RETURN_IF_ERROR(creator(AttrSlice(&func.attr()), &grad_fdef));
-    TF_RETURN_IF_ERROR(FunctionDefToBody(grad_fdef, func.attr(), g_body));
+    TF_RETURN_IF_ERROR(
+        FunctionDefToBody(grad_fdef, AttrSlice(&func.attr()), g_body));
   } else {
     // f is a user-defined function.
     Handle f_handle;
-    TF_RETURN_IF_ERROR(Instantiate(func.name(), func.attr(), &f_handle));
+    TF_RETURN_IF_ERROR(
+        Instantiate(func.name(), AttrSlice(&func.attr()), &f_handle));
     const FunctionBody* f_body = GetFunctionBody(f_handle);
     CHECK_NOTNULL(f_body);
     *g_body = SymbolicGradient(*f_body);
@@ -402,9 +402,9 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
   return Status::OK();
 }
 
-Status FunctionLibraryRuntimeImpl::Instantiate(
-    const string& function_name, const InstantiateAttrValueMap& attrs,
-    Handle* handle) {
+Status FunctionLibraryRuntimeImpl::Instantiate(const string& function_name,
+                                               AttrSlice attrs,
+                                               Handle* handle) {
   const string key = Canonicalize(function_name, attrs);
   {
     mutex_lock l(mu_);
@@ -417,7 +417,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   Status s;
   FunctionBody* fbody = nullptr;
   if (function_name == kGradientOp) {
-    const AttrValue* f = gtl::FindOrNull(attrs, kFuncAttr);
+    const AttrValue* f = attrs.Find(kFuncAttr);
     if (f == nullptr) {
       return errors::InvalidArgument("SymbolicGradient is missing attr: f");
     }
@@ -427,7 +427,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     }
     const string grad = lib_def_->FindGradient(func.name());
     if (!grad.empty()) {
-      return Instantiate(grad, func.attr(), handle);
+      return Instantiate(grad, AttrSlice(&func.attr()), handle);
     }
     TF_RETURN_IF_ERROR(InstantiateSymbolicGradient(func, &fbody));
   } else {
@@ -456,7 +456,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
 void DumpGraph(StringPiece label, const Graph* g) {
   // TODO(zhifengc): Change Graph to record #nodes.
   VLOG(1) << "Graph " << label << " #nodes " << g->num_nodes() << " #edges "
-          << g->edges().size();
+          << g->num_edges();
   if (VLOG_IS_ON(2)) {
     for (const auto& line : str_util::Split(DebugString(g), '\n')) {
       VLOG(2) << "|| " << line;
@@ -829,12 +829,30 @@ static bool ValidateInlining(const Node* node, const FunctionBody* fbody) {
 // Given a "caller" in "graph", which is a function call of a function
 // to "fbody". Replaces the "caller" with fbody->graph and connects
 // edges properly.
-static void InlineFunctionBody(Graph* g, Node* caller,
+static void InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
+                               Graph* g, Node* caller,
                                const FunctionBody* fbody) {
   if (!ValidateInlining(caller, fbody)) {
     LOG(WARNING) << "Inlining mismatch: " << caller->DebugString() << " vs. "
                  << DebugString(fbody->graph);
     return;
+  }
+
+  // Input edges. For data edges coming into "caller", we first compute the
+  // <src>:<src_output> for the i-th input in "inputs".
+  // If "caller" has any input control dependencies, we add a NoOp
+  // node "input_control_node", which depends on "caller"'s control inputs.
+  std::vector<Endpoint> inputs(caller->num_inputs());
+  Node* input_control_node = nullptr;
+  for (const Edge* e : caller->in_edges()) {
+    if (e->IsControlEdge()) {
+      if (input_control_node == nullptr) {
+        input_control_node = AddNoOp(g);
+      }
+      g->AddControlEdge(e->src(), input_control_node);
+    } else {
+      inputs[e->dst_input()] = {e->src(), e->src_output()};
+    }
   }
 
   // Duplicate fbody->graph into 'g'.  First, we copy the nodes of
@@ -850,8 +868,35 @@ static void InlineFunctionBody(Graph* g, Node* caller,
     CHECK(n->IsOp());
     NodeDef ndef = n->def();
     ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
-    node_map[n->id()] = g->AddNode(ndef, &s);
+    Node* clone = g->AddNode(ndef, &s);
     TF_CHECK_OK(s);
+    node_map[n->id()] = clone;
+
+    // If there is an input control node, and one of:
+    // a) the node has no data or control inputs, or
+    // b) the node is a function call or SymbolicGradient,
+    // then add a control edge from the input control node to the clone.
+    //
+    // We must not execute any nodes if the original function call would not
+    // have executed. This is especially critical when the function call is
+    // inside a control-flow construct like tf.cond(). Case (a) ensures that
+    // such nodes do not run.
+    //
+    // The purpose of case (b) is to ensure that instances of case (a) created
+    // by further inlining steps also receive the control dependency.
+    if (input_control_node) {
+      bool has_inputs = false;
+      for (const Edge* e : n->in_edges()) {
+        if (!e->src()->IsSource()) {
+          has_inputs = true;
+          break;
+        }
+      }
+      if (!has_inputs || flib_def.Find(clone->type_string()) != nullptr ||
+          clone->type_string() == "SymbolicGradient") {
+        g->AddControlEdge(input_control_node, clone);
+      }
+    }
   }
   for (const Edge* e : fbody->graph->edges()) {
     if (e->src()->IsSource() || e->src()->IsSink() || e->dst()->IsSource() ||
@@ -865,29 +910,12 @@ static void InlineFunctionBody(Graph* g, Node* caller,
 
   // Connect input edges.
   //
-  // For data edges coming into "caller", we first compute the
-  // <src>:<src_output> for the i-th input in "inputs". We create one
-  // Identity node for each input. Then, we connect inputs[i] to to
-  // the i-th identity node added. The nodes that previously connects
-  // to the j-th output of i-th arg node are reconnected to th i-th
+  // We create one Identity node for each input. Then, we connect inputs[i] to
+  // the i-th identity node added. The nodes that previously connected
+  // to the j-th output of i-th arg node are reconnected to the i-th
   // identity node.
   //
-  // If "caller" has any input control dependencies, we add a NoOp
-  // node "input_control_node". This "input_control_node" depends on
-  // what "caller" depends on, and the added identity nodes depend on
-  // "input_control_node".
-  std::vector<Endpoint> inputs(caller->num_inputs());
-  Node* input_control_node = nullptr;
-  for (const Edge* e : caller->in_edges()) {
-    if (e->IsControlEdge()) {
-      if (input_control_node == nullptr) {
-        input_control_node = AddNoOp(g);
-      }
-      g->AddControlEdge(e->src(), input_control_node);
-    } else {
-      inputs[e->dst_input()] = {e->src(), e->src_output()};
-    }
-  }
+  // The added identity nodes depend on "input_control_node".
   for (std::size_t i = 0; i < fbody->arg_nodes.size(); ++i) {
     Node* arg = node_map[fbody->arg_nodes[i]->id()];
     Node* n = AddIdentity(g, inputs[i]);
@@ -961,13 +989,12 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   for (Node* node : graph->nodes()) {
     VLOG(3) << "Expanding " << node->DebugString();
     bool noinline;
-    if (fld->GetAttr(node->def(), kNoInlineAttr, &noinline).ok() && noinline) {
+    if (fld->GetAttr(*node, kNoInlineAttr, &noinline).ok() && noinline) {
       VLOG(3) << "noinline: " << node->DebugString();
       continue;
     }
     FunctionLibraryRuntime::Handle handle;
-    Status s =
-        lib->Instantiate(node->type_string(), node->def().attr(), &handle);
+    Status s = lib->Instantiate(node->type_string(), node->attrs(), &handle);
     if (!s.ok()) {
       // Either "node" is a primitive op, or the instantiation failed.
       if (errors::IsNotFound(s)) {
@@ -982,7 +1009,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
     candidates.push_back({node, fbody});
   }
   for (const auto& p : candidates) {
-    InlineFunctionBody(graph, p.first, p.second);
+    InlineFunctionBody(*fld, graph, p.first, p.second);
   }
   return !candidates.empty();
 }
@@ -1001,25 +1028,19 @@ string NewName(const Node* n, bool pretty) {
 void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
   // We visit nodes in forward topological sort order, which is a
   // possible execution order of the graph.
-  std::vector<size_t> pending(g->num_node_ids());
-  std::deque<const Node*> ready;
-  for (const Node* n : g->nodes()) {
-    pending[n->id()] = n->in_edges().size();
-    if (pending[n->id()] == 0) ready.push_back(n);
-  }
   gtl::InlinedVector<const Edge*, 4> inputs;
   gdef->Clear();
   gdef->mutable_versions()->CopyFrom(g->versions());
-  while (!ready.empty()) {
-    const Node* n = ready.front();
-    ready.pop_front();
-    for (const Edge* e : n->out_edges()) {
-      const Node* next = e->dst();
-      if (--pending[next->id()] == 0) {
-        ready.push_back(next);
-      }
+
+  std::vector<Node*> start_nodes;
+  for (Node* n : g->nodes()) {
+    if (n->out_edges().empty()) {
+      start_nodes.push_back(n);
     }
-    if (!n->IsOp()) continue;
+  }
+
+  ReverseDFSFrom(*g, start_nodes, nullptr, [gdef, pretty, &inputs](Node* n) {
+    if (!n->IsOp()) return;
     NodeDef* ndef = gdef->add_node();
     ndef->set_name(NewName(n, pretty));
     ndef->set_op(n->type_string());
@@ -1054,7 +1075,7 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
         ndef->add_input(strings::StrCat(srcname, ":", e->src_output()));
       }
     }
-  }
+  });
 }
 
 string DebugString(const Graph* g) {
@@ -1081,7 +1102,7 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
       continue;
     }
     int index;
-    TF_CHECK_OK(GetNodeAttr(n->def(), "index", &index));
+    TF_CHECK_OK(GetNodeAttr(n->attrs(), "index", &index));
     CHECK_LE(0, index);
     CHECK_LT(index, node_vec->size());
     (*node_vec)[index] = n;

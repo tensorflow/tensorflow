@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
 #include "grpc++/support/byte_buffer.h"
 #include "grpc++/support/slice.h"
+#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -27,10 +28,9 @@ namespace tensorflow {
 namespace grpc {
 
 static void do_nothing(void* raw) {}
-static void unref_tensorreference(void* raw) {
-  TensorReference* ref = static_cast<TensorReference*>(raw);
-  ref->Unref();
-  delete ref;
+static void unref_tensorbuffer(void* raw) {
+  TensorBuffer* buf = static_cast<TensorBuffer*>(raw);
+  buf->Unref();
 }
 
 void EncodeRecvTensorResponseToByteBuffer(const RecvTensorResponse& proto,
@@ -166,7 +166,7 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
         (e_skeleton.size() +
          VarLengthEncodingSize(TensorProto::kTensorContentFieldNumber,
                                tdata.size()));
-    string header;  // All of RecvTensorRequest except the tensor() field
+    string header;  // All of RecvTensorResponse except the tensor() field
     response.AppendToString(&header);
 
     size_t expected_size =
@@ -219,8 +219,8 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
 
     if (tensor_data_is_large) {
       // Encode the actual tensor data by pointing to the backing store,
-      // and add a special zero-length slice that is really a TensorReference
-      // object that we will destroy when we are done.
+      // and add a special zero-length slice that is really a TensorBuffer
+      // reference that we will unref when we are done.
       //
       // TODO(jeff): Note that this approach relies on the fact that
       // slices are destroyed in the order in which they are added to
@@ -241,17 +241,15 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
 
       // (E) Encode tensor data, but by sharing backing store
 
-      // TODO(jeff,sanjay): It'd be nice to avoid this TensorReference
-      // allocation, and instead get our hands on the underlying
-      // TensorBuffer object and just directly ref it here and unref
-      // it in unref_tensorreference.
-      TensorReference* ref = new TensorReference(val);
+      const TensorBuffer* buf = DMAHelper::buffer(&val);
+      buf->Ref();
       gpr_slice s1 = gpr_slice_new(
           const_cast<void*>(static_cast<const void*>(tdata.data())),
           tdata.size(), do_nothing);
       slices[1] = ::grpc::Slice(s1, ::grpc::Slice::STEAL_REF);
 
-      gpr_slice s2 = gpr_slice_new(ref, 0, unref_tensorreference);
+      gpr_slice s2 =
+          gpr_slice_new(const_cast<TensorBuffer*>(buf), 0, unref_tensorbuffer);
       slices[2] = ::grpc::Slice(s2, ::grpc::Slice::STEAL_REF);
       num_slices += 2;
     }

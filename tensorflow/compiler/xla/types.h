@@ -18,6 +18,8 @@ limitations under the License.
 
 #include "tensorflow/core/platform/types.h"
 
+#include <Eigen/Core>
+
 namespace xla {
 
 using ::tensorflow::string;
@@ -31,6 +33,8 @@ using ::tensorflow::uint8;
 using ::tensorflow::uint16;
 using ::tensorflow::uint32;
 using ::tensorflow::uint64;
+
+using ::Eigen::half;
 
 }  // namespace xla
 

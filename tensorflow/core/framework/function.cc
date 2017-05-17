@@ -16,11 +16,13 @@ limitations under the License.
 #include "tensorflow/core/framework/function.h"
 
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/function.pb_text.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -43,12 +45,11 @@ namespace {
 // Otherwise (arg_def is a simple type T), *is_type_list is set to
 // false, and *dtypes is set to a single element vector, whose only
 // element is T.
-Status ArgNumType(const InstantiateAttrValueMap& attrs,
-                  const OpDef::ArgDef& arg_def, bool* is_type_list,
-                  DataTypeVector* dtypes) {
+Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
+                  bool* is_type_list, DataTypeVector* dtypes) {
   dtypes->clear();
   if (!arg_def.type_list_attr().empty()) {
-    const AttrValue* v = gtl::FindOrNull(attrs, arg_def.type_list_attr());
+    const AttrValue* v = attrs.Find(arg_def.type_list_attr());
     if (v == nullptr) {
       return errors::NotFound("type attr not found: ",
                               arg_def.type_list_attr());
@@ -63,7 +64,7 @@ Status ArgNumType(const InstantiateAttrValueMap& attrs,
   *is_type_list = false;
   int num = 1;
   if (!arg_def.number_attr().empty()) {
-    const AttrValue* v = gtl::FindOrNull(attrs, arg_def.number_attr());
+    const AttrValue* v = attrs.Find(arg_def.number_attr());
     if (v == nullptr) {
       return errors::NotFound("type attr not found: ", arg_def.type_attr());
     }
@@ -76,7 +77,7 @@ Status ArgNumType(const InstantiateAttrValueMap& attrs,
   } else if (arg_def.type_attr().empty()) {
     dtype = DT_INVALID;
   } else {
-    const AttrValue* v = gtl::FindOrNull(attrs, arg_def.type_attr());
+    const AttrValue* v = attrs.Find(arg_def.type_attr());
     if (v == nullptr) {
       return errors::NotFound("type attr not found: ", arg_def.type_attr());
     }
@@ -91,18 +92,17 @@ void AddAttr(const string& name, const T& val, NodeDef* ndef) {
   SetAttrValue(val, &((*ndef->mutable_attr())[name]));
 }
 
-Status ValidateSignatureWithAttrs(const OpDef& sig,
-                                  const InstantiateAttrValueMap& attr_values) {
+Status ValidateSignatureWithAttrs(const OpDef& sig, AttrSlice attr_values) {
   // attr_values should specify all attrs defined in fdef.
   for (const auto& a : sig.attr()) {
-    auto const iter = attr_values.find(a.name());
-    if (iter == attr_values.end()) {
+    const AttrValue* v = attr_values.Find(a.name());
+    if (!v) {
       return errors::NotFound("Attr ", a.name(), " is not found from ",
                               SummarizeOpDef(sig));
     }
-    Status status = AttrValueHasType(iter->second, a.type());
+    Status status = AttrValueHasType(*v, a.type());
     if (!status.ok()) {
-      errors::AppendToMessage(&status, "for attr '", iter->first, "'");
+      errors::AppendToMessage(&status, "for attr '", a.name(), "'");
       return status;
     }
   }
@@ -145,7 +145,7 @@ class FunctionInstantiationHelper {
 
   // Builds index for nodes that can be used as node's input arguments.
   Status BuildInputArgIndex(const OpDef::ArgDef& arg_def,
-                            const InstantiateAttrValueMap& attr_values) {
+                            AttrSlice attr_values) {
     bool is_type_list;
     DataTypeVector dtypes;
     TF_RETURN_IF_ERROR(
@@ -174,8 +174,7 @@ class FunctionInstantiationHelper {
     return Status::OK();
   }
 
-  Status BuildNodeOutputIndex(const NodeDef& node,
-                              const InstantiateAttrValueMap& attrs,
+  Status BuildNodeOutputIndex(const NodeDef& node, AttrSlice attrs,
                               const int arg_index) {
     const OpDef* node_sig = nullptr;
     TF_RETURN_IF_ERROR(get_function_(node.op(), &node_sig));
@@ -205,8 +204,7 @@ class FunctionInstantiationHelper {
     return Status::OK();
   }
 
-  Status InstantiateNode(const NodeDef& fnode,
-                         const InstantiateAttrValueMap& attrs) {
+  Status InstantiateNode(const NodeDef& fnode, AttrSlice attrs) {
     const OpDef* fnode_sig = nullptr;
     TF_CHECK_OK(get_function_(fnode.op(), &fnode_sig));
     NodeDef* gnode = AddNode(fnode.name());
@@ -294,7 +292,7 @@ class FunctionInstantiationHelper {
   }
 
   Status AddReturnNode(
-      const OpDef::ArgDef& ret_def, const InstantiateAttrValueMap& attrs,
+      const OpDef::ArgDef& ret_def, AttrSlice attrs,
       const ::tensorflow::protobuf::Map<string, string>& ret_map,
       int* ret_index) {
     auto ret_iter = ret_map.find(ret_def.name());
@@ -582,14 +580,14 @@ string Print(const GraphDef& gdef) {
   for (size_t i = 0; i < arg.size(); ++i) {
     const NodeDef* n = arg[i];
     if (i > 0) strings::StrAppend(&out, ", ");
-    CHECK_EQ(2, n->attr_size());
+    CHECK_GE(n->attr_size(), 2);
     strings::StrAppend(&out, n->name(), ":", get_type(*n));
   }
   strings::StrAppend(&out, ") -> (");
   for (size_t i = 0; i < ret.size(); ++i) {
     const NodeDef* n = ret[i];
     if (i > 0) strings::StrAppend(&out, ", ");
-    CHECK_EQ(2, n->attr_size());
+    CHECK_LE(2, n->attr_size());
     CHECK_EQ(1, n->input_size());
     strings::StrAppend(&out, n->input(0), ":", get_type(*n));
   }
@@ -601,8 +599,9 @@ string Print(const GraphDef& gdef) {
   return out;
 }
 
-Status AddDefaultAttrs(const string& op, GetFunctionSignature get_function,
-                       InstantiateAttrValueMap* attrs) {
+Status AddDefaultAttrs(const string& op,
+                       const GetFunctionSignature& get_function,
+                       AttrValueMap* attrs) {
   const OpDef* op_def = nullptr;
   TF_RETURN_IF_ERROR(get_function(op, &op_def));
   AttrSlice attr_slice(attrs);
@@ -618,8 +617,7 @@ Status AddDefaultAttrs(const string& op, GetFunctionSignature get_function,
 
 }  // end namespace
 
-Status InstantiateFunction(const FunctionDef& fdef,
-                           const InstantiateAttrValueMap& attr_values,
+Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
   VLOG(3) << "Instantiation Function: " << Print(fdef);
@@ -637,19 +635,17 @@ Status InstantiateFunction(const FunctionDef& fdef,
     }
   }
 
-  auto substitute = [&attr_values](const string& name, AttrValue* val) {
-    auto iter = attr_values.find(name);
-    if (iter == attr_values.end()) {
-      return false;
-    } else {
-      *val = iter->second;
+  auto substitute = [attr_values](StringPiece name, AttrValue* val) {
+    if (const AttrValue* v = attr_values.Find(name)) {
+      *val = *v;
       return true;
     }
+    return false;
   };
 
   // Makes a copy of all attrs in fdef and substitutes placeholders.
   // After this step, every attr is bound to a concrete value.
-  std::vector<InstantiateAttrValueMap> node_attrs;
+  std::vector<AttrValueMap> node_attrs;
   node_attrs.resize(fdef.node_def_size());
   for (int i = 0; i < fdef.node_def_size(); ++i) {
     for (auto attr : fdef.node_def(i).attr()) {
@@ -666,7 +662,7 @@ Status InstantiateFunction(const FunctionDef& fdef,
   }
 
   for (int i = 0; i < fdef.node_def_size(); ++i) {
-    s = helper.BuildNodeOutputIndex(fdef.node_def(i), node_attrs[i],
+    s = helper.BuildNodeOutputIndex(fdef.node_def(i), AttrSlice(&node_attrs[i]),
                                     result->gdef.node_size() + i);
     if (!s.ok()) {
       errors::AppendToMessage(&s, "In ", SummarizeNodeDef(fdef.node_def(i)));
@@ -675,7 +671,7 @@ Status InstantiateFunction(const FunctionDef& fdef,
   }
   // Emits one gdef.node for each fdef.node_def.
   for (int i = 0; i < fdef.node_def_size(); ++i) {
-    s = helper.InstantiateNode(fdef.node_def(i), node_attrs[i]);
+    s = helper.InstantiateNode(fdef.node_def(i), AttrSlice(&node_attrs[i]));
     if (!s.ok()) {
       errors::AppendToMessage(&s, "In ", SummarizeNodeDef(fdef.node_def(i)));
       return s;
@@ -746,8 +742,7 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   return true;
 }
 
-string Canonicalize(const string& funcname,
-                    const InstantiateAttrValueMap& attrs) {
+string Canonicalize(const string& funcname, AttrSlice attrs) {
   std::vector<string> entries;
   entries.reserve(attrs.size());
   for (auto p : attrs) {
@@ -882,6 +877,12 @@ Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
                                    fdef.signature().name(),
                                    " already exists in function library.");
   }
+  const OpDef* op_def;
+  if (default_registry_->LookUpOpDef(fdef.signature().name(), &op_def).ok()) {
+    return errors::InvalidArgument(
+        "Cannot add function '", fdef.signature().name(),
+        "' because an op with the same name already exists.");
+  }
   ptr.reset(new FunctionDefAndOpRegistration(fdef));
   return Status::OK();
 }
@@ -945,8 +946,7 @@ const FunctionDef* FunctionLibraryDefinition::GetAttrImpl(
   // If ndef is SymbolicGradient[f=Foo], we use Foo's gradient or
   // Foo's attributes.
   const NameAttrList* forward_func_attrs;
-  if (!GetNodeAttr(AttrSlice(&ndef.attr()), kFuncAttr, &forward_func_attrs)
-           .ok()) {
+  if (!GetNodeAttr(ndef, kFuncAttr, &forward_func_attrs).ok()) {
     return nullptr;
   }
   const string& func_name = forward_func_attrs->name();
@@ -973,34 +973,30 @@ FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
   return lib;
 }
 
-Status InstantiateFunction(const FunctionDef& fdef,
-                           InstantiateAttrValueSlice attr_values,
-                           GetFunctionSignature get_function,
-                           InstantiationResult* result) {
-  InstantiateAttrValueMap m;
-  for (const auto& aval : attr_values) {
-    m.insert({aval.first, aval.second.proto});
+template <typename T>
+Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
+                                          const string& attr, T* value) const {
+  const FunctionDef* fdef = GetAttrImpl(ndef);
+  if (fdef && GetNodeAttr(AttrSlice(&fdef->attr()), attr, value).ok()) {
+    return Status::OK();
   }
-  return InstantiateFunction(fdef, m, get_function, result);
+  return errors::InvalidArgument("Attr ", attr, " is not defined.");
 }
 
-string Canonicalize(const string& funcname, InstantiateAttrValueSlice attrs) {
-  InstantiateAttrValueMap m;
-  for (const auto& aval : attrs) {
-    m.insert({aval.first, aval.second.proto});
-  }
-  return Canonicalize(funcname, m);
+template <typename T>
+Status FunctionLibraryDefinition::GetAttr(const Node& node, const string& attr,
+                                          T* value) const {
+  return GetAttr(node.def(), attr, value);
 }
 
-Status FunctionLibraryRuntime::Instantiate(const string& function_name,
-                                           InstantiateAttrValueSlice attrs,
-                                           Handle* handle) {
-  InstantiateAttrValueMap m;
-  for (const auto& aval : attrs) {
-    m.insert({aval.first, aval.second.proto});
-  }
-  return Instantiate(function_name, m, handle);
-}
+#define GET_ATTR(T)                                                            \
+  template Status FunctionLibraryDefinition::GetAttr(const Node&,              \
+                                                     const string&, T*) const; \
+  template Status FunctionLibraryDefinition::GetAttr(const NodeDef&,           \
+                                                     const string&, T*) const;
+GET_ATTR(string)
+GET_ATTR(bool)
+#undef GET_ATTR
 
 void FunctionDefHelper::AttrValueWrapper::InitFromString(StringPiece val) {
   if (val.size() >= 2 && val[0] == '$') {
