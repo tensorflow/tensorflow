@@ -106,7 +106,7 @@ AddConstantTensor(poplar::Graph& graph,
       AddConstantTensorTyped<int>(graph, literal, shape, type, tensor);
       break;
     case F16:
-      AddConstantTensorTyped<half>(graph, literal, shape, type, tensor);
+      AddConstantTensorTyped<poplar::IeeeHalf>(graph, literal, shape, type, tensor);
       break;
     case F32:
       AddConstantTensorTyped<float>(graph, literal, shape, type, tensor);
