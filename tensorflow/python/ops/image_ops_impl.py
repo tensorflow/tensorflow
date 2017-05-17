@@ -1313,16 +1313,18 @@ def adjust_saturation(image, saturation_factor, name=None):
 
 
 def decode_image(contents, channels=None, name=None):
-  """Convenience function for `decode_gif`, `decode_jpeg`, and `decode_png`.
+  """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
+  and `decode_png`.
 
-  Detects whether an image is a GIF, JPEG, or PNG, and performs the appropriate
-  operation to convert the input bytes `string` into a `Tensor` of type `uint8`.
+  Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the 
+  appropriate operation to convert the input bytes `string` into a `Tensor` of 
+  type `uint8`.
 
   Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
-  opposed to `decode_jpeg` and `decode_png`, which return 3-D arrays
-  `[height, width, num_channels]`. Make sure to take this into account when
-  constructing your graph if you are intermixing GIF files with JPEG and/or PNG
-  files.
+  opposed to `decode_bmp`, `decode_jpeg` and `decode_png`, which return 3-D
+  arrays `[height, width, num_channels]`. Make sure to take this into account
+  when constructing your graph if you are intermixing GIF files with BMP, JPEG,
+  and/or PNG files.
 
   Args:
     contents: 0-D `string`. The encoded image bytes.
@@ -1332,8 +1334,8 @@ def decode_image(contents, channels=None, name=None):
 
   Returns:
     `Tensor` with type `uint8` with shape `[height, width, num_channels]` for
-      JPEG and PNG images and shape `[num_frames, height, width, 3]` for GIF
-      images.
+      BMP, JPEG, and PNG images and shape `[num_frames, height, width, 3]` for
+      GIF images.
 
   Raises:
     ValueError: On incorrect number of channels.
@@ -1343,12 +1345,21 @@ def decode_image(contents, channels=None, name=None):
       raise ValueError('channels must be in (None, 0, 1, 3, 4)')
     substr = string_ops.substr(contents, 0, 3)
 
-    def _gif():
+    def _bmp():
       """Decodes a GIF image."""
-      # Create assert op to check that bytes are GIF decodable
-      is_gif = math_ops.equal(substr, b'\x47\x49\x46', name='is_gif')
-      decode_msg = 'Unable to decode bytes as JPEG, PNG, or GIF'
-      assert_decode = control_flow_ops.Assert(is_gif, [decode_msg])
+      signature = string_ops.substr(contents, 0, 2)
+      # Create assert op to check that bytes are BMP decodable
+      is_bmp = math_ops.equal(signature, 'BM', name='is_bmp')
+      decode_msg = 'Unable to decode bytes as JPEG, PNG, GIF, or BMP'
+      assert_decode = control_flow_ops.Assert(is_bmp, [decode_msg])
+      bmp_channels = 0 if channels is None else channels
+      good_channels = math_ops.not_equal(bmp_channels, 1, name='check_channels')
+      channels_msg = 'Channels must be in (None, 0, 3) when decoding BMP images'
+      assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
+      with ops.control_dependencies([assert_decode, assert_channels]):
+        return gen_image_ops.decode_bmp(contents)
+
+    def _gif():
       # Create assert to make sure that channels is not set to 1
       # Already checked above that channels is in (None, 0, 1, 3)
 
@@ -1359,8 +1370,13 @@ def decode_image(contents, channels=None, name=None):
       )
       channels_msg = 'Channels must be in (None, 0, 3) when decoding GIF images'
       assert_channels = control_flow_ops.Assert(good_channels, [channels_msg])
-      with ops.control_dependencies([assert_decode, assert_channels]):
+      with ops.control_dependencies([assert_channels]):
         return gen_image_ops.decode_gif(contents)
+
+    def check_gif():
+      # Create assert op to check that bytes are GIF decodable
+      is_gif = math_ops.equal(substr, b'\x47\x49\x46', name='is_gif')
+      return control_flow_ops.cond(is_gif, _gif, _bmp, name='cond_gif')
 
     def _png():
       """Decodes a PNG image."""
@@ -1369,7 +1385,7 @@ def decode_image(contents, channels=None, name=None):
     def check_png():
       """Checks if an image is PNG."""
       is_png = math_ops.equal(substr, b'\211PN', name='is_png')
-      return control_flow_ops.cond(is_png, _png, _gif, name='cond_png')
+      return control_flow_ops.cond(is_png, _png, check_gif, name='cond_png')
 
     def _jpeg():
       """Decodes a jpeg image."""

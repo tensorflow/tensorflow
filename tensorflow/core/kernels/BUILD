@@ -1625,6 +1625,7 @@ cc_library(
         ":attention_ops",
         ":colorspace_op",
         ":crop_and_resize_op",
+        ":decode_bmp_op",
         ":decode_image_op",
         ":draw_bounding_box_op",
         ":encode_jpeg_op",
@@ -1686,6 +1687,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "crop_and_resize_op",
     prefix = "crop_and_resize_op",
+    deps = IMAGE_DEPS,
+)
+
+tf_kernel_library(
+    name = "decode_bmp_op",
+    prefix = "decode_bmp_op",
     deps = IMAGE_DEPS,
 )
 
@@ -4166,6 +4173,7 @@ filegroup(
     srcs = [
         "batchtospace_op.cc",
         "ctc_decoder_ops.cc",
+        "decode_bmp_op.cc",
         "depthtospace_op.cc",
         "dynamic_stitch_op.cc",
         "in_topk_op.cc",
@@ -4227,6 +4235,7 @@ filegroup(
         "transpose_op.cc",
         "warn_about_ints.cc",
         "where_op.cc",
+        "whole_file_read_ops.cc",
         "xent_op.cc",
         ":android_extended_ops_headers",
     ],
@@ -4295,6 +4304,8 @@ filegroup(
             "decode_image_op.*",
             "encode_png_op.*",
             "encode_jpeg_op.*",
+            "decode_jpeg_op.*",
+            "decode_gif_op.*",
             "identity_reader_op.*",
             "remote_fused_graph_execute_op.*",
             "fixed_length_record_reader_op.*",
@@ -4321,6 +4332,12 @@ cc_library(
         "//conditions:default": [],
     }),
     copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:android": [
+            "-ldl",
+        ],
+        "//conditions:default": [],
+    }),
     tags = [
         "manual",
         "notap",

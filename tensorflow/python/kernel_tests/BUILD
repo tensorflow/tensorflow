@@ -215,6 +215,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "decode_bmp_op_test",
+    size = "small",
+    srcs = ["decode_bmp_op_test.py"],
+    additional_deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:image_ops",
+        "//tensorflow/python:nn_grad",
+    ],
+)
+
+tf_py_test(
     name = "decode_image_op_test",
     size = "small",
     srcs = ["decode_image_op_test.py"],

@@ -883,7 +883,6 @@ filegroup(
             "**/*main.cc",
             "debug/**/*",
             "framework/op_gen_*",
-            "framework/reader_base.*",
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
@@ -934,6 +933,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",
+        ":reader_base_proto_cc",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -2874,6 +2874,8 @@ filegroup(
         "lib/gif/testdata/scan.gif",
         # GIF data with optimization
         "lib/gif/testdata/optimized.gif",
+        # BMP data
+        "lib/bmp/testdata/lena.bmp",
     ],
     visibility = ["//visibility:public"],
 )
