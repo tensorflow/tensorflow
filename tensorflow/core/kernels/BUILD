@@ -1887,6 +1887,7 @@ cc_library(
     deps = [
         ":fixed_length_record_reader_op",
         ":identity_reader_op",
+        ":lmdb_reader_op",
         ":matching_files_op",
         ":reader_ops",
         ":restore_op",
@@ -1919,6 +1920,14 @@ tf_kernel_library(
     name = "identity_reader_op",
     prefix = "identity_reader_op",
     deps = IO_DEPS,
+)
+
+tf_kernel_library(
+    name = "lmdb_reader_op",
+    prefix = "lmdb_reader_op",
+    deps = IO_DEPS + [
+        "@lmdb//:lmdb",
+    ],
 )
 
 tf_kernel_library(
@@ -4286,6 +4295,7 @@ filegroup(
             # not used on Android. Those ops also do not compile if included,
             # unless we add the additional deps they need.
             "tf_record_reader_op.*",
+            "lmdb_reader_op.*",
             "string_to_hash_bucket_op.*",
             "sdca_ops.*",
             "sdca_internal.*",

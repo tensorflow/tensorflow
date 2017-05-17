@@ -858,5 +858,30 @@ class AsyncReaderTest(test.TestCase):
     output.append(sess.run(args))
 
 
+class LMDBReaderTest(test.TestCase):
+
+  def setUp(self):
+    super(LMDBReaderTest, self).setUp()
+
+  def testReadSimpleKV(self):
+    with self.test_session() as sess:
+      reader = io_ops.LMDBReader(name="test_reader")
+      path = os.path.join("tensorflow", "core", "lib", "lmdb", "testdata",
+                          "simplekv.mdb")
+      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+      key, value = reader.read(queue)
+
+      queue.enqueue([path]).run()
+      queue.close().run()
+      for i in range(10):
+        k, v = sess.run([key, value])
+        self.assertEqual(k, str(i))
+        self.assertEqual(v, str(chr(ord('a') + i)))
+
+      with self.assertRaisesOpError("is closed and has insufficient elements "
+                                    "\\(requested 1, current size 0\\)"):
+        k, v = sess.run([key, value])
+
+
 if __name__ == "__main__":
   test.main()

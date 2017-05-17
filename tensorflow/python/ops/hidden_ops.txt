@@ -191,6 +191,7 @@ WholeFileReader
 TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
+LMDBReader
 
 # linalg_ops
 BatchCholesky

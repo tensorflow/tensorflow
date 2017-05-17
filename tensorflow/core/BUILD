@@ -2855,6 +2855,19 @@ filegroup(
 )
 
 filegroup(
+    name = "lmdb_testdata",
+    srcs = [
+        # A simple key-value store:
+        #   0 : 'a'
+        #   1 : 'b'
+        #    ...
+        #   9 : 'j'
+        "lib/lmdb/testdata/simplekv.mdb",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
     name = "example_parser_configuration_testdata",
     srcs = [
         "example/testdata/parse_example_graph_def.pbtxt",

@@ -437,6 +437,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
                            'WholeFileReader', 'TextLineReader',
                            'FixedLengthRecordReader',
                            'TFRecordReader', 'IdentityReader',
+                           'LMDBReader',
                            'RefSwitch', 'RefEnter', 'RefNextIteration',
                            'RefMerge', 'RefIdentity']:
               pass
