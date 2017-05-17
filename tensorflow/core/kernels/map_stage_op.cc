@@ -97,9 +97,9 @@ public:
 private:
   // Private variables
   DataTypeVector dtypes_ GUARDED_BY(mu_);
-  int capacity_ GUARDED_BY(mu_);
-  int memory_limit_ GUARDED_BY(mu_);
-  int current_bytes_ GUARDED_BY(mu_);
+  std::size_t capacity_ GUARDED_BY(mu_);
+  std::size_t memory_limit_ GUARDED_BY(mu_);
+  std::size_t current_bytes_ GUARDED_BY(mu_);
   mutex mu_;
   condition_variable not_empty_;
   condition_variable full_;
@@ -134,23 +134,23 @@ private:
   inline bool has_memory_limit()
     { return memory_limit_ > 0; }
 
-  inline bool would_exceed_memory_limit(int bytes)
+  inline bool would_exceed_memory_limit(std::size_t bytes)
     { return bytes + current_bytes_ > memory_limit_; }
 
   inline bool is_capacity_full()
     { return map_.size() >= capacity_; }
 
   // Get number of bytes in the tuple
-  inline int get_tuple_bytes(const Tuple & tuple)
+  inline std::size_t get_tuple_bytes(const Tuple & tuple)
   {
-    return std::accumulate(tuple.begin(), tuple.end(), int(0),
-      [](const int & lhs, const Tensor & rhs) {
+    return std::accumulate(tuple.begin(), tuple.end(), 0,
+      [](const std::size_t & lhs, const Tensor & rhs) {
         return lhs + rhs.TotalBytes();
     });
   }
 
   // Check that the index is within bounds
-  inline Status check_index(const Tensor & key, int index)
+  inline Status check_index(const Tensor & key, std::size_t index)
   {
     if(index >= dtypes_.size())
     {
@@ -166,7 +166,7 @@ private:
   // Check that the optional value at the specified index
   // is uninitialized
   inline Status check_index_uninitialized(const Tensor & key,
-                                  int index,
+                                  std::size_t index,
                                   const IncompleteTuple & tuple)
   {
     if(tuple[index].has_value())
@@ -184,7 +184,7 @@ private:
   {
     auto findices = indices.flat<int>();
 
-    for(int i = 0; i < findices.dimension(0)-1; ++i)
+    for(std::size_t i = 0; i < findices.dimension(0)-1; ++i)
     {
       if(findices(i) < findices(i+1))
         { continue; }
@@ -197,7 +197,7 @@ private:
   }
 
   // Check bytes are within memory limits memory limits
-  inline Status check_memory_limit(int bytes)
+  inline Status check_memory_limit(std::size_t bytes)
   {
     if(has_memory_limit() && bytes > memory_limit_) {
       return Status(errors::ResourceExhausted("Attempted to insert "
@@ -220,7 +220,7 @@ private:
     auto it = incomplete_.find(key);
 
     // Check that the tuple fits within the memory limit
-    int tuple_bytes = get_tuple_bytes(*tuple);
+    std::size_t tuple_bytes = get_tuple_bytes(*tuple);
     TF_RETURN_IF_ERROR(check_memory_limit(tuple_bytes));
 
     if(has_memory_limit())
@@ -238,9 +238,9 @@ private:
       IncompleteTuple empty(dtypes_.size());
 
       // Initialise empty tuple with given dta
-      for(int i = 0; i < findices.dimension(0); ++i)
+      for(std::size_t i = 0; i < findices.dimension(0); ++i)
       {
-        int index = findices(i);
+        std::size_t index = findices(i);
         TF_RETURN_IF_ERROR(check_index(key, index));
 
         // Assign tuple at this index
@@ -262,9 +262,9 @@ private:
       IncompleteTuple & present = it->second;
 
       // Assign given data
-      for(int i = 0; i < findices.dimension(0); ++i)
+      for(std::size_t i = 0; i < findices.dimension(0); ++i)
       {
-        int index = findices(i);
+        std::size_t index = findices(i);
         TF_RETURN_IF_ERROR(check_index(key, index));
         TF_RETURN_IF_ERROR(check_index_uninitialized(key,
                                                     index, present));
@@ -314,7 +314,7 @@ private:
 public:
   // public methods
   explicit StagingMap(const DataTypeVector & dtypes,
-          int capacity, int memory_limit) :
+          std::size_t capacity, std::size_t memory_limit) :
       dtypes_(dtypes),
       capacity_(capacity),
       memory_limit_(memory_limit),
@@ -334,7 +334,7 @@ public:
       return put_incomplete(*key, *indices, tuple, l);
     }
 
-    int tuple_bytes = get_tuple_bytes(*tuple);
+    std::size_t tuple_bytes = get_tuple_bytes(*tuple);
     // Check that tuple_bytes fits within the memory limit
     TF_RETURN_IF_ERROR(check_memory_limit(tuple_bytes));
 
@@ -472,8 +472,8 @@ Status GetStagingMap(OpKernelContext* ctx,
   auto create_fn = [&ndef](StagingMap<Ordered>** ret) -> Status
   {
     DataTypeVector dtypes;
-    int capacity;
-    int memory_limit;
+    int64 capacity;
+    int64 memory_limit;
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "dtypes", &dtypes));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "memory_limit", &memory_limit));
@@ -512,7 +512,7 @@ class MapStageOp : public OpKernel
     Tensor key(*key_tensor);
 
     // Create the tuple to store
-    for (int i = 0; i < values_tensor.size(); ++i) {
+    for (std::size_t i = 0; i < values_tensor.size(); ++i) {
       tuple.push_back(values_tensor[i]);
     }
 

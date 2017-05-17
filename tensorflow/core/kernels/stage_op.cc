@@ -35,9 +35,9 @@ class Buffer : public ResourceBase {
 
  private:
   // private variables
-  int capacity_;
-  int memory_limit_;
-  int current_bytes_;
+  std::size_t capacity_;
+  std::size_t memory_limit_;
+  std::size_t current_bytes_;
   mutex mu_;
   condition_variable non_empty_cond_var_;
   condition_variable full_cond_var_;
@@ -68,21 +68,21 @@ class Buffer : public ResourceBase {
     return buf_.size() >= capacity_;
   }
 
-  bool WouldExceedMemoryLimit(int bytes) {
+  bool WouldExceedMemoryLimit(std::size_t bytes) {
     return bytes + current_bytes_ > memory_limit_;
   }
 
-  int GetTupleBytes(const Tuple & tuple)
+  std::size_t GetTupleBytes(const Tuple & tuple)
   {
-    return std::accumulate(tuple.begin(), tuple.end(), int(0),
-      [](const int & lhs, const Tensor & rhs) {
+    return std::accumulate(tuple.begin(), tuple.end(), 0,
+      [](const std::size_t & lhs, const Tensor & rhs) {
         return lhs + rhs.TotalBytes();
     });
   }
 
  public:
   // public methods
-  explicit Buffer(int capacity, int memory_limit) :
+  explicit Buffer(std::size_t capacity, std::size_t memory_limit) :
       capacity_(capacity),
       memory_limit_(memory_limit),
       current_bytes_(0) {}
@@ -91,7 +91,7 @@ class Buffer : public ResourceBase {
   Status Put(Tuple* tuple) {
     mutex_lock l(mu_);
 
-    int tuple_bytes = GetTupleBytes(*tuple);
+    std::size_t tuple_bytes = GetTupleBytes(*tuple);
 
     // Sanity check so that we don't block for ever below
     if(memory_limit_ > 0 && tuple_bytes > memory_limit_) {
@@ -149,7 +149,7 @@ class Buffer : public ResourceBase {
   }
 
   // Return tuple at index
-  Status Peek(int index, Tuple* tuple) {
+  Status Peek(std::size_t index, Tuple* tuple) {
     mutex_lock l(mu_);
 
     // Wait if the requested index is not available
@@ -193,8 +193,8 @@ Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {
   // Lambda for creating the Staging Area
   auto create_fn = [&ndef](Buffer** ret) -> Status
   {
-    int capacity;
-    int memory_limit;
+    int64 capacity;
+    int64 memory_limit;
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "memory_limit", &memory_limit));
     *ret = new Buffer(capacity, memory_limit);
@@ -219,7 +219,7 @@ class StageOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetBuffer(ctx, def(), &buf));
     core::ScopedUnref scope(buf);
     Buffer::Tuple tuple;
-    for (int i = 0; i < ctx->num_inputs(); ++i) {
+    for (std::size_t i = 0; i < ctx->num_inputs(); ++i) {
       tuple.push_back(ctx->input(i));
     }
     OP_REQUIRES_OK(ctx, buf->Put(&tuple));
@@ -278,7 +278,7 @@ class StagePeekOp : public OpKernel {
     core::ScopedUnref scope(buf);
     Buffer::Tuple tuple;
 
-    int index = ctx->input(0).scalar<int>()();
+    std::size_t index = ctx->input(0).scalar<std::size_t>()();
 
     OP_REQUIRES_OK(ctx, buf->Peek(index, &tuple));
 
