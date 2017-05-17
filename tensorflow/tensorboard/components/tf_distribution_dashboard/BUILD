@@ -59,5 +59,6 @@ tensorboard_ts_library(
     srcs = [],
     deps_mgmt = "off",
     runtime = "nodejs",
-    deps = ["//tensorflow/tensorboard/components:common_deps"],
+    # Don't list the common_deps here; a src-less ts_library re-exports them,
+    # and they are outside the package where the Fileset will be rooted.
 )
