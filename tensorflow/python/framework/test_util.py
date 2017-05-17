@@ -27,9 +27,14 @@ import tempfile
 import threading
 
 import numpy as np
-import portpicker
 import six
 
+try:
+  import portpicker  # pylint: disable=g-import-not-at-top
+except ImportError as _portpicker_import_error:
+  portpicker = None
+
+# pylint: disable=g-import-not-at-top
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
@@ -811,7 +816,12 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
     A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list
     of `num_workers` objects of type `tf.train.Server` (all running locally);
     and `ps_servers` is a list of `num_ps` objects of similar type.
+
+  Raises:
+    ImportError: if portpicker module was not found at load time
   """
+  if not portpicker:
+    raise _portpicker_import_error
   worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
   ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {

@@ -1905,6 +1905,7 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variables",
     ],
+    flaky = 1,  # create_local_cluster sometimes times out.
 )
 
 cuda_py_test(
