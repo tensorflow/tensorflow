@@ -83,7 +83,8 @@ class LMDBReader : public ReaderBase {
         return Status::OK();
       }
     }
-    *key = string(static_cast<const char*>(mdb_key_.mv_data), mdb_key_.mv_size);
+    *key = string(static_cast<const char*>(mdb_key_.mv_data),
+                  mdb_key_.mv_size);
     *value = string(static_cast<const char*>(mdb_value_.mv_data),
                     mdb_value_.mv_size);
     *produced = true;

@@ -2886,7 +2886,7 @@ filegroup(
         #   1 : 'b'
         #    ...
         #   9 : 'j'
-        "lib/lmdb/testdata/simplekv.mdb",
+        "lib/lmdb/testdata/data.mdb",
     ],
     visibility = ["//visibility:public"],
 )

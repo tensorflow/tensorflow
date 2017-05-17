@@ -863,11 +863,11 @@ class LMDBReaderTest(test.TestCase):
   def setUp(self):
     super(LMDBReaderTest, self).setUp()
 
-  def testReadSimpleKV(self):
+  def testReadFromFile(self):
     with self.test_session() as sess:
-      reader = io_ops.LMDBReader(name="test_reader")
+      reader = io_ops.LMDBReader(name="test_read_from_file")
       path = os.path.join("tensorflow", "core", "lib", "lmdb", "testdata",
-                          "simplekv.mdb")
+                          "data.mdb")
       queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
       key, value = reader.read(queue)
 
@@ -878,9 +878,19 @@ class LMDBReaderTest(test.TestCase):
         self.assertEqual(k, str(i))
         self.assertEqual(v, str(chr(ord('a') + i)))
 
-      with self.assertRaisesOpError("is closed and has insufficient elements "
-                                    "\\(requested 1, current size 0\\)"):
+  def testReadFromFolder(self):
+    with self.test_session() as sess:
+      reader = io_ops.LMDBReader(name="test_read_from_folder")
+      path = os.path.join("tensorflow", "core", "lib", "lmdb", "testdata")
+      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+      key, value = reader.read(queue)
+
+      queue.enqueue([path]).run()
+      queue.close().run()
+      for i in range(10):
         k, v = sess.run([key, value])
+        self.assertEqual(k, str(i))
+        self.assertEqual(v, str(chr(ord('a') + i)))
 
 
 if __name__ == "__main__":
