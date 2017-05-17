@@ -66,6 +66,7 @@
 * Add `tf.summary.text` for outputting text to TensorBoard.
 * The "run" command of tfdbg's command-line interface now supports filtering of tensors by node name, op type and tensor dtype.
 * `tf.string_to_number` now supports int64 and float64 outputs.
+* `SavedModel CLI` tool available to inspect and execute MetaGraph in SavedModel
 
 ## Thanks to our Contributors
 
