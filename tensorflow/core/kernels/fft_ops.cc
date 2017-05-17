@@ -27,6 +27,10 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#if GOOGLE_CUDA
+#include "tensorflow/core/platform/stream_executor.h"
+#endif
+
 namespace tensorflow {
 
 class FFTBase : public OpKernel {
@@ -91,19 +95,6 @@ class FFTBase : public OpKernel {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template <typename Device, typename TInput, typename TOutput,
-          int FFTResultType, int FFTDir, int FFTRank>
-struct FFTFunctor {
-  void operator()(const Device& d,
-                  typename TTypes<TOutput, FFTRank + 1>::Tensor output,
-                  typename TTypes<TInput, FFTRank + 1>::Tensor input) {
-    // Create the axes (which are always trailing).
-    auto axes = Eigen::ArrayXi::LinSpaced(FFTRank, 1, FFTRank);
-    // Evaluate the fft on the specified device.
-    output.device(d) = input.template fft<FFTResultType, FFTDir>(axes);
-  }
-};
-
 template <bool Forward, bool _Real, int FFTRank>
 class FFTCPU : public FFTBase {
  public:
@@ -141,11 +132,11 @@ class FFTCPU : public FFTBase {
         full_fft.device(device) = input.template fft<Eigen::BothParts,
           Eigen::FFT_FORWARD>(axes);
 
-        // Slice away the negative frequency components
+        // Slice away the negative frequency components.
         output.device(device) = full_fft.slice(startIndices, output.dimensions());
       }
       else {
-        // TODO: reconstruct the full fft and take the inverse
+        // TODO: reconstruct the full fft and take the inverse.
         ctx->CtxFailureWithWarning(errors::Unimplemented(
           "IRFFT is not implemented as a CPU kernel"
         ));
@@ -173,7 +164,6 @@ REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU),
                         FFTCPU<true, true, 3>);
 
 #if GOOGLE_CUDA
-#include "tensorflow/core/platform/stream_executor.h"
 
 namespace {
 // TODO(vrv/zhifengc): Refactor AsDeviceMemory() into GPUUtil.
