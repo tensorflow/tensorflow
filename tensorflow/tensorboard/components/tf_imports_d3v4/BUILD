@@ -26,7 +26,7 @@ web_library(
     name = "numericjs",
     srcs = [
         "numericjs.html",
-        "@com_numericjs",
+        "@com_numericjs//:numeric.js",
     ],
     path = "/tf-imports",
 )
@@ -35,7 +35,7 @@ web_library(
     name = "weblas",
     srcs = [
         "weblas.html",
-        "@io_github_waylonflinn_weblas",
+        "@io_github_waylonflinn_weblas//:weblas.js",
     ],
     path = "/tf-imports",
 )
@@ -44,7 +44,7 @@ web_library(
     name = "graphlib",
     srcs = [
         "graphlib.html",
-        "@io_github_cpettitt_graphlib",
+        "@io_github_cpettitt_graphlib//:graphlib.core.js",
     ],
     path = "/tf-imports",
     deps = [":lodash"],
@@ -54,7 +54,7 @@ web_library(
     name = "dagre",
     srcs = [
         "dagre.html",
-        "@io_github_cpettitt_dagre",
+        "@io_github_cpettitt_dagre//:dagre.core.js",
     ],
     path = "/tf-imports",
     deps = [
@@ -67,7 +67,7 @@ web_library(
     name = "d3",
     srcs = [
         "d3.html",
-        "@org_d3js_v4",
+        "@org_d3js_v4//:d3.js",
     ],
     path = "/tf-imports",
 )

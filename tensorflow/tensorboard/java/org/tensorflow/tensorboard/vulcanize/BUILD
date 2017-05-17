@@ -5,6 +5,7 @@ licenses(["notice"])  # Apache 2.0
 java_binary(
     name = "Vulcanize",
     srcs = ["Vulcanize.java"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_google_guava",
         "@com_google_protobuf_java",
