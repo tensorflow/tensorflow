@@ -32,9 +32,9 @@ namespace poplarplugin {
  * that change the shape of the tensor, for instance Reverse
  * or Concatinate.
  */
-class PoplarFullVisitor : public PoplarBaseVisitor {
+class FullVisitor : public BaseVisitor {
 public:
-  PoplarFullVisitor(poplar::Graph* graph, CompilerResources&);
+  FullVisitor(poplar::Graph* graph, CompilerResources&);
 
   Status HandleConcatenate(
           HloInstruction* inst,

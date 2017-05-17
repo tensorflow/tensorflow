@@ -29,9 +29,9 @@ class Tensor;
 namespace xla {
 namespace poplarplugin {
 
-class PoplarCallVisitor : public PoplarFullVisitor {
+class CallVisitor : public FullVisitor {
 public:
-  PoplarCallVisitor(poplar::Graph* graph,
+  CallVisitor(poplar::Graph* graph,
                     CompilerResources& res,
                     const std::vector<poplar::Tensor>& inputs);
 

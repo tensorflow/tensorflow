@@ -60,12 +60,12 @@ namespace sep = ::perftools::gputools::poplarplugin;
 namespace xla {
 namespace poplarplugin {
 
-class PoplarMainVisitor : public PoplarFullVisitor {
+class EntryVisitor : public FullVisitor {
 public:
-  PoplarMainVisitor(poplar::Graph* graph,
+  EntryVisitor(poplar::Graph* graph,
                     CompilerResources& resources,
                     uint64 num_parameters)
-          : PoplarFullVisitor(graph, resources),
+          : FullVisitor(graph, resources),
             all_outputs_are_parameters(false) {}
 
   Status HandleParameter(HloInstruction* inst) {
@@ -165,7 +165,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
   // Visit the graph, building up a poplar equivalent
   HloComputation* entry = hlo_module->entry_computation();
-  PoplarMainVisitor visitor(graph, resources, entry->num_parameters());
+  EntryVisitor visitor(graph, resources, entry->num_parameters());
   try {
     TF_RETURN_IF_ERROR(entry->Accept(&visitor));
   }

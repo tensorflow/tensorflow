@@ -19,10 +19,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
 #define TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
 
+#include "tensorflow/compiler/plugin/poplar/driver/visitor_call.h"
+
 #include <popconv/Convolution.hpp>
 
 namespace xla {
 namespace poplarplugin {
+
+using ComputationMap = std::map<HloInstruction*, CallVisitor>;
 
 struct CompilerResources {
   popconv::PlanningCache convCache;

@@ -33,9 +33,9 @@ struct CompilerResources;
  * Select, Convert, Clamp, Rng, Constant.  All of these have no element
  * to element dependencies.
  */
-class PoplarBaseVisitor : public DfsHloVisitor {
+class BaseVisitor : public DfsHloVisitor {
 public:
-  PoplarBaseVisitor(poplar::Graph* graph, CompilerResources&);
+  BaseVisitor(poplar::Graph* graph, CompilerResources&);
 
   virtual const Shape& GetOutputShape(HloInstruction*) const;
 

@@ -48,11 +48,11 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace poplarplugin {
 
-PoplarFullVisitor::PoplarFullVisitor(poplar::Graph* graph,
-                                     CompilerResources& res)
-        : PoplarBaseVisitor(graph, res) {}
+FullVisitor::FullVisitor(poplar::Graph* graph,
+                         CompilerResources& res)
+        : BaseVisitor(graph, res) {}
 
-Status PoplarFullVisitor::HandleConcatenate(
+Status FullVisitor::HandleConcatenate(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   VLOG(1) << inst->ToString();
@@ -69,7 +69,7 @@ Status PoplarFullVisitor::HandleConcatenate(
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandleDot(
+Status FullVisitor::HandleDot(
         HloInstruction* inst,
         HloInstruction* lhs,
         HloInstruction* rhs) {
@@ -85,7 +85,7 @@ Status PoplarFullVisitor::HandleDot(
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandleConvolution(
+Status FullVisitor::HandleConvolution(
         HloInstruction* inst,
         HloInstruction* lhs,
         HloInstruction* rhs,
@@ -102,12 +102,12 @@ Status PoplarFullVisitor::HandleConvolution(
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
+Status FullVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
   VLOG(1) << inst->ToString();
   return Unimplemented(inst);
 }
 
-Status PoplarFullVisitor::HandleReverse(
+Status FullVisitor::HandleReverse(
         HloInstruction* inst,
         HloInstruction* operand) {
   poplar::Tensor t;
@@ -117,13 +117,13 @@ Status PoplarFullVisitor::HandleReverse(
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandleSort(
+Status FullVisitor::HandleSort(
         HloInstruction* inst,
         HloInstruction* operand) {
   return Unimplemented(inst);
 }
 
-Status PoplarFullVisitor::HandleGetTupleElement(
+Status FullVisitor::HandleGetTupleElement(
         HloInstruction* inst,
         HloInstruction* operand) {
   poplar::Tensor t;
@@ -135,7 +135,7 @@ Status PoplarFullVisitor::HandleGetTupleElement(
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandleReduce(
+Status FullVisitor::HandleReduce(
         HloInstruction* inst,
         HloInstruction* arg,
         HloInstruction* init_value,
@@ -158,7 +158,7 @@ Status PoplarFullVisitor::HandleReduce(
   return Unimplemented(inst);
 }
 
-Status PoplarFullVisitor::HandleBitcast(HloInstruction* inst) {
+Status FullVisitor::HandleBitcast(HloInstruction* inst) {
   if (LayoutUtil::LayoutsInShapesEqual(inst->operand(0)->shape(),
                                        GetOutputShape(inst))) {
     return HandleReshape(inst);
@@ -167,7 +167,7 @@ Status PoplarFullVisitor::HandleBitcast(HloInstruction* inst) {
   }
 }
 
-Status PoplarFullVisitor::HandleBroadcast(HloInstruction* inst) {
+Status FullVisitor::HandleBroadcast(HloInstruction* inst) {
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out,
@@ -179,7 +179,7 @@ Status PoplarFullVisitor::HandleBroadcast(HloInstruction* inst) {
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandleReshape(HloInstruction* inst) {
+Status FullVisitor::HandleReshape(HloInstruction* inst) {
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
   std::vector<size_t> dims(PoplarShapeFromXlaShape(GetOutputShape(inst)));
@@ -188,7 +188,7 @@ Status PoplarFullVisitor::HandleReshape(HloInstruction* inst) {
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandleTranspose(HloInstruction* inst) {
+Status FullVisitor::HandleTranspose(HloInstruction* inst) {
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
   std::vector<unsigned> permutation(
@@ -198,12 +198,11 @@ Status PoplarFullVisitor::HandleTranspose(HloInstruction* inst) {
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandleFusion(HloInstruction* inst) {
+Status FullVisitor::HandleFusion(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarFullVisitor::HandleCall(
-        HloInstruction* inst) {
+Status FullVisitor::HandleCall(HloInstruction* inst) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateCallOp(*graph_,
@@ -215,7 +214,7 @@ Status PoplarFullVisitor::HandleCall(
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandleCustomCall(
+Status FullVisitor::HandleCustomCall(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands,
         tensorflow::StringPiece custom_call_target) {
@@ -223,7 +222,7 @@ Status PoplarFullVisitor::HandleCustomCall(
 
 }
 
-Status PoplarFullVisitor::HandleSlice(
+Status FullVisitor::HandleSlice(
         HloInstruction* inst,
         HloInstruction* operand) {
   poplar::Tensor out;
@@ -237,13 +236,13 @@ Status PoplarFullVisitor::HandleSlice(
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandleDynamicSlice(
+Status FullVisitor::HandleDynamicSlice(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   return Unimplemented(inst);
 }
 
-Status PoplarFullVisitor::HandleDynamicUpdateSlice(
+Status FullVisitor::HandleDynamicUpdateSlice(
         HloInstruction* inst,
         HloInstruction* operand,
         HloInstruction* update,
@@ -251,7 +250,7 @@ Status PoplarFullVisitor::HandleDynamicUpdateSlice(
   return Unimplemented(inst);
 }
 
-Status PoplarFullVisitor::HandleTuple(
+Status FullVisitor::HandleTuple(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   uint64 operand_count(inst->operand_count());
@@ -263,7 +262,7 @@ Status PoplarFullVisitor::HandleTuple(
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandleMap(
+Status FullVisitor::HandleMap(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands,
         HloComputation* function,
@@ -287,7 +286,7 @@ Status PoplarFullVisitor::HandleMap(
                                    " not supported by poplar"));
 }
 
-Status PoplarFullVisitor::HandleReduceWindow(
+Status FullVisitor::HandleReduceWindow(
         HloInstruction* inst,
         HloInstruction* operand,
         const Window& window,
@@ -309,7 +308,7 @@ Status PoplarFullVisitor::HandleReduceWindow(
   return Unimplemented(inst);
 }
 
-Status PoplarFullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
+Status FullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
   bool simple_selection;
   TF_ASSIGN_OR_RETURN(simple_selection,
                       IsComputationSimpleSelection(inst->select()));
@@ -330,7 +329,7 @@ Status PoplarFullVisitor::HandleSelectAndScatter(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarFullVisitor::HandleWhile(HloInstruction* inst) {
+Status FullVisitor::HandleWhile(HloInstruction* inst) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateWhileOp(*graph_,
@@ -342,7 +341,7 @@ Status PoplarFullVisitor::HandleWhile(HloInstruction* inst) {
   return Status::OK();
 }
 
-Status PoplarFullVisitor::HandlePad(HloInstruction* inst) {
+Status FullVisitor::HandlePad(HloInstruction* inst) {
   poplar::Tensor out;
   poplar::Tensor pad;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));

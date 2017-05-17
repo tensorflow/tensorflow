@@ -48,23 +48,23 @@ namespace se = ::perftools::gputools;
 namespace xla {
 namespace poplarplugin {
 
-PoplarBaseVisitor::PoplarBaseVisitor(poplar::Graph* graph,
-                                     CompilerResources& res)
+BaseVisitor::BaseVisitor(poplar::Graph* graph,
+                         CompilerResources& res)
         : graph_(graph),
           resources_(res) {}
 
 const Shape&
-PoplarBaseVisitor::GetOutputShape(HloInstruction* inst) const {
+BaseVisitor::GetOutputShape(HloInstruction* inst) const {
   return inst->shape();
 }
 
-Status PoplarBaseVisitor::Unimplemented(HloInstruction* inst) {
+Status BaseVisitor::Unimplemented(HloInstruction* inst) {
   return port::Status(port::error::UNIMPLEMENTED,
                       port::StrCat(inst->name(),
                                    " not implemented"));
 }
 
-Status PoplarBaseVisitor::HandleElementwiseUnary(
+Status BaseVisitor::HandleElementwiseUnary(
         HloInstruction* inst,
         HloOpcode opcode,
         HloInstruction* operand) {
@@ -79,7 +79,7 @@ Status PoplarBaseVisitor::HandleElementwiseUnary(
   return Status::OK();
 }
 
-Status PoplarBaseVisitor::HandleElementwiseBinary(
+Status BaseVisitor::HandleElementwiseBinary(
         HloInstruction* inst,
         HloOpcode opcode,
         HloInstruction* lhs,
@@ -95,8 +95,9 @@ Status PoplarBaseVisitor::HandleElementwiseBinary(
   return Status::OK();
 }
 
-Status PoplarBaseVisitor::HandleConvert(HloInstruction* inst,
-                                        HloInstruction* operand) {
+Status BaseVisitor::HandleConvert(
+        HloInstruction* inst,
+        HloInstruction* operand) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateCastOp(*graph_,
@@ -108,7 +109,7 @@ Status PoplarBaseVisitor::HandleConvert(HloInstruction* inst,
   return Status::OK();
 }
 
-Status PoplarBaseVisitor::HandleClamp(
+Status BaseVisitor::HandleClamp(
         HloInstruction* inst,
         HloInstruction* min,
         HloInstruction* arg,
@@ -124,7 +125,7 @@ Status PoplarBaseVisitor::HandleClamp(
   return Status::OK();
 }
 
-Status PoplarBaseVisitor::HandleSelect(
+Status BaseVisitor::HandleSelect(
         HloInstruction* inst,
         HloInstruction* pred,
         HloInstruction* on_true,
@@ -140,20 +141,20 @@ Status PoplarBaseVisitor::HandleSelect(
   return Status::OK();
 }
 
-Status PoplarBaseVisitor::HandleConcatenate(
+Status BaseVisitor::HandleConcatenate(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleDot(
+Status BaseVisitor::HandleDot(
         HloInstruction* inst,
         HloInstruction* lhs,
         HloInstruction* rhs) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleConvolution(
+Status BaseVisitor::HandleConvolution(
         HloInstruction* inst,
         HloInstruction* lhs,
         HloInstruction* rhs,
@@ -161,11 +162,11 @@ Status PoplarBaseVisitor::HandleConvolution(
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
+Status BaseVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleRng(
+Status BaseVisitor::HandleRng(
         HloInstruction* inst,
         RandomDistribution distribution) {
   poplar::program::Program prog;
@@ -179,19 +180,19 @@ Status PoplarBaseVisitor::HandleRng(
   return Status::OK();
 }
 
-Status PoplarBaseVisitor::HandleReverse(
+Status BaseVisitor::HandleReverse(
         HloInstruction* inst,
         HloInstruction* operand) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleSort(
+Status BaseVisitor::HandleSort(
         HloInstruction* inst,
         HloInstruction* operand) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleConstant(
+Status BaseVisitor::HandleConstant(
         HloInstruction* inst,
         const Literal& literal) {
   poplar::Tensor t;
@@ -203,13 +204,13 @@ Status PoplarBaseVisitor::HandleConstant(
   return Status::OK();
 }
 
-Status PoplarBaseVisitor::HandleGetTupleElement(
+Status BaseVisitor::HandleGetTupleElement(
         HloInstruction* inst,
         HloInstruction* operand) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleReduce(
+Status BaseVisitor::HandleReduce(
         HloInstruction* inst,
         HloInstruction* arg,
         HloInstruction* init_value,
@@ -218,51 +219,50 @@ Status PoplarBaseVisitor::HandleReduce(
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleBitcast(HloInstruction* inst) {
+Status BaseVisitor::HandleBitcast(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleBroadcast(HloInstruction* inst) {
+Status BaseVisitor::HandleBroadcast(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleReshape(HloInstruction* inst) {
+Status BaseVisitor::HandleReshape(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleTranspose(HloInstruction* inst) {
+Status BaseVisitor::HandleTranspose(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleFusion(HloInstruction* inst) {
+Status BaseVisitor::HandleFusion(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleCall(
-        HloInstruction* inst) {
+Status BaseVisitor::HandleCall(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleCustomCall(
+Status BaseVisitor::HandleCustomCall(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands,
         tensorflow::StringPiece custom_call_target) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleSlice(
+Status BaseVisitor::HandleSlice(
         HloInstruction* inst,
         HloInstruction* operand) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleDynamicSlice(
+Status BaseVisitor::HandleDynamicSlice(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleDynamicUpdateSlice(
+Status BaseVisitor::HandleDynamicUpdateSlice(
         HloInstruction* inst,
         HloInstruction* operand,
         HloInstruction* update,
@@ -270,13 +270,13 @@ Status PoplarBaseVisitor::HandleDynamicUpdateSlice(
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleTuple(
+Status BaseVisitor::HandleTuple(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleMap(
+Status BaseVisitor::HandleMap(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands,
         HloComputation* function,
@@ -284,7 +284,7 @@ Status PoplarBaseVisitor::HandleMap(
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleReduceWindow(
+Status BaseVisitor::HandleReduceWindow(
         HloInstruction* inst,
         HloInstruction* operand,
         const Window& window,
@@ -292,31 +292,31 @@ Status PoplarBaseVisitor::HandleReduceWindow(
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleSelectAndScatter(HloInstruction* inst) {
+Status BaseVisitor::HandleSelectAndScatter(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleWhile(HloInstruction* inst) {
+Status BaseVisitor::HandleWhile(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandlePad(HloInstruction* inst) {
+Status BaseVisitor::HandlePad(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleInfeed(HloInstruction* inst) {
+Status BaseVisitor::HandleInfeed(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleOutfeed(HloInstruction* inst) {
+Status BaseVisitor::HandleOutfeed(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleSend(HloInstruction* inst) {
+Status BaseVisitor::HandleSend(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-Status PoplarBaseVisitor::HandleRecv(HloInstruction* inst) {
+Status BaseVisitor::HandleRecv(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 

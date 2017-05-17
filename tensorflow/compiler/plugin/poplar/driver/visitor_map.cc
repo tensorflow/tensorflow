@@ -34,22 +34,22 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-PoplarMapVisitor::PoplarMapVisitor(poplar::Graph* graph,
-                                   CompilerResources& res,
-                                   const std::vector<poplar::Tensor>& inputs,
-                                   const xla::Shape& shape)
-        : PoplarBaseVisitor(graph, res),
+MapVisitor::MapVisitor(poplar::Graph* graph,
+                       CompilerResources& res,
+                       const std::vector<poplar::Tensor>& inputs,
+                       const xla::Shape& shape)
+        : BaseVisitor(graph, res),
           operands_(std::move(inputs)),
           shape_(shape) {
 }
 
-Status PoplarMapVisitor::HandleParameter(HloInstruction* inst) {
+Status MapVisitor::HandleParameter(HloInstruction* inst) {
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0,
                                      operands_[inst->parameter_number()]));
   return Status::OK();
 }
 
-Status PoplarMapVisitor::FinishVisit(HloInstruction* inst) {
+Status MapVisitor::FinishVisit(HloInstruction* inst) {
   int64 c = 1;
   if (ShapeUtil::IsTuple(inst->shape())) {
     c = ShapeUtil::TupleElementCount(inst->shape());
