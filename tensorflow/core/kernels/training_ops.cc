@@ -411,9 +411,9 @@ class ApplyDelayCompensatedGradientDescentOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* ctx) override {
-    auto locks = MaybeLockMutexesInOrder(ctx, use_exclusive_lock_, {0});
+    auto locks = MaybeLockVariableInputMutexesInOrder(ctx, use_exclusive_lock_, {0, 4});
     Tensor var;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 0, use_exclusive_lock_, &var));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 0, use_exclusive_lock_, &var));
     OP_REQUIRES(
         ctx, var.IsInitialized(),
         errors::FailedPrecondition(
@@ -433,7 +433,7 @@ class ApplyDelayCompensatedGradientDescentOp : public OpKernel {
                 errors::InvalidArgument("lambda is not a scalar: ",
                                         lambda.shape().DebugString()));
     Tensor var_bak;
-    OP_REQUIRES_OK(ctx, GetInputTensor(ctx, 4, use_exclusive_lock_, &var_bak));
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 4, use_exclusive_lock_, &var_bak));
     OP_REQUIRES(
         ctx, var_bak.shape().IsSameSize(var.shape()),
         errors::InvalidArgument("var_bak and var do not have the same shape",
