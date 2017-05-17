@@ -1411,6 +1411,11 @@ tf_cuda_library(
             "framework/**/*.cc",
             "util/**/*.h",
             "util/**/*.cc",
+        ] + [
+            "graph/edgeset.h",
+            "graph/edgeset.cc",
+            "graph/graph.h",
+            "graph/graph.cc",
         ],
         exclude = [
             "**/*test*",
@@ -1551,8 +1556,6 @@ tf_cuda_library(
         "graph/colors.cc",
         "graph/control_flow.cc",
         "graph/costmodel.cc",
-        "graph/edgeset.cc",
-        "graph/graph.cc",
         "graph/graph_constructor.cc",
         "graph/graph_def_builder.cc",
         "graph/graph_partition.cc",
