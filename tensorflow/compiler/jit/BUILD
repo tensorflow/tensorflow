@@ -18,8 +18,17 @@ package(
     default_visibility = [":internal"],
 )
 
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+
+cc_header_only_library(
+    name = "xla_jit_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":jit",
+    ],
+)
 
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
