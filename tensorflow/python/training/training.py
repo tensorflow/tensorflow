@@ -19,11 +19,6 @@ See the @{$python/train} guide.
 
 @@Optimizer
 @@GradientDescentOptimizer
-<<<<<<< HEAD
-@@DelayCompensatedGradientDescentOptimizer
-=======
-@@GradientDescentDCOptimizer
->>>>>>> ac348186c119dd397cd42d18fc4b4d48a70df6ce
 @@AdadeltaOptimizer
 @@AdagradOptimizer
 @@AdagradDAOptimizer
@@ -119,7 +114,6 @@ from tensorflow.python.training.moving_averages import ExponentialMovingAverage
 from tensorflow.python.training.optimizer import Optimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 from tensorflow.python.training.gradient_descent import GradientDescentOptimizer
-from tensorflow.python.training.delay_compensated_gradient_descent import DelayCompensatedGradientDescentOptimizer
 from tensorflow.python.training.proximal_gradient_descent import ProximalGradientDescentOptimizer
 from tensorflow.python.training.sync_replicas_optimizer import SyncReplicasOptimizer
 
