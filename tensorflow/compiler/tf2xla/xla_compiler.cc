@@ -467,6 +467,8 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
 
   result->xla_output_shape.Swap(
       computation_shape.ValueOrDie()->mutable_result());
+  VLOG(2) << "XLA output shape: "
+          << xla::ShapeUtil::HumanString(result->xla_output_shape);
 
   auto num_computation_outputs =
       (xla::ShapeUtil::IsTuple(result->xla_output_shape))
