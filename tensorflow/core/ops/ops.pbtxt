@@ -2553,6 +2553,36 @@ op {
   }
 }
 op {
+  name: "BatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "batch_size"
+    description: "A scalar representing the number of elements to accumulate in a\nbatch."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that batches `batch_size` elements from `input_dataset`."
+  is_stateful: true
+}
+op {
   name: "BatchFFT"
   input_arg {
     name: "input"
@@ -5792,6 +5822,42 @@ op {
   description: "See SetOperationOp::SetOperationFromContext for values of `set_operation`.\n\nOutput `result` is a `SparseTensor` represented by `result_indices`,\n`result_values`, and `result_shape`. For `set1` and `set2` ranked `n`, this\nhas rank `n` and the same 1st `n-1` dimensions as `set1` and `set2`. The `nth`\ndimension contains the result of `set_operation` applied to the corresponding\n`[0...n-1]` dimension of `set`."
 }
 op {
+  name: "DenseToSparseBatchDataset"
+  input_arg {
+    name: "input_dataset"
+    description: "A handle to an input dataset. Must have a single component."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "batch_size"
+    description: "A scalar representing the number of elements to accumulate in a\nbatch."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "row_shape"
+    description: "A vector representing the dense shape of each row in the produced\nSparseTensor."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that yields a SparseTensor for each element of the input."
+  is_stateful: true
+}
+op {
   name: "DenseToSparseSetOperation"
   input_arg {
     name: "set1"
@@ -7613,6 +7679,76 @@ op {
   description: "This operation creates a tensor of shape `dims` and fills it with `value`.\n\nFor example:\n\n```\n# Output tensor has shape [2, 3].\nfill([2, 3], 9) ==> [[9, 9, 9]\n                     [9, 9, 9]]\n```"
 }
 op {
+  name: "FilterDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "other_arguments"
+    description: "A list of tensors, typically values that were captured when\nbuilding a closure for `predicate`."
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "predicate"
+    type: "func"
+    description: "A function returning a scalar boolean."
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset containing elements of `input_dataset` matching `predicate`."
+  description: "The `predicate` function must return a scalar boolean and accept the\nfollowing arguments:\n\n* One tensor for each component of an element of `input_dataset`.\n* One tensor for each value in `other_arguments`."
+  is_stateful: true
+}
+op {
+  name: "FixedLengthRecordDataset"
+  input_arg {
+    name: "filenames"
+    description: "A scalar or a vector containing the name(s) of the file(s) to be\nread."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "header_bytes"
+    description: "A scalar representing the number of bytes to skip at the\nbeginning of a file."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "record_bytes"
+    description: "A scalar representing the number of bytes in each record."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "footer_bytes"
+    description: "A scalar representing the number of bytes to skip at the end\nof a file."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  summary: "Creates a dataset that emits the records from one or more binary files."
+  is_stateful: true
+}
+op {
   name: "FixedLengthRecordReader"
   output_arg {
     name: "reader_handle"
@@ -7841,6 +7977,46 @@ op {
   }
   summary: "Generates labels for candidate sampling with a learned unigram distribution."
   description: "A unigram sampler could use a fixed unigram distribution read from a\nfile or passed in as an in-memory array instead of building up the distribution\nfrom data on the fly. There is also an option to skew the distribution by\napplying a distortion power to the weights.\n\nThe vocabulary file should be in CSV-like format, with the last field\nbeing the weight associated with the word.\n\nFor each batch, this op picks a single set of sampled candidate labels.\n\nThe advantages of sampling candidates per-batch are simplicity and the\npossibility of efficient dense matrix multiplication. The disadvantage is that\nthe sampled candidates must be chosen independently of the context and of the\ntrue labels."
+  is_stateful: true
+}
+op {
+  name: "FlatMapDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "f"
+    type: "func"
+    description: "A function mapping elements of `input_dataset`, concatenated with\n`other_arguments`, to a Dataset resource that contains elements matching\n`output_types` and `output_shapes`."
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+  description: "Unlike MapDataset, the `f` in FlatMapDataset is expected to return a\nDataset resource, and FlatMapDataset will flatten successive results\ninto a single Dataset."
   is_stateful: true
 }
 op {
@@ -8707,6 +8883,63 @@ op {
   }
   summary: "Returns the truth value of (x >= y) element-wise."
   description: "*NOTE*: `GreaterEqual` supports broadcasting. More about broadcasting\n[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+}
+op {
+  name: "GroupByWindowDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "key_func_other_arguments"
+    type_list_attr: "Tkey_func_other_arguments"
+  }
+  input_arg {
+    name: "reduce_func_other_arguments"
+    type_list_attr: "Treduce_func_other_arguments"
+  }
+  input_arg {
+    name: "window_size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "key_func"
+    type: "func"
+    description: "A function mapping an element of `input_dataset`, concatenated\nwith `key_func_other_arguments` to a scalar value of type DT_INT64."
+  }
+  attr {
+    name: "reduce_func"
+    type: "func"
+  }
+  attr {
+    name: "Tkey_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Treduce_func_other_arguments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that computes a windowed group-by on `input_dataset`."
+  description: "// TODO(mrry): Support non-int64 keys."
+  is_stateful: true
 }
 op {
   name: "HSVToRGB"
@@ -9601,6 +9834,70 @@ op {
   allows_uninitialized_input: true
 }
 op {
+  name: "Iterator"
+  output_arg {
+    name: "handle"
+    description: "A handle to the iterator that can be passed to a \"MakeIterator\"\nor \"IteratorGetNext\" op."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+  }
+  attr {
+    name: "container"
+    type: "string"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "A container for an iterator resource."
+  is_stateful: true
+}
+op {
+  name: "IteratorDispose"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  summary: "Releases any resources used by the given iterator."
+  is_stateful: true
+}
+op {
+  name: "IteratorGetNext"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Gets the next output from the given iterator."
+  is_stateful: true
+}
+op {
   name: "L2Loss"
   input_arg {
     name: "t"
@@ -10479,6 +10776,58 @@ op {
   }
   summary: "Forwards the input to the output."
   description: "This operator represents the loop termination condition used by the\n\"pivot\" switches of a loop."
+}
+op {
+  name: "MakeIterator"
+  input_arg {
+    name: "dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  summary: "Makes a new iterator from the given `dataset` and stores it in `iterator`."
+  description: "This operation may be executed multiple times. Each execution will reset the\niterator in `iterator` to the first element of `dataset`."
+  is_stateful: true
+}
+op {
+  name: "MapDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+  is_stateful: true
 }
 op {
   name: "MatMul"
@@ -12665,6 +13014,48 @@ op {
   description: "The locations represented by indices in `indices` take value `on_value`,\nwhile all other locations take value `off_value`.\n\nIf the input `indices` is rank `N`, the output will have rank `N+1`,\nThe new axis is created at dimension `axis` (default: the new axis is\nappended at the end).\n\nIf `indices` is a scalar the output shape will be a vector of length `depth`.\n\nIf `indices` is a vector of length `features`, the output shape will be:\n```\n  features x depth if axis == -1\n  depth x features if axis == 0\n```\n\nIf `indices` is a matrix (batch) with shape `[batch, features]`,\nthe output shape will be:\n```\n  batch x features x depth if axis == -1\n  batch x depth x features if axis == 1\n  depth x batch x features if axis == 0\n```\n\n\nExamples\n=========\n\nSuppose that\n\n```\n  indices = [0, 2, -1, 1]\n  depth = 3\n  on_value = 5.0\n  off_value = 0.0\n  axis = -1\n```\n\nThen output is `[4 x 3]`:\n\n    ```output =\n      [5.0 0.0 0.0]  // one_hot(0)\n      [0.0 0.0 5.0]  // one_hot(2)\n      [0.0 0.0 0.0]  // one_hot(-1)\n      [0.0 5.0 0.0]  // one_hot(1)\n    ```\n\nSuppose that\n\n```\n  indices = [0, 2, -1, 1]\n  depth = 3\n  on_value = 0.0\n  off_value = 3.0\n  axis = 0\n```\n\nThen output is `[3 x 4]`:\n\n    ```output =\n      [0.0 3.0 3.0 3.0]\n      [3.0 3.0 3.0 0.0]\n      [3.0 3.0 3.0 3.0]\n      [3.0 0.0 3.0 3.0]\n    //  ^                one_hot(0)\n    //      ^            one_hot(2)\n    //          ^        one_hot(-1)\n    //              ^    one_hot(1)\n    ```\nSuppose that\n\n```\n  indices = [[0, 2], [1, -1]]\n  depth = 3\n  on_value = 1.0\n  off_value = 0.0\n  axis = -1\n```\n\nThen output is `[2 x 2 x 3]`:\n\n    ```output =\n      [\n        [1.0, 0.0, 0.0]  // one_hot(0)\n        [0.0, 0.0, 1.0]  // one_hot(2)\n      ][\n        [0.0, 1.0, 0.0]  // one_hot(1)\n        [0.0, 0.0, 0.0]  // one_hot(-1)\n      ]```"
 }
 op {
+  name: "OneShotIterator"
+  output_arg {
+    name: "handle"
+    description: "A handle to the iterator that can be passed to an \"IteratorGetNext\"\nop."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "dataset_factory"
+    type: "func"
+    description: "A function of type `() -> DT_RESOURCE`, where the returned\nDT_RESOURCE is a handle to a dataset."
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Makes a \"one-shot\" iterator that can be iterated only once."
+  description: "A one-shot iterator bundles the logic for defining the dataset and\nthe state of the iterator in a single op, which allows simple input\npipelines to be defined without an additional initialization\n(\"MakeIterator\") step.\n\nOne-shot iterators have the following limitations:\n\n* They do not support parameterization: all logic for creating the underlying\n  dataset must be bundled in the `dataset_factory` function.\n* They are not resettable. Once a one-shot iterator reaches the end of its\n  underlying dataset, subsequent \"IteratorGetNext\" operations on that\n  iterator will always produce an `OutOfRange` error.\n\nFor greater flexibility, use \"Iterator\" and \"MakeIterator\" to define\nan iterator using an arbitrary subgraph, which may capture tensors\n(including fed values) as parameters, and which may be reset multiple\ntimes by rerunning \"MakeIterator\"."
+  is_stateful: true
+}
+op {
   name: "OnesLike"
   input_arg {
     name: "x"
@@ -12759,6 +13150,53 @@ op {
   }
   summary: "Pads a tensor with zeros."
   description: "This operation pads a `input` with zeros according to the `paddings` you\nspecify. `paddings` is an integer tensor with shape `[Dn, 2]`, where n is the\nrank of `input`. For each dimension D of `input`, `paddings[D, 0]` indicates\nhow many zeros to add before the contents of `input` in that dimension, and\n`paddings[D, 1]` indicates how many zeros to add after the contents of `input`\nin that dimension.\n\nThe padded size of each dimension D of the output is:\n\n`paddings(D, 0) + input.dim_size(D) + paddings(D, 1)`\n\nFor example:\n\n```\n# \'t\' is [[1, 1], [2, 2]]\n# \'paddings\' is [[1, 1], [2, 2]]\n# rank of \'t\' is 2\npad(t, paddings) ==> [[0, 0, 0, 0, 0, 0]\n                      [0, 0, 1, 1, 0, 0]\n                      [0, 0, 2, 2, 0, 0]\n                      [0, 0, 0, 0, 0, 0]]\n```"
+}
+op {
+  name: "PaddedBatchDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "batch_size"
+    description: "A scalar representing the number of elements to accumulate in a\nbatch."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "padded_shapes"
+    description: "A list of int64 tensors representing the desired padded shapes\nof the corresponding output components. These shapes may be partially\nspecified, using `-1` to indicate that a particular dimension should be\npadded to the maximum size of all batch elements."
+    type: DT_INT64
+    number_attr: "N"
+  }
+  input_arg {
+    name: "padding_values"
+    description: "A list of scalars containing the padding value to use for\neach of the outputs."
+    type_list_attr: "Toutput_types"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "Toutput_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that batches and pads `batch_size` elements from the input."
+  is_stateful: true
 }
 op {
   name: "PaddingFIFOQueue"
@@ -12895,6 +13333,55 @@ op {
   }
   summary: "Concatenates a list of `N` tensors along the first dimension."
   description: "The input tensors are all required to have size 1 in the first dimension.\n\nFor example:\n\n```\n# \'x\' is [[1, 4]]\n# \'y\' is [[2, 5]]\n# \'z\' is [[3, 6]]\nparallel_concat([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.\n```\n\nThe difference between concat and parallel_concat is that concat requires all\nof the inputs be computed before the operation will begin but doesn\'t require\nthat the input shapes be known during graph construction.  Parallel concat\nwill copy pieces of the input into the output as they become available, in\nsome situations this can provide a performance benefit."
+}
+op {
+  name: "ParallelMapDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "other_arguments"
+    type_list_attr: "Targuments"
+  }
+  input_arg {
+    name: "num_threads"
+    description: "The number of threads to use to process elements from\n`input_dataset`."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "output_buffer_size"
+    description: "The maximum number of output elements to buffer in an\niterator over this dataset."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "f"
+    type: "func"
+  }
+  attr {
+    name: "Targuments"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+  description: "Unlike a \"MapDataset\", which applies `f` sequentially, this dataset uses\nup to `num_threads` threads to process elements from `input_dataset`\nin parallel."
+  is_stateful: true
 }
 op {
   name: "ParameterizedTruncatedNormal"
@@ -16104,6 +16591,42 @@ op {
   description: "This operation creates a sequence of numbers that begins at `start` and\nextends by increments of `delta` up to but not including `limit`.\n\nFor example:\n\n```\n# \'start\' is 3\n# \'limit\' is 18\n# \'delta\' is 3\ntf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]\n```"
 }
 op {
+  name: "RangeDataset"
+  input_arg {
+    name: "start"
+    description: "corresponds to start in python\'s xrange()."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "stop"
+    description: "corresponds to stop in python\'s xrange()."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "step"
+    description: "corresponds to step in python\'s xrange()."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset with a range of values. Corresponds to python\'s xrange."
+  is_stateful: true
+}
+op {
   name: "Rank"
   input_arg {
     name: "input"
@@ -16941,6 +17464,36 @@ op {
     }
   }
   summary: "Computes rectified linear gradients for a Relu operation."
+}
+op {
+  name: "RepeatDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "count"
+    description: "A scalar representing the number of times that `input_dataset` should\nbe repeated. A value of `-1` indicates that it should be repeated infinitely."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that emits the outputs of `input_dataset` `count` times."
+  is_stateful: true
 }
 op {
   name: "RequantizationRange"
@@ -20796,6 +21349,46 @@ op {
   summary: "Generate a glob pattern matching all sharded file names."
 }
 op {
+  name: "ShuffleDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "buffer_size"
+    description: "The number of output elements to buffer in an iterator over\nthis dataset. Compare with the `min_after_dequeue` attr when creating a\n`RandomShuffleQueue`."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed"
+    description: "A scalar seed for the random number generator. If either seed or\nseed2 is set to be non-zero, the random number generator is seeded\nby the given seed.  Otherwise, a random seed is used."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    description: "A second scalar seed to avoid seed collision."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that shuffles elements from `input_dataset` pseudorandomly."
+  is_stateful: true
+}
+op {
   name: "Sigmoid"
   input_arg {
     name: "x"
@@ -20933,6 +21526,36 @@ op {
   }
   summary: "Returns the size of a tensor."
   description: "This operation returns an integer representing the number of elements in\n`input`.\n\nFor example:\n\n```\n# \'t\' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]\nsize(t) ==> 12\n```"
+}
+op {
+  name: "SkipDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "count"
+    description: "A scalar representing the number of elements from the `input_dataset`\nthat should be skipped.  If count is -1, skips everything."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that skips `count` elements from the `input_dataset`."
+  is_stateful: true
 }
 op {
   name: "Skipgram"
@@ -23726,6 +24349,31 @@ op {
   description: "No validity checking is performed on the indices of A.  However, the following\ninput format is recommended for optimal behavior:\n\nif adjoint_a == false:\n  A should be sorted in lexicographically increasing order.  Use SparseReorder\n  if you\'re not sure.\nif adjoint_a == true:\n  A should be sorted in order of increasing dimension 1 (i.e., \"column major\"\n  order instead of \"row major\" order)."
 }
 op {
+  name: "SparseTensorSliceDataset"
+  input_arg {
+    name: "indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    type_attr: "Tvalues"
+  }
+  input_arg {
+    name: "dense_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "Tvalues"
+    type: "type"
+  }
+  summary: "Creates a dataset that splits a SparseTensor into elements row-wise."
+  is_stateful: true
+}
+op {
   name: "SparseToDense"
   input_arg {
     name: "sparse_indices"
@@ -25003,6 +25651,25 @@ op {
   summary: "Computes the gradient function for function f via backpropagation."
 }
 op {
+  name: "TFRecordDataset"
+  input_arg {
+    name: "filenames"
+    description: "A scalar or vector containing the name(s) of the file(s) to be\nread."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "compression_type"
+    description: "A scalar containing either (i) the empty string (no\ncompression), (ii) \"ZLIB\", or (iii) \"GZIP\"."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  summary: "Creates a dataset that emits the records from one or more TFRecord files."
+  is_stateful: true
+}
+op {
   name: "TFRecordReader"
   output_arg {
     name: "reader_handle"
@@ -25067,6 +25734,36 @@ op {
     }
   }
   summary: "A Reader that outputs the records from a TensorFlow Records file."
+  is_stateful: true
+}
+op {
+  name: "TakeDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "count"
+    description: "A scalar representing the number of elements from the `input_dataset`\nthat should be taken. A value of `-1` indicates that all of `input_dataset`\nis taken."
+    type: DT_INT64
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that contains `count` elements from the `input_dataset`."
   is_stateful: true
 }
 op {
@@ -26197,6 +26894,56 @@ op {
   is_stateful: true
 }
 op {
+  name: "TensorDataset"
+  input_arg {
+    name: "components"
+    type_list_attr: "Toutput_types"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "Toutput_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that emits `components` as a tuple of tensors once."
+  is_stateful: true
+}
+op {
+  name: "TensorSliceDataset"
+  input_arg {
+    name: "components"
+    type_list_attr: "Toutput_types"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "Toutput_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that emits each dim-0 slice of `components` once."
+  is_stateful: true
+}
+op {
   name: "TensorSummary"
   input_arg {
     name: "tensor"
@@ -26237,6 +26984,20 @@ op {
     description: "An unused string."
   }
   summary: "Outputs a `Summary` protocol buffer with a tensor."
+}
+op {
+  name: "TextLineDataset"
+  input_arg {
+    name: "filenames"
+    description: "A scalar or a vector containing the name(s) of the file(s) to be\nread."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  summary: "Creates a dataset that emits the lines of one or more text files."
+  is_stateful: true
 }
 op {
   name: "TextLineReader"
@@ -27205,4 +27966,36 @@ op {
   }
   summary: "Compute the Hurwitz zeta function \\\\(\\zeta(x, q)\\\\)."
   description: "The Hurwitz zeta function is defined as:\n\n\n\\\\(\\zeta(x, q) = \\sum_{n=0}^{\\infty} (q + n)^{-x}\\\\)"
+}
+op {
+  name: "ZipDataset"
+  input_arg {
+    name: "input_datasets"
+    type: DT_RESOURCE
+    number_attr: "N"
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that zips together `input_datasets`."
+  is_stateful: true
 }
