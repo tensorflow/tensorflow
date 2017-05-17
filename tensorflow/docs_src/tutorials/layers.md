@@ -341,7 +341,7 @@ pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2)
 ```
 
 Note that convolutional layer #2 takes the output tensor of our first pooling
-layer (`pool1`) as input, and produces the tensor `h_conv2` as output. `conv2`
+layer (`pool1`) as input, and produces the tensor `conv2` as output. `conv2`
 has a shape of <code>[<em>batch_size</em>, 14, 14, 64]</code>, the same width
 and height as `pool1` (due to `padding="same"`), and 64 channels for the 64
 filters applied.
