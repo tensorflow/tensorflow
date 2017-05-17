@@ -16,6 +16,9 @@
 
 @@Dataset
 @@Iterator
+@@TFRecordDataset
+@@FixedLengthRecordDataset
+@@TextLineDataset
 
 @@read_batch_features
 @@rejection_resample
@@ -27,9 +30,12 @@ from __future__ import print_function
 
 # pylint: disable=unused-import
 from tensorflow.contrib.data.python.ops.dataset_ops import Dataset
+from tensorflow.contrib.data.python.ops.dataset_ops import FixedLengthRecordDataset
 from tensorflow.contrib.data.python.ops.dataset_ops import Iterator
 from tensorflow.contrib.data.python.ops.dataset_ops import read_batch_features
 from tensorflow.contrib.data.python.ops.dataset_ops import rejection_resample
+from tensorflow.contrib.data.python.ops.dataset_ops import TextLineDataset
+from tensorflow.contrib.data.python.ops.dataset_ops import TFRecordDataset
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
