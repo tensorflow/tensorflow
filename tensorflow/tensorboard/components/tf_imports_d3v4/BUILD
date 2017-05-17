@@ -9,6 +9,7 @@ web_library(
     name = "lodash",
     srcs = ["lodash.html"],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = ["@com_lodash"],
 )
 
@@ -20,6 +21,7 @@ web_library(
         "@org_threejs//:three.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 web_library(
@@ -29,6 +31,7 @@ web_library(
         "@com_numericjs",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 web_library(
@@ -38,6 +41,7 @@ web_library(
         "@io_github_waylonflinn_weblas",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 web_library(
@@ -47,6 +51,7 @@ web_library(
         "@io_github_cpettitt_graphlib",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = [":lodash"],
 )
 
@@ -57,6 +62,7 @@ web_library(
         "@io_github_cpettitt_dagre",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = [
         ":graphlib",
         ":lodash",
@@ -70,12 +76,14 @@ web_library(
         "@org_d3js_v4",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 web_library(
     name = "plottable",
     srcs = ["plottable.html"],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = [
         ":d3",
         ":plottable_js_css",
@@ -132,6 +140,7 @@ tensorboard_typescript_bundle(
         "@org_definitelytyped_types_d3_timer//:index.d.ts",
         "@org_definitelytyped_types_d3_voronoi//:index.d.ts",
     ]},
+    visibility = ["//visibility:public"],
 )
 
 # It would be nice if Plottable released a .d.ts file for plottable.js like
@@ -413,6 +422,7 @@ tensorboard_typescript_bundle(
             "YAlignment": "Plottable.Components.YAlignment",
         },
     },
+    visibility = ["//visibility:public"],
 )
 
 # Removes the 'declare module' block inside this file, but keeps its content.
