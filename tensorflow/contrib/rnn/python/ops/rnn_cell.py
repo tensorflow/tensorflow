@@ -113,6 +113,16 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
 
   The class uses optional peep-hole connections, and an optional projection
   layer.
+  
+  Layer normalization implementation is based on:
+
+    https://arxiv.org/abs/1607.06450.
+
+  "Layer Normalization"
+  Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
+
+  and is applied before the internal nonlinearities.
+  
   """
 
   def __init__(self, num_units, use_peepholes=False,
@@ -152,6 +162,8 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
         `layer_norm` has been set to `False`, this argument will be ignored.
       norm_shift: float, The layer normalization shift initial value. If
         `layer_norm` has been set to `False`, this argument will be ignored.
+        
+        
     """
     super(CoupledInputForgetGateLSTMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:
@@ -170,8 +182,8 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
     self._activation = activation
     self._reuse = reuse
     self._layer_norm = layer_norm
-    self._g = norm_gain
-    self._b = norm_shift
+    self._norm_gain = norm_gain
+    self._norm_shift = norm_shift
 
     if num_proj:
       self._state_size = (rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
@@ -250,9 +262,9 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
 
     # Apply layer normalization
     if self._layer_norm:
-      j = _norm(self._g, self.b, j, "transform")
-      f = _norm(self._g, self.b, f, "forget")
-      o = _norm(self._g, self.b, o, "output")
+      j = _norm(self._norm_gain, self._norm_shift, j, "transform")
+      f = _norm(self._norm_gain, self._norm_shift, f, "forget")
+      o = _norm(self._norm_gain, self._norm_shift, o, "output")
 
     # Diagonal connections
     if self._use_peepholes:
@@ -269,7 +281,7 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
 
     # Apply layer normalization
     if self._layer_norm:
-      c = _norm(self._g, self.b, c, "state")
+      c = _norm(self._norm_gain, self._norm_shift, c, "state")
 
     if self._use_peepholes:
       m = sigmoid(o + w_o_diag * c) * self._activation(c)
@@ -1336,8 +1348,8 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
     self._keep_prob = dropout_keep_prob
     self._seed = dropout_prob_seed
     self._layer_norm = layer_norm
-    self._g = norm_gain
-    self._b = norm_shift
+    self._norm_gain = norm_gain
+    self._norm_shift = norm_shift
     self._reuse = reuse
 
   @property
@@ -1350,8 +1362,8 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
 
   def _norm(self, inp, scope):
     shape = inp.get_shape()[-1:]
-    gamma_init = init_ops.constant_initializer(self._g)
-    beta_init = init_ops.constant_initializer(self._b)
+    gamma_init = init_ops.constant_initializer(self._norm_gain)
+    beta_init = init_ops.constant_initializer(self._norm_shift)
     with vs.variable_scope(scope):
       # Initialize beta and gamma for use by layer_norm.
       vs.get_variable("gamma", shape=shape, initializer=gamma_init)
