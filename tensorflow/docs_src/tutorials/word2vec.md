@@ -23,7 +23,7 @@ straight in, feel free to look at the minimalistic implementation in
 This basic example contains the code needed to download some data, train on it a
 bit and visualize the result. Once you get comfortable with reading and running
 the basic version, you can graduate to
-[tensorflow_models/tutorials/embedding/word2vec.py](https://github.com/tensorflow/models/tree/master/tutorials/embedding/word2vec.py)
+[models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py)
 which is a more serious implementation that showcases some more advanced
 TensorFlow principles about how to efficiently use threads to move data into a
 text model, how to checkpoint during training, etc.
@@ -108,7 +108,7 @@ $$
 
 where \\(\text{score}(w_t, h)\\) computes the compatibility of word \\(w_t\\)
 with the context \\(h\\) (a dot product is commonly used). We train this model
-by maximizing its [log-likelihood](https://en.wikipedia.org/wiki/Likelihood_function) 
+by maximizing its [log-likelihood](https://en.wikipedia.org/wiki/Likelihood_function)
 on the training set, i.e. by maximizing
 
 $$
@@ -130,7 +130,7 @@ context \\(h\\), *at every training step*.
 
 On the other hand, for feature learning in word2vec we do not need a full
 probabilistic model. The CBOW and skip-gram models are instead trained using a
-binary classification objective ([logistic regression](https://en.wikipedia.org/wiki/Logistic_regression)) 
+binary classification objective ([logistic regression](https://en.wikipedia.org/wiki/Logistic_regression))
 to discriminate the real target words \\(w_t\\) from \\(k\\) imaginary (noise) words \\(\tilde w\\), in the
 same context. We illustrate this below for a CBOW model. For skip-gram the
 direction is simply inverted.
@@ -341,7 +341,7 @@ t-SNE.
 Et voila! As expected, words that are similar end up clustering nearby each
 other. For a more heavyweight implementation of word2vec that showcases more of
 the advanced features of TensorFlow, see the implementation in
-[tensorflow_models/tutorials/embedding/word2vec.py](https://github.com/tensorflow/models/tree/master/tutorials/embedding/word2vec.py).
+[models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
 
 ## Evaluating Embeddings: Analogical Reasoning
 
@@ -357,7 +357,7 @@ Download the dataset for this task from
 
 To see how we do this evaluation, have a look at the `build_eval_graph()` and
 `eval()` functions in
-[tensorflow_models/tutorials/embedding/word2vec.py](https://github.com/tensorflow/models/tree/master/tutorials/embedding/word2vec.py).
+[models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
 
 The choice of hyperparameters can strongly influence the accuracy on this task.
 To achieve state-of-the-art performance on this task requires training over a
@@ -385,13 +385,13 @@ your model is seriously bottlenecked on input data, you may want to implement a
 custom data reader for your problem, as described in
 @{$new_data_formats$New Data Formats}.  For the case of Skip-Gram
 modeling, we've actually already done this for you as an example in
-[tensorflow_models/tutorials/embedding/word2vec.py](https://github.com/tensorflow/models/tree/master/tutorials/embedding/word2vec.py).
+[models/tutorials/embedding/word2vec.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec.py).
 
 If your model is no longer I/O bound but you want still more performance, you
 can take things further by writing your own TensorFlow Ops, as described in
 @{$adding_an_op$Adding a New Op}.  Again we've provided an
 example of this for the Skip-Gram case
-[tensorflow_models/tutorials/embedding/word2vec_optimized.py](https://github.com/tensorflow/models/tree/master/tutorials/embedding/word2vec_optimized.py).
+[models/tutorials/embedding/word2vec_optimized.py](https://www.tensorflow.org/code/tensorflow_models/tutorials/embedding/word2vec_optimized.py).
 Feel free to benchmark these against each other to measure performance
 improvements at each stage.
 

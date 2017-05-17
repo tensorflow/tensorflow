@@ -34,6 +34,7 @@ from tensorflow.python.util import nest
 
 # pylint: disable=protected-access
 _concat = rnn_cell_impl._concat
+_like_rnncell = rnn_cell_impl._like_rnncell
 # pylint: enable=protected-access
 
 
@@ -97,15 +98,6 @@ def _infer_state_dtype(explicit_dtype, state):
     return state.dtype
 
 
-def _on_device(fn, device):
-  """Build the subgraph defined by lambda `fn` on `device` if it's not None."""
-  if device:
-    with ops.device(device):
-      return fn()
-  else:
-    return fn()
-
-
 # pylint: disable=unused-argument
 def _rnn_step(
     time, sequence_length, min_sequence_length, max_sequence_length,
@@ -167,9 +159,8 @@ def _rnn_step(
 
   def _copy_one_through(output, new_output):
     copy_cond = (time >= sequence_length)
-    return _on_device(
-        lambda: array_ops.where(copy_cond, output, new_output),
-        device=new_output.op.device)
+    with ops.colocate_with(new_output):
+      return array_ops.where(copy_cond, output, new_output)
 
   def _copy_some_through(flat_new_output, flat_new_state):
     # Use broadcasting select to determine which values should get
@@ -361,12 +352,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell_fw, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell_fw):
     raise TypeError("cell_fw must be an instance of RNNCell")
-  if not isinstance(cell_bw, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell_bw):
     raise TypeError("cell_bw must be an instance of RNNCell")
-  # pylint: enable=protected-access
 
   with vs.variable_scope(scope or "bidirectional_rnn"):
     # Forward direction
@@ -507,10 +496,8 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     ValueError: If inputs is None or an empty list.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
-  # pylint: enable=protected-access
 
   # By default, time_major==False and inputs are batch-major: shaped
   #   [batch, time, depth]
@@ -921,10 +908,8 @@ def raw_rnn(cell, loop_fn,
       a `callable`.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
-  # pylint: enable=protected-access
   if not callable(loop_fn):
     raise TypeError("loop_fn must be a callable")
 
@@ -1025,9 +1010,8 @@ def raw_rnn(cell, loop_fn,
       def _copy_some_through(current, candidate):
         """Copy some tensors through via array_ops.where."""
         def copy_fn(cur_i, cand_i):
-          return _on_device(
-              lambda: array_ops.where(elements_finished, cur_i, cand_i),
-              device=cand_i.op.device)
+          with ops.colocate_with(cand_i):
+            return array_ops.where(elements_finished, cur_i, cand_i)
         return nest.map_structure(copy_fn, current, candidate)
 
       emit_output = _copy_some_through(zero_emit, emit_output)
