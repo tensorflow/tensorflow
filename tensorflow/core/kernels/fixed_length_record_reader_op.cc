@@ -37,18 +37,13 @@ class FixedLengthRecordReader : public ReaderBase {
         footer_bytes_(footer_bytes),
         hop_bytes_(hop_bytes),
         env_(env),
-        file_pos_limit_(-1),
         record_number_(0) {}
 
   // On success:
   // * buffered_inputstream_ != nullptr,
   // * buffered_inputstream_->Tell() == header_bytes_
-  // * file_pos_limit_ == file size - footer_bytes_
   Status OnWorkStartedLocked() override {
     record_number_ = 0;
-    uint64 file_size = 0;
-    TF_RETURN_IF_ERROR(env_->GetFileSize(current_work(), &file_size));
-    file_pos_limit_ = file_size - footer_bytes_;
 
     lookahead_cache_.clear();
 
@@ -57,6 +52,9 @@ class FixedLengthRecordReader : public ReaderBase {
     buffered_inputstream_.reset(
         new io::BufferedInputStream(file_.get(), kBufferSize));
     TF_RETURN_IF_ERROR(buffered_inputstream_->SkipNBytes(header_bytes_));
+
+    int bytes_to_read = footer_bytes_;
+
     // In case hop_bytes_ is in between 0 and record_bytes_,
     // we will need to hold a cache so that later on we could prefix the cache
     // with the remaining data to read:
@@ -73,9 +71,10 @@ class FixedLengthRecordReader : public ReaderBase {
     // hop_bytes_"
     // before we read the first record.
     if (0 < hop_bytes_ && hop_bytes_ < record_bytes_) {
-      TF_RETURN_IF_ERROR(buffered_inputstream_->ReadNBytes(
-          record_bytes_ - hop_bytes_, &lookahead_cache_));
+      bytes_to_read += record_bytes_ - hop_bytes_;
     }
+    TF_RETURN_IF_ERROR(
+        buffered_inputstream_->ReadNBytes(bytes_to_read, &lookahead_cache_));
     return Status::OK();
   }
 
@@ -107,17 +106,35 @@ class FixedLengthRecordReader : public ReaderBase {
     if (0 < hop_bytes_ && hop_bytes_ < record_bytes_) {
       bytes_to_read = hop_bytes_;
     }
-    if (buffered_inputstream_->Tell() >= file_pos_limit_ ||
-        buffered_inputstream_->Tell() + bytes_to_read > file_pos_limit_) {
+
+    // In case of non-seekable files like compressed file, attempt to read
+    // record, and append record to cached footer, then pop head
+    // of cached footer as the record
+    Status s = buffered_inputstream_->ReadNBytes(bytes_to_read, value);
+    if (!s.ok() && !errors::IsOutOfRange(s)) {
+      return s;
+    }
+
+    // EOF reached
+    if (value->size() == 0) {
       *at_end = true;
       return Status::OK();
     }
-    TF_RETURN_IF_ERROR(buffered_inputstream_->ReadNBytes(bytes_to_read, value));
-    if (0 < hop_bytes_ && hop_bytes_ < record_bytes_) {
-      lookahead_cache_.append(*value, 0, bytes_to_read);
-      *value = lookahead_cache_;
-      lookahead_cache_ = lookahead_cache_.substr(bytes_to_read);
-    }
+
+    // We have the data which is pieced together by
+    // lookahead_cache_ + value(read)
+    lookahead_cache_.append(*value, 0, bytes_to_read);
+
+    // Now the true data will be:
+    // value: the first record_bytes_
+    // hop cache (part of lookahead_cache_): the next chunk starts
+    //    with hop_bytes and ends with record_bytes
+    //    (total = record_bytes_ - hop_bytes_)
+    // footer cache (part of lookahead_cache_): the final chunk of
+    //    size footer_bytes
+    *value = lookahead_cache_.substr(0, record_bytes_);
+    lookahead_cache_ = lookahead_cache_.substr(bytes_to_read);
+
     *key = strings::StrCat(current_work(), ":", record_number_);
     *produced = true;
     ++record_number_;
@@ -130,7 +147,6 @@ class FixedLengthRecordReader : public ReaderBase {
   }
 
   Status ResetLocked() override {
-    file_pos_limit_ = -1;
     record_number_ = 0;
     buffered_inputstream_.reset(nullptr);
     lookahead_cache_.clear();
@@ -147,7 +163,6 @@ class FixedLengthRecordReader : public ReaderBase {
   const int64 hop_bytes_;
   string lookahead_cache_;
   Env* const env_;
-  int64 file_pos_limit_;
   int64 record_number_;
   // must outlive buffered_inputstream_
   std::unique_ptr<RandomAccessFile> file_;
