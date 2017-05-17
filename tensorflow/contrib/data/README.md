@@ -591,7 +591,7 @@ epoch.
 
 If you want to receive a signal at the end of each epoch, you can write a
 training loop that catches the `tf.errors.OutOfRangeError` at the end of a
-dataset. At that point you might collection some statistics (e.g. the validation
+dataset. At that point you might collect some statistics (e.g. the validation
 error) for the epoch.
 
 ```python
