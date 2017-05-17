@@ -304,6 +304,7 @@ py_test(
 py_test(
     name = "embedding_ops_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["python/layers/embedding_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [

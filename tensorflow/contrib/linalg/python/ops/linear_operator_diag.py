@@ -56,7 +56,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   ==> scalar Tensor
 
   x = ... Shape [2, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
@@ -68,13 +68,13 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   # operator.batch_shape = [2, 3].
   y = tf.random_normal(shape=[2, 1, 4, 2])
   x = operator.solve(y)
-  ==> operator.apply(x) = y
+  ==> operator.matmul(x) = y
   ```
 
   #### Shape compatibility
 
   This operator acts on [batch] matrix with compatible shape.
-  `x` is a batch matrix with compatible shape for `apply` and `solve` if
+  `x` is a batch matrix with compatible shape for `matmul` and `solve` if
 
   ```
   operator.shape = [B1,...,Bb] + [N, N],  with b >= 0
@@ -87,7 +87,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   Suppose `operator` is a `LinearOperatorDiag` of shape `[N, N]`,
   and `x.shape = [N, R]`.  Then
 
-  * `operator.apply(x)` involves `N * R` multiplications.
+  * `operator.matmul(x)` involves `N * R` multiplications.
   * `operator.solve(x)` involves `N` divisions and `N * R` multiplications.
   * `operator.determinant()` involves a size `N` `reduce_prod`.
 
@@ -213,7 +213,7 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
             "This diagonal operator contained non-zero imaginary values.  "
             " Thus it was not self-adjoint."))
 
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
     diag_term = math_ops.conj(self._diag) if adjoint else self._diag
     x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     diag_mat = array_ops.expand_dims(diag_term, -1)

@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
+#include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -99,6 +100,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           optimizer->Optimize(cluster, optimized_item, optimized_graph));
     }
   }
+  TopologicalSort(optimized_graph);
   // Copy the graph version.
   *optimized_graph->mutable_versions() = item.graph.versions();
 
