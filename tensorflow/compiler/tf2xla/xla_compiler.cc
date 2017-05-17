@@ -106,7 +106,8 @@ Status XlaCompiler::CompileFunction(
     const XlaCompiler::CompileOptions& options, const NameAttrList& function,
     const std::vector<XlaCompiler::Argument>& args,
     XlaCompiler::CompilationResult* result) {
-  const string function_id = Canonicalize(function.name(), function.attr());
+  const string function_id =
+      Canonicalize(function.name(), AttrSlice(&function.attr()));
   VLOG(1) << "XlaCompiler::CompileFunction " << function_id;
 
   auto it = cache_.find({function_id, args});
@@ -116,8 +117,8 @@ Status XlaCompiler::CompileFunction(
   }
 
   FunctionLibraryRuntime::Handle handle;
-  TF_RETURN_IF_ERROR(
-      flib_runtime_->Instantiate(function.name(), function.attr(), &handle));
+  TF_RETURN_IF_ERROR(flib_runtime_->Instantiate(
+      function.name(), AttrSlice(&function.attr()), &handle));
 
   const FunctionBody* fbody = flib_runtime_->GetFunctionBody(handle);
   CHECK(fbody);
@@ -491,10 +492,10 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
        i < context->retvals().size(); ++i) {
     const XlaContext::HandleOrConstant& retval = context->retvals()[i];
     if (!retval.is_constant) {
-      CHECK_LT(computation_output, num_nonconst_outputs);
+      CHECK_LT(computation_output, num_computation_outputs);
       OutputDescription& output = result->outputs[i];
       output.is_constant = false;
-      if (num_nonconst_outputs > 1) {
+      if (num_computation_outputs > 1) {
         output.shape =
             XLAShapeToTensorShape(xla::ShapeUtil::GetTupleElementShape(
                 result->xla_output_shape, computation_output));

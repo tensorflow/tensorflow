@@ -140,7 +140,7 @@ Status GraphTransferer::LoadGraphFromProto(
     std::vector<DataType> data_types;
     std::vector<TensorShape> shapes;
     status = RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
-        node->def(), &data_types, &shapes);
+        node->attrs(), &data_types, &shapes);
     if (status.ok()) {
       CHECK(data_types.size() > port);
       graph_output_node_info.set_dtype(data_types.at(port));
@@ -359,7 +359,7 @@ void GraphTransferer::RegisterConstantNode(const ShapeRefiner& shape_refiner,
   const_node_info.add_shape(shape_array[2]);
   const_node_info.add_shape(shape_array[3]);
   const TensorProto* proto = nullptr;
-  TF_CHECK_OK(GetNodeAttr(node.def(), "value", &proto));
+  TF_CHECK_OK(GetNodeAttr(node.attrs(), "value", &proto));
   Tensor const_tensor;
   // TODO(b/32704451): Don't just ignore this status!
   MakeTensorFromProto(*proto, &const_tensor).IgnoreError();
@@ -395,8 +395,9 @@ int GraphTransferer::RegisterConstantShape(const std::vector<int>& shape) {
 }
 
 bool GraphTransferer::HasPaddingAndStrides(const Node& node) {
-  return node.def().attr().count(PADDING_ATTR_NAME) > 0 &&
-         node.def().attr().count(STRIDES_ATTR_NAME) > 0;
+  auto attrs = node.attrs();
+  return attrs.Find(PADDING_ATTR_NAME) != nullptr &&
+         attrs.Find(STRIDES_ATTR_NAME) != nullptr;
 }
 
 bool GraphTransferer::IsNodeFlattenReshape(const Node& node,
@@ -423,7 +424,7 @@ bool GraphTransferer::IsNodeFlattenReshape(const Node& node,
   } else {
     std::vector<TensorShape> shapes;
     TF_CHECK_OK(RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
-        node.def(), nullptr, &shapes));
+        node.attrs(), nullptr, &shapes));
 
     // Number of outputs should be 1 for reshape node.
     CHECK_EQ(1, shapes.size());
@@ -444,16 +445,16 @@ void GraphTransferer::RegisterNodeWithPaddingAndStrides(
   CHECK_EQ(node_name_to_id_cache_map_.count(node.name()), 1);
   const int id = node_name_to_id_cache_map_[node.name()];
   shape_inference::InferenceContext* context = shape_refiner.GetContext(&node);
-  CHECK_GT(node.def().attr().count(PADDING_ATTR_NAME), 0);
+  CHECK(node.attrs().Find(PADDING_ATTR_NAME));
   // TODO(satok): Use context->GetAttr(...) instead?
   Padding padding;
   TF_CHECK_OK(context->GetAttr(PADDING_ATTR_NAME, &padding));
-  CHECK_GT(node.def().attr().count(STRIDES_ATTR_NAME), 0);
+  CHECK(node.attrs().Find(STRIDES_ATTR_NAME));
   std::vector<int32> strides;
   TF_CHECK_OK(context->GetAttr(STRIDES_ATTR_NAME, &strides));
   const int stride_id = RegisterConstantShape(strides);
   std::vector<int> extra_inputs{stride_id};
-  if (node.def().attr().count(KSIZE_ATTR_NAME) > 0) {
+  if (node.attrs().Find(KSIZE_ATTR_NAME)) {
     std::vector<int32> kernel_sizes;
     TF_CHECK_OK(context->GetAttr(KSIZE_ATTR_NAME, &kernel_sizes));
     const int ksize_id = RegisterConstantShape(kernel_sizes);
@@ -597,7 +598,7 @@ void GraphTransferer::AppendNodeOutputParams(const ShapeRefiner& shape_refiner,
 
   std::vector<TensorShape> shapes;
   Status status = RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
-      node.def(), nullptr, &shapes);
+      node.attrs(), nullptr, &shapes);
 
   for (int i = 0; i < node.num_outputs(); ++i) {
     int data_size = -1;

@@ -186,7 +186,7 @@ Status XlaLocalLaunchOp::BuildCompilationCache(OpKernelContext* ctx,
 
 void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XlaLocalLaunchOp::Compute "
-          << Canonicalize(function_.name(), function_.attr());
+          << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
   // We store information about the JIT-compiled XLA computation
   // in the ResourceMgr.
   ResourceMgr* rm = ctx->resource_manager();

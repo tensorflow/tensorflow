@@ -51,7 +51,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   ==> scalar Tensor
 
   x = ... Shape [2, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
@@ -62,7 +62,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   #### Shape compatibility
 
   This operator acts on [batch] matrix with compatible shape.
-  `x` is a batch matrix with compatible shape for `apply` and `solve` if
+  `x` is a batch matrix with compatible shape for `matmul` and `solve` if
 
   ```
   operator.shape = [B1,...,Bb] + [M, N],  with b >= 0
@@ -81,7 +81,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   In all cases, suppose `operator` is a `LinearOperatorFullMatrix` of shape
   `[M, N]`, and `x.shape = [N, R]`.  Then
 
-  * `operator.apply(x)` is `O(M * N * R)`.
+  * `operator.matmul(x)` is `O(M * N * R)`.
   * If `M=N`, `operator.solve(x)` is `O(N^3 * R)`.
   * If `M=N`, `operator.determinant()` is `O(N^3)`.
 
@@ -167,7 +167,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   def _shape_tensor(self):
     return array_ops.shape(self._matrix)
 
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
     return math_ops.matmul(
         self._matrix, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 

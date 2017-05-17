@@ -43,6 +43,7 @@ class CudnnRNNTest(TensorFlowTestCase):
                    num_layers,
                    num_units,
                    input_size,
+                   input_mode="linear_input",
                    dropout=0.):
     if rnn_mode == "lstm":
       model = cudnn_rnn_ops.CudnnLSTM(
@@ -187,7 +188,8 @@ class CudnnRNNTest(TensorFlowTestCase):
                               expected, tolerance):
     random_seed.set_random_seed(5678)
     model = self._CreateModel(rnn_mode, num_layers, num_units, input_size,
-                              dropout)
+                              input_mode="auto_select",
+                              dropout=dropout)
     has_input_c = (rnn_mode == "lstm")
     params_size_t = model.params_size()
     input_data = array_ops.ones([seq_length, batch_size, input_size])
@@ -309,7 +311,7 @@ class CudnnRNNTest(TensorFlowTestCase):
     has_input_c = (rnn_mode == "lstm")
     random_seed.set_random_seed(1234)
     model = self._CreateModel(rnn_mode, num_layers, num_units, input_size,
-                              dropout)
+                              dropout=dropout)
     params_size_t = model.params_size()
     input_data = variables.Variable(
         random_ops.random_uniform([seq_length, batch_size, input_size]))

@@ -68,7 +68,8 @@ class SymbolicGradientOp : public AsyncOpKernel {
                       done);
 
     OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_), done);
+        ctx, lib->Instantiate(kGradientOp, AttrSlice(&def().attr()), &handle_),
+        done);
 
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
