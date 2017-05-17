@@ -130,6 +130,7 @@ int MainImpl(int argc, char** argv) {
 
       const string path = output_root + "/" + proto_path_no_suffix + suffix;
       FILE* f = fopen(path.c_str(), "w");
+      if (f == nullptr) return -1;
       if (fwrite(data.c_str(), 1, data.size(), f) != data.size()) {
         return -1;
       }
