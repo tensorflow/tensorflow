@@ -211,16 +211,27 @@ def abs(x, name=None):
   Given a tensor of real numbers `x`, this operation returns a tensor
   containing the absolute value of each element in `x`. For example, if x is
   an input element and y is an output element, this operation computes
-  \\\\(y = |x|\\\\).
+  \\(y = |x|\\).
+
+  Given a tensor `x` of complex numbers, this operation returns a tensor of type
+  `float32` or `float64` that is the absolute value of each element in `x`. All
+  elements in `x` must be complex numbers of the form \\(a + bj\\). The
+  absolute value is computed as \\( \sqrt{a^2 + b^2}\\).  For example:
+  ```
+  # tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
+  tf.complex_abs(x) ==> [5.25594902, 6.60492229]
+  ```
 
   Args:
-    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
-      `int64`.
+    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`,
+      `int64`, `complex64` or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
       values.
+    Note, for `complex64` or `complex128' input, the returned `Tensor` will be
+      of type `float32` or `float64`, respectively.
   """
   with ops.name_scope(name, "Abs", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
