@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb_text.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
-#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/scanner.h"
@@ -37,23 +36,18 @@ namespace tensorflow {
 const char* const kColocationAttrName = "_class";
 const char* const kColocationGroupPrefix = "loc:@";
 
-AttrSlice::AttrSlice() : ndef_(nullptr) {
-  static const AttrValueMap* const kEmptyAttrValueMap = new AttrValueMap;
-  attrs_ = kEmptyAttrValueMap;
-}
-
 AttrSlice::AttrSlice(const NodeDef& node_def)
     : ndef_(&node_def), attrs_(&ndef_->attr()) {}
 
 AttrSlice::AttrSlice(const AttrValueMap* a) : ndef_(nullptr), attrs_(a) {}
 
-static string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device) {
-  string ret;
+string SummarizeNodeDef(const NodeDef& node_def) {
+  string ret = strings::StrCat(node_def.name(), " = ", node_def.op(), "[");
 
   // We sort the attrs so the output is deterministic.
   std::vector<string> attr_names;
-  attr_names.reserve(attrs.size());
-  for (const auto& attr : attrs) {
+  attr_names.reserve(node_def.attr().size());
+  for (const auto& attr : node_def.attr()) {
     attr_names.push_back(attr.first);
   }
   std::sort(attr_names.begin(), attr_names.end());
@@ -61,34 +55,20 @@ static string SummarizeAttrsHelper(AttrSlice attrs, StringPiece device) {
   for (const string& attr_name : attr_names) {
     if (!first) strings::StrAppend(&ret, ", ");
     first = false;
-    strings::StrAppend(&ret, attr_name, "=",
-                       SummarizeAttrValue(*attrs.Find(attr_name)));
+    auto iter = node_def.attr().find(attr_name);
+    strings::StrAppend(&ret, attr_name, "=", SummarizeAttrValue(iter->second));
   }
 
   // Consider the device to be a final attr with name "_device".
-  if (!device.empty()) {
+  if (!node_def.device().empty()) {
     if (!first) strings::StrAppend(&ret, ", ");
     first = false;
-    strings::StrAppend(&ret, "_device=\"", device, "\"");
+    strings::StrAppend(&ret, "_device=\"", node_def.device(), "\"");
   }
-  return ret;
-}
-
-string AttrSlice::SummarizeNode() const {
-  return ndef_ ? SummarizeNodeDef(*ndef_)
-               : strings::StrCat(
-                     "[", SummarizeAttrsHelper(*this, StringPiece()), "]");
-}
-
-string SummarizeNode(const Node& node) { return SummarizeNodeDef(node.def()); }
-
-string SummarizeNodeDef(const NodeDef& node_def) {
-  string ret = strings::StrCat(node_def.name(), " = ", node_def.op(), "[");
-  strings::StrAppend(&ret, SummarizeAttrsHelper(node_def, node_def.device()));
   strings::StrAppend(&ret, "](");
 
   // Output inputs, including control inputs, verbatim.
-  bool first = true;
+  first = true;
   for (const string& input : node_def.input()) {
     if (!first) strings::StrAppend(&ret, ", ");
     first = false;
@@ -129,26 +109,10 @@ Status AttrSlice::Find(StringPiece attr_name,
   // Skip AttachDef for internal attrs since it is a little bit
   // expensive and it is common for them to correctly not be included
   // in a NodeDef.
-  if (!attr_name.starts_with("_") && ndef_ != nullptr) {
+  if (!StringPiece(attr_name).starts_with("_") && ndef_) {
     s = AttachDef(s, *ndef_);
   }
   return s;
-}
-
-bool AttrSlice::EqualAttrs(AttrSlice other, Scratch* scratch) const {
-  if (size() != other.size()) return false;
-
-  for (const auto& attr : *other.attrs_) {
-    auto iter = attrs_->find(attr.first);
-    if (iter == attrs_->end()) return false;
-    // TODO(irving): Comparing AttrValues by proto is slightly buggy, since
-    // TensorProto is a nonunique representation of Tensor.  This bug will go
-    // away once AttrSlice switches over to NodeInfo.
-    iter->second.SerializeToString(&scratch->a);
-    attr.second.SerializeToString(&scratch->b);
-    if (scratch->a != scratch->b) return false;
-  }
-  return true;
 }
 
 // The ... is to allow the caller to inject some value validation code.  Use
@@ -377,14 +341,14 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
     if (StringPiece(input).starts_with("^")) {
       seen_control = true;
       if (input.find(':') != string::npos) {
-        return errors::InvalidArgument(
-            "Control input '", input,
-            "' must not have ':' in NodeDef: ", SummarizeNodeDef(node_def));
+        return errors::InvalidArgument("Control input '", input,
+                                       "' must not have ':' in NodeDef: ",
+                                       SummarizeNodeDef(node_def));
       }
     } else if (seen_control) {
-      return errors::InvalidArgument(
-          "Non-control input '", input,
-          "' after control input in NodeDef: ", SummarizeNodeDef(node_def));
+      return errors::InvalidArgument("Non-control input '", input,
+                                     "' after control input in NodeDef: ",
+                                     SummarizeNodeDef(node_def));
     } else {
       ++num_inputs;
     }
@@ -394,8 +358,8 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
   for (const auto& attr : op_def.attr()) {
     if (!gtl::InsertIfNotPresent(&op_attrs, attr.name(), &attr)) {
       return errors::InvalidArgument("OpDef has duplicate attr name '",
-                                     attr.name(),
-                                     "': ", SummarizeOpDef(op_def));
+                                     attr.name(), "': ",
+                                     SummarizeOpDef(op_def));
     }
   }
   for (const auto& attr : node_def.attr()) {
@@ -419,9 +383,8 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
           "with your GraphDef-generating binary.).");
     }
     TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        ValidateAttrValue(attr.second, *iter->second),
-        "; NodeDef: ", SummarizeNodeDef(node_def), "; ",
-        SummarizeOpDef(op_def));
+        ValidateAttrValue(attr.second, *iter->second), "; NodeDef: ",
+        SummarizeNodeDef(node_def), "; ", SummarizeOpDef(op_def));
     // Keep track of which attr names have (not) been found in the NodeDef.
     op_attrs.erase(iter);
   }
@@ -468,9 +431,9 @@ Status ComputeArgRange(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
   } else if (!arg_def.type_attr().empty() || arg_def.type() != DT_INVALID) {
     *num = 1;
   } else {
-    return errors::InvalidArgument(
-        "Argument '", arg_def.name(),
-        "' incorrectly specified in op definition: ", SummarizeOpDef(op_def));
+    return errors::InvalidArgument("Argument '", arg_def.name(),
+                                   "' incorrectly specified in op definition: ",
+                                   SummarizeOpDef(op_def));
   }
   return Status::OK();
 }
@@ -500,11 +463,6 @@ Status NameRangesForNode(const NodeDef& node_def, const OpDef& op_def,
     return NameRangesHelper(node_def, op_def.output_arg(), op_def, outputs);
   }
   return Status::OK();
-}
-
-Status NameRangesForNode(const Node& node, const OpDef& op_def,
-                         NameRangeMap* inputs, NameRangeMap* outputs) {
-  return NameRangesForNode(node.def(), op_def, inputs, outputs);
 }
 
 void AddDefaultsToNodeDef(const OpDef& op_def, NodeDef* node_def) {
@@ -605,10 +563,6 @@ Status AttachDef(const Status& status, const NodeDef& node_def) {
   errors::AppendToMessage(
       &ret, strings::StrCat(" [[Node: ", SummarizeNodeDef(node_def), "]]"));
   return ret;
-}
-
-Status AttachDef(const Status& status, const Node& node) {
-  return AttachDef(status, node.def());
 }
 
 }  // namespace tensorflow

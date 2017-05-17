@@ -33,6 +33,8 @@ class SingleMachine : public Cluster {
   ~SingleMachine() override;
 
   Status Provision() override;
+  Status Shutdown() override;
+
   Status Initialize(const GrapplerItem& item) override;
   Status Run(const GraphDef& item,
              const std::vector<std::pair<string, Tensor>>& feed,

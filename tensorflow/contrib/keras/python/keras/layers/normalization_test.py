@@ -116,18 +116,20 @@ class NoiseLayersTest(test.TestCase):
     """
     with self.test_session():
       # Test single layer reuse
-      bn = keras.layers.BatchNormalization(input_shape=(10,))
+      bn = keras.layers.BatchNormalization()
       x1 = keras.layers.Input(shape=(10,))
-      bn(x1)
+      _ = bn(x1)
 
       x2 = keras.layers.Input(shape=(10,))
       y2 = bn(x2)
 
       x = np.random.normal(loc=5.0, scale=10.0, size=(2, 10))
       model = keras.models.Model(x2, y2)
-      assert len(model.updates) == 2
+
       model.compile('sgd', 'mse')
       model.train_on_batch(x, x)
+
+      assert len(model.updates) == 2
 
       # Test model-level reuse
       x3 = keras.layers.Input(shape=(10,))

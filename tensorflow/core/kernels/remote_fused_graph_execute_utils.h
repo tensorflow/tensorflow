@@ -103,7 +103,7 @@ class RemoteFusedGraphExecuteUtils {
   static Status AddOutputTensorShapeTypeByTensorShapeMap(
       const TensorShapeMap& tensor_shape_map, NodeDef* node_def);
 
-  static Status GetOutputTensorShapeType(AttrSlice attrs,
+  static Status GetOutputTensorShapeType(const NodeDef& node_def,
                                          std::vector<DataType>* data_types,
                                          std::vector<TensorShape>* shapes);
 

@@ -150,6 +150,7 @@ sh_binary(
             "//tensorflow/contrib/tensor_forest:init_py",
             "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
             "//tensorflow/examples/tutorials/mnist:package",
+            "//tensorflow/python:distributed_framework_test_lib",
             "//tensorflow/python:util_example_parser_configuration",
             "//tensorflow/python/debug:debug_pip",
             "//tensorflow/python/saved_model:saved_model",
