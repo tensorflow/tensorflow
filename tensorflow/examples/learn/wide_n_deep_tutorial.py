@@ -25,7 +25,9 @@ from six.moves import urllib
 
 import pandas as pd
 import tensorflow as tf
-
+from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
+#add log during training
+tf.logging.set_verbosity(tf.logging.INFO)
 
 COLUMNS = ["age", "workclass", "fnlwgt", "education", "education_num",
            "marital_status", "occupation", "relationship", "race", "gender",
@@ -61,7 +63,7 @@ def maybe_download(train_data, test_data):
   return train_file_name, test_file_name
 
 
-def build_estimator(model_dir, model_type):
+def build_estimator(model_dir, model_type,n_classes):
   """Build an estimator."""
   # Sparse base columns.
   gender = tf.contrib.layers.sparse_column_with_keys(column_name="gender",
@@ -125,66 +127,95 @@ def build_estimator(model_dir, model_type):
                                        hidden_units=[100, 50])
   else:
     m = tf.contrib.learn.DNNLinearCombinedClassifier(
+        # common settings
+        n_classes=n_classes,
         model_dir=model_dir,
         linear_feature_columns=wide_columns,
         dnn_feature_columns=deep_columns,
         dnn_hidden_units=[100, 50],
-        fix_global_step_increment_bug=True)
+        fix_global_step_increment_bug=True,
+        config=tf.contrib.learn.RunConfig(save_checkpoints_secs=600,num_cores=1)
+    )
   return m
 
+def read_csv_examples(file_names, batch_size):
+  def parse_fn(record):
+    record_defaults = [tf.constant([''], dtype=tf.string)] * len(COLUMNS)
+    return tf.decode_csv(record, record_defaults, field_delim=",")
+  examples_op = tf.contrib.learn.read_batch_examples(
+    file_names,
+    batch_size=batch_size,
+    queue_capacity=batch_size*2.5,
+    reader=tf.TextLineReader,
+    parse_fn=parse_fn,
+    #read_batch_size= batch_size,
+    #randomize_input=True,
+    num_threads=8
+  )
+  # Important: convert examples to dict for ease of use in `input_fn`
+  # Map each header to its respective column (COLUMNS order
+  # matters!
+  examples_dict_op = {}
+  for i, header in enumerate(COLUMNS):
+      examples_dict_op[header] = examples_op[:, i]
 
-def input_fn(df):
+  return examples_dict_op
+
+def input_fn(file_names, batch_size):
   """Input builder function."""
+  df = read_csv_examples(file_names, batch_size)
   # Creates a dictionary mapping from each continuous feature column name (k) to
   # the values of that column stored in a constant Tensor.
-  continuous_cols = {k: tf.constant(df[k].values) for k in CONTINUOUS_COLUMNS}
+  continuous_cols = {k: tf.string_to_number(df[k],out_type=tf.float32) for k in CONTINUOUS_COLUMNS}
   # Creates a dictionary mapping from each categorical feature column name (k)
   # to the values of that column stored in a tf.SparseTensor.
   categorical_cols = {
       k: tf.SparseTensor(
-          indices=[[i, 0] for i in range(df[k].size)],
-          values=df[k].values,
-          dense_shape=[df[k].size, 1])
+          indices=[[i, 0] for i in range(df[k].get_shape()[0])],
+          values=df[k],
+          dense_shape=[int(df[k].get_shape()[0]), 1])
       for k in CATEGORICAL_COLUMNS}
   # Merges the two dictionaries into one.
   feature_cols = dict(continuous_cols)
   feature_cols.update(categorical_cols)
   # Converts the label column into a constant Tensor.
-  label = tf.constant(df[LABEL_COLUMN].values)
+  df[LABEL_COLUMN] = tf.to_int32(tf.equal(df["income_bracket"]," >50K."))
+  label = df[LABEL_COLUMN]
+  #label = tf.string_to_number(df[LABEL_COLUMN], out_type=tf.int32)
   # Returns the feature columns and the label.
   return feature_cols, label
 
 
-def train_and_eval(model_dir, model_type, train_steps, train_data, test_data):
+def train_and_eval(model_dir, model_type, train_steps, train_data, test_data, n_classes, batch_size):
   """Train and evaluate the model."""
   train_file_name, test_file_name = maybe_download(train_data, test_data)
-  df_train = pd.read_csv(
-      tf.gfile.Open(train_file_name),
-      names=COLUMNS,
-      skipinitialspace=True,
-      engine="python")
-  df_test = pd.read_csv(
-      tf.gfile.Open(test_file_name),
-      names=COLUMNS,
-      skipinitialspace=True,
-      skiprows=1,
-      engine="python")
-
-  # remove NaN elements
-  df_train = df_train.dropna(how='any', axis=0)
-  df_test = df_test.dropna(how='any', axis=0)
-
-  df_train[LABEL_COLUMN] = (
-      df_train["income_bracket"].apply(lambda x: ">50K" in x)).astype(int)
-  df_test[LABEL_COLUMN] = (
-      df_test["income_bracket"].apply(lambda x: ">50K" in x)).astype(int)
 
   model_dir = tempfile.mkdtemp() if not model_dir else model_dir
   print("model directory = %s" % model_dir)
+  #add ValidationMonitor
+  validation_metrics = {
+      "accuracy": MetricSpec(
+                          metric_fn=tf.contrib.metrics.streaming_accuracy,
+                          prediction_key="classes"),
+      "recall": MetricSpec(
+                          metric_fn=tf.contrib.metrics.streaming_recall,
+                          prediction_key="classes"),
+      "precision": MetricSpec(
+                          metric_fn=tf.contrib.metrics.streaming_precision,
+                          prediction_key="classes")
+                        }
+  validation_monitor = tf.contrib.learn.monitors.ValidationMonitor(
+      input_fn=lambda: input_fn([test_file_name], batch_size),
+      eval_steps=16281/batch_size,
+      every_n_steps=50,
+      metrics=validation_metrics,
+      early_stopping_metric="loss",
+      early_stopping_metric_minimize=True,
+      early_stopping_rounds=20000)
 
-  m = build_estimator(model_dir, model_type)
-  m.fit(input_fn=lambda: input_fn(df_train), steps=train_steps)
-  results = m.evaluate(input_fn=lambda: input_fn(df_test), steps=1)
+  m = build_estimator(model_dir, model_type, n_classes)
+  m.fit(input_fn=lambda: input_fn([train_file_name], batch_size), steps=train_steps*32561/batch_size, monitors=[validation_monitor])
+  results = m.evaluate(input_fn=lambda: input_fn([test_file_name], batch_size), steps=16281/batch_size)
   for key in sorted(results):
     print("%s: %s" % (key, results[key]))
 
@@ -194,7 +225,7 @@ FLAGS = None
 
 def main(_):
   train_and_eval(FLAGS.model_dir, FLAGS.model_type, FLAGS.train_steps,
-                 FLAGS.train_data, FLAGS.test_data)
+                 FLAGS.train_data, FLAGS.test_data, FLAGS.n_classes, FLAGS.batch_size)
 
 
 if __name__ == "__main__":
@@ -229,6 +260,18 @@ if __name__ == "__main__":
       type=str,
       default="",
       help="Path to the test data."
+  )
+  parser.add_argument(
+      "--n_classes",
+      type=int,
+      default=2,
+      help="Number of class."
+  )
+  parser.add_argument(
+      "--batch_size",
+      type=int,
+      default=32,
+      help="Number of instance in one batch."
   )
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
