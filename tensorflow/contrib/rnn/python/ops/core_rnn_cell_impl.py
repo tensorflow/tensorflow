@@ -57,8 +57,8 @@ RNNCell = rnn_cell_impl._RNNCell  # pylint: disable=invalid-name
 _like_rnncell = rnn_cell_impl._like_rnncell
 # pylint: enable=protected-access
 
-_BIAS_VARIABLE_NAME = "biases"
-_WEIGHTS_VARIABLE_NAME = "weights"
+_BIAS_VARIABLE_NAME = "bias"
+_WEIGHTS_VARIABLE_NAME = "kernel"
 
 
 class BasicRNNCell(RNNCell):

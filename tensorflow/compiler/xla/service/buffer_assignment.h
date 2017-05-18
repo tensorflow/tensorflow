@@ -309,6 +309,9 @@ class BufferAssignment {
     return liveness_->points_to_analysis();
   }
 
+  // Returns the BufferLiveness object used to construct this assignment.
+  const BufferLiveness& liveness() const { return *liveness_; }
+
   string ToString() const;
 
   // Statistics for the assignment.  Values initialized to -1 are not always
@@ -358,9 +361,6 @@ class BufferAssignment {
   // Returns the HloModule used to construct this assignment.
   const HloModule& module() { return *module_; }
 
-  // Returns the BufferLiveness object used to construct this assignment.
-  const BufferLiveness& liveness() { return *liveness_; }
-
   // Convenience function which returns the PointsToSet for the given
   // instruction. Extracted from the liveness object.
   const PointsToSet& GetPointsToSet(const HloInstruction* instruction) const;
@@ -400,15 +400,19 @@ class BufferAssigner {
   // Build and return a BufferAssignment for the given module. The given
   // HloOrdering is used to determine buffer liveness. buffer_size is a function
   // which returns the size of a LogicalBuffer. Alignment is the the minimum
-  // alignment of any buffer.
+  // alignment of any buffer. allow_input_output_aliasing specifies whether
+  // input buffer are allowed to be reused as outbut buffers by the client code.
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      LogicalBuffer::SizeFunction buffer_size, int64 alignment);
+      LogicalBuffer::SizeFunction buffer_size, int64 alignment,
+      bool allow_input_output_aliasing = false);
 
  private:
-  explicit BufferAssigner(LogicalBuffer::SizeFunction buffer_size,
-                          int64 alignment)
-      : buffer_size_(std::move(buffer_size)), alignment_(alignment) {}
+  BufferAssigner(LogicalBuffer::SizeFunction buffer_size, int64 alignment,
+                 bool allow_input_output_aliasing)
+      : buffer_size_(std::move(buffer_size)),
+        alignment_(alignment),
+        allow_input_output_aliasing_(allow_input_output_aliasing) {}
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
@@ -492,6 +496,10 @@ class BufferAssigner {
 
   // Minimum alignment of any buffer.
   int64 alignment_;
+
+  // If true, buffer assignments assumes that input parameter buffers and output
+  // buffers can be shared if their sizes match.
+  bool allow_input_output_aliasing_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };

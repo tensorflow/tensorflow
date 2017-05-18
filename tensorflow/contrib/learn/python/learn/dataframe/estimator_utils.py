@@ -24,6 +24,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import series as ss
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import parsing_ops
+from tensorflow.python.util.deprecation import deprecated
 
 
 def _to_feature_spec(tensor, default_value=None):
@@ -89,6 +90,7 @@ def _build_alternate_universe(
   return new_feature_series_dict, feature_specs
 
 
+@deprecated("2017-06-15", "contrib/learn/dataframe/** is deprecated.")
 def to_feature_columns_and_input_fn(dataframe,
                                     base_input_keys_with_defaults,
                                     feature_keys,

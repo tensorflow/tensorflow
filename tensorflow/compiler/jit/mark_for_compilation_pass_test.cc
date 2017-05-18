@@ -57,7 +57,7 @@ std::unordered_map<string, string> GetClusters(const Graph& graph) {
   std::unordered_map<string, string> ids;
   for (Node* node : graph.nodes()) {
     string cluster;
-    if (GetNodeAttr(node->def(), kXlaClusterAttr, &cluster).ok()) {
+    if (GetNodeAttr(node->attrs(), kXlaClusterAttr, &cluster).ok()) {
       CHECK(!cluster.empty());
       ids[node->name()] = cluster;
     }

@@ -154,11 +154,6 @@ class TensorboardServerTest(test.TestCase):
     response = self._get('/asdf')
     self.assertEqual(response.status, 404)
 
-  def testDirectoryTraversal(self):
-    """Attempt a directory traversal attack."""
-    response = self._get('/..' * 30 + '/etc/passwd')
-    self.assertEqual(response.status, 400)
-
   def testLogdir(self):
     """Test the format of the data/logdir endpoint."""
     parsed_object = self._getJson('/data/logdir')
