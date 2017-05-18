@@ -182,8 +182,8 @@ py_test(
     srcs = ["python/ops/batch_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "nomac",
         "manual",
+        "nomac",
     ],
     deps = [
         ":batch_py",
