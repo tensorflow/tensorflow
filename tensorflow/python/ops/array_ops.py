@@ -196,6 +196,7 @@ def broadcast_dynamic_shape(shape_x, shape_y):
   Args:
     shape_x: A rank 1 integer `Tensor`, representing the shape of x.
     shape_y: A rank 1 integer `Tensor`, representing the shape of y.
+
   Returns:
     A rank 1 integer `Tensor` representing the broadcasted shape.
   """
