@@ -31,6 +31,13 @@
 * Add `tf.contrib.stateless` for random ops with custom seed control.
 * Add ScaM op to contrib for fast approximate nearest neighbor computation.
 * MultivariateNormalFullCovariance added to contrib/distributions/
+* tensorflow/contrib/rnn undergoes RNN cell variable renaming for
+  consistency with Keras layers. Specifically, the previous variable names
+  "weights" and "biases" are changed to "kernel" and "bias", respectively.
+  This may cause backward incompatibility with regard to your old
+  checkpoints containing such RNN cells, in which case you can use the
+  [checkpoint_convert script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/rnn/python/tools/checkpoint_convert.py)
+  to convert the variable names in your old checkpoints.
 
 ## Bug Fixes and Other Changes
 * In python, `Operation.get_attr` on type attributes returns the Python DType
@@ -101,6 +108,7 @@ ZhipengShen, Ziming Dong, zjj2wry
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
+
 
 # Release 1.1.0
 
