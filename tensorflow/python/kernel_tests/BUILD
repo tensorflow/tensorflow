@@ -1231,6 +1231,7 @@ cuda_py_test(
     name = "division_past_test",
     size = "medium",
     srcs = ["division_past_test.py"],
+    tags = ["manual"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
@@ -2006,6 +2007,7 @@ cuda_py_test(
     name = "atrous_convolution_test",
     size = "medium",
     srcs = ["atrous_convolution_test.py"],
+    tags = ["manual"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
@@ -2096,6 +2098,7 @@ cuda_py_test(
     name = "division_future_test",
     size = "medium",
     srcs = ["division_future_test.py"],
+    tags = ["manual"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
@@ -2359,6 +2362,7 @@ cuda_py_test(
     name = "cwise_ops_test",
     size = "medium",
     srcs = ["cwise_ops_test.py"],
+    tags = ["manual"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",

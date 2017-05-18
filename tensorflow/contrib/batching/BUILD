@@ -181,7 +181,10 @@ py_test(
     size = "small",
     srcs = ["python/ops/batch_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["nomac"],
+    tags = [
+        "nomac",
+        "manual",
+    ],
     deps = [
         ":batch_py",
         "//tensorflow/python:framework_test_lib",

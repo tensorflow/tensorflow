@@ -200,6 +200,7 @@ tf_py_test(
     name = "wals_test",
     size = "medium",
     srcs = ["python/ops/wals_test.py"],
+    tags = ["manual"],
     additional_deps = [
         ":factorization_py",
         ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
