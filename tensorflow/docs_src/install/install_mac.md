@@ -81,35 +81,15 @@ Take the following steps to install TensorFlow with Virtualenv:
 
      <pre> (tensorflow)$ </pre>
 
-  5. If pip version 8.1 or later is installed on your system, issue one of
-     the following commands to install TensorFlow and all the packages that
-     TensorFlow requires into the active Virtualenv environment:
+  5. Ensure pip ≥8.1 is installed:
 
-     <pre> $ <b>pip install --upgrade tensorflow</b>      # for Python 2.7
-     $ <b>pip3 install --upgrade tensorflow</b>     # for Python 3.n
+     <pre> (tensorflow)$ <b>easy_install -U pip</b></pre>
 
-     If the preceding command succeed, skip Step 6. If it failed,
-     perform Step 6.
+  6. Issue one of the following commands to install TensorFlow and all the
+     packages that TensorFlow requires into the active Virtualenv environment:
 
-  6. Optional. If Step 5 failed (typically because you invoked a pip version
-     lower than 8.1), install TensorFlow in the active
-     virtualenv environment by issuing a command of the following format:
-
-     <pre> $ <b>pip install --upgrade</b> <i>tfBinaryURL</i>   # Python 2.7
-     $ <b>pip3 install --upgrade</b> <i>tfBinaryURL</i>  # Python 3.n </pre>
-
-     where <i>tfBinaryURL</i> identifies the URL
-     of the TensorFlow Python package. The appropriate value of
-     <i>tfBinaryURL</i> depends on the operating system and
-     Python version. Find the appropriate value for
-     <i>tfBinaryURL</i> for your system
-     [here](#the_url_of_the_tensorflow_python_package).
-     For example, if you are installing TensorFlow for Mac OS X,
-     Python 2.7, the command to install
-     TensorFlow in the active Virtualenv is as follows:
-
-     <pre> $ <b>pip3 install --upgrade \
-     https://storage.googleapis.com/tensorflow/mac/cpu/tensorflow-1.1.0rc2-py2-none-any.whl</b></pre>
+     <pre> (tensorflow)$ <b>pip install --upgrade tensorflow</b>      # for Python 2.7
+     (tensorflow)$ <b>pip3 install --upgrade tensorflow</b>     # for Python 3.n
 
 If you encounter installation problems, see
 [Common Installation Problems](#common-installation-problems).
