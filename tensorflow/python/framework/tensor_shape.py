@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools as it
+
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.util import compat
 
@@ -563,6 +565,45 @@ class TensorShape(object):
       except ValueError:
         raise ValueError("Shapes %s and %s are not compatible" % (self, other))
 
+  def broadcast_with(self, other):
+    """Returns a `TensorShape` resulting from broadcasting `self` and `other`.
+
+    The trailing dimensions in `self` and `other` are merged elementwise,
+    according to the rules defined for `Dimension.merge_with()` except a
+    dimension of size `1` is treated as if it was `None`.
+
+    Args:
+      other: Another `TensorShape`.
+
+    Returns:
+      A `TensorShape` containing the broadcast shape of `self` and
+      `other`.
+
+    Raises:
+      ValueError: If `self` and `other` are not broadcstable.
+    """
+    # Just return the shape that isn't None
+    other = as_shape(other)
+    if self._dims is None:
+      return other
+    if other._dims is None:
+      return self
+    # Both shapes are not None so we need to broadcast them by iterating in reverse
+    new_dims = []
+    for dim1, dim2 in it.zip_longest(reversed(self._dims), reversed(other._dims),
+                                     fillvalue=Dimension(None)):
+      # Try to merge the shapes directly
+      try:
+        new_dims.append(dim1.merge_with(dim2))
+      except ValueError:
+        # Is one of them of size one?
+        if dim1._value == 1 or dim2._value == 1:
+          new_dims.append(Dimension(dim1._value * dim2._value))
+        else:
+          raise ValueError("Shapes %s and %s are not broadcastable" %
+                           (self, other))
+    return TensorShape(reversed(new_dims))
+
   def concatenate(self, other):
     """Returns the concatenation of the dimension in `self` and `other`.
 
@@ -733,6 +774,64 @@ class TensorShape(object):
     """
     if not self.is_compatible_with(other):
       raise ValueError("Shapes %s and %s are incompatible" % (self, other))
+
+  def is_broadcastable_with(self, other):
+    """Returns True iff `self` can be broadcast with `other`, i.e. an elementwise
+    operation would succeed.
+
+    Two possibly-partially-defined shapes are broadcastable if the last dimensions
+    are compatible, where a dimension of size `1` is treated in the same manner as
+    an undefined dimension. For example:
+
+    * TensorShape(None) is broadcastable with all shapes.
+
+    * TensorShape([None] * n) is also broadcastable with all shapes because only
+      the last dimensions must match for two shapes to be broadcastable.
+
+    * TensorShape([32, None]) is broadcastable with all shapes that are at least
+      two-dimensional with size 32 in the 2nd to last dimension. It is not broadcastable
+      with, for example, TensorShape([64, None]).
+
+    * TensorShape([32, 784]) is broadcastable with itself, and also
+      TensorShape([32, None]), TensorShape([None, 784]), TensorShape([None,
+      None]) and TensorShape(None). It is not broadcastable with, for example,
+      TensorShape([32, 1, 784]) or TensorShape([64]).
+
+    The broadcastability relation is reflexive and symmetric, but not
+    transitive. For example, TensorShape([32, 784]) is broadcastable with
+    TensorShape(None), and TensorShape(None) is broadcastable with
+    TensorShape([4, 4]), but TensorShape([32, 784]) is not broadcastable with
+    TensorShape([4, 4]).
+
+    Args:
+      other: Another TensorShape.
+
+    Returns:
+      True iff `self` is broadcastable with `other`.
+    """
+    other = as_shape(other)
+    # The two shapes are broadcastable if one of them is not defined
+    if self._dims is None or other._dims is None:
+      return True
+    # Iterate over the dimensions from the back
+    for x_dim, y_dim in zip(reversed(self._dims), reversed(other.dims)):
+      if not x_dim.is_compatible_with(y_dim) and x_dim.value != 1 and y_dim.value != 1:
+        return False
+    return True
+
+  def assert_is_broadcastable_with(self, other):
+    """Raises exception if `self` and `other` cannot be broadcast.
+
+    This method can be used to assert that `self` and `other` can be broadcast.
+
+    Args:
+      other: Another TensorShape.
+
+    Raises:
+      ValueError: If `self` and `other` cannot be broadcast.
+    """
+    if not self.is_broadcastable_with(other):
+      raise ValueError("Shapes %s and %s are not broadcastable" % (self, other))
 
   def is_fully_defined(self):
     """Returns True iff `self` is fully defined in every dimension."""
