@@ -27,6 +27,7 @@ limitations under the License.
 #endif
 
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -85,6 +86,37 @@ string AppendTimestampToFilePath(const string& in, const uint64 timestamp) {
   }
   return out;
 }
+
+#if defined(PLATFORM_GOOGLE)
+Status PublishEncodedGraphDefInChunks(const string& encoded_graph_def,
+                                      const string& device_name,
+                                      const int64 wall_time,
+                                      const string& debug_url) {
+  static const size_t kChunkSizeLimitBytes = 4000 * 1024;
+  const uint64 hash = ::tensorflow::Hash64(encoded_graph_def);
+  const size_t total_length = encoded_graph_def.size();
+  const size_t num_chunks = static_cast<size_t>(
+      std::ceil(static_cast<float>(total_length) / kChunkSizeLimitBytes));
+  for (size_t i = 0; i < num_chunks; ++i) {
+    const size_t pos = i * kChunkSizeLimitBytes;
+    const size_t len =
+        (i == num_chunks - 1) ? (total_length - pos) : kChunkSizeLimitBytes;
+    Event event;
+    event.set_wall_time(static_cast<double>(wall_time));
+    // Prefix the chunk with
+    //   <hash64>,<device_name>,<wall_time>|<index>|<num_chunks>|.
+    event.set_graph_def(strings::StrCat(hash, ",", device_name, ",", wall_time,
+                                        "|", i, "|", num_chunks, "|",
+                                        encoded_graph_def.substr(pos, len)));
+    if (!DebugGrpcIO::SendEventProtoThroughGrpcStream(event, debug_url).ok()) {
+      return errors::FailedPrecondition(
+          "Failed to send chunk ", i, " of ", num_chunks,
+          " of encoded GraphDef of size ", encoded_graph_def.size(), " bytes");
+    }
+  }
+  return Status::OK();
+}
+#endif
 
 }  // namespace
 
@@ -290,7 +322,7 @@ Status DebugIO::PublishDebugTensor(const string& tensor_name,
 }
 
 // static
-Status DebugIO::PublishGraph(const Graph& graph,
+Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
                              const std::unordered_set<string>& debug_urls) {
   GraphDef graph_def;
   graph.ToGraphDef(&graph_def);
@@ -307,14 +339,16 @@ Status DebugIO::PublishGraph(const Graph& graph,
   for (const string& debug_url : debug_urls) {
     if (debug_url.find(kFileURLScheme) == 0) {
       const string dump_root_dir = debug_url.substr(strlen(kFileURLScheme));
+      // TODO(cais): (b/38325442) Serialize the GraphDef to a directory that
+      // reflects the device name.
       const string file_name = strings::StrCat("_tfdbg_graph_", now_micros);
 
       status.Update(
           DebugFileIO::DumpEventProtoToFile(event, dump_root_dir, file_name));
     } else if (debug_url.find(kGrpcURLScheme) == 0) {
 #if defined(PLATFORM_GOOGLE)
-      status.Update(
-          DebugGrpcIO::SendEventProtoThroughGrpcStream(event, debug_url));
+      status.Update(PublishEncodedGraphDefInChunks(buf, device_name, now_micros,
+                                                   debug_url));
 #else
       GRPC_OSS_UNIMPLEMENTED_ERROR;
 #endif
