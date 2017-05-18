@@ -300,6 +300,11 @@ class ResourceVariable(object):
     return self._initialize_op
 
   @property
+  def initial_value(self):
+    """Returns the Tensor used as the initial value for the variable."""
+    return self._initial_value
+
+  @property
   def op(self):
     """The op for this variable."""
     return self._handle.op
