@@ -21,7 +21,6 @@ See the @{$python/contrib.crf} guide.
 @@crf_log_likelihood
 @@crf_unary_score
 @@crf_binary_score
-@@CrfForwardRnnCell
 @@viterbi_decode
 """
 
@@ -29,13 +28,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.crf.python.ops.crf import _lengths_to_masks
 from tensorflow.contrib.crf.python.ops.crf import crf_binary_score
 from tensorflow.contrib.crf.python.ops.crf import crf_log_likelihood
 from tensorflow.contrib.crf.python.ops.crf import crf_log_norm
 from tensorflow.contrib.crf.python.ops.crf import crf_sequence_score
 from tensorflow.contrib.crf.python.ops.crf import crf_unary_score
-from tensorflow.contrib.crf.python.ops.crf import CrfForwardRnnCell
 from tensorflow.contrib.crf.python.ops.crf import viterbi_decode
 
 from tensorflow.python.util.all_util import remove_undocumented
