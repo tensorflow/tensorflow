@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 
 #include <vector>
+#include <initializer_list>
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -26,7 +27,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-const int Graph::kControlSlot = -1;
+const int Graph::kControlSlot;
 
 // Node
 
@@ -37,7 +38,9 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
     *new std::unordered_map<string, Node::NodeClass>({
         // Keep in same order as NodeClass values
         REF_CLASS("Switch", NC_SWITCH),
+        {"Demux", NC_SWITCH},
         REF_CLASS("Merge", NC_MERGE),
+        REF_CLASS("Mux", NC_MUX),
         REF_CLASS("Enter", NC_ENTER),
         REF_CLASS("Exit", NC_EXIT),
         REF_CLASS("NextIteration", NC_NEXT_ITERATION),
@@ -474,7 +477,7 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
     for (size_t i = 0; i < inputs.size(); ++i) {
       const Edge* edge = inputs[i];
       if (edge == nullptr) {
-        node_def->add_input(node->def().input(i));
+        //node_def->add_input(node->def().input(i));
       } else {
         const Node* src = edge->src();
         if (!src->IsOp()) continue;

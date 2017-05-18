@@ -32,6 +32,7 @@ op { name: "RefExit" hide: true }
 op { name: "Enter" hide: true }
 op { name: "RefEnter" hide: true }
 op { name: "RefIdentity" hide: true }
+op { name: "Demux" hide: true }
 
 # ctc_ops
 

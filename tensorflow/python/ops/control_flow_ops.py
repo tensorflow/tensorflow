@@ -23,7 +23,10 @@ See the @{$python/control_flow_ops} guide.
 @@no_op
 @@count_up_to
 @@cond
+@@cond_v2
 @@case
+@@select
+@@select_group
 @@while_loop
 @@logical_and
 @@logical_not
@@ -3164,6 +3167,102 @@ def case(pred_fn_pairs, default, exclusive=False, strict=False, name="case"):
     if not strict:
       case_seq = _UnpackIfSingleton(case_seq)
     return case_seq
+
+
+def mux(index, inputs, name=None):
+  if all(i.dtype._is_ref_dtype for i in inputs):
+    return gen_control_flow_ops._ref_mux(index, inputs, name)
+  else:
+    return gen_control_flow_ops._mux(index, inputs, name)
+
+
+def select(index, inputs, name=None):
+  """Select an input by index.
+
+  This op is optimized by the runtime such that unselected inputs are not
+  evaluated.
+
+  Args:
+    index: An int32 tensor.
+    inputs: A list of tensors of the same type.
+
+  Returns:
+    `inputs[index]`.
+  """
+  if len(inputs) < 2:
+    raise ValueError("Expect two or more inputs")
+
+  is_op = False
+  if any(isinstance(i, ops.Operation) for i in inputs):
+    is_op = True
+
+    if not all(isinstance(i, ops.Operation) for i in inputs):
+      raise TypeError("Inputs must not be a mix tf.Operation and other"
+                      "types: %s" % list(map(type, inputs)))
+
+    def convert_op_to_tensor(x):
+      if isinstance(x, ops.Operation):
+        with ops.control_dependencies([x]):
+          return constant_op.constant([])
+
+    inputs = list(map(convert_op_to_tensor, inputs))
+
+  inputs = ops.convert_n_to_tensor_or_indexed_slices(inputs)
+
+  with ops.name_scope(name, "select", [index] + inputs):
+    if len(set(map(type, inputs))) > 1:
+      raise TypeError("Inputs must not have different types: %s"
+                      % list(map(type, inputs)))
+    if len(set(i.dtype.base_dtype for i in inputs)) > 1:
+      raise ValueError("Inputs must not have different dtypes: %s"
+                       % [i.dtype.base_dtype for i in inputs])
+
+    if isinstance(inputs[0], ops.Tensor):
+      result = mux(index, inputs)
+      return result.op if is_op else result
+
+    assert(isinstance(inputs[0],
+                      (ops.IndexedSlices, sparse_tensor.SparseTensor)))
+
+    indices = mux(index, [i.indices for i in inputs])
+    values = mux(index, [i.values for i in inputs])
+    if any(i.dense_shape is None for i in inputs):
+      dense_shape = None
+    else:
+      dense_shape = mux(index, [i.dense_shape for i in inputs])
+    return type(inputs[0])(indices=indices, values=values,
+                           dense_shape=dense_shape)
+
+
+def select_group(index, inputs, name=None):
+  """
+  """
+  with ops.name_scope(name, "select") as name: pass
+  return nest.map_structure(lambda *args: select(index, args, name), *inputs)
+
+
+def cond_v2(pred, branch_T, branch_F, name=None):
+  """Same as cond, but accept list of tensors.
+
+  Args:
+    pred: An bool tensor.
+    branch_T: list of tensors.
+    branch_F: list of tensors.
+
+  Returns:
+    list of tensors.
+  """
+  if isinstance(pred, bool):
+    raise TypeError("pred must not be a Python bool.")
+
+  branch_T, branch_F = map(lambda f: f() if callable(f) else f,
+                           [branch_T, branch_F])
+
+  with ops.name_scope(name, 'cond_v2'):
+    index = math_ops.cast(pred, dtypes.int32)
+    return nest.map_structure(
+      lambda x: x.outputs[0] if isinstance(x, ops.Operation) else x,
+      select_group(index, [branch_F, branch_T]))
 
 
 ops.register_proto_function(ops.GraphKeys.COND_CONTEXT,

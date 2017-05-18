@@ -21,6 +21,7 @@ namespace tensorflow {
 
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
+using shape_inference::DimensionHandle;
 
 // --------------------------------------------------------------------------
 namespace {
@@ -38,7 +39,6 @@ Status SwitchShape(InferenceContext* c) {
   c->set_output_handle_dtype(1, c->input_handle_dtype(0));
   return Status::OK();
 }
-}  // namespace
 
 REGISTER_OP("Switch")
     .Input("data: T")
@@ -341,4 +341,73 @@ Returns nothing but an exception.
 error_msg: A string which is the message associated with the exception.
 )doc");
 
+// --------------------------------------------------------------------------
+REGISTER_OP("Demux")
+    .Input("index: int32")
+    .Input("input: T")
+    .Output("outputs: N * T")
+    .Attr("T: type")
+    .Attr("N: int >= 1")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Forward input to output at index.
+)doc");
+
+// --------------------------------------------------------------------------
+Status MuxShape(shape_inference::InferenceContext* c) {
+  int32 rank;
+  for (int i = 1; i < c->num_inputs(); i++) {
+    if (!c->RankKnown(c->input(i))) {
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    } else if (i == 1) {
+      rank = c->Rank(c->input(i));
+    } else if (rank != c->Rank(c->input(i))) {
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    }
+  }
+
+  std::vector<DimensionHandle> output_shape(rank);
+  for (int j = 0; j < rank; j++) {
+    output_shape[j] = c->MakeDim(c->Dim(c->input(1), j));
+  }
+  for (int i = 2; i < c->num_inputs(); i++) {
+    for (int j = 0; j < rank; j++) {
+      if (!c->ValueKnown(output_shape[j])) continue;
+
+      DimensionHandle d = c->Dim(c->input(1), j);
+      if (!c->ValueKnown(d) || c->Value(output_shape[j]) != c->Value(d)) {
+        output_shape[j] = c->UnknownDim();
+      }
+    }
+  }
+
+  c->set_output(0, c->MakeShape(output_shape));
+  return Status::OK();
+}
+
+REGISTER_OP("Mux")
+    .Input("index: int32")
+    .Input("inputs: N * T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("N: int >= 1")
+    .SetShapeFn(MuxShape)
+    .Doc(R"doc(
+Forward input at index to output.
+)doc");
+
+REGISTER_OP("RefMux")
+    .Input("index: int32")
+    .Input("inputs: Ref(N * T)")
+    .Output("output: Ref(T)")
+    .Attr("T: type")
+    .Attr("N: int >= 1")
+    .SetShapeFn(MuxShape)
+    .Doc(R"doc(
+Forward input at index to output.
+)doc");
+
+}  // namespace
 }  // namespace tensorflow

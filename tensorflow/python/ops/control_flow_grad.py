@@ -233,3 +233,15 @@ def _RefEnterGrad(op, grad):
 def _LoopCondGrad(_):
   """Stop backprop for the predicate of a while loop."""
   return None
+
+@ops.RegisterGradient("Mux")
+@ops.RegisterGradient("RefMux")
+def _MuxGrad(op, grad):
+  N = len(op.inputs) - 1
+  zeros = array_ops.zeros_like(grad)
+
+  all_grads = [[zeros]*N for _ in range(N)]
+  for i in range(N):
+    all_grads[i][i] = grad
+
+  return [None] + control_flow_ops.select_group(op.inputs[0], all_grads)

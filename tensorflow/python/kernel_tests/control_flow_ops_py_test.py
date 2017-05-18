@@ -1556,7 +1556,7 @@ class ControlFlowTest(test.TestCase):
       def fn1():
         r = control_flow_ops.while_loop(c, b, [n],
                                         [tensor_shape.unknown_shape()])
-        return gradients_impl.gradients(r, x)
+        return gradients_impl.gradients(r, x)[0]
 
       r = control_flow_ops.cond(math_ops.less(1, 2), fn1, lambda: x)
       self.assertAllClose(9.0, r.eval(feed_dict={x: 1.0}))
@@ -2687,6 +2687,43 @@ class AssertTest(test.TestCase):
         self.assertLess(0, len(unguarded_memcpy_nodestat_names))
       # No copy was performed for the guarded assert
       self.assertEqual([], guarded_memcpy_nodestat_names)
+
+# TODO: Only run tests related to cond_v2.
+class CondV2Test(ControlFlowTest):
+  def setUp(self):
+    self._cond = control_flow_ops.cond
+    super(CondV2Test, self).setUp()
+    control_flow_ops.cond = control_flow_ops.cond_v2
+
+  def tearDown(self):
+    control_flow_ops.cond = self._cond
+    super(CondV2Test, self).tearDown()
+
+  def testCondIndexedSlicesDifferentTypes(self):
+    pass
+
+  def testCond_4(self):
+    with self.test_session() as sess:
+      v1 = variables.Variable(7)
+      v2 = variables.Variable(7)
+      v3 = variables.Variable(7)
+
+      age = constant_op.constant(3)
+      max_age = constant_op.constant(2)
+      pred = math_ops.greater(age, max_age)
+      fn1 = lambda: [state_ops.assign(v1, 1).op, state_ops.assign(v2, 2).op]
+      fn2 = lambda: [state_ops.assign(v3, 3).op, constant_op.constant(10).op]
+      r = control_flow_ops.cond(pred, fn1, fn2)
+
+      variables.global_variables_initializer().run()
+      self.assertEqual(len(r), 2)
+      result = r[1].eval()
+      self.assertTrue(check_op_order(age.graph))
+      self.assertAllEqual(np.array([], dtype=np.float32), result) # different!
+      self.assertAllEqual(7, v1.eval())
+      self.assertAllEqual(2, v2.eval())
+      self.assertAllEqual(7, v3.eval())
+
 
 if __name__ == "__main__":
   test.main()

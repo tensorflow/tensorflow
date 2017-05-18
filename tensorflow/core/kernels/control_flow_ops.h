@@ -97,6 +97,32 @@ class NextIterationOp : public OpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(NextIterationOp);
 };
 
+class DemuxOp : public OpKernel {
+ public:
+  explicit DemuxOp(OpKernelConstruction* context);
+  void Compute(OpKernelContext* context) override;
+  bool IsExpensive() override { return false; }
+  ~DemuxOp() override {}
+
+ private:
+  int num_outputs_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(DemuxOp);
+};
+
+// Mux ops should be optimized out.
+class MuxOp : public OpKernel {
+ public:
+  explicit MuxOp(OpKernelConstruction* context) : OpKernel(context) {};
+  void Compute(OpKernelContext* context) override {
+    OP_REQUIRES_OK(context, errors::Internal("Mux should be optimized out"));
+  };
+  bool IsExpensive() override { return false; }
+  ~MuxOp() override {}
+
+  TF_DISALLOW_COPY_AND_ASSIGN(MuxOp);
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_KERNELS_CONTROL_FLOW_OPS_H_
