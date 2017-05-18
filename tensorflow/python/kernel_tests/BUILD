@@ -2303,7 +2303,6 @@ cuda_py_test(
     ],
 )
 
-
 cuda_py_test(
     name = "concat_op_test",
     size = "medium",
