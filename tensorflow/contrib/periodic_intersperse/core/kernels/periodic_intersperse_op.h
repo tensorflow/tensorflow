@@ -26,16 +26,13 @@
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
-
-template<class IndexVecT, class IndexT>
-IndexT compute_input_index(IndexVecT &Y, const IndexT &i,
-                           const IndexVecT &X, const int &q,
-                           const std::vector<tensorflow::int64> &g,
-                           const std::vector<tensorflow::int64> &G,
-                           IndexT &result,
-                           std::vector<IndexT> &output_indices,
-                           const typename std::decay<decltype(Y.size())>::type &rank)
-{
+template <class IndexVecT, class IndexT>
+IndexT compute_input_index(
+    IndexVecT& Y, const IndexT& i, const IndexVecT& X, const int& q,
+    const std::vector<tensorflow::int64>& g,
+    const std::vector<tensorflow::int64>& G, IndexT& result,
+    std::vector<IndexT>& output_indices,
+    const typename std::decay<decltype(Y.size())>::type& rank) {
   result = 0;
   output_indices.clear();
 
@@ -56,18 +53,16 @@ IndexT compute_input_index(IndexVecT &Y, const IndexT &i,
     for (auto r = rank - 1;; --r) {
       IndexT index = 0;
       if (r != q)
-        index = output_indices[r]/g[r];
+        index = output_indices[r] / g[r];
       else {
         for (int qi = 0; qi < rank; ++qi) {
-          // if (qi == r) continue;
           if (qi == q) continue;
-          index += G[qi]*(output_indices[qi] % g[qi]);
+          index += G[qi] * (output_indices[qi] % g[qi]);
         }
         index *= Y[q];
-        // index *= Y[r];
         index += output_indices[r];
       }
-      result += last_index_factor*index;
+      result += last_index_factor * index;
       last_index_factor *= X[r];
       if (r == 0) break;
     }
@@ -76,12 +71,9 @@ IndexT compute_input_index(IndexVecT &Y, const IndexT &i,
   return result;
 }
 
-
-template<class T, class VecT>
-void main_logic (tensorflow::OpKernelContext *context,
-                 const VecT &desired_shape,
-                 const tensorflow::Tensor &input_tensor)
-{
+template <class T, class VecT>
+void main_logic(tensorflow::OpKernelContext* context, const VecT& desired_shape,
+                const tensorflow::Tensor& input_tensor) {
   // input is a strided array (last index is fastest, C-ordered)
   auto input = input_tensor.flat<T>();
   const int rank = input_tensor.dims();
@@ -97,10 +89,13 @@ void main_logic (tensorflow::OpKernelContext *context,
   int q;
   tensorflow::TensorShape output_shape;
 
-  // requires that the rank of the input tensor and length of the desired shape are equal
+  // requires that the rank of the input tensor and length of the desired shape
+  // are equal
   OP_REQUIRES(context, rank == desired_shape.size(),
-              tensorflow::errors::InvalidArgument("periodic_intersperse expects the rank of the input tensor, ",
-              rank, ", to be the same as the length of the desired shape, ", desired_shape.size(), "."));
+              tensorflow::errors::InvalidArgument(
+                  "periodic_intersperse expects the rank of the input tensor, ",
+                  rank, ", to be the same as the length of the desired shape, ",
+                  desired_shape.size(), "."));
 
   {
     bool found = false;
@@ -108,20 +103,20 @@ void main_logic (tensorflow::OpKernelContext *context,
       if (desired_shape(i) < 1) {
         // only one index can be adjustable
         OP_REQUIRES(context, !found,
-                    tensorflow::errors::InvalidArgument("periodic_intersperse expects only "
-                    "one index to be marked as adjustable."));
+                    tensorflow::errors::InvalidArgument(
+                        "periodic_intersperse expects only "
+                        "one index to be marked as adjustable."));
         q = i;
         found = true;
-      }
-      else {
+      } else {
         Y[i] = desired_shape(i);
         new_sliced_size *= Y[i];
       }
     }
     // at least one index needs to be adjustable
-    OP_REQUIRES(context, found,
-                tensorflow::errors::InvalidArgument("periodic_intersperse expects at least "
-                "one index to be marked as adjustable."));
+    OP_REQUIRES(context, found, tensorflow::errors::InvalidArgument(
+                                    "periodic_intersperse expects at least "
+                                    "one index to be marked as adjustable."));
 
     int count = 0;
     for (const auto dim_info : input_tensor.shape()) {
@@ -130,32 +125,36 @@ void main_logic (tensorflow::OpKernelContext *context,
       ++count;
     }
 
-    Y[q] = tensorflow::int64(std::floor(float(total_size)/float(new_sliced_size)));
+    Y[q] = tensorflow::int64(
+        std::floor(float(total_size) / float(new_sliced_size)));
 
     count = 0;
     for (const auto dim_info : input_tensor.shape()) {
-        f[count] = float(Y[count])/float(X[count]);
-        g[count] = tensorflow::int64(std::ceil(f[count]));
-        if (count == 0) G[count] = 1;
-        else G[count] = G[count - 1]*g[count - 1];
+      f[count] = float(Y[count]) / float(X[count]);
+      g[count] = tensorflow::int64(std::ceil(f[count]));
+      if (count == 0)
+        G[count] = 1;
+      else
+        G[count] = G[count - 1] * g[count - 1];
       ++count;
     }
   }
 
   // ensure that the new dimension is greater than zero
   OP_REQUIRES(context, Y[q] > 0,
-              tensorflow::errors::InvalidArgument("periodic_intersperse found that the "
-              "adjustable dimension, ", q, ", isn't greater than zero, ", Y[q],
-              "."));
+              tensorflow::errors::InvalidArgument(
+                  "periodic_intersperse found that the "
+                  "adjustable dimension, ",
+                  q, ", isn't greater than zero, ", Y[q], "."));
   for (int i = 0; i < rank; ++i) {
     output_shape.AddDim(Y[i]);
   }
-  const auto new_size = new_sliced_size*Y[q];
+  const auto new_size = new_sliced_size * Y[q];
 
   // Create an output tensor and attach it to the current context
   tensorflow::Tensor* output_tensor = nullptr;
-  OP_REQUIRES_OK(context, context->allocate_output(0, output_shape,
-    &output_tensor));
+  OP_REQUIRES_OK(context,
+                 context->allocate_output(0, output_shape, &output_tensor));
   auto output = output_tensor->flat<T>();
 
   {
@@ -167,68 +166,64 @@ void main_logic (tensorflow::OpKernelContext *context,
     const auto rank = Y.size();
 
     // Fill output tensor with shuffled input tensor values
-    for (typename std::decay<decltype(new_size)>::type i = 0; i < new_size; ++i) {
-      output(i) = input(compute_input_index(Y, i, X, q, g, G,
-                                            result, output_indices, rank));
+    for (typename std::decay<decltype(new_size)>::type i = 0; i < new_size;
+         ++i) {
+      output(i) = input(
+          compute_input_index(Y, i, X, q, g, G, result, output_indices, rank));
     }
   }
 }
 
-
-template<class T>
-void create_output_tensor (tensorflow::OpKernelContext *context,
-                           const tensorflow::Tensor &input_tensor,
-                           const tensorflow::DataType &input_tensor_type,
-                           const tensorflow::Tensor &desired_shape_tensor)
-{
+template <class T>
+void create_output_tensor(tensorflow::OpKernelContext* context,
+                          const tensorflow::Tensor& input_tensor,
+                          const tensorflow::DataType& input_tensor_type,
+                          const tensorflow::Tensor& desired_shape_tensor) {
   auto desired_shape = desired_shape_tensor.flat<T>();
 
   // obligatory type switch
   if (input_tensor_type == tensorflow::DataTypeToEnum<float>::value) {
     main_logic<float>(context, desired_shape, input_tensor);
-  }
-  else if (input_tensor_type == tensorflow::DataTypeToEnum<double>::value) {
+  } else if (input_tensor_type == tensorflow::DataTypeToEnum<double>::value) {
     main_logic<double>(context, desired_shape, input_tensor);
-  }
-  else if (input_tensor_type == tensorflow::DataTypeToEnum<tensorflow::int32>::value) {
+  } else if (input_tensor_type ==
+             tensorflow::DataTypeToEnum<tensorflow::int32>::value) {
     main_logic<tensorflow::int32>(context, desired_shape, input_tensor);
-  }
-  else if (input_tensor_type == tensorflow::DataTypeToEnum<tensorflow::int64>::value) {
+  } else if (input_tensor_type ==
+             tensorflow::DataTypeToEnum<tensorflow::int64>::value) {
     main_logic<tensorflow::int64>(context, desired_shape, input_tensor);
   }
 }
 
-
 class PeriodicIntersperseOp : public tensorflow::OpKernel {
-public:
-  explicit PeriodicIntersperseOp (tensorflow::OpKernelConstruction* context) : tensorflow::OpKernel(context) {}
+ public:
+  explicit PeriodicIntersperseOp(tensorflow::OpKernelConstruction* context)
+      : tensorflow::OpKernel(context) {}
 
-  void Compute (tensorflow::OpKernelContext* context) override {
-
+  void Compute(tensorflow::OpKernelContext* context) override {
     // Grab the input tensor and desired shape
-    const tensorflow::Tensor &input_tensor = context->input(0);
+    const tensorflow::Tensor& input_tensor = context->input(0);
     const tensorflow::DataType input_tensor_type = context->input_dtype(0);
-    const tensorflow::Tensor &desired_shape_tensor = context->input(1);
-    const tensorflow::DataType desired_shape_tensor_type = context->input_dtype(1);
+    const tensorflow::Tensor& desired_shape_tensor = context->input(1);
+    const tensorflow::DataType desired_shape_tensor_type =
+        context->input_dtype(1);
 
     // requires that the desired shape is a vector
     OP_REQUIRES(
-        context, tensorflow::TensorShapeUtils::IsVector(desired_shape_tensor.shape()),
+        context,
+        tensorflow::TensorShapeUtils::IsVector(desired_shape_tensor.shape()),
         tensorflow::errors::InvalidArgument(
-          "periodic_intersperse expects a 1D vector for the desired shape."));
+            "periodic_intersperse expects a 1D vector for the desired shape."));
 
     // obligatory type switch
-    if (desired_shape_tensor_type == tensorflow::DataTypeToEnum<tensorflow::int32>::value) {
-      create_output_tensor<tensorflow::int32>(context,
-                                  input_tensor,
-                                  input_tensor_type,
-                                  desired_shape_tensor);
-    }
-    else if (desired_shape_tensor_type == tensorflow::DataTypeToEnum<tensorflow::int64>::value) {
-      create_output_tensor<tensorflow::int64>(context,
-                                  input_tensor,
-                                  input_tensor_type,
-                                  desired_shape_tensor);
+    if (desired_shape_tensor_type ==
+        tensorflow::DataTypeToEnum<tensorflow::int32>::value) {
+      create_output_tensor<tensorflow::int32>(
+          context, input_tensor, input_tensor_type, desired_shape_tensor);
+    } else if (desired_shape_tensor_type ==
+               tensorflow::DataTypeToEnum<tensorflow::int64>::value) {
+      create_output_tensor<tensorflow::int64>(
+          context, input_tensor, input_tensor_type, desired_shape_tensor);
     }
   }
 };

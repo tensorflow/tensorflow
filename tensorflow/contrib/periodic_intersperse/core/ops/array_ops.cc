@@ -27,7 +27,7 @@ REGISTER_OP("PeriodicIntersperse")
     .Input("desired_shape: S")
     .Output("output: T")
     .Doc(R"doc(
-Periodicly intersperses elements of a tensor to conform to `desired_shape`.
+Periodically intersperses elements of a tensor to conform to `desired_shape`.
 
 This function implements a slightly more generic version of the subpixel
 convolutions found in this [paper](https://arxiv.org/abs/1609.05158).

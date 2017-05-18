@@ -24,11 +24,11 @@ REGISTER_KERNEL_BUILDER(Name("PeriodicIntersperse")
                             .Device(DEVICE_CPU),
                         PeriodicIntersperseOp);
 
-#define REGISTER_GPU_KERNEL(type)                               \
-  REGISTER_KERNEL_BUILDER(Name("PeriodicIntersperse")           \
-                              .Device(DEVICE_GPU)               \
-                              .HostMemory("desired_shape")      \
-                              .TypeConstraint<type>("T"),       \
+#define REGISTER_GPU_KERNEL(type)                          \
+  REGISTER_KERNEL_BUILDER(Name("PeriodicIntersperse")      \
+                              .Device(DEVICE_GPU)          \
+                              .HostMemory("desired_shape") \
+                              .TypeConstraint<type>("T"),  \
                           PeriodicIntersperseOp);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
@@ -40,4 +40,4 @@ REGISTER_KERNEL_BUILDER(Name("PeriodicIntersperse")
                         PeriodicIntersperseOp);
 #endif  // TENSORFLOW_USE_SYCL
 
-} // namespace tensorflow
+}  // namespace tensorflow
