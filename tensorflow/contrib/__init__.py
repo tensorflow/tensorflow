@@ -25,6 +25,7 @@ from tensorflow.contrib import compiler
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn
+from tensorflow.contrib import data
 from tensorflow.contrib import deprecated
 from tensorflow.contrib import distributions
 from tensorflow.contrib import factorization

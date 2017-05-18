@@ -198,7 +198,7 @@ string PrintTensorProto(const TensorProto& proto) {
                          ").AsTensorProto()");
 }
 
-string PrintAttrValue(string op, const AttrValue& attr_value) {
+string PrintAttrValue(const string& op, const AttrValue& attr_value) {
   switch (attr_value.value_case()) {
     case AttrValue::kS:
       return PrintString(attr_value.s());

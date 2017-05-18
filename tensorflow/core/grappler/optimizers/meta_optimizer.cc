@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
+#include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -90,15 +91,16 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   bool already_optimized = false;
   for (const auto& optimizer : optimizers) {
     if (!already_optimized) {
-      TF_RETURN_IF_ERROR(optimizer->Optimize(nullptr, item, optimized_graph));
+      TF_RETURN_IF_ERROR(optimizer->Optimize(cluster, item, optimized_graph));
       already_optimized = true;
     } else {
       GrapplerItem optimized_item = item;
       optimized_item.graph = *optimized_graph;
       TF_RETURN_IF_ERROR(
-          optimizer->Optimize(nullptr, optimized_item, optimized_graph));
+          optimizer->Optimize(cluster, optimized_item, optimized_graph));
     }
   }
+  TopologicalSort(optimized_graph);
   // Copy the graph version.
   *optimized_graph->mutable_versions() = item.graph.versions();
 
@@ -116,9 +118,9 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
-                        GraphDef* optimized_graph) {
+                        Cluster* cluster, GraphDef* optimized_graph) {
   MetaOptimizer optimizer(cfg);
-  return optimizer.Optimize(nullptr, item, optimized_graph);
+  return optimizer.Optimize(cluster, item, optimized_graph);
 }
 
 }  // namespace grappler

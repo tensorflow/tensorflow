@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/port/initialize.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -257,10 +256,13 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
   if (flags->xla_cpu_parallel) {
     pipeline.AddPass<ParallelizationPreparation>();
   }
-  // Copy insertion should be performed immediately before IR emission to
-  // avoid inserting unnecessary copies (later pass adds an instruction which
-  // materializes the value) or missing a necessary copy (later pass removes
-  // an instruction which materializes a value).
+  // Copy insertion should be performed immediately before IR emission to avoid
+  // inserting unnecessary copies (later pass adds an instruction which
+  // materializes the value) or missing a necessary copy (later pass removes an
+  // instruction which materializes a value). DCE must be run immediately before
+  // (and sometime after) copy insertion, to avoid dead code from interfering
+  // with the rewrites.
+  pipeline.AddPass<HloDCE>();
   pipeline.AddPass<CopyInsertion>();
   if (flags->xla_cpu_parallel) {
     // Re-run the outlining, in case any copies were inserted into the entry
@@ -680,8 +682,10 @@ int64 CpuCompiler::ShapeSizeBytes(const Shape& shape) const {
 }  // namespace cpu
 }  // namespace xla
 
-REGISTER_MODULE_INITIALIZER(cpu_compiler, {
+static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(se::host::kHostPlatformId, []() {
     return xla::MakeUnique<xla::cpu::CpuCompiler>();
   });
-});
+  return true;
+}
+static bool module_initialized = InitModule();

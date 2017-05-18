@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -55,8 +56,8 @@ TEST_F(RecomputeSubgraphTest, SimpleSubgraph) {
   NodeDef* transformed_e = post_transform_node_map.GetNode(e.name());
   EXPECT_EQ(2, transformed_e->input_size());
   EXPECT_EQ("d", transformed_e->input(0));
-  EXPECT_EQ("Recomputed-b", transformed_e->input(1));
-  NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed-b");
+  EXPECT_EQ("Recomputed/b", transformed_e->input(1));
+  NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed/b");
   EXPECT_EQ(2, recomputed_b->input_size());
   EXPECT_EQ("a", recomputed_b->input(0));
   EXPECT_EQ("^d", recomputed_b->input(1).substr(0, 2));
@@ -94,27 +95,39 @@ TEST_F(RecomputeSubgraphTest, MultiNode) {
   NodeDef* transformed_e = post_transform_node_map.GetNode(e.name());
   EXPECT_EQ(2, transformed_e->input_size());
   EXPECT_EQ("BN1Grad", transformed_e->input(0));
-  EXPECT_EQ("Recomputed-ReLU", transformed_e->input(1));
+  EXPECT_EQ("Recomputed/ReLU", transformed_e->input(1));
   NodeDef* transformed_f = post_transform_node_map.GetNode(f.name());
   EXPECT_EQ(2, transformed_f->input_size());
   EXPECT_EQ("Conv1Grad", transformed_f->input(0));
-  EXPECT_EQ("Recomputed-ReLU", transformed_f->input(1));
+  EXPECT_EQ("Recomputed/ReLU", transformed_f->input(1));
   NodeDef* transformed_g = post_transform_node_map.GetNode(g.name());
   EXPECT_EQ(2, transformed_g->input_size());
   EXPECT_EQ("ReLUGrad", transformed_g->input(0));
   EXPECT_EQ("Conv", transformed_g->input(1));
 
-  NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed-BN");
+  NodeDef* recomputed_b = post_transform_node_map.GetNode("Recomputed/BN");
   EXPECT_EQ(2, recomputed_b->input_size());
   EXPECT_EQ("Conv", recomputed_b->input(0));
   EXPECT_EQ("^BN1Grad", recomputed_b->input(1).substr(0, 8));
-  NodeDef* recomputed_c = post_transform_node_map.GetNode("Recomputed-ReLU");
+  NodeDef* recomputed_c = post_transform_node_map.GetNode("Recomputed/ReLU");
   EXPECT_EQ(2, recomputed_c->input_size());
-  EXPECT_EQ("Recomputed-BN", recomputed_c->input(0));
+  EXPECT_EQ("Recomputed/BN", recomputed_c->input(0));
   EXPECT_EQ("^BN1Grad", recomputed_c->input(1).substr(0, 8));
 }
 
-class MemoryOptimizerTest : public ::testing::Test {};
+class MemoryOptimizerTest : public ::testing::Test {
+ public:
+  static VirtualCluster CreateVirtualCluster() {
+    DeviceProperties cpu_device;
+    cpu_device.set_type("CPU");
+    cpu_device.set_frequency(1000);
+    cpu_device.set_num_cores(4);
+    cpu_device.set_bandwidth(32);
+    std::unordered_map<string, DeviceProperties> devices;
+    devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
+    return VirtualCluster(devices);
+  }
+};
 
 TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   // Build a simple graph with an op that's marked for swapping.
@@ -132,12 +145,14 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   EXPECT_EQ(5, item.graph.node_size());
   EXPECT_EQ(NodeName(e.name()), item.graph.node(4).name());
   AttrValue& val =
-      (*item.graph.mutable_node(4)->mutable_attr())["swap_to_host"];
+      (*item.graph.mutable_node(4)->mutable_attr())["_swap_to_host"];
   val.mutable_list()->add_i(0);
+
+  VirtualCluster cluster(CreateVirtualCluster());
 
   MemoryOptimizer optimizer;
   GraphDef output;
-  Status status = optimizer.Optimize(nullptr, item, &output);
+  Status status = optimizer.Optimize(&cluster, item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(7, output.node_size());
@@ -156,6 +171,7 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
 
   EXPECT_EQ(NodeName(b.name()), swap_out.input(0));
   EXPECT_EQ(NodeName(swap_out.name()), swap_in.input(0));
+  EXPECT_EQ("^c", swap_in.input(1));
 }
 
 }  // namespace

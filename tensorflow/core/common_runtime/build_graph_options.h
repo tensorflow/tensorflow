@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
 
@@ -34,6 +35,8 @@ struct BuildGraphOptions {
   // uses Recv/Send to implement feeds/fetches.
   // TODO(mrry): Remove this when the distributed runtime supports Arg/Retval.
   bool use_function_convention = false;
+
+  DebugOptions debug_options;
 
   string DebugString() const;
 };

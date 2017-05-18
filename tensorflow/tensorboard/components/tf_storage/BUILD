@@ -1,6 +1,6 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
@@ -9,7 +9,7 @@ licenses(["notice"])  # Apache 2.0
 
 # TODO(dandelion): Add webfiles support for the test code.
 
-webfiles(
+web_library(
     name = "tf_storage",
     srcs = [
         "tf-storage.html",
@@ -60,9 +60,9 @@ tensorboard_webcomponent_library(
 
 tensorboard_ts_library(
     name = "legacy_ts",
-    srcs = [
-        "storage.ts",
-    ],
+    srcs = ["storage.ts"],
+    deps_mgmt = "off",
+    runtime = "nodejs",
     deps = [
         "//tensorflow/tensorboard/components:common_deps",
         "//tensorflow/tensorboard/components/tf_globals:legacy_ts",

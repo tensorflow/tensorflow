@@ -261,7 +261,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
@@ -657,7 +657,7 @@ def train(train_op,
       if local_init_op == _USE_DEFAULT:
         local_init_op = control_flow_ops.group(
             tf_variables.local_variables_initializer(),
-            data_flow_ops.tables_initializer())
+            lookup_ops.tables_initializer())
 
       if sync_optimizer is not None and isinstance(
           sync_optimizer, sync_replicas_optimizer.SyncReplicasOptimizer):
@@ -696,8 +696,9 @@ def train(train_op,
         else:
           should_stop_op = constant_op.constant(False)
         train_step_kwargs['should_stop'] = should_stop_op
-        train_step_kwargs['should_log'] = math_ops.equal(
-            math_ops.mod(global_step, log_every_n_steps), 0)
+        if log_every_n_steps > 0:
+          train_step_kwargs['should_log'] = math_ops.equal(
+              math_ops.mod(global_step, log_every_n_steps), 0)
         if is_chief and trace_every_n_steps is not None:
           train_step_kwargs['should_trace'] = math_ops.equal(
               math_ops.mod(global_step, trace_every_n_steps), 0)

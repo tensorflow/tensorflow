@@ -57,6 +57,14 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addInputList(
 
 /*
  * Class:     org_tensorflow_OperationBuilder
+ * Method:    addControlInput
+ * Signature: (JJ)V
+ */
+JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addControlInput(
+    JNIEnv *, jclass, jlong, jlong);
+
+/*
+ * Class:     org_tensorflow_OperationBuilder
  * Method:    setDevice
  * Signature: (JLjava/lang/String;)V
  */

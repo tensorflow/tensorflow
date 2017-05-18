@@ -86,11 +86,6 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   }
 
   for (auto& node : *new_item->graph.mutable_node()) {
-    // Delete user specified placement if requested.
-    if (cfg.ignore_user_placement) {
-      node.clear_device();
-    }
-
     if (IsPlaceholder(node)) {
       if (node.attr().count("dtype") == 0) {
         LOG(ERROR) << "Unknown type for placeholder " << node.name()
@@ -142,6 +137,11 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       new_item->feed.emplace_back(node.name(), fake_input);
     }
 
+    // Delete user specified placement if requested.
+    if (cfg.ignore_user_placement) {
+      node.clear_device();
+    }
+    // Delete colocation constraints if requested.
     if (cfg.ignore_colocation) {
       auto attr = node.mutable_attr();
       auto it = attr->find("_class");
@@ -173,6 +173,11 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     if (inits.has_node_list()) {
       for (const auto& node : inits.node_list().value()) {
         new_item->init_ops.push_back(node);
+        // Tables are initialized from files, which can take a long time. Add 30
+        // minutes to the initialization time for each table to avoid timing
+        // out.
+        // TODO(bsteiner): adjust the timeout based on the file size.
+        new_item->expected_init_time += 30 * 60;
       }
     }
   }

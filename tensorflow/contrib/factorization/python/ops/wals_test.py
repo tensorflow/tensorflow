@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.contrib.factorization.python.ops import factorization_ops_test_utils
 from tensorflow.contrib.factorization.python.ops import wals as wals_lib
 from tensorflow.contrib.learn.python.learn import run_config
+from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -77,10 +78,53 @@ class WALSMatrixFactorizationTest(test.TestCase):
     return sparse_tensor.SparseTensor(
         indices=new_indices, values=sp_x.values, dense_shape=shape)
 
-  # TODO(walidk): Add an option to randomize inputs.
-  def input_fn(self, np_matrix, batch_size, project_row=None,
-               projection_weights=None, col_ids=None):
-    """Returns an input_fn that selects row and col batches from np_matrix."""
+  # TODO(walidk): Add an option to shuffle inputs.
+  def input_fn(self, np_matrix, batch_size, mode,
+               project_row=None, projection_weights=None,
+               remove_empty_rows_columns=False):
+    """Returns an input_fn that selects row and col batches from np_matrix.
+
+    This simple utility creates an input function from a numpy_array. The
+    following transformations are performed:
+    * The empty rows and columns in np_matrix are removed (if
+      remove_empty_rows_columns is true)
+    * np_matrix is converted to a SparseTensor.
+    * The rows of the sparse matrix (and the rows of its transpose) are batched.
+    * A features dictionary is created, which contains the row / column batches.
+
+    In TRAIN mode, one only needs to specify the np_matrix and the batch_size.
+    In INFER and EVAL modes, one must also provide project_row, a boolean which
+    specifies whether we are projecting rows or columns.
+
+    Args:
+      np_matrix: A numpy array. The input matrix to use.
+      batch_size: Integer.
+      mode: Can be one of model_fn.ModeKeys.{TRAIN, INFER, EVAL}.
+      project_row: A boolean. Used in INFER and EVAL modes. Specifies whether
+        to project rows or columns.
+      projection_weights: A float numpy array. Used in INFER mode. Specifies
+        the weights to use in the projection (the weights are optional, and
+        default to 1.).
+      remove_empty_rows_columns: A boolean. When true, this will remove empty
+        rows and columns in the np_matrix. Note that this will result in
+        modifying the indices of the input matrix. The mapping from new indices
+        to old indices is returned in the form of two numpy arrays.
+
+    Returns:
+      A tuple consisting of:
+      _fn: A callable. Calling _fn returns a features dict.
+      nz_row_ids: A numpy array of the ids of non-empty rows, such that
+        nz_row_ids[i] is the old row index corresponding to new index i.
+      nz_col_ids: A numpy array of the ids of non-empty columns, such that
+        nz_col_ids[j] is the old column index corresponding to new index j.
+    """
+    if remove_empty_rows_columns:
+      np_matrix, nz_row_ids, nz_col_ids = (
+          factorization_ops_test_utils.remove_empty_rows_columns(np_matrix))
+    else:
+      nz_row_ids = np.arange(np.shape(np_matrix)[0])
+      nz_col_ids = np.arange(np.shape(np_matrix)[1])
+
     def extract_features(row_batch, col_batch, shape):
       row_ids = row_batch[0]
       col_ids = col_batch[0]
@@ -111,7 +155,15 @@ class WALSMatrixFactorizationTest(test.TestCase):
           enqueue_many=True)
 
       features = extract_features(row_batch, col_batch, sp_mat.dense_shape)
-      if projection_weights is not None:
+
+      if mode == model_fn.ModeKeys.INFER or mode == model_fn.ModeKeys.EVAL:
+        self.assertTrue(
+            project_row is not None,
+            msg='project_row must be specified in INFER or EVAL mode.')
+        features[wals_lib.WALSMatrixFactorization.PROJECT_ROW] = (
+            constant_op.constant(project_row))
+
+      if mode == model_fn.ModeKeys.INFER and projection_weights is not None:
         weights_batch = input_lib.batch(
             projection_weights,
             batch_size=batch_size,
@@ -119,14 +171,15 @@ class WALSMatrixFactorizationTest(test.TestCase):
             enqueue_many=True)
         features[wals_lib.WALSMatrixFactorization.PROJECTION_WEIGHTS] = (
             weights_batch)
-      if project_row is not None:
-        features[wals_lib.WALSMatrixFactorization.PROJECT_ROW] = (
-            constant_op.constant(project_row))
 
       labels = None
       return features, labels
 
-    return _fn
+    return _fn, nz_row_ids, nz_col_ids
+
+  @property
+  def input_matrix(self):
+    return self.INPUT_MATRIX
 
   @property
   def row_steps(self):
@@ -197,8 +250,10 @@ class WALSMatrixFactorizationTest(test.TestCase):
 
   def test_fit(self):
     # Row sweep.
-    input_fn = self.input_fn(np_matrix=self.INPUT_MATRIX,
-                             batch_size=self.batch_size)
+    input_fn = self.input_fn(np_matrix=self.input_matrix,
+                             batch_size=self.batch_size,
+                             mode=model_fn.ModeKeys.TRAIN,
+                             remove_empty_rows_columns=True)[0]
     self._model.fit(input_fn=input_fn, steps=self.row_steps)
     row_factors = self._model.get_row_factors()
     self.assertAllClose(row_factors[0], self._row_factors_0, atol=1e-3)
@@ -206,8 +261,10 @@ class WALSMatrixFactorizationTest(test.TestCase):
 
     # Col sweep.
     # Running fit a second time will resume training from the checkpoint.
-    input_fn = self.input_fn(np_matrix=self.INPUT_MATRIX,
-                             batch_size=self.batch_size)
+    input_fn = self.input_fn(np_matrix=self.input_matrix,
+                             batch_size=self.batch_size,
+                             mode=model_fn.ModeKeys.TRAIN,
+                             remove_empty_rows_columns=True)[0]
     self._model.fit(input_fn=input_fn, steps=self.col_steps)
     col_factors = self._model.get_col_factors()
     self.assertAllClose(col_factors[0], self._col_factors_0, atol=1e-3)
@@ -215,14 +272,18 @@ class WALSMatrixFactorizationTest(test.TestCase):
     self.assertAllClose(col_factors[2], self._col_factors_2, atol=1e-3)
 
   def test_predict(self):
-    input_fn = self.input_fn(np_matrix=self.INPUT_MATRIX,
-                             batch_size=self.batch_size)
+    input_fn = self.input_fn(np_matrix=self.input_matrix,
+                             batch_size=self.batch_size,
+                             mode=model_fn.ModeKeys.TRAIN,
+                             remove_empty_rows_columns=True,
+                            )[0]
     # Project rows 1 and 4 from the input matrix.
     proj_input_fn = self.input_fn(
         np_matrix=self.INPUT_MATRIX[[1, 4], :],
         batch_size=2,
+        mode=model_fn.ModeKeys.INFER,
         project_row=True,
-        projection_weights=[[0.2, 0.5]])
+        projection_weights=[[0.2, 0.5]])[0]
 
     self._model.fit(input_fn=input_fn, steps=self.row_steps)
     projections = self._model.get_projections(proj_input_fn)
@@ -237,8 +298,9 @@ class WALSMatrixFactorizationTest(test.TestCase):
     proj_input_fn = self.input_fn(
         np_matrix=self.INPUT_MATRIX[:, [5, 3, 1]],
         batch_size=3,
+        mode=model_fn.ModeKeys.INFER,
         project_row=False,
-        projection_weights=[[0.6, 0.4, 0.2]])
+        projection_weights=[[0.6, 0.4, 0.2]])[0]
 
     self._model.fit(input_fn=input_fn, steps=self.col_steps)
     projections = self._model.get_projections(proj_input_fn)
@@ -253,11 +315,17 @@ class WALSMatrixFactorizationTest(test.TestCase):
     # Do a row sweep then evaluate the model on row inputs.
     # The evaluate function returns the loss of the projected rows, but since
     # projection is idempotent, the eval loss must match the model loss.
-    input_fn = self.input_fn(np_matrix=self.INPUT_MATRIX,
-                             batch_size=self.batch_size)
+    input_fn = self.input_fn(np_matrix=self.input_matrix,
+                             batch_size=self.batch_size,
+                             mode=model_fn.ModeKeys.TRAIN,
+                             remove_empty_rows_columns=True,
+                            )[0]
     self._model.fit(input_fn=input_fn, steps=self.row_steps)
-    eval_input_fn_row = self.input_fn(np_matrix=self.INPUT_MATRIX, batch_size=1,
-                                      project_row=True)
+    eval_input_fn_row = self.input_fn(np_matrix=self.input_matrix,
+                                      batch_size=1,
+                                      mode=model_fn.ModeKeys.EVAL,
+                                      project_row=True,
+                                      remove_empty_rows_columns=True)[0]
     loss = self._model.evaluate(
         input_fn=eval_input_fn_row, steps=self._num_rows)['loss']
 
@@ -271,8 +339,11 @@ class WALSMatrixFactorizationTest(test.TestCase):
 
     # Do a col sweep then evaluate the model on col inputs.
     self._model.fit(input_fn=input_fn, steps=self.col_steps)
-    eval_input_fn_col = self.input_fn(np_matrix=self.INPUT_MATRIX, batch_size=1,
-                                      project_row=False)
+    eval_input_fn_col = self.input_fn(np_matrix=self.input_matrix,
+                                      batch_size=1,
+                                      mode=model_fn.ModeKeys.EVAL,
+                                      project_row=False,
+                                      remove_empty_rows_columns=True)[0]
     loss = self._model.evaluate(
         input_fn=eval_input_fn_col, steps=self._num_cols)['loss']
 
@@ -297,6 +368,16 @@ class WALSMatrixFactorizationTestFullBatch(WALSMatrixFactorizationTest):
   @property
   def batch_size(self):
     return 100
+
+
+class WALSMatrixFactorizaiontTestPaddedInput(WALSMatrixFactorizationTest):
+  PADDED_INPUT_MATRIX = np.pad(
+      WALSMatrixFactorizationTest.INPUT_MATRIX,
+      [(1, 0), (1, 0)], mode='constant')
+
+  @property
+  def input_matrix(self):
+    return self.PADDED_INPUT_MATRIX
 
 
 class WALSMatrixFactorizationUnsupportedTest(test.TestCase):

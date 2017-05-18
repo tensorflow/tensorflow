@@ -43,7 +43,7 @@ def add_operators(operators,
   Given operators `[A1, A2,...]`, this `Op` returns a possibly shorter list of
   operators `[B1, B2,...]` such that
 
-  ```sum_k Ak.apply(x) = sum_k Bk.apply(x).```
+  ```sum_k Ak.matmul(x) = sum_k Bk.matmul(x).```
 
   The operators `Bk` result by adding some of the `Ak`, as allowed by
   `addition_tiers`.

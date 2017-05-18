@@ -22,12 +22,14 @@ import copy
 import json
 
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as core_run_config
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
 TEST_DIR = "test_dir"
 ANOTHER_TEST_DIR = "another_test_dir"
+MASTER = "master_"
 RANDOM_SEED = 123
 
 patch = test.mock.patch
@@ -223,6 +225,27 @@ class RunConfigTest(test.TestCase):
     config = run_config_lib.RunConfig(model_dir=TEST_DIR)
     self.assertEqual(TEST_DIR, config.model_dir)
 
+  def test_model_dir_in_tf_config(self):
+    tf_config = {"model_dir": TEST_DIR}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      run_config = run_config_lib.RunConfig()
+    self.assertEqual(TEST_DIR, run_config.model_dir)
+
+  def test_model_dir_both_in_tf_config_and_constructor(self):
+    tf_config = {"model_dir": TEST_DIR}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      run_config = run_config_lib.RunConfig(model_dir=TEST_DIR)
+    self.assertEqual(TEST_DIR, run_config.model_dir)
+
+  def test_model_dir_fail_if_constructor_value_mismatch_tf_config(self):
+    tf_config = {"model_dir": TEST_DIR}
+    with patch.dict("os.environ", {"TF_CONFIG": json.dumps(tf_config)}):
+      with self.assertRaisesRegexp(
+          ValueError,
+          "`model_dir` provided in RunConfig .* must have "
+          "the same value .* in TF_CONFIG"):
+        run_config_lib.RunConfig(model_dir=TEST_DIR + "/sub_dir")
+
   def test_replace(self):
     config = run_config_lib.RunConfig(
         tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
@@ -232,16 +255,7 @@ class RunConfigTest(test.TestCase):
     new_config = config.replace(model_dir=ANOTHER_TEST_DIR)
     self.assertEqual(ANOTHER_TEST_DIR, new_config.model_dir)
     self.assertEqual(RANDOM_SEED, new_config.tf_random_seed)
-
-    self.assertEqual(TEST_DIR, config.model_dir)
     self.assertEqual(RANDOM_SEED, config.tf_random_seed)
-
-    with self.assertRaises(ValueError):
-      # tf_random_seed is not allowed to be replaced.
-      config.replace(tf_random_seed=RANDOM_SEED)
-
-    with self.assertRaises(ValueError):
-      config.replace(some_undefined_property=RANDOM_SEED)
 
   def test_uid_for_different_configs(self):
     config = run_config_lib.RunConfig(
@@ -256,6 +270,52 @@ class RunConfigTest(test.TestCase):
     self.assertEqual(TEST_DIR, config.model_dir)
     self.assertNotEqual(expected_uid, new_config.uid())
     self.assertEqual(ANOTHER_TEST_DIR, new_config.model_dir)
+
+  def test_uid_for_whitelist(self):
+    whitelist = ["model_dir"]
+    config = run_config_lib.RunConfig(
+        tf_random_seed=RANDOM_SEED, model_dir=TEST_DIR)
+
+    expected_uid = config.uid(whitelist)
+    self.assertEqual(expected_uid, config.uid(whitelist))
+
+    new_config = config.replace(model_dir=ANOTHER_TEST_DIR)
+    self.assertEqual(TEST_DIR, config.model_dir)
+    self.assertEqual(expected_uid, new_config.uid(whitelist))
+    self.assertEqual(ANOTHER_TEST_DIR, new_config.model_dir)
+
+  def test_uid_for_default_whitelist(self):
+    config = run_config_lib.RunConfig(
+        tf_random_seed=11,
+        save_summary_steps=12,
+        save_checkpoints_steps=13,
+        save_checkpoints_secs=14,
+        session_config=config_pb2.ConfigProto(allow_soft_placement=True),
+        keep_checkpoint_max=16,
+        keep_checkpoint_every_n_hours=17)
+    self.assertEqual(11, config.tf_random_seed)
+    self.assertEqual(12, config.save_summary_steps)
+    self.assertEqual(13, config.save_checkpoints_steps)
+    self.assertEqual(14, config.save_checkpoints_secs)
+    self.assertEqual(config_pb2.ConfigProto(allow_soft_placement=True),
+                     config.session_config)
+    self.assertEqual(16, config.keep_checkpoint_max)
+    self.assertEqual(17, config.keep_checkpoint_every_n_hours)
+
+    new_config = run_config_lib.RunConfig(
+        tf_random_seed=21,
+        save_summary_steps=22,
+        save_checkpoints_steps=23,
+        save_checkpoints_secs=24,
+        session_config=config_pb2.ConfigProto(allow_soft_placement=False),
+        keep_checkpoint_max=26,
+        keep_checkpoint_every_n_hours=27)
+    self.assertEqual(config.uid(), new_config.uid())
+    # model_dir is not on the default whitelist.
+    self.assertNotEqual(config.uid(whitelist=[]),
+                        new_config.uid(whitelist=[]))
+    new_config = new_config.replace(model_dir=ANOTHER_TEST_DIR)
+    self.assertNotEqual(config.uid(), new_config.uid())
 
   def test_uid_for_deepcopy(self):
     tf_config = {

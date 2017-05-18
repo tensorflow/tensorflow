@@ -113,10 +113,9 @@ class DepthwiseConv2DTest(test.TestCase):
       total_size_1 *= s
     for s in filter_in_sizes:
       total_size_2 *= s
-    # Initializes the input tensor with array containing incrementing
-    # numbers from 1.
+    # Initializes the input and filter tensor with numbers incrementing from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
-    x2 = [1.0 for f in range(1, total_size_2 + 1)]
+    x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
     with self.test_session(use_gpu=use_gpu) as sess:
       t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t1.set_shape(tensor_in_sizes)
@@ -147,8 +146,9 @@ class DepthwiseConv2DTest(test.TestCase):
       native_result = sess.run(conv_native)
       interface_result = sess.run(conv_interface)
 
-    print("diff matrix:",
-          np.amax(np.ravel(native_result) - np.ravel(interface_result)))
+    print("depthwise conv_2d: ", tensor_in_sizes, "*", filter_in_sizes,
+          ", stride:", stride, ", padding: ", padding, ", max diff: ",
+          np.amax(np.absolute(native_result - interface_result)))
     self.assertArrayNear(
         np.ravel(native_result), np.ravel(interface_result), 1e-5)
     self.assertShapeEqual(native_result, conv_native)

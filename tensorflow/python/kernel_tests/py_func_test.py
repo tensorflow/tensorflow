@@ -186,9 +186,9 @@ class PyOpTest(test.TestCase):
 
       def bad():
         # Non-string python objects aren't supported.
-        return dtypes.float32
+        return {"foo": dtypes.float32}
 
-      z, = script_ops.py_func(bad, [], [dtypes.float64])
+      z, = script_ops.py_func(bad, [], [dtypes.int64])
 
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported object type"):

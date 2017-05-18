@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/debug/debug_gateway.h"
 
+#include <utility>
+
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/session_factory.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -56,11 +58,11 @@ DebugGateway::~DebugGateway() {
 }
 
 void DebugGateway::SetNodeCompletionCallback(NodeCompletionCallback callback) {
-  comp_cb_ = callback;
+  comp_cb_ = std::move(callback);
 }
 
 void DebugGateway::SetNodeValueCallback(NodeValueCallback callback) {
-  val_cb_ = callback;
+  val_cb_ = std::move(callback);
 }
 
 void DebugGateway::CopyTensor(const string& node_name, const int output_slot,

@@ -1,6 +1,7 @@
 # Changes since the last release
 
 ## Major Features and Improvements
+* Added `tf.layers.conv3d_transpose` layer for spatio temporal deconvolution.
 * Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
 * Added ibverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
 * `RNNCell` objects now subclass `tf.layers._Layer`.  The strictness described
@@ -17,6 +18,10 @@
   If at all unsure, first test your code with TF 1.1; ensure it raises no
   errors, and then upgrade to TF 1.2.
 
+## Bug Fixes and Other Changes
+* In python, `Operation.get_attr` on type attributes returns the Python DType
+  version of the type to match expected get_attr documentation rather than the
+  protobuf enum.
 
 # Release 1.1.0
 

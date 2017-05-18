@@ -45,6 +45,8 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
+using ::testing::ElementsAre;
+
 class LayoutAssignmentTest : public HloTestBase {
  protected:
   void AssignLayouts(HloModule* module,
@@ -317,7 +319,7 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {
   // param -> log -> reshape -> tanh
   auto builder = HloComputation::Builder(TestName());
   Shape ashape = ShapeUtil::MakeShape(F32, {1, 2, 3, 1});
-  Shape bshape = ShapeUtil::MakeShape(F32, {2, 1, 3});
+  Shape bshape = ShapeUtil::MakeShape(F32, {3, 1, 2});
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, ashape, "param"));
   auto log = builder.AddInstruction(
@@ -332,8 +334,8 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {
 
   Shape ashape_with_layout(ashape);
   Shape bshape_with_layout(bshape);
-  *ashape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2, 3});
-  *bshape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2});
+  *ashape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({0, 2, 1, 3});
+  *bshape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({2, 1, 0});
 
   ComputationLayout computation_layout(computation->ComputeProgramShape());
   *computation_layout.mutable_parameter_layout(0) =
@@ -343,12 +345,12 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {
 
   auto log_minor_to_major =
       AsInt64Slice(log->shape().layout().minor_to_major());
-  EXPECT_LT(PositionInContainer(log_minor_to_major, 1),
+  EXPECT_GT(PositionInContainer(log_minor_to_major, 1),
             PositionInContainer(log_minor_to_major, 2));
 
   auto reshape_minor_to_major =
       AsInt64Slice(reshape->shape().layout().minor_to_major());
-  EXPECT_LT(PositionInContainer(reshape_minor_to_major, 0),
+  EXPECT_GT(PositionInContainer(reshape_minor_to_major, 0),
             PositionInContainer(reshape_minor_to_major, 2));
 }
 
@@ -421,8 +423,8 @@ TEST_F(LayoutAssignmentTest, BroadcastAndTranspose) {
       ShapeLayout(output_shape_with_layout);
   AssignLayouts(&module, &computation_layout);
 
-  EXPECT_TRUE(
-      ContainersEqual(broadcast->shape().layout().minor_to_major(), {0, 1, 2}));
+  EXPECT_THAT(broadcast->shape().layout().minor_to_major(),
+              ElementsAre(0, 1, 2));
 }
 
 TEST_F(LayoutAssignmentTest, ReshapeOperandHasMultipleUsers) {
@@ -474,11 +476,9 @@ TEST_F(LayoutAssignmentTest, ReshapeOperandHasMultipleUsers) {
           {transpose_shape_with_layout, broadcast2_shape_with_layout}));
   AssignLayouts(&module, &computation_layout);
 
-  EXPECT_TRUE(
-      ContainersEqual(broadcast->shape().layout().minor_to_major(), {0, 1}));
-  EXPECT_TRUE(
-      ContainersEqual(transpose->shape().layout().minor_to_major(), {1, 0}));
-  EXPECT_TRUE(ContainersEqual(tanh->shape().layout().minor_to_major(), {0, 1}));
+  EXPECT_THAT(broadcast->shape().layout().minor_to_major(), ElementsAre(0, 1));
+  EXPECT_THAT(transpose->shape().layout().minor_to_major(), ElementsAre(1, 0));
+  EXPECT_THAT(tanh->shape().layout().minor_to_major(), ElementsAre(0, 1));
 }
 
 // Add test which fails due to copy tuple.

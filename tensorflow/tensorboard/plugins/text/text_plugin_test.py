@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -403,6 +404,10 @@ class TextPluginTest(test.TestCase):
 
     # The plugin is active because text summaries are available.
     self.assertTrue(self.plugin.is_active())
+
+  def testUnicode(self):
+    self.assertConverted(u'<p>Iñtërnâtiônàlizætiøn⚡💩</p>',
+                         'Iñtërnâtiônàlizætiøn⚡💩')
 
 
 if __name__ == '__main__':

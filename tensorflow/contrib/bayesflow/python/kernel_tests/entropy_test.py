@@ -95,7 +95,7 @@ class ElboRatioTest(test.TestCase):
           n=n_samples,
           form=entropy.ELBOForms.sample,
           seed=42)
-      actual_kl = distributions.kl(q, p)
+      actual_kl = distributions.kl_divergence(q, p)
 
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.
@@ -123,7 +123,7 @@ class ElboRatioTest(test.TestCase):
           n=n_samples,
           form=entropy.ELBOForms.analytic_entropy,
           seed=42)
-      actual_kl = distributions.kl(q, p)
+      actual_kl = distributions.kl_divergence(q, p)
 
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.

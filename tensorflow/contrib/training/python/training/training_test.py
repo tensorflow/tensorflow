@@ -508,7 +508,7 @@ class TrainTest(test.TestCase):
         # Initialize the variables.
         session.run(variables_lib2.global_variables_initializer())
 
-        # Get the intial weights and biases values.
+        # Get the initial weights and biases values.
         weights_values, biases_values = session.run([weights, biases])
         self.assertGreater(np.linalg.norm(weights_values), 0)
         self.assertAlmostEqual(np.linalg.norm(biases_values), 0)

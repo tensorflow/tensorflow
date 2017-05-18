@@ -120,7 +120,7 @@ class PReLU(Layer):
         param_shape[i - 1] = 1
         self.param_broadcast[i - 1] = True
     self.alpha = self.add_weight(
-        param_shape,
+        shape=param_shape,
         name='alpha',
         initializer=self.alpha_initializer,
         regularizer=self.alpha_regularizer,

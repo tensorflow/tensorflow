@@ -1,12 +1,12 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+web_library(
     name = "tf_image_dashboard",
     srcs = [
         "tf-image-dashboard.html",
@@ -41,6 +41,7 @@ tensorboard_webcomponent_library(
     srcs = [
         "tf-image-dashboard.html",
         "tf-image-loader.html",
+        ":legacy_ts",
     ],
     destdir = "tf-image-dashboard",
     deps = [
@@ -53,4 +54,6 @@ tensorboard_webcomponent_library(
 tensorboard_ts_library(
     name = "legacy_ts",
     srcs = [],
+    deps_mgmt = "off",
+    runtime = "nodejs",
 )

@@ -196,9 +196,9 @@ class DfsHloVisitor {
       tensorflow::StringPiece custom_call_target) = 0;
   virtual Status HandleSlice(HloInstruction* slice,
                              HloInstruction* operand) = 0;
-  virtual Status HandleDynamicSlice(
-      HloInstruction* slice,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) = 0;
+  virtual Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                                    HloInstruction* operand,
+                                    HloInstruction* start_indices) = 0;
   virtual Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
                                           HloInstruction* operand,
                                           HloInstruction* update,

@@ -20,3 +20,13 @@ JNIEXPORT jstring JNICALL Java_org_tensorflow_TensorFlow_version(JNIEnv* env,
                                                                  jclass clazz) {
   return env->NewStringUTF(TF_Version());
 }
+
+JNIEXPORT jbyteArray JNICALL
+Java_org_tensorflow_TensorFlow_registeredOpList(JNIEnv* env, jclass clazz) {
+  TF_Buffer* buf = TF_GetAllOpList();
+  jint length = static_cast<int>(buf->length);
+  jbyteArray ret = env->NewByteArray(length);
+  env->SetByteArrayRegion(ret, 0, length, static_cast<const jbyte*>(buf->data));
+  TF_DeleteBuffer(buf);
+  return ret;
+}

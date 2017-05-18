@@ -88,7 +88,7 @@ bool HexagonControlWrapper::SetupGraph() {
     CHECK_NE(node_info, nullptr);
     node_info->set_type_name(INPUT_OP_NAME);
     node_info->set_soc_op_id(
-        HexagonOpsDefinitions::getInstance().GetOpIdFor(INPUT_OP_NAME));
+        HexagonOpsDefinitions::getInstance().GetOpIdFor(INPUT_OP_NAME, {}));
   }
 
   // Generate a new output node which is connected to graph output node
@@ -106,7 +106,7 @@ bool HexagonControlWrapper::SetupGraph() {
     new_output_node_info.set_node_id(new_output_node_id);
     new_output_node_info.set_type_name(OUTPUT_OP_NAME);
     new_output_node_info.set_soc_op_id(
-        HexagonOpsDefinitions::getInstance().GetOpIdFor(OUTPUT_OP_NAME));
+        HexagonOpsDefinitions::getInstance().GetOpIdFor(OUTPUT_OP_NAME, {}));
     new_output_node_info.set_padding_id(0 /* PADDING_NA_ID */);
     new_output_node_info.set_input_count(1);
     new_output_node_info.set_output_count(0);

@@ -25,7 +25,7 @@ The TensorFlow runtime is a cross-platform library. Figure 1 illustrates its
 general architecture. A C API separates user level code in different languages
 from the core runtime.
 
-![TensorFlow Layers](../images/layers.png){: width="300"}
+![TensorFlow Layers](https://www.tensorflow.org/images/layers.png){: width="300"}
 
 **Figure 1**
 
@@ -57,7 +57,7 @@ Other tasks send updates to these parameters as they work on optimizing the
 parameters. This particular division of labor between tasks is not required, but
 it is common for distributed training.
 
-![TensorFlow Architecture Diagram](../images/diag1.svg){: width="500"}
+![TensorFlow Architecture Diagram](https://www.tensorflow.org/images/diag1.svg){: width="500"}
 
 **Figure 2**
 
@@ -91,7 +91,7 @@ In Figure 3, the client has built a graph that applies weights (w) to a
 feature vector (x), adds a bias term (b) and saves the result in a variable
 (s).
 
-![TensorFlow Architecture Diagram: Client](../images/graph_client.svg){: width="700"}
+![TensorFlow Architecture Diagram: Client](https://www.tensorflow.org/images/graph_client.svg){: width="700"}
 
 **Figure 3**
 
@@ -114,7 +114,7 @@ a step, it applies standard optimizations such as common subexpression
 elimination and constant folding. It then coordinates execution of the
 optimized subgraphs across a set of tasks.
 
-![TensorFlow Architecture Diagram: Master](../images/graph_master_cln.svg){: width="700"}
+![TensorFlow Architecture Diagram: Master](https://www.tensorflow.org/images/graph_master_cln.svg){: width="700"}
 
 **Figure 4**
 
@@ -123,7 +123,7 @@ Figure 5 shows a possible partition of our example graph. The distributed
 master has grouped the model parameters in order to place them together on the
 parameter server.
 
-![Partitioned Graph](../images/graph_split1.svg){: width="700"}
+![Partitioned Graph](https://www.tensorflow.org/images/graph_split1.svg){: width="700"}
 
 **Figure 5**
 
@@ -132,14 +132,14 @@ Where graph edges are cut by the partition, the distributed master inserts
 send and receive nodes to pass information between the distributed tasks
 (Figure 6).
 
-![Partitioned Graph](../images/graph_split2.svg){: width="700"}
+![Partitioned Graph](https://www.tensorflow.org/images/graph_split2.svg){: width="700"}
 
 **Figure 6**
 
 
 The distributed master then ships the graph pieces to the distributed tasks.
 
-![Partitioned Graph](../images/graph_workers_cln.svg){: width="700"}
+![Partitioned Graph](https://www.tensorflow.org/images/graph_workers_cln.svg){: width="700"}
 
 **Figure 7**
 
@@ -181,7 +181,7 @@ We also have preliminary support for NVIDIA's NCCL library for multi-GPU
 communication (see [`tf.contrib.nccl`](
 https://www.tensorflow.org/code/tensorflow/contrib/nccl/python/ops/nccl_ops.py)).
 
-![Partitioned Graph](../images/graph_send_recv.svg){: width="700"}
+![Partitioned Graph](https://www.tensorflow.org/images/graph_send_recv.svg){: width="700"}
 
 **Figure 8**
 

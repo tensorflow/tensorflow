@@ -35,9 +35,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+
+using ::tensorflow::strings::StrCat;
 
 std::unique_ptr<HloComputation> HloComputation::Builder::Build(
     HloInstruction* root_instruction) {
@@ -91,12 +95,7 @@ HloInstruction* HloComputation::AddInstruction(
 HloInstruction* HloComputation::AddInstructionInternal(
     std::unique_ptr<HloInstruction> instruction) {
   // Generate a unique name for the instruction.
-  instruction->set_name(
-      instruction_name_uniquer_.GetUniqueName(instruction->name()));
-  if (instruction->opcode() == HloOpcode::kParameter) {
-    instruction->set_parameter_name(
-        instruction_name_uniquer_.GetUniqueName(instruction->parameter_name()));
-  }
+  instruction->UniquifyName(&instruction_name_uniquer_);
   Reparent(instruction.get());
   HloInstruction* pinst = instruction.get();
   instruction_iterators_[pinst] =
@@ -131,9 +130,24 @@ Status HloComputation::RemoveParameter(int64 param_no) {
 
   while (param_no < param_instructions_.size()) {
     param_instruction = param_instructions_[param_no];
-    HloInstruction* new_instr = AddInstructionInternal(
-        HloInstruction::CreateParameter(param_no, param_instruction->shape(),
-                                        param_instruction->parameter_name()));
+    string param_name = param_instruction->name();
+    // Fusion parameters are named foo.param_1, bar.param_2, etc. We are
+    // renumbering the parameters so replace the final number in the name with
+    // the updated value.
+    const string param_underscore = ".param_";
+    size_t index = param_name.rfind(param_underscore);
+    if (index == string::npos) {
+      string after_param = name().substr(index + param_underscore.size());
+      int64 numeric_suffix;
+      if (tensorflow::strings::safe_strto64(after_param, &numeric_suffix)) {
+        param_name =
+            StrCat(param_name.substr(0, index), param_underscore, param_no);
+      }
+    }
+
+    HloInstruction* new_instr =
+        AddInstructionInternal(HloInstruction::CreateParameter(
+            param_no, param_instruction->shape(), param_name));
     TF_RETURN_IF_ERROR(param_instruction->ReplaceAllUsesWith(new_instr));
     new_instr->SetParentFusion(root_instruction_->fusion_instruction());
     param_instructions_[param_no] = new_instr;
@@ -148,7 +162,15 @@ void HloComputation::Reparent(HloInstruction* instruction) {
   instruction->set_parent(this);
 }
 
-bool HloComputation::IsRemovable(const HloOpcode& opcode) {
+bool HloComputation::IsRemovable(const HloInstruction* instruction) {
+  // If the instruction has control predecessors or successors then we cannot
+  // remove the instruction without violating ordering constraints (added, for
+  // example, to avert interference due to buffer aliasing).
+  if (!instruction->control_predecessors().empty() ||
+      !instruction->control_successors().empty()) {
+    return false;
+  }
+  const HloOpcode opcode = instruction->opcode();
   return !((opcode == HloOpcode::kParameter && !is_fusion_computation_) ||
            opcode == HloOpcode::kRecv || opcode == HloOpcode::kSend ||
            opcode == HloOpcode::kTrace || opcode == HloOpcode::kOutfeed);
@@ -159,7 +181,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
   TF_RET_CHECK(root_instruction() != instruction);
 
   TF_RET_CHECK(instruction->user_count() == 0);
-  TF_RET_CHECK(IsRemovable(instruction->opcode()));
+  TF_RET_CHECK(IsRemovable(instruction));
   std::unordered_set<HloInstruction*> removed;
   std::queue<HloInstruction*> worklist;
   worklist.push(instruction);
@@ -168,7 +190,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
     worklist.pop();
 
     if (removed.count(item) != 0 || item->user_count() != 0 ||
-        item == root_instruction() || !IsRemovable(item->opcode())) {
+        item == root_instruction() || !IsRemovable(item)) {
       continue;
     }
     for (int i = 0; i < item->operand_count(); ++i) {
@@ -184,7 +206,7 @@ Status HloComputation::RemoveInstructionAndUnusedOperands(
 Status HloComputation::RemoveInstruction(HloInstruction* instruction) {
   VLOG(2) << "Removing instruction " << instruction->name()
           << " from computation " << name();
-  TF_RET_CHECK(IsRemovable(instruction->opcode()));
+  TF_RET_CHECK(IsRemovable(instruction));
   TF_RET_CHECK(root_instruction() != instruction)
       << "cannot remove root instruction " << instruction->name();
   TF_RET_CHECK(instruction->user_count() == 0)
@@ -662,6 +684,10 @@ std::unique_ptr<HloComputation> HloComputation::Clone(const string& suffix) {
     }
   }
   return result;
+}
+
+void HloComputation::UniquifyName(NameUniquer* name_uniquer) {
+  name_ = name_uniquer->GetUniqueName(name_);
 }
 
 }  // namespace xla

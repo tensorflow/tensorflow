@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/index_util.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -675,7 +677,7 @@ namespace {
 // Helper for ForEachSubshape which visits the subshapes of the given shape in
 // DFS pre-order starting with the index.
 Status ForEachSubshapeHelper(const Shape& shape,
-                             const ShapeUtil::VisitorFunction func,
+                             const ShapeUtil::VisitorFunction& func,
                              ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(shape)) {
@@ -692,7 +694,7 @@ Status ForEachSubshapeHelper(const Shape& shape,
 // Helper for ForEachMutableSubshape which visits the subshapes of the given
 // shape in DFS pre-order starting with the index.
 Status ForEachMutableSubshapeHelper(
-    Shape* shape, const ShapeUtil::MutatingVisitorFunction func,
+    Shape* shape, const ShapeUtil::MutatingVisitorFunction& func,
     ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(*shape)) {
@@ -709,13 +711,13 @@ Status ForEachMutableSubshapeHelper(
 }  // namespace
 
 /* static */ Status ShapeUtil::ForEachSubshape(const Shape& shape,
-                                               VisitorFunction func) {
+                                               const VisitorFunction& func) {
   ShapeIndex index;
   return ForEachSubshapeHelper(shape, func, &index);
 }
 
 /* static */ Status ShapeUtil::ForEachMutableSubshape(
-    Shape* shape, MutatingVisitorFunction func) {
+    Shape* shape, const MutatingVisitorFunction& func) {
   ShapeIndex index;
   return ForEachMutableSubshapeHelper(shape, func, &index);
 }
@@ -728,9 +730,17 @@ Status ForEachMutableSubshapeHelper(
     new_shape.add_dimensions(dim);
   }
   if (shape.has_layout()) {
-    new_shape.mutable_layout()->clear_minor_to_major();
+    Layout* new_layout = new_shape.mutable_layout();
+    new_layout->clear_minor_to_major();
     for (auto index : Permute(permutation, shape.layout().minor_to_major())) {
-      new_shape.mutable_layout()->add_minor_to_major(index);
+      new_layout->add_minor_to_major(index);
+    }
+    if (shape.layout().padded_dimensions_size() > 0) {
+      new_layout->clear_padded_dimensions();
+      for (auto dim :
+           Permute(permutation, shape.layout().padded_dimensions())) {
+        new_layout->add_padded_dimensions(dim);
+      }
     }
   }
   return new_shape;
@@ -1013,6 +1023,144 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
          check_input_unit_indices(output_shape, input_shape);
 }
 
+/* static */ tensorflow::gtl::optional<Shape> ShapeUtil::AlignLayouts(
+    const Shape& input_shape, const Shape& output_shape) {
+  int64 input_rank = ShapeUtil::Rank(input_shape);
+  int64 output_rank = ShapeUtil::Rank(output_shape);
+
+  // First, calculate an alignment of the dimensions. A consecutive sequence of
+  // input dimensions and output dimensions belong to the same alignment part if
+  // the products of their dimension bounds are the same. In the easiest case,
+  // an alignment part consists of one input dimension and one output dimension
+  // which both have the same dimension bound. An alignment part specifies which
+  // dimensions need to be kept together in a physical layout if we want a
+  // reshape to be a bitcast. The order of the alignment parts is defined by the
+  // physical layout of the input shape, so when we construct the layout for the
+  // output shape we just process the alignment parts in this order, and then
+  // layout the dimensions belonging to each part in descending (major to minor)
+  // order.
+
+  // Stores the input and output dimension numbers where each alignment part
+  // starts.
+  std::vector<std::pair<int64, int64>> alignment;
+  alignment.push_back({0, 0});
+
+  // Stores a mapping from the input dimension to the alignment part it belongs
+  // to.
+  std::vector<int64> dimension_to_alignment_index(input_rank);
+  int64 input_dimension_product = 1, output_dimension_product = 1;
+  for (int64 i = 0, j = 0; i < input_rank || j < output_rank;) {
+    // Check if we have reached the end of an alignment part.
+    if (input_dimension_product == output_dimension_product &&
+        input_dimension_product > 1) {
+      alignment.push_back({i, j});
+      input_dimension_product = output_dimension_product = 1;
+    }
+    if (input_dimension_product < output_dimension_product ||
+        j == output_rank) {
+      if (i == input_rank) {
+        return tensorflow::gtl::nullopt;
+      }
+      dimension_to_alignment_index[i] = alignment.size() - 1;
+      input_dimension_product *= input_shape.dimensions(i);
+      ++i;
+    } else {
+      output_dimension_product *= output_shape.dimensions(j);
+      ++j;
+    }
+  }
+  if (input_dimension_product != output_dimension_product) {
+    return tensorflow::gtl::nullopt;
+  }
+  // We also need to store an end element so that we know where the last
+  // alignment part ends.
+  alignment.push_back({input_rank, output_rank});
+
+  // Now check if the physical layout can potentially be aligned to the output
+  // shape by changing the physical layout of the output shape. We need to check
+  // that all dimension numbers that belong to the same alignment part appear
+  // consecutively, and are in descending order. However we can ignore any
+  // trivial dimension bounds of 1, because they can be placed anywhere.
+  auto input_dimension_numbers = input_shape.layout().minor_to_major();
+  std::vector<int64> output_layout;
+  output_layout.reserve(output_rank);
+  for (int64 i = 0; i < input_rank;) {
+    int64 current_dimension_number = input_dimension_numbers[i];
+
+    // Skip trivial dimensions with a bound of 1.
+    if (input_shape.dimensions(current_dimension_number) == 1) {
+      ++i;
+      continue;
+    }
+
+    // Calculate the number of non-trivial dimension bounds in the input shape
+    // belonging to the current alignment part.
+    const int64 current_alignment_index =
+        dimension_to_alignment_index[current_dimension_number];
+    // Because of the special end element that we added, we can be sure that
+    // 'current_alignment_index' is < alignment.size() - 1.
+    CHECK_LT(current_alignment_index, alignment.size() - 1);
+    int64 num_non_trivial_dimensions_in_alignment_part = 0;
+    for (int64 j = alignment[current_alignment_index].first;
+         j < alignment[current_alignment_index + 1].first; ++j) {
+      if (input_shape.dimensions(j) != 1) {
+        ++num_non_trivial_dimensions_in_alignment_part;
+      }
+    }
+
+    // Check that the following 'num_non_trivial_dimensions_in_alignment_part'
+    // dimension numbers (ignoring dimension numbers with dimension bound 1) are
+    // in descending order and belong to the current alignment part.
+    for (int64 j = 0; j < num_non_trivial_dimensions_in_alignment_part;
+         ++i, ++j) {
+      if (i == input_rank) {
+        return tensorflow::gtl::nullopt;
+      }
+      // Skip trivial dimensions with a bound of 1.
+      if (input_shape.dimensions(input_dimension_numbers[i]) == 1) {
+        --j;
+        continue;
+      }
+      // If the current dimension number belongs to a different alignment part,
+      // or the dimension numbers are not in descending order, we can return
+      // early.
+      if (dimension_to_alignment_index[input_dimension_numbers[i]] !=
+              current_alignment_index ||
+          input_dimension_numbers[i] > current_dimension_number) {
+        return tensorflow::gtl::nullopt;
+      }
+      current_dimension_number = input_dimension_numbers[i];
+    }
+
+    // The output dimension numbers that belong to the current alignment part
+    // need to appear in the same descending order as in the input. Again, we
+    // can skip dimensions with a bound of 1.
+    for (int64 j = alignment[current_alignment_index + 1].second - 1;
+         j >= alignment[current_alignment_index].second; --j) {
+      if (output_shape.dimensions(j) != 1) {
+        output_layout.push_back(j);
+      }
+    }
+  }
+  // Now add all the dimensions with dimension bound 1 at the end of
+  // 'output_layout'.
+  for (int64 i = 0; i < output_rank; ++i) {
+    if (output_shape.dimensions(i) == 1) {
+      output_layout.push_back(i);
+    }
+  }
+  CHECK_EQ(output_layout.size(), output_rank);
+  std::vector<int64> dimension_sizes;
+  for (int64 i = 0; i < output_rank; ++i) {
+    dimension_sizes.push_back(output_shape.dimensions(i));
+  }
+  Shape output_shape_with_layout = MakeShapeWithLayout(
+      output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
+      output_layout);
+  CHECK(ReshapeIsBitcast(input_shape, output_shape_with_layout));
+  return output_shape_with_layout;
+}
+
 /* static */ Shape ShapeUtil::DeleteDimension(int64 dim_to_delete,
                                               Shape shape) {
   shape.mutable_dimensions()->erase(shape.dimensions().begin() + dim_to_delete);
@@ -1045,6 +1193,33 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     shape = DeleteDimension(dim, shape);
   }
   return shape;
+}
+
+/* static */ void ShapeUtil::ForEachIndex(
+    const Shape& shape, tensorflow::gtl::ArraySlice<int64> base,
+    tensorflow::gtl::ArraySlice<int64> count,
+    tensorflow::gtl::ArraySlice<int64> incr,
+    const IndexVisitorFunction& visitor_function) {
+  DCHECK_EQ(Rank(shape), base.size());
+  DCHECK_EQ(incr.size(), base.size());
+  DCHECK_EQ(count.size(), base.size());
+  const Layout& layout = shape.layout();
+  int64 rank = layout.minor_to_major_size();
+  // Allows handling R0 arrays, such that the visitor function will be called
+  // once with the proper empty indexes.
+  int64 n = -1;
+  std::vector<int64> indexes(base.begin(), base.end());
+  while (n < rank && visitor_function(indexes)) {
+    // Increments dimensions in minor to major order.
+    for (n = 0; n < rank; ++n) {
+      int64 dim = layout.minor_to_major(n);
+      indexes[dim] += incr[dim];
+      if (indexes[dim] < base[dim] + count[dim]) {
+        break;
+      }
+      indexes[dim] = base[dim];
+    }
+  }
 }
 
 }  // namespace xla

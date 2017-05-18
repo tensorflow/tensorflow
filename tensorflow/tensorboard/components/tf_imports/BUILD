@@ -1,10 +1,10 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+web_library(
     name = "d3",
     srcs = [
         "d3.html",
@@ -13,16 +13,14 @@ webfiles(
     path = "/tf-imports",
 )
 
-webfiles(
+web_library(
     name = "lodash",
-    srcs = [
-        "lodash.html",
-        "@com_lodash",
-    ],
+    srcs = ["lodash.html"],
     path = "/tf-imports",
+    deps = ["@com_lodash"],
 )
 
-webfiles(
+web_library(
     name = "graphlib",
     srcs = [
         "graphlib.html",
@@ -32,7 +30,7 @@ webfiles(
     deps = [":lodash"],
 )
 
-webfiles(
+web_library(
     name = "dagre",
     srcs = [
         "dagre.html",
@@ -45,7 +43,7 @@ webfiles(
     ],
 )
 
-webfiles(
+web_library(
     name = "plottable",
     srcs = [
         "plottable.html",
@@ -54,4 +52,10 @@ webfiles(
     ],
     path = "/tf-imports",
     deps = [":d3"],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["**"]),
+    tags = ["notsan"],
 )

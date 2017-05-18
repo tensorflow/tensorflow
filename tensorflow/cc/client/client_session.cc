@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/cc/client/client_session.h"
 
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/platform/env.h"
@@ -31,7 +32,7 @@ class ClientSession::Impl {
   friend class ClientSession;
 
   Impl(Session* session, std::shared_ptr<Graph> graph)
-      : session_(session), graph_(graph) {}
+      : session_(session), graph_(std::move(graph)) {}
 
   static SessionOptions MakeDefaultSessionOptions(const string& target);
   Status MaybeExtendGraph() const;
