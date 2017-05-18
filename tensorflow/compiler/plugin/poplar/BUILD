@@ -15,23 +15,93 @@ genrule(
 )
 
 cc_library(
-    name = "poplar_lib",
-    srcs = glob([
-        "driver/*.cc",
-        "stream_executor/*.cc",
-    ]),
-    hdrs = glob([
-        "driver/*.h",
-        "stream_executor/*.h",
-    ]),
+    name = "driver",
+    srcs = [
+        "driver/compiler.cc",
+        "driver/conv_op.cc",
+        "driver/executable.cc",
+        "driver/map_ops.cc",
+        "driver/math_ops.cc",
+        "driver/op_util.cc",
+        "driver/random_op.cc",
+        "driver/reduction_ops.cc",
+        "driver/tensor.cc",
+        "driver/transfer_manager.cc",
+        "driver/visitor_base.cc",
+        "driver/visitor_call.cc",
+        "driver/visitor_full.cc",
+        "driver/visitor_map.cc",
+    ],
+    hdrs = [
+        "driver/compiler.h",
+        "driver/compiler_resources.h",
+        "driver/executable.h",
+        "driver/ops.h",
+        "driver/tensor.h",
+        "driver/transfer_manager.h",
+        "driver/vertex_templates.h",
+        "driver/visitor_base.h",
+        "driver/visitor_call.h",
+        "driver/visitor_full.h",
+        "driver/visitor_map.h",
+    ],
     deps = [
-        "//third_party/eigen3",
+        ":executor",
+        ":optimizers",
         "//tensorflow/compiler/xla:xla_headers_lib",
-        "//tensorflow/compiler/jit:xla_jit_headers_lib",
+        "//third_party/eigen3",
         "@protobuf//:protobuf_headers",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_poplar//poplar:poplar_headers",
         "@local_config_poplar//popnn:popnn_headers",
+    ],
+)
+
+cc_library(
+    name = "executor",
+    srcs = [
+        "stream_executor/executor.cc",
+        "stream_executor/platform.cc",
+        "stream_executor/platform_id.cc",
+    ],
+    hdrs = [
+        "stream_executor/executor.h",
+        "stream_executor/platform.h",
+        "stream_executor/platform_id.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:xla_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf//:protobuf_headers",
+        "@local_config_poplar//poplar:poplar_headers",
+    ],
+)
+
+cc_library(
+    name = "optimizers",
+    srcs = [
+        "driver/outliner.cc",
+    ],
+    hdrs = [
+        "driver/outliner.h",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:xla_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf//:protobuf_headers",
+    ],
+)
+
+cc_library(
+    name = "poplar_lib",
+    srcs = [
+        "driver/xla_ipu_device.cc",
+    ],
+    hdrs = [],
+    deps = [
+        ":driver",
+        ":executor",
+        "//tensorflow/compiler/jit:xla_jit_headers_lib",
     ],
     linkopts = [
         "$(locations @local_config_poplar//poplar:poplar_lib)",
@@ -45,6 +115,17 @@ cc_library(
         "@local_config_poplar//popnn:popnn_lib"
     ],
     linkstatic=0,
+)
+
+cc_test(
+    name = "outliner_test",
+    srcs = ["tests/outliner_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 py_test(

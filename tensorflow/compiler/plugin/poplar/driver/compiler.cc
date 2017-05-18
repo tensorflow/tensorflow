@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
+#include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/stream_executor/executor.h"
 
@@ -116,6 +117,7 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
                                           HloDumper dump_hlo) {
   HloPassPipeline pipeline("IPU", dump_hlo);
   pipeline.AddPass<Inliner>();
+  pipeline.AddPass<Outliner>(2);
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<HloCSE>(false);
 
@@ -162,6 +164,14 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   popstd::addCodelets(*graph);
 
   CompilerResources resources;
+
+  // Find subgraphs that will not be inlined and construct poplar equivalents
+  for (const auto& comp : hlo_module->computations()) {
+    if (comp.get() != hlo_module->entry_computation()) {
+      // If this computation is a target of a 'call' then compile
+      // it and store in compiler resources
+    }
+  }
 
   // Visit the graph, building up a poplar equivalent
   HloComputation* entry = hlo_module->entry_computation();

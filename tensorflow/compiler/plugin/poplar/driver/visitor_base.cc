@@ -258,7 +258,8 @@ Status BaseVisitor::HandleSlice(
 
 Status BaseVisitor::HandleDynamicSlice(
         HloInstruction* inst,
-        tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+        HloInstruction* operand,
+        HloInstruction* start_indices) {
   return Unimplemented(inst);
 }
 

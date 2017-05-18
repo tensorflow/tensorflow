@@ -49,13 +49,8 @@ public:
                            HloInstruction* rhs,
                            const Window& window) override;
 
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
-
   Status HandleReverse(HloInstruction* inst,
                        HloInstruction* operand) override;
-
-  Status HandleSort(HloInstruction* inst,
-                    HloInstruction* operand) override;
 
   Status HandleGetTupleElement(HloInstruction* inst,
                                HloInstruction* operand) override;
@@ -74,24 +69,10 @@ public:
 
   Status HandleTranspose(HloInstruction* inst) override;
 
-  Status HandleFusion(HloInstruction* inst) override;
-
   Status HandleCall(HloInstruction* inst) override;
-
-  Status HandleCustomCall(HloInstruction* inst,
-                          tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                          tensorflow::StringPiece custom_call_target) override;
 
   Status HandleSlice(HloInstruction* inst,
                      HloInstruction* operand) override;
-
-  Status HandleDynamicSlice(HloInstruction* inst,
-                            tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
-
-  Status HandleDynamicUpdateSlice(HloInstruction* inst,
-                                  HloInstruction* operand,
-                                  HloInstruction* update,
-                                  HloInstruction* start_indices) override;
 
   Status HandleTuple(HloInstruction* inst,
                      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;

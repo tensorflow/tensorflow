@@ -1,6 +1,3 @@
-/* Copyright 2017 Graphcore Ltd
- */
-
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,25 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
-#define TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_OUTLINER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_OUTLINER_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_call.h"
-
-#include <popconv/Convolution.hpp>
+#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
 namespace xla {
-namespace poplarplugin {
 
-using ComputationMap = std::map<const HloComputation*, CallVisitor>;
+class HloModule;
 
-struct CompilerResources {
-  ComputationMap computation_map;
+class Outliner : public HloPassInterface {
+ public:
+  Outliner(int32 max_outlined) : max_outlined_instructions_(max_outlined) {}
 
-  popconv::PlanningCache convolution_cache;
+  ~Outliner() override = default;
+  tensorflow::StringPiece name() const override { return "outline"; }
+
+  StatusOr<bool> Run(HloModule* module) override;
+
+private:
+  uint32 max_outlined_instructions_ = 1;
 };
 
-}  // namespace poplarplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_POPLAR_DRIVER_POPLAR_COMPILER_RESOURCES_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_OUTLINER_H_

@@ -55,7 +55,6 @@ FullVisitor::FullVisitor(poplar::Graph* graph,
 Status FullVisitor::HandleConcatenate(
         HloInstruction* inst,
         tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  VLOG(1) << inst->ToString();
   int64 dimension(inst->concatenate_dimension());
   poplar::Tensor out;
   TF_ASSIGN_OR_RETURN(out, FindInstructionInput(tensor_map, inst, 0, 0));
@@ -73,7 +72,6 @@ Status FullVisitor::HandleDot(
         HloInstruction* inst,
         HloInstruction* lhs,
         HloInstruction* rhs) {
-  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateMatMulOp(*graph_,
@@ -90,7 +88,6 @@ Status FullVisitor::HandleConvolution(
         HloInstruction* lhs,
         HloInstruction* rhs,
         const Window& window) {
-  VLOG(1) << inst->ToString();
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
                       CreateConv2D(*graph_,
@@ -102,11 +99,6 @@ Status FullVisitor::HandleConvolution(
   return Status::OK();
 }
 
-Status FullVisitor::HandleCrossReplicaSum(HloInstruction* inst) {
-  VLOG(1) << inst->ToString();
-  return Unimplemented(inst);
-}
-
 Status FullVisitor::HandleReverse(
         HloInstruction* inst,
         HloInstruction* operand) {
@@ -115,12 +107,6 @@ Status FullVisitor::HandleReverse(
   TF_ASSIGN_OR_RETURN(t, ReverseTensor(t, inst->dimensions()));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, t));
   return Status::OK();
-}
-
-Status FullVisitor::HandleSort(
-        HloInstruction* inst,
-        HloInstruction* operand) {
-  return Unimplemented(inst);
 }
 
 Status FullVisitor::HandleGetTupleElement(
@@ -198,10 +184,6 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
   return Status::OK();
 }
 
-Status FullVisitor::HandleFusion(HloInstruction* inst) {
-  return Unimplemented(inst);
-}
-
 Status FullVisitor::HandleCall(HloInstruction* inst) {
   poplar::program::Program prog;
   TF_ASSIGN_OR_RETURN(prog,
@@ -212,14 +194,6 @@ Status FullVisitor::HandleCall(HloInstruction* inst) {
                                    tensor_map));
   sequence.add(prog);
   return Status::OK();
-}
-
-Status FullVisitor::HandleCustomCall(
-        HloInstruction* inst,
-        tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-        tensorflow::StringPiece custom_call_target) {
-  return Unimplemented(inst);
-
 }
 
 Status FullVisitor::HandleSlice(
@@ -234,20 +208,6 @@ Status FullVisitor::HandleSlice(
   out = out.slice(begin, end);
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
-}
-
-Status FullVisitor::HandleDynamicSlice(
-        HloInstruction* inst,
-        tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
-  return Unimplemented(inst);
-}
-
-Status FullVisitor::HandleDynamicUpdateSlice(
-        HloInstruction* inst,
-        HloInstruction* operand,
-        HloInstruction* update,
-        HloInstruction* start_indices) {
-  return Unimplemented(inst);
 }
 
 Status FullVisitor::HandleTuple(
@@ -281,9 +241,7 @@ Status FullVisitor::HandleMap(
     sequence.add(prog);
     return Status::OK();
   }
-  return port::Status(port::error::UNIMPLEMENTED,
-                      port::StrCat(inst->name(),
-                                   " not supported by poplar"));
+  return Unimplemented(inst);
 }
 
 Status FullVisitor::HandleReduceWindow(

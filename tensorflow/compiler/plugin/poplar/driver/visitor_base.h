@@ -116,8 +116,9 @@ public:
   Status HandleSlice(HloInstruction* inst,
                      HloInstruction* operand) override;
 
-  Status HandleDynamicSlice(HloInstruction* inst,
-                            tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                            HloInstruction* operand,
+                            HloInstruction* start_indices) override;
 
   Status HandleDynamicUpdateSlice(HloInstruction* inst,
                                   HloInstruction* operand,
