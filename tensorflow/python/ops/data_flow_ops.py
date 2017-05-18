@@ -1408,10 +1408,9 @@ class BaseStagingArea(object):
     return self._capacity
 
   @property
-  def capacity(self):
+  def memory_limit(self):
     """The maximum number of bytes of this staging area."""
     return self._memory_limit
-
 
   def _check_put_dtypes(self, vals, indices=None):
     """Validate and convert `vals` to a list of `Tensor`s.
