@@ -188,7 +188,7 @@ class ParallelMapDatasetOp : public OpKernel {
 
           if (!output_buffer_.empty() && output_buffer_.front().is_produced) {
             // A new output element is available. Forward the status
-            // from computing it, and (if we sucessfully got an
+            // from computing it, and (if we successfully got an
             // element) the output values.
             Status s = output_buffer_.front().output_status;
             if (s.ok()) {
