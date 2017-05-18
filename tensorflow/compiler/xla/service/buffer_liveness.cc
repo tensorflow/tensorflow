@@ -127,25 +127,30 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
   return true;
 }
 
+namespace {
+bool IsEntryParameter(const HloInstruction* instruction) {
+  const HloComputation* computation = instruction->parent();
+  return instruction->opcode() == HloOpcode::kParameter &&
+         computation == computation->parent()->entry_computation();
+}
+}  // namespace
+
 bool BufferLiveness::MayInterfere(const LogicalBuffer& a,
                                   const LogicalBuffer& b) const {
-  // Entry parameters live for the entire execution, thus always interfere with
-  // all other instructions.
+  // Entry parameters live at the entry of the execution, thus always interfere
+  // with all other instructions executing before them in the ordering.
   const HloInstruction* a_instruction = a.instruction();
-  const HloComputation* a_computation = a_instruction->parent();
-  if (a_instruction->opcode() == HloOpcode::kParameter &&
-      a_computation == a_computation->parent()->entry_computation()) {
+  const HloInstruction* b_instruction = b.instruction();
+  if (IsEntryParameter(a_instruction) &&
+      hlo_ordering_->ExecutesBefore(b_instruction, a_instruction)) {
     return true;
   }
-  const HloInstruction* b_instruction = b.instruction();
-  const HloComputation* b_computation = b_instruction->parent();
-  if (b_instruction->opcode() == HloOpcode::kParameter &&
-      b_computation == b_computation->parent()->entry_computation()) {
+  if (IsEntryParameter(b_instruction) &&
+      hlo_ordering_->ExecutesBefore(a_instruction, b_instruction)) {
     return true;
   }
   // Buffers without disjoint liveness may interfere.
-  return (!live_range_strictly_before(a, b) &&
-          !live_range_strictly_before(b, a));
+  return !live_range_strictly_before(a, b) && !live_range_strictly_before(b, a);
 }
 
 bool BufferLiveness::MaybeLiveOut(const LogicalBuffer& buffer) const {

@@ -151,8 +151,8 @@ Status GraphProperties::InferStatically() {
 
     if (!node->assigned_device_name().empty()) {
       device_names_[node->name()] = node->assigned_device_name();
-    } else if (!node->def().device().empty()) {
-      device_names_[node->name()] = node->def().device();
+    } else if (!node->requested_device().empty()) {
+      device_names_[node->name()] = node->requested_device();
     } else {
       device_names_[node->name()] = "not set";
     }

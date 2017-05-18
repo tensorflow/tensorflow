@@ -87,7 +87,7 @@ export function buildGroup(sceneGroup,
 
   // Select all children and join with data.
   // (Note that all children of g.edges are g.edge)
-  let edgeGroups = (container as any).selectAll('g.edge').data(edges, getEdgeKey);
+  let edgeGroups = (container as any).selectAll(function() {return this.childNodes;}).data(edges, getEdgeKey);
 
   // Make edges a group to support rendering multiple lines for metaedge
   edgeGroups.enter()

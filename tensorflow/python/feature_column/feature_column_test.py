@@ -2754,13 +2754,13 @@ class IndicatorColumnTest(test.TestCase):
     self.assertEqual(indicator_b.categorical_column.name, 'b')
     self.assertEqual(indicator_b._variable_shape, [1, 100])
 
-  def test_1D_shape_fails(self):
-    with self.assertRaisesRegexp(ValueError, 'must have rank 2'):
-      _LazyBuilder({
-          'animal':
-              sparse_tensor.SparseTensor(
-                  indices=[0], values=['fox'], dense_shape=[1])
-      })
+  def test_1D_shape_succeeds(self):
+    animal = fc.indicator_column(
+        fc.categorical_column_with_hash_bucket('animal', 4))
+    builder = _LazyBuilder({'animal': ['fox', 'fox']})
+    output = builder.get(animal)
+    with self.test_session():
+      self.assertAllEqual([[0., 0., 1., 0.], [0., 0., 1., 0.]], output.eval())
 
   def test_2D_shape_succeeds(self):
     # TODO(ispir/cassandrax): Swith to categorical_column_with_keys when ready.

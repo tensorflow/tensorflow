@@ -216,10 +216,10 @@ class OneShotIteratorOp : public OpKernel {
       // Call the dataset_factory_func_ to create a new dataset,
       // over which this op will iterate.
       FunctionLibraryRuntime::Handle f_handle;
-      OP_REQUIRES_OK(ctx, ctx->function_library()->Instantiate(
-                              dataset_factory_func_->name(),
-                              dataset_factory_func_->attr(),
-                              &f_handle));
+      OP_REQUIRES_OK(ctx,
+                     ctx->function_library()->Instantiate(
+                         dataset_factory_func_->name(),
+                         AttrSlice(&dataset_factory_func_->attr()), &f_handle));
       FunctionLibraryRuntime::Options opts;
       opts.cancellation_manager = ctx->cancellation_manager();
       // Choose a step ID that is guaranteed not to clash with any

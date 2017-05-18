@@ -1533,7 +1533,7 @@ def _check_feature_columns(feature_columns):
   for column in feature_columns:
     if not isinstance(column, _FeatureColumn):
       raise ValueError('Items of feature_columns must be a _FeatureColumn.'
-                       'Given: {}.'.format(column))
+                       'Given (type {}): {}.'.format(type(column), column))
   if not feature_columns:
     raise ValueError('feature_columns must not be empty.')
   name_to_column = dict()
@@ -2338,6 +2338,9 @@ class _IndicatorColumn(_DenseColumn,
 
     Returns:
       Transformed feature `Tensor`.
+
+    Raises:
+      ValueError: if input rank is not known at graph building time.
     """
     id_weight_pair = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
     id_tensor = id_weight_pair.id_tensor
@@ -2362,8 +2365,14 @@ class _IndicatorColumn(_DenseColumn,
         on_value=1.0,
         off_value=0.0)
 
+    output_rank = one_hot_id_tensor.get_shape().ndims
+    if output_rank is None:
+      raise ValueError('Input rank should be known at graph building time.')
+    if output_rank <= 2:
+      return one_hot_id_tensor
+
     # Reduce to get a multi-hot per example.
-    return math_ops.reduce_sum(one_hot_id_tensor, axis=[1])
+    return math_ops.reduce_sum(one_hot_id_tensor, axis=[-2])
 
   @property
   def _parse_example_spec(self):

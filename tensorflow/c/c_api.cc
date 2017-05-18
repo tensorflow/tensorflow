@@ -738,8 +738,7 @@ tensorflow::string OutputName(const TF_Output& output) {
 const tensorflow::AttrValue* GetAttrValue(TF_Operation* oper,
                                           const char* attr_name,
                                           TF_Status* status) {
-  const tensorflow::AttrValue* attr =
-      tensorflow::AttrSlice(oper->node.def()).Find(attr_name);
+  const tensorflow::AttrValue* attr = oper->node.attrs().Find(attr_name);
   if (attr == nullptr) {
     status->status =
         InvalidArgument("Operation has no attr named '", attr_name, "'.");
@@ -1135,7 +1134,7 @@ const char* TF_OperationOpType(TF_Operation* oper) {
 }
 
 const char* TF_OperationDevice(TF_Operation* oper) {
-  return oper->node.def().device().c_str();
+  return oper->node.requested_device().c_str();
 }
 
 int TF_OperationNumOutputs(TF_Operation* oper) {
@@ -1150,8 +1149,8 @@ TF_DataType TF_OperationOutputType(TF_Output oper_out) {
 int TF_OperationOutputListLength(TF_Operation* oper, const char* arg_name,
                                  TF_Status* status) {
   NameRangeMap name_ranges;
-  status->status = NameRangesForNode(oper->node.def(), oper->node.op_def(),
-                                     nullptr, &name_ranges);
+  status->status =
+      NameRangesForNode(oper->node, oper->node.op_def(), nullptr, &name_ranges);
   if (!status->status.ok()) return -1;
   auto iter = name_ranges.find(arg_name);
   if (iter == name_ranges.end()) {
@@ -1172,8 +1171,8 @@ TF_DataType TF_OperationInputType(TF_Input oper_in) {
 int TF_OperationInputListLength(TF_Operation* oper, const char* arg_name,
                                 TF_Status* status) {
   NameRangeMap name_ranges;
-  status->status = NameRangesForNode(oper->node.def(), oper->node.op_def(),
-                                     &name_ranges, nullptr);
+  status->status =
+      NameRangesForNode(oper->node, oper->node.op_def(), &name_ranges, nullptr);
   if (!status->status.ok()) return -1;
   auto iter = name_ranges.find(arg_name);
   if (iter == name_ranges.end()) {
@@ -1411,26 +1410,27 @@ void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
   }
 }
 
-#define DEFINE_GETATTR(func, c_type, cpp_type, list_field)                     \
-  void func(TF_Operation* oper, const char* attr_name, c_type* value,          \
-            TF_Status* status) {                                               \
-    cpp_type v;                                                                \
-    status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &v); \
-    *value = static_cast<c_type>(v);                                           \
-  }                                                                            \
-  void func##List(TF_Operation* oper, const char* attr_name, c_type* values,   \
-                  int max_values, TF_Status* status) {                         \
-    const auto* attr = GetAttrValue(oper, attr_name, status);                  \
-    if (!status->status.ok()) return;                                          \
-    if (attr->value_case() != tensorflow::AttrValue::kList) {                  \
-      status->status =                                                         \
-          InvalidArgument("Value for '", attr_name, "' is not a list.");       \
-      return;                                                                  \
-    }                                                                          \
-    const auto len = std::min(max_values, attr->list().list_field##_size());   \
-    for (int i = 0; i < len; ++i) {                                            \
-      values[i] = static_cast<c_type>(attr->list().list_field(i));             \
-    }                                                                          \
+#define DEFINE_GETATTR(func, c_type, cpp_type, list_field)                   \
+  void func(TF_Operation* oper, const char* attr_name, c_type* value,        \
+            TF_Status* status) {                                             \
+    cpp_type v;                                                              \
+    status->status =                                                         \
+        tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &v);          \
+    *value = static_cast<c_type>(v);                                         \
+  }                                                                          \
+  void func##List(TF_Operation* oper, const char* attr_name, c_type* values, \
+                  int max_values, TF_Status* status) {                       \
+    const auto* attr = GetAttrValue(oper, attr_name, status);                \
+    if (!status->status.ok()) return;                                        \
+    if (attr->value_case() != tensorflow::AttrValue::kList) {                \
+      status->status =                                                       \
+          InvalidArgument("Value for '", attr_name, "' is not a list.");     \
+      return;                                                                \
+    }                                                                        \
+    const auto len = std::min(max_values, attr->list().list_field##_size()); \
+    for (int i = 0; i < len; ++i) {                                          \
+      values[i] = static_cast<c_type>(attr->list().list_field(i));           \
+    }                                                                        \
   }
 DEFINE_GETATTR(TF_OperationGetAttrInt, int64_t, tensorflow::int64, i);
 DEFINE_GETATTR(TF_OperationGetAttrFloat, float, float, f);
@@ -1441,7 +1441,8 @@ DEFINE_GETATTR(TF_OperationGetAttrType, TF_DataType, DataType, type);
 void TF_OperationGetAttrShape(TF_Operation* oper, const char* attr_name,
                               int64_t* value, int num_dims, TF_Status* status) {
   PartialTensorShape shape;
-  status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &shape);
+  status->status =
+      tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &shape);
   if (!status->status.ok()) return;
   auto len = std::min(shape.dims(), num_dims);
   for (int i = 0; i < len; ++i) {
@@ -1455,7 +1456,7 @@ void TF_OperationGetAttrShapeList(TF_Operation* oper, const char* attr_name,
                                   int storage_size, TF_Status* status) {
   std::vector<PartialTensorShape> shapes;
   status->status =
-      tensorflow::GetNodeAttr(oper->node.def(), attr_name, &shapes);
+      tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &shapes);
   if (!status->status.ok()) return;
   auto len = std::min(static_cast<int>(shapes.size()), max_values);
   int64_t* p = storage;
@@ -1522,7 +1523,7 @@ void TF_OperationGetAttrTensor(TF_Operation* oper, const char* attr_name,
                                TF_Tensor** value, TF_Status* status) {
   *value = nullptr;
   Tensor t;
-  status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &t);
+  status->status = tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &t);
   if (!status->status.ok()) return;
   *value = new TF_Tensor{static_cast<TF_DataType>(t.dtype()), t.shape(),
                          tensorflow::TensorCApi::Buffer(t)};
@@ -1533,7 +1534,7 @@ void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
                                    TF_Tensor** values, int max_values,
                                    TF_Status* status) {
   std::vector<Tensor> ts;
-  status->status = tensorflow::GetNodeAttr(oper->node.def(), attr_name, &ts);
+  status->status = tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &ts);
   if (!status->status.ok()) return;
   const auto len = std::min(max_values, static_cast<int>(ts.size()));
   for (int i = 0; i < len; ++i) {

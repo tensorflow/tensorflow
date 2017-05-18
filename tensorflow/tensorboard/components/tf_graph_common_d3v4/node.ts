@@ -66,8 +66,7 @@ module tf.graph.scene.node {
     // Select all children and join with data.
     // (Note that all children of g.nodes are g.node)
     let nodeGroups =
-        (container as any)
-            .selectAll('g.node')
+        (container as any).selectAll(function() {return this.childNodes;})
             .data(nodeData, (d) => {
               // make sure that we don't have to swap shape type
               return d.node.name + ':' + d.node.type;
