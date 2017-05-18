@@ -226,9 +226,7 @@ Status ConnectVariablesToSaveOp(Graph* graph, Node* save_op,
   }
   save_op_builder = save_op_builder.Input(var_nodeouts);
 
-  // Clear the old attr for the two constants and add the new ones.
-  tensor_names_op->ClearAttr("value");
-  shape_and_slices_op->ClearAttr("value");
+  // Update the attrs.
   tensor_names_op->AddAttr("value", new_tensor_names);
   shape_and_slices_op->AddAttr("value", new_shape_and_slices);
 
