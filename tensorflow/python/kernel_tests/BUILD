@@ -1906,6 +1906,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     flaky = 1,  # create_local_cluster sometimes times out.
+    tags = ["nomsan"],  # b/38390993
 )
 
 cuda_py_test(
