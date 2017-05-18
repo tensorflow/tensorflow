@@ -1733,7 +1733,7 @@ class StagingArea(BaseStagingArea):
         The created op
     """
     if name is None:
-        name = "%s_size" % self._name
+      name = "%s_size" % self._name
 
     return gen_data_flow_ops.stage_size(name=name, shared_name=self._name,
                         dtypes=self._dtypes, capacity=self._capacity,
@@ -1756,320 +1756,320 @@ class StagingArea(BaseStagingArea):
                         memory_limit=self._memory_limit)
 
 class MapStagingArea(BaseStagingArea):
+  """
+  A `MapStagingArea` is a TensorFlow data structure that stores tensors across
+  multiple steps, and exposes operations that can put and get tensors.
+
+  Each `MapStagingArea` element is a (key, value) pair.
+  Only int64 keys are supported, other types should be
+  hashed to produce a key.
+  Values are a tuple of one or more tensors.
+  Each tuple component has a static dtype,
+  and may have a static shape.
+
+  The capacity of a `MapStagingArea` may be bounded or unbounded.
+  It supports multiple concurrent producers and consumers; and
+  provides exactly-once delivery.
+
+  Each value tuple of a `MapStagingArea` is a fixed-length tuple of tensors whose
+  dtypes are described by `dtypes`, and whose shapes are optionally described
+  by the `shapes` argument.
+
+  If the `shapes` argument is specified, each component of a staging area
+  element must have the respective fixed shape. If it is
+  unspecified, different elements may have different shapes,
+
+  It behaves like an associative container with support for:
+
+   - put(key, values)
+   - peek(key)         like dict.get(key)
+   - get(key)          like dict.pop(key)
+   - get(key=None)     like dict.popitem()
+   - size()
+   - clear()
+
+  If ordered a tree structure ordered by key will be used and
+  get(key=None) will remove (key, value) pairs in increasing key order.
+  Otherwise a hashtable
+
+  It can be configured with a capacity in which case
+  put(key, values) will block until space becomes available.
+
+  Similarly, it can be configured with a memory limit which
+  will block put(key, values) until space is available.
+  This is mostly useful for limiting the number of tensors on
+  devices such as GPUs.
+
+  All get() and peek() commands block if the requested
+  (key, value) pair is not present in the staging area.
+
+  Incomplete puts are supported and will be placed in an incomplete
+  hash until such time as all values associated with the key have
+  been inserted. Once completed, this (key, value) pair will be
+  inserted into the main data structure. Data in the incomplete set
+  counts towards the memory limit, but not towards capacity limit.
+  """
+
+  def __init__(self, dtypes, shapes=None, names=None, shared_name=None,
+                      ordered=False, capacity=0, memory_limit=0):
     """
-    A `MapStagingArea` is a TensorFlow data structure that stores tensors across
-    multiple steps, and exposes operations that can put and get tensors.
+    Args:
+      dtypes:  A list of types.  The length of dtypes must equal the number
+        of tensors in each element.
+      capacity: (Optional.) Maximum number of elements.
+        An integer. If zero, the Staging Area is unbounded
+      memory_limit: (Optional.) Maximum number of bytes of all tensors
+        in the Staging Area (excluding keys).
+        An integer. If zero, the Staging Area is unbounded
+      ordered: (Optional.) If True the underlying data structure
+        is a tree ordered on key. Otherwise assume a hashtable.
+      shapes: (Optional.) Constraints on the shapes of tensors in an element.
+        A list of shape tuples or None. This list is the same length
+        as dtypes.  If the shape of any tensors in the element are constrained,
+        all must be; shapes can be None if the shapes should not be constrained.
+      names: (Optional.) If provided, the `get()` and
+        `put()` methods will use dictionaries with these names as keys.
+        Must be None or a list or tuple of the same length as `dtypes`.
+      shared_name: (Optional.) A name to be used for the shared object. By
+        passing the same name to two different python objects they will share
+        the underlying staging area. Must be a string.
 
-    Each `MapStagingArea` element is a (key, value) pair.
-    Only int64 keys are supported, other types should be
-    hashed to produce a key.
-    Values are a tuple of one or more tensors.
-    Each tuple component has a static dtype,
-    and may have a static shape.
+    Raises:
+      ValueError: If one of the arguments is invalid.
 
-    The capacity of a `MapStagingArea` may be bounded or unbounded.
-    It supports multiple concurrent producers and consumers; and
-    provides exactly-once delivery.
-
-    Each value tuple of a `MapStagingArea` is a fixed-length tuple of tensors whose
-    dtypes are described by `dtypes`, and whose shapes are optionally described
-    by the `shapes` argument.
-
-    If the `shapes` argument is specified, each component of a staging area
-    element must have the respective fixed shape. If it is
-    unspecified, different elements may have different shapes,
-
-    It behaves like an associative container with support for:
-
-     - put(key, values)
-     - peek(key)         like dict.get(key)
-     - get(key)          like dict.pop(key)
-     - get(key=None)     like dict.popitem()
-     - size()
-     - clear()
-
-    If ordered a tree structure ordered by key will be used and
-    get(key=None) will remove (key, value) pairs in increasing key order.
-    Otherwise a hashtable
-
-    It can be configured with a capacity in which case
-    put(key, values) will block until space becomes available.
-
-    Similarly, it can be configured with a memory limit which
-    will block put(key, values) until space is available.
-    This is mostly useful for limiting the number of tensors on
-    devices such as GPUs.
-
-    All get() and peek() commands block if the requested
-    (key, value) pair is not present in the staging area.
-
-    Incomplete puts are supported and will be placed in an incomplete
-    hash until such time as all values associated with the key have
-    been inserted. Once completed, this (key, value) pair will be
-    inserted into the main data structure. Data in the incomplete set
-    counts towards the memory limit, but not towards capacity limit.
     """
 
-    def __init__(self, dtypes, shapes=None, names=None, shared_name=None,
-                        ordered=False, capacity=0, memory_limit=0):
-        """
-        Args:
-          dtypes:  A list of types.  The length of dtypes must equal the number
-            of tensors in each element.
-          capacity: (Optional.) Maximum number of elements.
-            An integer. If zero, the Staging Area is unbounded
-          memory_limit: (Optional.) Maximum number of bytes of all tensors
-            in the Staging Area (excluding keys).
-            An integer. If zero, the Staging Area is unbounded
-          ordered: (Optional.) If True the underlying data structure
-            is a tree ordered on key. Otherwise assume a hashtable.
-          shapes: (Optional.) Constraints on the shapes of tensors in an element.
-            A list of shape tuples or None. This list is the same length
-            as dtypes.  If the shape of any tensors in the element are constrained,
-            all must be; shapes can be None if the shapes should not be constrained.
-          names: (Optional.) If provided, the `get()` and
-            `put()` methods will use dictionaries with these names as keys.
-            Must be None or a list or tuple of the same length as `dtypes`.
-          shared_name: (Optional.) A name to be used for the shared object. By
-            passing the same name to two different python objects they will share
-            the underlying staging area. Must be a string.
+    super(MapStagingArea, self).__init__(dtypes, shapes,
+                                      names, shared_name,
+                                      capacity, memory_limit)
 
-        Raises:
-          ValueError: If one of the arguments is invalid.
+    # Defer to different methods depending if the map is ordered
+    self._ordered = ordered
 
-        """
+    if ordered:
+      self._put_fn = gen_data_flow_ops.ordered_map_stage
+      self._pop_fn = gen_data_flow_ops.ordered_map_unstage
+      self._popitem_fn = gen_data_flow_ops.ordered_map_unstage_no_key
+      self._peek_fn = gen_data_flow_ops.ordered_map_peek
+      self._size_fn = gen_data_flow_ops.ordered_map_size
+      self._incomplete_size_fn = gen_data_flow_ops.ordered_map_incomplete_size
+      self._clear_fn = gen_data_flow_ops.ordered_map_clear
+    else:
+      self._put_fn = gen_data_flow_ops.map_stage
+      self._pop_fn = gen_data_flow_ops.map_unstage
+      self._popitem_fn = gen_data_flow_ops.map_unstage_no_key
+      self._peek_fn = gen_data_flow_ops.map_peek
+      self._size_fn = gen_data_flow_ops.map_size
+      self._incomplete_size_fn = gen_data_flow_ops.map_incomplete_size
+      self._clear_fn = gen_data_flow_ops.map_clear
 
-        super(MapStagingArea, self).__init__(dtypes, shapes,
-                                          names, shared_name,
-                                          capacity, memory_limit)
+  def put(self, key, vals, indices=None, name=None):
+    """
+    Create an op that stores the (key, vals) pair in the staging area.
 
-        # Defer to different methods depending if the map is ordered
-        self._ordered = ordered
+    Incomplete puts are possible, preferably using a dictionary for vals
+    as the appropriate dtypes and shapes can be inferred from the value names
+    dictionary key values. If vals is a list or tuple, indices must
+    also be specified so that the op knows at which element position
+    to perform the insert.
 
-        if ordered:
-            self._put_fn = gen_data_flow_ops.ordered_map_stage
-            self._pop_fn = gen_data_flow_ops.ordered_map_unstage
-            self._popitem_fn = gen_data_flow_ops.ordered_map_unstage_no_key
-            self._peek_fn = gen_data_flow_ops.ordered_map_peek
-            self._size_fn = gen_data_flow_ops.ordered_map_size
-            self._incomplete_size_fn = gen_data_flow_ops.ordered_map_incomplete_size
-            self._clear_fn = gen_data_flow_ops.ordered_map_clear
-        else:
-            self._put_fn = gen_data_flow_ops.map_stage
-            self._pop_fn = gen_data_flow_ops.map_unstage
-            self._popitem_fn = gen_data_flow_ops.map_unstage_no_key
-            self._peek_fn = gen_data_flow_ops.map_peek
-            self._size_fn = gen_data_flow_ops.map_size
-            self._incomplete_size_fn = gen_data_flow_ops.map_incomplete_size
-            self._clear_fn = gen_data_flow_ops.map_clear
+    This operation will block if the capacity or memory limit of this
+    container is reached.
 
-    def put(self, key, vals, indices=None, name=None):
-        """
-        Create an op that stores the (key, vals) pair in the staging area.
+    Args:
+        key: Key associated with the data
+        vals: Tensor (or a dict/tuple of Tensors) to place
+                into the staging area.
+        indices: (Optional) if vals is a tuple/list, this is required.
+        name: A name for the operation (optional)
 
-        Incomplete puts are possible, preferably using a dictionary for vals
-        as the appropriate dtypes and shapes can be inferred from the value names
-        dictionary key values. If vals is a list or tuple, indices must
-        also be specified so that the op knows at which element position
-        to perform the insert.
+    Returns:
+        The created op
 
-        This operation will block if the capacity or memory limit of this
-        container is reached.
+    Raises:
+        ValueError: If the number or type of inputs don't match the staging area.
+    """
 
-        Args:
-            key: Key associated with the data
-            vals: Tensor (or a dict/tuple of Tensors) to place
-                    into the staging area.
-            indices: (Optional) if vals is a tuple/list, this is required.
-            name: A name for the operation (optional)
+    with ops.name_scope(name, "%s_put" % self._name,
+                        self._scope_vals(vals)) as scope:
 
-        Returns:
-            The created op
+      vals, indices = self._check_put_dtypes(vals, indices)
 
-        Raises:
-            ValueError: If the number or type of inputs don't match the staging area.
-        """
+      with ops.colocate_with(self._coloc_op):
+        op = self._put_fn(key, indices, vals, dtypes=self._dtypes,
+                             shared_name=self._name, name=scope,
+                             capacity=self._capacity,
+                             memory_limit=self._memory_limit)
+    return op
 
-        with ops.name_scope(name, "%s_put" % self._name,
-                            self._scope_vals(vals)) as scope:
+  def peek(self, key, name=None):
+    """
+    Peeks at staging area data associated with the key.
 
-          vals, indices = self._check_put_dtypes(vals, indices)
+    If the key is not in the staging area, it will block
+    until the associated (key, value) is inserted.
 
-          with ops.colocate_with(self._coloc_op):
-              op = self._put_fn(key, indices, vals, dtypes=self._dtypes,
-                                   shared_name=self._name, name=scope,
-                                   capacity=self._capacity,
-                                   memory_limit=self._memory_limit)
-        return op
+    Args:
+        key: Key associated with the required data
+        name: A name for the operation (optional)
 
-    def peek(self, key, name=None):
-        """
-        Peeks at staging area data associated with the key.
+    Returns:
+        The created op
+    """
 
-        If the key is not in the staging area, it will block
-        until the associated (key, value) is inserted.
+    if name is None:
+      name = "%s_pop" % self._name
 
-        Args:
-            key: Key associated with the required data
-            name: A name for the operation (optional)
+    with ops.colocate_with(self._coloc_op):
+      result = self._peek_fn(key, shared_name=self._name,
+                      dtypes=self._dtypes,
+                      name=name,
+                      capacity=self._capacity,
+                      memory_limit=self._memory_limit)
 
-        Returns:
-            The created op
-        """
+    return self._get_return_value(result)
 
-        if name is None:
-            name = "%s_pop" % self._name
+  def get(self, key=None, name=None):
+    """
+    If the key is provided, the associated (key, value)
+    is returned from the staging area. If the key is not
+    in the staging area, this method will block until
+    the associated (key, value) is inserted.
 
-        with ops.colocate_with(self._coloc_op):
-            result = self._peek_fn(key, shared_name=self._name,
-                            dtypes=self._dtypes,
-                            name=name,
-                            capacity=self._capacity,
-                            memory_limit=self._memory_limit)
+    If no key is provided and the staging area is ordered,
+    the (key, value) with the smallest key will be returned.
+    Otherwise, a random (key, value) will be returned.
 
-        return self._get_return_value(result)
+    If the staging area is empty when this operation executes,
+    it will block until there is an element to dequeue.
 
-    def get(self, key=None, name=None):
-        """
-        If the key is provided, the associated (key, value)
-        is returned from the staging area. If the key is not
-        in the staging area, this method will block until
-        the associated (key, value) is inserted.
+    Args:
+        key: Key associated with the required data (Optional)
+        name: A name for the operation (optional)
 
-        If no key is provided and the staging area is ordered,
-        the (key, value) with the smallest key will be returned.
-        Otherwise, a random (key, value) will be returned.
-
-        If the staging area is empty when this operation executes,
-        it will block until there is an element to dequeue.
-
-        Args:
-            key: Key associated with the required data (Optional)
-            name: A name for the operation (optional)
-
-        Returns:
-            The created op
-        """
-        if key is None:
-          return self._popitem(name)
-        else:
-          return self._pop(key, name)
+    Returns:
+        The created op
+    """
+    if key is None:
+      return self._popitem(name)
+    else:
+      return self._pop(key, name)
 
 
-    def _pop(self, key, name=None):
-        """
-        Remove and return the associated (key, value)
-        is returned from the staging area. If the key is not
-        in the staging area, this method will block until
-        the associated (key, value) is inserted.
+  def _pop(self, key, name=None):
+    """
+    Remove and return the associated (key, value)
+    is returned from the staging area. If the key is not
+    in the staging area, this method will block until
+    the associated (key, value) is inserted.
 
-        Args:
-            key: Key associated with the required data
-            name: A name for the operation (optional)
+    Args:
+        key: Key associated with the required data
+        name: A name for the operation (optional)
 
-        Returns:
-            The created op
-        """
-        if name is None:
-            name = "%s_get" % self._name
+    Returns:
+        The created op
+    """
+    if name is None:
+      name = "%s_get" % self._name
 
-        with ops.colocate_with(self._coloc_op):
-            result = self._pop_fn(key, shared_name=self._name,
-                            dtypes=self._dtypes,
-                            name=name,
-                            capacity=self._capacity,
-                            memory_limit=self._memory_limit)
+    with ops.colocate_with(self._coloc_op):
+      result = self._pop_fn(key, shared_name=self._name,
+                      dtypes=self._dtypes,
+                      name=name,
+                      capacity=self._capacity,
+                      memory_limit=self._memory_limit)
 
-        return key, self._get_return_value(result)
+    return key, self._get_return_value(result)
 
-    def _popitem(self, name=None):
-        """
-        If the staging area is ordered,
-        the (key, value) with the smallest key will be returned.
-        Otherwise, a random (key, value) will be returned.
+  def _popitem(self, name=None):
+    """
+    If the staging area is ordered,
+    the (key, value) with the smallest key will be returned.
+    Otherwise, a random (key, value) will be returned.
 
-        If the staging area is empty when this operation executes,
-        it will block until there is an element to dequeue.
+    If the staging area is empty when this operation executes,
+    it will block until there is an element to dequeue.
 
-        Args:
-            key: Key associated with the required data
-            name: A name for the operation (optional)
+    Args:
+        key: Key associated with the required data
+        name: A name for the operation (optional)
 
-        Returns:
-            The created op
-        """
-        if name is None:
-            name = "%s_get_nokey" % self._name
+    Returns:
+        The created op
+    """
+    if name is None:
+      name = "%s_get_nokey" % self._name
 
-        with ops.colocate_with(self._coloc_op):
-            key, result = self._popitem_fn(shared_name=self._name,
-                                    dtypes=self._dtypes,
-                                    name=name,
-                                    capacity=self._capacity,
-                                    memory_limit=self._memory_limit)
+    with ops.colocate_with(self._coloc_op):
+      key, result = self._popitem_fn(shared_name=self._name,
+                              dtypes=self._dtypes,
+                              name=name,
+                              capacity=self._capacity,
+                              memory_limit=self._memory_limit)
 
-        # Separate keys and results out from
-        # underlying namedtuple
-        key = self._create_device_transfers(key)[0]
-        result = self._get_return_value(result)
+    # Separate keys and results out from
+    # underlying namedtuple
+    key = self._create_device_transfers(key)[0]
+    result = self._get_return_value(result)
 
-        return key, result
+    return key, result
 
-    def size(self, name=None):
-        """
-        Returns the number of elements in the staging area.
+  def size(self, name=None):
+    """
+    Returns the number of elements in the staging area.
 
-        Args:
-            name: A name for the operation (optional)
+    Args:
+        name: A name for the operation (optional)
 
-        Returns:
-            The created op
-        """
-        if name is None:
-            name = "%s_size" % self._name
+    Returns:
+        The created op
+    """
+    if name is None:
+      name = "%s_size" % self._name
 
-        return self._size_fn(shared_name=self._name,
-                            name=name, dtypes=self._dtypes,
-                            capacity=self._capacity,
-                            memory_limit=self._memory_limit)
+    return self._size_fn(shared_name=self._name,
+                        name=name, dtypes=self._dtypes,
+                        capacity=self._capacity,
+                        memory_limit=self._memory_limit)
 
-    def incomplete_size(self, name=None):
-        """
-        Returns the number of incomplete elements in the staging area.
+  def incomplete_size(self, name=None):
+    """
+    Returns the number of incomplete elements in the staging area.
 
-        Args:
-            name: A name for the operation (optional)
+    Args:
+        name: A name for the operation (optional)
 
-        Returns:
-            The created op
-        """
-        if name is None:
-            name = "%s_incomplete_size" % self._name
+    Returns:
+        The created op
+    """
+    if name is None:
+      name = "%s_incomplete_size" % self._name
 
-        return self._incomplete_size_fn(shared_name=self._name,
-                            name=name, dtypes=self._dtypes,
-                            capacity=self._capacity,
-                            memory_limit=self._memory_limit)
+    return self._incomplete_size_fn(shared_name=self._name,
+                        name=name, dtypes=self._dtypes,
+                        capacity=self._capacity,
+                        memory_limit=self._memory_limit)
 
 
 
-    def clear(self, name=None):
-        """
-        Clears the staging area.
+  def clear(self, name=None):
+    """
+    Clears the staging area.
 
-        Args:
-            name: A name for the operation (optional)
+    Args:
+        name: A name for the operation (optional)
 
-        Returns:
-            The created op
-        """
-        if name is None:
-            name = "%s_clear" % self._name
+    Returns:
+        The created op
+    """
+    if name is None:
+      name = "%s_clear" % self._name
 
-        return self._clear_fn(shared_name=self._name,
-                            name=name, dtypes=self._dtypes,
-                            capacity=self._capacity,
-                            memory_limit=self._memory_limit)
+    return self._clear_fn(shared_name=self._name,
+                        name=name, dtypes=self._dtypes,
+                        capacity=self._capacity,
+                        memory_limit=self._memory_limit)
 
 
 class RecordInput(object):

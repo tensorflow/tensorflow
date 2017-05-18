@@ -1323,6 +1323,7 @@ cc_library(
         ":fifo_queue_op",
         ":lookup_table_init_op",
         ":lookup_table_op",
+        ":map_stage_op",
         ":padding_fifo_queue_op",
         ":priority_queue_op",
         ":queue_ops",
@@ -1332,7 +1333,6 @@ cc_library(
         ":sparse_conditional_accumulator_op",
         ":stack_ops",
         ":stage_op",
-        ":map_stage_op",
         ":tensor_array_ops",
     ],
 )
