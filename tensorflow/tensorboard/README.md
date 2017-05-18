@@ -16,7 +16,7 @@ through setting up and using TensorBoard.
 # Usage
 
 Before running TensorBoard, make sure you have generated summary data in a log
-directory by creating a summary writer:
+directory by creating a file writer:
 
 ``` python
 # sess.graph contains the graph definition; that enables the Graph Visualizer.

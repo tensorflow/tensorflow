@@ -25,7 +25,7 @@ from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
-from tensorflow.python.training.summary_io import SummaryWriter
+from tensorflow.python.summary.writer.writer import FileWriter
 from tensorflow.tensorboard.backend.event_processing import event_file_inspector as efi
 
 
@@ -49,19 +49,19 @@ class EventFileInspectorTest(test_util.TensorFlowTestCase):
       subdir = os.path.join(self.logdir, subdir_)
       self._MakeDirectoryIfNotExists(subdir)
 
-      sw = SummaryWriter(subdir)
+      fw = FileWriter(subdir)
       for datum in data:
         summary = Summary()
         if 'simple_value' in datum:
           summary.value.add(tag=datum['tag'],
                             simple_value=datum['simple_value'])
-          sw.add_summary(summary, global_step=datum['step'])
+          fw.add_summary(summary, global_step=datum['step'])
         elif 'histo' in datum:
           summary.value.add(tag=datum['tag'], histo=HistogramProto())
-          sw.add_summary(summary, global_step=datum['step'])
+          fw.add_summary(summary, global_step=datum['step'])
         elif 'session_log' in datum:
-          sw.add_session_log(datum['session_log'], global_step=datum['step'])
-      sw.close()
+          fw.add_session_log(datum['session_log'], global_step=datum['step'])
+      fw.close()
 
   def testEmptyLogdir(self):
     # Nothing was written to logdir

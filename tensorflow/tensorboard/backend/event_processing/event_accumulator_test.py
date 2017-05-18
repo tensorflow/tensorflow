@@ -48,7 +48,7 @@ class _EventGenerator(object):
   """Class that can add_events and then yield them back.
 
   Satisfies the EventGenerator API required for the EventAccumulator.
-  Satisfies the EventWriter API required to create a SummaryWriter.
+  Satisfies the EventWriter API required to create a FileWriter.
 
   Has additional convenience methods for adding test events.
   """
@@ -901,7 +901,7 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
 
     with ops.Graph().as_default() as graph:
       _ = constant_op.constant([2.0, 1.0])
-    # Add a graph to the summary writer.
+    # Add a graph to the file writer.
     writer.add_graph(graph)
     meta_graph_def = saver.export_meta_graph(
         graph_def=graph.as_graph_def(add_shapes=True))
@@ -973,7 +973,7 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
 
     with ops.Graph().as_default() as graph:
       _ = constant_op.constant([2.0, 1.0])
-    # Add a graph to the summary writer.
+    # Add a graph to the file writer.
     meta_graph_def = saver.export_meta_graph(
         graph_def=graph.as_graph_def(add_shapes=True))
     writer.add_meta_graph(meta_graph_def)
