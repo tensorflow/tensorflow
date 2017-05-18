@@ -1397,15 +1397,13 @@ def sparse_tensor_dense_matmul(sp_a,
   # pylint: disable=line-too-long
   """Multiply SparseTensor (of rank 2) "A" by dense matrix "B".
 
-  No validity checking is performed on the indices of A.  However, the following
-  input format is recommended for optimal behavior:
+  No validity checking is performed on the indices of `A`.  However, the
+  following input format is recommended for optimal behavior:
 
-  if adjoint_a == false:
-    A should be sorted in lexicographically increasing order.  Use
-    sparse_reorder if you're not sure.
-  if adjoint_a == true:
-    A should be sorted in order of increasing dimension 1 (i.e., "column major"
-    order instead of "row major" order).
+  * If `adjoint_a == false`: `A` should be sorted in lexicographically
+    increasing order.  Use `sparse_reorder` if you're not sure.
+  * If `adjoint_a == true`: `A` should be sorted in order of increasing
+    dimension 1 (i.e., "column major" order instead of "row major" order).
 
   Using `tf.nn.embedding_lookup_sparse` for sparse multiplication:
 
@@ -1449,16 +1447,16 @@ def sparse_tensor_dense_matmul(sp_a,
 
   There are a number of questions to ask in the decision process, including:
 
-  * Will the SparseTensor A fit in memory if densified?
+  * Will the SparseTensor `A` fit in memory if densified?
   * Is the column count of the product large (>> 1)?
-  * Is the density of A larger than approximately 15%?
+  * Is the density of `A` larger than approximately 15%?
 
   If the answer to several of these questions is yes, consider
   converting the `SparseTensor` to a dense one and using `tf.matmul` with
   `a_is_sparse=True`.
 
-  This operation tends to perform well when A is more sparse, if the column size
-  of the product is small (e.g. matrix-vector multiplication), if
+  This operation tends to perform well when `A` is more sparse, if the column
+  size of the product is small (e.g. matrix-vector multiplication), if
   `sp_a.dense_shape` takes on large values.
 
   Below is a rough speed comparison between `sparse_tensor_dense_matmul`,
@@ -1589,9 +1587,9 @@ def sparse_tensor_dense_matmul(sp_a,
 
   Returns:
     A dense matrix (pseudo-code in dense np.matrix notation):
-      A = A.H if adjoint_a else A
-      B = B.H if adjoint_b else B
-      return A*B
+      `A = A.H if adjoint_a else A`
+      `B = B.H if adjoint_b else B`
+      `return A*B`
   """
   # pylint: enable=line-too-long
   sp_a = _convert_to_sparse_tensor(sp_a)
