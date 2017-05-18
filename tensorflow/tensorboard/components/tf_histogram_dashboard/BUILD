@@ -42,9 +42,9 @@ tensorboard_webcomponent_library(
     ],
     destdir = "tf-histogram-dashboard",
     deps = [
-        "//tensorflow/tensorboard/components:tf_imports",
         "//tensorflow/tensorboard/components/tf_backend:legacy",
         "//tensorflow/tensorboard/components/tf_dashboard_common:legacy",
+        "//tensorflow/tensorboard/components/tf_imports_google:lib",
         "//tensorflow/tensorboard/components/vz_histogram_timeseries:legacy",
         "//third_party/javascript/polymer/v1/iron-collapse:lib",
         "//third_party/javascript/polymer/v1/paper-icon-button:lib",

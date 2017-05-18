@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -842,13 +843,10 @@ bool InTypeList(DataType dt, const AttrValue& type_list) {
   return false;
 }
 
-// Returns whether the attrs in the NodeDef satisfy the constraints in
-// the kernel_def.  Returns an error if attrs in kernel_def are not
-// found, or have a mismatching type.
-Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
-                  bool* match) {
+// Returns whether the attrs satisfy the constraints in the kernel_def.  Returns
+// an error if attrs in kernel_def are not found, or have a mismatching type.
+Status AttrsMatch(AttrSlice attrs, const KernelDef& kernel_def, bool* match) {
   *match = false;
-  AttrSlice attrs(node_def);
   for (const auto& constraint : kernel_def.constraint()) {
     if (constraint.allowed_values().list().type_size() == 0) {
       return errors::Unimplemented(
@@ -872,7 +870,7 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
               "' that has value '", SummarizeAttrValue(*found),
               "' that does not have type 'type' or 'list(type)' in NodeDef "
               "'",
-              SummarizeNodeDef(node_def), "'");
+              attrs.SummarizeNode(), "'");
         }
 
         for (int t : found->list().type()) {
@@ -885,7 +883,7 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
     } else {
       return errors::InvalidArgument(
           "OpKernel '", kernel_def.op(), "' has constraint on attr '",
-          constraint.name(), "' not in NodeDef '", SummarizeNodeDef(node_def),
+          constraint.name(), "' not in NodeDef '", attrs.SummarizeNode(),
           "', KernelDef: '", ProtoShortDebugString(kernel_def), "'");
     }
   }
@@ -895,6 +893,7 @@ Status AttrsMatch(const NodeDef& node_def, const KernelDef& kernel_def,
 
 static const StringPiece kKernelAttr("_kernel");
 
+// TODO(irving): Replace with const Node& version below.
 Status FindKernelRegistration(const DeviceType& device_type,
                               const NodeDef& node_def,
                               const KernelRegistration** reg,
@@ -927,8 +926,16 @@ Status FindKernelRegistration(const DeviceType& device_type,
   return Status::OK();
 }
 
+Status FindKernelRegistration(const DeviceType& device_type, const Node& node,
+                              const KernelRegistration** reg,
+                              bool* was_attr_mismatch) {
+  return FindKernelRegistration(device_type, node.def(), reg,
+                                was_attr_mismatch);
+}
+
 }  // namespace
 
+// TODO(irving): Change const NodeDef& to const Node&
 Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
                      const KernelDef** def, string* kernel_class_name) {
   const KernelRegistration* reg = nullptr;

@@ -333,17 +333,17 @@ RemoteFusedGraphExecuteUtils::AddOutputTensorShapeTypeByTensorShapeMap(
 }
 
 /* static */ Status RemoteFusedGraphExecuteUtils::GetOutputTensorShapeType(
-    const NodeDef& node_def, std::vector<DataType>* data_types,
+    AttrSlice attrs, std::vector<DataType>* data_types,
     std::vector<TensorShape>* shapes) {
   Status status;
   if (data_types != nullptr) {
-    status = GetNodeAttr(node_def, ATTR_OUTPUT_DATA_TYPES, data_types);
+    status = GetNodeAttr(attrs, ATTR_OUTPUT_DATA_TYPES, data_types);
   }
   if (!status.ok()) {
     return status;
   }
   if (shapes != nullptr) {
-    status = GetNodeAttr(node_def, ATTR_OUTPUT_SHAPES, shapes);
+    status = GetNodeAttr(attrs, ATTR_OUTPUT_SHAPES, shapes);
     if (status.ok() && data_types != nullptr) {
       CHECK_EQ(data_types->size(), shapes->size());
     }

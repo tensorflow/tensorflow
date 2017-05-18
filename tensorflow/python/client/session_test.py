@@ -1483,6 +1483,15 @@ class SessionTest(test_util.TensorFlowTestCase):
                                  'has already been fetched.$'):
       sess.partial_run(h, r1, feed_dict={c: 3})
 
+  def runTestPartialRunEmptyFetches(self, sess):
+    a = array_ops.placeholder(dtypes.float32)
+    b = a * 2.0
+
+    h = sess.partial_run_setup(fetches=[b], feeds=[a])
+    sess.partial_run(h, [], {a: 3.0})
+    r = sess.partial_run(h, [b], {})
+    self.assertEqual([6.0], r)
+
   def testInvalidPartialRunSetup(self):
     sess = session.Session()
     x = array_ops.placeholder(dtypes.float32, shape=[])
@@ -1520,6 +1529,9 @@ class SessionTest(test_util.TensorFlowTestCase):
 
   def testPartialRunAlreadyFetchedDirect(self):
     self.runTestPartialRunAlreadyFetched(session.Session())
+
+  def testPartialRunEmptyFetchesDirect(self):
+    self.runTestPartialRunEmptyFetches(session.Session())
 
   def testPartialRunDist(self):
     server = server_lib.Server.create_local_server()
@@ -1561,6 +1573,10 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testPartialRunAlreadyFetchedDist(self):
     server = server_lib.Server.create_local_server()
     self.runTestPartialRunAlreadyFetched(session.Session(server.target))
+
+  def testPartialRunEmptyFetchesDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestPartialRunEmptyFetches(session.Session(server.target))
 
   def testFeedDictKeyException(self):
     with session.Session() as sess:

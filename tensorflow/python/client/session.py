@@ -992,7 +992,9 @@ class BaseSession(SessionInterface):
     movers = self._update_with_movers(feed_dict_string, feed_map)
     final_fetches = fetch_handler.fetches()
     final_targets = fetch_handler.targets()
-    if final_fetches or final_targets:
+    # We only want to really perform the run if fetches or targets are provided,
+    # or if the call is a partial run that specifies feeds.
+    if final_fetches or final_targets or (handle and feed_dict_string):
       results = self._do_run(handle, final_targets, final_fetches,
                              feed_dict_string, options, run_metadata)
     else:

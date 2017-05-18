@@ -357,6 +357,7 @@ void XlaOpKernelContext::SetVariableOutput(int index, int variable_id) {
 
 Status XlaOpKernelContext::AssignVariable(
     int index, DataType type, const xla::ComputationDataHandle& handle) {
+  TF_RET_CHECK(handle.handle() != 0);
   SetOpHasSideEffects();
 
   const XlaExpression* expression =

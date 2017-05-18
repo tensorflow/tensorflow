@@ -129,19 +129,23 @@ class Scaffold(object):
       copy_from_scaffold: Optional scaffold object to copy fields from. Its
         fields will be overwritten by the provided fields in this function.
     """
-    if copy_from_scaffold:
+    if copy_from_scaffold is not None:
       if not isinstance(copy_from_scaffold, Scaffold):
         raise TypeError('copy_from_scaffold is not a Scaffold instance.')
-      init_op = init_op or copy_from_scaffold.init_op
-      init_feed_dict = init_feed_dict or copy_from_scaffold.init_feed_dict
+      # We need _coalesce since Tensor is not converted to bool automatically,
+      # so the common idiom of (a or b) does not work.
+      coalesce = lambda a, b: a if a is not None else b
+      init_op = coalesce(init_op, copy_from_scaffold.init_op)
+      init_feed_dict = coalesce(init_feed_dict,
+                                copy_from_scaffold.init_feed_dict)
       # Use the original init_fn provided by the user to init the new Scaffold.
-      init_fn = init_fn or copy_from_scaffold._user_init_fn  # pylint: disable=protected-access
-      ready_op = ready_op or copy_from_scaffold.ready_op
-      ready_for_local_init_op = ready_for_local_init_op or (
-          copy_from_scaffold.ready_for_local_init_op)
-      local_init_op = local_init_op or copy_from_scaffold.local_init_op
-      summary_op = summary_op or copy_from_scaffold.summary_op
-      saver = saver or copy_from_scaffold.saver
+      init_fn = coalesce(init_fn, copy_from_scaffold._user_init_fn)  # pylint: disable=protected-access
+      ready_op = coalesce(ready_op, copy_from_scaffold.ready_op)
+      ready_for_local_init_op = coalesce(
+          ready_for_local_init_op, copy_from_scaffold.ready_for_local_init_op)
+      local_init_op = coalesce(local_init_op, copy_from_scaffold.local_init_op)
+      summary_op = coalesce(summary_op, copy_from_scaffold.summary_op)
+      saver = coalesce(saver, copy_from_scaffold.saver)
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
     # hack to make it easy to find the saver.  Is there a better way?
@@ -152,12 +156,12 @@ class Scaffold(object):
       self._init_fn = None
 
     self._init_op = init_op
+    self._init_feed_dict = init_feed_dict
     self._ready_op = ready_op
     self._ready_for_local_init_op = ready_for_local_init_op
     self._local_init_op = local_init_op
     self._summary_op = summary_op
     self._saver = saver
-    self._init_feed_dict = init_feed_dict
 
   def finalize(self):
     """Creates operations if needed and finalizes the graph."""
