@@ -1,3 +1,19 @@
+// =============================================================================
+// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =============================================================================
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -11,7 +27,7 @@ REGISTER_OP("PeriodicIntersperse")
     .Input("desired_shape: S")
     .Output("output: T")
     .Doc(R"doc(
-Periodicly intersperses elements of a tensor to conform to `desired shape`.
+Periodicly intersperses elements of a tensor to conform to `desired_shape`.
 
 This function implements a slightly more generic version of the subpixel
 convolutions found in this [paper](https://arxiv.org/abs/1609.05158).
@@ -40,7 +56,7 @@ The formula for computing the elements in the `output` tensor is as follows:
 
 One drawback of this method is that whenever the output dimensions are slightly
 less than integer multiples of the input dimensions, many of the tensor elements
-are repeated in an inefficient way. This is resolved be specifying that all
+are repeated in an inefficient way. This is resolved by specifying that all
 desired dimensions are integer multiples of the input tensor.
 
 For example:
@@ -64,7 +80,7 @@ desired_shape: A 1-D tensor representing the desired shape of the output tensor.
   that this dimension of `values` can be adjusted downward in order to
   accomodate increases in other dimensions. The specified sizes of the
   non-adjustable dimensions must by at least as large as in the `values` tensor.
-output: Preiodically interspersed tensor that has dimensions specified as in
+output: Periodically interspersed tensor that has dimensions specified as in
   `desired_shape` except that the dimension specified as `-1` will be minimally
   decreased as necessary.
 

@@ -1,6 +1,3 @@
-# Description:
-# An example for custom op and kernel defined as a TensorFlow plugin.
-
 package(
     default_visibility = ["//visibility:public"],
 )
@@ -65,52 +62,12 @@ py_library(
     ],
 )
 
-#tf_gen_op_libs(
-#    op_lib_names = ["periodic_intersperse_op"],
-#)
-
-#tf_gen_op_wrapper_py(
-#    name = "gen_periodic_intersperse_op",
-#    out = "python/ops/gen_periodic_intersperse_op.py",
-#    deps = [":periodic_intersperse_op_op_lib"],
-#)
-
 py_library(
     name = "periodic_intersperse_op_py",
     srcs = ["python/ops/periodic_intersperse_op.py"],
     data = ["python/ops/_periodic_intersperse_op.so"],
     srcs_version = "PY2AND3",
-#    deps = [
-#        ":gen_periodic_intersperse_op",
-#    ],
 )
-
-# tf_gen_op_wrapper_py(
-    # name = "gen_periodic_intersperse_op",
-    # out = "python/ops/gen_periodic_intersperse_op.py",
-    # deps = [":python/ops/_periodic_intersperse_op.so"],
-# )
-
-# tf_py_test(
-    # name = "periodic_intersperse_test",
-    # size = "small",
-    # srcs = ["periodic_intersperse_test.py"],
-    # additional_deps = ["//tensorflow:tensorflow_py"],
-    # data = [":_periodic_intersperse_op.so"],
-# )
-
-#py_library(
-    #name = "periodic_intersperse_py",
-    #srcs = [
-        #"__init__.py",
-        # "python/ops/gen_periodic_intersperse_op.py",
-    #],
-    #data = [
-        #":python/ops/_periodic_intersperse_op.so",
-    #],
-    #srcs_version = "PY2AND3",
-    #visibility = ["//visibility:public"],
-#)
 
 filegroup(
     name = "all_files",
