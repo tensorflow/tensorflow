@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -58,12 +57,11 @@ ParallelCpuExecutable::ParallelCpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config,
     std::unique_ptr<std::map<HloInstruction*, string>> function_names,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
         aligned_constants)
-    : Executable(std::move(hlo_module), std::move(module_config)),
+    : Executable(std::move(hlo_module)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       functions_names_(std::move(function_names)),

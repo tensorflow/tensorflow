@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -44,6 +45,10 @@ class HloModule {
  public:
   HloModule(const string& name,
             const VersionedComputationHandle& entry_computation_handle);
+
+  HloModule(const string& name,
+            const VersionedComputationHandle& entry_computation_handle,
+            const HloModuleConfig& config);
 
   // Constructor without a versioned computation handle. This constructor should
   // only be used for HloModules used outside of the XLA service (eg
@@ -91,6 +96,14 @@ class HloModule {
   // computation B, then A will appear after B in the sort.
   std::list<HloComputation*> MakeComputationPostOrder() const;
 
+  bool has_config() const { return config_ != nullptr; }
+
+  void set_config(const HloModuleConfig& config);
+
+  const HloModuleConfig& config() const { return *config_; }
+
+  HloModuleConfig* mutable_config() { return config_.get(); }
+
   string ToString() const;
 
   // Outlines the given expression from the given computation.
@@ -116,6 +129,7 @@ class HloModule {
       std::unique_ptr<HloComputation> computation);
 
   const string name_;
+  std::unique_ptr<HloModuleConfig> config_;
   HloComputation* entry_computation_;
   std::vector<std::unique_ptr<HloComputation>> computations_;
 

@@ -126,8 +126,10 @@ class HloCostAnalysisTest : public ::testing::Test {
     auto user_computation = user_computation_status.ConsumeValueOrDie();
     VersionedComputationHandle versioned_handle =
         user_computation->GetVersionedHandle();
-    return std::move(
-        computation_tracker_.BuildHloModule(versioned_handle).ValueOrDie());
+    return std::move(computation_tracker_
+                         .BuildHloModule(versioned_handle,
+                                         /*config=*/nullptr)
+                         .ValueOrDie());
   }
 
   Client* client_;

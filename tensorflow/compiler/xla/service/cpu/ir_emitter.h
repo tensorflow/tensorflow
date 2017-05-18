@@ -60,8 +60,8 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // llvm_module: the LLVM module to emit IR into.
   // hlo_to_profile_idx: the mapping from HLO to its index in the profiling
   //                     array.
-  IrEmitter(const HloModule& hlo_module, const HloModuleConfig& module_config,
-            const BufferAssignment& assignment, llvm::Module* llvm_module,
+  IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
+            llvm::Module* llvm_module,
             const std::unordered_map<const HloInstruction*, size_t>*
                 hlo_to_profile_idx);
   ~IrEmitter() override;
