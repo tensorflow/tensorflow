@@ -51,7 +51,7 @@ tensorboard_webcomponent_library(
     ],
     destdir = "tf-graph-common",
     deps = [
-        "//tensorflow/tensorboard/components:tf_imports",
+        "//tensorflow/tensorboard/components/tf_imports_google:lib",
         "//third_party/javascript/polymer/v1/polymer:lib",
     ],
 )
@@ -61,5 +61,15 @@ tensorboard_ts_library(
     srcs = glob(["*.ts"]),
     deps_mgmt = "off",
     runtime = "nodejs",
-    deps = ["//tensorflow/tensorboard/components:common_deps"],
+    deps = [
+        "//third_party/javascript/node_modules/typescript:es2015.promise",
+        "//third_party/javascript/plottable/v1:typings",
+        "//third_party/javascript/typings/chai",
+        "//third_party/javascript/typings/d3",
+        "//third_party/javascript/typings/lodash",
+        "//third_party/javascript/typings/mocha",
+        "//third_party/javascript/typings/polymer:polymer_without_externs",
+        "//third_party/javascript/typings/sinon",
+        "//third_party/javascript/typings/webcomponents_js",
+    ],
 )

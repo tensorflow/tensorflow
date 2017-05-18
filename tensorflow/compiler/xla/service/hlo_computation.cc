@@ -130,7 +130,7 @@ Status HloComputation::RemoveParameter(int64 param_no) {
 
   while (param_no < param_instructions_.size()) {
     param_instruction = param_instructions_[param_no];
-    string param_name = param_instruction->name();
+    string param_name = param_instruction->parameter_name();
     // Fusion parameters are named foo.param_1, bar.param_2, etc. We are
     // renumbering the parameters so replace the final number in the name with
     // the updated value.

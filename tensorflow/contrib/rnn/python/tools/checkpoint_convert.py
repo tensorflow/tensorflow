@@ -16,8 +16,24 @@ r"""Convert checkpoints using RNNCells to new name convention.
 
 Usage:
 
-  python checkpoint_convert [--write_v1_checkpoint] \
+  python checkpoint_convert.py [--write_v1_checkpoint] \
       '/path/to/checkpoint' '/path/to/new_checkpoint'
+
+For example, if there is a V2 checkpoint to be converted and the files include:
+  /tmp/my_checkpoint/model.ckpt.data-00000-of-00001
+  /tmp/my_checkpoint/model.ckpt.index
+  /tmp/my_checkpoint/model.ckpt.meta
+
+use the following command:
+  mkdir /tmp/my_converted_checkpoint &&
+  python checkpoint_convert.py \
+      /tmp/my_checkpoint/model.ckpt /tmp/my_converted_checkpoint/model.ckpt
+
+This will generate three converted checkpoint files corresponding to the three
+old ones in the new directory:
+  /tmp/my_converted_checkpoint/model.ckpt.data-00000-of-00001
+  /tmp/my_converted_checkpoint/model.ckpt.index
+  /tmp/my_converted_checkpoint/model.ckpt.meta
 """
 from __future__ import absolute_import
 from __future__ import division

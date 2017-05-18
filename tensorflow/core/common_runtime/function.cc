@@ -150,8 +150,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   ~FunctionLibraryRuntimeImpl() override;
 
-  Status Instantiate(const string& function_name,
-                     const InstantiateAttrValueMap& attrs,
+  Status Instantiate(const string& function_name, AttrSlice attrs,
                      Handle* handle) override;
 
   const FunctionBody* GetFunctionBody(Handle handle) override;
@@ -208,8 +207,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   };
   std::vector<Item*> items_;
 
-  Status FunctionDefToBody(const FunctionDef& fdef,
-                           const InstantiateAttrValueMap& attrs,
+  Status FunctionDefToBody(const FunctionDef& fdef, AttrSlice attrs,
                            FunctionBody** fbody);
   Status CreateItem(Handle handle, Item** item);
   Status GetOrCreateItem(Handle handle, Item** item);
@@ -324,7 +322,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   // Try to instantiate this function for the func/attr. Maybe its
   // cached already.
   Handle handle;
-  TF_RETURN_IF_ERROR(Instantiate(ndef.op(), ndef.attr(), &handle));
+  TF_RETURN_IF_ERROR(Instantiate(ndef.op(), AttrSlice(&ndef.attr()), &handle));
 
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
@@ -355,9 +353,9 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   return s;
 }
 
-Status FunctionLibraryRuntimeImpl::FunctionDefToBody(
-    const FunctionDef& fdef, const InstantiateAttrValueMap& attrs,
-    FunctionBody** fbody) {
+Status FunctionLibraryRuntimeImpl::FunctionDefToBody(const FunctionDef& fdef,
+                                                     AttrSlice attrs,
+                                                     FunctionBody** fbody) {
   // Instantiates the function template into a graph def.
   InstantiationResult result;
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig_, &result));
@@ -390,11 +388,13 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
     // TODO(josh11b): Should filter out the attrs from func that aren't used
     // by the gradient function.
     TF_RETURN_IF_ERROR(creator(AttrSlice(&func.attr()), &grad_fdef));
-    TF_RETURN_IF_ERROR(FunctionDefToBody(grad_fdef, func.attr(), g_body));
+    TF_RETURN_IF_ERROR(
+        FunctionDefToBody(grad_fdef, AttrSlice(&func.attr()), g_body));
   } else {
     // f is a user-defined function.
     Handle f_handle;
-    TF_RETURN_IF_ERROR(Instantiate(func.name(), func.attr(), &f_handle));
+    TF_RETURN_IF_ERROR(
+        Instantiate(func.name(), AttrSlice(&func.attr()), &f_handle));
     const FunctionBody* f_body = GetFunctionBody(f_handle);
     CHECK_NOTNULL(f_body);
     *g_body = SymbolicGradient(*f_body);
@@ -402,9 +402,9 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
   return Status::OK();
 }
 
-Status FunctionLibraryRuntimeImpl::Instantiate(
-    const string& function_name, const InstantiateAttrValueMap& attrs,
-    Handle* handle) {
+Status FunctionLibraryRuntimeImpl::Instantiate(const string& function_name,
+                                               AttrSlice attrs,
+                                               Handle* handle) {
   const string key = Canonicalize(function_name, attrs);
   {
     mutex_lock l(mu_);
@@ -417,7 +417,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   Status s;
   FunctionBody* fbody = nullptr;
   if (function_name == kGradientOp) {
-    const AttrValue* f = gtl::FindOrNull(attrs, kFuncAttr);
+    const AttrValue* f = attrs.Find(kFuncAttr);
     if (f == nullptr) {
       return errors::InvalidArgument("SymbolicGradient is missing attr: f");
     }
@@ -427,7 +427,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     }
     const string grad = lib_def_->FindGradient(func.name());
     if (!grad.empty()) {
-      return Instantiate(grad, func.attr(), handle);
+      return Instantiate(grad, AttrSlice(&func.attr()), handle);
     }
     TF_RETURN_IF_ERROR(InstantiateSymbolicGradient(func, &fbody));
   } else {
@@ -989,13 +989,12 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   for (Node* node : graph->nodes()) {
     VLOG(3) << "Expanding " << node->DebugString();
     bool noinline;
-    if (fld->GetAttr(node->def(), kNoInlineAttr, &noinline).ok() && noinline) {
+    if (fld->GetAttr(*node, kNoInlineAttr, &noinline).ok() && noinline) {
       VLOG(3) << "noinline: " << node->DebugString();
       continue;
     }
     FunctionLibraryRuntime::Handle handle;
-    Status s =
-        lib->Instantiate(node->type_string(), node->def().attr(), &handle);
+    Status s = lib->Instantiate(node->type_string(), node->attrs(), &handle);
     if (!s.ok()) {
       // Either "node" is a primitive op, or the instantiation failed.
       if (errors::IsNotFound(s)) {
@@ -1103,7 +1102,7 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
       continue;
     }
     int index;
-    TF_CHECK_OK(GetNodeAttr(n->def(), "index", &index));
+    TF_CHECK_OK(GetNodeAttr(n->attrs(), "index", &index));
     CHECK_LE(0, index);
     CHECK_LT(index, node_vec->size());
     (*node_vec)[index] = n;

@@ -124,10 +124,9 @@ TEST_F(BufferLivenessTest, ElementwiseChain) {
                           MakeUnique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
-  // Entry params always interfere.
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, negate));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, exp));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, log));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, negate));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, exp));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, log));
 
   // No buffers should interfere.
   EXPECT_FALSE(InstructionsMayInterfere(*liveness, negate, exp));
@@ -174,15 +173,16 @@ TEST_F(BufferLivenessTest, MultipleEntryParameters_Sequential) {
                       MakeUnique<SequentialHloOrdering>(module.get(), sequence))
                       .ConsumeValueOrDie();
 
-  // Entry params always interfere.
+  // Entry parameters interfere as if they are defined simultaneously at
+  // the very beginning.
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, param0, param1));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param0, negate));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param0, exp));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param0, add));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param0, negate));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param0, exp));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param0, add));
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, param1, param0));
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, param1, negate));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param1, exp));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param1, add));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param1, exp));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param1, add));
 
   // Negate and exp still interfere.
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, negate, exp));
@@ -220,10 +220,9 @@ TEST_F(BufferLivenessTest, NonElementwiseOperand) {
                           MakeUnique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
-  // Entry params always interfere.
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, exp));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, negate));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, reverse));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, exp));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, negate));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, reverse));
 
   // Negate is elementwise, so doesn't interfere with its operand.
   // Reverse is non-elementwise, so does interfere with its operand.
@@ -255,10 +254,9 @@ TEST_F(BufferLivenessTest, OverlappedBuffers) {
                           MakeUnique<DependencyHloOrdering>(module.get()))
           .ConsumeValueOrDie();
 
-  // Entry params always interfere.
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, negate));
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, exp));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, add));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, add));
 
   // Negate and exp interfere with each other, but not with add.
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, negate, exp));
@@ -301,10 +299,9 @@ TEST_F(BufferLivenessTest, OverlappedBuffersSequentialOrder) {
                                             module.get(), module_sequence))
           .ConsumeValueOrDie();
 
-  // Entry params always interfere.
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, negate));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, exp));
-  EXPECT_TRUE(InstructionsMayInterfere(*liveness, param, add));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, exp));
+  EXPECT_FALSE(InstructionsMayInterfere(*liveness, param, add));
 
   // Negate and exp interfere with each other, but not with add.
   EXPECT_TRUE(InstructionsMayInterfere(*liveness, negate, exp));

@@ -190,10 +190,7 @@ setup(
     package_data={
         'tensorflow': [
             EXTENSION_NAME,
-            'tensorboard/dist/bazel-html-imports.html',
-            'tensorboard/dist/index.html',
-            'tensorboard/dist/tf-tensorboard.html',
-            'tensorboard/lib/css/global.css',
+            'tensorboard/components/index.html',
             'tensorboard/TAG',
         ] + matches,
     },

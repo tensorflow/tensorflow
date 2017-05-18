@@ -488,8 +488,10 @@ Status GatherComputationsByAllocationType(
 /* static */
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    LogicalBuffer::SizeFunction buffer_size, int64 alignment) {
-  BufferAssigner assigner(std::move(buffer_size), alignment);
+    LogicalBuffer::SizeFunction buffer_size, int64 alignment,
+    bool allow_input_output_aliasing) {
+  BufferAssigner assigner(std::move(buffer_size), alignment,
+                          allow_input_output_aliasing);
   return assigner.CreateAssignment(module, std::move(hlo_ordering));
 }
 
@@ -523,6 +525,28 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
       VLOG(4) << "Can't assign: assignee " << assigned_buffer
               << " may interfere with " << buffer;
       return false;
+    }
+    // Copy instruction don't share a buffer with their input operand.
+    if (buffer.instruction()->IsUserOf(assigned_buffer.instruction()) &&
+        buffer.instruction()->opcode() == HloOpcode::kCopy) {
+      VLOG(4) << "Can't assign: assignee " << assigned_buffer
+              << " is used at copy instruction " << buffer;
+      return false;
+    }
+  }
+
+  if (allow_input_output_aliasing_ && allocation->maybe_live_out()) {
+    HloComputation* entry_computation =
+        assignment->module_->entry_computation();
+    for (auto param : entry_computation->parameter_instructions()) {
+      for (auto& param_buffer :
+           assignment->points_to_analysis().GetBuffersDefinedByInstruction(
+               param)) {
+        if (assignment->liveness().MayInterfere(*param_buffer, buffer)) {
+          VLOG(4) << "Can't assign: Parameter interference with result";
+          return false;
+        }
+      }
     }
   }
 
