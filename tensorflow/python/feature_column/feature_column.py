@@ -1533,7 +1533,7 @@ def _check_feature_columns(feature_columns):
   for column in feature_columns:
     if not isinstance(column, _FeatureColumn):
       raise ValueError('Items of feature_columns must be a _FeatureColumn.'
-                       'Given: {}.'.format(column))
+                       'Given (type {}): {}.'.format(type(column), column))
   if not feature_columns:
     raise ValueError('feature_columns must not be empty.')
   name_to_column = dict()
