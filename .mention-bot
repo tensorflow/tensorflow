@@ -1,0 +1,11 @@
+{
+  "maxReviewers": 2,
+  "numFilesToCheck": 10,
+  "userBlacklist": ["tensorflower-gardener"],
+  "requiredOrgs": ["tensorflow"],
+  "skipAlreadyAssignedPR": true,
+  "skipAlreadyMentionedPR": true,
+  "skipTitle": "Branch",
+  "delayed": true,
+  "delayedUntil": "10m"
+}
