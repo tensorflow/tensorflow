@@ -188,6 +188,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/training/evaluation_test.py"
       "${tensorflow_source_dir}/tensorflow/tensorboard/backend/server_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"  # Silently failing with GPU kernel disabled.
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/neon_depthwise_conv_op_test.py"  # Depends on gemmlowp -> pthread.
       # int32/int64 mixup
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/functional_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/py_func_test.py"
@@ -216,7 +217,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       # Newly running on Windows since TensorBoard backend move. Fail on Windows and need debug.
       "${tensorflow_source_dir}/tensorflow/tensorboard/backend/event_processing/directory_watcher_test.py"
       "${tensorflow_source_dir}/tensorflow/tensorboard/backend/event_processing/event_multiplexer_test.py"
-    )
+      "${tensorflow_source_dir}/tensorflow/contrib/data/python/kernel_tests/dataset_constructor_op_test.py"  # Segfaults on Windows.
+  )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})
 

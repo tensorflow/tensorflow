@@ -49,11 +49,11 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
       }
     }
     for (Node* n : matches) {
-      AttrSlice n_attrs(n->def());
+      AttrSlice n_attrs = n->attrs();
       auto base_make_node = [n, g, &n_attrs](const string& op,
                                              const string& name) {
         NodeBuilder node_builder(name, op);
-        node_builder.Device(n->def().device());
+        node_builder.Device(n->requested_device());
         string colo;
         if (GetNodeAttr(n_attrs, "_class", &colo).ok()) {
           node_builder.Attr("_class", colo);

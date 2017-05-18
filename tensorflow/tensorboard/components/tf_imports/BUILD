@@ -24,7 +24,7 @@ web_library(
     name = "graphlib",
     srcs = [
         "graphlib.html",
-        "@io_github_cpettitt_graphlib",
+        "@io_github_cpettitt_graphlib//:graphlib.core.js",
     ],
     path = "/tf-imports",
     deps = [":lodash"],
@@ -34,7 +34,7 @@ web_library(
     name = "dagre",
     srcs = [
         "dagre.html",
-        "@io_github_cpettitt_dagre",
+        "@io_github_cpettitt_dagre//:dagre.core.js",
     ],
     path = "/tf-imports",
     deps = [

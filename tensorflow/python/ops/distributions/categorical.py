@@ -193,6 +193,22 @@ class Categorical(distribution.Distribution):
         array_ops.concat([[n], self.batch_shape_tensor()], 0))
     return ret
 
+  def _cdf(self, k):
+    k = ops.convert_to_tensor(k, name="k")
+
+    # If there are multiple batch dimension, flatten them into one.
+    batch_flattened_probs = array_ops.reshape(self._probs,
+                                              [-1, self._event_size])
+    batch_flattened_k = array_ops.reshape(k, (-1,))
+
+    # Form a tensor to sum over.
+    mask_tensor = array_ops.sequence_mask(batch_flattened_k, self._event_size)
+    to_sum_over = array_ops.where(mask_tensor,
+                                  batch_flattened_probs,
+                                  array_ops.zeros_like(batch_flattened_probs))
+    batch_flat_cdf = math_ops.reduce_sum(to_sum_over, axis=-1)
+    return array_ops.reshape(batch_flat_cdf, self._batch_shape())
+
   def _log_prob(self, k):
     k = ops.convert_to_tensor(k, name="k")
     if self.logits.get_shape()[:-1] == k.get_shape():

@@ -740,6 +740,7 @@ cc_library(
         "//tensorflow/core/kernels:array_not_windows",
         "//tensorflow/core/kernels:math_not_windows",
         "//tensorflow/core/kernels:quantized_ops",
+        "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
     ]) + if_mkl([
         "//tensorflow/core/kernels:mkl_concat_op",
         "//tensorflow/core/kernels:mkl_conv_op",
@@ -1411,6 +1412,11 @@ tf_cuda_library(
             "framework/**/*.cc",
             "util/**/*.h",
             "util/**/*.cc",
+        ] + [
+            "graph/edgeset.h",
+            "graph/edgeset.cc",
+            "graph/graph.h",
+            "graph/graph.cc",
         ],
         exclude = [
             "**/*test*",
@@ -1551,8 +1557,6 @@ tf_cuda_library(
         "graph/colors.cc",
         "graph/control_flow.cc",
         "graph/costmodel.cc",
-        "graph/edgeset.cc",
-        "graph/graph.cc",
         "graph/graph_constructor.cc",
         "graph/graph_def_builder.cc",
         "graph/graph_partition.cc",

@@ -632,12 +632,14 @@ TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 TEST_F(ArrayElementwiseOpTest, PowF32s) {
   SetFastMathDisabled(true);
   ComputationBuilder builder(client_, TestName());
-  auto lhs = builder.ConstantR1<float>({4.0f, 2.0f, 2.0f, NAN, 6.0f});
-  auto rhs = builder.ConstantR1<float>({2.0f, -2.0f, 3.0f, 10.0f, NAN});
+  auto lhs =
+      builder.ConstantR1<float>({4.0f, 2.0f, 2.0f, NAN, 6.0f, -2.0f, -2.0f});
+  auto rhs =
+      builder.ConstantR1<float>({2.0f, -2.0f, 3.0f, 10.0f, NAN, 3.0f, 4.0f});
   auto minimum = builder.Pow(lhs, rhs);
 
-  ComputeAndCompareR1<float>(&builder, {16.0f, 0.25f, 8.0f, NAN, NAN}, {},
-                             error_spec_);
+  ComputeAndCompareR1<float>(
+      &builder, {16.0f, 0.25f, 8.0f, NAN, NAN, -8.0f, 16.0f}, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowZeroElementF32s) {
