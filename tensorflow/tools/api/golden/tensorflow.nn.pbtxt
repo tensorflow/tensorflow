@@ -90,7 +90,7 @@ tf_module {
   }
   member_method {
     name: "ctc_loss"
-    argspec: "args=[\'labels\', \'inputs\', \'sequence_length\', \'preprocess_collapse_repeated\', \'ctc_merge_repeated\', \'time_major\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'True\'], "
+    argspec: "args=[\'labels\', \'inputs\', \'sequence_length\', \'preprocess_collapse_repeated\', \'ctc_merge_repeated\', \'ignore_longer_outputs_than_inputs\', \'time_major\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'False\', \'True\'], "
   }
   member_method {
     name: "depthwise_conv2d"

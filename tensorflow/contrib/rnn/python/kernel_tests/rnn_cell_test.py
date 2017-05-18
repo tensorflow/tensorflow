@@ -849,14 +849,12 @@ class RNNCellTest(test.TestCase):
       batch_size = 3
       input_size = 4
       expected_state_c = np.array(
-          [[2.954548e-01, 8.354891e-04],
-           [2.834632e-01, 8.158963e-01],
-           [2.291694e-01, 1.325745e-04]],
+          [[0.00072015, 0.00036633], [0.00083481, 0.00047266],
+           [0.00085111, 0.00053054]],
           dtype=np.float32)
       expected_state_h = np.array(
-          [[2.116566e-01, 5.985238e-04],
-           [2.137760e-01, 6.153145e-01],
-           [1.742966e-01, 1.008306e-04]],
+          [[0.0005159, 0.00026243], [0.00062958, 0.00035646],
+           [0.00064732, 0.00040351]],
           dtype=np.float32)
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):

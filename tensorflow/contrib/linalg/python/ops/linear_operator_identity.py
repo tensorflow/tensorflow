@@ -116,7 +116,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
   ==> 0.
 
   x = ... Shape [2, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 4] Tensor, same as x.
 
   y = tf.random_normal(shape=[3, 2, 4])
@@ -141,20 +141,20 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
   # to detect that no broadcast is necessary because both x and the operator
   # have statically defined shape.
   x = ... Shape [2, 2, 3]
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 2, 3] Tensor, same as x
 
   # Here the operator and x have different batch_shape, and are broadcast.
   # This requires a copy, since the output is different size than the input.
   x = ... Shape [1, 2, 3]
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 2, 3] Tensor, equal to [x, x]
   ```
 
   ### Shape compatibility
 
   This operator acts on [batch] matrix with compatible shape.
-  `x` is a batch matrix with compatible shape for `apply` and `solve` if
+  `x` is a batch matrix with compatible shape for `matmul` and `solve` if
 
   ```
   operator.shape = [B1,...,Bb] + [N, N],  with b >= 0
@@ -166,14 +166,14 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
 
   If `batch_shape` initialization arg is `None`:
 
-  * `operator.apply(x)` is `O(1)`
+  * `operator.matmul(x)` is `O(1)`
   * `operator.solve(x)` is `O(1)`
   * `operator.determinant()` is `O(1)`
 
   If `batch_shape` initialization arg is provided, and static checks cannot
   rule out the need to broadcast:
 
-  * `operator.apply(x)` is `O(D1*...*Dd*N*R)`
+  * `operator.matmul(x)` is `O(D1*...*Dd*N*R)`
   * `operator.solve(x)` is `O(D1*...*Dd*N*R)`
   * `operator.determinant()` is `O(B1*...*Bb)`
 
@@ -334,7 +334,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     zeros = array_ops.zeros(shape=special_shape, dtype=self.dtype)
     return x + zeros
 
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
     # Note that adjoint has no effect since this matrix is self-adjoint.
     x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     if self._assert_proper_shapes:
@@ -350,7 +350,7 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
     return array_ops.zeros(shape=self.batch_shape_tensor(), dtype=self.dtype)
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
-    return self._apply(rhs, adjoint_arg=adjoint_arg)
+    return self._matmul(rhs, adjoint_arg=adjoint_arg)
 
   def _diag_part(self):
     return self._ones_diag()
@@ -468,7 +468,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
   ==> 2 * Log[3]
 
   x = ... Shape [2, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> 3 * x
 
   y = tf.random_normal(shape=[3, 2, 4])
@@ -486,19 +486,19 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         [0., 5.]]]
 
   x = ... Shape [2, 2, 3]
-  operator.apply(x)
+  operator.matmul(x)
   ==> 5 * x
 
   # Here the operator and x have different batch_shape, and are broadcast.
   x = ... Shape [1, 2, 3]
-  operator.apply(x)
+  operator.matmul(x)
   ==> 5 * x
   ```
 
   ### Shape compatibility
 
   This operator acts on [batch] matrix with compatible shape.
-  `x` is a batch matrix with compatible shape for `apply` and `solve` if
+  `x` is a batch matrix with compatible shape for `matmul` and `solve` if
 
   ```
   operator.shape = [B1,...,Bb] + [N, N],  with b >= 0
@@ -508,7 +508,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
 
   ### Performance
 
-  * `operator.apply(x)` is `O(D1*...*Dd*N*R)`
+  * `operator.matmul(x)` is `O(D1*...*Dd*N*R)`
   * `operator.solve(x)` is `O(D1*...*Dd*N*R)`
   * `operator.determinant()` is `O(D1*...*Dd)`
 
@@ -628,7 +628,7 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
         imag_multiplier,
         message="LinearOperator was not self-adjoint")
 
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
     x = linear_operator_util.matrix_adjoint(x) if adjoint_arg else x
     if adjoint:
       matrix = self._multiplier_matrix_conj

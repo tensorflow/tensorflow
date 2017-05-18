@@ -24,6 +24,7 @@ py_library(
         "@org_mozilla_bleach",
         "@org_pocoo_werkzeug//:werkzeug",
         "@org_pythonhosted_markdown",
+        "@six_archive//:six",
     ],
 )
 

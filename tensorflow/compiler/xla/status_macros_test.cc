@@ -73,7 +73,7 @@ Status ReturnStatusError() { return (tensorflow::errors::Internal("foobar")); }
 
 using StatusReturningFunction = std::function<Status()>;
 
-StatusOr<int> CallStatusReturningFunction(StatusReturningFunction func) {
+StatusOr<int> CallStatusReturningFunction(const StatusReturningFunction& func) {
   TF_RETURN_IF_ERROR(func());
   return 42;
 }

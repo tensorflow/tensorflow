@@ -33,6 +33,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as test_lib
@@ -239,7 +240,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
         self.assertAllEqual(x_tf, x_np)
 
   def _reverse1DimAuto(self, np_dtype):
-    x_np = np.array([1, 2, 3, 4, 5], dtype=np_dtype)
+    x_np = np.array([1, 200, 3, 40, 5], dtype=np_dtype)
 
     for use_gpu in [False, True]:
       with self.test_session(use_gpu=use_gpu):
@@ -247,7 +248,7 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
         self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
 
   def _reverse2DimAuto(self, np_dtype):
-    x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np_dtype)
+    x_np = np.array([[1, 200, 3], [4, 5, 60]], dtype=np_dtype)
 
     for reverse_f in [array_ops.reverse_v2, array_ops.reverse]:
       for use_gpu in [False, True]:
@@ -282,14 +283,14 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
   def testReverse1DimAuto(self):
     for dtype in [
         np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16, np.float32,
-        np.float64, np.complex64, np.complex128
+        np.float64, np.complex64, np.complex128, np.array(b"").dtype.type
     ]:
       self._reverse1DimAuto(dtype)
 
   def testReverse2DimAuto(self):
     for dtype in [
         np.uint8, np.int8, np.int32, np.int64, np.bool, np.float16, np.float32,
-        np.float64, np.complex64, np.complex128
+        np.float64, np.complex64, np.complex128, np.array(b"").dtype.type
     ]:
       self._reverse2DimAuto(dtype)
 
@@ -807,9 +808,10 @@ class StridedSliceBenchmark(test_lib.Benchmark):
 
 class StridedSliceAssignChecker(object):
 
-  def __init__(self, test, x, tensor_type=dtypes.float32):
+  def __init__(self, test, x, tensor_type=dtypes.float32, use_resource=False):
     self.tensor_type = tensor_type
     self.test = test
+    self._use_resource = use_resource
 
     self.x_np = np.array(x).astype(tensor_type.as_numpy_dtype)
     # Give the value a non-zero imaginary component for complex types.
@@ -824,7 +826,10 @@ class StridedSliceAssignChecker(object):
       value -= 1j * value
 
     with self.test.test_session(use_gpu=True) as sess:
-      var = variables.Variable(self.x)
+      if self._use_resource:
+        var = resource_variable_ops.ResourceVariable(self.x)
+      else:
+        var = variables.Variable(self.x)
       sess.run(variables.initialize_variables([var]))
       val = sess.run(var[index].assign(value))
       # val_copy is used to check that tf.assign works equivalently to the
@@ -846,9 +851,10 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
         bar = foo[:2].assign(constant_op.constant([1, 2]))
         sess.run(bar)
 
-  def testSliceAssign(self):
+  def doTestSliceAssign(self, use_resource):
     for dtype in STRIDED_SLICE_TYPES:
       checker = StridedSliceAssignChecker(self, [[1, 2, 3], [4, 5, 6]],
+                                          use_resource=use_resource,
                                           tensor_type=dtype)
       # Check if equal
       checker[:] = [[10, 20, 30], [40, 50, 60]]
@@ -872,6 +878,12 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
     checker2[()] = 6  # no indices
     checker2[...] = 6  # ellipsis
     checker2[None] = [6]  # new axis
+
+  def testSliceAssign(self):
+    self.doTestSliceAssign(use_resource=False)
+
+  def testSliceAssignResource(self):
+    self.doTestSliceAssign(use_resource=True)
 
   def testUninitialized(self):
     with self.assertRaisesRegexp(

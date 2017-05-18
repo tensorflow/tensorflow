@@ -36,6 +36,7 @@ from tensorflow.contrib.distributions.python.ops.logistic import *
 from tensorflow.contrib.distributions.python.ops.mixture import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag import *
 from tensorflow.contrib.distributions.python.ops.mvn_diag_plus_low_rank import *
+from tensorflow.contrib.distributions.python.ops.mvn_full_covariance import *
 from tensorflow.contrib.distributions.python.ops.mvn_tril import *
 from tensorflow.contrib.distributions.python.ops.negative_binomial import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
@@ -45,6 +46,7 @@ from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
 from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
 from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
 from tensorflow.contrib.distributions.python.ops.sample_stats import *
+from tensorflow.contrib.distributions.python.ops.vector_laplace_diag import *
 from tensorflow.contrib.distributions.python.ops.wishart import *
 from tensorflow.python.ops.distributions.bernoulli import *
 from tensorflow.python.ops.distributions.beta import *
@@ -115,12 +117,14 @@ _allowed_symbols = [
     'StudentTWithAbsDfSoftplusScale',
     'Uniform',
     'MultivariateNormalDiag',
+    'MultivariateNormalFullCovariance',
     'MultivariateNormalTriL',
     'MultivariateNormalDiagPlusLowRank',
     'MultivariateNormalDiagWithSoftplusScale',
     'Dirichlet',
     'DirichletMultinomial',
     'Multinomial',
+    'VectorLaplaceDiag',
     'WishartCholesky',
     'WishartFull',
     'TransformedDistribution',

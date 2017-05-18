@@ -52,14 +52,16 @@ bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
 // Make sure we don't recurse infinitely on recursive functions.
 const int kMaxRecursionDepth = 10;
 
-bool IsCompilableCall(const NodeDef& call_def, DeviceType jit_device_type,
-                      int depth, FunctionLibraryRuntime* lib_runtime);
+bool IsCompilableCall(const NodeDef& call_def,
+                      const DeviceType& jit_device_type, int depth,
+                      FunctionLibraryRuntime* lib_runtime);
 
 // Tests whether 'while_def' is a completely compilable loop.
 // Every operator in the condition and body functions must be compilable for a
 // while loop to be compilable.
-bool IsCompilableWhile(const NodeDef& while_def, DeviceType jit_device_type,
-                       int depth, FunctionLibraryRuntime* lib_runtime) {
+bool IsCompilableWhile(const NodeDef& while_def,
+                       const DeviceType& jit_device_type, int depth,
+                       FunctionLibraryRuntime* lib_runtime) {
   VLOG(2) << "Loop marking: " << while_def.op();
 
   const NameAttrList* name_attr;
@@ -98,8 +100,9 @@ bool IsCompilableWhile(const NodeDef& while_def, DeviceType jit_device_type,
 // Tests whether 'call_def' is a call to a completely compilable function.
 // Every operator in the function must be compilable for a function to be
 // compilable.
-bool IsCompilableCall(const NodeDef& call_def, DeviceType jit_device_type,
-                      int depth, FunctionLibraryRuntime* lib_runtime) {
+bool IsCompilableCall(const NodeDef& call_def,
+                      const DeviceType& jit_device_type, int depth,
+                      FunctionLibraryRuntime* lib_runtime) {
   VLOG(2) << "Function marking: " << call_def.op();
 
   if (depth > kMaxRecursionDepth) {

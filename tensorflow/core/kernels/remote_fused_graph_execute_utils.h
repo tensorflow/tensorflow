@@ -17,6 +17,7 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_
 
 #include <unordered_map>
+#include <unordered_set>
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/remote_fused_graph_execute_info.pb.h"
@@ -52,9 +53,12 @@ class RemoteFusedGraphExecuteUtils {
   using ExecutorBuildRegistry = std::map<string, ExecutorBuildFunc>;
 
   using TensorShapeType = std::pair<DataType, TensorShape>;
-  using TensorShapeMap =
-      std::unordered_multimap<string /* node name */,
-                              std::pair<int /* port */, TensorShapeType>>;
+  using TensorShapeMap = std::unordered_multimap<string,         // node name
+                                                 std::pair<int,  // port
+                                                           TensorShapeType>>;
+  using ClusterInfo = std::tuple<std::unordered_set<string>,  // node names
+                                 std::vector<string>,         // border inputs
+                                 std::vector<string>>;        // border outputs
 
   // Return registered ExecutorBuildFunc for given name.
   static const ExecutorBuildFunc* GetExecutorBuildFunc(const string& name);
@@ -103,6 +107,10 @@ class RemoteFusedGraphExecuteUtils {
                                          std::vector<DataType>* data_types,
                                          std::vector<TensorShape>* shapes);
 
+  static bool GetOutputTensorShapeType(const GraphDef& graph_def,
+                                       const string& name_and_port,
+                                       DataType* data_type, TensorShape* shape);
+
   static Status PropagateShapeInference(
       const GraphDef& graph_def,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
@@ -124,9 +132,91 @@ class RemoteFusedGraphExecuteUtils {
       std::vector<std::pair<string, Tensor>>* inputs,
       std::vector<string>* outputs);
 
+  static Status BuildAndAddTensorShapes(
+      const std::vector<std::pair<string, Tensor>>& input_tensors,
+      const bool dry_run_inference, GraphDef* graph_def);
+
+  // Build remote fused graph execute info
+  static Status BuildRemoteFusedGraphExecuteInfo(
+      const string& executor_name, const GraphDef& subgraph_def,
+      const std::vector<string>& inputs, const std::vector<string>& outputs,
+      const bool require_shape_type, RemoteFusedGraphExecuteInfo* execute_info,
+      DataTypeVector* input_types, DataTypeVector* output_types);
+
+  // Build remote fused graph execute op node by fusing specified subgraph
+  // as remote fused graph execute info
+  static Status BuildRemoteFusedGraphExecuteOpNode(
+      const string& node_name, const string& executor_name,
+      const GraphDef& subgraph_def, const std::vector<string>& inputs,
+      const std::vector<string>& outputs, const bool require_shape_type,
+      Graph* graph, Node** created_node);
+
+  // Build Identity node to forward remote graph node output
+  static Status BuildIdentityOpNode(const string& node_name,
+                                    const string& input_node_name,
+                                    const int input_node_port,
+                                    const DataType dt, Graph* graph,
+                                    Node** created_node);
+
+  // Create clusters of given nodes
+  static Status ClusterizeNodes(const std::unordered_set<string>& node_names,
+                                const GraphDef& graph_def,
+                                std::vector<ClusterInfo>* cluster_infos);
+
+  // Build GraphDef of a given cluster
+  static Status BuildClusterSubgraphDef(const ClusterInfo& cluster,
+                                        const GraphDef& graph_def,
+                                        GraphDef* subgraph_def);
+
+  // Build a cluster by given border
+  // CAVEAT: The border must be consistent for one cluster.
+  static Status BuildClusterByBorder(const std::vector<string>& border_inputs,
+                                     const std::vector<string>& border_outputs,
+                                     const GraphDef& graph_def,
+                                     ClusterInfo* cluster);
+
+  // Fuse one cluster into a newly created RemoteFusedGraphExecuteOp node.
+  // The subgraph is stored as a graph in RemoteFusedGraphExecuteInfo.
+  // CAVEAT1: This transform strips unvisited nodes with given outputs.
+  // CAVEAT2: If you want to use a graph output as a border output,
+  // that graph output node is replaced by an identity node.  Therefore,
+  // the number of output of the node must be 1.
+  static Status FuseCluster(const GraphDef& input_graph_def,
+                            const std::vector<string>& inputs,
+                            const std::vector<string>& outputs,
+                            const string& remote_fused_graph_node_name,
+                            const ClusterInfo& cluster,
+                            const string& remote_graph_executor_name,
+                            const bool require_shape_type,
+                            GraphDef* output_graph_def);
+
+  // Fuse subgraph of specified nodes
+  static Status FuseRemoteGraphByNodeNames(
+      const GraphDef& input_graph_def, const std::vector<string>& inputs,
+      const std::vector<string>& outputs,
+      const string& remote_fused_graph_node_name_prefix,
+      const std::unordered_set<string>& subgraph_nodes,
+      const string& remote_fused_graph_executor_name,
+      const bool require_shape_type, GraphDef* output_graph_def);
+
+  // Fuse subgraph of specified border
+  static Status FuseRemoteGraphByBorder(
+      const GraphDef& input_graph_def, const std::vector<string>& inputs,
+      const std::vector<string>& outputs,
+      const string& remote_fused_graph_node_name,
+      const std::vector<string>& border_inputs,
+      const std::vector<string>& border_outputs,
+      const string& remote_graph_executor_name, const bool require_shape_type,
+      GraphDef* output_graph_def);
+
  private:
   static void EmplaceTensorShapeType(const string& name, const Tensor& tensor,
                                      TensorShapeMap* tensor_shape_map);
+
+  static Status ReplaceInputNodeByPlaceHolder(const string& input,
+                                              const DataType type,
+                                              const TensorShape& shape,
+                                              GraphDef* graph_def);
 
   static ExecutorBuildRegistry* GetExecutorBuildRegistry();
 

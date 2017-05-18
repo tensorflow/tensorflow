@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -73,7 +72,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     std::vector<OpInfo::TensorProperties> inputs =
         properties.GetInputProperties(node->name());
 
-    OpInfo::DeviceProperties device = placer.get_device(*node);
+    DeviceProperties device = placer.get_device(*node);
     OpInfo op_info;
     op_info.set_op(node->op());
     *op_info.mutable_attr() = node->attr();

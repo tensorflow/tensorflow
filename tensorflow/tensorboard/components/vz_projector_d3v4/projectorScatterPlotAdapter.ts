@@ -378,8 +378,8 @@ export class ProjectorScatterPlotAdapter {
     }
 
     return new LabelRenderParams(
-        visibleLabels, labelStrings, scale, opacityFlags, LABEL_FONT_SIZE,
-        fillColors, strokeColors);
+        new Float32Array(visibleLabels), labelStrings, scale, opacityFlags,
+        LABEL_FONT_SIZE, fillColors, strokeColors);
   }
 
   generatePointScaleFactorArray(

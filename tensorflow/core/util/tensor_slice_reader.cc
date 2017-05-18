@@ -102,7 +102,8 @@ TensorSliceReader::TensorSliceReader(const string& filepattern)
 
 TensorSliceReader::TensorSliceReader(const string& filepattern,
                                      OpenTableFunction open_function)
-    : TensorSliceReader(filepattern, open_function, kLoadAllShards) {}
+    : TensorSliceReader(filepattern, std::move(open_function), kLoadAllShards) {
+}
 
 TensorSliceReader::TensorSliceReader(const string& filepattern,
                                      OpenTableFunction open_function,

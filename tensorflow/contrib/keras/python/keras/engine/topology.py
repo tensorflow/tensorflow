@@ -273,7 +273,6 @@ class Layer(tf_base_layers.Layer):
   # Internal methods:
       build(input_shape)
       _add_inbound_node(layer, index=0)
-      assert_input_compatibility()
   """
 
   def __init__(self, **kwargs):
@@ -381,97 +380,6 @@ class Layer(tf_base_layers.Layer):
       self.constraints[weight] = constraint
     return weight
 
-  def assert_input_compatibility(self, inputs):
-    """Checks compatibility between the layer and provided inputs.
-
-    This checks that the tensor(s) `input`
-    verify the input assumptions of the layer
-    (if any). If not, exceptions are raised.
-
-    Arguments:
-        inputs: input tensor or list of input tensors.
-
-    Raises:
-        ValueError: in case of mismatch between
-            the provided inputs and the expectations of the layer.
-    """
-    if not self.input_spec:
-      return
-    if not isinstance(self.input_spec, (list, tuple)):
-      input_spec = _to_list(self.input_spec)
-    else:
-      input_spec = self.input_spec
-    inputs = _to_list(inputs)
-    if len(inputs) != len(input_spec):
-      raise ValueError('Layer ' + self.name + ' expects ' +
-                       str(len(input_spec)) + ' inputs, '
-                       'but it received ' + str(len(inputs)) +
-                       ' input tensors. Input received: ' + str(inputs))
-    for input_index, (x, spec) in enumerate(zip(inputs, input_spec)):
-      if spec is None:
-        continue
-
-      # Check ndim.
-      if spec.ndim is not None:
-        if K.ndim(x) != spec.ndim:
-          raise ValueError('Input ' + str(input_index) +
-                           ' is incompatible with layer ' + self.name +
-                           ': expected ndim=' + str(spec.ndim) + ', found ndim='
-                           + str(K.ndim(x)))
-      if spec.max_ndim is not None:
-        ndim = K.ndim(x)
-        if ndim is not None and ndim > spec.max_ndim:
-          raise ValueError('Input ' + str(input_index) +
-                           ' is incompatible with layer ' + self.name +
-                           ': expected max_ndim=' + str(spec.max_ndim) +
-                           ', found ndim=' + str(K.ndim(x)))
-      if spec.min_ndim is not None:
-        ndim = K.ndim(x)
-        if ndim is not None and ndim < spec.min_ndim:
-          raise ValueError('Input ' + str(input_index) +
-                           ' is incompatible with layer ' + self.name +
-                           ': expected min_ndim=' + str(spec.min_ndim) +
-                           ', found ndim=' + str(K.ndim(x)))
-      # Check dtype.
-      if spec.dtype is not None:
-        if K.dtype(x) != spec.dtype:
-          raise ValueError('Input ' + str(input_index) +
-                           ' is incompatible with layer ' + self.name +
-                           ': expected dtype=' + str(spec.dtype) +
-                           ', found dtype=' + str(K.dtype(x)))
-      # Check specific shape axes.
-      if spec.axes:
-        try:
-          x_shape = K.int_shape(x)
-        except TypeError:
-          x_shape = None
-        if x_shape is not None:
-          for axis, value in spec.axes.items():
-            if hasattr(value, 'value'):
-              value = value.value
-            if value is not None and x_shape[int(axis)] not in {value, None}:
-              raise ValueError(
-                  'Input ' + str(input_index) + ' is incompatible with layer ' +
-                  self.name + ': expected axis ' + str(axis) +
-                  ' of input shape to have '
-                  'value ' + str(value) + ' but got shape ' + str(x_shape))
-      # Check shape.
-      if spec.shape is not None:
-        try:
-          x_shape = K.int_shape(x)
-        except TypeError:
-          x_shape = None
-        if x_shape is not None:
-          for spec_dim, dim in zip(spec.shape, x_shape):
-            if hasattr(spec_dim, 'value'):
-              spec_dim = spec_dim.value
-            if spec_dim is not None and dim is not None:
-              if spec_dim != dim:
-                raise ValueError('Input ' + str(input_index) +
-                                 ' is incompatible with layer ' + self.name +
-                                 ': expected shape=' + str(spec.shape) +
-                                 ', found shape=' + str(x_shape))
-
   def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
@@ -508,11 +416,6 @@ class Layer(tf_base_layers.Layer):
     """
     if isinstance(inputs, list):
       inputs = inputs[:]
-
-    # Raise exceptions in case the input is not compatible
-    # with the input_spec set at build time.
-    # TODO(fchollet): call after the layer is built, too.
-    self.assert_input_compatibility(inputs)
 
     # Handle mask propagation.
     previous_mask = _collect_previous_mask(inputs)

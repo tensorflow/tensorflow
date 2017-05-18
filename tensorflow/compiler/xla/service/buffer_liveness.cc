@@ -45,9 +45,7 @@ StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
 }
 
 tensorflow::Status BufferLiveness::Analyze() {
-  TF_ASSIGN_OR_RETURN(points_to_analysis_,
-                      TuplePointsToAnalysis::Run(
-                          module_, /*include_loop_fusion_instructions=*/true));
+  TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module_));
   for (auto& computation : module_->computations()) {
     // Gather all instructions whose buffers might alias other instructions into
     // the set aliased_buffers_.  This includes those contained as a tuple
@@ -117,11 +115,7 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
 
   // If 'b' is a user of 'a' then the buffers interfere unless 'a.instruction'
   // and 'b.instruction' emit the same shape/layout, and 'b.instruction' meets
-  // one of following qualifications:
-  // *) Is element-wise.
-  // *) Is a loop fusion instruction (with DynamicUpdateSlice fused root) where
-  //    the singleton use of 'a' at 'a.index' is the fused root at operand 0.
-  // *) Use of 'operand' is DynamicUpdateSlice at operand index 0.
+  // the qualifications specified in CanShareOperandBufferWithUser.
   for (const BufferAlias& alias : points_to_analysis_->GetBufferAliases(a)) {
     if (b.instruction()->IsUserOf(alias.instruction()) &&
         !CanShareOperandBufferWithUser(alias.instruction(), alias.index(),

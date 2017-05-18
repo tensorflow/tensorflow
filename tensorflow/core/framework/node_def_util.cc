@@ -79,9 +79,24 @@ string SummarizeNodeDef(const NodeDef& node_def) {
 }
 
 const AttrValue* AttrSlice::Find(StringPiece attr_name) const {
-  auto iter = attrs_->find(attr_name.ToString());
-  if (iter == attrs_->end()) return nullptr;
-  return &iter->second;
+  // Currently, the collection used for NodeDef::attr() (google::protobuf::Map)
+  // requires that the keys used for lookups have type 'const string&'. Because
+  // this method takes a StringPiece, it is necessary to allocate a temporary
+  // string, copy attr_name to it, and then use that temporary string for the
+  // lookup. This causes an excessive number of short-lived allocations, and for
+  // large graphs, this can be a significant cost.
+  //
+  // Because most nodes have a small number of attributes, a simple linear scan
+  // is generally more efficient than a hashed lookup.  If google::protobuf::Map
+  // changes so that it supports efficient lookups using StringPiece instead of
+  // const string&, then this code could be changed to use attrs_->find() again.
+
+  for (const auto& attr : *attrs_) {
+    if (attr.first == attr_name) {
+      return &attr.second;
+    }
+  }
+  return nullptr;
 }
 
 Status AttrSlice::Find(StringPiece attr_name,
@@ -125,7 +140,41 @@ Status AttrSlice::Find(StringPiece attr_name,
     return Status::OK();                                                      \
   }
 
+#define DEFINE_GET_ATTR_SIMPLE(TYPE, FIELD, ATTR_TYPE, APPEND_OP, CAST, ...) \
+  bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,      \
+                         TYPE* value) {                                      \
+    const AttrValue* attr_value = attrs.Find(attr_name);                     \
+    if (attr_value == nullptr) {                                             \
+      return false;                                                          \
+    }                                                                        \
+    Status s = AttrValueHasType(*attr_value, ATTR_TYPE);                     \
+    if (!s.ok()) {                                                           \
+      return false;                                                          \
+    }                                                                        \
+    const auto& v = attr_value->FIELD();                                     \
+    __VA_ARGS__;                                                             \
+    *value = CAST;                                                           \
+    return true;                                                             \
+  }                                                                          \
+  bool GetNodeAttrSimple(const AttrSlice& attrs, StringPiece attr_name,      \
+                         std::vector<TYPE>* value) {                         \
+    const AttrValue* attr_value = attrs.Find(attr_name);                     \
+    if (attr_value == nullptr) {                                             \
+      return false;                                                          \
+    }                                                                        \
+    Status s = AttrValueHasType(*attr_value, "list(" ATTR_TYPE ")");         \
+    if (!s.ok()) {                                                           \
+      return false;                                                          \
+    }                                                                        \
+    for (const auto& v : attr_value->list().FIELD()) {                       \
+      __VA_ARGS__;                                                           \
+      value->APPEND_OP(CAST);                                                \
+    }                                                                        \
+    return true;                                                             \
+  }
+
 DEFINE_GET_ATTR(string, s, "string", emplace_back, v, ;)
+DEFINE_GET_ATTR_SIMPLE(string, s, "string", emplace_back, v, ;)
 DEFINE_GET_ATTR(int64, i, "int", emplace_back, v, ;)
 DEFINE_GET_ATTR(int32, i, "int", emplace_back, static_cast<int32>(v),
                 if (static_cast<int64>(static_cast<int32>(v)) != v) {
@@ -155,6 +204,20 @@ DEFINE_GET_ATTR(Tensor, tensor, "tensor", emplace_back, t, Tensor t;
                 })
 
 #undef DEFINE_GET_ATTR
+
+static const string& kEmptyString = *new string();
+
+const string& GetNodeAttrString(const AttrSlice& attrs, StringPiece attr_name) {
+  const AttrValue* attr_value = attrs.Find(attr_name);
+  if (attr_value == nullptr) {
+    return kEmptyString;
+  }
+  Status s = AttrValueHasType(*attr_value, "string");
+  if (!s.ok()) {
+    return kEmptyString;
+  }
+  return attr_value->s();
+}
 
 Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
                    DataTypeVector* value) {
