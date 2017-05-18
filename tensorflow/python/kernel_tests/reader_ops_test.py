@@ -878,6 +878,10 @@ class LMDBReaderTest(test.TestCase):
         self.assertEqual(k, str(i))
         self.assertEqual(v, str(chr(ord('a') + i)))
 
+      with self.assertRaisesOpError("is closed and has insufficient elements "
+                                    "\\(requested 1, current size 0\\)"):
+        k, v = sess.run([key, value])
+
   def testReadFromFolder(self):
     with self.test_session() as sess:
       reader = io_ops.LMDBReader(name="test_read_from_folder")
@@ -891,6 +895,10 @@ class LMDBReaderTest(test.TestCase):
         k, v = sess.run([key, value])
         self.assertEqual(k, str(i))
         self.assertEqual(v, str(chr(ord('a') + i)))
+
+      with self.assertRaisesOpError("is closed and has insufficient elements "
+                                    "\\(requested 1, current size 0\\)"):
+        k, v = sess.run([key, value])
 
 
 if __name__ == "__main__":

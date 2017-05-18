@@ -57,13 +57,13 @@ class LMDBReader : public ReaderBase {
 
   Status OnWorkFinishedLocked() override {
     if (mdb_env_ != nullptr) {
-      mdb_dbi_close(mdb_env_, mdb_dbi_);
-      mdb_env_close(mdb_env_);
-      mdb_env_ = nullptr;
       if (mdb_cursor_) {
         mdb_cursor_close(mdb_cursor_);
       }
       mdb_txn_abort(mdb_txn_);
+      mdb_dbi_close(mdb_env_, mdb_dbi_);
+      mdb_env_close(mdb_env_);
+      mdb_env_ = nullptr;
     }
     return Status::OK();
   }
