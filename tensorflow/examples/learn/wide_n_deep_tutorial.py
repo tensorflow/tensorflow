@@ -179,7 +179,7 @@ def input_fn(file_names, batch_size):
   feature_cols = dict(continuous_cols)
   feature_cols.update(categorical_cols)
   # Converts the label column into a constant Tensor.
-  df[LABEL_COLUMN] = tf.to_int32(tf.equal(df["income_bracket"]," >50K."))
+  df[LABEL_COLUMN] = tf.to_int32(tf.logical_or(tf.equal(df["income_bracket"]," >50K."), tf.equal(df["income_bracket"]," >50K")))
   label = df[LABEL_COLUMN]
   #label = tf.string_to_number(df[LABEL_COLUMN], out_type=tf.int32)
   # Returns the feature columns and the label.
