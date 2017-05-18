@@ -1533,8 +1533,9 @@ def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
-  `logits` and `labels` must have the same shape `[batch_size, num_classes]`
-  and the same dtype (either `float16`, `float32`, or `float64`).
+  `logits` and `labels` must have the same shape, e.g.
+  `[batch_size, num_classes]` and the same dtype (either `float16`, `float32`,
+  or `float64`).
 
   **Note that to avoid confusion, it is required to pass only named arguments to
   this function.**
