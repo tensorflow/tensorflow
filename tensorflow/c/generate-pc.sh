@@ -9,6 +9,8 @@ usage() {
     echo -e "-h, --help\tdisplay this message"
 }
 
+[ $# == 0 ] && usage && exit 0
+
 # read the options
 ARGS=`getopt -o p:v:h --long prefix:,version:,help -n $0 -- "$@"`
 eval set -- "$ARGS"
@@ -27,10 +29,12 @@ while true ; do
                 "") shift 2 ;;
                 *) TF_VERSION=$2 ; shift 2 ;;
             esac ;;
-        --) shift ; echo "Try '$0 --help' for more information."; exit 1 ;;
+        --) shift ; break ;;
         *) echo "Internal error! Try '$0 --help' for more information." ; exit 1 ;;
     esac
 done
+
+[ -z $TF_VERSION ] && echo "Specify a version using -v or --version" && exit 1
 
 echo "Generating pkgconfig file for TensorFlow $TF_VERSION in $TF_PREFIX"
 
