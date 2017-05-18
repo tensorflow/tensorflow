@@ -30,5 +30,5 @@ package(
 
 cc_library(
     name = "plugin",
-    deps = [],
+    deps = ["//tensorflow/compiler/plugin/poplar:poplar_lib"],
 )
