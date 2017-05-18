@@ -3,6 +3,8 @@
 
 licenses(["notice"])  # OpenLDAP Public License
 
+exports_files(["libraries/liblmdb/LICENSE"])
+
 cc_library(
     name = "lmdb",
     srcs = [
