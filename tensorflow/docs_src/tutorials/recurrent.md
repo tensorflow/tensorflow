@@ -58,7 +58,7 @@ the gradients of each batch for you.
 
 For example:
 ```
- t=0  t=1    t=2  t=3     t=5
+ t=0  t=1    t=2  t=3     t=4
 [The, brown, fox, is,     quick]
 [The, red,   fox, jumped, high]
 
