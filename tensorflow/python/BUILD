@@ -588,10 +588,17 @@ py_library(
         ":platform",
         ":platform_test",
         ":pywrap_tensorflow",
+        ":training",
         ":util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
+)
+
+py_library(
+    name = "distributed_framework_test_lib",
+    srcs_version = "PY2AND3",
+    deps = [":framework_test_lib"],
 )
 
 py_library(
@@ -1021,6 +1028,16 @@ tf_gen_op_wrapper_private_py(
     require_shape_functions = True,
     visibility = [
         "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "dataset_ops_gen",
+    require_shape_functions = True,
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow:__subpackages__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
 )
@@ -2829,6 +2846,7 @@ cuda_py_test(
     additional_deps = [
         ":client",
         ":client_testlib",
+        ":distributed_framework_test_lib",
         ":framework_for_generated_wrappers",
         ":partitioned_variables",
         ":training",

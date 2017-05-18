@@ -17,6 +17,11 @@
 - please don't check in changes to this file
 - to prevent changes appearing in git status, use:
   git update-index --assume-unchanged tensorflow/compiler/plugin/BUILD
+
+To add additional devices to the XLA subsystem, add targets to the
+dependency list in the 'plugin' target. For instance:
+
+    deps = ["//tensorflow/compiler/plugin/example:plugin_lib"],
 """
 
 package(
@@ -24,14 +29,6 @@ package(
 )
 
 cc_library(
-    name = "null_plugin",
-    srcs = [],
-)
-
-#
-# Update the 'actual' to point to the cc_library of your XLA device plugin
-#
-alias(
     name = "plugin",
-    actual = ":null_plugin",
+    deps = [],
 )

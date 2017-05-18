@@ -56,9 +56,11 @@ class OptimizerCSE {
   bool Optimize(const std::function<bool(const Node*)>& consider_fn);
 
  private:
+  struct Scratch;
+
   static size_t NodeHash(const Node* n);
-  static bool Equivalent(const Node* a, const Node* b,
-                         AttrSlice::Scratch* scratch);
+  static bool Equivalent(const Node* a, const Node* b, Scratch* s);
+  static bool EqualAttrs(const Node* a, const Node* b, Scratch* s);
 
   Graph* g_;
 };
@@ -108,7 +110,7 @@ size_t OptimizerCSE::NodeHash(const Node* n) {
   // Hash the attrs.  For example, this makes sure different constants
   // end up in different hash buckets.
   string tmp;
-  for (const auto& attr : n->attrs()) {
+  for (const auto& attr : n->def().attr()) {
     tmp = attr.first;
     attr.second.AppendToString(&tmp);
     // Add hashes of attrs, so the order of attrs doesn't matter.
@@ -120,6 +122,28 @@ size_t OptimizerCSE::NodeHash(const Node* n) {
   return h;
 }
 
+struct OptimizerCSE::Scratch {
+  // For EqualAttrs():
+  string a;
+  string b;
+};
+
+bool OptimizerCSE::EqualAttrs(const Node* a, const Node* b, Scratch* scratch) {
+  if (a->def().attr_size() != b->def().attr_size()) return false;
+
+  for (const auto& attr : b->def().attr()) {
+    auto iter = a->def().attr().find(attr.first);
+    if (iter == a->def().attr().end()) return false;
+    // Note: it should be safe to compare proto serializations of the attr
+    // values since at most one field should be set in each (indeed, it
+    // should be the same field).
+    iter->second.SerializeToString(&scratch->a);
+    attr.second.SerializeToString(&scratch->b);
+    if (scratch->a != scratch->b) return false;
+  }
+  return true;
+}
+
 static bool HasRefInput(const Node* n) {
   for (auto dt : n->input_types()) {
     if (IsRefType(dt)) return true;
@@ -127,8 +151,7 @@ static bool HasRefInput(const Node* n) {
   return false;
 }
 
-bool OptimizerCSE::Equivalent(const Node* a, const Node* b,
-                              AttrSlice::Scratch* scratch) {
+bool OptimizerCSE::Equivalent(const Node* a, const Node* b, Scratch* scratch) {
   // Different op names are different
   if (a->type_string() != b->type_string()) return false;
 
@@ -141,7 +164,7 @@ bool OptimizerCSE::Equivalent(const Node* a, const Node* b,
 
   // Compare attrs.  Note that equal attrs implies equal input and
   // output types.
-  if (!a->attrs().EqualAttrs(b->attrs(), scratch)) return false;
+  if (!EqualAttrs(a, b, scratch)) return false;
 
   // Compare input sources
   if (a->num_inputs() != b->num_inputs()) return false;
@@ -183,7 +206,7 @@ bool OptimizerCSE::Optimize(
   // Scratch space for Equivalent calls.  Allocated here and passed in to
   // Equivalent to avoid allocation inside the loop below.
   bool changed = false;
-  AttrSlice::Scratch scratch;
+  Scratch scratch;
   for (Node* n : order) {
     if (!n->IsOp()) continue;
 

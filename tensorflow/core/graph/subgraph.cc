@@ -106,7 +106,7 @@ static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
     // Copy the _output_shapes from the original node to the feed node,
     // if any.
     std::vector<PartialTensorShape> output_shapes;
-    if (GetNodeAttr(n->attrs(), "_output_shapes", &output_shapes).ok()) {
+    if (GetNodeAttr(n->def(), "_output_shapes", &output_shapes).ok()) {
       if (n->num_outputs() != output_shapes.size()) {
         return errors::InvalidArgument(
             "FeedInputs: ", t,
@@ -129,8 +129,8 @@ static Status FeedInputs(Graph* g, const DeviceAttributes& device_info,
       if (e->src_output() == id.second) {
         to_remove.emplace_back(e);
       } else if (e->src_output() == Graph::kControlSlot &&
-                 (n->type_string() == "Placeholder" ||
-                  n->type_string() == "PlaceholderV2")) {
+                 (n->def().op() == "Placeholder" ||
+                  n->def().op() == "PlaceholderV2")) {
         // When feeding a Placeholder node, any outgoing control edges
         // will be replaced with a control edge from the replacement
         // recv_node.

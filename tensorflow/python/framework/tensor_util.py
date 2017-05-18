@@ -368,7 +368,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
       np_dt = dtype.as_numpy_dtype
     else:
       np_dt = None
-    if np.prod(shape) == 0:
+    # If shape is None, numpy.prod returns None when dtype is not set, but raises
+    # exception when dtype is set to np.int64
+    if shape is not None and np.prod(shape, dtype=np.int64) == 0:
       nparray = np.empty(shape, dtype=np_dt)
     else:
       _AssertCompatible(values, dtype)
@@ -414,7 +416,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     shape_size = nparray.size
   else:
     shape = [int(dim) for dim in shape]
-    shape_size = np.prod(shape)
+    shape_size = np.prod(shape, dtype=np.int64)
     is_same_size = shape_size == nparray.size
 
     if verify_shape:
@@ -491,7 +493,7 @@ def MakeNdarray(tensor):
 
   """
   shape = [d.size for d in tensor.tensor_shape.dim]
-  num_elements = np.prod(shape)
+  num_elements = np.prod(shape, dtype=np.int64)
   tensor_dtype = dtypes.as_dtype(tensor.dtype)
   dtype = tensor_dtype.as_numpy_dtype
 

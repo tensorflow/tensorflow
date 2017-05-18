@@ -65,6 +65,9 @@ class Dimension(object):
 
   def __int__(self):
     return self._value
+  
+  def __long__(self):
+    return self._value
 
   def __index__(self):
     # Allow use in Python 3 range

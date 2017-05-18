@@ -165,7 +165,7 @@ static const char* const kRetValOp = "_Retval";
 // none.
 string Encapsulator::GetFunctionNameAttr(Node const* node) const {
   string attr;
-  if (!GetNodeAttr(node->attrs(), group_attribute_, &attr).ok()) {
+  if (!GetNodeAttr(node->def(), group_attribute_, &attr).ok()) {
     attr.clear();
   }
   return attr;
@@ -195,7 +195,7 @@ Status Encapsulator::SplitIntoSubgraphs() {
 
     // Check the device matches any existing device.
     string device = node->assigned_device_name().empty()
-                        ? node->requested_device()
+                        ? node->def().device()
                         : node->assigned_device_name();
 
     if (subgraph.device.empty()) {
@@ -593,7 +593,7 @@ static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
   for (Node* n : graph.nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
       if (index < 0 || index >= types->size()) {
         return errors::InvalidArgument("Invalid argument number");
       }
@@ -610,7 +610,7 @@ static Status RenumberArguments(Graph* graph,
   for (Node* n : graph->nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
       if (index < 0 || index >= permutation.size()) {
         return errors::InvalidArgument("Invalid argument number");
       }
@@ -713,7 +713,7 @@ Status EncapsulateSubgraphsPass::Run(
 bool IsXlaCompiledKernel(const Node& node) {
   bool is_compiled = false;
   bool has_compilation_attr =
-      GetNodeAttr(node.attrs(), kXlaCompiledKernelAttr, &is_compiled).ok() &&
+      GetNodeAttr(node.def(), kXlaCompiledKernelAttr, &is_compiled).ok() &&
       is_compiled;
   return has_compilation_attr ? is_compiled : false;
 }

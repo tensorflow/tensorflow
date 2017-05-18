@@ -98,15 +98,6 @@ def _infer_state_dtype(explicit_dtype, state):
     return state.dtype
 
 
-def _on_device(fn, device):
-  """Build the subgraph defined by lambda `fn` on `device` if it's not None."""
-  if device:
-    with ops.device(device):
-      return fn()
-  else:
-    return fn()
-
-
 # pylint: disable=unused-argument
 def _rnn_step(
     time, sequence_length, min_sequence_length, max_sequence_length,
@@ -168,9 +159,8 @@ def _rnn_step(
 
   def _copy_one_through(output, new_output):
     copy_cond = (time >= sequence_length)
-    return _on_device(
-        lambda: array_ops.where(copy_cond, output, new_output),
-        device=new_output.op.device)
+    with ops.colocate_with(new_output):
+      return array_ops.where(copy_cond, output, new_output)
 
   def _copy_some_through(flat_new_output, flat_new_state):
     # Use broadcasting select to determine which values should get
@@ -1020,9 +1010,8 @@ def raw_rnn(cell, loop_fn,
       def _copy_some_through(current, candidate):
         """Copy some tensors through via array_ops.where."""
         def copy_fn(cur_i, cand_i):
-          return _on_device(
-              lambda: array_ops.where(elements_finished, cur_i, cand_i),
-              device=cand_i.op.device)
+          with ops.colocate_with(cand_i):
+            return array_ops.where(elements_finished, cur_i, cand_i)
         return nest.map_structure(copy_fn, current, candidate)
 
       emit_output = _copy_some_through(zero_emit, emit_output)

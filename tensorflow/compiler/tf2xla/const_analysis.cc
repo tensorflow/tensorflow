@@ -108,7 +108,7 @@ Status BackwardsConstAnalysis(const Graph& g,
     if (must_be_const.find(node) != must_be_const.end()) {
       if (node->type_string() == "_Arg") {
         int index;
-        status = GetNodeAttr(node->attrs(), "index", &index);
+        status = GetNodeAttr(node->def(), "index", &index);
         if (!status.ok()) return;
         compile_time_const_args->at(index) = true;
         return;
@@ -124,8 +124,8 @@ Status BackwardsConstAnalysis(const Graph& g,
     if (range.first == range.second) return;
 
     NameRangeMap input_name_ranges;
-    status =
-        NameRangesForNode(*node, node->op_def(), &input_name_ranges, nullptr);
+    status = NameRangesForNode(node->def(), node->op_def(), &input_name_ranges,
+                               nullptr);
     if (!status.ok()) return;
 
     for (auto it = range.first; it != range.second; ++it) {
