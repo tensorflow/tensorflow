@@ -2378,8 +2378,8 @@ cuda_py_test(
     shard_count = 50,
     tags = [
         "manual",
-        "notap",
-    ],  # b/30226163
+        "notap",  # b/30226163
+    ],
 )
 
 cuda_py_test(
