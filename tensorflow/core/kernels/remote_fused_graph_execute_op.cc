@@ -29,9 +29,10 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
   explicit RemoteFusedGraphExecuteOp(OpKernelConstruction* const ctx)
       : OpKernel(ctx), execute_info_() {
     string serialized_proto;
-    OP_REQUIRES_OK(ctx,
-                   ctx->GetAttr("serialized_remote_fused_graph_execute_info",
-                                &serialized_proto));
+    OP_REQUIRES_OK(
+        ctx, ctx->GetAttr(RemoteFusedGraphExecuteUtils::
+                              ATTR_SERIALIZED_REMOTE_FUSED_GRAPH_EXECUTE_INFO,
+                          &serialized_proto));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Tinputs", &input_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Toutputs", &output_types_));
     execute_info_.ParseFromString(serialized_proto);

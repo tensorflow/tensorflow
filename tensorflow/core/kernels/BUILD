@@ -4297,6 +4297,7 @@ filegroup(
             "encode_jpeg_op.*",
             "identity_reader_op.*",
             "remote_fused_graph_execute_op.*",
+            "remote_fused_graph_rewriter_transform.*",
             "fixed_length_record_reader_op.*",
             "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
@@ -4777,6 +4778,7 @@ cc_library(
 
 cc_library(
     name = "remote_fused_graph_execute_op_test_utils",
+    testonly = 1,
     srcs = ["remote_fused_graph_execute_op_test_utils.cc"],
     hdrs = ["remote_fused_graph_execute_op_test_utils.h"],
     deps = [
@@ -4785,6 +4787,7 @@ cc_library(
         "//tensorflow/cc:scope",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
     ],
 )
@@ -4839,6 +4842,40 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "remote_fused_graph_rewriter_transform",
+    srcs = [
+        "remote_fused_graph_rewriter_transform.cc",
+    ],
+    deps = [
+        ":remote_fused_graph_execute_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:remote_fused_graph_ops",
+        "//tensorflow/core",
+        "//tensorflow/tools/graph_transforms:transform_utils",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "remote_fused_graph_rewriter_transform_test",
+    size = "small",
+    srcs = ["remote_fused_graph_rewriter_transform_test.cc"],
+    deps = [
+        ":remote_fused_graph_execute_op_test_utils",
+        ":remote_fused_graph_execute_utils",
+        ":remote_fused_graph_rewriter_transform",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/tools/graph_transforms:transform_utils",
     ],
 )
 
