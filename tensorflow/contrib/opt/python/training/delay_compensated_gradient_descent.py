@@ -233,18 +233,18 @@ class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
         for index in range(self._num_workers):
             for v in var_list:
                 var2 = array_ops.identity(v.initialized_value())
-                self._get_or_make_slot(v, var2, "var_bak_{0}".format(index),
+                self._get_or_make_slot(v, var2, "shadow_{0}".format(index),
                                        self._name)
 
     def _apply_dense(self, grad, var, worker_index=0):
         # Get previous value of the variable from the slot
-        var_bak = self.get_slot(var, "var_bak_{0}".format(worker_index))
+        shadow = self.get_slot(var, "shadow_{0}".format(worker_index))
         return training_ops.apply_delay_compensated_gradient_descent(
             var,
             math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
             grad,
             math_ops.cast(self._lambda_tensor, var.dtype.base_dtype),
-            var_bak,
+            shadow,
             use_locking=self._use_locking).op
 
     def _prepare(self):

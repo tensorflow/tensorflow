@@ -40,7 +40,7 @@ struct ApplyDelayCompensatedGradientDescent {
                   typename TTypes<T>::ConstScalar alpha,
                   typename TTypes<T>::ConstFlat delta,
                   typename TTypes<T>::ConstScalar lambda,
-                  typename TTypes<T>::Flat var_bak);
+                  typename TTypes<T>::Flat shadow);
 };
 
 template <typename Device, typename T>
