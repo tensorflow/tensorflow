@@ -700,8 +700,6 @@ template <typename T>
       break;
     case F64:
       Resize<double>(num_elements, 0, literal);
-    case F16:
-      Resize<half>(num_elements, static_cast<half>(0.0f), literal);
       break;
     case F16:
       Resize<half>(num_elements, static_cast<half>(0.0f), literal);
