@@ -37,7 +37,6 @@ filegroup(
 ################################################################################
 # MARKED FOR DELETION
 
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 tensorboard_webcomponent_library(
@@ -51,13 +50,4 @@ tensorboard_webcomponent_library(
     deps = [
         "//tensorflow/tensorboard/components/tf_graph_common_d3v4:legacy",
     ],
-)
-
-# This is needed despite how this component lacks TypeScript files because
-# components/BUILD seeks a legacy_ts rule in this package.
-tensorboard_ts_library(
-    name = "legacy_ts",
-    srcs = [],
-    deps_mgmt = "off",
-    runtime = "nodejs",
 )
