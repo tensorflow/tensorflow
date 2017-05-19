@@ -87,7 +87,7 @@ tensorboard_webcomponent_library(
     visibility = ["//learning/vis/vz_elements/catalog:__pkg__"],
     destdir = "vz-line-chart",
     deps = [
-        "//tensorflow/tensorboard/components/tf_imports_google:lib",
+        "//tensorflow/tensorboard/components/tf_imports_google_d3v4:lib",
         "//tensorflow/tensorboard/components/vz_sorting_d3v4:legacy",
         "//third_party/javascript/polymer/v1/polymer:lib",
     ],
