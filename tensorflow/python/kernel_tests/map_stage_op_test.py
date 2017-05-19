@@ -85,13 +85,16 @@ class MapStageTest(test.TestCase):
             4 * (i - 1) * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
   def testColocation(self):
+    gpu_dev = test.gpu_device_name()
+
     with ops.device('/cpu:0'):
       x = array_ops.placeholder(dtypes.float32)
       v = 2. * (array_ops.zeros([128, 128]) + x)
-    with ops.device(test.gpu_device_name()):
+    with ops.device(gpu_dev):
       stager = data_flow_ops.MapStagingArea([dtypes.float32])
       y = stager.put(1, [v], [0])
-      self.assertEqual(y.device, '/device:GPU:0')
+      self.assertEqual(y.device, '/device:GPU:0' if gpu_dev
+                                                 else gpu_dev)
     with ops.device('/cpu:0'):
       _, x = stager.get(1)
       y = stager.peek(1)
