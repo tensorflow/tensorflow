@@ -114,6 +114,15 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                             HloComputation* function) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
   Status HandleSend(HloInstruction* send) override;
+  Status HandleSlice(HloInstruction* slice,
+                     HloInstruction* /*operand*/) override;
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                            HloInstruction* /*operand*/,
+                            HloInstruction* /*start_indices*/) override;
+  Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
+                                  HloInstruction* /*operand*/,
+                                  HloInstruction* /*update*/,
+                                  HloInstruction* /*start_indices*/) override;
   Status HandleRecv(HloInstruction* recv) override;
   Status HandlePad(HloInstruction* pad) override;
   Status HandleTuple(

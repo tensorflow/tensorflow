@@ -1137,6 +1137,41 @@ Status IrEmitter::HandleSend(HloInstruction* send) {
   return Unimplemented("Send is not implemented on CPU. See b/33942983.");
 }
 
+Status IrEmitter::HandleSlice(HloInstruction* slice, HloInstruction* operand) {
+  if (ShapeUtil::IsScalar(slice->shape())) {
+    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                        EmitTargetAddressForOp(slice));
+    emitted_value_[slice] = target_address;
+    return EmitMemcpy(*operand, *slice);
+  }
+  return DefaultAction(slice);
+}
+
+Status IrEmitter::HandleDynamicSlice(HloInstruction* dynamic_slice,
+                                     HloInstruction* operand,
+                                     HloInstruction* /*start_indices*/) {
+  if (ShapeUtil::IsScalar(dynamic_slice->shape())) {
+    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                        EmitTargetAddressForOp(dynamic_slice));
+    emitted_value_[dynamic_slice] = target_address;
+    return EmitMemcpy(*operand, *dynamic_slice);
+  }
+  return DefaultAction(dynamic_slice);
+}
+
+Status IrEmitter::HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
+                                           HloInstruction* /*operand*/,
+                                           HloInstruction* update,
+                                           HloInstruction* /*start_indices*/) {
+  if (ShapeUtil::IsScalar(dynamic_update_slice->shape())) {
+    TF_ASSIGN_OR_RETURN(llvm::Value * target_address,
+                        EmitTargetAddressForOp(dynamic_update_slice));
+    emitted_value_[dynamic_update_slice] = target_address;
+    return EmitMemcpy(*update, *dynamic_update_slice);
+  }
+  return DefaultAction(dynamic_update_slice);
+}
+
 Status IrEmitter::HandleRecv(HloInstruction* recv) {
   // TODO(b/33942983): Support Send/Recv on CPU.
   return Unimplemented("Recv is not implemented on CPU. See b/33942983.");
