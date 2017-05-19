@@ -278,7 +278,7 @@ class StagePeekOp : public OpKernel {
     core::ScopedUnref scope(buf);
     Buffer::Tuple tuple;
 
-    std::size_t index = ctx->input(0).scalar<std::size_t>()();
+    std::size_t index = ctx->input(0).scalar<int>()();
 
     OP_REQUIRES_OK(ctx, buf->Peek(index, &tuple));
 
