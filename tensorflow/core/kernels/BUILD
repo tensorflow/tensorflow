@@ -4235,7 +4235,6 @@ filegroup(
         "transpose_op.cc",
         "warn_about_ints.cc",
         "where_op.cc",
-        "whole_file_read_ops.cc",
         "xent_op.cc",
         ":android_extended_ops_headers",
     ],
