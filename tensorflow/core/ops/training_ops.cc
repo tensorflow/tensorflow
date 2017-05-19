@@ -103,11 +103,11 @@ use_locking: If `True`, the subtraction will be protected by a lock;
 )doc");
 
 REGISTER_OP("ApplyDelayCompensatedGradientDescent")
-    .Input("var: Ref(T)")
+    .Input("var: resource")
     .Input("alpha: T")
     .Input("delta: T")
     .Input("lambda: T")
-    .Input("shadow: Ref(T)")
+    .Input("shadow: resource")
     .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
