@@ -16,9 +16,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/jit/kernels/xla_device_launch_op.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
-#include "tensorflow/compiler/jit/kernels/xla_device_launch_op.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
 namespace tensorflow {
@@ -26,8 +26,8 @@ namespace tensorflow {
 const char* const DEVICE_XLA_EXA = "XLA_EXA";
 const char* const DEVICE_EXA_XLA_JIT = "XLA_EXA_JIT";
 
-constexpr std::array<DataType, 5> kExaAllTypes =
-        {{DT_INT32, DT_FLOAT, DT_BOOL}};
+constexpr std::array<DataType, 5> kExaAllTypes = {
+    {DT_INT32, DT_FLOAT, DT_BOOL}};
 
 class XlaExaDeviceFactory : public DeviceFactory {
  public:
@@ -54,9 +54,7 @@ REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_EXA, XlaExaDeviceFactory, 210);
 
 // Kernel registrations
 
-static bool OpFilter(KernelDef* kdef) {
-  return true;
-}
+static bool OpFilter(KernelDef* kdef) { return true; }
 
 REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_EXA, XlaDeviceLaunchOp, kExaAllTypes);
 REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_EXA, kExaAllTypes);
