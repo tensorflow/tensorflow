@@ -159,11 +159,6 @@ bool CanShareOperandBufferWithUser(
   if (!ShapeUtil::Equal(operand_subshape, user_subshape)) {
     return false;
   }
-  // Copy instructions are explicitly added by CopyInsertion to prevent liveness
-  // issues, so they should never re-use their operand buffer.
-  if (user->opcode() == HloOpcode::kCopy) {
-    return false;
-  }
   if (user->opcode() == HloOpcode::kFusion) {
     if (user->fusion_kind() == HloInstruction::FusionKind::kLoop &&
         user->fused_expression_root()->opcode() ==

@@ -161,11 +161,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   native.new_http_archive(
       name = "libxsmm_archive",
       urls = [
-          "http://mirror.bazel.build/github.com/hfp/libxsmm/archive/1.8.tar.gz",
-          "https://github.com/hfp/libxsmm/archive/1.8.tar.gz",
+          "http://mirror.bazel.build/github.com/hfp/libxsmm/archive/1.8.1.tar.gz",
+          "https://github.com/hfp/libxsmm/archive/1.8.1.tar.gz",
       ],
-      sha256 = "0330201afb5525d0950ec861fec9dd75eb40a03845ebe03d2c635cf8bfc14fea",
-      strip_prefix = "libxsmm-1.8",
+      sha256 = "2ade869c3f42f23b5263c7d594aa3c7e5e61ac6a3afcaf5d6e42899d2a7986ce",
+      strip_prefix = "libxsmm-1.8.1",
       build_file = str(Label("//third_party:libxsmm.BUILD")),
   )
 
@@ -669,6 +669,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           ],
       },
       sha256_urls_windows = {
+          "3d4cfca9dcec556a077a2324bf5bd165ea3e6e64a2bfd7fc6e7a1f0dc4eb552b": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/nodejs/node/v4.3.2/LICENSE",
+              "https://raw.githubusercontent.com/nodejs/node/v4.3.2/LICENSE",
+          ],
           "606c44c42d17866c017c50c0afadad411d9492ac4281d2431b937f881911614e": [
               "http://mirror.bazel.build/nodejs.org/dist/v4.3.2/win-x64/node.exe",
               "http://nodejs.org/dist/v4.3.2/win-x64/node.exe",
@@ -698,6 +702,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "com_microsoft_typescript",
       licenses = ["notice"],  # Apache 2.0
       sha256_urls = {
+          "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/LICENSE.txt",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/LICENSE.txt",
+          ],
           "8465342c318f9c4cf0a29b109fa63ee3742dd4dc7080d05d9fd8f604814d04cf": [
               "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/tsc.js",
               "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/tsc.js",
@@ -754,6 +762,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       # no @license header
       licenses = ["notice"],  # MIT
       sha256_urls = {
+          "0e94aada97f12dee6118064add9170484c55022f5d53206ee4407143cd36ddcd": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/sloisel/numeric/v1.2.6/license.txt",
+              "https://raw.githubusercontent.com/sloisel/numeric/v1.2.6/license.txt",
+          ],
           "dfaca3b8485bee735788cc6eebca82ea25719adc1fb8911c7799c6bd5a95df3b": [
               "http://mirror.bazel.build/raw.githubusercontent.com/sloisel/numeric/v1.2.6/src/numeric.js",
               "https://raw.githubusercontent.com/sloisel/numeric/v1.2.6/src/numeric.js",
@@ -802,6 +814,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       # no @license header
       licenses = ["notice"],  # MIT
       sha256_urls = {
+          "6a349742a6cb219d5a2fc8d0844f6d89a6efc62e20c664450d884fc7ff2d6015": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/dagre/v0.7.4/LICENSE",
+              "https://raw.githubusercontent.com/cpettitt/dagre/v0.7.4/LICENSE",
+          ],
           "7323829ddd77924a69e2b1235ded3eac30acd990da0f037e0fbd3c8e9035b50d": [
               "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.js",
               "https://raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.js",
@@ -813,6 +829,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "io_github_cpettitt_graphlib",
       licenses = ["notice"],  # MIT
       sha256_urls = {
+          "6a349742a6cb219d5a2fc8d0844f6d89a6efc62e20c664450d884fc7ff2d6015": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/LICENSE",
+              "https://raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/LICENSE",
+          ],
           "772045d412b1513b549be991c2e1846c38019429d43974efcae943fbe83489bf": [
               "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.js",
               "https://raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.js",
@@ -825,6 +845,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       # no @license header
       licenses = ["notice"],  # MIT
       sha256_urls = {
+          "633f2861a9a862b9cd7967e841e14dd3527912f209d6563595774fa31e3d84cb": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/LICENSES",
+              "https://raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/LICENSE",
+          ],
           "f138fce57f673ca8a633f4aee5ae5b6fcb6ad0de59069a42a74e996fd04d8fcc": [
               "http://mirror.bazel.build/raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/dist/weblas.js",
               "https://raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/dist/weblas.js",

@@ -32,3 +32,25 @@ filegroup(
     srcs = glob(["**"]),
     tags = ["notsan"],
 )
+
+################################################################################
+# MARKED FOR DELETION
+
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
+
+tensorboard_webcomponent_library(
+    name = "legacy",
+    srcs = [
+        "vz-sorting.html",
+        ":legacy_ts",
+    ],
+    destdir = "vz-sorting",
+)
+
+tensorboard_ts_library(
+    name = "legacy_ts",
+    srcs = ["sorting.ts"],
+    deps_mgmt = "off",
+    runtime = "nodejs",
+)

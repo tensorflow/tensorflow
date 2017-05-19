@@ -10,7 +10,7 @@ web_library(
     srcs = ["index.html"],
     path = "/tf-graph-controls/demo",
     deps = [
-        "//tensorflow/tensorboard/components/tf_graph_controls",
+        "//tensorflow/tensorboard/components/tf_graph_controls_d3v4",
         "@org_polymer_iron_demo_helpers",
         "@org_polymer_paper_styles",
         "@org_polymer_webcomponentsjs",

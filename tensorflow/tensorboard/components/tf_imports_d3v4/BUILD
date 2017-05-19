@@ -9,6 +9,7 @@ web_library(
     name = "lodash",
     srcs = ["lodash.html"],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = ["@com_lodash"],
 )
 
@@ -20,33 +21,37 @@ web_library(
         "@org_threejs//:three.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 web_library(
     name = "numericjs",
     srcs = [
         "numericjs.html",
-        "@com_numericjs",
+        "@com_numericjs//:numeric.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 web_library(
     name = "weblas",
     srcs = [
         "weblas.html",
-        "@io_github_waylonflinn_weblas",
+        "@io_github_waylonflinn_weblas//:weblas.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 web_library(
     name = "graphlib",
     srcs = [
         "graphlib.html",
-        "@io_github_cpettitt_graphlib",
+        "@io_github_cpettitt_graphlib//:graphlib.core.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = [":lodash"],
 )
 
@@ -54,9 +59,10 @@ web_library(
     name = "dagre",
     srcs = [
         "dagre.html",
-        "@io_github_cpettitt_dagre",
+        "@io_github_cpettitt_dagre//:dagre.core.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = [
         ":graphlib",
         ":lodash",
@@ -67,15 +73,17 @@ web_library(
     name = "d3",
     srcs = [
         "d3.html",
-        "@org_d3js_v4",
+        "@org_d3js_v4//:d3.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 web_library(
     name = "plottable",
     srcs = ["plottable.html"],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = [
         ":d3",
         ":plottable_js_css",
@@ -132,6 +140,7 @@ tensorboard_typescript_bundle(
         "@org_definitelytyped_types_d3_timer//:index.d.ts",
         "@org_definitelytyped_types_d3_voronoi//:index.d.ts",
     ]},
+    visibility = ["//visibility:public"],
 )
 
 # It would be nice if Plottable released a .d.ts file for plottable.js like
@@ -413,6 +422,7 @@ tensorboard_typescript_bundle(
             "YAlignment": "Plottable.Components.YAlignment",
         },
     },
+    visibility = ["//visibility:public"],
 )
 
 # Removes the 'declare module' block inside this file, but keeps its content.

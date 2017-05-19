@@ -166,7 +166,7 @@ class ShapesFromLocAndScaleTest(test.TestCase):
       batch_shape, event_shape = distribution_util.shapes_from_loc_and_scale(
           loc, scale)
       # batch_shape depends on both args, and so is dynamic.  Since loc did not
-      # have static shape, we infered event shape entirely from scale, and this
+      # have static shape, we inferred event shape entirely from scale, and this
       # is available statically.
       self.assertAllEqual(
           [5, 2], batch_shape.eval(feed_dict={loc: np.zeros((2, 3))}))

@@ -20,6 +20,7 @@ py_library(
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/crf:crf_py",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
+        "//tensorflow/contrib/data",
         "//tensorflow/contrib/deprecated:deprecated_py",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/factorization:factorization_py",

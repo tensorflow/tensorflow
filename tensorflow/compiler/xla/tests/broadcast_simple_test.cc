@@ -89,6 +89,33 @@ XLA_TEST_F(BroadcastSimpleTest, 1DTo2D) {
   ComputeAndCompareR2<float>(&b, expected, {}, ErrorSpec(0.0001));
 }
 
+// Tests implicit broadcasting of PREDs.
+XLA_TEST_F(BroadcastSimpleTest, LogicalAnd2DTo3D_Pred) {
+  ComputationBuilder b(client_, TestName());
+
+  Array2D<bool> x_vals(2, 1);
+  x_vals(0, 0) = true;
+  x_vals(1, 0) = false;
+  Array3D<bool> y_vals(2, 2, 1);
+  y_vals(0, 0, 0) = false;
+  y_vals(0, 1, 0) = false;
+  y_vals(1, 0, 0) = true;
+  y_vals(1, 1, 0) = true;
+
+  ComputationDataHandle x, y;
+  auto x_data = CreateR2Parameter<bool>(x_vals, 0, "x", &b, &x);
+  auto y_data = CreateR3Parameter<bool>(y_vals, 1, "y", &b, &y);
+  b.LogicalAnd(x, y, /*broadcast_dimensions=*/{1, 2});
+
+  Array3D<bool> expected(2, 2, 1);
+  expected(0, 0, 0) = false;
+  expected(0, 1, 0) = false;
+  expected(1, 0, 0) = true;
+  expected(1, 1, 0) = false;
+
+  ComputeAndCompareR3<bool>(&b, expected, {x_data.get(), y_data.get()});
+}
+
 XLA_TEST_F(BroadcastSimpleTest, ZeroElement_1DTo2D) {
   ComputationBuilder b(client_, TestName());
   b.Broadcast(b.ConstantR1<float>({}), {2});

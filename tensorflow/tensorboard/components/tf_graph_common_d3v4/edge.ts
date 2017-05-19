@@ -29,7 +29,7 @@ const EDGE_WIDTH_SCALE_EXPONENT = 0.3;
 /** The domain (min and max value) for the edge width. */
 const DOMAIN_EDGE_WIDTH_SCALE = [1, 5E6];
 
-export const EDGE_WIDTH_SCALE = d3.scalePow()
+export const EDGE_WIDTH_SCALE: d3.ScalePower<number, number> = d3.scalePow()
       .exponent(EDGE_WIDTH_SCALE_EXPONENT)
       .domain(DOMAIN_EDGE_WIDTH_SCALE)
       .range([MIN_EDGE_WIDTH, MAX_EDGE_WIDTH])
@@ -87,7 +87,7 @@ export function buildGroup(sceneGroup,
 
   // Select all children and join with data.
   // (Note that all children of g.edges are g.edge)
-  let edgeGroups = (container as any).selectAll('g.edge').data(edges, getEdgeKey);
+  let edgeGroups = (container as any).selectAll(function() {return this.childNodes;}).data(edges, getEdgeKey);
 
   // Make edges a group to support rendering multiple lines for metaedge
   edgeGroups.enter()
@@ -264,7 +264,7 @@ export function appendEdge(edgeGroup, d: EdgeData,
       .text(labelForEdge);
 };
 
-export let interpolate = d3.line<{x: number, y: number}>()
+export let interpolate: d3.Line<{x: number, y: number}> = d3.line<{x: number, y: number}>()
                              .curve(d3.curveBasis)
                              .x((d) => { return d.x;})
                              .y((d) => { return d.y;});

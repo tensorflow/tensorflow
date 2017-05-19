@@ -643,19 +643,21 @@ class IdTableWithHashBuckets(LookupInterface):
 
   For example, if an instance of `IdTableWithHashBuckets` is initialized with a
   string-to-id table that maps:
+
   - emerson -> 0
   - lake -> 1
   - palmer -> 2
 
   The `IdTableWithHashBuckets` object will performs the following mapping:
+
   - emerson -> 0
   - lake -> 1
   - palmer -> 2
   - <other term> -> bucket id between 3 and 3 + num_oov_buckets, calculated by:
     hash(<term>) % num_oov_buckets + vocab_size
 
-  If input_tensor is ["emerson", "lake", "palmer", "king", "crimson"],
-  the lookup result is [0, 1, 2, 4, 7]
+  If input_tensor is `["emerson", "lake", "palmer", "king", "crimson"]`,
+  the lookup result is `[0, 1, 2, 4, 7]`
 
   If `table` is None, only out-of-vocabulary buckets are used.
 

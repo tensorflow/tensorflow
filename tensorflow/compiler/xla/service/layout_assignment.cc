@@ -60,8 +60,9 @@ std::ostream& operator<<(std::ostream& out,
 }
 
 BufferLayoutConstraint::BufferLayoutConstraint(const Layout& layout,
-                                               const LogicalBuffer& buffer)
-    : layout_(layout), buffer_(&buffer) {
+                                               const LogicalBuffer& buffer,
+                                               bool mandatory)
+    : LayoutConstraint(mandatory), layout_(layout), buffer_(&buffer) {
   CHECK(LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()).ok());
 }
 
@@ -73,8 +74,9 @@ string BufferLayoutConstraint::ToString() const {
 
 OperandLayoutConstraint::OperandLayoutConstraint(
     const ShapeLayout& shape_layout, const HloInstruction* instruction,
-    int64 operand_no)
-    : shape_layout_(shape_layout),
+    int64 operand_no, bool mandatory)
+    : LayoutConstraint(mandatory),
+      shape_layout_(shape_layout),
       instruction_(instruction),
       operand_no_(operand_no) {
   CHECK(shape_layout_.LayoutIsSet());
@@ -124,7 +126,8 @@ bool LayoutConstraints::OperandBufferForwarded(
 }
 
 Status LayoutConstraints::SetBufferLayout(const Layout& layout,
-                                          const LogicalBuffer& buffer) {
+                                          const LogicalBuffer& buffer,
+                                          bool mandatory) {
   VLOG(3) << "SetBufferLayout : " << buffer << " : "
           << LayoutUtil::HumanString(layout);
 
@@ -139,26 +142,38 @@ Status LayoutConstraints::SetBufferLayout(const Layout& layout,
   TF_RETURN_IF_ERROR(
       LayoutUtil::ValidateLayoutForShape(layout, buffer.shape()));
 
-  const Layout* curr_layout = BufferLayout(buffer);
-  if (curr_layout != nullptr) {
-    if (!LayoutUtil::Equal(*curr_layout, layout)) {
+  const BufferLayoutConstraint* curr_constraint =
+      GetBufferLayoutConstraint(buffer);
+  if (curr_constraint != nullptr) {
+    if (LayoutUtil::Equal(curr_constraint->layout(), layout)) {
+      // New constraint matches existing constraint. Nothing to do.
+      return Status::OK();
+    }
+    if (curr_constraint->mandatory()) {
       return FailedPrecondition(
           "Buffer %s already has the layout constraint %s, cannot add "
           "incompatible constraint %s",
           buffer.ToString().c_str(),
-          LayoutUtil::HumanString(*curr_layout).c_str(),
+          LayoutUtil::HumanString(curr_constraint->layout()).c_str(),
           LayoutUtil::HumanString(layout).c_str());
     }
-    // New constraint matches existing constraint. Nothing to do.
-    return Status::OK();
   }
 
-  auto new_constraint_it = buffer_constraints_.insert(
-      {&buffer, BufferLayoutConstraint(layout, buffer)});
-  added_constraints_.push_back(&new_constraint_it.first->second);
+  auto iter = buffer_constraints_.find(&buffer);
+  bool overwrite = iter != buffer_constraints_.end();
+  if (!overwrite) {
+    iter = buffer_constraints_
+               .insert(std::make_pair(
+                   &buffer, BufferLayoutConstraint(layout, buffer, mandatory)))
+               .first;
+  } else {
+    iter->second = BufferLayoutConstraint(layout, buffer, /*mandatory=*/true);
+  }
+  added_constraints_.push_back(&iter->second);
 
   // Remove buffer from the set of unconstrained buffers.
-  TF_RET_CHECK(unconstrained_buffer_ids_.count(buffer.id()) == 1);
+  TF_RET_CHECK(unconstrained_buffer_ids_.count(buffer.id()) ==
+               static_cast<int>(!overwrite));
   unconstrained_buffer_ids_.erase(buffer.id());
 
   return Status::OK();
@@ -166,23 +181,27 @@ Status LayoutConstraints::SetBufferLayout(const Layout& layout,
 
 Status LayoutConstraints::SetOperandLayout(const Shape& shape_with_layout,
                                            const HloInstruction* instruction,
-                                           int64 operand_no) {
+                                           int64 operand_no, bool mandatory) {
   VLOG(3) << "SetOperandLayout : " << instruction->name() << ", operand "
           << operand_no << " : "
           << ShapeUtil::HumanStringWithLayout(shape_with_layout);
 
-  const ShapeLayout* curr_shape_layout = OperandLayout(instruction, operand_no);
+  const OperandLayoutConstraint* curr_shape_layout =
+      GetOperandLayoutConstraint(instruction, operand_no);
   if (curr_shape_layout != nullptr) {
-    if (!curr_shape_layout->MatchesLayoutInShape(shape_with_layout)) {
+    if (curr_shape_layout->shape_layout().MatchesLayoutInShape(
+            shape_with_layout)) {
+      // New constraint matches existing constraint. Nothing to do.
+      return Status::OK();
+    }
+    if (curr_shape_layout->mandatory()) {
       return FailedPrecondition(
           "Operand %lld of instruction %s already has a layout constraint "
           "%s, cannot add incompatible constraint %s",
           operand_no, instruction->name().c_str(),
-          curr_shape_layout->ToString().c_str(),
+          curr_shape_layout->shape_layout().ToString().c_str(),
           ShapeUtil::HumanStringWithLayout(shape_with_layout).c_str());
     }
-    // New constraint matches existing constraint. Nothing to do.
-    return Status::OK();
   }
 
   // If any buffers in the operand occur in the output of the instruction, then
@@ -196,22 +215,31 @@ Status LayoutConstraints::SetOperandLayout(const Shape& shape_with_layout,
   }
 
   auto key = std::make_pair(instruction, operand_no);
-  auto new_constraint_it = operand_constraints_.insert(
-      {key, OperandLayoutConstraint(ShapeLayout(shape_with_layout), instruction,
-                                    operand_no)});
-  added_constraints_.push_back(&new_constraint_it.first->second);
+  auto iter = operand_constraints_.find(key);
+  if (iter == operand_constraints_.end()) {
+    auto pair = std::make_pair(
+        key, OperandLayoutConstraint(ShapeLayout(shape_with_layout),
+                                     instruction, operand_no, mandatory));
+    iter = operand_constraints_.insert(pair).first;
+  } else {
+    iter->second =
+        OperandLayoutConstraint(ShapeLayout(shape_with_layout), instruction,
+                                operand_no, /*mandatory=*/true);
+  }
+  added_constraints_.push_back(&iter->second);
 
   return Status::OK();
 }
 
 Status LayoutConstraints::SetArrayOperandLayout(
-    const Layout& layout, const HloInstruction* instruction, int64 operand_no) {
+    const Layout& layout, const HloInstruction* instruction, int64 operand_no,
+    bool mandatory) {
   const HloInstruction* operand = instruction->operand(operand_no);
   TF_RET_CHECK(ShapeUtil::IsArray(operand->shape()));
   Shape shape(operand->shape());
   *shape.mutable_layout() = layout;
   TF_RETURN_IF_ERROR(LayoutUtil::ValidateLayoutInShape(shape));
-  return SetOperandLayout(shape, instruction, operand_no);
+  return SetOperandLayout(shape, instruction, operand_no, mandatory);
 }
 
 Status LayoutConstraints::SetResultLayout(const Shape& shape_with_layout) {
@@ -274,15 +302,29 @@ Status LayoutConstraints::SetInstructionLayout(
 
 const Layout* LayoutConstraints::BufferLayout(
     const LogicalBuffer& buffer) const {
+  if (const auto* constraint = GetBufferLayoutConstraint(buffer)) {
+    return &constraint->layout();
+  }
+  return nullptr;
+}
+const BufferLayoutConstraint* LayoutConstraints::GetBufferLayoutConstraint(
+    const LogicalBuffer& buffer) const {
   auto it = buffer_constraints_.find(&buffer);
-  return it == buffer_constraints_.end() ? nullptr : &it->second.layout();
+  return it == buffer_constraints_.end() ? nullptr : &it->second;
 }
 
 const ShapeLayout* LayoutConstraints::OperandLayout(
     const HloInstruction* instruction, int64 operand_no) const {
+  if (const auto* constraint =
+          GetOperandLayoutConstraint(instruction, operand_no)) {
+    return &constraint->shape_layout();
+  }
+  return nullptr;
+}
+const OperandLayoutConstraint* LayoutConstraints::GetOperandLayoutConstraint(
+    const HloInstruction* instruction, int64 operand_no) const {
   auto it = operand_constraints_.find(std::make_pair(instruction, operand_no));
-  return it == operand_constraints_.end() ? nullptr
-                                          : &it->second.shape_layout();
+  return it == operand_constraints_.end() ? nullptr : &it->second;
 }
 
 const ShapeLayout* LayoutConstraints::ResultLayout() const {
@@ -343,7 +385,8 @@ Status LayoutAssignment::AddMandatoryConstraints(
       // Constrain the input to the Outfeed instruction to be the expected
       // layout of the Outfeed.
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-          instruction->outfeed_shape(), instruction.get(), 0));
+          instruction->outfeed_shape(), instruction.get(), 0,
+          /*mandatory=*/true));
     } else if (instruction->opcode() == HloOpcode::kParameter) {
       // Parameter layouts must match the respective layout in
       // ComputationLayout.
@@ -375,7 +418,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
       for (int64 i = 0; i < instruction->operand_count(); ++i) {
         TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
             called_computation_layout.parameter_layout(i).shape(),
-            instruction.get(), i));
+            instruction.get(), i, /*mandatory=*/true));
       }
     } else if (instruction->opcode() == HloOpcode::kWhile) {
       // Layout of input and output of kWhile instruction must be equal and must
@@ -426,7 +469,8 @@ Status LayoutAssignment::AddMandatoryConstraints(
       TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
           body_layout.result_shape(), instruction.get()));
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-          body_layout.result_shape(), instruction.get(), 0));
+          body_layout.result_shape(), instruction.get(), 0,
+          /*mandatory=*/true));
     } else if (instruction->opcode() == HloOpcode::kCustomCall) {
       // Add constraints for kCustomCall instruction operands and instructions.
       // For now we only support row major layouts for all inputs and outputs.
@@ -450,7 +494,7 @@ Status LayoutAssignment::AddMandatoryConstraints(
 
         Shape row_major_operand_shape(row_major_shape(operand_shape));
         TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-            row_major_operand_shape, instruction.get(), i));
+            row_major_operand_shape, instruction.get(), i, /*mandatory=*/true));
       }
     }
   }
@@ -924,7 +968,8 @@ Status LayoutAssignment::PropagateOperandConstraint(
         operand_constraint.shape_layout().layout(), user,
         operand_constraint.operand_no());
     if (layout != nullptr) {
-      TF_RETURN_IF_ERROR(constraints->SetBufferLayout(*layout, *buffer));
+      TF_RETURN_IF_ERROR(
+          constraints->SetBufferLayout(*layout, *buffer, /*mandatory=*/false));
     }
   }
   return Status::OK();
@@ -954,11 +999,19 @@ Status LayoutAssignment::PropagateBufferConstraint(
                                                 instruction, operand_no);
         if (operand_layout != nullptr) {
           TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
-              *operand_layout, instruction, operand_no));
+              *operand_layout, instruction, operand_no, /*mandatory=*/true));
         }
       }
     }
   }
+  return PropagateBufferConstraintToUses(buffer_constraint, constraints);
+}
+
+Status LayoutAssignment::PropagateBufferConstraintToUses(
+    const BufferLayoutConstraint& buffer_constraint,
+    LayoutConstraints* constraints) {
+  const LogicalBuffer& buffer = buffer_constraint.buffer();
+  TF_RET_CHECK(buffer.IsArray());
 
   // Propagate the layout to all array uses of the logical buffer. This skips
   // uses of the buffer where the buffer is the element of a tuple.
@@ -971,7 +1024,7 @@ Status LayoutAssignment::PropagateBufferConstraint(
     if (constraints->OperandLayout(user, operand_no) == nullptr &&
         !constraints->OperandBufferForwarded(user, operand_no)) {
       TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
-          buffer_constraint.layout(), user, operand_no));
+          buffer_constraint.layout(), user, operand_no, /*mandatory=*/false));
     }
   }
 
@@ -1266,7 +1319,8 @@ Status LayoutAssignment::RunOnComputation(
     const LogicalBuffer& buffer = points_to_analysis->GetBuffer(
         *constraints.unconstrained_buffer_ids().begin());
     TF_RETURN_IF_ERROR(constraints.SetBufferLayout(
-        LayoutUtil::GetDefaultLayoutForShape(buffer.shape()), buffer));
+        LayoutUtil::GetDefaultLayoutForShape(buffer.shape()), buffer,
+        /*mandatory=*/false));
 
     TF_RETURN_IF_ERROR(PropagateConstraints(&constraints));
 

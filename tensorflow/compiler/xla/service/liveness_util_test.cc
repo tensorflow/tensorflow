@@ -148,7 +148,7 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
                                              *points_to_analysis_));
 }
 
-TEST_F(CanShareOperandBufferWithUserTest, CopyNeverShares) {
+TEST_F(CanShareOperandBufferWithUserTest, CopyShares) {
   auto builder = HloComputation::Builder(TestName());
 
   Shape shape = ShapeUtil::MakeShape(F32, {8});
@@ -163,7 +163,7 @@ TEST_F(CanShareOperandBufferWithUserTest, CopyNeverShares) {
 
   EXPECT_TRUE(
       CanShareOperandBufferWithUser(param, {}, exp, {}, *points_to_analysis_));
-  EXPECT_FALSE(
+  EXPECT_TRUE(
       CanShareOperandBufferWithUser(exp, {}, copy, {}, *points_to_analysis_));
 }
 

@@ -79,7 +79,7 @@ class DebugIO {
   // Args:
   //   graph: The graph to be published.
   //   debug_urls: The set of debug URLs to publish the graph to.
-  static Status PublishGraph(const Graph& graph,
+  static Status PublishGraph(const Graph& graph, const string& device_name,
                              const std::unordered_set<string>& debug_urls);
 
   // Determine whether a copy node needs to perform deep-copy of input tensor.

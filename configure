@@ -28,11 +28,7 @@ function is_macos() {
 
 function is_windows() {
   # On windows, the shell script is actually running in msys
-  if [[ "${PLATFORM}" =~ msys_nt*|mingw*|cygwin*|uwin* ]]; then
-    true
-  else
-    false
-  fi
+  [[ "${PLATFORM}" =~ msys_nt*|mingw*|cygwin*|uwin* ]]
 }
 
 function sed_in_place() {
@@ -133,8 +129,8 @@ function setup_python {
     exit 1
   fi
 
-  local python_major_version=$("${PYTHON_BIN_PATH}" -c 'from __future__ import print_function; import sys; print(sys.version_info[0]);')
-  if [ "$python_major_version" == "" ]; then
+  local python_major_version=$("${PYTHON_BIN_PATH}" -c 'from __future__ import print_function; import sys; print(sys.version_info[0]);' | head -c1)
+  if [ -z "$python_major_version" ]; then
     echo -e "\n\nERROR: Problem getting python version.  Is $PYTHON_BIN_PATH the correct python binary?"
     exit 1
   fi
@@ -166,7 +162,13 @@ function setup_python {
 # This file contains customized config settings.
 rm -f .tf_configure.bazelrc
 touch .tf_configure.bazelrc
-touch .bazelrc
+if [[ ! -e .bazelrc ]]; then
+  if [[ -e "${HOME}/.bazelrc" ]]; then
+    echo "import ${HOME}/.bazelrc" >.bazelrc
+  else
+    touch .bazelrc
+  fi
+fi
 sed_in_place "/tf_configure/d" .bazelrc
 echo "import %workspace%/.tf_configure.bazelrc" >> .bazelrc
 

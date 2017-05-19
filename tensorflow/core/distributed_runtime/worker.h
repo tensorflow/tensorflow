@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
+#include "tensorflow/core/distributed_runtime/partial_run_mgr.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
 
@@ -93,42 +94,10 @@ class Worker : public WorkerInterface {
   void AbortStep(int64);
 
  private:
+  PartialRunMgr partial_run_mgr_;
+
   mutex mu_;
   CancellationManager* cancellation_manager_ GUARDED_BY(mu_);
-
-  struct PartialRunState {
-    CancellationManager* cancellation_manager;
-
-    bool executor_done = false;
-    StatusCallback final_callback = nullptr;
-    Status final_status;
-
-    explicit PartialRunState(CancellationManager* cm)
-        : cancellation_manager(cm) {}
-  };
-  struct PairHash {
-    std::size_t operator()(std::pair<string, int> const& p) const {
-      return Hash64Combine(std::hash<string>()(p.first),
-                           std::hash<int>()(p.second));
-    }
-  };
-  std::unordered_map<std::pair<string, int>, std::unique_ptr<PartialRunState>,
-                     PairHash>
-      partial_runs_ GUARDED_BY(mu_);
-
-  PartialRunState* FindPartialRun(const string& graph_handle, int step_id);
-
-  void InsertPartialRunLocked(const string& graph_handle, int step_id,
-                              PartialRunState* partial_run_state)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  void RemovePartialRun(const string& graph_handle, int step_id);
-
-  void MaybeCallFinalCallback(const string& graph_handle, int step_id,
-                              const Status& executor_status);
-
-  void SetOrCallFinalCallback(const string& graph_handle, int step_id,
-                              StatusCallback done, const Status& s);
 
   Status PrepareRunGraph(RunGraphRequestWrapper* req,
                          GraphMgr::NamedTensors* in,

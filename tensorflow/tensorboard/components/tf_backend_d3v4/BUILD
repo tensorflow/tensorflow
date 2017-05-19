@@ -13,6 +13,7 @@ web_library(
         "tf-backend.html",
     ],
     path = "/tf-backend",
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/tensorboard/components/tf_imports_d3v4:d3",
         "//tensorflow/tensorboard/components/tf_imports_d3v4:lodash",
