@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <map>
+#include <numeric>
 #include <unordered_map>
 #include <vector>
 
