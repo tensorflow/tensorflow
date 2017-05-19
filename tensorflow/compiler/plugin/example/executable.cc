@@ -28,16 +28,14 @@ namespace xla {
 namespace exampleplugin {
 
 ExampleExecutable::ExampleExecutable(
-        std::unique_ptr<HloModule> hlo_module,
-        std::unique_ptr<HloModuleConfig> module_config)
-    : Executable(std::move(hlo_module),
-                 std::move(module_config)) {
-}
+    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<HloModuleConfig> module_config)
+    : Executable(std::move(hlo_module), std::move(module_config)) {}
 
 ExampleExecutable::~ExampleExecutable() {}
 
-static se::DeviceMemoryBase
-AllocateSingleOutput(sep::ExampleExecutor* executor, Literal* literal) {
+static se::DeviceMemoryBase AllocateSingleOutput(sep::ExampleExecutor* executor,
+                                                 Literal* literal) {
   int64 size(xla::ShapeUtil::ByteSizeOf(literal->shape()));
   void* buf = executor->Allocate(size);
   const void* src = LiteralUtil::InternalData(*literal);
@@ -45,17 +43,17 @@ AllocateSingleOutput(sep::ExampleExecutor* executor, Literal* literal) {
   return se::DeviceMemoryBase(buf, size);
 }
 
-static se::DeviceMemoryBase
-AllocateOutputBuffer(sep::ExampleExecutor* executor, Literal* literal) {
+static se::DeviceMemoryBase AllocateOutputBuffer(sep::ExampleExecutor* executor,
+                                                 Literal* literal) {
   const Shape& shape = literal->shape();
   if (shape.element_type() != xla::TUPLE) {
     return AllocateSingleOutput(executor, literal);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     void** buf = reinterpret_cast<void**>(executor->Allocate(size));
-    for (int64 n=0; n<xla::ShapeUtil::TupleElementCount(shape); n++) {
+    for (int64 n = 0; n < xla::ShapeUtil::TupleElementCount(shape); n++) {
       se::DeviceMemoryBase out =
-              AllocateSingleOutput(executor, literal->mutable_tuple_literals(n));
+          AllocateSingleOutput(executor, literal->mutable_tuple_literals(n));
       *buf++ = out.opaque();
     }
 
@@ -63,8 +61,7 @@ AllocateOutputBuffer(sep::ExampleExecutor* executor, Literal* literal) {
   }
 }
 
-StatusOr<se::DeviceMemoryBase>
-ExampleExecutable::ExecuteOnStream(
+StatusOr<se::DeviceMemoryBase> ExampleExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -82,7 +79,7 @@ ExampleExecutable::ExecuteOnStream(
   HloComputation* computation = module().entry_computation();
   if (computation->num_parameters() != arguments.size()) {
     return tensorflow::errors::Internal(
-            "Mismatch between argument count and graph parameter count.");
+        "Mismatch between argument count and graph parameter count.");
   }
 
   // Create the arguments as an vector of XLA literals
@@ -109,11 +106,10 @@ ExampleExecutable::ExecuteOnStream(
   // Copy the result into the return buffer
   perftools::gputools::StreamExecutor* executor(stream->parent());
   sep::ExampleExecutor* exampleExecutor(
-          static_cast<sep::ExampleExecutor*>(executor->implementation()));
+      static_cast<sep::ExampleExecutor*>(executor->implementation()));
 
   se::DeviceMemoryBase ret =
-          AllocateOutputBuffer(exampleExecutor, output.get());
-
+      AllocateOutputBuffer(exampleExecutor, output.get());
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -131,17 +127,15 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ExampleExecutable::ExecuteOnStream(
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   return tensorflow::errors::Unimplemented(
-          "ExecuteOnStream is not yet supported on Example.");
+      "ExecuteOnStream is not yet supported on Example.");
 }
 
-StatusOr<se::DeviceMemoryBase>
-ExampleExecutable::ExecuteAsyncOnStream(
+StatusOr<se::DeviceMemoryBase> ExampleExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   return tensorflow::errors::Unimplemented(
-          "ExecuteAsyncOnStream is not yet supported on Example.");
+      "ExecuteAsyncOnStream is not yet supported on Example.");
 }
 
 }  // namespace exampleplugin
 }  // namespace xla
-

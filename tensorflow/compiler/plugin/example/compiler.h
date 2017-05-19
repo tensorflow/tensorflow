@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -28,7 +27,6 @@ limitations under the License.
 
 namespace xla {
 namespace exampleplugin {
-
 
 class ExampleCompiler : public Compiler {
  public:
@@ -57,10 +55,8 @@ class ExampleCompiler : public Compiler {
   perftools::gputools::Platform::Id PlatformId() const override;
 
  private:
-
   Status RunHloOptimization(HloModule* hlo_module,
-                            HloModuleConfig* module_config,
-                            HloDumper dump_hlo);
+                            HloModuleConfig* module_config, HloDumper dump_hlo);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ExampleCompiler);
 };

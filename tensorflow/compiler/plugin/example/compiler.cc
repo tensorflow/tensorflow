@@ -31,8 +31,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
+#include "tensorflow/stream_executor/lib/strcat.h"
 
 #include "tensorflow/core/lib/core/errors.h"
 
@@ -56,8 +56,8 @@ Status ExampleCompiler::RunHloOptimization(HloModule* hlo_module,
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<HloCSE>(false);
 
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(false,
-          [](const Shape&, const Shape&) { return false; });
+  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
+      false, [](const Shape&, const Shape&) { return false; });
   pipeline.AddPass<ReshapeMover>();
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
@@ -68,47 +68,45 @@ Status ExampleCompiler::RunHloOptimization(HloModule* hlo_module,
 }
 
 StatusOr<std::unique_ptr<Executable>> ExampleCompiler::Compile(
-        std::unique_ptr<HloModule> hlo_module,
-        std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
-        se::StreamExecutor* stream_exec) {
+    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
+    se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
   VLOG(1) << "Generate graph " << hlo_module->name();
 
   TF_RETURN_IF_ERROR(
-          RunHloOptimization(hlo_module.get(), module_config.get(), dump_hlo));
+      RunHloOptimization(hlo_module.get(), module_config.get(), dump_hlo));
 
   // Typically you would visit the HLO graph, building up a compiled equivalent
-  // In this case we are using an Hlo evaluator at execution time, so we don't\
+  // In this case we are using an Hlo evaluator at execution time, so we don't
   // need to compile anything
 
   // Create executable from only the Hlo module
   std::unique_ptr<Executable> executable;
   executable.reset(
-          new ExampleExecutable(std::move(hlo_module),
-                                std::move(module_config)));
+      new ExampleExecutable(std::move(hlo_module), std::move(module_config)));
 
   return std::move(executable);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> ExampleCompiler::Compile(
-        std::vector<std::unique_ptr<HloModule>> hlo_modules,
-std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-        HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
-
+    std::vector<std::unique_ptr<HloModule>> hlo_modules,
+    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
+    HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
   return tensorflow::errors::Unimplemented(
-    "Compilation of multiple HLO modules is not supported on Example.");
+      "Compilation of multiple HLO modules is not supported on Example.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 ExampleCompiler::CompileAheadOfTime(
-        std::vector<std::unique_ptr<HloModule>> hlo_modules,
-std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-        HloDumper dump_hlo, const AotCompilationOptions& aot_options) {
+    std::vector<std::unique_ptr<HloModule>> hlo_modules,
+    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
+    HloDumper dump_hlo, const AotCompilationOptions& aot_options) {
   TF_RET_CHECK(hlo_modules.size() == module_configs.size());
 
   return tensorflow::errors::InvalidArgument(
-    "AOT compilation not supported on Example");
+      "AOT compilation not supported on Example");
 }
 
 int64 ExampleCompiler::ShapeSizeBytes(const Shape& shape) const {
