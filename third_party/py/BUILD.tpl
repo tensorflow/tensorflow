@@ -4,42 +4,14 @@ package(default_visibility = ["//visibility:public"])
 
 cc_library(
     name = "python_headers",
-    hdrs = select({
-        "windows" : [
-            "python_include_windows",
-        ],
-        "//conditions:default" : [
-            "python_include",
-        ],
-    }),
-    includes = select({
-        "windows" : [
-            "python_include_windows",
-        ],
-        "//conditions:default" : [
-            "python_include",
-        ],
-    }),
+    hdrs = [":python_include"],
+    includes = ["python_include"],
 )
 
 cc_library(
     name = "numpy_headers",
-    hdrs = select({
-        "windows" : [
-            "numpy_include_windows",
-        ],
-        "//conditions:default" : [
-            "numpy_include",
-        ],
-    }),
-    includes = select({
-        "windows" : [
-            "numpy_include_windows",
-        ],
-        "//conditions:default" : [
-            "numpy_include",
-        ],
-    }),
+    hdrs = [":numpy_include"],
+    includes = ["numpy_include"],
 )
 
 config_setting(
