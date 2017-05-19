@@ -278,9 +278,11 @@ namespace {
 constexpr int64 kMemoryAlignment = 16;
 
 llvm::TargetOptions CompilerTargetOptions(
-    const HloModuleConfig& execution_options) {
+    const HloModuleConfig& module_config) {
   llvm::TargetOptions target_options;
-  llvm_ir::SetTargetOptions(execution_options, &target_options);
+  llvm_ir::SetTargetOptions(
+      /*fast_math_enabled=*/!module_config.fast_math_disabled(),
+      &target_options);
   return target_options;
 }
 

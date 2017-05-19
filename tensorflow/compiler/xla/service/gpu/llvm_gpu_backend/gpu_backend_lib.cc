@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 
 #include "external/llvm/include/llvm/ADT/STLExtras.h"
@@ -171,8 +172,9 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
-  // Set options from hlo_module_config (specifically, fast-math flags).
-  llvm_ir::SetTargetOptions(hlo_module_config, &target_options);
+  llvm_ir::SetTargetOptions(
+      /*fast_math_enabled=*/!hlo_module_config.fast_math_disabled(),
+      &target_options);
 
   // Enable FMA synthesis if desired.
   legacy_flags::GpuBackendLibFlags* flags =
