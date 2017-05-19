@@ -23,7 +23,7 @@ namespace tensorflow {
 
 namespace {
 
-// See documentation in ../ops/iterator_ops.cc for a high-level
+// See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 // The following five functions are copied from padding_fifo_queue.cc.
