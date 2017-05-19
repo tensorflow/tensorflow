@@ -184,6 +184,7 @@ py_test(
     tags = [
         "manual",
         "nomac",
+        "no_pip",
     ],
     deps = [
         ":batch_py",
