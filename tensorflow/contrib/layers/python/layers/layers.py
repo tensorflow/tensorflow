@@ -393,16 +393,18 @@ def batch_norm(inputs,
 
   Can be used as a normalizer function for conv2d and fully_connected.
 
-  Note: When is_training is True the moving_mean and moving_variance need to be
-  updated, by default the update_ops are placed in `tf.GraphKeys.UPDATE_OPS` so
-  they need to be added as a dependency to the `train_op`, example:
+  Note: when training, the moving_mean and moving_variance need to be updated.
+  By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
+  need to be added as a dependency to the `train_op`. For example:
 
+  ```python
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
       train_op = optimizer.minimize(loss)
+  ```
 
   One can set updates_collections=None to force the updates in place, but that
-  can have speed penalty, especially in distributed settings.
+  can have a speed penalty, especially in distributed settings.
 
   Args:
     inputs: A tensor with 2 or more dimensions, where the first dimension has
