@@ -407,8 +407,9 @@ class TFExampleDecoder(data_decoder.DataDecoder):
     example = parsing_ops.parse_single_example(serialized_example,
                                                self._keys_to_features)
 
-    # Reshape non-sparse elements just once:
-    for k in self._keys_to_features:
+    # Reshape non-sparse elements just once, adding the reshape ops in
+    # deterministic order.
+    for k in sorted(self._keys_to_features):
       v = self._keys_to_features[k]
       if isinstance(v, parsing_ops.FixedLenFeature):
         example[k] = array_ops.reshape(example[k], v.shape)
