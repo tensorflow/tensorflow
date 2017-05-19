@@ -63,9 +63,14 @@ class ServiceOptions {
   ServiceOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
 
+  // Sets the thread pool size for parallel execution of an individual operator.
+  ServiceOptions& set_intra_op_parallelism_threads(int num_threads);
+  int intra_op_parallelism_threads() const;
+
  private:
   perftools::gputools::Platform* platform_ = nullptr;
   int number_of_replicas_ = -1;
+  int intra_op_parallelism_threads_ = -1;
 };
 
 // The XLA service object, which is the same across all
@@ -265,11 +270,11 @@ class Service : public ServiceInterface {
       tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
       const Backend* backend, int device_ordinal);
 
-  // Create a Hlo module config foe the given program shape and arguments.
+  // Create a Hlo module config for the given program shape and arguments.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-      const ExecutionOptions& execution_options);
+      const ExecutionOptions& execution_options, Backend* backend);
 
   // Builds an Executable for the given parameters. If
   // executable_for_compute_constant is true, then the executable is intended to

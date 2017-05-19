@@ -1,72 +1,59 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load(
-    "//tensorflow/tensorboard:defs.bzl",
-    "tensorboard_ts_development_sources",
-    "tensorboard_ts_devserver",
-    "tensorboard_ts_library",
-    "tensorboard_webcomponent_library",
-)
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
+load("//tensorflow/tensorboard:hacks.bzl", "tensorboard_typescript_bundle")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
 
 licenses(["notice"])  # Apache 2.0
 
-# TODO(dandelion): Add runner for the test code.
-
-tensorboard_webcomponent_library(
-    name = "tf_color_scale",
-    srcs = ["tf-color-scale.html"],
-    ts_lib_deps = [":ts"],
-    deps = [
-        "//third_party/javascript/polymer/v1/polymer:lib",
-    ],
-)
-
-tensorboard_ts_library(
-    name = "ts",
+web_library(
+    name = "tf_color_scale_d3v4",
     srcs = [
-        "colorScale.ts",
-        "palettes.ts",
+        "bundle.js",
+        "tf-color-scale.html",
     ],
-    deps = ["//tensorflow/tensorboard/components:common_deps_d3v4"],
+    path = "/tf-color-scale",
+    deps = [
+        "//tensorflow/tensorboard/components/tf_imports_d3v4:d3",
+        "@org_polymer",
+    ],
 )
 
-tensorboard_ts_library(
-    name = "tests",
-    srcs = ["colorScaleTests.ts"],
+web_library(
+    name = "demo",
+    srcs = ["index.html"],
+    path = "/tf-color-scale",
     deps = [
-        ":ts",
-        "//tensorflow/tensorboard/components:common_deps_d3v4",
+        ":tf_color_scale_d3v4",
+        "//tensorflow/tensorboard/components/tf_imports_d3v4:d3",
+        "@org_polymer_iron_demo_helpers",
+        "@org_polymer_paper_button",
+        "@org_polymer_paper_styles",
+        "@org_polymer_webcomponentsjs",
     ],
+)
+
+tensorboard_typescript_genrule(
+    name = "ts",
+    srcs = ["bundle.ts"],
+    typings = [
+        "@org_definitelytyped//:polymer.d.ts",
+        "@org_definitelytyped//:webcomponents.js.d.ts",
+        "//tensorflow/tensorboard/components/tf_imports_d3v4:d3.d.ts",
+    ],
+)
+
+tensorboard_typescript_bundle(
+    name = "bundle",
+    out = "bundle.ts",
+    namespace_srcs = {"TF": [
+        "palettes.ts",
+        "colorScale.ts",
+    ]},
 )
 
 filegroup(
     name = "all_files",
     srcs = glob(["**"]),
     tags = ["notsan"],
-)
-
-tensorboard_webcomponent_library(
-    name = "demo",
-    srcs = ["demo.html"],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":tf_color_scale",
-        "//third_party/javascript/polymer/v1/iron-demo-helpers:lib",
-        "//third_party/javascript/polymer/v1/paper-button:lib",
-        "//third_party/javascript/polymer/v1/paper-styles:lib",
-    ],
-)
-
-tensorboard_ts_devserver(
-    name = "devserver",
-    manifest = ":dev_sources",
-    serving_path = "/demo_out/bundle.js",
-    static_files = [":demo"],
-)
-
-tensorboard_ts_development_sources(
-    name = "dev_sources",
-    deps = [
-        ":ts",
-    ],
 )

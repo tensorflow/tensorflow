@@ -96,11 +96,11 @@ class BatchNormalization(base.Layer):
                moving_variance_initializer=init_ops.ones_initializer(),
                beta_regularizer=None,
                gamma_regularizer=None,
-               trainable=True,
-               name=None,
                renorm=False,
                renorm_clipping=None,
                renorm_momentum=0.99,
+               trainable=True,
+               name=None,
                **kwargs):
     super(BatchNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
@@ -141,6 +141,8 @@ class BatchNormalization(base.Layer):
     if not param_dim.value:
       raise ValueError('Input has undefined `axis` dimension. Input shape: ',
                        input_shape)
+    self.input_spec = base.InputSpec(ndim=ndim,
+                                     axes={self.axis: param_dim.value})
 
     if self.center:
       self.beta = self.add_variable(name='beta',
@@ -313,9 +315,8 @@ class BatchNormalization(base.Layer):
       variance_update = moving_averages.assign_moving_average(
           self.moving_variance, new_variance, decay, zero_debias=False)
 
-      if not self.updates:
-        self.add_update(mean_update)
-        self.add_update(variance_update)
+      self.add_update(mean_update, inputs=inputs)
+      self.add_update(variance_update, inputs=inputs)
 
     else:
       mean, variance = self.moving_mean, self.moving_variance
@@ -365,12 +366,14 @@ def batch_normalization(inputs,
   Note: the operations which update the `moving_mean` and `moving_variance`
   variables will not be added as dependencies of your training operation and so
   must be run separately. For example:
+
   ```
   extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
   sess.run([train_op, extra_update_ops], ...)
   ```
   Alternatively, add the operations as a dependency to your training operation
   manually, and then just run your training operation as normal:
+
   ```
   extra_update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
   with tf.control_dependencies(extra_update_ops):

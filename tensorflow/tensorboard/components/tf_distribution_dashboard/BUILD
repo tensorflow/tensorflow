@@ -1,12 +1,12 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+web_library(
     name = "tf_distribution_dashboard",
     srcs = [
         "tf-distribution-dashboard.html",
@@ -42,9 +42,9 @@ tensorboard_webcomponent_library(
     ],
     destdir = "tf-distribution-dashboard",
     deps = [
-        "//tensorflow/tensorboard/components:tf_imports",
         "//tensorflow/tensorboard/components/tf_backend:legacy",
         "//tensorflow/tensorboard/components/tf_dashboard_common:legacy",
+        "//tensorflow/tensorboard/components/tf_imports_google:lib",
         "//tensorflow/tensorboard/components/vz_distribution_chart:legacy",
         "//third_party/javascript/polymer/v1/iron-collapse:lib",
         "//third_party/javascript/polymer/v1/paper-icon-button:lib",
@@ -59,5 +59,4 @@ tensorboard_ts_library(
     srcs = [],
     deps_mgmt = "off",
     runtime = "nodejs",
-    deps = ["//tensorflow/tensorboard/components:common_deps"],
 )

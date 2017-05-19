@@ -1,12 +1,12 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+web_library(
     name = "tf_histogram_dashboard",
     srcs = [
         "tf-histogram-dashboard.html",
@@ -42,9 +42,9 @@ tensorboard_webcomponent_library(
     ],
     destdir = "tf-histogram-dashboard",
     deps = [
-        "//tensorflow/tensorboard/components:tf_imports",
         "//tensorflow/tensorboard/components/tf_backend:legacy",
         "//tensorflow/tensorboard/components/tf_dashboard_common:legacy",
+        "//tensorflow/tensorboard/components/tf_imports_google:lib",
         "//tensorflow/tensorboard/components/vz_histogram_timeseries:legacy",
         "//third_party/javascript/polymer/v1/iron-collapse:lib",
         "//third_party/javascript/polymer/v1/paper-icon-button:lib",

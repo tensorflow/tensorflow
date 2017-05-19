@@ -347,10 +347,10 @@ class RNNCellTest(test.TestCase):
             state_is_tuple=False)
         cell(x, m)  # Execute to create variables
       variables = variables_lib.global_variables()
-      self.assertEquals(variables[0].op.name, "root/lstm_cell/weights")
-      self.assertEquals(variables[1].op.name, "root/lstm_cell/biases")
+      self.assertEquals(variables[0].op.name, "root/lstm_cell/kernel")
+      self.assertEquals(variables[1].op.name, "root/lstm_cell/bias")
       self.assertEquals(variables[2].op.name,
-                        "root/lstm_cell/projection/weights")
+                        "root/lstm_cell/projection/kernel")
 
   def testOutputProjectionWrapper(self):
     with self.test_session() as sess:

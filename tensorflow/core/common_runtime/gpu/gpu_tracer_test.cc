@@ -82,7 +82,7 @@ class GPUTracerTest : public ::testing::Test {
   }
 
  protected:
-  void ExpectFailure(Status status, error::Code code) {
+  void ExpectFailure(const Status& status, error::Code code) {
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
       LOG(INFO) << "Status message: " << status.error_message();

@@ -275,7 +275,7 @@ class SessionBundleTest : public ::testing::Test {
   }
   // SetupExport that allows for the variables and meta_graph_def filenames
   // to be overridden.
-  string SetupExport(MetaGraphDefTwiddler twiddler,
+  string SetupExport(const MetaGraphDefTwiddler& twiddler,
                      const string& variables_filename,
                      const string& meta_graph_def_filename) {
     // Construct a unique path name based on the test name.

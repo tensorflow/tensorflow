@@ -1,12 +1,12 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+web_library(
     name = "tf_audio_dashboard",
     srcs = [
         "tf-audio-dashboard.html",
@@ -44,9 +44,9 @@ tensorboard_webcomponent_library(
     ],
     destdir = "tf-audio-dashboard",
     deps = [
-        "//tensorflow/tensorboard/components:tf_imports",
         "//tensorflow/tensorboard/components/tf_backend:legacy",
         "//tensorflow/tensorboard/components/tf_dashboard_common:legacy",
+        "//tensorflow/tensorboard/components/tf_imports_google:lib",
         "//third_party/javascript/polymer/v1/paper-icon-button:lib",
         "//third_party/javascript/polymer/v1/paper-styles:lib",
         "//third_party/javascript/polymer/v1/polymer:lib",
@@ -59,5 +59,4 @@ tensorboard_ts_library(
     srcs = [],
     deps_mgmt = "off",
     runtime = "nodejs",
-    deps = ["//tensorflow/tensorboard/components:common_deps"],
 )

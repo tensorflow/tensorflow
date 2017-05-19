@@ -74,8 +74,9 @@ enum SamplingMode {
 //       my_vector[current] *= 10.0f;
 //     }
 // });
-void FusedConvParallelFor(OpKernelContext* context, int64 begin, int64 end,
-                          std::function<void(int64, int64)> task_function) {
+void FusedConvParallelFor(
+    OpKernelContext* context, int64 begin, int64 end,
+    const std::function<void(int64, int64)>& task_function) {
 // On iOS, the thread management imposes a very big performance penalty, so
 // just call the function directly with no multithreading.
 #if defined(__APPLE__) && defined(IS_MOBILE_PLATFORM)

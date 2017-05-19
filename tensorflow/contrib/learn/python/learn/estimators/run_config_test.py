@@ -22,12 +22,14 @@ import copy
 import json
 
 from tensorflow.contrib.learn.python.learn.estimators import run_config as run_config_lib
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as core_run_config
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
 TEST_DIR = "test_dir"
 ANOTHER_TEST_DIR = "another_test_dir"
+MASTER = "master_"
 RANDOM_SEED = 123
 
 patch = test.mock.patch
@@ -253,16 +255,7 @@ class RunConfigTest(test.TestCase):
     new_config = config.replace(model_dir=ANOTHER_TEST_DIR)
     self.assertEqual(ANOTHER_TEST_DIR, new_config.model_dir)
     self.assertEqual(RANDOM_SEED, new_config.tf_random_seed)
-
-    self.assertEqual(TEST_DIR, config.model_dir)
     self.assertEqual(RANDOM_SEED, config.tf_random_seed)
-
-    with self.assertRaises(ValueError):
-      # tf_random_seed is not allowed to be replaced.
-      config.replace(tf_random_seed=RANDOM_SEED)
-
-    with self.assertRaises(ValueError):
-      config.replace(some_undefined_property=RANDOM_SEED)
 
   def test_uid_for_different_configs(self):
     config = run_config_lib.RunConfig(
@@ -297,14 +290,15 @@ class RunConfigTest(test.TestCase):
         save_summary_steps=12,
         save_checkpoints_steps=13,
         save_checkpoints_secs=14,
-        session_config=15,
+        session_config=config_pb2.ConfigProto(allow_soft_placement=True),
         keep_checkpoint_max=16,
         keep_checkpoint_every_n_hours=17)
     self.assertEqual(11, config.tf_random_seed)
     self.assertEqual(12, config.save_summary_steps)
     self.assertEqual(13, config.save_checkpoints_steps)
     self.assertEqual(14, config.save_checkpoints_secs)
-    self.assertEqual(15, config.session_config)
+    self.assertEqual(config_pb2.ConfigProto(allow_soft_placement=True),
+                     config.session_config)
     self.assertEqual(16, config.keep_checkpoint_max)
     self.assertEqual(17, config.keep_checkpoint_every_n_hours)
 
@@ -313,7 +307,7 @@ class RunConfigTest(test.TestCase):
         save_summary_steps=22,
         save_checkpoints_steps=23,
         save_checkpoints_secs=24,
-        session_config=25,
+        session_config=config_pb2.ConfigProto(allow_soft_placement=False),
         keep_checkpoint_max=26,
         keep_checkpoint_every_n_hours=27)
     self.assertEqual(config.uid(), new_config.uid())

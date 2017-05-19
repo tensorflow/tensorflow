@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
 #include "tensorflow/core/framework/attr_value_util.h"
-#include "tensorflow/core/grappler/costs/utils.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -69,7 +69,7 @@ Costs OpLevelCostEstimator::PredictCosts(const OpInfo& op_features) const {
 }
 
 std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
-    const OpInfo::DeviceProperties& device) const {
+    const DeviceProperties& device) const {
   double gflops = -1;
   double bandwidth = -1;
   if (device.bandwidth() > 0) {
@@ -77,7 +77,13 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
   }
 
   if (device.type() == "CPU") {
-    const OpInfo::DeviceProperties local_cpu = GetLocalCPUInfo();
+    DeviceProperties local_cpu;
+    if (device.num_cores() <= 0 || device.frequency() <= 0) {
+      local_cpu = GetLocalCPUInfo();
+    } else {
+      local_cpu = device;
+    }
+
     // Check if vector instructions are available, and refine performance
     // prediction based on this.
     // Frequencies are stored in MHz in the DeviceProperties.
@@ -90,7 +96,7 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
       }
     }
   } else if (device.type() == "GPU") {
-    const OpInfo::DeviceProperties local_gpu = GetLocalGPUInfo(0);
+    const DeviceProperties local_gpu = GetLocalGPUInfo(0);
     const string architecture = local_gpu.environment().at("architecture");
     int cores_per_multiprocessor;
     if (architecture < "3") {

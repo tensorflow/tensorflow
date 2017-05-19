@@ -489,10 +489,10 @@ Status GatherComputationsByAllocationType(
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     LogicalBuffer::SizeFunction buffer_size, int64 alignment,
-    const std::vector<const HloInstruction*>* hlos_to_allocate) {
-  BufferAssigner assigner(std::move(buffer_size), alignment);
-  return assigner.CreateAssignment(module, std::move(hlo_ordering),
-                                   hlos_to_allocate);
+    bool allow_input_output_aliasing) {
+  BufferAssigner assigner(std::move(buffer_size), alignment,
+                          allow_input_output_aliasing);
+  return assigner.CreateAssignment(module, std::move(hlo_ordering));
 }
 
 bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
@@ -526,6 +526,28 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
               << " may interfere with " << buffer;
       return false;
     }
+    // Copy instruction don't share a buffer with their input operand.
+    if (buffer.instruction()->IsUserOf(assigned_buffer.instruction()) &&
+        buffer.instruction()->opcode() == HloOpcode::kCopy) {
+      VLOG(4) << "Can't assign: assignee " << assigned_buffer
+              << " is used at copy instruction " << buffer;
+      return false;
+    }
+  }
+
+  if (allow_input_output_aliasing_ && allocation->maybe_live_out()) {
+    HloComputation* entry_computation =
+        assignment->module_->entry_computation();
+    for (auto param : entry_computation->parameter_instructions()) {
+      for (auto& param_buffer :
+           assignment->points_to_analysis().GetBuffersDefinedByInstruction(
+               param)) {
+        if (assignment->liveness().MayInterfere(*param_buffer, buffer)) {
+          VLOG(4) << "Can't assign: Parameter interference with result";
+          return false;
+        }
+      }
+    }
   }
 
   // If the buffer is live out of the computation then it should only be
@@ -545,7 +567,6 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
 
 Status BufferAssigner::AssignBuffersForComputation(
     const HloComputation* computation, bool is_thread_local,
-    const FlatSet<const HloInstruction*>* hlos_to_allocate,
     const FlatSet<const LogicalBuffer*>& colocated_buffers,
     const FlatSet<BufferAllocation::Index>& colocated_allocations,
     FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>*
@@ -555,16 +576,13 @@ Status BufferAssigner::AssignBuffersForComputation(
   // size.
   std::vector<const LogicalBuffer*> sorted_buffers;
   for (auto& instruction : computation->instructions()) {
-    if (hlos_to_allocate == nullptr ||
-        hlos_to_allocate->count(instruction.get()) > 0) {
-      // Add all buffers which this instruction defines. Instruction which don't
-      // define buffers (eg, bitcast which just forwards a pointer) don't need
-      // any allocations.
-      for (const LogicalBuffer* buffer :
-           assignment->points_to_analysis().GetBuffersDefinedByInstruction(
-               instruction.get())) {
-        sorted_buffers.push_back(buffer);
-      }
+    // Add all buffers which this instruction defines. Instruction which don't
+    // define buffers (eg, bitcast which just forwards a pointer) don't need
+    // any allocations.
+    for (const LogicalBuffer* buffer :
+         assignment->points_to_analysis().GetBuffersDefinedByInstruction(
+             instruction.get())) {
+      sorted_buffers.push_back(buffer);
     }
   }
 
@@ -1150,29 +1168,14 @@ void BufferAssigner::AssignColocatedBufferSets(
 }
 
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
-    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-    const std::vector<const HloInstruction*>* hlos_to_allocate) {
+    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferLiveness> liveness,
                       BufferLiveness::Run(module, std::move(hlo_ordering)));
 
   VLOG(1) << "Assigning buffers to module " << module->name();
-  if (hlos_to_allocate != nullptr) {
-    VLOG(3) << "LogicalBuffer assignment restricted to hlos: ";
-    for (auto hlo : *hlos_to_allocate) {
-      VLOG(3) << "  " << hlo->parent()->name() << "::" << hlo->name();
-    }
-  }
   XLA_VLOG_LINES(2, module->ToString());
   XLA_VLOG_LINES(3, liveness->ToString());
   XLA_VLOG_LINES(3, liveness->points_to_analysis().ToString());
-
-  // Set of HLO's to allocate if hlos_to_allocate is given. Passed as a set to
-  // AssignBuffersForComputation for fast membership testing.
-  std::unique_ptr<FlatSet<const HloInstruction*>> hlo_set;
-  if (hlos_to_allocate != nullptr) {
-    hlo_set = MakeUnique<FlatSet<const HloInstruction*>>(
-        hlos_to_allocate->begin(), hlos_to_allocate->end());
-  }
 
   // Can't use MakeUnique because BufferAssignment constructor is private.
   std::unique_ptr<BufferAssignment> assignment(
@@ -1201,9 +1204,9 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
       buffers_to_assign_sequentially;
   for (auto* computation : global_computations) {
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, /*is_thread_local=*/false, hlo_set.get(),
-        colocated_buffers, colocated_allocations,
-        &buffers_to_assign_sequentially, assignment.get()));
+        computation, /*is_thread_local=*/false, colocated_buffers,
+        colocated_allocations, &buffers_to_assign_sequentially,
+        assignment.get()));
   }
   // Assign buffers with sequential ordering, if any. If all global computations
   // are sequential, we can run heap simuation on the whole module, which
@@ -1219,7 +1222,7 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
   for (auto* computation : thread_local_computations) {
     TF_RET_CHECK(computation != module->entry_computation());
     TF_RETURN_IF_ERROR(AssignBuffersForComputation(
-        computation, /*is_thread_local=*/true, hlo_set.get(), colocated_buffers,
+        computation, /*is_thread_local=*/true, colocated_buffers,
         colocated_allocations, /*buffers_to_assign_sequentially=*/nullptr,
         assignment.get()));
   }

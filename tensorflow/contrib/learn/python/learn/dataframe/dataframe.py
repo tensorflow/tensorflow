@@ -24,10 +24,13 @@ import collections
 from .series import Series
 from .transform import Transform
 
+from tensorflow.python.util.deprecation import deprecated
+
 
 class DataFrame(object):
   """A DataFrame is a container for ingesting and preprocessing data."""
 
+  @deprecated("2017-06-15", "contrib/learn/dataframe/** is deprecated.")
   def __init__(self):
     self._columns = {}
 

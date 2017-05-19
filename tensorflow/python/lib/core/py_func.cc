@@ -261,7 +261,7 @@ class NumpyTensorBuffer : public TensorBuffer {
     proto->set_requested_bytes(rb);
     proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
   }
-  Tensor MakeTensor(DataType dtype, TensorShape shape) {
+  Tensor MakeTensor(DataType dtype, const TensorShape& shape) {
     CHECK_EQ(len_, shape.num_elements() * DataTypeSize(dtype));
     return Tensor(dtype, shape, this);
   }

@@ -24,7 +24,6 @@ from __future__ import print_function
 
 import csv
 import imghdr
-import mimetypes
 import os
 import re
 import threading
@@ -159,8 +158,6 @@ class TensorBoardWSGIApp(object):
       reload_multiplexer(self._multiplexer, path_to_run)
 
     self.data_applications = {
-        '/app.js':
-            self._serve_js,
         DATA_PREFIX + AUDIO_ROUTE:
             self._serve_audio,
         DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
@@ -545,59 +542,9 @@ class TensorBoardWSGIApp(object):
   @wrappers.Request.application
   def _serve_index(self, request):
     """Serves the index page (i.e., the tensorboard app itself)."""
-    return self._serve_static_file(request, '/dist/index.html')
-
-  @wrappers.Request.application
-  def _serve_js(self, request):
-    """Serves the JavaScript for the index page."""
-    return self._serve_static_file(request, '/dist/app.js')
-
-  def _serve_static_file(self, request, path):
-    """Serves the static file located at the given path.
-
-    Args:
-      request: A werkzeug Request
-      path: The path of the static file, relative to the tensorboard/ directory.
-
-    Returns:
-      A werkzeug.Response application.
-    """
-    # Strip off the leading forward slash.
-    orig_path = path.lstrip('/')
-    if not self._path_is_safe(orig_path):
-      logging.warning('path not safe: %s', orig_path)
-      return http_util.Respond(request, 'Naughty naughty!', 'text/plain', 400)
-      # Resource loader wants a path relative to //WORKSPACE/tensorflow.
-    path = os.path.join('tensorboard', orig_path)
-    # Open the file and read it.
-    try:
-      contents = resource_loader.load_resource(path)
-    except IOError:
-      # For compatibility with latest version of Bazel, we renamed bower
-      # packages to use '_' rather than '-' in their package name.
-      # This means that the directory structure is changed too.
-      # So that all our recursive imports work, we need to modify incoming
-      # requests to map onto the new directory structure.
-      path = orig_path
-      components = path.split('/')
-      components[0] = components[0].replace('-', '_')
-      path = ('/').join(components)
-      # Bazel keeps all the external dependencies in //WORKSPACE/external.
-      # and resource loader wants a path relative to //WORKSPACE/tensorflow/.
-      path = os.path.join('../external', path)
-      try:
-        contents = resource_loader.load_resource(path)
-      except IOError:
-        logging.warning('path %s not found, sending 404', path)
-        return http_util.Respond(request, 'Not found', 'text/plain', code=404)
-    mimetype, content_encoding = mimetypes.guess_type(path)
-    mimetype = mimetype or 'application/octet-stream'
-    return http_util.Respond(
-        request,
-        contents,
-        mimetype,
-        expires=3600,
-        content_encoding=content_encoding)
+    contents = resource_loader.load_resource(
+        'tensorboard/components/index.html')
+    return http_util.Respond(request, contents, 'text/html', expires=3600)
 
   def __call__(self, environ, start_response):  # pylint: disable=invalid-name
     """Central entry point for the TensorBoard application.
@@ -628,8 +575,9 @@ class TensorBoardWSGIApp(object):
     elif clean_path in TAB_ROUTES:
       return self._serve_index(environ, start_response)
     else:
-      return self._serve_static_file(request, clean_path)(environ,
-                                                          start_response)
+      logging.warning('path %s not found, sending 404', clean_path)
+      return http_util.Respond(request, 'Not found', 'text/plain', code=404)(
+          environ, start_response)
     # pylint: enable=too-many-function-args
 
 

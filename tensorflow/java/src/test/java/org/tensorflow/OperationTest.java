@@ -22,19 +22,19 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-import java.util.List;
 
 /** Unit tests for {@link org.tensorflow.Operation}. */
 @RunWith(JUnit4.class)
 public class OperationTest {
 
   @Test
-  public void  outputListLengthFailsOnInvalidName() {
+  public void outputListLengthFailsOnInvalidName() {
     try (Graph g = new Graph()) {
-      Operation op = g.opBuilder("Add", "Add")
-          .addInput(TestUtil.constant(g, "x", 1))
-          .addInput(TestUtil.constant(g, "y", 2))
-          .build();
+      Operation op =
+          g.opBuilder("Add", "Add")
+              .addInput(TestUtil.constant(g, "x", 1))
+              .addInput(TestUtil.constant(g, "y", 2))
+              .build();
       assertEquals(1, op.outputListLength("z"));
 
       try {
@@ -48,9 +48,9 @@ public class OperationTest {
 
   @Test
   public void outputListLength() {
-    assertEquals(1, split(new int[]{0, 1}, 1));
-    assertEquals(2, split(new int[]{0, 1}, 2));
-    assertEquals(3, split(new int[]{0, 1, 2}, 3));
+    assertEquals(1, split(new int[] {0, 1}, 1));
+    assertEquals(2, split(new int[] {0, 1}, 2));
+    assertEquals(3, split(new int[] {0, 1, 2}, 3));
   }
 
   private int split(int[] values, int num_split) {
