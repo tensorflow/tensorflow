@@ -18,8 +18,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/example/compiler.h"
 #include "tensorflow/compiler/plugin/example/executable.h"
-#include "tensorflow/compiler/plugin/example/visitor.h"
-#include "tensorflow/compiler/plugin/example/executor.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -45,7 +43,11 @@ namespace port = ::perftools::gputools::port;
 namespace xla {
 namespace exampleplugin {
 
-
+/*
+ * Run optimization passes on the module.  The graph is transformed by
+ * each pass in the optimization pipeline.  The service subdirectory
+ * contains useful optimization passes.
+ */
 Status ExampleCompiler::RunHloOptimization(HloModule* hlo_module,
                                            HloModuleConfig* module_config,
                                            HloDumper dump_hlo) {
@@ -76,18 +78,11 @@ StatusOr<std::unique_ptr<Executable>> ExampleCompiler::Compile(
   TF_RETURN_IF_ERROR(
           RunHloOptimization(hlo_module.get(), module_config.get(), dump_hlo));
 
-  // Visit the graph, building up a example equivalent
-  HloComputation* entry = hlo_module->entry_computation();
-  ExampleVisitor visitor;
-  try {
-    TF_RETURN_IF_ERROR(entry->Accept(&visitor));
-  }
-  catch (std::logic_error e) {
-    return port::Status(port::error::UNKNOWN,
-                        port::StrCat("[Example Compile] ",
-                                     e.what()));
-  }
+  // Typically you would visit the HLO graph, building up a compiled equivalent
+  // In this case we are using an Hlo evaluator at execution time, so we don't\
+  // need to compile anything
 
+  // Create executable from only the Hlo module
   std::unique_ptr<Executable> executable;
   executable.reset(
           new ExampleExecutable(std::move(hlo_module),
@@ -101,8 +96,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> ExampleCompiler::Compile(
 std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
         HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
 
-return tensorflow::errors::Unimplemented(
-"Compilation of multiple HLO modules is not supported on Example.");
+  return tensorflow::errors::Unimplemented(
+    "Compilation of multiple HLO modules is not supported on Example.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
@@ -110,10 +105,10 @@ ExampleCompiler::CompileAheadOfTime(
         std::vector<std::unique_ptr<HloModule>> hlo_modules,
 std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
         HloDumper dump_hlo, const AotCompilationOptions& aot_options) {
-TF_RET_CHECK(hlo_modules.size() == module_configs.size());
+  TF_RET_CHECK(hlo_modules.size() == module_configs.size());
 
-return tensorflow::errors::InvalidArgument(
-"AOT compilation not supported on Example");
+  return tensorflow::errors::InvalidArgument(
+    "AOT compilation not supported on Example");
 }
 
 int64 ExampleCompiler::ShapeSizeBytes(const Shape& shape) const {
@@ -128,7 +123,7 @@ se::Platform::Id ExampleCompiler::PlatformId() const {
 }  // namespace xla
 
 REGISTER_MODULE_INITIALIZER(example_compiler, {
-xla::Compiler::RegisterCompilerFactory(sep::kExamplePlatformId, []() {
-return xla::MakeUnique<xla::exampleplugin::ExampleCompiler>();
-});
+  xla::Compiler::RegisterCompilerFactory(sep::kExamplePlatformId, []() {
+    return xla::MakeUnique<xla::exampleplugin::ExampleCompiler>();
+  });
 });

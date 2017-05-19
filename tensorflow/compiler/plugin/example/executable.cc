@@ -16,6 +16,11 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/example/executable.h"
 #include "tensorflow/compiler/plugin/example/executor.h"
 
+#include "tensorflow/compiler/xla/service/hlo_evaluator.h"
+
+#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::exampleplugin;
 
@@ -30,6 +35,34 @@ ExampleExecutable::ExampleExecutable(
 }
 
 ExampleExecutable::~ExampleExecutable() {}
+
+
+static se::DeviceMemoryBase
+AllocateSingleOutput(sep::ExampleExecutor* executor, Literal* literal) {
+  int64 size(xla::ShapeUtil::ByteSizeOf(literal->shape()));
+  void* buf = executor->Allocate(size);
+  const void* src = LiteralUtil::InternalData(*literal);
+  memcpy(buf, src, size);
+  return se::DeviceMemoryBase(buf, size);
+}
+
+static se::DeviceMemoryBase
+AllocateOutputBuffer(sep::ExampleExecutor* executor, Literal* literal) {
+  const Shape& shape = literal->shape();
+  if (shape.element_type() != xla::TUPLE) {
+    return AllocateSingleOutput(executor, literal);
+  } else {
+    int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
+    void** buf = reinterpret_cast<void**>(executor->Allocate(size));
+    for (int64 n=0; n<xla::ShapeUtil::TupleElementCount(shape); n++) {
+      se::DeviceMemoryBase out =
+              AllocateSingleOutput(executor, literal->mutable_tuple_literals(n));
+      *buf++ = out.opaque();
+    }
+
+    return se::DeviceMemoryBase(buf, size);
+  }
+}
 
 StatusOr<se::DeviceMemoryBase>
 ExampleExecutable::ExecuteOnStream(
@@ -47,13 +80,41 @@ ExampleExecutable::ExecuteOnStream(
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
+  HloComputation* computation = module().entry_computation();
+  if (computation->num_parameters() != arguments.size()) {
+    return tensorflow::errors::Internal(
+            "Mismatch between argument count and graph parameter count.");
+  }
+
+  // Create the arguments as an vector of XLA literals
+  std::vector<std::unique_ptr<Literal>> arg_literals;
+  std::vector<Literal*> arg_literals_ptrs;
+  for (int64 p = 0; p < computation->num_parameters(); p++) {
+    // Create the input literal for the parameter
+    HloInstruction* param = computation->parameter_instruction(p);
+    arg_literals.emplace_back(LiteralUtil::CreateFromShape(param->shape()));
+    arg_literals_ptrs.push_back(arg_literals.back().get());
+
+    // Copy in the data from the stream_executor buffers
+    void* buffer = LiteralUtil::MutableInternalData(arg_literals.back().get());
+    memcpy(buffer, arguments[p].opaque(),
+           ShapeUtil::ByteSizeOf(param->shape()));
+  }
+
+  // Execute the graph using the evaluator
+  HloEvaluator evaluator;
+  std::unique_ptr<Literal> output;
+  TF_ASSIGN_OR_RETURN(output,
+                      evaluator.Evaluate(computation, arg_literals_ptrs));
+
+  // Copy the result into the return buffer
   perftools::gputools::StreamExecutor* executor(stream->parent());
   sep::ExampleExecutor* exampleExecutor(
           static_cast<sep::ExampleExecutor*>(executor->implementation()));
 
-  perftools::gputools::DeviceMemoryBase retbuf;
-  TF_ASSIGN_OR_RETURN(retbuf,
-                      exampleExecutor->ExecuteGraph(result_shape(), arguments));
+  se::DeviceMemoryBase ret =
+          AllocateOutputBuffer(exampleExecutor, output.get());
+
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -63,7 +124,7 @@ ExampleExecutable::ExecuteOnStream(
     execution_profile_.set_compute_time_ns(std::max(nanoseconds, 1.0));
   }
 
-  return retbuf;
+  return ret;
 }
 
 StatusOr<std::unique_ptr<ShapedBuffer>> ExampleExecutable::ExecuteOnStream(
