@@ -162,6 +162,9 @@ void SetMemory(NodeExecStats* nt, OpKernelContext* ctx) {
       memory->set_peak_bytes(std::get<1>(sizes));
       memory->set_live_bytes(std::get<2>(sizes));
     }
+    AllocatorStats stats;
+    allocator_pair.first->GetStats(&stats);
+    memory->set_allocator_bytes_in_use(stats.bytes_in_use);
   }
   auto* ms = nt->mutable_memory_stats();
   ms->set_host_temp_memory_size(ctx->host_temp_memory_size());
