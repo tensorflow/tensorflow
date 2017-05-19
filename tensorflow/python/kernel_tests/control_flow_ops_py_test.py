@@ -325,6 +325,15 @@ class ControlFlowTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, "must not be a Python bool"):
       _ = control_flow_ops.cond(False, fn1, fn2)
 
+  def testCondInt(self):
+    p = array_ops.placeholder(dtypes.bool, shape=[])
+    v = constant_op.constant(10)
+    fn1 = lambda: math_ops.add(v, 1)
+    fn2 = lambda: math_ops.subtract(v, 1)
+    y = control_flow_ops.cond(p, fn1, fn2)
+    grad = gradients_impl.gradients(y, [v])
+    self.assertAllEqual([None], grad)
+
   def testFetchables(self):
     with self.test_session() as sess:
       x = array_ops.placeholder(dtypes.float32)

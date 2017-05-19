@@ -130,6 +130,33 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         computation_->MakeInstructionPostOrder();
     std::vector<HloInstruction*> post_order(post_order_list.begin(),
                                             post_order_list.end());
+
+    std::set<HloInstruction*> all_consumers_fusable;
+    // Find which ops can be fused into all of their operands. We would rather
+    // not fuse an op into only some of its users, as that offers no benefit in
+    // terms of memory bandwidth, but forces us to keep more live values around.
+    for (auto* hlo : post_order) {
+      auto user_fusable_into_hlo = [this, &hlo](HloInstruction* consumer) {
+        if (!consumer->IsFusable()) {
+          return false;
+        }
+        for (int operand_number = 0;
+             operand_number < consumer->operands().size(); ++operand_number) {
+          if (consumer->operand(operand_number) == hlo) {
+            if (!ShouldFuse(consumer, operand_number)) {
+              return false;
+            }
+          }
+        }
+        return true;
+      };
+
+      if (std::all_of(hlo->users().begin(), hlo->users().end(),
+                      user_fusable_into_hlo)) {
+        all_consumers_fusable.insert(hlo);
+      }
+    }
+
     tensorflow::gtl::FlatMap<HloInstruction*, int> post_order_index;
     for (size_t i = 0; i < post_order.size(); ++i) {
       InsertOrDie(&post_order_index, post_order[i], i);
@@ -216,6 +243,12 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
 
       for (int64 i : sorted_operand_numbers) {
         HloInstruction* operand = instruction->mutable_operand(i);
+
+        if (FusionWouldDuplicate(*operand, *instruction) &&
+            (all_consumers_fusable.count(operand) == 0)) {
+          continue;
+        }
+
         if (operand->IsFusable() && ShouldFuse(instruction, i)) {
           HloInstruction* fusion_instruction = Fuse(operand, instruction);
 

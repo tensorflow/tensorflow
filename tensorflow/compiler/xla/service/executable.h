@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
@@ -41,10 +40,8 @@ namespace xla {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
-  explicit Executable(std::unique_ptr<HloModule> hlo_module,
-                      std::unique_ptr<HloModuleConfig> module_config)
-      : hlo_module_(std::move(hlo_module)),
-        module_config_(std::move(module_config)) {}
+  explicit Executable(std::unique_ptr<HloModule> hlo_module)
+      : hlo_module_(std::move(hlo_module)) {}
   virtual ~Executable() {}
 
   // Enqueues the compilation result on the provided stream, passing the given
@@ -98,15 +95,17 @@ class Executable {
   // enabled. If not, the caller should not expect an hlo_execution_profile
   // passed to ExecuteOnStream above to be populated during execution.
   bool hlo_profiling_enabled() const {
-    return module_config_->hlo_profiling_enabled();
+    return hlo_module_->config().hlo_profiling_enabled();
   }
 
   const HloModule& module() const { return *hlo_module_; }
 
-  const HloModuleConfig& module_config() const { return *module_config_; }
+  const HloModuleConfig& module_config() const { return hlo_module_->config(); }
 
   // Returns whether this executable has an associated HloModuleConfig.
-  bool has_module_config() const { return module_config_ != nullptr; }
+  bool has_module_config() const {
+    return hlo_module_ != nullptr && hlo_module_->has_config();
+  }
 
   // Returns the versioned computation handle of the computation computed by
   // this executable.
@@ -117,7 +116,7 @@ class Executable {
   // The shape (including layout) that results from this execution. This is the
   // shape of the DeviceMemoryBase result value in ExecuteOnStream above.
   const Shape& result_shape() const {
-    return module_config_->entry_computation_layout().result_shape();
+    return hlo_module_->config().entry_computation_layout().result_shape();
   }
 
   // Dumping helpers.
@@ -142,10 +141,6 @@ class Executable {
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
   std::unique_ptr<HloModule> hlo_module_;
-
-  // The configuration used to build this executable (parameter layouts, result
-  // layout, profiling enabled, etc).
-  std::unique_ptr<HloModuleConfig> module_config_;
 
   // SessionModule this was compiled from. Null if not dumping executions.
   std::unique_ptr<SessionModule> session_module_;

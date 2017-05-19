@@ -27,24 +27,7 @@ from tensorflow.python.platform import test
 
 class Convolution1DTest(test.TestCase):
 
-  def test_causal_dilated_conv1d(self):
-    # Causal:
-    with self.test_session():
-      testing_utils.layer_test(
-          keras.layers.Conv1D,
-          input_data=np.reshape(np.arange(4, dtype='float32'), (1, 4, 1)),
-          kwargs={
-              'filters': 1,
-              'kernel_size': 2,
-              'dilation_rate': 1,
-              'padding': 'causal',
-              'kernel_initializer': 'ones',
-              'use_bias': False,
-          },
-          expected_output=[[[0], [1], [3], [5]]])
-
   def test_dilated_conv1d(self):
-    # Non-causal:
     with self.test_session():
       testing_utils.layer_test(
           keras.layers.Conv1D,

@@ -91,7 +91,9 @@ class HostLapackInfo;
 //                          done);
 //
 //     // 4. Check the status after the computation finishes and call done.
-//     auto check_status = [context, done](const Status& status,
+//     // Capture dev_info so the underlying buffers don't get deallocated
+//     // before the kernels run.
+//     auto check_status = [context, done, dev_info](const Status& status,
 //       const std::vector<HostLapackInfo>& /* unused */) {
 //           // In this example we don't care about the exact cause of
 //           // death, so just check status.

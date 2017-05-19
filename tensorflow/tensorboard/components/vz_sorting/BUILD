@@ -37,7 +37,6 @@ tensorboard_webcomponent_library(
         "vz-sorting.html",
         ":legacy_ts",
     ],
-    visibility = ["//visibility:public"],
     destdir = "vz-sorting",
 )
 
@@ -46,5 +45,4 @@ tensorboard_ts_library(
     srcs = ["sorting.ts"],
     deps_mgmt = "off",
     runtime = "nodejs",
-    deps = ["//tensorflow/tensorboard/components:common_deps"],
 )

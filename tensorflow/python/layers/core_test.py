@@ -47,10 +47,10 @@ class DenseTest(test.TestCase):
 
     # Test auto-naming
     dense = core_layers.Dense(2, activation=nn_ops.relu)
-    dense.apply(np.random.randn(0, 2))
+    dense.apply(random_ops.random_uniform((5, 2)))
     self.assertEqual(dense.name, 'dense_1')
     dense = core_layers.Dense(2, activation=nn_ops.relu)
-    dense.apply(np.random.randn(0, 2))
+    dense.apply(random_ops.random_uniform((5, 2)))
     self.assertEqual(dense.name, 'dense_2')
 
   def testCall(self):

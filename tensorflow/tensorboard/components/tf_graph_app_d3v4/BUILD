@@ -40,9 +40,9 @@ tensorboard_webcomponent_library(
     ],
     destdir = "tf-graph-app",
     deps = [
-        "//tensorflow/tensorboard/components/tf_graph_board:legacy",
-        "//tensorflow/tensorboard/components/tf_graph_controls:legacy",
-        "//tensorflow/tensorboard/components/tf_graph_loader:legacy",
+        "//tensorflow/tensorboard/components/tf_graph_board_d3v4:legacy",
+        "//tensorflow/tensorboard/components/tf_graph_controls_d3v4:legacy",
+        "//tensorflow/tensorboard/components/tf_graph_loader_d3v4:legacy",
         "//third_party/javascript/polymer/v1/iron-list:lib",
         "//third_party/javascript/polymer/v1/paper-radio-group:lib",
         "//third_party/javascript/polymer/v1/paper-tooltip:lib",

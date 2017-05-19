@@ -62,7 +62,7 @@ class Coordinator(object):
   #### Exception handling:
 
   A thread can report an exception to the coordinator as part of the
-  `should_stop()` call.  The exception will be re-raised from the
+  `request_stop()` call.  The exception will be re-raised from the
   `coord.join()` call.
 
   Thread code:

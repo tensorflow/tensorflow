@@ -564,6 +564,28 @@ contents: 0-D. PNG-encoded image.
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("DecodeBmp")
+    .Input("contents: string")
+    .Output("image: uint8")
+    .Attr("channels: int = 0")
+    .SetShapeFn(DecodeImageShapeFn)
+    .Doc(R"doc(
+Decode the first frame of a BMP-encoded image to a uint8 tensor.
+
+The attr `channels` indicates the desired number of color channels for the
+decoded image.
+
+Accepted values are:
+
+*   0: Use the number of channels in the BMP-encoded image.
+*   3: output an RGB image.
+*   4: output an RGBA image.
+
+contents: 0-D.  The BMP-encoded image.
+image: 3-D with shape `[height, width, channels]`. RGB order
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("DecodeGif")
     .Input("contents: string")
     .Output("image: uint8")
@@ -878,7 +900,7 @@ boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
   in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
   `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
   `[0, 1]` interval of normalized image height is mapped to
-  `[0, image_height - 1] in image height coordinates. We do allow y1 > y2, in
+  `[0, image_height - 1]` in image height coordinates. We do allow `y1` > `y2`, in
   which case the sampled crop is an up-down flipped version of the original
   image. The width dimension is treated similarly. Normalized coordinates
   outside the `[0, 1]` range are allowed, in which case we use
