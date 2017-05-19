@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <deque>
+#include <numeric>
 #include <vector>
 
 #include "tensorflow/core/framework/op_kernel.h"
