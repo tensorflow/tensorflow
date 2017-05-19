@@ -95,7 +95,7 @@ Status XlaCompilationCache::BuildSignature(
     const NameAttrList& function, int num_constant_args,
     const std::vector<OptionalTensor>& variable_args, OpKernelContext* ctx,
     Signature* signature) {
-  signature->name = Canonicalize(function.name(), function.attr());
+  signature->name = Canonicalize(function.name(), AttrSlice(&function.attr()));
   signature->arg_values.resize(num_constant_args);
 
   signature->arg_types.reserve(ctx->num_inputs() - num_constant_args);

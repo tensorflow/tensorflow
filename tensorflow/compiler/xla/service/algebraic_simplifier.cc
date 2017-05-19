@@ -959,6 +959,15 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
 Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   auto operand = reshape->mutable_operand(0);
 
+  // Reshape directly to empty constant if the shape contains zero-element
+  // dimension.
+  if (ShapeUtil::HasZeroElements(reshape->shape())) {
+    auto empty_constant = HloInstruction::CreateConstant(
+        LiteralUtil::CreateFromShape(reshape->shape()));
+
+    return ReplaceWithNewInstruction(reshape, std::move(empty_constant));
+  }
+
   // Delete no-op reshapes, i.e. where shape = operand shape.
   if (SameShape(reshape, operand)) {
     VLOG(10) << "deleting no-op reshape";

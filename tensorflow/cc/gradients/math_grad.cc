@@ -350,7 +350,7 @@ Status MatMulGradCommon(const Scope& scope, const Operation& op,
                         const string& attr_adj_x, const string& attr_adj_y,
                         std::vector<Output>* grad_outputs) {
   DataType dtype;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.output(0).node()->def(), "T", &dtype));
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.output(0).node()->attrs(), "T", &dtype));
   if (dtype == DT_COMPLEX64 || dtype == DT_COMPLEX128) {
     return errors::Unimplemented(
         "MatMul gradient for complex data type is not supported yet.");
@@ -358,8 +358,10 @@ Status MatMulGradCommon(const Scope& scope, const Operation& op,
 
   bool ta;
   bool tb;
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.output(0).node()->def(), attr_adj_x, &ta));
-  TF_RETURN_IF_ERROR(GetNodeAttr(op.output(0).node()->def(), attr_adj_y, &tb));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.output(0).node()->attrs(), attr_adj_x, &ta));
+  TF_RETURN_IF_ERROR(
+      GetNodeAttr(op.output(0).node()->attrs(), attr_adj_y, &tb));
 
   if (!ta && !tb) {
     return MatMulGradHelper(scope, is_batch, grad_inputs[0], false, op.input(1),

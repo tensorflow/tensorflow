@@ -89,7 +89,7 @@ fits itself to the width of the container it is placed in.
         _generatedColorScale: {
           type: Object,
           value: (function () {
-            var retFunction = d3.scale.linear();
+            var retFunction = d3.scaleLinear();
             if (this.colors) {
               retFunction.range(this.colors)
             }
@@ -277,7 +277,7 @@ fits itself to the width of the container it is placed in.
        */
       _updateColorFunction: function () {
         if (Array.isArray(this.colors) && this.colors.length) {
-          this._generatedColorScale = d3.scale.linear().range(this.colors);
+          this._generatedColorScale = d3.scaleLinear().range(this.colors);
         }
 
         if (this.values) {
@@ -294,7 +294,7 @@ fits itself to the width of the container it is placed in.
         }
       },
       _getLinearInterpolation: function (domain, range) {
-        return d3.scale.linear().domain(domain).range(range);
+        return d3.scaleLinear().domain(domain).range(range);
       },
       /**
        * Find side length of each tile in heat map by dividing current width

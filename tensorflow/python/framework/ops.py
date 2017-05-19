@@ -1313,8 +1313,7 @@ class Operation(object):
       A wrapped TF_Operation*.
     """
     # pylint: disable=protected-access
-    op_desc = c_api.TF_NewOperation(graph._c_graph.g,
-                                    compat.as_str(node_def.op),
+    op_desc = c_api.TF_NewOperation(graph._c_graph, compat.as_str(node_def.op),
                                     compat.as_str(node_def.name))
     # Add inputs
     for op_input in inputs:
@@ -2045,10 +2044,13 @@ def _name_from_scope_name(name):
 class _ScopedTF_Graph(object):
 
   def __init__(self):
-    self.g = c_api.TF_NewGraph()
+    self.graph = c_api.TF_NewGraph()
 
   def __del__(self):
-    c_api.TF_DeleteGraph(self.g)
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we can have already deleted other modules.
+    if c_api.TF_DeleteGraph is not None:
+      c_api.TF_DeleteGraph(self.graph)
 
 
 class Graph(object):
@@ -2167,9 +2169,9 @@ class Graph(object):
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
     if _USE_C_API:
-      self._c_graph = _ScopedTF_Graph()
+      self._scoped_c_graph = _ScopedTF_Graph()
     else:
-      self._c_graph = None
+      self._scoped_c_graph = None
 
   def _check_not_finalized(self):
     """Check if the graph is finalized.
@@ -2205,6 +2207,12 @@ class Graph(object):
       self._nodes_by_name[op.name] = op
       self._version = max(self._version, op._id)
       # pylint: enable=protected-access
+
+  @property
+  def _c_graph(self):
+    if self._scoped_c_graph:
+      return self._scoped_c_graph.graph
+    return None
 
   @property
   def version(self):
