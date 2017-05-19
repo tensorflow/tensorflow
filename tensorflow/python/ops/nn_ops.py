@@ -1324,7 +1324,7 @@ def crelu(features, name=None):
   Concatenates a ReLU which selects only the positive part of the activation
   with a ReLU which selects only the *negative* part of the activation.
   Note that as a result this non-linearity doubles the depth of the activations.
-  Source: https://arxiv.org/abs/1603.05201
+  Source: [Understanding and Improving Convolutional Neural Networks via Concatenated Rectified Linear Units. W. Shang, et al.](https://arxiv.org/abs/1603.05201) 
 
   Args:
     features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
@@ -1342,6 +1342,7 @@ def crelu(features, name=None):
 
 def relu6(features, name=None):
   """Computes Rectified Linear 6: `min(max(features, 0), 6)`.
+  Source: [Convolutional Deep Belief Networks on CIFAR-10. A. Krizhevsky](http://www.cs.utoronto.ca/~kriz/conv-cifar10-aug2010.pdf)
 
   Args:
     features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,

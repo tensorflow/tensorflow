@@ -497,13 +497,20 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
 
   time = ops.convert_to_tensor(time, name="time")
   # During the first time step we only consider the initial beam
+  scores_shape = array_ops.shape(scores)
   scores_flat = control_flow_ops.cond(
       time > 0,
       lambda: array_ops.reshape(scores, [batch_size, -1]),
       lambda: scores[:, 0])
+  num_available_beam = control_flow_ops.cond(
+      time > 0, lambda: math_ops.reduce_prod(scores_shape[1:]),
+      lambda: math_ops.reduce_prod(scores_shape[2:]))
 
   # Pick the next beams according to the specified successors function
-  next_beam_scores, word_indices = nn_ops.top_k(scores_flat, k=beam_width)
+  next_beam_size = math_ops.minimum(
+      ops.convert_to_tensor(beam_width, dtype=dtypes.int32, name="beam_width"),
+      num_available_beam)
+  next_beam_scores, word_indices = nn_ops.top_k(scores_flat, k=next_beam_size)
   next_beam_scores.set_shape([static_batch_size, beam_width])
   word_indices.set_shape([static_batch_size, beam_width])
 
@@ -561,7 +568,8 @@ def _get_scores(log_probs, sequence_lengths, length_penalty_weight):
   """Calculates scores for beam search hypotheses.
 
   Args:
-    log_probs: The log probabilities with shape [batch_size, beam_width].
+    log_probs: The log probabilities with shape
+      `[batch_size, beam_width, vocab_size]`.
     sequence_lengths: The array of sequence lengths.
     length_penalty_weight: Float weight to penalize length. Disabled with 0.0.
 

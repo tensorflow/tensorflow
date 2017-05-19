@@ -260,7 +260,7 @@ TEST_F(GradientsTest, StackUnstack_StopBackprop) {
 }
 
 TEST_F(GradientsTest, DependentGradOutputs) {
-  // Tests that dependant gradients (in this case the gradients w.r.t to the
+  // Tests that dependent gradients (in this case the gradients w.r.t to the
   // output and one input of MatMul) are computed properly.
 
   // Create two chained MatMul ops.

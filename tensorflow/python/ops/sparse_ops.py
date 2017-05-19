@@ -1764,7 +1764,7 @@ def sparse_transpose(sp_input, perm=None, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  with ops.op_scope([sp_input], name, "SparseTranspose") as name:
+  with ops.name_scope(name, "SparseTranspose", [sp_input]) as name:
     if perm is None:
       rank = array_ops.rank(sp_input)
       perm = (rank - 1) - math_ops.range(0, rank, 1)

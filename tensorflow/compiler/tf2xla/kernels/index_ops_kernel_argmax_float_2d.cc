@@ -18,6 +18,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -45,7 +46,6 @@ EIGEN_STRONG_INLINE void argmax_float_2d_xla_impl(void* out, void** data) {
 
 // Implements argmax on CPU. This is called by an XLA custom call, set up by
 // index_ops.cc.
-extern "C" void __attribute__((visibility("default")))
-argmax_float_2d_xla_impl(void* out, void** data) {
+extern "C" void TF_EXPORT argmax_float_2d_xla_impl(void* out, void** data) {
   tensorflow::argmax_float_2d_xla_impl(out, data);
 }

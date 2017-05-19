@@ -148,6 +148,9 @@ template <typename T>
     case S64:
       return CopyRange<int64>(src_literal, src_base, dest_literal, dest_base,
                               copy_size);
+    case F16:
+      return CopyRange<half>(src_literal, src_base, dest_literal, dest_base,
+                             copy_size);
     case F32:
       return CopyRange<float>(src_literal, src_base, dest_literal, dest_base,
                               copy_size);
@@ -178,6 +181,8 @@ template <typename T>
       return *LiteralUtil::CreateR0<int32>(0);
     case S64:
       return *LiteralUtil::CreateR0<int64>(0);
+    case F16:
+      return *LiteralUtil::CreateR0<half>(static_cast<half>(0.0f));
     case F32:
       return *LiteralUtil::CreateR0<float>(0);
     case F64:
@@ -187,8 +192,6 @@ template <typename T>
     case S16:
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
-    case F16:
-      LOG(FATAL) << "f16 literals not yet implemented";
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 0";
     case OPAQUE:
@@ -222,7 +225,7 @@ template <typename T>
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
-      LOG(FATAL) << "f16 literals not yet implemented";
+      return *LiteralUtil::CreateR0<half>(static_cast<half>(1.0f));
     case TUPLE:
       LOG(FATAL) << "tuple element type cannot take on value of 1";
     case OPAQUE:
@@ -258,7 +261,8 @@ template <typename T>
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
-      LOG(FATAL) << "f16 literals not yet implemented";
+      return *LiteralUtil::CreateR0<half>(
+          static_cast<half>(-std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no minimum value";
     case OPAQUE:
@@ -294,7 +298,8 @@ template <typename T>
     case U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
-      LOG(FATAL) << "f16 literals not yet implemented";
+      return *LiteralUtil::CreateR0<half>(
+          static_cast<half>(std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no maximum value";
     case OPAQUE:
@@ -498,6 +503,8 @@ template <typename T>
       return tensorflow::strings::StrCat(Get<float>(literal, multi_index));
     case F64:
       return tensorflow::strings::StrCat(Get<double>(literal, multi_index));
+    case F16:
+      return tensorflow::strings::StrCat(Get<half>(literal, multi_index));
     default:
       return tensorflow::strings::StrCat(
           "[", PrimitiveType_Name(literal.shape().element_type()), "]");
@@ -652,6 +659,8 @@ template <typename T>
       return reinterpret_cast<const void*>(literal.f32s().data());
     case F64:
       return reinterpret_cast<const void*>(literal.f64s().data());
+    case F16:
+      return reinterpret_cast<const void*>(literal.f16s().data());
     default:
       LOG(FATAL) << "primitive type not supported in literals: "
                  << PrimitiveType_Name(literal.shape().element_type());
@@ -692,6 +701,9 @@ template <typename T>
     case F64:
       Resize<double>(num_elements, 0, literal);
       break;
+    case F16:
+      Resize<half>(num_elements, static_cast<half>(0.0f), literal);
+      break;
     default:
       LOG(FATAL) << "primitive type not supported in literals: "
                  << PrimitiveType_Name(literal->shape().element_type());
@@ -727,6 +739,9 @@ template <typename T>
       break;
     case F64:
       actual = literal.f64s_size();
+      break;
+    case F16:
+      actual = literal.f16s().size() / sizeof(half);
       break;
     default:
       return tensorflow::errors::Unimplemented(
@@ -818,6 +833,8 @@ bool EqualElements(const Literal& literal1, const Literal& literal2,
         return EqualElements<float>(literal1, literal2, 0, &multi_index);
       case F64:
         return EqualElements<double>(literal1, literal2, 0, &multi_index);
+      case F16:
+        return EqualElements<half>(literal1, literal2, 0, &multi_index);
       default:
         LOG(FATAL) << "Unimplemented: LiteralUtil::Equal for type "
                    << PrimitiveType_Name(literal1.shape().element_type());
@@ -917,6 +934,18 @@ LiteralUtil::GetMutableArraySlice(Literal* literal) {
 }
 
 template <>
+/* static */ tensorflow::gtl::MutableArraySlice<half>
+LiteralUtil::GetMutableArraySlice<half>(Literal* literal) {
+  // C++11 standard, basic_string 21.4.1.5, values should be stored
+  // contiguously. From C++17 a mutable data() member will be provided.
+  // TODO - there is an endianess problem here. fix it, or wait for uint16
+  //        support in protobuf
+  auto values = literal->mutable_f16s();
+  return tensorflow::gtl::MutableArraySlice<half>(
+      reinterpret_cast<half*>(&(*values)[0]), values->size() / sizeof(half));
+}
+
+template <>
 /* static */ tensorflow::gtl::ArraySlice<bool> LiteralUtil::GetArraySlice<bool>(
     const Literal& literal) {
   CHECK_EQ(literal.shape().element_type(), PRED);
@@ -976,6 +1005,15 @@ LiteralUtil::GetArraySlice<double>(const Literal& literal) {
   return literal.f64s();
 }
 
+template <>
+/* static */ tensorflow::gtl::ArraySlice<half> LiteralUtil::GetArraySlice<half>(
+    const Literal& literal) {
+  CHECK_EQ(literal.shape().element_type(), F16);
+  return tensorflow::gtl::ArraySlice<half>(
+      reinterpret_cast<const half*>(literal.f16s().data()),
+      literal.f16s().size() / sizeof(half));
+}
+
 template <typename NativeT>
 static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
   for (int64 i = 0; i < ShapeUtil::ElementsIn(literal.shape()); ++i) {
@@ -1015,6 +1053,8 @@ static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
       return AllElementsEqualValue<float>(literal, value);
     case F64:
       return AllElementsEqualValue<double>(literal, value);
+    case F16:
+      return AllElementsEqualValue<half>(literal, static_cast<half>(value));
     case PRED:
       if (value == 0) {
         return AllElementsEqualValue<bool>(literal, false);
@@ -1034,6 +1074,8 @@ static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
       return AllElementsEqualValue<float>(literal, value);
     case F64:
       return AllElementsEqualValue<double>(literal, value);
+    case F16:
+      return AllElementsEqualValue<half>(literal, static_cast<half>(value));
     default:
       return false;
   }
@@ -1058,6 +1100,8 @@ static bool AllElementsEqualValue(const Literal& literal, NativeT value) {
       return Get<float>(literal, indices) == 0.0f;
     case F64:
       return Get<double>(literal, indices) == 0.0;
+    case F16:
+      return Get<half>(literal, indices) == static_cast<half>(0.0f);
     case PRED:
       return Get<bool>(literal, indices) == false;
     default:
@@ -1126,6 +1170,17 @@ template <>
                                               Literal* literal) {
   CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
   literal->mutable_f64s()->Resize(num_elements, value);
+}
+
+template <>
+/* static */ void LiteralUtil::Resize<half>(int64 num_elements, half value,
+                                            Literal* literal) {
+  CHECK_EQ(ShapeUtil::ElementsIn(literal->shape()), num_elements);
+  literal->mutable_f16s()->resize(num_elements * sizeof(half));
+  auto data = GetMutableArraySlice<half>(literal);
+  for (int i = 0; i < num_elements; i++) {
+    data[i] = value;
+  }
 }
 
 }  // namespace xla

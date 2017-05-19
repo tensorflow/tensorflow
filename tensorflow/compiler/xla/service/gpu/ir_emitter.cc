@@ -399,7 +399,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot,
   llvm::Type* accum_type = target_array.GetElementLlvmType();
   llvm::Value* accum_address = llvm_ir::EmitAllocaAtFunctionEntry(
       accum_type,       // The pointee type of the alloca instruction.
-      "accum_address",  // The name of the alloca instuction.
+      "accum_address",  // The name of the alloca instruction.
       &ir_builder_);
 
   // Initialize the accumulator in the preheader to zero.

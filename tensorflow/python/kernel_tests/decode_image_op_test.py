@@ -33,6 +33,17 @@ prefix_path = "tensorflow/core/lib"
 
 class DecodeImageOpTest(test.TestCase):
 
+  def testBmp(self):
+    # Read a real bmp and verify shape
+    path = os.path.join(prefix_path, "bmp", "testdata", "lena.bmp")
+    with self.test_session(use_gpu=True) as sess:
+      bmp0 = io_ops.read_file(path)
+      image0 = image_ops.decode_image(bmp0)
+      image1 = image_ops.decode_bmp(bmp0)
+      bmp0, image0, image1 = sess.run([bmp0, image0, image1])
+      self.assertEqual(len(bmp0), 4194)
+      self.assertAllEqual(image0, image1)
+
   def testGif(self):
     # Read some real GIFs
     path = os.path.join(prefix_path, "gif", "testdata", "scan.gif")

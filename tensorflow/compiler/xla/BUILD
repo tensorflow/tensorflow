@@ -59,7 +59,10 @@ cc_library(
     name = "types",
     hdrs = ["types.h"],
     visibility = [":friends"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(

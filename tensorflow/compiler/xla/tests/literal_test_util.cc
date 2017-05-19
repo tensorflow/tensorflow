@@ -314,7 +314,7 @@ class NearComparator {
 
  private:
   // EXPECTs that the two given scalar values are within the error bound. Keeps
-  // track of how many mismatches have occured to keep the size of the output
+  // track of how many mismatches have occurred to keep the size of the output
   // manageable.
   template <typename NativeT>
   bool ExpectValuesNear(NativeT expected, NativeT actual) {

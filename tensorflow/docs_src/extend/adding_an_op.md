@@ -317,7 +317,7 @@ or `clang` available on your system. The binary PIP package installs the header
 files and the library that you need to compile your op in locations that are
 system specific. However, the TensorFlow python library provides the
 `get_include` function to get the header directory.
-Here is the output of this function on a Ubuntu machine.
+Here is the output of this function on an Ubuntu machine.
 
 ```bash
 $ python
@@ -1214,6 +1214,8 @@ Note that if your CUDA libraries are not installed in `/usr/local/lib64`,
 you'll need to specify the path explicitly in the second (g++) command above.
 For example, add `-L /usr/local/cuda-8.0/lib64/` if your CUDA is installed in
 `/usr/local/cuda-8.0`.
+
+>   Note in some linux settings, additional options to `nvcc` compiling step are needed. Add `-D_MWAITXINTRIN_H_INCLUDED` to the `nvcc` command line to avoid errors from `mwaitxintrin.h`.
 
 ### Implement the gradient in Python {#implement-gradient}
 

@@ -2878,6 +2878,8 @@ filegroup(
         "lib/gif/testdata/scan.gif",
         # GIF data with optimization
         "lib/gif/testdata/optimized.gif",
+        # BMP data
+        "lib/bmp/testdata/lena.bmp",
     ],
     visibility = ["//visibility:public"],
 )

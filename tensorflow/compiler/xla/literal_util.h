@@ -506,6 +506,10 @@ template <>
 LiteralUtil::GetArraySlice<double>(const Literal& literal);
 
 template <>
+/* static */ tensorflow::gtl::ArraySlice<half> LiteralUtil::GetArraySlice<half>(
+    const Literal& literal);
+
+template <>
 /* static */ tensorflow::gtl::MutableArraySlice<bool>
 LiteralUtil::GetMutableArraySlice(Literal* literal);
 
@@ -540,6 +544,50 @@ LiteralUtil::GetMutableArraySlice(Literal* literal);
 template <>
 /* static */ tensorflow::gtl::MutableArraySlice<double>
 LiteralUtil::GetMutableArraySlice(Literal* literal);
+
+template <>
+/* static */ tensorflow::gtl::MutableArraySlice<half>
+LiteralUtil::GetMutableArraySlice(Literal* literal);
+
+template <>
+/* static */ void LiteralUtil::Resize<bool>(int64 num_elements, bool value,
+                                            Literal* literal);
+
+template <>
+/* static */ void LiteralUtil::Resize<int8>(int64 num_elements, int8 value,
+                                            Literal* literal);
+
+template <>
+/* static */ void LiteralUtil::Resize<uint8>(int64 num_elements, uint8 value,
+                                             Literal* literal);
+
+template <>
+/* static */ void LiteralUtil::Resize<int32>(int64 num_elements, int32 value,
+                                             Literal* literal);
+
+template <>
+/* static */ void LiteralUtil::Resize<uint32>(int64 num_elements, uint32 value,
+                                              Literal* literal);
+
+template <>
+/* static */ void LiteralUtil::Resize<int64>(int64 num_elements, int64 value,
+                                             Literal* literal);
+
+template <>
+/* static */ void LiteralUtil::Resize<uint64>(int64 num_elements, uint64 value,
+                                              Literal* literal);
+
+template <>
+/* static */ void LiteralUtil::Resize<float>(int64 num_elements, float value,
+                                             Literal* literal);
+
+template <>
+/* static */ void LiteralUtil::Resize<double>(int64 num_elements, double value,
+                                              Literal* literal);
+
+template <>
+/* static */ void LiteralUtil::Resize<half>(int64 num_elements, half value,
+                                            Literal* literal);
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal> LiteralUtil::CreateR0(NativeT value) {
@@ -770,6 +818,14 @@ template <>
   return literal.u8s()[linear_index];
 }
 
+template <>
+/* static */ inline half LiteralUtil::Get<half>(
+    const Literal& literal, tensorflow::gtl::ArraySlice<int64> multi_index) {
+  CHECK(literal.shape().element_type() == F16);
+  int64 linear_index = LinearIndex(literal, multi_index);
+  return GetArraySlice<half>(literal)[linear_index];
+}
+
 template <typename NativeT>
 /* static */ void LiteralUtil::Set(
     Literal* literal, tensorflow::gtl::ArraySlice<int64> multi_index,
@@ -834,76 +890,12 @@ template <typename NativeT>
   } while (IndexUtil::BumpIndices(literal.shape(), &indices));
 }
 
-template <>
-/* static */ inline void LiteralUtil::PopulateR0<bool>(bool value,
-                                                       Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<bool>(), {});
-  literal->mutable_preds()->Add(value);
-}
-
-template <>
-/* static */ inline void LiteralUtil::PopulateR0<uint8>(uint8 value,
-                                                        Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<uint8>(), {});
-  literal->mutable_u8s()->push_back(value);
-}
-
-template <>
-/* static */ inline void LiteralUtil::PopulateR0<int8>(int8 value,
-                                                       Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<int8>(), {});
-  literal->mutable_u8s()->push_back(value);
-}
-
-template <>
-/* static */ inline void LiteralUtil::PopulateR0<uint32>(uint32 value,
-                                                         Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<uint32>(), {});
-  literal->mutable_u32s()->Add(value);
-}
-
-template <>
-/* static */ inline void LiteralUtil::PopulateR0<int32>(int32 value,
-                                                        Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<int32>(), {});
-  literal->mutable_s32s()->Add(value);
-}
-
-template <>
-/* static */ inline void LiteralUtil::PopulateR0<uint64>(uint64 value,
-                                                         Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<uint64>(), {});
-  literal->mutable_u64s()->Add(value);
-}
-
-template <>
-/* static */ inline void LiteralUtil::PopulateR0<int64>(int64 value,
-                                                        Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<int64>(), {});
-  literal->mutable_s64s()->Add(value);
-}
-
-template <>
-/* static */ inline void LiteralUtil::PopulateR0<float>(float value,
-                                                        Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<float>(), {});
-  literal->mutable_f32s()->Add(value);
-}
-
-template <>
-/* static */ inline void LiteralUtil::PopulateR0<double>(double value,
-                                                         Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<double>(), {});
-  literal->mutable_f64s()->Add(value);
+template <typename NativeT>
+/* static */ inline void LiteralUtil::PopulateR0(NativeT value,
+                                                 Literal* literal) {
+  *literal->mutable_shape() = ShapeUtil::MakeShape(
+      primitive_util::NativeToPrimitiveType<NativeT>(), {});
+  Resize<NativeT>(1, value, literal);
 }
 
 template <typename NativeT>
@@ -1115,42 +1107,6 @@ template <typename NativeSrcT, typename NativeDestT>
   }
   return result_literal;
 }
-
-template <>
-/* static */ void LiteralUtil::Resize<bool>(int64 num_elements, bool value,
-                                            Literal* literal);
-
-template <>
-/* static */ void LiteralUtil::Resize<int8>(int64 num_elements, int8 value,
-                                            Literal* literal);
-
-template <>
-/* static */ void LiteralUtil::Resize<uint8>(int64 num_elements, uint8 value,
-                                             Literal* literal);
-
-template <>
-/* static */ void LiteralUtil::Resize<int32>(int64 num_elements, int32 value,
-                                             Literal* literal);
-
-template <>
-/* static */ void LiteralUtil::Resize<uint32>(int64 num_elements, uint32 value,
-                                              Literal* literal);
-
-template <>
-/* static */ void LiteralUtil::Resize<int64>(int64 num_elements, int64 value,
-                                             Literal* literal);
-
-template <>
-/* static */ void LiteralUtil::Resize<uint64>(int64 num_elements, uint64 value,
-                                              Literal* literal);
-
-template <>
-/* static */ void LiteralUtil::Resize<float>(int64 num_elements, float value,
-                                             Literal* literal);
-
-template <>
-/* static */ void LiteralUtil::Resize<double>(int64 num_elements, double value,
-                                              Literal* literal);
 
 template <typename NativeT>
 /* static */ std::unique_ptr<Literal>

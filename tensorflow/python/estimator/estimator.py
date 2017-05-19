@@ -739,7 +739,7 @@ def _model_fn_args(fn):
 
 def _verify_model_fn_args(model_fn, params):
   """Verifies model fn arguments."""
-  args = _model_fn_args(model_fn)
+  args = set(_model_fn_args(model_fn))
   if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
   if 'labels' not in args:
@@ -752,7 +752,10 @@ def _verify_model_fn_args(model_fn, params):
     logging.warning('Estimator\'s model_fn (%s) includes params '
                     'argument, but params are not passed to Estimator.',
                     model_fn)
-  non_valid_args = list(set(args) - _VALID_MODEL_FN_ARGS)
+  if tf_inspect.ismethod(model_fn):
+    if 'self' in args:
+      args.remove('self')
+  non_valid_args = list(args - _VALID_MODEL_FN_ARGS)
   if non_valid_args:
     raise ValueError('model_fn (%s) has following not expected args: %s' %
                      (model_fn, non_valid_args))
@@ -814,13 +817,20 @@ def _write_dict_to_summary(output_dir,
   for key in dictionary:
     if dictionary[key] is None:
       continue
+    if key == 'global_step':
+      continue
     value = summary_proto.value.add()
     value.tag = key
     if (isinstance(dictionary[key], np.float32) or
         isinstance(dictionary[key], float)):
       value.simple_value = float(dictionary[key])
+    elif (isinstance(dictionary[key], np.int64) or
+          isinstance(dictionary[key], np.int32) or
+          isinstance(dictionary[key], int)):
+      value.simple_value = int(dictionary[key])
     else:
-      logging.warn('Skipping summary for %s, must be a float or np.float32.',
-                   key)
+      logging.warn(
+          'Skipping summary for %s, must be a float, np.float32, np.int64, np.int32 or int.',
+          key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()

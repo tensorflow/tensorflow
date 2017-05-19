@@ -89,8 +89,8 @@ static Output BuildPlaceHolderOp(const string& name, const DataType dt,
                                  const TensorShape& tensor_shape, Scope* root) {
   const Scope& scope = root->WithOpName(name);
   Node* ret;
-  const string unique_name = scope.GetUniqueNameForOp("PlaceholderV2");
-  NodeBuilder builder = NodeBuilder(unique_name, "PlaceholderV2")
+  const string unique_name = scope.GetUniqueNameForOp("Placeholder");
+  NodeBuilder builder = NodeBuilder(unique_name, "Placeholder")
                             .Attr("dtype", dt)
                             .Attr("shape", tensor_shape);
   scope.UpdateBuilder(&builder);

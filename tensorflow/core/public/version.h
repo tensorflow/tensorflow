@@ -87,10 +87,11 @@ limitations under the License.
 // 22. Placeholder now can specify and enforce scalar and partial
 //     shapes, particularly when restoring a graph from GraphDef
 //     produced at version 22 or later.  (04/10/2016)
+// 23. Remove NonMaxSuppression in favor of NonMaxSuppressionV2.
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 22
+#define TF_GRAPH_DEF_VERSION 23
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //

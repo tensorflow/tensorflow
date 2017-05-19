@@ -177,8 +177,6 @@ cc_library(
         "include",
     ],
     linkopts = ["-lpthread"],
-    deps = [
-    ],
 )
 
 cc_library(
