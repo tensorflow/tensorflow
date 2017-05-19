@@ -267,6 +267,16 @@ def batch_normalization(inputs,
 
   Sergey Ioffe, Christian Szegedy
 
+  Note: when training, the moving_mean and moving_variance need to be updated.
+  By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
+  need to be added as a dependency to the `train_op`. For example:
+
+  ```python
+    update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
+    with tf.control_dependencies(update_ops):
+      train_op = optimizer.minimize(loss)
+  ```
+
   Arguments:
     inputs: Tensor input.
     axis: Integer, the axis that should be normalized (typically the features
