@@ -78,14 +78,22 @@ class ExampleExecutor : public internal::StreamExecutorInterface {
               uint64 size) override;
   bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *pop_dst,
                             const DeviceMemoryBase &host_src,
-                            uint64 size) override { return false; }
+                            uint64 size) override {
+    return false;
+  }
 
   bool MemZero(Stream *stream, DeviceMemoryBase *location,
-               uint64 size) override { return false; }
+               uint64 size) override {
+    return false;
+  }
   bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
-              uint64 size) override { return false; }
+              uint64 size) override {
+    return false;
+  }
   bool Memset32(Stream *stream, DeviceMemoryBase *location, uint32 pattern,
-                uint64 size) override { return false; }
+                uint64 size) override {
+    return false;
+  }
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return false; }
@@ -94,7 +102,9 @@ class ExampleExecutor : public internal::StreamExecutorInterface {
   }
 
   bool SynchronousMemSet(DeviceMemoryBase *location, int value,
-                         uint64 size) override { return false; }
+                         uint64 size) override {
+    return false;
+  }
 
   port::Status SynchronousMemcpy(DeviceMemoryBase *pop_dst,
                                  const void *host_src, uint64 size) override;
@@ -166,10 +176,14 @@ class ExampleExecutor : public internal::StreamExecutorInterface {
   }
 
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
-      override { return nullptr; }
+      override {
+    return nullptr;
+  }
 
   std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
-      override { return nullptr; }
+      override {
+    return nullptr;
+  }
 
   std::unique_ptr<internal::StreamInterface> GetStreamImplementation()
       override {
@@ -180,19 +194,16 @@ class ExampleExecutor : public internal::StreamExecutorInterface {
     return std::unique_ptr<internal::TimerInterface>(new host::HostTimer());
   }
 
-  port::StatusOr<DeviceMemoryBase>
-  ExecuteGraph(const xla::Shape& shape, Args args);
+  port::StatusOr<DeviceMemoryBase> ExecuteGraph(const xla::Shape &shape,
+                                                Args args);
 
  private:
+  DeviceMemoryBase AllocateSingleOutput(const xla::Shape &shape);
 
-  DeviceMemoryBase
-  AllocateSingleOutput(const xla::Shape& shape);
-
-  port::StatusOr<DeviceMemoryBase>
-  AllocateOutputBuffer(const xla::Shape& shape);
+  port::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(
+      const xla::Shape &shape);
 
   const PluginConfig plugin_config_;
-
 };
 
 }  // namespace exampleplugin
