@@ -443,7 +443,7 @@ class ApplyDelayCompensatedGradientDescentOp : public OpKernel {
     const Device& device = ctx->template eigen_device<Device>();
     functor::ApplyDelayCompensatedGradientDescent<Device, T>()(
         device, var.flat<T>(), alpha.scalar<T>(), delta.flat<T>(),
-         lambda.scalar<T>(), shadow.flat<T>()
+        lambda.scalar<T>(), shadow.flat<T>()
     );
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
@@ -457,6 +457,8 @@ class ApplyDelayCompensatedGradientDescentOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                     \
       Name("ApplyDelayCompensatedGradientDescent")             \
           .Device(DEVICE_##D)                                  \
+          .HostMemory("var")                                   \
+          .HostMemory("shadow")                                \
           .TypeConstraint<T>("T"),                             \
       ApplyDelayCompensatedGradientDescentOp<D##Device, T>);
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
