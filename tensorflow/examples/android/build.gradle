@@ -186,6 +186,6 @@ apply from: "download-models.gradle"
 
 dependencies {
     if (nativeBuildSystem == 'cmake' || nativeBuildSystem == 'none') {
-        compile 'org.tensorflow:tensorflow-android:1.2.0-preview'
+        compile 'org.tensorflow:tensorflow-android:+'
     }
 }
