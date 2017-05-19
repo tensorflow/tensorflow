@@ -140,6 +140,7 @@ from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import lookup_ops
@@ -1443,9 +1444,7 @@ class _LazyBuilder(object):
       return self._feature_tensors[key]
 
     if key in self._features:
-      # FeatureColumn is a raw feature.
-      feature_tensor = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(
-          self._features[key])
+      feature_tensor = self._maybe_expand_dims(self._features[key])
       self._feature_tensors[key] = feature_tensor
       return feature_tensor
 
@@ -1463,6 +1462,41 @@ class _LazyBuilder(object):
       raise ValueError('Column {} is not supported.'.format(column.name))
     self._feature_tensors[column] = transformed
     return transformed
+
+  def _maybe_expand_dims(self, raw_feature):
+    """Converts the `raw_feature` to (sparse) tensor and maybe expand dim.
+
+    For both `Tensor` and `SparseTensor`, the rank will be expanded (to 2) if
+    the rank is 1. This supports dynamic rank also.
+
+    Args:
+      raw_feature: The raw feature from FeatureColumn.
+
+    Returns:
+      A `Tensor` or `SparseTensor`.
+    """
+    feature_tensor = sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(
+        raw_feature)
+
+    rank = feature_tensor.get_shape().ndims
+    if (rank is not None) and rank != 1:
+      return feature_tensor
+
+    def expand_dims(input_tensor):
+      # Input_tensor has rank 1.
+      if isinstance(input_tensor, sparse_tensor_lib.SparseTensor):
+        return sparse_ops.sparse_reshape(
+            input_tensor, [array_ops.shape(input_tensor)[0], -1])
+      else:
+        return array_ops.expand_dims(input_tensor, -1)
+
+    if rank is None:
+      return control_flow_ops.cond(
+          math_ops.equal(1, array_ops.rank(feature_tensor)),
+          lambda: expand_dims(feature_tensor),
+          lambda: feature_tensor)
+    else:
+      return expand_dims(feature_tensor)
 
 
 # TODO(ptucker): Move to third_party/tensorflow/python/ops/sparse_ops.py
@@ -2364,12 +2398,6 @@ class _IndicatorColumn(_DenseColumn,
         depth=self._variable_shape[-1],
         on_value=1.0,
         off_value=0.0)
-
-    output_rank = one_hot_id_tensor.get_shape().ndims
-    if output_rank is None:
-      raise ValueError('Input rank should be known at graph building time.')
-    if output_rank <= 2:
-      return one_hot_id_tensor
 
     # Reduce to get a multi-hot per example.
     return math_ops.reduce_sum(one_hot_id_tensor, axis=[-2])

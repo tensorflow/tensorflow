@@ -511,9 +511,7 @@ class BaseSaverBuilder(object):
           raise ValueError("At least two variables have the same name: %s" %
                            var.name)
         names_to_saveables[var.name] = var
-      elif ((isinstance(var, variables.Variable) or
-             isinstance(var, resource_variable_ops.ResourceVariable)) and
-            var._save_slice_info):
+      elif isinstance(var, variables.Variable) and var._save_slice_info:
         name = var._save_slice_info.full_name
         if name in names_to_saveables:
           if not isinstance(names_to_saveables[name], list):
@@ -573,8 +571,7 @@ class BaseSaverBuilder(object):
         slice_name = None
         # pylint: disable=protected-access
         for variable in op:
-          if (not isinstance(variable, variables.Variable) and
-              not isinstance(variable, resource_variable_ops.ResourceVariable)):
+          if not isinstance(variable, variables.Variable):
             raise ValueError("Slices must all be Variables: %s" % variable)
           if not variable._save_slice_info:
             raise ValueError("Slices must all be slices: %s" % variable)

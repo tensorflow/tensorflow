@@ -154,4 +154,23 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfParameterUnfused) {
           .ValueOrDie());
 }
 
+TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusable) {
+  HloComputation::Builder builder(TestName());
+  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {16, 16}), "0"));
+  HloInstruction* unary1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kFloor, param0));
+  builder.AddInstruction(HloInstruction::CreateSend(unary1, 0));
+  HloInstruction* unary2 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kAbs, unary1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(unary2, computation->root_instruction());
+  EXPECT_FALSE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie());
+}
+
 }  // namespace xla

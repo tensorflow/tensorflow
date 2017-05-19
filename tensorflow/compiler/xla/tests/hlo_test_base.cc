@@ -94,10 +94,10 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
           << LayoutUtil::HumanString(module_config->entry_computation_layout()
                                          .result_layout()
                                          .layout());
+  hlo_module->set_config(*module_config);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend_->compiler()->Compile(std::move(hlo_module),
-                                    std::move(module_config), test_hlo_dumper_,
+      backend_->compiler()->Compile(std::move(hlo_module), test_hlo_dumper_,
                                     backend_->default_stream_executor()));
 
   se::Stream stream(backend_->default_stream_executor());

@@ -24,6 +24,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
 
+
+
 class DecodeBmpOpTest(test.TestCase):
 
   def testex1(self):
@@ -61,6 +63,7 @@ class DecodeBmpOpTest(test.TestCase):
     with self.test_session():
       decoded = decode.eval()
       self.assertAllEqual(decoded, img_bytes)
+
 
 if __name__ == "__main__":
   test.main()

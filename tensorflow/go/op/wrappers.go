@@ -1661,82 +1661,6 @@ func ShapeN(scope *Scope, input []tf.Output, optional ...ShapeNAttr) (output []t
 	return output
 }
 
-// Reshapes a tensor.
-//
-// Given `tensor`, this operation returns a tensor that has the same values
-// as `tensor` with shape `shape`.
-//
-// If one component of `shape` is the special value -1, the size of that dimension
-// is computed so that the total size remains constant.  In particular, a `shape`
-// of `[-1]` flattens into 1-D.  At most one component of `shape` can be -1.
-//
-// If `shape` is 1-D or higher, then the operation returns a tensor with shape
-// `shape` filled with the values of `tensor`. In this case, the number of elements
-// implied by `shape` must be the same as the number of elements in `tensor`.
-//
-// For example:
-//
-// ```
-// # tensor 't' is [1, 2, 3, 4, 5, 6, 7, 8, 9]
-// # tensor 't' has shape [9]
-// reshape(t, [3, 3]) ==> [[1, 2, 3],
-//                         [4, 5, 6],
-//                         [7, 8, 9]]
-//
-// # tensor 't' is [[[1, 1], [2, 2]],
-// #                [[3, 3], [4, 4]]]
-// # tensor 't' has shape [2, 2, 2]
-// reshape(t, [2, 4]) ==> [[1, 1, 2, 2],
-//                         [3, 3, 4, 4]]
-//
-// # tensor 't' is [[[1, 1, 1],
-// #                 [2, 2, 2]],
-// #                [[3, 3, 3],
-// #                 [4, 4, 4]],
-// #                [[5, 5, 5],
-// #                 [6, 6, 6]]]
-// # tensor 't' has shape [3, 2, 3]
-// # pass '[-1]' to flatten 't'
-// reshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]
-//
-// # -1 can also be used to infer the shape
-//
-// # -1 is inferred to be 9:
-// reshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
-//                          [4, 4, 4, 5, 5, 5, 6, 6, 6]]
-// # -1 is inferred to be 2:
-// reshape(t, [-1, 9]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
-//                          [4, 4, 4, 5, 5, 5, 6, 6, 6]]
-// # -1 is inferred to be 3:
-// reshape(t, [ 2, -1, 3]) ==> [[[1, 1, 1],
-//                               [2, 2, 2],
-//                               [3, 3, 3]],
-//                              [[4, 4, 4],
-//                               [5, 5, 5],
-//                               [6, 6, 6]]]
-//
-// # tensor 't' is [7]
-// # shape `[]` reshapes to a scalar
-// reshape(t, []) ==> 7
-// ```
-//
-// Arguments:
-//
-//	shape: Defines the shape of the output tensor.
-func Reshape(scope *Scope, tensor tf.Output, shape tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Reshape",
-		Input: []tf.Input{
-			tensor, shape,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Checks a tensor for NaN and Inf values.
 //
 // When run, reports an `InvalidArgument` error if `tensor` has any values
@@ -5196,6 +5120,128 @@ func SparseTensorSliceDataset(scope *Scope, indices tf.Output, values tf.Output,
 		Type: "SparseTensorSliceDataset",
 		Input: []tf.Input{
 			indices, values, dense_shape,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Reshapes a tensor.
+//
+// Given `tensor`, this operation returns a tensor that has the same values
+// as `tensor` with shape `shape`.
+//
+// If one component of `shape` is the special value -1, the size of that dimension
+// is computed so that the total size remains constant.  In particular, a `shape`
+// of `[-1]` flattens into 1-D.  At most one component of `shape` can be -1.
+//
+// If `shape` is 1-D or higher, then the operation returns a tensor with shape
+// `shape` filled with the values of `tensor`. In this case, the number of elements
+// implied by `shape` must be the same as the number of elements in `tensor`.
+//
+// For example:
+//
+// ```
+// # tensor 't' is [1, 2, 3, 4, 5, 6, 7, 8, 9]
+// # tensor 't' has shape [9]
+// reshape(t, [3, 3]) ==> [[1, 2, 3],
+//                         [4, 5, 6],
+//                         [7, 8, 9]]
+//
+// # tensor 't' is [[[1, 1], [2, 2]],
+// #                [[3, 3], [4, 4]]]
+// # tensor 't' has shape [2, 2, 2]
+// reshape(t, [2, 4]) ==> [[1, 1, 2, 2],
+//                         [3, 3, 4, 4]]
+//
+// # tensor 't' is [[[1, 1, 1],
+// #                 [2, 2, 2]],
+// #                [[3, 3, 3],
+// #                 [4, 4, 4]],
+// #                [[5, 5, 5],
+// #                 [6, 6, 6]]]
+// # tensor 't' has shape [3, 2, 3]
+// # pass '[-1]' to flatten 't'
+// reshape(t, [-1]) ==> [1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6]
+//
+// # -1 can also be used to infer the shape
+//
+// # -1 is inferred to be 9:
+// reshape(t, [2, -1]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
+//                          [4, 4, 4, 5, 5, 5, 6, 6, 6]]
+// # -1 is inferred to be 2:
+// reshape(t, [-1, 9]) ==> [[1, 1, 1, 2, 2, 2, 3, 3, 3],
+//                          [4, 4, 4, 5, 5, 5, 6, 6, 6]]
+// # -1 is inferred to be 3:
+// reshape(t, [ 2, -1, 3]) ==> [[[1, 1, 1],
+//                               [2, 2, 2],
+//                               [3, 3, 3]],
+//                              [[4, 4, 4],
+//                               [5, 5, 5],
+//                               [6, 6, 6]]]
+//
+// # tensor 't' is [7]
+// # shape `[]` reshapes to a scalar
+// reshape(t, []) ==> 7
+// ```
+//
+// Arguments:
+//
+//	shape: Defines the shape of the output tensor.
+func Reshape(scope *Scope, tensor tf.Output, shape tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Reshape",
+		Input: []tf.Input{
+			tensor, shape,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Greedily selects a subset of bounding boxes in descending order of score,
+//
+// pruning away boxes that have high intersection-over-union (IOU) overlap
+// with previously selected boxes.  Bounding boxes are supplied as
+// [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+// diagonal pair of box corners and the coordinates can be provided as normalized
+// (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+// is agnostic to where the origin is in the coordinate system.  Note that this
+// algorithm is invariant to orthogonal transformations and translations
+// of the coordinate system; thus translating or reflections of the coordinate
+// system result in the same boxes being selected by the algorithm.
+//
+// The output of this operation is a set of integers indexing into the input
+// collection of bounding boxes representing the selected boxes.  The bounding
+// box coordinates corresponding to the selected indices can then be obtained
+// using the `tf.gather operation`.  For example:
+//
+//   selected_indices = tf.image.non_max_suppression_v2(
+//       boxes, scores, max_output_size, iou_threshold)
+//   selected_boxes = tf.gather(boxes, selected_indices)
+//
+// Arguments:
+//	boxes: A 2-D float tensor of shape `[num_boxes, 4]`.
+//	scores: A 1-D float tensor of shape `[num_boxes]` representing a single
+// score corresponding to each box (each row of boxes).
+//	max_output_size: A scalar integer tensor representing the maximum number of
+// boxes to be selected by non max suppression.
+//	iou_threshold: A 0-D float tensor representing the threshold for deciding whether
+// boxes overlap too much with respect to IOU.
+//
+// Returns A 1-D integer tensor of shape `[M]` representing the selected
+// indices from the boxes tensor, where `M <= max_output_size`.
+func NonMaxSuppressionV2(scope *Scope, boxes tf.Output, scores tf.Output, max_output_size tf.Output, iou_threshold tf.Output) (selected_indices tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "NonMaxSuppressionV2",
+		Input: []tf.Input{
+			boxes, scores, max_output_size, iou_threshold,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -9051,7 +9097,7 @@ func SdcaOptimizerAdaptative(value bool) SdcaOptimizerAttr {
 //	example_labels: a vector which contains the label/target associated with each
 // example.
 //	sparse_indices: a list of vectors where each value is the indices which has
-// corresponding weights in sparse_weights. This field maybe ommitted for the
+// corresponding weights in sparse_weights. This field maybe omitted for the
 // dense approach.
 //	sparse_weights: a list of vectors where each value is the weight associated with
 // a sparse feature group.
@@ -9598,6 +9644,51 @@ func AddSparseToTensorsMap(scope *Scope, sparse_indices tf.Output, sparse_values
 		Type: "AddSparseToTensorsMap",
 		Input: []tf.Input{
 			sparse_indices, sparse_values, sparse_shape,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DecodeBmpAttr is an optional argument to DecodeBmp.
+type DecodeBmpAttr func(optionalAttr)
+
+// DecodeBmpChannels sets the optional channels attribute to value.
+// If not specified, defaults to 0
+func DecodeBmpChannels(value int64) DecodeBmpAttr {
+	return func(m optionalAttr) {
+		m["channels"] = value
+	}
+}
+
+// Decode the first frame of a BMP-encoded image to a uint8 tensor.
+//
+// The attr `channels` indicates the desired number of color channels for the
+// decoded image.
+//
+// Accepted values are:
+//
+// *   0: Use the number of channels in the BMP-encoded image.
+// *   3: output an RGB image.
+// *   4: output an RGBA image.
+//
+// Arguments:
+//	contents: 0-D.  The BMP-encoded image.
+//
+// Returns 3-D with shape `[height, width, channels]`. RGB order
+func DecodeBmp(scope *Scope, contents tf.Output, optional ...DecodeBmpAttr) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeBmp",
+		Input: []tf.Input{
+			contents,
 		},
 		Attrs: attrs,
 	}
@@ -11835,6 +11926,16 @@ type ResourceApplyAdamAttr func(optionalAttr)
 func ResourceApplyAdamUseLocking(value bool) ResourceApplyAdamAttr {
 	return func(m optionalAttr) {
 		m["use_locking"] = value
+	}
+}
+
+// ResourceApplyAdamUseNesterov sets the optional use_nesterov attribute to value.
+//
+// value: If `True`, uses the nesterov update.
+// If not specified, defaults to false
+func ResourceApplyAdamUseNesterov(value bool) ResourceApplyAdamAttr {
+	return func(m optionalAttr) {
+		m["use_nesterov"] = value
 	}
 }
 
@@ -14198,12 +14299,10 @@ func NonMaxSuppressionIouThreshold(value float32) NonMaxSuppressionAttr {
 // algorithm is invariant to orthogonal transformations and translations
 // of the coordinate system; thus translating or reflections of the coordinate
 // system result in the same boxes being selected by the algorithm.
-//
 // The output of this operation is a set of integers indexing into the input
 // collection of bounding boxes representing the selected boxes.  The bounding
 // box coordinates corresponding to the selected indices can then be obtained
 // using the `tf.gather operation`.  For example:
-//
 //   selected_indices = tf.image.non_max_suppression(
 //       boxes, scores, max_output_size, iou_threshold)
 //   selected_boxes = tf.gather(boxes, selected_indices)

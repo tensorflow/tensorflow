@@ -259,6 +259,7 @@ class EstimatorConstructorTest(test.TestCase):
   def test_if_model_fn_is_a_member_function_of_a_class(self):
 
     class ModelFnClass(object):
+
       def __init__(self):
         estimator.Estimator(model_fn=self.model_fn)
 

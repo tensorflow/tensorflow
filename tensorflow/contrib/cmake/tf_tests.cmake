@@ -157,6 +157,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
   set(tf_test_src_py_exclude
     # Python source line inspection tests are flaky on Windows (b/36375074).
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/analyzer_cli_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/debug/cli/profile_analyzer_cli_test.py"
     # Windows does not have the curses library and uses readline.
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
     # generally not working
@@ -283,6 +284,7 @@ if (tensorflow_BUILD_CC_TESTS)
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/call_options_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/distributed_runtime/tensor_coding_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_execute_utils_test.cc"
+    "${tensorflow_source_dir}/tensorflow/core/kernels/remote_fused_graph_rewriter_transform_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/graph_transferer_test.cc"
     "${tensorflow_source_dir}/tensorflow/core/kernels/hexagon/quantized_matmul_op_for_hexagon_test.cc"
   )

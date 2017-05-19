@@ -51,7 +51,8 @@ Status DebugGraphDecorator::DecorateGraph(Graph* graph, Device* device) {
       debug_options_.debug_tensor_watch_opts(), graph, device);
 }
 
-Status DebugGraphDecorator::PublishGraph(const Graph& graph) {
+Status DebugGraphDecorator::PublishGraph(const Graph& graph,
+                                         const string& device_name) {
   std::unordered_set<string> debug_urls;
   for (const DebugTensorWatch& watch :
        debug_options_.debug_tensor_watch_opts()) {
@@ -60,7 +61,7 @@ Status DebugGraphDecorator::PublishGraph(const Graph& graph) {
     }
   }
 
-  return DebugIO::PublishGraph(graph, debug_urls);
+  return DebugIO::PublishGraph(graph, device_name, debug_urls);
 }
 
 }  // namespace tensorflow
