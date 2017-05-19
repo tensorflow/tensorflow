@@ -15,11 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/remote_fused_graph_execute_utils.h"
 #include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/cc/ops/array_ops.h"
-#include "tensorflow/cc/ops/const_op.h"
-#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
-#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/kernels/remote_fused_graph_execute_op_test_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -47,69 +43,12 @@ static NodeDef* GetNodeDef(const string& name, GraphDef* def) {
   return nullptr;
 }
 
-// This function builds the following graph
-//
-//  A         B         C         D         E
-//  |         |         |         |         |
-//  +----+----+         |         +----+----+
-//       |              |              |
-//       F             / \             G
-//       |            |   |           / \
-//       +-----+------+   +-----+----+   +
-//             |                |        |
-//             H                I        |
-//             |                |        |
-//             +-------+--------+        |
-//                     |                 |
-//                     J                 |
-//                     |                 |
-//                     +--------+--------+
-//                              |
-//                              K
-//
-Status BuildMultipleAddGraph(GraphDef* graph_def) {
-  Scope root = tensorflow::Scope::NewRootScope();
-
-  Tensor a_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
-  test::FillIota<float>(&a_data, 1.0f);
-  Output a_const = ops::Const(root.WithOpName("A"), Input::Initializer(a_data));
-
-  Tensor b_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
-  test::FillIota<float>(&b_data, 1.0f);
-  Output b_const = ops::Const(root.WithOpName("B"), Input::Initializer(b_data));
-
-  Tensor c_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
-  test::FillIota<float>(&c_data, 1.0f);
-  Output c_const = ops::Const(root.WithOpName("C"), Input::Initializer(c_data));
-
-  Tensor d_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
-  test::FillIota<float>(&d_data, 1.0f);
-  Output d_const = ops::Const(root.WithOpName("D"), Input::Initializer(d_data));
-
-  Tensor e_data(DT_FLOAT, TensorShape({1, 1, 1, 1}));
-  test::FillIota<float>(&e_data, 1.0f);
-  Output e_const = ops::Const(root.WithOpName("E"), Input::Initializer(e_data));
-
-  Output f_add = ops::Add(root.WithOpName("F"), a_const, b_const);
-
-  Output g_add = ops::Add(root.WithOpName("G"), d_const, e_const);
-
-  Output h_add = ops::Add(root.WithOpName("H"), f_add, c_const);
-
-  Output i_add = ops::Add(root.WithOpName("I"), c_const, g_add);
-
-  Output j_add = ops::Add(root.WithOpName("J"), h_add, i_add);
-
-  Output k_add = ops::Add(root.WithOpName("K"), j_add, g_add);
-
-  TF_RETURN_IF_ERROR(root.ToGraphDef(graph_def));
-
-  return Status::OK();
-}
-
 class FuseRemoteGraphMultipleAddOpsTest : public ::testing::Test {
  protected:
-  void SetUp() final { TF_ASSERT_OK(BuildMultipleAddGraph(&graph_def_)); }
+  void SetUp() final {
+    TF_ASSERT_OK(
+        RemoteFusedGraphExecuteOpTestUtils::BuildMultipleAddGraph(&graph_def_));
+  }
 
   void TearDown() final {}
 
@@ -196,8 +135,9 @@ static void ClearCluster(ClusterInfo* cluster) {
 }
 
 TEST(RemoteFusedGraphExecuteUtils, DryRunAddGraphA) {
-  GraphDef def = RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
-      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
+  GraphDef def;
+  TF_ASSERT_OK(RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
+      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &def));
   std::pair<string, Tensor> input_node_info;
   input_node_info.first = NAME_A;
   input_node_info.second = Tensor(DT_FLOAT, {});
@@ -216,8 +156,9 @@ TEST(RemoteFusedGraphExecuteUtils, DryRunAddGraphA) {
 }
 
 TEST(RemoteFusedGraphExecuteUtils, DryRunAddGraphAUninitialized) {
-  GraphDef def = RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
-      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
+  GraphDef def;
+  TF_ASSERT_OK(RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
+      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &def));
   std::pair<string, Tensor> input_node_info;
   input_node_info.first = NAME_A;
   input_node_info.second = Tensor(DT_FLOAT, {});
@@ -235,8 +176,9 @@ TEST(RemoteFusedGraphExecuteUtils, DryRunAddGraphAUninitialized) {
 }
 
 TEST(RemoteFusedGraphExecuteUtils, DryRunAddGraphAB) {
-  GraphDef def = RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
-      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
+  GraphDef def;
+  TF_ASSERT_OK(RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
+      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &def));
   std::pair<string, Tensor> input_node_info_a;
   input_node_info_a.first = NAME_A;
   input_node_info_a.second = Tensor(DT_FLOAT, {});
@@ -268,8 +210,9 @@ TEST(RemoteFusedGraphExecuteUtils, DryRunAddGraphForAllNodes) {
   const std::vector<std::pair<string, Tensor>> inputs{input_node_info_a};
   RemoteFusedGraphExecuteUtils::TensorShapeMap tensor_shape_map;
 
-  GraphDef def = RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
-      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
+  GraphDef def;
+  TF_ASSERT_OK(RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
+      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &def));
 
   // dryrun
   const Status status = RemoteFusedGraphExecuteUtils::DryRunInferenceForAllNode(
@@ -310,8 +253,9 @@ TEST(RemoteFusedGraphExecuteUtils, PropagateAndBuildTensorShapeMap) {
                                                       input_node_info_b};
 
   RemoteFusedGraphExecuteUtils::TensorShapeMap tensor_shape_map;
-  GraphDef def = RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
-      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
+  GraphDef def;
+  TF_ASSERT_OK(RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
+      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &def));
   ImportGraphDefOptions opts;
   Graph graph(OpRegistry::Global());
   ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
@@ -398,8 +342,9 @@ TEST(RemoteFusedGraphExecuteUtils,
   // Build outputs
   const std::vector<string> outputs = {NAME_A_PLUS_B};
 
-  GraphDef def = RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
-      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
+  GraphDef def;
+  TF_ASSERT_OK(RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
+      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &def));
   TF_ASSERT_OK(RemoteFusedGraphExecuteUtils::BuildAndAddTensorShapes(
       input_tensors, /*dry_run_inference*/ true, &def));
 
@@ -427,8 +372,9 @@ TEST(RemoteFusedGraphExecuteUtils, BuildRemoteFusedGraphExecuteOpNode) {
   // Build outputs
   const std::vector<string> outputs = {NAME_A_PLUS_B};
 
-  const GraphDef def = RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
-      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B);
+  GraphDef def;
+  TF_ASSERT_OK(RemoteFusedGraphExecuteOpTestUtils::BuildAddGraph(
+      NAME_A, NODE_A_VAL, NAME_B, NODE_B_VAL, NAME_A_PLUS_B, &def));
 
   Graph graph(OpRegistry::Global());
   ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
@@ -442,7 +388,8 @@ TEST(RemoteFusedGraphExecuteUtils, BuildRemoteFusedGraphExecuteOpNode) {
 
 TEST(RemoteFusedGraphExecuteUtils, ExtractSubgraphNodes) {
   GraphDef graph_def;
-  TF_ASSERT_OK(BuildMultipleAddGraph(&graph_def));
+  TF_ASSERT_OK(
+      RemoteFusedGraphExecuteOpTestUtils::BuildMultipleAddGraph(&graph_def));
   ClusterInfo cluster;
   const std::unordered_set<string>& node_names = std::get<0>(cluster);
   TF_ASSERT_OK(RemoteFusedGraphExecuteUtils::BuildClusterByBorder(
@@ -472,7 +419,8 @@ TEST(RemoteFusedGraphExecuteUtils, ExtractSubgraphNodes) {
 
 TEST(RemoteFusedGraphExecuteUtils, ClusterizeNodes) {
   GraphDef graph_def;
-  TF_ASSERT_OK(BuildMultipleAddGraph(&graph_def));
+  TF_ASSERT_OK(
+      RemoteFusedGraphExecuteOpTestUtils::BuildMultipleAddGraph(&graph_def));
 
   std::vector<ClusterInfo> ci_vec;
   TF_ASSERT_OK(
@@ -508,7 +456,8 @@ TEST(RemoteFusedGraphExecuteUtils, ClusterizeNodes) {
 
 TEST(RemoteFusedGraphExecuteUtils, BuildSubgraphDefByInOut) {
   GraphDef graph_def;
-  TF_ASSERT_OK(BuildMultipleAddGraph(&graph_def));
+  TF_ASSERT_OK(
+      RemoteFusedGraphExecuteOpTestUtils::BuildMultipleAddGraph(&graph_def));
 
   ClusterInfo cluster;
   GraphDef subgraph_def;
@@ -556,7 +505,7 @@ TEST(RemoteFusedGraphExecuteUtils, BuildSubgraphDefByInOut) {
   EXPECT_EQ(3, subgraph_def.node_size());
 }
 
-TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_hi_j) {
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_HI_J) {
   SetSubgraphArguments(std::vector<string>{"H", "I"}, std::vector<string>{"J"},
                        this);
 
@@ -569,7 +518,7 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_hi_j) {
       << SummarizeGraphDef(result_graph_def_);
 }
 
-TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_fcg_j) {
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_FCG_J) {
   SetSubgraphArguments(std::vector<string>{"F", "C", "G"},
                        std::vector<string>{"J"}, this);
 
@@ -582,7 +531,7 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_fcg_j) {
       << SummarizeGraphDef(result_graph_def_);
 }
 
-TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_abcde_j) {
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_ABCDE_J) {
   SetSubgraphArguments(std::vector<string>{"A", "B", "C", "D", "E"},
                        std::vector<string>{"J"}, this);
 
@@ -595,7 +544,7 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_abcde_j) {
       << SummarizeGraphDef(result_graph_def_);
 }
 
-TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_abcde_k) {
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_ABCDE_K) {
   SetSubgraphArguments(std::vector<string>{"A", "B", "C", "D", "E"},
                        std::vector<string>{"K"}, this);
 
@@ -608,7 +557,7 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByInOut_abcde_k) {
       << SummarizeGraphDef(result_graph_def_);
 }
 
-TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_h) {
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_H) {
   subgraph_node_names_ = {"H"};
 
   TF_ASSERT_OK(FuseByNodes());
@@ -620,7 +569,7 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_h) {
       << SummarizeGraphDef(result_graph_def_);
 }
 
-TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_hij) {
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_HIJ) {
   subgraph_node_names_ = {"H", "I", "J"};
 
   TF_ASSERT_OK(FuseByNodes());
@@ -632,7 +581,7 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_hij) {
       << SummarizeGraphDef(result_graph_def_);
 }
 
-TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_cfghij) {
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_CFGHIJ) {
   subgraph_node_names_ = {"C", "F", "G", "H", "I", "J"};
 
   TF_ASSERT_OK(FuseByNodes());
@@ -644,7 +593,7 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_cfghij) {
       << SummarizeGraphDef(result_graph_def_);
 }
 
-TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_abcdefghij) {
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_ABCDEFGHIJ) {
   subgraph_node_names_ = {"A", "B", "C", "D", "E", "F", "G", "H", "I", "J"};
 
   TF_ASSERT_OK(FuseByNodes());
@@ -656,7 +605,7 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_abcdefghij) {
       << SummarizeGraphDef(result_graph_def_);
 }
 
-TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_abcdefghijk) {
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_ABCDEFGHIJK) {
   subgraph_node_names_ = {"A", "B", "C", "D", "E", "F",
                           "G", "H", "I", "J", "K"};
 

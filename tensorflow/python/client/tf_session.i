@@ -69,7 +69,8 @@ tensorflow::ImportNumpy();
 // represented as a list of strings.
 %typemap(in) const tensorflow::NameVector& (
     tensorflow::NameVector temp,
-    tensorflow::Safe_PyObjectPtr temp_string_list(tensorflow::make_safe(nullptr))) {
+    tensorflow::Safe_PyObjectPtr temp_string_list(
+        tensorflow::make_safe(static_cast<PyObject*>(nullptr)))) {
   if (!PyList_Check($input)) {
     SWIG_fail;
   }
@@ -116,7 +117,7 @@ tensorflow::ImportNumpy();
 
 // Build a Python list of outputs and return it.
 %typemap(argout) tensorflow::PyObjectVector* out_values {
-  tensorflow::Safe_PyObjectVector out_values_safe;
+  std::vector<tensorflow::Safe_PyObjectPtr> out_values_safe;
   for (size_t i = 0; i < $1->size(); ++i) {
     out_values_safe.emplace_back(tensorflow::make_safe($1->at(i)));
   }

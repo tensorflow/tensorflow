@@ -245,8 +245,7 @@ struct ApplyAdamNonCuda {
                   typename TTypes<T>::ConstScalar beta1,
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
-                  typename TTypes<T>::ConstFlat grad,
-                  bool use_nesterov) {
+                  typename TTypes<T>::ConstFlat grad, bool use_nesterov) {
     const T alpha = lr() * Eigen::numext::sqrt(T(1) - beta2_power()) /
                     (T(1) - beta1_power());
     // beta1 == μ
@@ -257,7 +256,8 @@ struct ApplyAdamNonCuda {
     m.device(d) += (grad - m) * (T(1) - beta1());
     v.device(d) += (grad.square() - v) * (T(1) - beta2());
     if (use_nesterov) {
-      var.device(d) -= ((grad * (T(1) - beta1()) + beta1() * m) * alpha) / (v.sqrt() + epsilon());
+      var.device(d) -= ((grad * (T(1) - beta1()) + beta1() * m) * alpha) /
+                       (v.sqrt() + epsilon());
     } else {
       var.device(d) -= (m * alpha) / (v.sqrt() + epsilon());
     }
@@ -2329,12 +2329,11 @@ class ApplyAdamOp : public OpKernel {
                                 grad.shape().DebugString()));
 
     const Device& device = ctx->template eigen_device<Device>();
-    functor::ApplyAdam<Device, T>()(device, var.flat<T>(), m.flat<T>(),
-                                    v.flat<T>(), beta1_power.scalar<T>(),
-                                    beta2_power.scalar<T>(), lr.scalar<T>(),
-                                    beta1.scalar<T>(), beta2.scalar<T>(),
-                                    epsilon.scalar<T>(), grad.flat<T>(),
-                                    use_nesterov_);
+    functor::ApplyAdam<Device, T>()(
+        device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
+        beta1_power.scalar<T>(), beta2_power.scalar<T>(), lr.scalar<T>(),
+        beta1.scalar<T>(), beta2.scalar<T>(), epsilon.scalar<T>(),
+        grad.flat<T>(), use_nesterov_);
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -2385,8 +2384,7 @@ namespace functor {
       typename TTypes<T>::ConstScalar beta1,                  \
       typename TTypes<T>::ConstScalar beta2,                  \
       typename TTypes<T>::ConstScalar epsilon,                \
-      typename TTypes<T>::ConstFlat grad,                     \
-      bool use_nesterov);                                     \
+      typename TTypes<T>::ConstFlat grad, bool use_nesterov); \
   extern template struct ApplyAdam<GPUDevice, T>;
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);

@@ -114,12 +114,14 @@ class GRUCell(RNNCell):
       if self._bias_initializer is None:
         dtype = [a.dtype for a in [inputs, state]][0]
         bias_ones = init_ops.constant_initializer(1.0, dtype=dtype)
-      value = sigmoid(_linear([inputs, state], 2 * self._num_units, True,
-          bias_ones, self._kernel_initializer))
+      value = sigmoid(
+          _linear([inputs, state], 2 * self._num_units, True, bias_ones,
+                  self._kernel_initializer))
       r, u = array_ops.split(value=value, num_or_size_splits=2, axis=1)
     with vs.variable_scope("candidate"):
-      c = self._activation(_linear([inputs, r * state], self._num_units, True,
-          self._bias_initializer, self._kernel_initializer))
+      c = self._activation(
+          _linear([inputs, r * state], self._num_units, True,
+                  self._bias_initializer, self._kernel_initializer))
     new_h = u * state + (1 - u) * c
     return new_h, new_h
 
@@ -977,7 +979,10 @@ class _SlimRNNCell(RNNCell):
     return output, state
 
 
-def _linear(args, output_size, bias, bias_initializer=None,
+def _linear(args,
+            output_size,
+            bias,
+            bias_initializer=None,
             kernel_initializer=None):
   """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
 
@@ -1018,7 +1023,8 @@ def _linear(args, output_size, bias, bias_initializer=None,
   scope = vs.get_variable_scope()
   with vs.variable_scope(scope) as outer_scope:
     weights = vs.get_variable(
-        _WEIGHTS_VARIABLE_NAME, [total_arg_size, output_size], dtype=dtype,
+        _WEIGHTS_VARIABLE_NAME, [total_arg_size, output_size],
+        dtype=dtype,
         initializer=kernel_initializer)
     if len(args) == 1:
       res = math_ops.matmul(args[0], weights)

@@ -232,15 +232,14 @@ GpuCompiler::GpuCompiler()
       pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
+    std::unique_ptr<HloModule> module, HloDumper dump_hlo,
     se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
-  TF_RETURN_IF_ERROR(OptimizeHloModule(hlo_module.get(), dump_hlo,
+  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), dump_hlo,
                                        stream_exec->GetDeviceDescription()));
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(dump_hlo, hlo_module.get(),
-                                                   module_config.get()));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(dump_hlo, module.get(),
+                                                   module->mutable_config()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -253,7 +252,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   };
   llvm_context.setDiagnosticHandler(DiagnosticHandler, &printer);
 
-  llvm::Module llvm_module(hlo_module->name().c_str(), llvm_context);
+  llvm::Module llvm_module(module->name().c_str(), llvm_context);
   // Set the target triple and the data layout.
   llvm_module.setTargetTriple(kTargetTriple);
   llvm_module.setDataLayout(kDataLayout);
@@ -261,29 +260,28 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   // Determine the HLO schedule, which is an ordering of HLO instructions.  This
   // is used by buffer assignment to enable buffer reuse, and the same ordering
   // must also be used to determine the thunk launch schedule.
-  std::unique_ptr<StreamAssignment> stream_assignment =
-      AssignStreams(*hlo_module);
+  std::unique_ptr<StreamAssignment> stream_assignment = AssignStreams(*module);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloSchedule> hlo_schedule,
-      HloSchedule::Build(*hlo_module, *stream_assignment, pointer_size_));
+      HloSchedule::Build(*module, *stream_assignment, pointer_size_));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
-      BufferAssigner::Run(hlo_module.get(), hlo_schedule->ConsumeHloOrdering(),
+      BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
                           [this](const LogicalBuffer& buffer) {
                             return ShapeSizeBytes(buffer.shape());
                           },
                           kMemoryAlignment));
 
-  IrEmitterContext ir_emitter_context(hlo_module.get(), buffer_assignment.get(),
+  IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
                                       &stream_exec->GetDeviceDescription(),
                                       &llvm_module);
 
-  HloComputation* entry_computation = hlo_module->entry_computation();
-  IrEmitterUnnested ir_emitter(*module_config, entry_computation,
-                               module_config->has_hybrid_result(),
+  HloComputation* entry_computation = module->entry_computation();
+  IrEmitterUnnested ir_emitter(module->config(), entry_computation,
+                               module->config().has_hybrid_result(),
                                &ir_emitter_context);
   TF_RETURN_IF_ERROR(
       entry_computation->root_instruction()->Accept(&ir_emitter));
@@ -312,7 +310,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     cc_minor = 0;
   }
   TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
-                                         *module_config, libdevice_dir_));
+                                         module->config(), libdevice_dir_));
 
   VLOG(2) << "LLVM module after optimizations:";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(llvm_module));
@@ -329,8 +327,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   XLA_VLOG_LINES(2, thunk_schedule->ToString());
 
   auto* gpu_executable =
-      new GpuExecutable(*ptx, std::move(thunk_schedule), std::move(hlo_module),
-                        std::move(module_config), std::move(buffer_assignment));
+      new GpuExecutable(*ptx, std::move(thunk_schedule), std::move(module),
+                        std::move(buffer_assignment));
   if (flags->xla_gpu_embed_ir) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -339,9 +337,8 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-    HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
+    std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlos,
+    std::vector<se::StreamExecutor*> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on GPU.");
 }
@@ -349,7 +346,6 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> GpuCompiler::Compile(
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 GpuCompiler::CompileAheadOfTime(
     std::vector<std::unique_ptr<HloModule>> module,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_config,
     HloDumper dump_hlo, const AotCompilationOptions& options) {
   return Unimplemented("not yet implemented: GpuCompiler::CompileAheadOfTime");
 }

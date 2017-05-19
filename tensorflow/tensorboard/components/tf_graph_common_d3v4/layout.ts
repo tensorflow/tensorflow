@@ -103,7 +103,9 @@ export const PARAMS = {
       width: 60,
       maxLabelWidth: 52,
       /** A scale for the node's height based on number of nodes inside */
-      height: d3.scaleLinear().domain([1, 200]).range([15, 60]).clamp(true),
+      // Hack - set this as an any type to avoid issues in exporting a type
+      // from an external module.
+      height: (d3 as any).scaleLinear().domain([1, 200]).range([15, 60]).clamp(true),
       /** The radius of the circle denoting the expand button. */
       expandButtonRadius: 3
     },

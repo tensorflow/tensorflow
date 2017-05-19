@@ -101,7 +101,6 @@ class StridedSliceOp : public XlaOpKernel {
     // to pull out each of the strided slices, and Concat to put them
     // together again.
     if (!simple_strides) {
-
       // Re-adjust the begin and end now that the periphery has been
       // sliced away.
       for (int d = 0; d < strides.size(); ++d) {
@@ -116,9 +115,9 @@ class StridedSliceOp : public XlaOpKernel {
           int64 end = slice_end[d];
           for (int64 i = 0; i < end; i += stride) {
             slice_begin[d] = i;
-            slice_end[d] = i+1;
-            to_concat.push_back(ctx->builder()->Slice(slice, slice_begin,
-                                                      slice_end));
+            slice_end[d] = i + 1;
+            to_concat.push_back(
+                ctx->builder()->Slice(slice, slice_begin, slice_end));
           }
           slice = ctx->builder()->ConcatInDim(to_concat, d);
           slice_begin[d] = 0;
