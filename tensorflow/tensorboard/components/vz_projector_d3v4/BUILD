@@ -352,3 +352,97 @@ filegroup(
     srcs = glob(["**"]),
     tags = ["notsan"],
 )
+
+#### Legacy for other consumers
+load(
+    "//tensorflow/tensorboard:defs.bzl",
+    "tensorboard_webcomponent_library",
+    "tensorboard_ts_library",
+    "tensorboard_ts_declaration",
+)
+
+# Standalone embedding projector demos should depend on this target. We
+# exclude the HTML file for the dashboard itself. Demos do not need that
+# HTML file. This was introduced because standalone demos as of today
+# have an additional Closure pass that uses a compilation configuration
+# stricter than that of TensorBoard.
+
+_PROJECTOR_LIB_TS_LIB_DEPS = [
+    ":ts_lib",
+    ":tsne_ts_lib",
+]
+
+_PROJECTOR_DESTDIR = "vz-projector"
+
+_PROJECTOR_LIB_DEPS = [
+    "//third_party/javascript/polymer/v1/iron-collapse:lib",
+    "//third_party/javascript/polymer/v1/iron-icons:lib",
+    "//third_party/javascript/polymer/v1/paper-button:lib",
+    "//third_party/javascript/polymer/v1/paper-checkbox:lib",
+    "//third_party/javascript/polymer/v1/paper-dialog:lib",
+    "//third_party/javascript/polymer/v1/paper-dialog-scrollable:lib",
+    "//third_party/javascript/polymer/v1/paper-dropdown-menu:lib",
+    "//third_party/javascript/polymer/v1/paper-icon-button:lib",
+    "//third_party/javascript/polymer/v1/paper-input:lib",
+    "//third_party/javascript/polymer/v1/paper-item:lib",
+    "//third_party/javascript/polymer/v1/paper-listbox:lib",
+    "//third_party/javascript/polymer/v1/paper-slider:lib",
+    "//third_party/javascript/polymer/v1/paper-spinner:lib",
+    "//third_party/javascript/polymer/v1/paper-toast:lib",
+    "//third_party/javascript/polymer/v1/paper-toggle-button:lib",
+    "//third_party/javascript/polymer/v1/paper-tooltip:lib",
+    "//third_party/javascript/polymer/v1/polymer:lib",
+]
+
+tensorboard_ts_library(
+    name = "tsne_ts_lib",
+    srcs = [
+        "bh_tsne.ts",
+        "sptree.ts",
+    ],
+)
+
+tensorboard_ts_declaration(
+    name = "external",
+    srcs = ["external.d.ts"],
+)
+
+tensorboard_ts_library(
+    name = "ts_lib",
+    srcs = glob(
+        ["*.ts"],
+        exclude = [
+            "*.d.ts",
+            "*_test.ts",
+            "bh_tsne.ts",
+            "sptree.ts",
+        ],
+    ),
+    runtime_deps = [
+        "//third_party/javascript/d3/v4:d3",
+        "//third_party/javascript/numericjs",
+        "//third_party/javascript/threejs/r77:threejs",
+        "//third_party/javascript/threejs/r77/examples/js/controls:orbitcontrols",
+        "//third_party/javascript/weblas",
+    ],
+    deps = [
+        ":external",
+        ":tsne_ts_lib",
+        "//third_party/javascript/node_modules/typescript:es2015.promise",
+        "//third_party/javascript/typings/d3_v4:bundle",
+        "//third_party/javascript/typings/polymer:polymer_without_externs",
+        "//third_party/javascript/typings/threejs:three",
+        "//third_party/javascript/typings/webcomponents_js",
+    ],
+)
+
+tensorboard_webcomponent_library(
+    name = "lib",
+    srcs = glob(
+        ["*.html"],
+        exclude = ["vz-projector-dashboard.html"],
+    ),
+    ts_lib_deps = _PROJECTOR_LIB_TS_LIB_DEPS,
+    destdir = _PROJECTOR_DESTDIR,
+    deps = _PROJECTOR_LIB_DEPS,
+)

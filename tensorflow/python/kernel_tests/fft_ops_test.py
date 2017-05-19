@@ -42,8 +42,8 @@ class BaseFFTOpsTest(test.TestCase):
     x_np = self._npFFT(x, rank, fft_length)
     if use_placeholder:
       x_ph = array_ops.placeholder(dtype=dtypes.as_dtype(x.dtype))
-      x_tf = self._tfFFT(x_ph, rank, fft_length, use_gpu=True,
-                          feed_dict={x_ph: x})
+      x_tf = self._tfFFT(
+          x_ph, rank, fft_length, use_gpu=True, feed_dict={x_ph: x})
     else:
       x_tf = self._tfFFT(x, rank, fft_length, use_gpu=True)
 
@@ -53,8 +53,8 @@ class BaseFFTOpsTest(test.TestCase):
     x_np = self._npIFFT(x, rank, fft_length)
     if use_placeholder:
       x_ph = array_ops.placeholder(dtype=dtypes.as_dtype(x.dtype))
-      x_tf = self._tfIFFT(x_ph, rank, fft_length, use_gpu=True,
-                          feed_dict={x_ph: x})
+      x_tf = self._tfIFFT(
+          x_ph, rank, fft_length, use_gpu=True, feed_dict={x_ph: x})
     else:
       x_tf = self._tfIFFT(x, rank, fft_length, use_gpu=True)
 
@@ -195,8 +195,7 @@ class FFTOpsTest(BaseFFTOpsTest):
         re = np.ones(shape=(4,) * dims, dtype=np.float32) / 10.0
         im = np.zeros(shape=(4,) * dims, dtype=np.float32)
         self._checkGradComplex(self._tfFFTForRank(rank), re, im, use_gpu=True)
-        self._checkGradComplex(
-            self._tfIFFTForRank(rank), re, im, use_gpu=True)
+        self._checkGradComplex(self._tfIFFTForRank(rank), re, im, use_gpu=True)
 
   def testGrad_Random(self):
     np.random.seed(54321)
@@ -205,8 +204,7 @@ class FFTOpsTest(BaseFFTOpsTest):
         re = np.random.rand(*((3,) * dims)).astype(np.float32) * 2 - 1
         im = np.random.rand(*((3,) * dims)).astype(np.float32) * 2 - 1
         self._checkGradComplex(self._tfFFTForRank(rank), re, im, use_gpu=True)
-        self._checkGradComplex(
-            self._tfIFFTForRank(rank), re, im, use_gpu=True)
+        self._checkGradComplex(self._tfIFFTForRank(rank), re, im, use_gpu=True)
 
 
 class RFFTOpsTest(BaseFFTOpsTest):
@@ -339,10 +337,10 @@ class RFFTOpsTest(BaseFFTOpsTest):
         # Test non-rank-1 fft_length produces an error.
         fft_length = np.zeros((1, 1)).astype(np.int32)
         with self.assertRaisesWithPredicateMatch(ValueError,
-                                                  "Shape must be .*rank 1"):
+                                                 "Shape must be .*rank 1"):
           self._tfFFT(x, rank, fft_length)
         with self.assertRaisesWithPredicateMatch(ValueError,
-                                                  "Shape must be .*rank 1"):
+                                                 "Shape must be .*rank 1"):
           self._tfIFFT(x, rank, fft_length)
 
         # Test wrong fft_length length.

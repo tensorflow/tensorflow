@@ -234,7 +234,7 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
  * @return selection of the element
  */
 export function selectOrCreateChild(
-    container, tagName: string, className?: string | string[], before?) {
+    container, tagName: string, className?: string | string[], before?): d3.Selection<any, any, any, any> {
   let child = selectChild(container, tagName, className);
   if (!child.empty()) {
     return child;
@@ -271,7 +271,7 @@ export function selectOrCreateChild(
  * @return selection of the element, or an empty selection
  */
 export function selectChild(
-    container, tagName: string, className?: string | string[]) {
+    container, tagName: string, className?: string | string[]): d3.Selection<any, any, any, any> {
   let children = container.node().childNodes;
   for (let i = 0; i < children.length; i++) {
     let child = children[i];
@@ -327,7 +327,7 @@ export function selectChild(
 export function buildGroup(container,
     renderNode: render.RenderGroupNodeInfo,
     sceneElement,
-    sceneClass: string) {
+    sceneClass: string): d3.Selection<any, any, any, any> {
   sceneClass = sceneClass || Class.Scene.GROUP;
   let isNewSceneGroup = selectChild(container, 'g', sceneClass).empty();
   let sceneGroup = selectOrCreateChild(container, 'g', sceneClass);

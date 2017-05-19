@@ -148,3 +148,53 @@ filegroup(
     srcs = glob(["**"]),
     tags = ["notsan"],
 )
+
+################################################################################
+# MARKED FOR DELETION
+
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
+
+tensorboard_webcomponent_library(
+    name = "legacy",
+    srcs = glob(["*.html"]) + [":legacy_ts"],
+    destdir = "tf-dashboard-common",
+    deps = [
+        "//tensorflow/tensorboard/components/tf_imports_google_d3v4:lib",
+        "//tensorflow/tensorboard/components/tf_storage_d3v4:legacy",
+        "//tensorflow/tensorboard/components/vz_sorting_d3v4:legacy",
+        "//third_party/javascript/polymer/v1/iron-ajax:lib",
+        "//third_party/javascript/polymer/v1/iron-collapse:lib",
+        "//third_party/javascript/polymer/v1/iron-icons:lib",
+        "//third_party/javascript/polymer/v1/paper-button:lib",
+        "//third_party/javascript/polymer/v1/paper-checkbox:lib",
+        "//third_party/javascript/polymer/v1/paper-dialog:lib",
+        "//third_party/javascript/polymer/v1/paper-dropdown-menu:lib",
+        "//third_party/javascript/polymer/v1/paper-icon-button:lib",
+        "//third_party/javascript/polymer/v1/paper-input:lib",
+        "//third_party/javascript/polymer/v1/paper-item:lib",
+        "//third_party/javascript/polymer/v1/paper-menu:lib",
+        "//third_party/javascript/polymer/v1/paper-slider:lib",
+        "//third_party/javascript/polymer/v1/paper-spinner:lib",
+        "//third_party/javascript/polymer/v1/paper-styles:lib",
+        "//third_party/javascript/polymer/v1/paper-toggle-button:lib",
+        "//third_party/javascript/polymer/v1/polymer:lib",
+    ],
+)
+
+tensorboard_ts_library(
+    name = "legacy_ts",
+    srcs = [
+        "dashboard-behavior.ts",
+        "reload-behavior.ts",
+        "tf-categorizer.ts",
+    ],
+    deps_mgmt = "off",
+    runtime = "nodejs",
+    deps = [
+        "//tensorflow/tensorboard/components/vz_sorting_d3v4:legacy_ts",
+        "//third_party/javascript/typings/d3_v4:bundle",
+        "//third_party/javascript/typings/lodash",
+        "//third_party/javascript/typings/polymer:polymer_without_externs",
+    ],
+)

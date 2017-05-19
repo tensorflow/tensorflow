@@ -262,7 +262,7 @@ template <typename T>
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
       return *LiteralUtil::CreateR0<half>(
-              static_cast<half>(-std::numeric_limits<float>::infinity()));
+          static_cast<half>(-std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no minimum value";
     case OPAQUE:
@@ -299,7 +299,7 @@ template <typename T>
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case F16:
       return *LiteralUtil::CreateR0<half>(
-              static_cast<half>(std::numeric_limits<float>::infinity()));
+          static_cast<half>(std::numeric_limits<float>::infinity()));
     case TUPLE:
       LOG(FATAL) << "tuple element type has no maximum value";
     case OPAQUE:
@@ -703,6 +703,9 @@ template <typename T>
     case F16:
       Resize<half>(num_elements, static_cast<half>(0.0f), literal);
       break;
+    case F16:
+      Resize<half>(num_elements, static_cast<half>(0.0f), literal);
+      break;
     default:
       LOG(FATAL) << "primitive type not supported in literals: "
                  << PrimitiveType_Name(literal->shape().element_type());
@@ -941,8 +944,7 @@ LiteralUtil::GetMutableArraySlice<half>(Literal* literal) {
   //        support in protobuf
   auto values = literal->mutable_f16s();
   return tensorflow::gtl::MutableArraySlice<half>(
-          reinterpret_cast<half*>(&(*values)[0]),
-          values->size() / sizeof(half));
+      reinterpret_cast<half*>(&(*values)[0]), values->size() / sizeof(half));
 }
 
 template <>
@@ -1006,12 +1008,12 @@ LiteralUtil::GetArraySlice<double>(const Literal& literal) {
 }
 
 template <>
-/* static */ tensorflow::gtl::ArraySlice<half>
-LiteralUtil::GetArraySlice<half>(const Literal& literal) {
+/* static */ tensorflow::gtl::ArraySlice<half> LiteralUtil::GetArraySlice<half>(
+    const Literal& literal) {
   CHECK_EQ(literal.shape().element_type(), F16);
   return tensorflow::gtl::ArraySlice<half>(
-          reinterpret_cast<const half*>(literal.f16s().data()),
-          literal.f16s().size() / sizeof(half));
+      reinterpret_cast<const half*>(literal.f16s().data()),
+      literal.f16s().size() / sizeof(half));
 }
 
 template <typename NativeT>

@@ -202,7 +202,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ void ShapeUtil::AppendMajorDimension(int bound, Shape* shape) {
-  shape->mutable_layout()->add_minor_to_major(ShapeUtil::Rank(*shape));
+  shape->mutable_layout()->add_minor_to_major(Rank(*shape));
   shape->add_dimensions(bound);
   TF_DCHECK_OK(ValidateShape(*shape));
 }
@@ -295,7 +295,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 
   std::vector<Shape> new_elements(tuple.tuple_shapes().begin() + start,
                                   tuple.tuple_shapes().begin() + limit);
-  return ShapeUtil::MakeTupleShape(new_elements);
+  return MakeTupleShape(new_elements);
 }
 
 /* static */ bool ShapeUtil::IsOpaque(const Shape& shape) {
@@ -309,7 +309,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   if (shape.element_type() != element_type) {
     return false;
   }
-  if (shape.dimensions_size() != ShapeUtil::Rank(shape)) {
+  if (shape.dimensions_size() != Rank(shape)) {
     return false;
   }
   int64 i = 0;
@@ -323,7 +323,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {
-  CHECK_EQ(shape.dimensions_size(), ShapeUtil::Rank(shape));
+  CHECK_EQ(shape.dimensions_size(), Rank(shape));
   return std::accumulate<decltype(shape.dimensions().begin()), int64>(
       shape.dimensions().begin(), shape.dimensions().end(), 1LL,
       std::multiplies<int64>());
@@ -334,7 +334,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {
-  return shape.element_type() == F32 && ShapeUtil::Rank(shape) == 0;
+  return shape.element_type() == F32 && Rank(shape) == 0;
 }
 
 /* static */ string ShapeUtil::HumanString(const Shape& shape) {
@@ -432,13 +432,12 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     }
     Shape result;
     if (layout_string.empty()) {
-      result = ShapeUtil::MakeShape(primitive_type, dimensions);
+      result = MakeShape(primitive_type, dimensions);
     } else {
       TF_ASSIGN_OR_RETURN(std::vector<int64> min2maj,
                           comma_list_to_int64s(layout_string));
       TF_RET_CHECK(dimensions.size() == min2maj.size());
-      result =
-          ShapeUtil::MakeShapeWithLayout(primitive_type, dimensions, min2maj);
+      result = MakeShapeWithLayout(primitive_type, dimensions, min2maj);
     }
     TF_DCHECK_OK(ValidateShape(result));
     return result;
@@ -468,7 +467,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 /* static */ int64 ShapeUtil::GetDimensionNumber(const Shape& shape,
                                                  int64 dimension_number) {
   if (dimension_number < 0) {
-    dimension_number += ShapeUtil::Rank(shape);
+    dimension_number += Rank(shape);
   }
   CHECK_GE(dimension_number, 0);
   return dimension_number;
@@ -520,7 +519,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   }
   int64 allocated_element_count;
   if (shape.layout().padded_dimensions_size() > 0) {
-    CHECK_EQ(ShapeUtil::Rank(shape), shape.layout().padded_dimensions_size());
+    CHECK_EQ(Rank(shape), shape.layout().padded_dimensions_size());
     allocated_element_count = 1;
     for (int64 dimension_size : shape.layout().padded_dimensions()) {
       allocated_element_count *= dimension_size;
@@ -536,9 +535,9 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     const Shape& shape) {
   if (shape.element_type() == TUPLE) {
     // Tuple shape.
-    if (ShapeUtil::Rank(shape) != 0) {
+    if (Rank(shape) != 0) {
       return InvalidArgument("tuples must be rank-0; got rank %lld",
-                             ShapeUtil::Rank(shape));
+                             Rank(shape));
     }
     if (shape.dimensions_size() != 0) {
       return InvalidArgument("tuples must not have dimensions specified");
@@ -558,13 +557,13 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     return InvalidArgument("shape has invalid element type: %s",
                            shape.ShortDebugString().c_str());
   }
-  if (ShapeUtil::Rank(shape) != shape.dimensions_size()) {
+  if (Rank(shape) != shape.dimensions_size()) {
     return InvalidArgument(
         "shape's rank is mismatched with dimension count; rank=%lld "
         "dimensions_size=%d",
-        ShapeUtil::Rank(shape), shape.dimensions_size());
+        Rank(shape), shape.dimensions_size());
   }
-  for (int64 i = 0; i < ShapeUtil::Rank(shape); ++i) {
+  for (int64 i = 0; i < Rank(shape); ++i) {
     int64 dimension = shape.dimensions(i);
     if (dimension < 0) {
       return InvalidArgument(
@@ -793,8 +792,7 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
     auto unmodified_dim_pair =
         i < unmodified_dims.size()
             ? unmodified_dims[i]
-            : std::make_pair(ShapeUtil::Rank(shape_pre),
-                             ShapeUtil::Rank(shape_post));
+            : std::make_pair(Rank(shape_pre), Rank(shape_post));
     if (!check_modified_dims(prior_unmodified_dim_pair, unmodified_dim_pair)) {
       return nil;
     }
@@ -869,9 +867,8 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     return false;
   }
 
-  CHECK_EQ(ShapeUtil::ElementsIn(input_shape),
-           ShapeUtil::ElementsIn(output_shape));
-  if (ShapeUtil::ElementsIn(input_shape) == 0) {
+  CHECK_EQ(ElementsIn(input_shape), ElementsIn(output_shape));
+  if (ElementsIn(input_shape) == 0) {
     return true;
   }
 
@@ -985,21 +982,17 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     // as input_shape/output_shape and the dimension-0-major layout. These two
     // shapes are used for conversion between logical linear indices and
     // multi-dimensional indices.
-    Shape input_shape_dim0_major =
-        ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-            input_shape.element_type(), AsInt64Slice(input_shape.dimensions()));
-    Shape output_shape_dim0_major =
-        ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-            output_shape.element_type(),
-            AsInt64Slice(output_shape.dimensions()));
+    Shape input_shape_dim0_major = MakeShapeWithMonotonicDim0MajorLayout(
+        input_shape.element_type(), AsInt64Slice(input_shape.dimensions()));
+    Shape output_shape_dim0_major = MakeShapeWithMonotonicDim0MajorLayout(
+        output_shape.element_type(), AsInt64Slice(output_shape.dimensions()));
 
-    for (int64 input_dim = 0; input_dim < ShapeUtil::Rank(input_shape);
-         ++input_dim) {
+    for (int64 input_dim = 0; input_dim < Rank(input_shape); ++input_dim) {
       if (input_shape.dimensions(input_dim) <= 1) {
         continue;
       }
 
-      std::vector<int64> input_unit_index(ShapeUtil::Rank(input_shape), 0);
+      std::vector<int64> input_unit_index(Rank(input_shape), 0);
       input_unit_index[input_dim] = 1;
       int64 logical_linear_index =
           IndexUtil::MultidimensionalIndexToLinearIndex(input_shape_dim0_major,
@@ -1025,8 +1018,8 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
 
 /* static */ tensorflow::gtl::optional<Shape> ShapeUtil::AlignLayouts(
     const Shape& input_shape, const Shape& output_shape) {
-  int64 input_rank = ShapeUtil::Rank(input_shape);
-  int64 output_rank = ShapeUtil::Rank(output_shape);
+  int64 input_rank = Rank(input_shape);
+  int64 output_rank = Rank(output_shape);
 
   // First, calculate an alignment of the dimensions. A consecutive sequence of
   // input dimensions and output dimensions belong to the same alignment part if
@@ -1150,10 +1143,6 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     }
   }
   CHECK_EQ(output_layout.size(), output_rank);
-  std::vector<int64> dimension_sizes;
-  for (int64 i = 0; i < output_rank; ++i) {
-    dimension_sizes.push_back(output_shape.dimensions(i));
-  }
   Shape output_shape_with_layout = MakeShapeWithLayout(
       output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
       output_layout);

@@ -237,6 +237,14 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError("Resource .*/var1//.* does not exist"):
         _ = x_read.eval()
 
+  def testSetInitialValue(self):
+    with self.test_session():
+      # Initialize variable with a value different from the initial value passed
+      # in the constructor.
+      v = resource_variable_ops.ResourceVariable(2.0)
+      v.initializer.run(feed_dict={v.initial_value: 3.0})
+      self.assertEqual(3.0, v.value().eval())
+
 
 if __name__ == "__main__":
   test.main()

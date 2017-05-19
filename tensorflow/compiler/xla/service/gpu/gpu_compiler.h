@@ -42,20 +42,16 @@ class GpuCompiler : public Compiler {
   ~GpuCompiler() override {}
 
   StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> hlo_module,
-      std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
+      std::unique_ptr<HloModule> module, HloDumper dump_hlo,
       perftools::gputools::StreamExecutor* stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> hlo_module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-      HloDumper dump_hlo,
+      std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlo,
       std::vector<perftools::gputools::StreamExecutor*> stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(
       std::vector<std::unique_ptr<HloModule>> module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
       HloDumper dump_hlo, AotCompilationOptions const& options) override;
 
   perftools::gputools::Platform::Id PlatformId() const override;
