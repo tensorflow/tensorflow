@@ -359,7 +359,6 @@ filegroup(
         "//tensorflow/tensorboard/components/tf_tensorboard_d3v4:all_files",
         "//tensorflow/tensorboard/components/tf_text_dashboard_d3v4:all_files",
         "//tensorflow/tensorboard/components/vz_distribution_chart_d3v4:all_files",
-        "//tensorflow/tensorboard/components/vz_heatmap_d3v4:all_files",
         "//tensorflow/tensorboard/components/vz_histogram_timeseries_d3v4:all_files",
         "//tensorflow/tensorboard/components/vz_line_chart_d3v4:all_files",
         "//tensorflow/tensorboard/components/vz_projector_d3v4:all_files",
