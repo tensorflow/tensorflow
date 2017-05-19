@@ -29,6 +29,7 @@ option(tensorflow_BUILD_ALL_KERNELS "Build all OpKernels" ON)
 option(tensorflow_BUILD_CONTRIB_KERNELS "Build OpKernels from tensorflow/contrib/..." ON)
 option(tensorflow_BUILD_CC_TESTS "Build cc unit tests " OFF)
 option(tensorflow_BUILD_PYTHON_TESTS "Build python unit tests " OFF)
+option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 
@@ -60,15 +61,18 @@ add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC)
   add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
-  add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH -D_ITERATOR_DEBUG_LEVEL=0)
+  add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH)
   add_definitions(-DTF_COMPILE_LIBRARY)
-  add_definitions(-DNDEBUG /O2)  # Equivalent of -c opt in Bazel.
   add_definitions(/bigobj /nologo /EHsc /GF /FC /MP /Gm-)
   # Suppress warnings to reduce build log size.
   add_definitions(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
   add_definitions(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
   add_definitions(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+  set(CMAKE_CXX_FLAGS_DEBUG "/D_DEBUG /MDd /Ob0")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /D_ITERATOR_DEBUG_LEVEL=0")
+  set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /D_ITERATOR_DEBUG_LEVEL=0")
+  set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /D_ITERATOR_DEBUG_LEVEL=0")
 endif()
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -108,6 +112,7 @@ include(eigen)
 include(gemmlowp)
 include(jsoncpp)
 include(farmhash)
+include(fft2d)
 include(highwayhash)
 include(protobuf)
 if (tensorflow_BUILD_CC_TESTS)
@@ -121,6 +126,7 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${jpeg_STATIC_LIBRARIES}
     ${jsoncpp_STATIC_LIBRARIES}
     ${farmhash_STATIC_LIBRARIES}
+    ${fft2d_STATIC_LIBRARIES}
     ${highwayhash_STATIC_LIBRARIES}
     ${protobuf_STATIC_LIBRARIES}
 )
@@ -135,6 +141,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     protobuf
     eigen
     gemmlowp
+    fft2d
 )
 
 include_directories(
@@ -195,7 +202,7 @@ if (tensorflow_ENABLE_GPU)
     # add cudnn
     include_directories(${CUDNN_HOME})
     set(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_CUFFT_LIBRARIES}
-      ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDNN_HOME}/lib/x64/cudnn.lib)
+      ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDA_cusolver_LIBRARY} ${CUDNN_HOME}/lib/x64/cudnn.lib)
 
     # create cuda_config.h
     FILE(WRITE ${tensorflow_source_dir}/third_party/gpus/cuda/cuda_config.h
@@ -216,12 +223,19 @@ if (tensorflow_ENABLE_GPU)
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h ${CUDNN_HOME}/include/cudnn.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
+      ${CUDA_TOOLKIT_TARGET_DIR}/include/cusolverDn.h
       DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
     )
     include_directories(${tensorflow_source_dir}/third_party/gpus)
     # add cuda libraries to tensorflow_EXTERNAL_LIBRARIES
     list(APPEND tensorflow_EXTERNAL_LIBRARIES ${CUDA_LIBRARIES})
   endif()
+endif()
+
+# Find python executable
+include(FindPythonInterp)
+if(NOT ${PYTHONINTERP_FOUND})
+    message(FATAL_ERROR "CMake was unable to find a python interpreter.")
 endif()
 
 # Let's get to work!
@@ -241,16 +255,20 @@ include(tf_core_kernels.cmake)
 if(tensorflow_ENABLE_GRPC_SUPPORT)
   include(tf_core_distributed_runtime.cmake)
 endif()
+# We include tf_cc_ops first, because tf_c depends on tf_cc.
 include(tf_cc_ops.cmake)
+include(tf_c.cmake)
 if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)
 endif()
 include(tf_tools.cmake)
 if(tensorflow_BUILD_PYTHON_BINDINGS)
-  include(tensorboard)
   include(tf_python.cmake)
 endif()
-if (tensorflow_BUILD_CC_TESTS OR tensorflow_BUILD_PYTHON_TESTS)
+if(tensorflow_BUILD_SHARED_LIB)
+  include(tf_shared_lib.cmake)
+endif()
+if(tensorflow_BUILD_CC_TESTS OR tensorflow_BUILD_PYTHON_TESTS)
   include(tf_tests.cmake)
 endif()

@@ -20,7 +20,7 @@ Hence, the process for building and uploading release artifacts is not a single
 
 ## Artifact Structure
 
-There are four artifacts and thus `pom.xml`s involved in this release:
+There are five artifacts and thus `pom.xml`s involved in this release:
 
 1.  `tensorflow`: The single dependency for projects requiring TensorFlow for
     Java. This convenience package depends on the two below, and is the one that
@@ -34,8 +34,11 @@ There are four artifacts and thus `pom.xml`s involved in this release:
 3.  `libtensorflow_jni`: The native libraries required by `libtensorflow`.
     Native code for all supported platforms is packaged into a single `.jar`.
 
-4.  [`parentpom`](https://maven.apache.org/pom/index.html): Common settings
-    shared between the above three.
+4.  `proto`: Generated Java code for TensorFlow protocol buffers
+    (e.g., `MetaGraphDef`, `ConfigProto` etc.)
+
+5.  [`parentpom`](https://maven.apache.org/pom/index.html): Common settings
+    shared by all of the above.
 
 ## Updating the release
 

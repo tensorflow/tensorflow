@@ -47,7 +47,7 @@ Status RewriteQuantizedStrippedModelForHexagon(
                "graph execute op...";
   std::vector<std::pair<string, Tensor>> inputs;
   std::vector<string> outputs;
-  for (auto i = 0; i < context.input_names.size(); ++i) {
+  for (auto i = 0; static_cast<size_t>(i) < context.input_names.size(); ++i) {
     const string& input_name = context.input_names.at(i);
 
     // Get input shape

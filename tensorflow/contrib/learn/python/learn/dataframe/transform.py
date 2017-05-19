@@ -24,10 +24,12 @@ from abc import abstractmethod
 from abc import abstractproperty
 
 import collections
-import inspect
 
 from .series import Series
 from .series import TransformedSeries
+
+from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.deprecation import deprecated
 
 
 def _make_list_of_series(x):
@@ -86,6 +88,7 @@ def _make_tuple_of_string(x):
                   "got %s" % type(x).__name__)
 
 
+@deprecated("2017-06-15", "contrib/learn/dataframe/** is deprecated.")
 def parameter(func):
   """Tag functions annotated with `@parameter` for later retrieval.
 
@@ -109,6 +112,7 @@ class Transform(object):
 
   __metaclass__ = ABCMeta
 
+  @deprecated("2017-06-15", "contrib/learn/dataframe/** is deprecated.")
   def __init__(self):
     self._return_type = None
 
@@ -120,7 +124,7 @@ class Transform(object):
   def parameters(self):
     """A dict of names to values of properties marked with `@parameter`."""
     property_param_names = [name
-                            for name, func in inspect.getmembers(type(self))
+                            for name, func in tf_inspect.getmembers(type(self))
                             if (hasattr(func, "fget") and hasattr(
                                 getattr(func, "fget"), "is_parameter"))]
     return {name: getattr(self, name) for name in property_param_names}

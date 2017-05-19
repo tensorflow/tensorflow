@@ -138,7 +138,7 @@ def WriteAudioSeries(writer, tag, n_audio=1):
   min_frequency_hz = 440
   max_frequency_hz = 880
   sample_rate = 4000
-  duration_frames = sample_rate * 0.5  # 0.5 seconds.
+  duration_frames = sample_rate // 2  # 0.5 seconds.
   frequencies_per_run = 1
   num_channels = 2
 

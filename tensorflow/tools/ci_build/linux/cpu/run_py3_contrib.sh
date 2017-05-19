@@ -32,7 +32,7 @@ export PYTHON_BIN_PATH=`which python3`
 yes "" | ./configure
 
 # Run bazel test command. Double test timeouts to avoid flakes.
-bazel test --test_tag_filters=-gpu,-benchmark-test --test_lang_filters=py -k \
-    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 --build_tests_only \
+bazel test --test_tag_filters=-gpu,-benchmark-test -k \
+    --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 \
     --test_output=errors -- \
     //tensorflow/contrib/...

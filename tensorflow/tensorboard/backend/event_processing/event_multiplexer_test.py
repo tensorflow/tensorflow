@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import os
 import os.path
 import shutil
@@ -45,10 +46,16 @@ def _CreateCleanDirectory(path):
 
 class _FakeAccumulator(object):
 
-  def __init__(self, path):
+  def __init__(self, path, health_pill_mapping=None):
+    """Constructs a fake accumulator with some fake events.
+
+    Args:
+      path: The path for the run that this accumulator is for.
+      health_pill_mapping: An optional mapping from Op to health pill strings.
+    """
     self._path = path
     self.reload_called = False
-    self._node_names_to_health_pills = {'Add': ['hp1', 'hp2']}
+    self._node_names_to_health_pills = health_pill_mapping or {}
 
   def Tags(self):
     return {event_accumulator.IMAGES: ['im1', 'im2'],
@@ -74,6 +81,9 @@ class _FakeAccumulator(object):
     health_pills = self._node_names_to_health_pills[node_name]
     return [self._path + '/' + health_pill for health_pill in health_pills]
 
+  def GetOpsWithHealthPills(self):
+    return self._node_names_to_health_pills.keys()
+
   def Histograms(self, tag_name):
     return self._TagHelper(tag_name, event_accumulator.HISTOGRAMS)
 
@@ -93,14 +103,13 @@ class _FakeAccumulator(object):
     self.reload_called = True
 
 
-# pylint: disable=unused-argument
-def _GetFakeAccumulator(
-    path,
-    size_guidance=None,
-    compression_bps=None,
-    purge_orphaned_data=None):
-  return _FakeAccumulator(path)
-# pylint: enable=unused-argument
+def _GetFakeAccumulator(path,
+                        size_guidance=None,
+                        compression_bps=None,
+                        purge_orphaned_data=None,
+                        health_pill_mapping=None):
+  del size_guidance, compression_bps, purge_orphaned_data  # Unused.
+  return _FakeAccumulator(path, health_pill_mapping=health_pill_mapping)
 
 
 class EventMultiplexerTest(test_util.TensorFlowTestCase):
@@ -115,16 +124,19 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.stubs.CleanUp()
 
   def testEmptyLoader(self):
+    """Tests empty EventMultiplexer creation."""
     x = event_multiplexer.EventMultiplexer()
     self.assertEqual(x.Runs(), {})
 
   def testRunNamesRespected(self):
+    """Tests two EventAccumulators inserted/accessed in EventMultiplexer."""
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
     self.assertItemsEqual(sorted(x.Runs().keys()), ['run1', 'run2'])
     self.assertEqual(x._GetAccumulator('run1')._path, 'path1')
     self.assertEqual(x._GetAccumulator('run2')._path, 'path2')
 
   def testReload(self):
+    """EventAccumulators should Reload after EventMultiplexer call it."""
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
     self.assertFalse(x._GetAccumulator('run1').reload_called)
     self.assertFalse(x._GetAccumulator('run2').reload_called)
@@ -133,6 +145,7 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.assertTrue(x._GetAccumulator('run2').reload_called)
 
   def testScalars(self):
+    """Tests Scalars function returns suitable values."""
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
 
     run1_actual = x.Scalars('run1', 'sv1')
@@ -141,15 +154,36 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.assertEqual(run1_expected, run1_actual)
 
   def testHealthPills(self):
+    """Tests HealthPills() returns events associated with run1/Add."""
+    self.stubs.Set(event_accumulator, 'EventAccumulator',
+                   functools.partial(
+                       _GetFakeAccumulator,
+                       health_pill_mapping={'Add': ['hp1', 'hp2']}))
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
     self.assertEqual(['path1/hp1', 'path1/hp2'], x.HealthPills('run1', 'Add'))
 
+  def testGetOpsWithHealthPillsWhenHealthPillsAreNotAvailable(self):
+    # The event accumulator lacks health pills for the run.
+    x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
+    self.assertItemsEqual([], x.GetOpsWithHealthPills('run1'))
+
+  def testGetOpsWithHealthPillsWhenHealthPillsAreAvailable(self):
+    # The event accumulator has health pills for the run.
+    self.stubs.Set(event_accumulator, 'EventAccumulator',
+                   functools.partial(
+                       _GetFakeAccumulator,
+                       health_pill_mapping={'Add': ['hp1', 'hp2']}))
+    x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
+    self.assertItemsEqual(['Add'], x.GetOpsWithHealthPills('run1'))
+
   def testExceptions(self):
+    """KeyError should be raised when accessing non-existing keys."""
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
     with self.assertRaises(KeyError):
       x.Scalars('sv1', 'xxx')
 
   def testInitialization(self):
+    """Tests EventMultiplexer is created properly with its params."""
     x = event_multiplexer.EventMultiplexer()
     self.assertEqual(x.Runs(), {})
     x = event_multiplexer.EventMultiplexer({'run1': 'path1', 'run2': 'path2'})
@@ -158,6 +192,14 @@ class EventMultiplexerTest(test_util.TensorFlowTestCase):
     self.assertEqual(x._GetAccumulator('run2')._path, 'path2')
 
   def testAddRunsFromDirectory(self):
+    """Tests AddRunsFromDirectory function.
+
+    Tests the following scenarios:
+    - When the directory does not exist.
+    - When the directory is empty.
+    - When the directory has empty subdirectory.
+    - Contains proper EventAccumulators after adding events.
+    """
     x = event_multiplexer.EventMultiplexer()
     tmpdir = self.get_temp_dir()
     join = os.path.join

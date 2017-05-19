@@ -27,6 +27,7 @@ See the @{$python/nn} guide.
 @@dropout
 @@bias_add
 @@sigmoid
+@@log_sigmoid
 @@tanh
 @@convolution
 @@conv2d

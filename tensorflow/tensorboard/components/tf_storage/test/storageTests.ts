@@ -16,47 +16,47 @@ limitations under the License.
 module TF.URIStorage {
   describe('URIStorage', function() {
     it('get/setString', function() {
-      setString('key_a', 'hello');
-      setString('key_b', 'there');
-      chai.assert.equal('hello', getString('key_a'));
-      chai.assert.equal('there', getString('key_b'));
-      chai.assert.equal(null, getString('key_c'));
+      setString('key_a', 'hello', false);
+      setString('key_b', 'there', false);
+      chai.assert.equal('hello', getString('key_a', false));
+      chai.assert.equal('there', getString('key_b', false));
+      chai.assert.equal(null, getString('key_c', false));
     });
 
     it('get/setNumber', function() {
-      setNumber('key_a', 12);
-      setNumber('key_b', 3.4);
-      chai.assert.equal(12, getNumber('key_a'));
-      chai.assert.equal(3.4, getNumber('key_b'));
-      chai.assert.equal(null, getNumber('key_c'));
+      setNumber('key_a', 12, false);
+      setNumber('key_b', 3.4, false);
+      chai.assert.equal(12, getNumber('key_a', false));
+      chai.assert.equal(3.4, getNumber('key_b', false));
+      chai.assert.equal(null, getNumber('key_c', false));
     });
 
     it('get/setObject', function() {
       let obj = {'foo': 2.3, 'bar': 'barstr'};
-      setObject('key_a', obj);
-      chai.assert.deepEqual(obj, getObject('key_a'));
+      setObject('key_a', obj, false);
+      chai.assert.deepEqual(obj, getObject('key_a', false));
     });
 
     it('get/setWeirdValues', function() {
-      setNumber('key_a', NaN);
-      chai.assert.deepEqual(NaN, getNumber('key_a'));
+      setNumber('key_a', NaN, false);
+      chai.assert.deepEqual(NaN, getNumber('key_a', false));
 
-      setNumber('key_a', +Infinity);
-      chai.assert.equal(+Infinity, getNumber('key_a'));
+      setNumber('key_a', +Infinity, false);
+      chai.assert.equal(+Infinity, getNumber('key_a', false));
 
-      setNumber('key_a', -Infinity);
-      chai.assert.equal(-Infinity, getNumber('key_a'));
+      setNumber('key_a', -Infinity, false);
+      chai.assert.equal(-Infinity, getNumber('key_a', false));
 
-      setNumber('key_a', 1 / 3);
-      chai.assert.equal(1 / 3, getNumber('key_a'));
+      setNumber('key_a', 1 / 3, false);
+      chai.assert.equal(1 / 3, getNumber('key_a', false));
 
-      setNumber('key_a', -0);
-      chai.assert.equal(-0, getNumber('key_a'));
+      setNumber('key_a', -0, false);
+      chai.assert.equal(-0, getNumber('key_a', false));
     });
 
     it('set/getTab', function() {
-      setString(TAB, TF.Globals.TABS[0]);
-      chai.assert.equal(TF.Globals.TABS[0], getString(TAB));
+      setString(TAB, TF.Globals.TABS[0], false);
+      chai.assert.equal(TF.Globals.TABS[0], getString(TAB, false));
     });
   });
 }

@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -156,6 +157,13 @@ class TruncatedNormalTest(test.TestCase):
       x = sampler()
       print("std(x)", np.std(x), abs(np.std(x) / stddev - 0.85))
       self.assertTrue(abs(np.std(x) / stddev - 0.85) < 0.04)
+
+  def testLargeShape(self):
+    with self.test_session(use_gpu=True):
+      v = variables.Variable(
+          array_ops.zeros(dtype=dtypes.float32, shape=[2**33, 1]))
+      n = random_ops.truncated_normal(v.shape)
+      self.assertEqual([8589934592, 1], n.shape.as_list())
 
   def testNoCSE(self):
     with self.test_session(use_gpu=True):

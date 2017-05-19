@@ -265,6 +265,37 @@ TEST_F(BroadcastTest, Broadcast_R2_2x2_To_R4_3x3x2x2) {
       *LiteralUtil::CreateR4FromArray4D<float>(expected), *result, error_spec_);
 }
 
+TEST_F(BroadcastTest, Broadcast_R3_2x3x4_to_R4_2x3x4x5) {
+  auto builder = HloComputation::Builder(TestName());
+  Array3D<float> input_vals(2, 3, 4);
+  input_vals.FillRandom(1.0);
+
+  Array4D<float> expected(2, 3, 4, 5);
+  for (int i = 0; i < 2; ++i) {
+    for (int j = 0; j < 3; ++j) {
+      for (int k = 0; k < 4; ++k) {
+        for (int m = 0; m < 5; ++m) {
+          expected(i, j, k, m) = input_vals(i, j, k);
+        }
+      }
+    }
+  }
+  auto input = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR3FromArray3D<float>(input_vals)));
+
+  // Broadcast vector in dimensions 2 and 3.
+  builder.AddInstruction(HloInstruction::CreateBroadcast(
+      ShapeUtil::MakeShape(F32, {2, 3, 4, 5}), input, {0, 1, 2}));
+
+  // Create HLO module, compile, and execute.
+  auto hlo_module = MakeUnique<HloModule>(TestName());
+  hlo_module->AddEntryComputation(builder.Build());
+  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+
+  LiteralTestUtil::ExpectNear(
+      *LiteralUtil::CreateR4FromArray4D<float>(expected), *result, error_spec_);
+}
+
 }  // namespace
 }  // namespace xla
 

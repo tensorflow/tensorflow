@@ -174,17 +174,17 @@ def read_keyed_batch_examples(file_pattern,
       seed=seed)
 
 
-def _read_keyed_batch_examples_shared_queue(file_pattern,
-                                            batch_size,
-                                            reader,
-                                            randomize_input=True,
-                                            num_epochs=None,
-                                            queue_capacity=10000,
-                                            num_threads=1,
-                                            read_batch_size=1,
-                                            parse_fn=None,
-                                            name=None,
-                                            seed=None):
+def read_keyed_batch_examples_shared_queue(file_pattern,
+                                           batch_size,
+                                           reader,
+                                           randomize_input=True,
+                                           num_epochs=None,
+                                           queue_capacity=10000,
+                                           num_threads=1,
+                                           read_batch_size=1,
+                                           parse_fn=None,
+                                           name=None,
+                                           seed=None):
   """Adds operations to read, queue, batch `Example` protos.
 
   Given file pattern (or list of files), will setup a shared queue for file
@@ -359,8 +359,9 @@ def _read_keyed_batch_examples_helper(file_pattern,
   # Check input parameters are given and reasonable.
   if (not queue_capacity) or (queue_capacity <= 0):
     raise ValueError('Invalid queue_capacity %s.' % queue_capacity)
-  if (batch_size is None) or ((not isinstance(batch_size, ops.Tensor)) and
-                              (batch_size <= 0 or batch_size > queue_capacity)):
+  if (batch_size is None) or (
+      (not isinstance(batch_size, ops.Tensor)) and
+      (batch_size <= 0 or batch_size >= queue_capacity)):
     raise ValueError('Invalid batch_size %s, with queue_capacity %s.' %
                      (batch_size, queue_capacity))
   if (read_batch_size is None) or (
@@ -511,18 +512,18 @@ def read_keyed_batch_features(file_pattern,
         name=scope)
 
 
-def _read_keyed_batch_features_shared_queue(file_pattern,
-                                            batch_size,
-                                            features,
-                                            reader,
-                                            randomize_input=True,
-                                            num_epochs=None,
-                                            queue_capacity=10000,
-                                            reader_num_threads=1,
-                                            feature_queue_capacity=100,
-                                            num_queue_runners=2,
-                                            parse_fn=None,
-                                            name=None):
+def read_keyed_batch_features_shared_queue(file_pattern,
+                                           batch_size,
+                                           features,
+                                           reader,
+                                           randomize_input=True,
+                                           num_epochs=None,
+                                           queue_capacity=10000,
+                                           reader_num_threads=1,
+                                           feature_queue_capacity=100,
+                                           num_queue_runners=2,
+                                           parse_fn=None,
+                                           name=None):
   """Adds operations to read, queue, batch and parse `Example` protos.
 
   Given file pattern (or list of files), will setup a shared queue for file
@@ -570,7 +571,7 @@ def _read_keyed_batch_features_shared_queue(file_pattern,
   """
 
   with ops.name_scope(name, 'read_batch_features', [file_pattern]) as scope:
-    keys, examples = _read_keyed_batch_examples_shared_queue(
+    keys, examples = read_keyed_batch_examples_shared_queue(
         file_pattern,
         batch_size,
         reader,

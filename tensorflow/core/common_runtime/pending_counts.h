@@ -69,7 +69,7 @@ class PendingCounts {
   // to retrieve the count data for this node.
   class Layout {
    public:
-    Handle CreateHandle(int max_pending_count, int max_dead_count);
+    Handle CreateHandle(size_t max_pending_count, size_t max_dead_count);
 
    private:
     friend class PendingCounts;
@@ -91,7 +91,7 @@ class PendingCounts {
 
   ~PendingCounts() { delete[] bytes_; }
 
-  void set_initial_count(Handle h, int pending_count) {
+  void set_initial_count(Handle h, size_t pending_count) {
     if (h.is_large_) {
       LargeCounts* c = Large(h);
       c->pending = pending_count;
@@ -306,7 +306,7 @@ class PendingCounts {
 };
 
 inline PendingCounts::Handle PendingCounts::Layout::CreateHandle(
-    int max_pending_count, int max_dead_count) {
+    size_t max_pending_count, size_t max_dead_count) {
   Handle result;
   if ((max_pending_count > kMaxCountForPackedCounts) ||
       (max_dead_count > kMaxCountForPackedCounts)) {

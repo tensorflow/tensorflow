@@ -24,19 +24,9 @@ from __future__ import print_function
 from tensorflow.python import *
 # pylint: enable=wildcard-import
 
-# Lazily import the `tf.contrib` module. This avoids loading all of the
-# dependencies of `tf.contrib` at `import tensorflow` time.
-class _LazyContribLoader(object):
-
-  def __getattr__(self, item):
-    global contrib
-    # Replace the lazy loader with the imported module itself.
-    import importlib  # pylint: disable=g-import-not-at-top
-    contrib = importlib.import_module('tensorflow.contrib')
-    return getattr(contrib, item)
-
-
-contrib = _LazyContribLoader()
+from tensorflow.python.util.lazy_loader import LazyLoader
+contrib = LazyLoader('contrib', globals(), 'tensorflow.contrib')
+del LazyLoader
 
 del absolute_import
 del division

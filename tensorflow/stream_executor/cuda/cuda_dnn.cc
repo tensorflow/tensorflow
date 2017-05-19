@@ -1202,7 +1202,8 @@ class CudnnRnnSequenceTensorDescriptor
     // Only the first one needs to be destroyed. All others are the same.
     cudnnStatus_t status =
         wrap::cudnnDestroyTensorDescriptor(parent_, handles_[0]);
-    CUDNN_RETURN_IF_FAIL(status, "Failed to destroy sequence tensor descriptor");
+    CUDNN_RETURN_IF_FAIL(status,
+                         "Failed to destroy sequence tensor descriptor");
   }
 
   const cudnnTensorDescriptor_t* handles() const {
@@ -3089,7 +3090,7 @@ bool CudnnSupport::DoPoolForward(
     DeviceMemory<double>* output_data) {
   mutex_lock lock{dnn_handle_mutex_};
   auto status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
-                                        AsCUDAStreamValue(stream));
+                                     AsCUDAStreamValue(stream));
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
     return false;
@@ -3195,7 +3196,7 @@ bool CudnnSupport::DoPoolBackward(
     DeviceMemory<double>* output_diff_data) {
   mutex_lock lock{dnn_handle_mutex_};
   auto status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
-                                        AsCUDAStreamValue(stream));
+                                     AsCUDAStreamValue(stream));
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
     return false;

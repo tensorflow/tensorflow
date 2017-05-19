@@ -30,12 +30,15 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
 
 class ExecutorOpts;
 class StepStatsCollector;
 class RendezvousMgrInterface;
+class DeviceMgr;
+struct WorkerSession;
 
 // GraphMgr keeps track of a set of graphs that are registered with a
 // TensorFlow worker. Each registered graph is identified by a handle
@@ -61,13 +64,13 @@ class RendezvousMgrInterface;
 //   EXPECT_EQ(out["c"], Tensor({4, 6}));
 class GraphMgr {
  public:
-  explicit GraphMgr(const WorkerEnv* worker_env,
-                    RendezvousMgrInterface* rendezvous_mgr);
+  explicit GraphMgr(const WorkerEnv* worker_env, DeviceMgr* device_mgr);
   ~GraphMgr();
 
   // Registers a graph. Fills in "handle"
   Status Register(const string& session, const GraphDef& gdef,
-                  const GraphOptions& graph_options, string* handle);
+                  const GraphOptions& graph_options,
+                  const DebugOptions& debug_options, string* handle);
 
   // Executes one step of a registered graph "handle".
   //
@@ -76,8 +79,8 @@ class GraphMgr {
   typedef std::map<string, Tensor> NamedTensors;
   typedef std::function<void(const Status&)> StatusCallback;
   void ExecuteAsync(const string& handle, const int64 step_id,
-                    const ExecutorOpts& opts, StepStatsCollector* collector,
-                    CostGraphDef* cost_graph,
+                    WorkerSession* session, const ExecutorOpts& opts,
+                    StepStatsCollector* collector, CostGraphDef* cost_graph,
                     CancellationManager* cancellation_manager,
                     const NamedTensors& in, StatusCallback done);
 
@@ -129,13 +132,16 @@ class GraphMgr {
   };
 
   const WorkerEnv* worker_env_;             // Not owned.
-  RendezvousMgrInterface* rendezvous_mgr_;  // Not owned.
+  DeviceMgr* device_mgr_;
 
   CostModelManager cost_model_manager_;
 
   // Owned.
   mutex mu_;
   int64 next_id_ GUARDED_BY(mu_) = 0;
+
+  // If true, blocks until device has finished all queued operations in a step.
+  bool sync_on_finish_ = true;
 
   // Table mapping graph handles to registered graphs.
   //
@@ -164,7 +170,11 @@ class GraphMgr {
                                       const StatusCallback& done);
 
   Status InitItem(const string& session, const GraphDef& gdef,
-                  const GraphOptions& graph_options, Item* item);
+                  const GraphOptions& graph_options,
+                  const DebugOptions& debug_options, Item* item);
+
+  Status DecorateAndPublishGraphForDebug(const DebugOptions& debug_options,
+                                         Graph* graph, Device* device);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GraphMgr);
 };

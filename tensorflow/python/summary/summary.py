@@ -190,6 +190,11 @@ def histogram(name, values, collections=None):
   # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with a histogram.
 
+  Adding a histogram summary makes it possible to visualize your data's
+  distribution in TensorBoard. You can see a detailed explanation of the
+  TensorBoard histogram dashboard
+  [here](https://www.tensorflow.org/get_started/tensorboard_histograms).
+
   The generated
   [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
   has one summary value containing a histogram for `values`.

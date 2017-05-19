@@ -249,8 +249,10 @@ BundleWriter::BundleWriter(Env* env, StringPiece prefix)
                                      random::New64())),
       out_(nullptr),
       size_(0) {
-  status_ =
-      env_->CreateDir(io::Dirname(prefix_).ToString());  // Ignores errors.
+  status_ = env_->CreateDir(io::Dirname(prefix_).ToString());
+  if (!status_.ok() && !errors::IsAlreadyExists(status_)) {
+    return;
+  }
   const string filename = DataFilename(prefix_, 0, 1);
   std::unique_ptr<WritableFile> wrapper;
   status_ = env_->NewWritableFile(tmp_data_path_, &wrapper);
@@ -261,12 +263,10 @@ BundleWriter::BundleWriter(Env* env, StringPiece prefix)
   VLOG(1) << "Writing to file " << tmp_data_path_;
 }
 
-BundleWriter::~BundleWriter() { CHECK(out_ == nullptr); }
-
 Status BundleWriter::Add(StringPiece key, const Tensor& val) {
+  if (!status_.ok()) return status_;
   CHECK_NE(key, kHeaderEntryKey);
   const string key_string = key.ToString();
-  if (!status_.ok()) return status_;
   if (entries_.find(key_string) != entries_.end()) {
     status_ = errors::InvalidArgument("Adding duplicate key: ", key);
     return status_;
@@ -301,13 +301,13 @@ Status BundleWriter::AddSlice(StringPiece full_tensor_key,
                               const TensorShape& full_tensor_shape,
                               const TensorSlice& slice_spec,
                               const Tensor& slice_tensor) {
+  if (!status_.ok()) return status_;
+  CHECK_NE(full_tensor_key, kHeaderEntryKey);
+
   // If just a singleton full slice, use the regular Add() to be more efficient.
   if (IsFullSlice(slice_spec, full_tensor_shape)) {
     return Add(full_tensor_key, slice_tensor);
   }
-
-  CHECK_NE(full_tensor_key, kHeaderEntryKey);
-  if (!status_.ok()) return status_;
 
   // Inserts/updates the full tensor's metadata entry.
   //
@@ -516,7 +516,8 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   // Merges all metadata tables.
   // TODO(zhifengc): KeyValue sorter if it becomes too big.
   MergeState merge;
-  env->CreateDir(io::Dirname(merged_prefix).ToString()).IgnoreError();
+  Status status = env->CreateDir(io::Dirname(merged_prefix).ToString());
+  if (!status.ok() && !errors::IsAlreadyExists(status)) return status;
   for (int i = 0; i < prefixes.size(); ++i) {
     TF_RETURN_IF_ERROR(MergeOneBundle(env, prefixes[i], &merge));
   }
@@ -534,7 +535,6 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   std::unique_ptr<WritableFile> merged_metadata;
   TF_RETURN_IF_ERROR(
       env->NewWritableFile(MetaFilename(merged_prefix), &merged_metadata));
-  Status status;
   {
     table::TableBuilder builder(table::Options(), merged_metadata.get());
     // Header entry.

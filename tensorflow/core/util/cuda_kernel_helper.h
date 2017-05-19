@@ -63,6 +63,28 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
   return config;
 }
 
+// Calculate the Cuda launch config we should use for a kernel launch. This
+// variant takes the resource limits of func into account to maximize occupancy.
+template <typename DeviceFunc>
+inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
+                                            const GPUDevice& d, DeviceFunc func,
+                                            size_t dynamic_shared_memory_size) {
+  int block_count = 0;
+  int thread_per_block = 0;
+  cudaOccupancyMaxPotentialBlockSize(&block_count, &thread_per_block, func,
+                                     dynamic_shared_memory_size,
+                                     work_element_count);
+  block_count =
+      std::min(block_count,
+               (work_element_count + thread_per_block - 1) / thread_per_block);
+
+  CudaLaunchConfig config;
+  config.virtual_thread_count = work_element_count;
+  config.thread_per_block = thread_per_block;
+  config.block_count = block_count;
+  return config;
+}
+
 struct Cuda2DLaunchConfig {
   dim3 virtual_thread_count;
   dim3 thread_per_block;
@@ -123,6 +145,28 @@ template <typename T>
 __device__ __host__ inline T ldg(const T* address) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
   return __ldg(address);
+#else
+  return *address;
+#endif
+}
+
+template <>
+__device__ __host__ inline std::complex<float> ldg(
+    const std::complex<float>* address) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+  float2 mem = __ldg(reinterpret_cast<const float2*>(address));
+  return std::complex<float>(mem.x, mem.y);
+#else
+  return *address;
+#endif
+}
+
+template <>
+__device__ __host__ inline std::complex<double> ldg(
+    const std::complex<double>* address) {
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 350
+  double2 mem = __ldg(reinterpret_cast<const double2*>(address));
+  return std::complex<double>(mem.x, mem.y);
 #else
   return *address;
 #endif

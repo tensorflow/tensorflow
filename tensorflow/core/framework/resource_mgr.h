@@ -211,6 +211,8 @@ ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
 
 // Returns a resource handle from a numbered op input.
 ResourceHandle HandleFromInput(OpKernelContext* ctx, int input);
+Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
+                       ResourceHandle* handle);
 
 // Create a resource pointed by a given resource handle.
 template <typename T>

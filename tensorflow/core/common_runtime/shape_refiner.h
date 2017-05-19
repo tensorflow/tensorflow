@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/common_runtime/graph_runner.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -32,6 +33,7 @@ namespace tensorflow {
 class ShapeRefiner {
  public:
   ShapeRefiner(int graph_def_version, const OpRegistryInterface* ops);
+  ~ShapeRefiner();
 
   // Performs validation of 'node' and runs 'node's shape function,
   // storing its shape outputs.
@@ -53,6 +55,11 @@ class ShapeRefiner {
   Status SetShape(const Node* node, int output_port,
                   shape_inference::ShapeHandle shape);
 
+  // Update the input shapes of node in case the shapes of the fan-ins of 'node'
+  // have themselves been modified (For example, in case of incremental shape
+  // refinement). Sets refined to true if any of the node shape has changed.
+  Status UpdateNode(const Node* node, bool* refined);
+
   // Returns the InferenceContext for 'node', if present.
   shape_inference::InferenceContext* GetContext(const Node* node) const {
     auto it = node_to_context_.find(node);
@@ -60,6 +67,14 @@ class ShapeRefiner {
       return nullptr;
     }
     return it->second.get();
+  }
+
+  // Getters and setters for graph_def_version_.
+  int32 graph_def_version() const { return graph_def_version_; }
+  void set_graph_def_version(int32 version) { graph_def_version_ = version; }
+
+  void set_require_shape_inference_fns(bool require_shape_inference_fns) {
+    require_shape_inference_fns_ = require_shape_inference_fns;
   }
 
  private:
@@ -98,8 +113,15 @@ class ShapeRefiner {
                               const Node* node, int dst_idx,
                               shape_inference::ShapeHandle* result);
 
-  const int graph_def_version_;
+  Status RunShapeFn(const Node* node, const OpRegistrationData* op_reg_data,
+                    shape_inference::InferenceContext* c);
+
+  int32 graph_def_version_;
   const OpRegistryInterface* const ops_registry_;
+
+  // The lifetime of the tensors are bound to the runner, so it should be the
+  // deleted after the tensors.
+  GraphRunner graph_runner_;
 
   // Stores a map from a node to its InferenceContext.
   //
@@ -118,6 +140,9 @@ class ShapeRefiner {
   // Only tensors less than 1KiB are currently stored in the cache.
   static constexpr int64 kMaxTensorSize = 1024;
   std::unordered_map<string, Tensor> const_tensor_map_;
+
+  bool require_shape_inference_fns_ = true;
+
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeRefiner);
 };
 

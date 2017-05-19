@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -53,11 +52,9 @@ namespace cpu {
 CpuExecutable::CpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<BufferAssignment> assignment,
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config,
-    const string& entry_function_name,
+    std::unique_ptr<HloModule> hlo_module, const string& entry_function_name,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx)
-    : Executable(std::move(hlo_module), std::move(module_config)),
+    : Executable(std::move(hlo_module)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       hlo_to_profile_idx_(std::move(hlo_to_profile_idx)) {

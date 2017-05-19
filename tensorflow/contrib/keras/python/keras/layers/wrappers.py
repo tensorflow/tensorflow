@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=protected-access
 """Wrapper layers: layers that augment the functionality of another layer.
 """
 from __future__ import absolute_import
@@ -24,6 +25,7 @@ from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras.engine import InputSpec
 from tensorflow.contrib.keras.python.keras.engine import Layer
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.util import tf_inspect
 
 
 class Wrapper(Layer):
@@ -42,19 +44,53 @@ class Wrapper(Layer):
     super(Wrapper, self).__init__(**kwargs)
 
   def build(self, input_shape=None):
-    # Assumes that self.layer is already set.
-    # Should be called at the end of .build() in the children classes.
-    self.trainable_weights = getattr(self.layer, 'trainable_weights', [])
-    self.non_trainable_weights = getattr(self.layer, 'non_trainable_weights',
-                                         [])
-    self.updates = getattr(self.layer, 'updates', [])
-    self.losses = getattr(self.layer, 'losses', [])
-    self.constraints = getattr(self.layer, 'constraints', {})
     self.built = True
 
+  @property
+  def activity_regularizer(self):
+    if hasattr(self.layer, 'activity_regularizer'):
+      return self.layer.activity_regularizer
+    else:
+      return None
+
+  @property
+  def trainable_weights(self):
+    return self.layer.trainable_weights
+
+  @property
+  def non_trainable_weights(self):
+    return self.layer.non_trainable_weights
+
+  @property
+  def updates(self):
+    if hasattr(self.layer, 'updates'):
+      return self.layer.updates
+    return []
+
+  def get_updates_for(self, inputs=None):
+    if inputs is None:
+      updates = self.layer.get_updates_for(None)
+      return updates + super(Wrapper, self).get_updates_for(None)
+    return super(Wrapper, self).get_updates_for(inputs)
+
+  @property
+  def losses(self):
+    if hasattr(self.layer, 'losses'):
+      return self.layer.losses
+    return []
+
+  def get_losses_for(self, inputs=None):
+    if inputs is None:
+      losses = self.layer.get_losses_for(None)
+      return losses + super(Wrapper, self).get_losses_for(None)
+    return super(Wrapper, self).get_losses_for(inputs)
+
+  @property
+  def constraints(self):
+    return self.layer.constraints
+
   def get_weights(self):
-    weights = self.layer.get_weights()
-    return weights
+    return self.layer.get_weights()
 
   def set_weights(self, weights):
     self.layer.set_weights(weights)
@@ -70,9 +106,10 @@ class Wrapper(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
   @classmethod
-  def from_config(cls, config):
+  def from_config(cls, config, custom_objects=None):
     from tensorflow.contrib.keras.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top
-    layer = deserialize_layer(config.pop('layer'))
+    layer = deserialize_layer(
+        config.pop('layer'), custom_objects=custom_objects)
     return cls(layer, **config)
 
 
@@ -129,11 +166,12 @@ class TimeDistributed(Wrapper):
       self.layer.build(child_input_shape)
       self.layer.built = True
     super(TimeDistributed, self).build()
+    self.built = True
 
   def _compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    child_input_shape = tensor_shape.TensorShape([input_shape[0]] + input_shape[
-        2:])
+    child_input_shape = tensor_shape.TensorShape([input_shape[0]] +
+                                                 input_shape[2:])
     child_output_shape = self.layer._compute_output_shape(  # pylint: disable=protected-access
         child_input_shape).as_list()
     timesteps = input_shape[1]
@@ -188,12 +226,15 @@ class Bidirectional(Wrapper):
           If None, the outputs will not be combined,
           they will be returned as a list.
 
+  Raises:
+      ValueError: In case of invalid `merge_mode` argument.
+
   Examples:
 
   ```python
       model = Sequential()
       model.add(Bidirectional(LSTM(10, return_sequences=True), input_shape=(5,
-        10)))
+      10)))
       model.add(Bidirectional(LSTM(10)))
       model.add(Dense(5))
       model.add(Activation('softmax'))
@@ -242,29 +283,47 @@ class Bidirectional(Wrapper):
       shape = self.forward_layer._compute_output_shape(input_shape)  # pylint: disable=protected-access
       return [shape, copy.copy(shape)]
 
-  def call(self, inputs, mask=None):
-    y = self.forward_layer.call(inputs, mask)
-    y_rev = self.backward_layer.call(inputs, mask)
+  def call(self, inputs, training=None, mask=None):
+    kwargs = {}
+    func_args = tf_inspect.getargspec(self.layer.call).args
+    if 'training' in func_args:
+      kwargs['training'] = training
+    if 'mask' in func_args:
+      kwargs['mask'] = mask
+
+    y = self.forward_layer.call(inputs, **kwargs)
+    y_rev = self.backward_layer.call(inputs, **kwargs)
     if self.return_sequences:
       y_rev = K.reverse(y_rev, 1)
     if self.merge_mode == 'concat':
-      return K.concatenate([y, y_rev])
+      output = K.concatenate([y, y_rev])
     elif self.merge_mode == 'sum':
-      return y + y_rev
+      output = y + y_rev
     elif self.merge_mode == 'ave':
-      return (y + y_rev) / 2
+      output = (y + y_rev) / 2
     elif self.merge_mode == 'mul':
-      return y * y_rev
+      output = y * y_rev
     elif self.merge_mode is None:
-      return [y, y_rev]
+      output = [y, y_rev]
+
+    # Properly set learning phase
+    if 0 < self.layer.dropout + self.layer.recurrent_dropout:
+      if self.merge_mode is None:
+        for out in output:
+          out._uses_learning_phase = True
+      else:
+        output._uses_learning_phase = True
+    return output
 
   def reset_states(self):
     self.forward_layer.reset_states()
     self.backward_layer.reset_states()
 
   def build(self, input_shape):
-    self.forward_layer.build(input_shape)
-    self.backward_layer.build(input_shape)
+    with K.name_scope(self.forward_layer.name):
+      self.forward_layer.build(input_shape)
+    with K.name_scope(self.backward_layer.name):
+      self.backward_layer.build(input_shape)
     self.built = True
 
   def compute_mask(self, inputs, mask):

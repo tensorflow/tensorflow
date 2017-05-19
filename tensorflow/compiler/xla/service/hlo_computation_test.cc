@@ -20,14 +20,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 
 namespace {
+
+using ::testing::ElementsAre;
+using ::testing::UnorderedElementsAre;
 
 class HloComputationTest : public HloTestBase {
  protected:
@@ -67,8 +74,8 @@ TEST_F(HloComputationTest, GetEmbeddedComputationsOneComputation) {
   auto negate_computation = CreateNegateComputation();
   auto map_computation = CreateMapComputation(negate_computation.get());
   EXPECT_TRUE(negate_computation->MakeEmbeddedComputationsList().empty());
-  EXPECT_EQ(map_computation->MakeEmbeddedComputationsList().front(),
-            negate_computation.get());
+  EXPECT_THAT(map_computation->MakeEmbeddedComputationsList(),
+              ElementsAre(negate_computation.get()));
 }
 
 TEST_F(HloComputationTest, GetEmbeddedComputationsDiamond) {
@@ -93,10 +100,10 @@ TEST_F(HloComputationTest, GetEmbeddedComputationsDiamond) {
   // GetEmbeddedComputations returns a post order of the embedded computations,
   // so the negate computation must come first.
   EXPECT_EQ(negate_computation.get(), *embedded_computations.begin());
-  EXPECT_MATCH(testing::ListToVec<HloComputation*>(embedded_computations),
-               testing::UnorderedMatcher<HloComputation*>(
-                   negate_computation.get(), map1_computation.get(),
-                   map2_computation.get()));
+  EXPECT_THAT(
+      embedded_computations,
+      UnorderedElementsAre(negate_computation.get(), map1_computation.get(),
+                           map2_computation.get()));
 }
 
 TEST_F(HloComputationTest, PostOrderSingleton) {
@@ -106,7 +113,7 @@ TEST_F(HloComputationTest, PostOrderSingleton) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto computation = builder.Build();
 
-  EXPECT_EQ(computation->MakeInstructionPostOrder().front(), constant);
+  EXPECT_THAT(computation->MakeInstructionPostOrder(), ElementsAre(constant));
 }
 
 TEST_F(HloComputationTest, PostOrderSimple) {
@@ -121,10 +128,8 @@ TEST_F(HloComputationTest, PostOrderSimple) {
       HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, negate1));
   auto computation = builder.Build();
 
-  EXPECT_MATCH(
-      testing::ListToVec<HloInstruction*>(
-          computation->MakeInstructionPostOrder()),
-      testing::OrderedMatcher<HloInstruction*>(constant, negate1, negate2));
+  EXPECT_THAT(computation->MakeInstructionPostOrder(),
+              ElementsAre(constant, negate1, negate2));
 }
 
 TEST_F(HloComputationTest, PostOrderTrace) {
@@ -141,10 +146,8 @@ TEST_F(HloComputationTest, PostOrderTrace) {
   auto computation = builder.Build();
 
   // Trace instructions should be at the end of the sort.
-  EXPECT_MATCH(testing::ListToVec<HloInstruction*>(
-                   computation->MakeInstructionPostOrder()),
-               testing::OrderedMatcher<HloInstruction*>(constant, negate1,
-                                                        negate2, trace));
+  EXPECT_THAT(computation->MakeInstructionPostOrder(),
+              ElementsAre(constant, negate1, negate2, trace));
 }
 
 TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
@@ -161,10 +164,8 @@ TEST_F(HloComputationTest, PostOrderDisconnectedInstructions) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
   auto computation = builder.Build();
 
-  EXPECT_MATCH(testing::ListToVec<HloInstruction*>(
-                   computation->MakeInstructionPostOrder()),
-               testing::UnorderedMatcher<HloInstruction*>(
-                   constant1, constant2, constant3, constant4));
+  EXPECT_THAT(computation->MakeInstructionPostOrder(),
+              UnorderedElementsAre(constant1, constant2, constant3, constant4));
 }
 
 TEST_F(HloComputationTest, PostOrderWithMultipleRoots) {
@@ -187,9 +188,8 @@ TEST_F(HloComputationTest, PostOrderWithMultipleRoots) {
 
   auto post_order = computation->MakeInstructionPostOrder();
   EXPECT_EQ(6, post_order.size());
-  EXPECT_MATCH(testing::ListToVec<HloInstruction*>(post_order),
-               testing::UnorderedMatcher<HloInstruction*>(
-                   constant1, constant2, constant3, add1, add2, add3));
+  EXPECT_THAT(post_order, UnorderedElementsAre(constant1, constant2, constant3,
+                                               add1, add2, add3));
 }
 
 TEST_F(HloComputationTest, VisitWithMultipleRoots) {
@@ -253,8 +253,7 @@ TEST_F(HloComputationTest, DeepCopyArray) {
 
   auto copy = computation->DeepCopyInstruction(constant).ValueOrDie();
 
-  EXPECT_EQ(HloOpcode::kCopy, copy->opcode());
-  EXPECT_EQ(constant, copy->operand(0));
+  EXPECT_THAT(copy, op::Copy(constant));
 }
 
 TEST_F(HloComputationTest, DeepCopyTuple) {
@@ -271,18 +270,10 @@ TEST_F(HloComputationTest, DeepCopyTuple) {
 
   auto tuple_copy = computation->DeepCopyInstruction(tuple).ValueOrDie();
 
-  EXPECT_EQ(HloOpcode::kTuple, tuple_copy->opcode());
-  EXPECT_EQ(HloOpcode::kCopy, tuple_copy->operand(0)->opcode());
-  const HloInstruction* gte0 = tuple_copy->operand(0)->operand(0);
-  EXPECT_EQ(HloOpcode::kGetTupleElement, gte0->opcode());
-  EXPECT_EQ(0, gte0->tuple_index());
-  EXPECT_EQ(tuple, gte0->operand(0));
-
-  EXPECT_EQ(HloOpcode::kCopy, tuple_copy->operand(1)->opcode());
-  const HloInstruction* gte1 = tuple_copy->operand(1)->operand(0);
-  EXPECT_EQ(HloOpcode::kGetTupleElement, gte1->opcode());
-  EXPECT_EQ(1, gte1->tuple_index());
-  EXPECT_EQ(tuple, gte1->operand(0));
+  EXPECT_THAT(tuple_copy, op::Tuple(op::Copy(op::GetTupleElement(tuple)),
+                                    op::Copy(op::GetTupleElement(tuple))));
+  EXPECT_EQ(0, tuple_copy->operand(0)->operand(0)->tuple_index());
+  EXPECT_EQ(1, tuple_copy->operand(1)->operand(0)->tuple_index());
 }
 
 TEST_F(HloComputationTest, CycleDetection) {
@@ -302,8 +293,8 @@ TEST_F(HloComputationTest, CycleDetection) {
   const auto visitor = [](HloInstruction* instruction) { return Status::OK(); };
   auto visit_status = computation->Accept(visitor);
   ASSERT_FALSE(visit_status.ok());
-  ASSERT_MATCH(visit_status.error_message(),
-               testing::ContainsRegex("cycle is detecte"));
+  ASSERT_THAT(visit_status.error_message(),
+              ::testing::ContainsRegex("cycle is detecte"));
 }
 
 TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
@@ -322,12 +313,43 @@ TEST_F(HloComputationTest, RemoveInstructionWithDuplicateOperand) {
   auto computation = builder.Build();
 
   EXPECT_EQ(4, computation->instruction_count());
+  EXPECT_THAT(computation->root_instruction(), op::Negate(constant));
   EXPECT_EQ(negate, computation->root_instruction());
 
   ASSERT_IS_OK(computation->RemoveInstructionAndUnusedOperands(dead_add));
 
   EXPECT_EQ(2, computation->instruction_count());
+  EXPECT_THAT(computation->root_instruction(), op::Negate(constant));
   EXPECT_EQ(negate, computation->root_instruction());
+}
+
+TEST_F(HloComputationTest, CloneWithControlDependency) {
+  auto builder = HloComputation::Builder(TestName());
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0f)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0f)));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      r0f32_, HloOpcode::kAdd, constant1, constant2));
+
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "param0"));
+  auto negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, param));
+  auto computation = builder.Build(/*root_instruction=*/add);
+
+  TF_CHECK_OK(negate->AddControlDependencyTo(add));
+
+  auto clone = computation->Clone();
+
+  auto cloned_add = clone->root_instruction();
+  EXPECT_EQ(cloned_add->opcode(), HloOpcode::kAdd);
+
+  auto predecessors = cloned_add->control_predecessors();
+  EXPECT_EQ(1, predecessors.size());
+  EXPECT_EQ(HloOpcode::kNegate, predecessors[0]->opcode());
+  auto successors = predecessors[0]->control_successors();
+  EXPECT_THAT(successors, ::testing::ElementsAre(cloned_add));
 }
 
 }  // namespace

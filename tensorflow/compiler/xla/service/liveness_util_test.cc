@@ -34,9 +34,7 @@ class PointsToAnalysisTestBase : public HloTestBase {
   void RunAnalysis() {
     CHECK_NOTNULL(module_.get());
     points_to_analysis_ =
-        TuplePointsToAnalysis::Run(module_.get(),
-                                   /*include_loop_fusion_instructions=*/true)
-            .ConsumeValueOrDie();
+        TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
   }
 
   void BuildModuleAndRunAnalysis(std::unique_ptr<HloComputation> computation) {
@@ -150,6 +148,25 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
                                              *points_to_analysis_));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, CopyShares) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape shape = ShapeUtil::MakeShape(F32, {8});
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param"));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kExp, param));
+  auto copy = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kCopy, exp));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_TRUE(
+      CanShareOperandBufferWithUser(param, {}, exp, {}, *points_to_analysis_));
+  EXPECT_TRUE(
+      CanShareOperandBufferWithUser(exp, {}, copy, {}, *points_to_analysis_));
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
   auto builder = HloComputation::Builder(TestName());
 
@@ -183,6 +200,168 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
                                              *points_to_analysis_));
   EXPECT_TRUE(CanShareOperandBufferWithUser(tuple, {1}, fusion, {},
                                             *points_to_analysis_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
+  auto builder = HloComputation::Builder(TestName());
+
+  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+  Shape update_shape = ShapeUtil::MakeShape(F32, {4});
+  Shape starts_shape = ShapeUtil::MakeShape(S32, {1});
+  auto data = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape, "data"));
+  auto update = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, update_shape, "update"));
+  auto starts = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, starts_shape, "starts"));
+  auto dus = builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+      data_shape, data, update, starts));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  // The DynamicUpdateSlice instruction can share with the data operand, but not
+  // with update or starts.
+  EXPECT_TRUE(
+      CanShareOperandBufferWithUser(data, {}, dus, {}, *points_to_analysis_));
+  EXPECT_FALSE(
+      CanShareOperandBufferWithUser(update, {}, dus, {}, *points_to_analysis_));
+  EXPECT_FALSE(
+      CanShareOperandBufferWithUser(starts, {}, dus, {}, *points_to_analysis_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+
+  auto a = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
+  auto b = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+
+  auto dot = builder.AddInstruction(
+      HloInstruction::CreateBinary(data_shape, HloOpcode::kDot, a, b));
+
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto add_operand = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape, one, {1}));
+
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      data_shape, HloOpcode::kAdd, dot, add_operand));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {add, dot}, HloInstruction::FusionKind::kOutput);
+  RunAnalysis();
+
+  // Output fused dot add should be able to share buffer with 'add_operand'.
+  EXPECT_TRUE(CanShareOperandBufferWithUser(add_operand, {}, fusion, {},
+                                            *points_to_analysis_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, FusedTransposeDotAdd) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+
+  auto a = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
+  auto b = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+  auto b_t = builder.AddInstruction(
+      HloInstruction::CreateTranspose(data_shape, b, {1, 0}));
+
+  auto dot = builder.AddInstruction(
+      HloInstruction::CreateBinary(data_shape, HloOpcode::kDot, a, b_t));
+
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto add_operand = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape, one, {1}));
+
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      data_shape, HloOpcode::kAdd, dot, add_operand));
+
+  BuildModule(builder.Build());
+
+  auto nested_fusion = computation_->CreateFusionInstruction(
+      {dot, b_t}, HloInstruction::FusionKind::kTransposeDot);
+
+  auto fusion = computation_->CreateFusionInstruction(
+      {add, nested_fusion}, HloInstruction::FusionKind::kOutput);
+  RunAnalysis();
+
+  // Output fused transpose-dot-add should be share buffer with 'add_operand'.
+  EXPECT_TRUE(CanShareOperandBufferWithUser(add_operand, {}, fusion, {},
+                                            *points_to_analysis_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
+  auto builder = HloComputation::Builder(TestName());
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto operand = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape, one, {1}));
+
+  auto reverse = builder.AddInstruction(
+      HloInstruction::CreateReverse(data_shape, operand, {0, 1}));
+
+  auto two = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, reverse, two));
+
+  BuildModule(builder.Build());
+  auto fusion = computation_->CreateFusionInstruction(
+      {add, two, reverse}, HloInstruction::FusionKind::kOutput);
+  RunAnalysis();
+
+  // Output fused operand->reverse->add cannot alias operand buffer 'operand'.
+  EXPECT_FALSE(CanShareOperandBufferWithUser(operand, {}, fusion, {},
+                                             *points_to_analysis_));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
+  Shape data_shape = ShapeUtil::MakeShape(F32, {8});
+
+  auto make_cond = [this, &data_shape]() {
+    auto builder = HloComputation::Builder(TestName() + ".Cond");
+    auto data = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, data_shape, "data"));
+    builder.AddInstruction(HloInstruction::CreateBinary(
+        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kEq, data, data));
+    return builder.Build();
+  };
+
+  auto make_body = [this, &data_shape]() {
+    auto builder = HloComputation::Builder(TestName() + ".Body");
+    auto data = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, data_shape, "data"));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, data, data));
+    return builder.Build();
+  };
+
+  module_ = MakeUnique<HloModule>(TestName());
+  HloComputation* cond_computation =
+      module_->AddEmbeddedComputation(make_cond());
+  HloComputation* body_computation =
+      module_->AddEmbeddedComputation(make_body());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto data = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape, "data"));
+  auto whil = builder.AddInstruction(HloInstruction::CreateWhile(
+      data_shape, cond_computation, body_computation, data));
+  computation_ = module_->AddEntryComputation(builder.Build());
+
+  RunAnalysis();
+
+  // The While instruction can share with the data operand.
+  EXPECT_TRUE(
+      CanShareOperandBufferWithUser(data, {}, whil, {}, *points_to_analysis_));
 }
 
 }  // namespace

@@ -94,7 +94,7 @@ class OpTestBuilder {
   explicit OpTestBuilder(const string& op_name);
 
   // Adds an input 'tensor'.
-  OpTestBuilder& Input(Tensor tensor);
+  OpTestBuilder& Input(const Tensor& tensor);
 
   // Sets an attribute.
   template <class T>
@@ -111,8 +111,8 @@ class OpTestBuilder {
   // sets it to the NodeDef of the operator under test. Fills 'inputs' and
   // 'outputs' with the names of the input placeholder nodes and the output
   // identity nodes, respectively.
-  Status BuildGraph(string name_prefix, string device, bool use_jit,
-                    GraphDef* graphdef, NodeDef** test_node_def,
+  Status BuildGraph(const string& name_prefix, const string& device,
+                    bool use_jit, GraphDef* graphdef, NodeDef** test_node_def,
                     std::vector<string>* inputs,
                     std::vector<string>* outputs) const;
 
@@ -127,7 +127,7 @@ OpTestBuilder::OpTestBuilder(const string& op_name) {
   node_def_.set_op(op_name);
 }
 
-OpTestBuilder& OpTestBuilder::Input(Tensor tensor) {
+OpTestBuilder& OpTestBuilder::Input(const Tensor& tensor) {
   VLOG(1) << "Adding input: " << tensor.DebugString();
   inputs_.push_back(tensor);
   return *this;
@@ -146,9 +146,9 @@ OpTestBuilder& OpTestBuilder::Attr(StringPiece attr_name,
   return *this;
 }
 
-Status OpTestBuilder::BuildGraph(string name_prefix, string device,
-                                 bool use_jit, GraphDef* graphdef,
-                                 NodeDef** test_node_def,
+Status OpTestBuilder::BuildGraph(const string& name_prefix,
+                                 const string& device, bool use_jit,
+                                 GraphDef* graphdef, NodeDef** test_node_def,
                                  std::vector<string>* inputs,
                                  std::vector<string>* outputs) const {
   OpRegistryInterface* op_registry = OpRegistry::Global();
@@ -209,7 +209,7 @@ class OpTest : public ::testing::Test {
 
   // Runs 'fn' up to --tf_xla_test_repetitions times, or until a failure occurs;
   // whichever happens first.
-  void Repeatedly(std::function<void(void)> fn);
+  void Repeatedly(const std::function<void(void)>& fn);
 
   // Select a random element from 'candidates'.
   template <typename T>
@@ -218,12 +218,11 @@ class OpTest : public ::testing::Test {
   static constexpr int kDefaultMaxRank = 5;
   static constexpr int64 kDefaultMaxDimensionSize = 20LL;
 
-  // Returns a random dimension size.
+  // Returns a random dimension size, in the range [min, max).
   int64 RandomDim(int64 min = 0, int64 max = kDefaultMaxDimensionSize);
 
   // Returns a random shape. The tensor has rank in the range [min_rank,
-  // max_rank).
-  // Each dimension has size [0, kDefaultMaxDimensionSize].
+  // max_rank). Each dimension has size [min_size, max_size).
   std::vector<int64> RandomDims(int min_rank = 0,
                                 int max_rank = kDefaultMaxRank,
                                 int64 min_size = 0,
@@ -316,7 +315,7 @@ OpTest::OpTest() {
   TF_CHECK_OK(session_->Create(def));
 }
 
-void OpTest::Repeatedly(std::function<void(void)> fn) {
+void OpTest::Repeatedly(const std::function<void(void)>& fn) {
   int const max_repetitions = tf_xla_test_repetitions;
   for (int i = 0; !HasFailure() && i < max_repetitions; ++i) {
     fn();
@@ -668,6 +667,9 @@ void OpTest::ExpectTfAndXlaOutputsAreClose(const OpTestBuilder& builder,
     VLOG(1) << "Expected graph failed with status: " << s << ". Skipping test";
     return;
   }
+  for (const Tensor& expected : expected_outputs) {
+    VLOG(1) << "Expected: " << expected.DebugString();
+  }
 
   VLOG(1) << "Running test graph";
   TF_ASSERT_OK(session_->Run(test_feeds, test_fetches, {}, &test_outputs));
@@ -874,6 +876,79 @@ TEST_F(OpTest, BatchMatMul) {
                                       .Input(RandomTensor(DT_FLOAT, y_dims))
                                       .Attr("T", DT_FLOAT)
                                       .Attr("adj_y", true));
+  });
+}
+
+TEST_F(OpTest, BatchToSpace) {
+  Repeatedly([this]() {
+    const int num_block_dims = 2;
+    std::vector<int64> block_dims =
+        RandomDims(num_block_dims, num_block_dims, 0, 5);
+    int64 block_size = RandomDim(0, 4);
+
+    std::vector<int64> input_dims(1 + num_block_dims + 1);
+    input_dims[0] = RandomDim();
+    for (int i = 0; i < num_block_dims; ++i) {
+      input_dims[0] *= block_size;
+      input_dims[1 + i] = block_dims[i];
+    }
+    input_dims[1 + num_block_dims] = RandomDim();
+
+    std::vector<int64> crop_vals;
+    std::uniform_int_distribution<int> distribution(0, 4);
+    for (int i = 0; i < num_block_dims; ++i) {
+      // Chooses crop values; does not always choose legal values.
+      crop_vals.push_back(distribution(generator()));
+      crop_vals.push_back(distribution(generator()));
+    }
+    Tensor crops;
+    CHECK(crops.CopyFrom(AsIntTensor(DT_INT32, crop_vals),
+                         TensorShape({num_block_dims, 2})));
+
+    ExpectTfAndXlaOutputsAreClose(OpTestBuilder("BatchToSpace")
+                                      .Input(RandomTensor(DT_FLOAT, input_dims))
+                                      .Input(crops)
+                                      .Attr("T", DT_FLOAT)
+                                      .Attr("block_size", block_size));
+  });
+}
+
+TEST_F(OpTest, BatchToSpaceND) {
+  Repeatedly([this]() {
+    std::vector<int64> block_dims = RandomDims(1, 3, 0, 5);
+    int num_block_dims = block_dims.size();
+    std::vector<int64> remaining_dims = RandomDims(0, 3);
+    std::vector<int64> block_multipliers =
+        RandomDims(block_dims.size(), block_dims.size(), 0, 4);
+
+    std::vector<int64> input_dims(1 + num_block_dims + remaining_dims.size());
+    input_dims[0] = RandomDim();
+    for (int i = 0; i < num_block_dims; ++i) {
+      input_dims[0] *= block_dims[i];
+    }
+    std::copy(block_multipliers.begin(), block_multipliers.end(),
+              input_dims.begin() + 1);
+    std::copy(remaining_dims.begin(), remaining_dims.end(),
+              input_dims.begin() + 1 + num_block_dims);
+
+    std::vector<int64> crop_vals;
+    std::uniform_int_distribution<int> distribution(0, 3);
+    for (int i = 0; i < num_block_dims; ++i) {
+      // Chooses crop values; does not always choose legal values.
+      crop_vals.push_back(distribution(generator()));
+      crop_vals.push_back(distribution(generator()));
+    }
+    Tensor crops;
+    CHECK(crops.CopyFrom(AsIntTensor(DT_INT32, crop_vals),
+                         TensorShape({num_block_dims, 2})));
+
+    ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("BatchToSpaceND")
+            .Input(RandomTensor(DT_FLOAT, input_dims))
+            .Input(test::AsTensor<int32>(
+                std::vector<int32>(block_dims.begin(), block_dims.end())))
+            .Input(crops)
+            .Attr("T", DT_FLOAT));
   });
 }
 
@@ -1211,6 +1286,23 @@ TEST_F(OpTest, DynamicStitch) {
       builder.Input(t);
     }
     ExpectTfAndXlaOutputsAreClose(builder);
+  });
+}
+
+TEST_F(OpTest, Elu) {
+  Repeatedly([this]() {
+    ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Elu").Input(RandomTensor(DT_FLOAT)).Attr("T", DT_FLOAT));
+  });
+}
+
+TEST_F(OpTest, EluGrad) {
+  Repeatedly([this]() {
+    auto dims = RandomDims();
+    ExpectTfAndXlaOutputsAreClose(OpTestBuilder("EluGrad")
+                                      .Input(RandomTensor(DT_FLOAT, dims))
+                                      .Input(RandomTensor(DT_FLOAT, dims))
+                                      .Attr("T", DT_FLOAT));
   });
 }
 
@@ -2019,6 +2111,87 @@ TEST_F(OpTest, SoftplusGrad) {
   });
 }
 
+TEST_F(OpTest, SpaceToBatch) {
+  Repeatedly([this]() {
+    std::vector<int64> block_dims = RandomDims(4, 4, 0, 5);
+    const int num_block_dims = 2;
+    int64 block_size = RandomDim(0, 4);
+
+    std::vector<int64> input_dims(1 + num_block_dims + 1);
+    input_dims[0] = RandomDim();
+    for (int i = 0; i < num_block_dims; ++i) {
+      input_dims[1 + i] = block_dims[i] * block_size;
+    }
+    input_dims[1 + num_block_dims] = RandomDim();
+
+    std::vector<int64> padding_vals;
+    std::uniform_int_distribution<int> distribution(0, 7);
+    for (int i = 0; i < num_block_dims; ++i) {
+      int64 pad_before;
+      int64 pad_after;
+      do {
+        pad_before = distribution(generator());
+        pad_after = distribution(generator());
+      } while (pad_before + pad_after > input_dims[1 + i]);
+      input_dims[1 + i] -= pad_before + pad_after;
+      padding_vals.push_back(pad_before);
+      padding_vals.push_back(pad_after);
+    }
+    Tensor paddings;
+    CHECK(paddings.CopyFrom(AsIntTensor(DT_INT32, padding_vals),
+                            TensorShape({num_block_dims, 2})));
+
+    ExpectTfAndXlaOutputsAreClose(OpTestBuilder("SpaceToBatch")
+                                      .Input(RandomTensor(DT_FLOAT, input_dims))
+                                      .Input(paddings)
+                                      .Attr("T", DT_FLOAT)
+                                      .Attr("block_size", block_size));
+  });
+}
+
+TEST_F(OpTest, SpaceToBatchND) {
+  Repeatedly([this]() {
+    std::vector<int64> block_dims = RandomDims(1, 3, 0, 5);
+    int num_block_dims = block_dims.size();
+    std::vector<int64> remaining_dims = RandomDims(0, 3);
+    std::vector<int64> block_multipliers =
+        RandomDims(block_dims.size(), block_dims.size(), 0, 4);
+
+    std::vector<int64> input_dims(1 + num_block_dims + remaining_dims.size());
+    input_dims[0] = RandomDim();
+    for (int i = 0; i < num_block_dims; ++i) {
+      input_dims[1 + i] = block_dims[i] * block_multipliers[i];
+    }
+    std::copy(remaining_dims.begin(), remaining_dims.end(),
+              input_dims.begin() + 1 + num_block_dims);
+
+    std::vector<int64> padding_vals;
+    std::uniform_int_distribution<int> distribution(0, 7);
+    for (int i = 0; i < num_block_dims; ++i) {
+      int64 pad_before;
+      int64 pad_after;
+      do {
+        pad_before = distribution(generator());
+        pad_after = distribution(generator());
+      } while (pad_before + pad_after > input_dims[1 + i]);
+      input_dims[1 + i] -= pad_before + pad_after;
+      padding_vals.push_back(pad_before);
+      padding_vals.push_back(pad_after);
+    }
+    Tensor paddings;
+    CHECK(paddings.CopyFrom(AsIntTensor(DT_INT32, padding_vals),
+                            TensorShape({num_block_dims, 2})));
+
+    ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("SpaceToBatchND")
+            .Input(RandomTensor(DT_FLOAT, input_dims))
+            .Input(test::AsTensor<int32>(
+                std::vector<int32>(block_dims.begin(), block_dims.end())))
+            .Input(paddings)
+            .Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, SparseMatMul) {
   Repeatedly([this]() {
     int64 x = RandomDim();
@@ -2336,6 +2509,14 @@ TEST_F(OpTest, ZerosLike) {
     DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
     ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("ZerosLike").Input(RandomTensor(type)).Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, OnesLike) {
+  Repeatedly([this]() {
+    DataType type = Choose<DataType>({DT_INT32, DT_FLOAT});
+    ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("OnesLike").Input(RandomTensor(type)).Attr("T", type));
   });
 }
 

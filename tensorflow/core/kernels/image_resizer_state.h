@@ -122,7 +122,7 @@ struct ImageResizerState {
   int64 channels;
   float height_scale;
   float width_scale;
-  Tensor* output;
+  Tensor* output = nullptr;
 
  private:
   bool align_corners_;

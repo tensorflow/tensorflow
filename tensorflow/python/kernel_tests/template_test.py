@@ -306,7 +306,7 @@ class TemplateTest(test.TestCase):
     self.assertEqual(custom_getter_count[0], 2)
 
     # Test that custom getter is called when the variable scope is created
-    # during construction
+  # during construction
     custom_getter_count[0] = 0
     tmpl2 = template.make_template(
         "s2",
@@ -318,6 +318,28 @@ class TemplateTest(test.TestCase):
     self.assertEqual(custom_getter_count[0], 1)
     tmpl2()
     self.assertEqual(custom_getter_count[0], 2)
+
+  def test_fails_gracefully(self):
+    for create_scope_now in [True, False]:
+      def module_function_with_one_arg(inputs):
+        w = variable_scope.get_variable(
+            "w", shape=[1], initializer=init_ops.zeros_initializer())
+        return inputs * w
+
+      templatized_function = template.make_template(
+          "f1", module_function_with_one_arg,
+          create_scope_now_=create_scope_now)
+      data = array_ops.zeros(1)
+      try:
+        # Try to connect with a kwarg which is unsupported.
+        templatized_function(data, is_training=True)
+      except TypeError:
+        pass
+
+      # The failed __call__ hasn't modified the inner state.
+      self.assertFalse(templatized_function._variables_created)
+      templatized_function(data)
+      self.assertTrue(templatized_function._variables_created)
 
   def test_name_scopes_for_variable_scopes(self):
     # Test that name scopes are not unnecessarily uniquified (but are

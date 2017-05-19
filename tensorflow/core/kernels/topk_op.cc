@@ -17,17 +17,22 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/kernels/topk_op.h"
 #include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 
 namespace tensorflow {
 
-template <typename T>
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
+template <typename Device, typename T>
 class TopK : public OpKernel {
  public:
   explicit TopK(OpKernelConstruction* context) : OpKernel(context) {
@@ -59,8 +64,8 @@ class TopK : public OpKernel {
 
     const auto& input = input_in.flat_inner_dims<T>();
 
-    const auto num_rows = input.dimension(0);  // generally batch_size
-    const auto num_cols = input.dimension(1);
+    const int64 num_rows = input.dimension(0);  // generally batch_size
+    const int64 num_cols = input.dimension(1);
 
     TensorShape output_shape = input_in.shape();
     output_shape.set_dim(input_in.dims() - 1, k);
@@ -76,6 +81,24 @@ class TopK : public OpKernel {
 
     auto values = values_out->flat_inner_dims<T>();
     auto indices = indices_out->flat_inner_dims<int32>();
+    functor::TopKFunctor<Device, T>::Compute(
+        context, sorted_, k, input, num_rows, num_cols, &values, &indices);
+  }
+
+ private:
+  int k_;
+  bool sorted_;
+};
+
+namespace functor {
+
+template <typename T>
+struct TopKFunctor<CPUDevice, T> {
+  static EIGEN_ALWAYS_INLINE void Compute(
+      OpKernelContext* context, bool sorted, int k,
+      const typename TTypes<T, 2>::ConstTensor& input, const int64 num_rows,
+      const int64 num_cols, typename TTypes<T, 2>::Tensor* values,
+      typename TTypes<int, 2>::Tensor* indices) {
     gtl::TopN<std::pair<T, int32>> filter(k);
     for (int r = 0; r < num_rows; r++) {
       for (int32 c = 0; c < num_cols; ++c) {
@@ -85,40 +108,75 @@ class TopK : public OpKernel {
       }
 
       int32 i = 0;
-      if (sorted_ && k > 1) {
+      if (sorted && k > 1) {
         std::unique_ptr<std::vector<std::pair<T, int32>>> top_k(
             filter.Extract());
         for (auto top_k_it = top_k->begin(); top_k_it != top_k->end();
              ++top_k_it, ++i) {
-          values(r, i) = top_k_it->first;
-          indices(r, i) = -top_k_it->second;
+          (*values)(r, i) = top_k_it->first;
+          (*indices)(r, i) = -top_k_it->second;
         }
       } else {
         for (auto top_k_it = filter.unsorted_begin();
              top_k_it != filter.unsorted_end(); ++top_k_it, ++i) {
-          values(r, i) = top_k_it->first;
-          indices(r, i) = -top_k_it->second;
+          (*values)(r, i) = top_k_it->first;
+          (*indices)(r, i) = -top_k_it->second;
         }
       }
       filter.Reset();
     }
   }
-
- private:
-  int k_;
-  bool sorted_;
 };
 
-#define REGISTER_KERNELS_NAME(name, type) \
-  REGISTER_KERNEL_BUILDER(                \
-      Name(#name).Device(DEVICE_CPU).TypeConstraint<type>("T"), TopK<type>)
+}  // namespace functor
+
+#define REGISTER_KERNELS_NAME(name, type)                       \
+  REGISTER_KERNEL_BUILDER(                                      \
+      Name(#name).Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+      TopK<CPUDevice, type>)
 
 #define REGISTER_KERNELS(type)       \
   REGISTER_KERNELS_NAME(TopK, type); \
   REGISTER_KERNELS_NAME(TopKV2, type)
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
-#undef REGISTER_KERNELS_TO_NAME
+#undef REGISTER_KERNELS_NAME
 #undef REGISTER_KERNELS
 
-}  // namespace tensorflow
+#ifdef GOOGLE_CUDA
+
+namespace functor {
+#define DECLARE_GPU_SPEC(T)                                                  \
+  template <>                                                                \
+  void TopKFunctor<GPUDevice, T>::Compute(                                   \
+      OpKernelContext* context, bool sorted, int k,                          \
+      const typename TTypes<T, 2>::ConstTensor& input, const int64 num_rows, \
+      const int64 num_cols, typename TTypes<T, 2>::Tensor* values,           \
+      typename TTypes<int, 2>::Tensor* indices);                             \
+  extern template struct functor::TopKFunctor<GPUDevice, T>;
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DECLARE_GPU_SPEC);
+TF_CALL_INTEGRAL_TYPES(DECLARE_GPU_SPEC);
+
+#undef DECLARE_GPU_SPEC
+
+}  // namespace functor
+
+#define REGISTER_KERNELS(type)                                   \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("TopK").Device(DEVICE_GPU).TypeConstraint<type>("T"), \
+      TopK<GPUDevice, type>)                                     \
+  REGISTER_KERNEL_BUILDER(Name("TopKV2")                         \
+                              .Device(DEVICE_GPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .HostMemory("k"),                  \
+                          TopK<GPUDevice, type>)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNELS);
+TF_CALL_INTEGRAL_TYPES(REGISTER_KERNELS);
+
+#undef REGISTER_KERNELS
+
+#endif  // end GOOGLE_CUDA
+
+}  // end namespace tensorflow

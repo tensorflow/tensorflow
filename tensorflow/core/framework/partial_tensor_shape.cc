@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -77,6 +78,17 @@ PartialTensorShape::PartialTensorShape(gtl::ArraySlice<int64> dim_sizes)
   for (const int64& s : dim_sizes) {
     const int64 dim = internal::SubtleMustCopy(s);
     CHECK_GE(dim, -1);
+    dim_sizes_.push_back(dim);
+  }
+}
+
+PartialTensorShape::PartialTensorShape(const TensorShape& shape)
+    : is_unknown_(false) {
+  const int num_dims = shape.dims();
+  dim_sizes_.reserve(num_dims);
+  for (int i = 0; i < num_dims; ++i) {
+    const int64 dim = internal::SubtleMustCopy(shape.dim_size(i));
+    CHECK_GE(dim, 0);
     dim_sizes_.push_back(dim);
   }
 }

@@ -440,6 +440,7 @@ REGISTER_OP("FixedLengthRecordReader")
     .Attr("header_bytes: int = 0")
     .Attr("record_bytes: int")
     .Attr("footer_bytes: int = 0")
+    .Attr("hop_bytes: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
@@ -448,6 +449,11 @@ REGISTER_OP("FixedLengthRecordReader")
 A Reader that outputs fixed-length records from a file.
 
 reader_handle: The handle to reference the Reader.
+header_bytes: Number of bytes in the header, defaults to 0.
+record_bytes: Number of bytes in the record.
+footer_bytes: Number of bytes in the footer, defaults to 0.
+hop_bytes: Number of bytes to hop before each read. Default of 0 means using
+        record_bytes.
 container: If non-empty, this reader is placed in the given container.
         Otherwise, a default container is used.
 shared_name: If non-empty, this reader is named in the given bucket
@@ -459,6 +465,7 @@ REGISTER_OP("FixedLengthRecordReaderV2")
     .Attr("header_bytes: int = 0")
     .Attr("record_bytes: int")
     .Attr("footer_bytes: int = 0")
+    .Attr("hop_bytes: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
@@ -467,6 +474,11 @@ REGISTER_OP("FixedLengthRecordReaderV2")
 A Reader that outputs fixed-length records from a file.
 
 reader_handle: The handle to reference the Reader.
+header_bytes: Number of bytes in the header, defaults to 0.
+record_bytes: Number of bytes in the record.
+footer_bytes: Number of bytes in the footer, defaults to 0.
+hop_bytes: Number of bytes to hop before each read. Default of 0 means using
+        record_bytes.
 container: If non-empty, this reader is placed in the given container.
         Otherwise, a default container is used.
 shared_name: If non-empty, this reader is named in the given bucket

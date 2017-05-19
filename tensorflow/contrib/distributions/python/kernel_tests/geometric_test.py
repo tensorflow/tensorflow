@@ -22,7 +22,9 @@ import numpy as np
 from scipy import stats
 from tensorflow.contrib.distributions.python.ops import geometric
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -74,12 +76,13 @@ class GeometricTest(test.TestCase):
     with self.test_session():
       batch_size = 6
       probs = constant_op.constant([.9] * batch_size)
-      x = np.array([2.5, 3.2, 4.3, 5.1, 6., 7.], dtype=np.float32)
+      x = array_ops.placeholder(dtypes.float32, shape=[6])
+      feed_dict = {x: [2.5, 3.2, 4.3, 5.1, 6., 7.]}
       geom = geometric.Geometric(probs=probs)
 
       with self.assertRaisesOpError("Condition x == y"):
         log_prob = geom.log_prob(x)
-        log_prob.eval()
+        log_prob.eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x >= 0"):
         log_prob = geom.log_prob(np.array([-1.], dtype=np.float32))

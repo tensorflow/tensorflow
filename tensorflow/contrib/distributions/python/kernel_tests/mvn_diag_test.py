@@ -103,6 +103,39 @@ class MultivariateNormalDiagTest(test.TestCase):
       self.assertAllClose(cov_mat, np.cov(samps.T),
                           atol=0.05, rtol=0.05)
 
+  def testSingularScaleRaises(self):
+    mu = [-1., 1]
+    diag = [1., 0]
+    with self.test_session():
+      dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
+      with self.assertRaisesOpError("Singular"):
+        dist.sample().eval()
+
+  def testSampleWithBroadcastScale(self):
+    # mu corresponds to a 2-batch of 3-variate normals
+    mu = np.zeros([2, 3])
+
+    # diag corresponds to no batches of 3-variate normals
+    diag = np.ones([3])
+
+    with self.test_session():
+      dist = ds.MultivariateNormalDiag(mu, diag, validate_args=True)
+
+      mean = dist.mean()
+      self.assertAllEqual([2, 3], mean.get_shape())
+      self.assertAllClose(mu, mean.eval())
+
+      n = int(1e3)
+      samps = dist.sample(n, seed=0).eval()
+      cov_mat = array_ops.matrix_diag(diag).eval()**2
+      sample_cov = np.matmul(samps.transpose([1, 2, 0]),
+                             samps.transpose([1, 0, 2])) / n
+
+      self.assertAllClose(mu, samps.mean(axis=0),
+                          atol=0.10, rtol=0.05)
+      self.assertAllClose([cov_mat, cov_mat], sample_cov,
+                          atol=0.10, rtol=0.05)
+
   def testCovariance(self):
     with self.test_session():
       mvn = ds.MultivariateNormalDiag(

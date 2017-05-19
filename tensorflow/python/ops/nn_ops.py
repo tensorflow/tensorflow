@@ -39,6 +39,8 @@ from tensorflow.python.ops.gen_nn_ops import *
 # Aliases for some automatically-generated names.
 local_response_normalization = gen_nn_ops.lrn
 
+# pylint: disable=protected-access
+
 
 def _non_atrous_convolution(input, filter, padding, data_format=None,  # pylint: disable=redefined-builtin
                             strides=None, name=None):
@@ -373,7 +375,9 @@ def with_space_to_batch(
     input_shape_list = input.get_shape().as_list()
     input_spatial_shape = [input_shape_list[i] for i in spatial_dims]
   if input_spatial_shape is None or None in input_spatial_shape:
-    input_spatial_shape = array_ops.gather(array_ops.shape(input), spatial_dims)
+    input_shape_tensor = array_ops.shape(input)
+    input_spatial_shape = array_ops.stack(
+        [input_shape_tensor[i] for i in spatial_dims])
 
   paddings, crops = array_ops.required_space_to_batch_paddings(
       input_shape=input_spatial_shape,
@@ -836,6 +840,11 @@ def pool(input,  # pylint: disable=redefined-builtin
 def atrous_conv2d(value, filters, rate, padding, name=None):
   """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
 
+  This function is a simpler wrapper around the more general
+  @{tf.nn.convolution}, and exists only for backwards compatibility. You can
+  use @{tf.nn.convolution} to perform 1-D, 2-D, or 3-D atrous convolution.
+
+
   Computes a 2-D atrous convolution, also known as convolution with holes or
   dilated convolution, given 4-D `value` and `filters` tensors. If the `rate`
   parameter is equal to one, it performs regular 2-D convolution. If the `rate`
@@ -955,93 +964,12 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     ValueError: If input/output depth does not match `filters`' shape, or if
       padding is other than `'VALID'` or `'SAME'`.
   """
-  with ops.name_scope(name, "atrous_conv2d", [value, filters]) as name:
-    value = ops.convert_to_tensor(value, name="value")
-    filters = ops.convert_to_tensor(filters, name="filters")
-    if not value.get_shape()[3].is_compatible_with(filters.get_shape()[2]):
-      raise ValueError(
-          "value's input channels does not match filters' input channels, "
-          "{} != {}".format(value.get_shape()[3], filters.get_shape()[2]))
-    if rate < 1:
-      raise ValueError("rate {} cannot be less than one".format(rate))
-
-    if rate == 1:
-      value = gen_nn_ops.conv2d(input=value,
-                                filter=filters,
-                                strides=[1, 1, 1, 1],
-                                padding=padding)
-      return value
-
-    # We have two padding contributions. The first is used for converting "SAME"
-    # to "VALID". The second is required so that the height and width of the
-    # zero-padded value tensor are multiples of rate.
-
-    # Padding required to reduce to "VALID" convolution
-    if padding == "SAME":
-      # Handle filters whose shape is unknown during graph creation.
-      if filters.get_shape().is_fully_defined():
-        filter_shape = filters.get_shape().as_list()
-      else:
-        filter_shape = array_ops.shape(filters)
-      filter_height, filter_width = filter_shape[0], filter_shape[1]
-
-      # Spatial dimensions of the filters and the upsampled filters in which we
-      # introduce (rate - 1) zeros between consecutive filter values.
-      filter_height_up = filter_height + (filter_height - 1) * (rate - 1)
-      filter_width_up = filter_width + (filter_width - 1) * (rate - 1)
-
-      pad_height = filter_height_up - 1
-      pad_width = filter_width_up - 1
-
-      # When pad_height (pad_width) is odd, we pad more to bottom (right),
-      # following the same convention as conv2d().
-      pad_top = pad_height // 2
-      pad_bottom = pad_height - pad_top
-      pad_left = pad_width // 2
-      pad_right = pad_width - pad_left
-    elif padding == "VALID":
-      pad_top = 0
-      pad_bottom = 0
-      pad_left = 0
-      pad_right = 0
-    else:
-      raise ValueError("Invalid padding")
-
-    # Handle input whose shape is unknown during graph creation.
-    if value.get_shape().is_fully_defined():
-      value_shape = value.get_shape().as_list()
-    else:
-      value_shape = array_ops.shape(value)
-
-    in_height = value_shape[1] + pad_top + pad_bottom
-    in_width = value_shape[2] + pad_left + pad_right
-
-    # More padding so that rate divides the height and width of the input.
-    pad_bottom_extra = (rate - in_height % rate) % rate
-    pad_right_extra = (rate - in_width % rate) % rate
-
-    # The paddings argument to space_to_batch includes both padding components.
-    space_to_batch_pad = [[pad_top, pad_bottom + pad_bottom_extra],
-                          [pad_left, pad_right + pad_right_extra]]
-
-    value = array_ops.space_to_batch(input=value,
-                                     paddings=space_to_batch_pad,
-                                     block_size=rate)
-
-    value = gen_nn_ops.conv2d(input=value,
-                              filter=filters,
-                              strides=[1, 1, 1, 1],
-                              padding="VALID",
-                              name=name)
-
-    # The crops argument to batch_to_space is just the extra padding component.
-    batch_to_space_crop = [[0, pad_bottom_extra], [0, pad_right_extra]]
-
-    value = array_ops.batch_to_space(input=value,
-                                     crops=batch_to_space_crop,
-                                     block_size=rate)
-
-    return value
+  return convolution(
+      input=value,
+      filter=filters,
+      padding=padding,
+      dilation_rate=np.broadcast_to(rate, (2,)),
+      name=name)
 
 
 def conv2d_transpose(value,
@@ -1268,7 +1196,7 @@ def conv3d_transpose(value,
                      output_shape,
                      strides,
                      padding="SAME",
-                     data_format=None,
+                     data_format="NDHWC",
                      name=None):
   """The transpose of `conv3d`.
 
@@ -1304,10 +1232,11 @@ def conv3d_transpose(value,
                       [value, filter, output_shape]) as name:
     value = ops.convert_to_tensor(value, name="value")
     filter = ops.convert_to_tensor(filter, name="filter")
-    if not value.get_shape()[4].is_compatible_with(filter.get_shape()[4]):
+    axis = 1 if data_format == "NCDHW" else 4
+    if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[4]):
       raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[4], filter.get_shape(
-                       )[4]))
+                       "{} != {}".format(value.get_shape()[axis],
+                                         filter.get_shape()[4]))
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
     if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(5)):
@@ -1395,7 +1324,7 @@ def crelu(features, name=None):
   Concatenates a ReLU which selects only the positive part of the activation
   with a ReLU which selects only the *negative* part of the activation.
   Note that as a result this non-linearity doubles the depth of the activations.
-  Source: https://arxiv.org/abs/1603.05201
+  Source: [Understanding and Improving Convolutional Neural Networks via Concatenated Rectified Linear Units. W. Shang, et al.](https://arxiv.org/abs/1603.05201) 
 
   Args:
     features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
@@ -1413,6 +1342,7 @@ def crelu(features, name=None):
 
 def relu6(features, name=None):
   """Computes Rectified Linear 6: `min(max(features, 0), 6)`.
+  Source: [Convolutional Deep Belief Networks on CIFAR-10. A. Krizhevsky](http://www.cs.utoronto.ca/~kriz/conv-cifar10-aug2010.pdf)
 
   Args:
     features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
@@ -1474,14 +1404,14 @@ def _softmax(logits, compute_op, dim=-1, name=None):
     InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
       dimension of `logits`.
   """
-  def _swap_axis(logits, dim_index, last_index):
+  def _swap_axis(logits, dim_index, last_index, name=None):
     """Swaps logits's dim_index and last_index."""
     return array_ops.transpose(logits,
                                array_ops.concat([
                                    math_ops.range(dim_index), [last_index],
                                    math_ops.range(dim_index + 1, last_index),
                                    [dim_index]
-                               ], 0))
+                               ], 0), name=name)
 
   logits = ops.convert_to_tensor(logits)
 
@@ -1497,8 +1427,8 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   if is_last_dim:
     input_shape = array_ops.shape(logits)
     logits = _flatten_outer_dims(logits)
-    output = compute_op(logits, name=name)
-    output = array_ops.reshape(output, input_shape)
+    output = compute_op(logits)
+    output = array_ops.reshape(output, input_shape, name=name)
     return output
 
   # If dim is not the last dimension, we have to do a reshape and transpose so
@@ -1513,11 +1443,11 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   logits = _flatten_outer_dims(logits)
 
   # Do the actual softmax on its last dimension.
-  output = compute_op(logits, name=name)
+  output = compute_op(logits)
 
   # Transform back the output tensor.
   output = array_ops.reshape(output, shape_after_swap)
-  output = _swap_axis(output, dim, math_ops.subtract(input_rank, 1))
+  output = _swap_axis(output, dim, math_ops.subtract(input_rank, 1), name=name)
 
   # Make shape inference work since reshape and transpose may erase its static
   # shape.
@@ -1604,8 +1534,9 @@ def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
-  `logits` and `labels` must have the same shape `[batch_size, num_classes]`
-  and the same dtype (either `float16`, `float32`, or `float64`).
+  `logits` and `labels` must have the same shape, e.g.
+  `[batch_size, num_classes]` and the same dtype (either `float16`, `float32`,
+  or `float64`).
 
   **Note that to avoid confusion, it is required to pass only named arguments to
   this function.**
@@ -2019,7 +1950,7 @@ def top_k(input, k=1, sorted=True, name=None):
 def conv1d(value, filters, stride, padding,
            use_cudnn_on_gpu=None, data_format=None,
            name=None):
-  """Computes a 1-D convolution given 3-D input and filter tensors.
+  r"""Computes a 1-D convolution given 3-D input and filter tensors.
 
   Given an input tensor of shape
     [batch, in_width, in_channels]

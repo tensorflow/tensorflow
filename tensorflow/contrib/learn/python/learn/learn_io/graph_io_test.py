@@ -26,7 +26,6 @@ import tempfile
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.learn.python.learn.learn_io import graph_io
-from tensorflow.contrib.learn.python.learn.learn_io.graph_io import _read_keyed_batch_examples_shared_queue
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
@@ -110,6 +109,18 @@ class GraphIOTest(test.TestCase):
         False,
         num_epochs=None,
         queue_capacity=queue_capacity,
+        num_threads=num_threads,
+        name=name)
+    self.assertRaisesRegexp(
+        ValueError,
+        "Invalid batch_size",
+        graph_io.read_batch_examples,
+        _VALID_FILE_PATTERN,
+        default_batch_size,
+        io_ops.TFRecordReader,
+        False,
+        num_epochs=None,
+        queue_capacity=default_batch_size,
         num_threads=num_threads,
         name=name)
     self.assertRaisesRegexp(
@@ -356,7 +367,7 @@ class GraphIOTest(test.TestCase):
     ]
     filename = self._create_temp_file("".join(json_lines))
     batch_size = 10000
-    queue_capacity = 10000
+    queue_capacity = 100000
     name = "my_large_batch"
 
     features = {"sequence": parsing_ops.FixedLenFeature([], dtypes_lib.string)}
@@ -452,7 +463,7 @@ class GraphIOTest(test.TestCase):
     name = "my_batch"
 
     with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
-      keys, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = graph_io.read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=io_ops.TextLineReader,
@@ -516,7 +527,7 @@ class GraphIOTest(test.TestCase):
 
     with ops.Graph().as_default() as g1, session_lib.Session(
         server.target, graph=g1) as session:
-      keys, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = graph_io.read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=io_ops.TextLineReader,
@@ -545,7 +556,7 @@ class GraphIOTest(test.TestCase):
 
     with ops.Graph().as_default() as g2, session_lib.Session(
         server.target, graph=g2) as session:
-      keys, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = graph_io.read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=io_ops.TextLineReader,

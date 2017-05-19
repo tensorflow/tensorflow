@@ -26,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -151,6 +152,14 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v.assign(2.0).eval()
       self.assertEqual(2.0, v.value().eval())
 
+  def testToFromProto(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+
+      w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
+      self.assertEquals(2, math_ops.add(w, 1).eval())
+
   def testAssignAddMethod(self):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(1.0)
@@ -194,6 +203,47 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     w = resource_variable_ops.ResourceVariable.from_proto(v.to_proto())
     self.assertIsInstance(w.dtype, dtypes.DType)
     self.assertEqual(v.dtype, w.dtype)
+
+  def testCachingDevice(self):
+    with ops.device("/job:server/task:1"):
+      v = resource_variable_ops.ResourceVariable(
+          2.0, caching_device="/job:localhost")
+      self.assertEqual("/job:localhost", v.value().device)
+      with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
+        _ = v.value().op.get_attr("_class")
+
+    with ops.colocate_with(v.op):
+      w = resource_variable_ops.ResourceVariable(
+          2.0, caching_device="/job:localhost")
+      self.assertEqual("/job:localhost", w.value().device)
+      with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
+        _ = w.value().op.get_attr("_class")
+
+  def testSharedName(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(300.0, name="var1")
+      v.initializer.run()
+
+      w = resource_variable_ops.var_handle_op(dtype=v.dtype.base_dtype,
+                                              shape=v.get_shape(),
+                                              shared_name="var1")
+      w_read = resource_variable_ops.read_variable_op(w, v.dtype.base_dtype)
+      self.assertEqual(300.0, w_read.eval())
+
+      x = resource_variable_ops.var_handle_op(dtype=v.dtype.base_dtype,
+                                              shape=v.get_shape(),
+                                              shared_name="var1/")
+      x_read = resource_variable_ops.read_variable_op(x, v.dtype.base_dtype)
+      with self.assertRaisesOpError("Resource .*/var1//.* does not exist"):
+        _ = x_read.eval()
+
+  def testSetInitialValue(self):
+    with self.test_session():
+      # Initialize variable with a value different from the initial value passed
+      # in the constructor.
+      v = resource_variable_ops.ResourceVariable(2.0)
+      v.initializer.run(feed_dict={v.initial_value: 3.0})
+      self.assertEqual(3.0, v.value().eval())
 
 
 if __name__ == "__main__":

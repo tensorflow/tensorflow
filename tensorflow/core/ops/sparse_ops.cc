@@ -128,12 +128,13 @@ pair takes space.
 )doc");
 
 REGISTER_OP("SparseTensorDenseMatMul")
-    .Input("a_indices: int64")
+    .Input("a_indices: Tindices")
     .Input("a_values: T")
     .Input("a_shape: int64")
     .Input("b: T")
     .Output("product: T")
     .Attr("T: type")
+    .Attr("Tindices: {int32,int64} = DT_INT64")
     .Attr("adjoint_a: bool = false")
     .Attr("adjoint_b: bool = false")
     .SetShapeFn([](InferenceContext* c) {
@@ -453,6 +454,84 @@ output_values: 1-D.  Non-empty values of the concatenated `SparseTensor`.
 output_shape: 1-D.  Shape of the concatenated `SparseTensor`.
 concat_dim: Dimension to concatenate along. Must be in range [-rank, rank),
     where rank is the number of dimensions in each input `SparseTensor`.
+)doc");
+
+REGISTER_OP("SparseCross")
+    .Input("indices: N * int64")
+    .Input("values: sparse_types")
+    .Input("shapes: N * int64")
+    .Input("dense_inputs: dense_types")
+    .Output("output_indices: int64")
+    .Output("output_values: out_type")
+    .Output("output_shape: int64")
+    .Attr("N: int >= 0")
+    .Attr("hashed_output: bool")
+    .Attr("num_buckets: int >= 0")
+    .Attr("hash_key: int")
+    .Attr("sparse_types: list({int64, string}) >= 0")
+    .Attr("dense_types: list({int64, string}) >= 0")
+    .Attr("out_type: {int64, string}")
+    .Attr("internal_type: {int64, string}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->Matrix(c->UnknownDim(), 2));
+      c->set_output(1, c->Vector(c->UnknownDim()));
+      c->set_output(2, c->Vector(2));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Generates sparse cross from a list of sparse and dense tensors.
+
+The op takes two lists, one of 2D `SparseTensor` and one of 2D `Tensor`, each
+representing features of one feature column. It outputs a 2D `SparseTensor` with
+the batchwise crosses of these features.
+
+For example, if the inputs are
+
+    inputs[0]: SparseTensor with shape = [2, 2]
+    [0, 0]: "a"
+    [1, 0]: "b"
+    [1, 1]: "c"
+
+    inputs[1]: SparseTensor with shape = [2, 1]
+    [0, 0]: "d"
+    [1, 0]: "e"
+
+    inputs[2]: Tensor [["f"], ["g"]]
+
+then the output will be
+
+    shape = [2, 2]
+    [0, 0]: "a_X_d_X_f"
+    [1, 0]: "b_X_e_X_g"
+    [1, 1]: "c_X_e_X_g"
+
+if hashed_output=true then the output will be
+
+    shape = [2, 2]
+    [0, 0]: FingerprintCat64(
+                Fingerprint64("f"), FingerprintCat64(
+                    Fingerprint64("d"), Fingerprint64("a")))
+    [1, 0]: FingerprintCat64(
+                Fingerprint64("g"), FingerprintCat64(
+                    Fingerprint64("e"), Fingerprint64("b")))
+    [1, 1]: FingerprintCat64(
+                Fingerprint64("g"), FingerprintCat64(
+                    Fingerprint64("e"), Fingerprint64("c")))
+
+indices: 2-D.  Indices of each input `SparseTensor`.
+values: 1-D.   values of each `SparseTensor`.
+shapes: 1-D.   Shapes of each `SparseTensor`.
+dense_inputs: 2-D.    Columns represented by dense `Tensor`.
+hashed_output: If true, returns the hash of the cross instead of the string.
+  This will allow us avoiding string manipulations.
+num_buckets: It is used if hashed_output is true.
+  output = hashed_value%num_buckets if num_buckets > 0 else hashed_value.
+hash_key: Specify the hash_key that will be used by the `FingerprintCat64`
+  function to combine the crosses fingerprints.
+output_indices: 2-D.  Indices of the concatenated `SparseTensor`.
+output_values: 1-D.  Non-empty values of the concatenated or hashed
+  `SparseTensor`.
+output_shape: 1-D.  Shape of the concatenated `SparseTensor`.
 )doc");
 
 REGISTER_OP("SparseSplit")

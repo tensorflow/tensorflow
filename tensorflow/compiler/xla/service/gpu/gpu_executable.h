@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -51,7 +50,6 @@ class GpuExecutable : public Executable {
   GpuExecutable(tensorflow::StringPiece ptx,
                 std::unique_ptr<ThunkSchedule> thunk_schedule,
                 std::unique_ptr<HloModule> hlo_module,
-                std::unique_ptr<HloModuleConfig> module_config,
                 std::unique_ptr<BufferAssignment> assignment);
 
   // This should be called after set_ir_module_string.

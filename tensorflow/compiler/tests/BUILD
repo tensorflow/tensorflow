@@ -66,6 +66,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "adam_test",
+    size = "small",
+    srcs = ["adam_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "binary_ops_test",
     size = "small",
     srcs = ["binary_ops_test.py"],
@@ -147,6 +161,19 @@ tf_xla_py_test(
     name = "dynamic_stitch_test",
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "slice_ops_test",
+    size = "small",
+    srcs = ["slice_ops_test.py"],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -302,6 +329,20 @@ tf_xla_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "spacetobatch_op_test",
+    size = "medium",
+    srcs = ["spacetobatch_op_test.py"],
+    shard_count = 3,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
     ],
 )
 

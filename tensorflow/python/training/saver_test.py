@@ -46,6 +46,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -155,6 +156,18 @@ class SaverTest(test.TestCase):
 
   def testResourceBasic(self):
     self.basicSaveRestore(resource_variable_ops.ResourceVariable)
+
+  def testResourceSaveRestoreCachingDevice(self):
+    save_path = os.path.join(self.get_temp_dir(), "resource_cache")
+    v = resource_variable_ops.ResourceVariable([1], caching_device="/cpu:0")
+    with self.test_session() as sess:
+      variables.global_variables_initializer().run()
+      save = saver_module.Saver()
+      save.save(sess, save_path)
+    with self.test_session() as sess:
+      save2 = saver_module.Saver()
+      save2.restore(sess, save_path)
+      self.assertEquals(v.eval(), [1])
 
   def testSaveCopyRestoreWithSaveRelativePaths(self):
     """Save, copy checkpoint dir and restore from copied dir.
@@ -542,32 +555,46 @@ class SaverTest(test.TestCase):
     self.testSaveWithGlobalStep(pad_step_number=True)
 
   def testSaveToNonexistingPath(self):
+    file_io.write_string_to_file(
+        os.path.join(self.get_temp_dir(), "actually_a_file"), "")
+    paths = [
+        os.path.join(self.get_temp_dir(), "nonexisting_dir/path"),
+        os.path.join(self.get_temp_dir(), "other_nonexisting_dir/path1/path2"),
+        os.path.join(self.get_temp_dir(), "actually_a_file/path"),
+    ]
 
-    save_path = os.path.join(self.get_temp_dir(), "nonexisting_dir/path")
+    for save_path in paths:
+      # Build a graph with 2 parameter nodes, and Save and
+      # Restore nodes for them.
+      v0 = variables.Variable(10.0, name="v0")
+      v1 = variables.Variable(20.0, name="v1")
+      save = saver_module.Saver({"v0": v0, "v1": v1}, restore_sequentially=True)
+      init_all_op = variables.global_variables_initializer()
 
-    # Build a graph with 2 parameter nodes, and Save and
-    # Restore nodes for them.
-    v0 = variables.Variable(10.0, name="v0")
-    v1 = variables.Variable(20.0, name="v1")
-    save = saver_module.Saver({"v0": v0, "v1": v1}, restore_sequentially=True)
-    init_all_op = variables.global_variables_initializer()
+      # In the case where the parent directory doesn't exist, whether or not the
+      # save succeeds or fails is implementation dependent.  Therefore we allow
+      # both cases.
+      try:
+        with self.test_session() as sess:
+          # Initialize all variables
+          sess.run(init_all_op)
 
-    with self.test_session() as sess:
-      # Initialize all variables
-      sess.run(init_all_op)
+          # Check that the parameter nodes have been initialized.
+          self.assertEqual(10.0, v0.eval())
+          self.assertEqual(20.0, v1.eval())
 
-      # Check that the parameter nodes have been initialized.
-      self.assertEqual(10.0, v0.eval())
-      self.assertEqual(20.0, v1.eval())
+          # Save the graph.
+          save.save(sess, save_path)
 
-      error_msg_template = "Parent directory of {} doesn't exist, can't save."
-
-      # Assert saving fails when parent dir of save path doesn't exist
-      with self.assertRaisesWithPredicateMatch(
-          ValueError,
-          lambda e: error_msg_template.format(save_path) in str(e)
-      ):
-        save.save(sess, save_path)
+        with self.test_session() as sess:
+          # Restore the saved values in the parameter nodes.
+          save.restore(sess, save_path)
+          # Check that the parameter nodes have been restored.
+          self.assertEqual(10.0, v0.eval())
+          self.assertEqual(20.0, v1.eval())
+      except ValueError as exc:
+        error_msg_template = "Parent directory of {} doesn't exist, can't save."
+        self.assertEqual(error_msg_template.format(save_path), str(exc))
 
   def testSaveToURI(self):
     # ParseURI functions don't work on Windows yet.
@@ -1470,7 +1497,9 @@ class MetaGraphTest(test.TestCase):
       # Generates a new MetaGraphDef.
       new_meta_graph_def = new_saver.export_meta_graph()
       # It should be the same as the original.
-      self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
+
+    test_util.assert_meta_graph_protos_equal(
+        self, meta_graph_def, new_meta_graph_def)
 
   def testAddCollectionDefFails(self):
     with self.test_session():
@@ -1785,11 +1814,9 @@ class MetaGraphTest(test.TestCase):
     # Test that we can import a meta graph into a namescope.
     test_dir = self._get_test_dir("import_into_namescope")
     filename = os.path.join(test_dir, "ckpt")
-    image = array_ops.placeholder(dtypes.float32, [None, 784])
-    label = array_ops.placeholder(dtypes.float32, [None, 10])
+    image = array_ops.placeholder(dtypes.float32, [None, 784], name="image")
+    label = array_ops.placeholder(dtypes.float32, [None, 10], name="label")
     with session.Session() as sess:
-      label = array_ops.identity(label, name="label")
-      image = array_ops.identity(image, name="image")
       weights = variables.Variable(
           random_ops.random_uniform([784, 10]), name="weights")
       bias = variables.Variable(array_ops.zeros([10]), name="bias")
@@ -1832,8 +1859,8 @@ class MetaGraphTest(test.TestCase):
     with session.Session(graph=ops_lib.Graph()) as sess:
       saver_module.import_meta_graph(
           meta_graph_def, clear_devices=False, import_scope="new_model")
-      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "Cannot assign a device to node"):
+      # Device refers to GPU, which is not available here.
+      with self.assertRaises(errors_impl.InvalidArgumentError):
         sess.run(variables.global_variables_initializer())
 
     with session.Session(graph=ops_lib.Graph()) as sess:
@@ -2060,6 +2087,18 @@ class ScopedGraphTest(test.TestCase):
         biases3 = variables.Variable(array_ops.zeros([10]), name="biases")
         logits = math_ops.matmul(hidden2, weights3) + biases3
         ops_lib.add_to_collection("logits", logits)
+
+        # Adds user_defined proto in three formats: string, bytes and Any.
+        # Any proto should just pass through.
+        queue_runner = queue_runner_pb2.QueueRunnerDef(queue_name="test_queue")
+        ops_lib.add_to_collection("user_defined_string_collection",
+                                  str(queue_runner))
+        ops_lib.add_to_collection("user_defined_bytes_collection",
+                                  queue_runner.SerializeToString())
+        any_buf = Any()
+        any_buf.Pack(queue_runner)
+        ops_lib.add_to_collection("user_defined_any_collection", any_buf)
+
       _, var_list = meta_graph.export_scoped_meta_graph(
           filename=os.path.join(test_dir, exported_filename),
           graph=ops_lib.get_default_graph(),

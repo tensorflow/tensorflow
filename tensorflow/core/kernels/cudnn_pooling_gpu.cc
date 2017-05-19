@@ -243,11 +243,10 @@ void DnnPooling3dGradOp<T>::Compute(
   }
 }
 
-#define DEFINE_DNN_OPS(T)                       \
-  template class DnnPooling3dOp<T>;               \
+#define DEFINE_DNN_OPS(T)           \
+  template class DnnPooling3dOp<T>; \
   template class DnnPooling3dGradOp<T>;
-TF_CALL_float(DEFINE_DNN_OPS)
-TF_CALL_half(DEFINE_DNN_OPS)
+TF_CALL_float(DEFINE_DNN_OPS) TF_CALL_half(DEFINE_DNN_OPS)
 #undef DEFINE_DNN_OPS
 
 #endif  // GOOGLE_CUDA

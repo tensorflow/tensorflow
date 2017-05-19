@@ -17,10 +17,11 @@ py_library(
     srcs = ["estimator_lib.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":checkpoint_utils",
+        ":dnn",
         ":estimator",
         ":export",
         ":inputs",
+        ":linear",
         ":model_fn",
         ":run_config",
         "//tensorflow/python:util",
@@ -37,33 +38,6 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
-)
-
-py_library(
-    name = "checkpoint_utils",
-    srcs = ["checkpoint_utils.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:platform",
-        "//tensorflow/python:training",
-    ],
-)
-
-py_test(
-    name = "checkpoint_utils_test",
-    size = "small",
-    srcs = ["checkpoint_utils_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":checkpoint_utils",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:partitioned_variables",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-    ],
 )
 
 py_library(
@@ -101,6 +75,65 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "run_config_test",
+    size = "small",
+    srcs = ["run_config_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":run_config",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_library(
+    name = "dnn",
+    srcs = ["canned/dnn.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":estimator",
+        ":head",
+        ":model_fn",
+        ":optimizers",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_test(
+    name = "dnn_test",
+    size = "medium",
+    srcs = ["canned/dnn_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dnn",
+        ":export_export",
+        ":metric_keys",
+        ":numpy_io",
+        ":prediction_keys",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
 py_library(
     name = "estimator",
     srcs = [
@@ -108,18 +141,19 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":checkpoint_utils",
         ":export",
         ":model_fn",
         ":run_config",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:metrics",
         "//tensorflow/python:platform",
+        "//tensorflow/python:random_seed",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python/saved_model:builder",
         "//tensorflow/python/saved_model:tag_constants",
     ],
@@ -131,20 +165,31 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":estimator",
+        ":export",
         ":model_fn",
         ":numpy_io",
         ":run_config",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
@@ -209,6 +254,59 @@ py_test(
 )
 
 py_library(
+    name = "head",
+    srcs = ["canned/head.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":export_output",
+        ":metric_keys",
+        ":model_fn",
+        ":prediction_keys",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:logging_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:metrics",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/ops/losses",
+    ],
+)
+
+py_test(
+    name = "head_test",
+    size = "small",
+    srcs = ["canned/head_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":head",
+        ":metric_keys",
+        ":model_fn",
+        ":numpy_io",
+        ":prediction_keys",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/saved_model:signature_constants",
+    ],
+)
+
+py_library(
     name = "inputs",
     srcs = ["inputs/inputs.py"],
     srcs_version = "PY2AND3",
@@ -216,6 +314,58 @@ py_library(
         ":numpy_io",
         ":pandas_io",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "linear",
+    srcs = ["canned/linear.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":estimator",
+        ":head",
+        ":optimizers",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_test(
+    name = "linear_test",
+    size = "medium",
+    srcs = ["canned/linear_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":estimator",
+        ":export_export",
+        ":linear",
+        ":metric_keys",
+        ":numpy_io",
+        ":run_config",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_library(
+    name = "metric_keys",
+    srcs = ["canned/metric_keys.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":model_fn",
     ],
 )
 
@@ -242,6 +392,27 @@ py_test(
 )
 
 py_library(
+    name = "optimizers",
+    srcs = ["canned/optimizers.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:training",
+    ],
+)
+
+py_test(
+    name = "optimizers_test",
+    size = "small",
+    srcs = ["canned/optimizers_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":optimizers",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
+    ],
+)
+
+py_library(
     name = "pandas_io",
     srcs = ["inputs/pandas_io.py"],
     srcs_version = "PY2AND3",
@@ -260,6 +431,13 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:training",
     ],
+)
+
+py_library(
+    name = "prediction_keys",
+    srcs = ["canned/prediction_keys.py"],
+    srcs_version = "PY2AND3",
+    deps = [],
 )
 
 py_library(

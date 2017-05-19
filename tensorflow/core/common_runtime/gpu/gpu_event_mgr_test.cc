@@ -37,12 +37,12 @@ class TEST_EventMgrHelper {
     StopPollingLoop();
   }
 
-  int queue_size() {
+  size_t queue_size() {
     mutex_lock l(em_->mu_);
     return em_->used_events_.size();
   }
 
-  int free_size() {
+  size_t free_size() {
     mutex_lock l(em_->mu_);
     return em_->free_events_.size();
   }

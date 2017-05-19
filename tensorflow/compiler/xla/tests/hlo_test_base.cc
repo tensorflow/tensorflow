@@ -94,10 +94,10 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
           << LayoutUtil::HumanString(module_config->entry_computation_layout()
                                          .result_layout()
                                          .layout());
+  hlo_module->set_config(*module_config);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend_->compiler()->Compile(std::move(hlo_module),
-                                    std::move(module_config), test_hlo_dumper_,
+      backend_->compiler()->Compile(std::move(hlo_module), test_hlo_dumper_,
                                     backend_->default_stream_executor()));
 
   se::Stream stream(backend_->default_stream_executor());
@@ -111,8 +111,9 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
       backend_->eigen_intra_op_thread_pool_device());
 
   HloExecutionProfile hlo_execution_profile;
-  ServiceExecutableRunOptions service_run_options(run_options,
-                                                  backend_->StreamBorrower());
+  ServiceExecutableRunOptions service_run_options(
+      run_options, backend_->StreamBorrower(),
+      backend_->inter_op_thread_pool());
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase result,
       executable->ExecuteOnStream(&service_run_options, arguments,
@@ -123,9 +124,7 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
 
   *result_shape = executable->result_shape();
 
-  // TODO(b/36256956) Ideally tuple elements could always be distinct buffers.
-  if (ShapeUtil::IsTuple(*result_shape) &&
-      backend_->transfer_manager()->TupleElementsAreDistinctBuffers()) {
+  if (ShapeUtil::IsTuple(*result_shape)) {
     // We must record element buffers of tuples as well to avoid leaks.
     DCHECK(!ShapeUtil::IsNestedTuple(*result_shape));
     TF_ASSIGN_OR_RETURN(

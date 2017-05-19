@@ -18,12 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 import numpy as np
 
 from tensorflow.contrib.keras.python import keras
 from tensorflow.python.platform import test
+from tensorflow.python.util import tf_inspect
 
 
 def compare_single_input_op_to_numpy(keras_op,
@@ -207,7 +206,7 @@ class BackendLinearAlgebraTest(test.TestCase):
         compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
                                          keras_kwargs={'axis': -1},
                                          np_kwargs={'axis': -1})
-        if 'keepdims' in inspect.getargspec(keras_op).args:
+        if 'keepdims' in tf_inspect.getargspec(keras_op).args:
           compare_single_input_op_to_numpy(keras_op, np_op,
                                            input_shape=(4, 7, 5),
                                            keras_kwargs={'axis': 1,
