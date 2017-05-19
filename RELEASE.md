@@ -3,7 +3,8 @@
 ## Major Features and Improvements
 * Added `tf.layers.conv3d_transpose` layer for spatio temporal deconvolution.
 * Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
-* Added ibverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
+* Added libverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
+* Bring `tf.feature_column.*` into the API. Non-deprecated functionality from `tf.contrib.layers.*` is moved to `tf.feature_column.*` with cosmetic changes.
 * `RNNCell` objects now subclass `tf.layers._Layer`.  The strictness described
   in the TensorFlow 1.1 release is gone:  The first time an RNNCell is used,
   it caches its scope.  All future uses of the RNNCell will reuse variables from
