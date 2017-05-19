@@ -21,6 +21,7 @@ import numpy as np
 from scipy import stats
 from tensorflow.contrib.distributions.python.ops import negative_binomial
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -140,17 +141,18 @@ class NegativeBinomialTest(test.TestCase):
       batch_size = 6
       probs = [.9] * batch_size
       total_count = 5.
-      x = np.array([2.5, 3.2, 4.3, 5.1, 6., 7.], dtype=np.float32)
+      x = array_ops.placeholder(dtypes.float32, shape=[6])
+      feed_dict = {x: [2.5, 3.2, 4.3, 5.1, 6., 7.]}
       negbinom = negative_binomial.NegativeBinomial(
           total_count=total_count, probs=probs, validate_args=True)
 
       with self.assertRaisesOpError("Condition x == y"):
         log_pmf = negbinom.log_prob(x)
-        log_pmf.eval()
+        log_pmf.eval(feed_dict=feed_dict)
 
       with self.assertRaisesOpError("Condition x >= 0"):
         log_pmf = negbinom.log_prob([-1.])
-        log_pmf.eval()
+        log_pmf.eval(feed_dict=feed_dict)
 
       negbinom = negative_binomial.NegativeBinomial(
           total_count=total_count, probs=probs, validate_args=False)

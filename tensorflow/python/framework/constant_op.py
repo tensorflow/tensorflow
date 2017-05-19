@@ -129,14 +129,24 @@ def _tensor_shape_tensor_conversion_function(s, dtype=None, name=None,
   if not s.is_fully_defined():
     raise ValueError(
         "Cannot convert a partially known TensorShape to a Tensor: %s" % s)
+  s_list = s.as_list()
+  int64_value = 0
+  for dim in s_list:
+    if dim >= 2**31:
+      int64_value = dim
+      break
+
   if dtype is not None:
     if dtype not in (dtypes.int32, dtypes.int64):
       raise TypeError("Cannot convert a TensorShape to dtype: %s" % dtype)
+    if dtype == dtypes.int32 and int64_value:
+      raise ValueError("Cannot convert a TensorShape to dtype int32; "
+                       "a dimension is too large (%s)" % int64_value)
   else:
-    dtype = dtypes.int32
+    dtype = dtypes.int64 if int64_value else dtypes.int32
   if name is None:
     name = "shape_as_tensor"
-  return constant(s.as_list(), dtype=dtype, name=name)
+  return constant(s_list, dtype=dtype, name=name)
 
 ops.register_tensor_conversion_function(
     tensor_shape.TensorShape, _tensor_shape_tensor_conversion_function, 100)

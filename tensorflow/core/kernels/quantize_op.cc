@@ -86,6 +86,7 @@ class QuantizeV2Op : public OpKernel {
                                                   fabsf(input_max_range))) /
                           100.0f;
     max_range = std::max(input_max_range, min_range + epsilon);
+    max_range = std::max(0.0f, max_range);
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, input.shape(), &output));

@@ -72,24 +72,31 @@ module Categorizer {
       if (tags.length === 0) {
         return [];
       }
-      let sortedTags = tags.slice().sort(VZ.Sorting.compareTagNames);
-      let categories: Category[] = [];
-      let currentCategory = {
-        name: extractor(sortedTags[0]),
-        tags: [],
-      };
-      sortedTags.forEach((t: string) => {
-        let topLevel = extractor(t);
-        if (currentCategory.name !== topLevel) {
-          categories.push(currentCategory);
-          currentCategory = {
+
+      // Maps between top-level name and category. We use the mapping to avoid
+      // duplicating categories per run.
+      const categoryMapping: {[key: string]: Category} = {};
+
+      tags.forEach((t: string) => {
+        const topLevel = extractor(t);
+        if (!categoryMapping[topLevel]) {
+          const newCategory = {
             name: topLevel,
             tags: [],
           };
+          categoryMapping[topLevel] = newCategory;
         }
-        currentCategory.tags.push(t);
+
+        categoryMapping[topLevel].tags.push(t);
       });
-      categories.push(currentCategory);
+
+      // Sort categories into alphabetical order.
+      const categories =
+          _.map(_.keys(categoryMapping).sort(), key => categoryMapping[key]);
+      _.forEach(categories, (category) => {
+        // Sort the tags within each category.
+        category.tags.sort(VZ.Sorting.compareTagNames);
+      });
       return categories;
     };
   }

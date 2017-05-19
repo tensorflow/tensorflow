@@ -1,13 +1,13 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+web_library(
     name = "vz_line_chart",
     srcs = [
         "vz-line-chart.html",
@@ -54,7 +54,7 @@ tensorboard_webcomponent_library(
     visibility = ["//visibility:public"],
     destdir = "vz-line-chart",
     deps = [
-        "//tensorflow/tensorboard/components:tf_imports",
+        "//tensorflow/tensorboard/components/tf_imports_google:lib",
         "//tensorflow/tensorboard/components/vz_sorting:legacy",
         "//third_party/javascript/polymer/v1/polymer:lib",
     ],
@@ -67,5 +67,17 @@ tensorboard_ts_library(
         "vz-chart-helpers.ts",
         "vz-line-chart.ts",
     ],
-    deps = ["//tensorflow/tensorboard/components:common_deps"],
+    deps_mgmt = "off",
+    runtime = "nodejs",
+    deps = [
+        "//third_party/javascript/node_modules/typescript:es2015.promise",
+        "//third_party/javascript/plottable/v1:typings",
+        "//third_party/javascript/typings/chai",
+        "//third_party/javascript/typings/d3",
+        "//third_party/javascript/typings/lodash",
+        "//third_party/javascript/typings/mocha",
+        "//third_party/javascript/typings/polymer:polymer_without_externs",
+        "//third_party/javascript/typings/sinon",
+        "//third_party/javascript/typings/webcomponents_js",
+    ],
 )

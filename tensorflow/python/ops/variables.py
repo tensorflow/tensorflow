@@ -24,9 +24,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
 
 
@@ -163,8 +165,9 @@ class Variable(object):
       name: Optional name for the variable. Defaults to `'Variable'` and gets
         uniquified automatically.
       variable_def: `VariableDef` protocol buffer. If not `None`, recreates
-        the Variable object with its contents. `variable_def` and the other
-        arguments are mutually exclusive.
+        the Variable object with its contents, referencing the variable's nodes
+        in the graph, which must already exist. The graph is not changed.
+        `variable_def` and the other arguments are mutually exclusive.
       dtype: If set, initial_value will be converted to the given type.
         If `None`, either the datatype will be kept (if `initial_value` is
         a Tensor), or `convert_to_tensor` will decide.
@@ -320,10 +323,11 @@ class Variable(object):
     self._save_slice_info = None
 
   def _init_from_proto(self, variable_def, import_scope=None):
-    """Creates a new variable from `VariableDef` protocol buffer.
+    """Recreates the Variable object from a `VariableDef` protocol buffer.
 
     Args:
-      variable_def: `VariableDef` protocol buffer.
+      variable_def: `VariableDef` protocol buffer, describing a variable
+          whose nodes already exists in the graph.
       import_scope: Optional `string`. Name scope to add.
     """
     assert isinstance(variable_def, variable_pb2.VariableDef)
@@ -565,6 +569,29 @@ class Variable(object):
         sparse_delta.indices,
         sparse_delta.values,
         use_locking=use_locking)
+
+  def _strided_slice_assign(self,
+                            begin,
+                            end,
+                            strides,
+                            value,
+                            name,
+                            begin_mask,
+                            end_mask,
+                            ellipsis_mask,
+                            new_axis_mask,
+                            shrink_axis_mask):
+    return gen_array_ops.strided_slice_assign(ref=self._ref(),
+                                              begin=begin,
+                                              end=end,
+                                              strides=strides,
+                                              value=value,
+                                              name=name,
+                                              begin_mask=begin_mask,
+                                              end_mask=end_mask,
+                                              ellipsis_mask=ellipsis_mask,
+                                              new_axis_mask=new_axis_mask,
+                                              shrink_axis_mask=shrink_axis_mask)
 
   def count_up_to(self, limit):
     """Increments this variable until it reaches `limit`.
@@ -1150,6 +1177,7 @@ def variables_initializer(var_list, name="init"):
   return control_flow_ops.no_op(name=name)
 
 
+@tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.variables_initializer` instead.")
 def initialize_variables(var_list, name="init"):
   """See `tf.variables_initializer`."""
@@ -1159,7 +1187,7 @@ def initialize_variables(var_list, name="init"):
 def global_variables_initializer():
   """Returns an Op that initializes global variables.
 
-  This is just a shortcut for `variable_initializers(global_variables())`
+  This is just a shortcut for `variable_initializer(global_variables())`
 
   Returns:
     An Op that initializes global variables in the graph.
@@ -1167,6 +1195,7 @@ def global_variables_initializer():
   return variables_initializer(global_variables())
 
 
+@tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.global_variables_initializer` instead.")
 def initialize_all_variables():
   """See `tf.global_variables_initializer`."""
@@ -1176,7 +1205,7 @@ def initialize_all_variables():
 def local_variables_initializer():
   """Returns an Op that initializes all local variables.
 
-  This is just a shortcut for `variable_initializers(local_variables())`
+  This is just a shortcut for `variable_initializer(local_variables())`
 
   Returns:
     An Op that initializes all local variables in the graph.
@@ -1184,12 +1213,14 @@ def local_variables_initializer():
   return variables_initializer(local_variables())
 
 
+@tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.local_variables_initializer` instead.")
 def initialize_local_variables():
   """See `tf.local_variables_initializer`."""
   return local_variables_initializer()
 
 
+@tf_should_use.should_use_result
 def is_variable_initialized(variable):
   """Tests if a variable has been initialized.
 
@@ -1203,6 +1234,7 @@ def is_variable_initialized(variable):
   return state_ops.is_variable_initialized(variable)
 
 
+@tf_should_use.should_use_result
 def assert_variables_initialized(var_list=None):
   """Returns an Op to check if variables are initialized.
 
@@ -1244,6 +1276,7 @@ def assert_variables_initialized(var_list=None):
       return array_ops.stack(ranks)
 
 
+@tf_should_use.should_use_result
 def report_uninitialized_variables(var_list=None,
                                    name="report_uninitialized_variables"):
   """Adds ops to list the names of uninitialized variables.

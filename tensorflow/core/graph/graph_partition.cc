@@ -356,7 +356,7 @@ string ControlLoopName(const string& name) {
 }
 
 bool IsControlLoop(const Node* node) {
-  const string& name = node->def().name();
+  const string& name = node->name();
   return StringPiece(name).starts_with("_cloop");
 }
 
@@ -468,7 +468,7 @@ Status AddControlLoop(const PartitionOptions& opts, Graph* g, const Node* src,
   const string& device_name = edge->dst()->assigned_device_name();
   const string& frame_name = src_info.frame_name;
   int parallel_iterations;
-  status = GetNodeAttr(src_info.frame->def(), "parallel_iterations",
+  status = GetNodeAttr(src_info.frame->attrs(), "parallel_iterations",
                        &parallel_iterations);
   if (!status.ok()) return status;
 
@@ -903,11 +903,11 @@ Status Partition(const PartitionOptions& opts, Graph* g,
           send_start_time = opts.start_times[src->id()].value();
           recv_start_time = opts.start_times[dst->id()].value();
         } else {
-          status = GetNodeAttr(src->def(), "_start_time", &send_start_time);
+          status = GetNodeAttr(src->attrs(), "_start_time", &send_start_time);
           if (!status.ok()) {
             return status;
           }
-          status = GetNodeAttr(dst->def(), "_start_time", &recv_start_time);
+          status = GetNodeAttr(dst->attrs(), "_start_time", &recv_start_time);
           if (!status.ok()) {
             return status;
           }
@@ -1028,9 +1028,10 @@ Status Partition(const PartitionOptions& opts, Graph* g,
     }
   }
 
-  // Set versions
+  // Set versions and function library
   for (auto& it : *partitions) {
     it.second.mutable_versions()->CopyFrom(g->versions());
+    *it.second.mutable_library() = g->flib_def().ToProto();
   }
 
   // Set the start times for recvs at the very end.

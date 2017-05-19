@@ -106,6 +106,11 @@ class HloModule {
   // Returns a randomly generated uint64.
   uint64 RandomNew64() const;
 
+  // Returns the unique name for a computation in this module.
+  string GetUniqueCompuationName(const string& prefix) {
+    return computation_name_uniquer_.GetUniqueName(prefix);
+  }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation);

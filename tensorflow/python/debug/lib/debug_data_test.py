@@ -23,6 +23,7 @@ import tempfile
 
 import numpy as np
 
+from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -47,24 +48,24 @@ class ParseNodeOrTensorNameTest(test_util.TensorFlowTestCase):
 class NodeNameChecksTest(test_util.TensorFlowTestCase):
 
   def testIsCopyNode(self):
-    self.assertTrue(debug_data._is_copy_node("__copy_ns1/ns2/node3_0"))
+    self.assertTrue(debug_data.is_copy_node("__copy_ns1/ns2/node3_0"))
 
-    self.assertFalse(debug_data._is_copy_node("copy_ns1/ns2/node3_0"))
-    self.assertFalse(debug_data._is_copy_node("_copy_ns1/ns2/node3_0"))
-    self.assertFalse(debug_data._is_copy_node("_copyns1/ns2/node3_0"))
-    self.assertFalse(debug_data._is_copy_node("__dbg_ns1/ns2/node3_0"))
+    self.assertFalse(debug_data.is_copy_node("copy_ns1/ns2/node3_0"))
+    self.assertFalse(debug_data.is_copy_node("_copy_ns1/ns2/node3_0"))
+    self.assertFalse(debug_data.is_copy_node("_copyns1/ns2/node3_0"))
+    self.assertFalse(debug_data.is_copy_node("__dbg_ns1/ns2/node3_0"))
 
   def testIsDebugNode(self):
     self.assertTrue(
-        debug_data._is_debug_node("__dbg_ns1/ns2/node3:0_0_DebugIdentity"))
+        debug_data.is_debug_node("__dbg_ns1/ns2/node3:0_0_DebugIdentity"))
 
     self.assertFalse(
-        debug_data._is_debug_node("dbg_ns1/ns2/node3:0_0_DebugIdentity"))
+        debug_data.is_debug_node("dbg_ns1/ns2/node3:0_0_DebugIdentity"))
     self.assertFalse(
-        debug_data._is_debug_node("_dbg_ns1/ns2/node3:0_0_DebugIdentity"))
+        debug_data.is_debug_node("_dbg_ns1/ns2/node3:0_0_DebugIdentity"))
     self.assertFalse(
-        debug_data._is_debug_node("_dbgns1/ns2/node3:0_0_DebugIdentity"))
-    self.assertFalse(debug_data._is_debug_node("__copy_ns1/ns2/node3_0"))
+        debug_data.is_debug_node("_dbgns1/ns2/node3:0_0_DebugIdentity"))
+    self.assertFalse(debug_data.is_debug_node("__copy_ns1/ns2/node3_0"))
 
 
 class ParseDebugNodeNameTest(test_util.TensorFlowTestCase):
@@ -72,7 +73,7 @@ class ParseDebugNodeNameTest(test_util.TensorFlowTestCase):
   def testParseDebugNodeName_valid(self):
     debug_node_name_1 = "__dbg_ns_a/ns_b/node_c:1_0_DebugIdentity"
     (watched_node, watched_output_slot, debug_op_index,
-     debug_op) = debug_data._parse_debug_node_name(debug_node_name_1)
+     debug_op) = debug_data.parse_debug_node_name(debug_node_name_1)
 
     self.assertEqual("ns_a/ns_b/node_c", watched_node)
     self.assertEqual(1, watched_output_slot)
@@ -83,20 +84,20 @@ class ParseDebugNodeNameTest(test_util.TensorFlowTestCase):
     invalid_debug_node_name_1 = "__copy_ns_a/ns_b/node_c:1_0_DebugIdentity"
 
     with self.assertRaisesRegexp(ValueError, "Invalid prefix"):
-      debug_data._parse_debug_node_name(invalid_debug_node_name_1)
+      debug_data.parse_debug_node_name(invalid_debug_node_name_1)
 
   def testParseDebugNodeName_missingDebugOpIndex(self):
     invalid_debug_node_name_1 = "__dbg_node1:0_DebugIdentity"
 
     with self.assertRaisesRegexp(ValueError, "Invalid debug node name"):
-      debug_data._parse_debug_node_name(invalid_debug_node_name_1)
+      debug_data.parse_debug_node_name(invalid_debug_node_name_1)
 
   def testParseDebugNodeName_invalidWatchedTensorName(self):
     invalid_debug_node_name_1 = "__dbg_node1_0_DebugIdentity"
 
     with self.assertRaisesRegexp(ValueError,
                                  "Invalid tensor name in debug node name"):
-      debug_data._parse_debug_node_name(invalid_debug_node_name_1)
+      debug_data.parse_debug_node_name(invalid_debug_node_name_1)
 
 
 class HasNanOrInfTest(test_util.TensorFlowTestCase):
@@ -125,9 +126,15 @@ class HasNanOrInfTest(test_util.TensorFlowTestCase):
     a = np.array([])
     self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
 
-  def testNone(self):
-    a = None
-    self.assertFalse(debug_data.has_inf_or_nan(self._dummy_datum, a))
+  def testInconvertibleTensorProto(self):
+    self.assertFalse(debug_data.has_inf_or_nan(
+        self._dummy_datum,
+        debug_data.InconvertibleTensorProto(tensor_pb2.TensorProto(),
+                                            initialized=False)))
+    self.assertFalse(debug_data.has_inf_or_nan(
+        self._dummy_datum,
+        debug_data.InconvertibleTensorProto(tensor_pb2.TensorProto(),
+                                            initialized=True)))
 
   def testDTypeComplexWorks(self):
     a = np.array([1j, 3j, 3j, 7j], dtype=np.complex128)

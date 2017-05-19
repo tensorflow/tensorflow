@@ -24,15 +24,6 @@ limitations under the License.
 namespace tensorflow {
 class ShapeRefiner;
 
-// Options specific to constant folding optimizations.
-//
-// TODO(ashankar,vrv): This should move to where constant folding is done.
-struct ConstantFoldingOptions {
-  // If "consider" is not a nullptr, then only constant fold a node "n" if
-  // consider(n) returns true.
-  std::function<bool(const Node*)> consider = nullptr;
-};
-
 // Construct a Graph *g out of a GraphDef gdef. Returns non-OK on
 // error, in which case *g is left in an incomplete state.
 //

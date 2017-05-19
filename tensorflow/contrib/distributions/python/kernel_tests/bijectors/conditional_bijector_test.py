@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.bijectors import conditional_bijector
+from tensorflow.contrib.distributions.python.ops.bijectors.conditional_bijector import ConditionalBijector
 from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import test
 
 
-class _TestBijector(conditional_bijector.ConditionalBijector):
+class _TestBijector(ConditionalBijector):
 
   def __init__(self):
     super(_TestBijector, self).__init__(

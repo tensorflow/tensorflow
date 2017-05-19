@@ -21,10 +21,7 @@ limitations under the License.
 // computations across different threads if necessary.
 #include <algorithm>
 
-#define EIGEN_USE_THREADS
-
 #include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -133,9 +130,8 @@ class LinearAlgebraOp : public OpKernel {
  private:
   using TensorInputs = gtl::InlinedVector<const Tensor*, 4>;
   using TensorOutputs = gtl::InlinedVector<Tensor*, 4>;
-
-  // This function maps slices (matrices) of the input and output tensors using
-  // Eigen::Map and calls ComputeMatrix implemented in terms of the
+  // This function maps 2-d slices (matrices) of the input and output tensors
+  // using Eigen::Map and calls ComputeMatrix implemented in terms of the
   // Eigen::MatrixBase API by the derived class.
   //
   // The 'matrix_index' parameter specifies the index of the matrix to be used
@@ -167,8 +163,8 @@ class LinearAlgebraOp : public OpKernel {
                       TensorShapes* output_matrix_shapes);
 };
 
-// Declare that LinearAlgebraOp is explicitly instantiated in
-// linalg_ops_common.cc for float and double.
+// Declare LinearAlgebraOp, which is explicitly instantiated in
+// linalg_ops_common.cc for float, double, complex64, and complex128.
 extern template class LinearAlgebraOp<float>;
 extern template class LinearAlgebraOp<double>;
 extern template class LinearAlgebraOp<complex64>;
@@ -176,8 +172,25 @@ extern template class LinearAlgebraOp<complex128>;
 
 }  // namespace tensorflow
 
-#define REGISTER_LINALG_OP(OpName, OpClass, Scalar) \
-  REGISTER_KERNEL_BUILDER(                          \
+#define INHERIT_LINALG_TYPEDEFS(Scalar)                   \
+  typedef LinearAlgebraOp<Scalar> Base;                   \
+  using Matrix = typename Base::Matrix;                   \
+  using MatrixMap = typename Base::MatrixMap;             \
+  using MatrixMaps = typename Base::MatrixMaps;           \
+  using ConstMatrixMap = typename Base::ConstMatrixMap;   \
+  using ConstMatrixMaps = typename Base::ConstMatrixMaps; \
+  using TensorShapes = typename Base::TensorShapes;
+
+#define REGISTER_LINALG_OP_CPU(OpName, OpClass, Scalar) \
+  REGISTER_KERNEL_BUILDER(                              \
       Name(OpName).Device(DEVICE_CPU).TypeConstraint<Scalar>("T"), OpClass)
+
+#define REGISTER_LINALG_OP_GPU(OpName, OpClass, Scalar) \
+  REGISTER_KERNEL_BUILDER(                              \
+      Name(OpName).Device(DEVICE_GPU).TypeConstraint<Scalar>("T"), OpClass)
+
+// Deprecated, use one of the device-specific macros above.
+#define REGISTER_LINALG_OP(OpName, OpClass, Scalar) \
+  REGISTER_LINALG_OP_CPU(OpName, OpClass, Scalar)
 
 #endif  // TENSORFLOW_KERNELS_LINALG_OPS_COMMON_H_

@@ -35,7 +35,7 @@ from tensorflow.python.training import queue_runner_impl
 
 
 class GeneratorIoTest(test.TestCase):
- 
+
   def testGeneratorInputFn(self):
 
     def generator():

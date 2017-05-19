@@ -35,6 +35,7 @@ from tensorflow.contrib.keras.python.keras.engine.topology import Input
 from tensorflow.contrib.keras.python.keras.engine.topology import Layer
 from tensorflow.contrib.keras.python.keras.engine.training import Model
 from tensorflow.contrib.keras.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
+from tensorflow.python.framework import ops
 
 
 # pylint: disable=g-import-not-at-top
@@ -50,7 +51,7 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
-def save_model(model, filepath, overwrite=True):
+def save_model(model, filepath, overwrite=True, include_optimizer=True):
   """Save a model to a HDF5 file.
 
   The saved model contains:
@@ -68,6 +69,7 @@ def save_model(model, filepath, overwrite=True):
       overwrite: Whether we should overwrite any existing
           model at the target location, or instead
           ask the user with a manual prompt.
+      include_optimizer: If True, save optimizer's state together.
 
   Raises:
       ImportError: if h5py is not available.
@@ -129,7 +131,7 @@ def save_model(model, filepath, overwrite=True):
   model_layers = model.layers
   topology.save_weights_to_hdf5_group(model_weights_group, model_layers)
 
-  if hasattr(model, 'optimizer'):
+  if include_optimizer and hasattr(model, 'optimizer'):
     if isinstance(model.optimizer, optimizers.TFOptimizer):
       warnings.warn(
           'TensorFlow optimizers do not '
@@ -219,7 +221,7 @@ def load_model(filepath, custom_objects=None):
         obj: object, dict, or list.
 
     Returns:
-        The same structure, where occurences
+        The same structure, where occurrences
             of a custom object name have been replaced
             with the custom object.
     """
@@ -234,7 +236,14 @@ def load_model(filepath, custom_objects=None):
     if isinstance(obj, dict):
       deserialized = {}
       for key, value in obj.items():
-        if value in custom_objects:
+        deserialized[key] = []
+        if isinstance(value, list):
+          for element in value:
+            if element in custom_objects:
+              deserialized[key].append(custom_objects[element])
+            else:
+              deserialized[key].append(element)
+        elif value in custom_objects:
           deserialized[key] = custom_objects[value]
         else:
           deserialized[key] = value
@@ -411,6 +420,14 @@ class Sequential(Model):
       prefix = 'sequential_'
       name = prefix + str(K.get_uid(prefix))
     self.name = name
+
+    # The following properties are not actually used by Keras;
+    # they exist for compatibility with TF's variable scoping mechanism.
+    self._updates = []
+    self._scope = None
+    self._reuse = None
+    self._base_name = name
+    self._graph = ops.get_default_graph()
 
     # Add to the model any layers passed to the constructor.
     if layers:

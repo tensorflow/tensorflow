@@ -22,12 +22,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 namespace {
@@ -59,11 +62,11 @@ TEST_F(InlinerTest, MapMax) {
   auto hlo_module = MakeUnique<HloModule>("test_module");
   hlo_module->AddEmbeddedComputation(std::move(max_f32));
   hlo_module->AddEntryComputation(std::move(computation));
-  HloInstruction* root = hlo_module->entry_computation()->root_instruction();
+
   Inliner inliner;
   EXPECT_TRUE(inliner.Run(hlo_module.get()).ValueOrDie());
-  root = hlo_module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kMaximum);
+  EXPECT_THAT(hlo_module->entry_computation()->root_instruction(),
+              op::Maximum(lhs, rhs));
 
   // Verify execution on CPU.
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
@@ -97,7 +100,7 @@ TEST_F(InlinerTest, MapConstant) {
   Inliner inliner;
   EXPECT_TRUE(inliner.Run(hlo_module.get()).ValueOrDie());
   root = hlo_module->entry_computation()->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kBroadcast);
+  EXPECT_THAT(root, op::Broadcast(op::Constant()));
 
   // Verify execution on CPU.
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});

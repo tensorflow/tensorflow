@@ -29,13 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/casts.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -486,6 +486,18 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareEqZeroElementS32s) {
   ComputeAndCompareR1<bool>(&builder, {}, {});
 }
 
+TEST_F(ArrayElementwiseOpTest, CompareNeF32s) {
+  // Disable fast-math because we're operating on NaNs.
+  SetFastMathDisabled(true);
+
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, NAN, 6.0f});
+  auto rhs = builder.ConstantR1<float>({10.0f, 25.5f, 1.0f, 10.0f, NAN});
+  auto compare = builder.Ne(lhs, rhs);
+
+  ComputeAndCompareR1<bool>(&builder, {true, false, true, true, true}, {});
+}
+
 TEST_F(ArrayElementwiseOpTest, CompareNeS32s) {
   const int32 min = std::numeric_limits<int32>::min();
   const int32 max = std::numeric_limits<int32>::max();
@@ -620,12 +632,14 @@ TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 TEST_F(ArrayElementwiseOpTest, PowF32s) {
   SetFastMathDisabled(true);
   ComputationBuilder builder(client_, TestName());
-  auto lhs = builder.ConstantR1<float>({4.0f, 2.0f, 2.0f, NAN, 6.0f});
-  auto rhs = builder.ConstantR1<float>({2.0f, -2.0f, 3.0f, 10.0f, NAN});
+  auto lhs =
+      builder.ConstantR1<float>({4.0f, 2.0f, 2.0f, NAN, 6.0f, -2.0f, -2.0f});
+  auto rhs =
+      builder.ConstantR1<float>({2.0f, -2.0f, 3.0f, 10.0f, NAN, 3.0f, 4.0f});
   auto minimum = builder.Pow(lhs, rhs);
 
-  ComputeAndCompareR1<float>(&builder, {16.0f, 0.25f, 8.0f, NAN, NAN}, {},
-                             error_spec_);
+  ComputeAndCompareR1<float>(
+      &builder, {16.0f, 0.25f, 8.0f, NAN, NAN, -8.0f, 16.0f}, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowZeroElementF32s) {
@@ -1667,9 +1681,9 @@ TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
   auto concatenated = builder.Add(x, x);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_MATCH(computation_status.status().ToString(),
-               testing::ContainsRegex(
-                   "Expected non-opaque argument for lhs of binary operation"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              ::testing::ContainsRegex(
+                  "Expected non-opaque argument for lhs of binary operation"));
 }
 
 // Regression test for b/31927799. "slice - y" is fused and requires implicit

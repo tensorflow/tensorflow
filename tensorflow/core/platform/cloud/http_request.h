@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -50,7 +51,9 @@ class HttpRequest {
   };
 
   HttpRequest();
-  explicit HttpRequest(LibCurl* libcurl);
+  explicit HttpRequest(LibCurl* libcurl)
+      : HttpRequest(libcurl, Env::Default()) {}
+  HttpRequest(LibCurl* libcurl, Env* env);
   virtual ~HttpRequest();
 
   virtual Status Init();
@@ -123,11 +126,16 @@ class HttpRequest {
   /// A header callback in the form which can be accepted by libcurl.
   static size_t HeaderCallback(const void* ptr, size_t size, size_t nmemb,
                                void* this_object);
+  /// A progress meter callback in the form which can be accepted by libcurl.
+  static int ProgressCallback(void* this_object, curl_off_t dltotal,
+                              curl_off_t dlnow, curl_off_t ultotal,
+                              curl_off_t ulnow);
   Status CheckInitialized() const;
   Status CheckMethodNotSet() const;
   Status CheckNotSent() const;
 
   LibCurl* libcurl_;
+  Env* env_;
 
   FILE* put_body_ = nullptr;
 
@@ -143,6 +151,12 @@ class HttpRequest {
 
   std::unordered_map<string, string> response_headers_;
   uint64 response_code_ = 0;
+
+  // The timestamp of the last activity related to the request execution, in
+  // seconds since epoch.
+  uint64 last_progress_timestamp_ = 0;
+  // The last progress in terms of bytes transmitted.
+  curl_off_t last_progress_bytes_ = 0;
 
   // Members to enforce the usage flow.
   bool is_initialized_ = false;
@@ -173,6 +187,10 @@ class LibCurl {
   virtual CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
                                     size_t (*param)(const void*, size_t, size_t,
                                                     void*)) = 0;
+  virtual CURLcode curl_easy_setopt(
+      CURL* curl, CURLoption option,
+      int (*param)(void* clientp, curl_off_t dltotal, curl_off_t dlnow,
+                   curl_off_t ultotal, curl_off_t ulnow)) = 0;
   virtual CURLcode curl_easy_perform(CURL* curl) = 0;
   virtual CURLcode curl_easy_getinfo(CURL* curl, CURLINFO info,
                                      uint64* value) = 0;

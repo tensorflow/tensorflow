@@ -47,7 +47,6 @@ export class DataPanel extends DataPanelPolymer {
   private labelOptions: string[];
   private colorOptions: ColorOption[];
   forceCategoricalColoring: boolean = false;
-  private dom: d3.Selection<any>;
 
   private selectedTensor: string;
   private selectedRun: string;
@@ -61,7 +60,6 @@ export class DataPanel extends DataPanelPolymer {
   private metadataFile: string;
 
   ready() {
-    this.dom = d3.select(this);
     this.normalizeData = true;
   }
 
@@ -129,9 +127,11 @@ export class DataPanel extends DataPanelPolymer {
   }
 
   private updateMetadataUI(columnStats: ColumnStats[], metadataFile: string) {
-    this.dom.select('#metadata-file')
-        .html(this.addWordBreaks(metadataFile))
-        .attr('title', metadataFile);
+    const metadataFileElement =
+        this.querySelector('#metadata-file') as HTMLSpanElement;
+    metadataFileElement.innerHTML = this.addWordBreaks(metadataFile);
+    metadataFileElement.title = metadataFile;
+
     // Label by options.
     let labelIndex = -1;
     this.labelOptions = columnStats.map((stats, i) => {
@@ -144,13 +144,13 @@ export class DataPanel extends DataPanelPolymer {
     this.selectedLabelOption = this.labelOptions[Math.max(0, labelIndex)];
 
     // Color by options.
-    let standardColorOption: ColorOption[] = [
+    const standardColorOption: ColorOption[] = [
       {name: 'No color map'},
       // TODO(smilkov): Implement this.
       // {name: 'Distance of neighbors',
       //    desc: 'How far is each point from its neighbors'}
     ];
-    let metadataColorOption: ColorOption[] =
+    const metadataColorOption: ColorOption[] =
         columnStats
             .filter(stats => {
               return !stats.tooManyUniqueValues || stats.isNumeric;
@@ -263,13 +263,15 @@ export class DataPanel extends DataPanelPolymer {
       this.tensorNames = names.map(name => {
         return {name, shape: this.getEmbeddingInfoByName(name).tensorShape};
       });
-      let wordBreakablePath =
+      const wordBreakablePath =
           this.addWordBreaks(this.projectorConfig.modelCheckpointPath);
-      this.dom.select('#checkpoint-file')
-          .html(wordBreakablePath)
-          .attr('title', this.projectorConfig.modelCheckpointPath);
+      const checkpointFile =
+          this.querySelector('#checkpoint-file') as HTMLSpanElement;
+      checkpointFile.innerHTML = wordBreakablePath;
+      checkpointFile.title = this.projectorConfig.modelCheckpointPath;
+
       // If in demo mode, let the order decide which tensor to load by default.
-      let defaultTensor = this.projector.servingMode === 'demo' ?
+      const defaultTensor = this.projector.servingMode === 'demo' ?
           this.projectorConfig.embeddings[0].tensorName :
           names[0];
       if (this.selectedTensor === defaultTensor) {
@@ -322,9 +324,10 @@ export class DataPanel extends DataPanelPolymer {
 
   private tensorWasReadFromFile(rawContents: ArrayBuffer, fileName: string) {
     parseRawTensors(rawContents, ds => {
-      this.dom.select('#checkpoint-file')
-          .text(fileName)
-          .attr('title', fileName);
+      const checkpointFile =
+          this.querySelector('#checkpoint-file') as HTMLSpanElement;
+      checkpointFile.innerText = fileName;
+      checkpointFile.title = fileName;
       this.projector.updateDataSet(ds);
     });
   }
@@ -337,7 +340,7 @@ export class DataPanel extends DataPanelPolymer {
 
   private getEmbeddingInfoByName(tensorName: string): EmbeddingInfo {
     for (let i = 0; i < this.projectorConfig.embeddings.length; i++) {
-      let e = this.projectorConfig.embeddings[i];
+      const e = this.projectorConfig.embeddings[i];
       if (e.tensorName === tensorName) {
         return e;
       }
@@ -346,44 +349,47 @@ export class DataPanel extends DataPanelPolymer {
 
   private setupUploadButtons() {
     // Show and setup the upload button.
-    let fileInput = this.dom.select('#file');
-    fileInput.on('change', () => {
-      let file: File = (d3.event as any).target.files[0];
+    const fileInput = this.querySelector('#file') as HTMLInputElement;
+    fileInput.onchange = () => {
+      const file: File = fileInput.files[0];
       // Clear out the value of the file chooser. This ensures that if the user
       // selects the same file, we'll re-read it.
-      (d3.event as any).target.value = '';
-      let fileReader = new FileReader();
+      fileInput.value = '';
+      const fileReader = new FileReader();
       fileReader.onload = evt => {
-        let content: ArrayBuffer = (evt.target as any).result;
+        const content: ArrayBuffer = fileReader.result;
         this.tensorWasReadFromFile(content, file.name);
       };
       fileReader.readAsArrayBuffer(file);
-    });
+    };
 
-    let uploadButton = this.dom.select('#upload-tensors');
-    uploadButton.on('click', () => {
-      (fileInput.node() as HTMLInputElement).click();
-    });
+    const uploadButton =
+        this.querySelector('#upload-tensors') as HTMLButtonElement;
+    uploadButton.onclick = () => {
+      fileInput.click();
+    };
 
     // Show and setup the upload metadata button.
-    let fileMetadataInput = this.dom.select('#file-metadata');
-    fileMetadataInput.on('change', () => {
-      let file: File = (d3.event as any).target.files[0];
+    const fileMetadataInput =
+        this.querySelector('#file-metadata') as HTMLInputElement;
+    fileMetadataInput.onchange = () => {
+      const file: File = fileMetadataInput.files[0];
       // Clear out the value of the file chooser. This ensures that if the user
       // selects the same file, we'll re-read it.
-      (d3.event as any).target.value = '';
-      let fileReader = new FileReader();
+      fileMetadataInput.value = '';
+      const fileReader = new FileReader();
       fileReader.onload = evt => {
-        let contents: ArrayBuffer = (evt.target as any).result;
+        const contents: ArrayBuffer = fileReader.result;
         this.metadataWasReadFromFile(contents, file.name);
       };
       fileReader.readAsArrayBuffer(file);
-    });
+    };
 
-    let uploadMetadataButton = this.dom.select('#upload-metadata');
-    uploadMetadataButton.on('click', () => {
-      (fileMetadataInput.node() as HTMLInputElement).click();
-    });
+    const uploadMetadataButton =
+        this.querySelector('#upload-metadata') as HTMLButtonElement;
+    uploadMetadataButton.onclick = () => {
+      fileMetadataInput.click();
+    };
 
     if (this.projector.servingMode !== 'demo') {
       (this.$$('#publish-container') as HTMLElement).style.display = 'none';
@@ -396,22 +402,24 @@ export class DataPanel extends DataPanelPolymer {
         'block';
 
     // Fill out the projector config.
-    let projectorConfigTemplate =
+    const projectorConfigTemplate =
         this.$$('#projector-config-template') as HTMLTextAreaElement;
-    let projectorConfigTemplateJson: ProjectorConfig = {
+    const projectorConfigTemplateJson: ProjectorConfig = {
       embeddings: [{
         tensorName: 'My tensor',
         tensorShape: [1000, 50],
-        tensorPath: 'https://gist.github.com/.../tensors.tsv',
-        metadataPath: 'https://gist.github.com/.../optional.metadata.tsv',
+        tensorPath: 'https://raw.githubusercontent.com/.../tensors.tsv',
+        metadataPath:
+            'https://raw.githubusercontent.com/.../optional.metadata.tsv',
       }],
     };
     this.setProjectorConfigTemplateJson(
         projectorConfigTemplate, projectorConfigTemplateJson);
 
     // Set up optional field checkboxes.
-    let spriteFieldCheckbox = this.$$('#config-sprite-checkbox');
-    spriteFieldCheckbox.addEventListener('change', () => {
+    const spriteFieldCheckbox =
+        this.$$('#config-sprite-checkbox') as HTMLInputElement;
+    spriteFieldCheckbox.onchange = () => {
       if ((spriteFieldCheckbox as any).checked) {
         projectorConfigTemplateJson.embeddings[0].sprite = {
           imagePath: 'https://github.com/.../optional.sprite.png',
@@ -422,35 +430,38 @@ export class DataPanel extends DataPanelPolymer {
       }
       this.setProjectorConfigTemplateJson(
           projectorConfigTemplate, projectorConfigTemplateJson);
-    });
-    let bookmarksFieldCheckbox = this.$$('#config-bookmarks-checkbox');
-    bookmarksFieldCheckbox.addEventListener('change', () => {
+    };
+    const bookmarksFieldCheckbox =
+        this.$$('#config-bookmarks-checkbox') as HTMLInputElement;
+    bookmarksFieldCheckbox.onchange = () => {
       if ((bookmarksFieldCheckbox as any).checked) {
         projectorConfigTemplateJson.embeddings[0].bookmarksPath =
-            'https://gist.github.com/.../bookmarks.txt';
+            'https://raw.githubusercontent.com/.../bookmarks.txt';
       } else {
         delete projectorConfigTemplateJson.embeddings[0].bookmarksPath;
       }
       this.setProjectorConfigTemplateJson(
           projectorConfigTemplate, projectorConfigTemplateJson);
-    });
-    let metadataFieldCheckbox = this.$$('#config-metadata-checkbox');
-    metadataFieldCheckbox.addEventListener('change', () => {
+    };
+    const metadataFieldCheckbox =
+        this.$$('#config-metadata-checkbox') as HTMLInputElement;
+    metadataFieldCheckbox.onchange = () => {
       if ((metadataFieldCheckbox as HTMLInputElement).checked) {
         projectorConfigTemplateJson.embeddings[0].metadataPath =
-            'https://gist.github.com/.../optional.metadata.tsv';
+            'https://raw.githubusercontent.com/.../optional.metadata.tsv';
       } else {
         delete projectorConfigTemplateJson.embeddings[0].metadataPath;
       }
       this.setProjectorConfigTemplateJson(
           projectorConfigTemplate, projectorConfigTemplateJson);
-    });
+    };
 
     // Update the link and the readonly shareable URL.
-    let projectorConfigUrlInput = this.$$('#projector-config-url');
-    let projectorConfigDemoUrlInput = this.$$('#projector-share-url');
-    let projectorConfigDemoUrlLink = this.$$('#projector-share-url-link');
-    projectorConfigUrlInput.addEventListener('input', () => {
+    const projectorConfigUrlInput =
+        this.$$('#projector-config-url') as HTMLInputElement;
+    const projectorConfigDemoUrlInput = this.$$('#projector-share-url');
+    const projectorConfigDemoUrlLink = this.$$('#projector-share-url-link');
+    projectorConfigUrlInput.onchange = () => {
       let projectorDemoUrl = location.protocol + '//' + location.host +
           location.pathname +
           '?config=' + (projectorConfigUrlInput as HTMLInputElement).value;
@@ -458,7 +469,7 @@ export class DataPanel extends DataPanelPolymer {
       (projectorConfigDemoUrlInput as HTMLInputElement).value =
           projectorDemoUrl;
       (projectorConfigDemoUrlLink as HTMLLinkElement).href = projectorDemoUrl;
-    });
+    };
   }
 
   private setProjectorConfigTemplateJson(

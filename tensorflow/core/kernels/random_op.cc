@@ -178,27 +178,9 @@ namespace {
 
 static Status AllocateOutputWithShape(OpKernelContext* ctx, const Tensor& shape,
                                       int index, Tensor** output) {
-  if (!ctx->op_kernel().IsLegacyVector(shape.shape())) {
-    return errors::InvalidArgument(
-        "shape must be a vector of {int32,int64}, got shape ",
-        shape.shape().DebugString());
-  }
-  if (shape.dtype() == DataType::DT_INT32) {
-    auto vec = shape.flat<int32>();
-    TensorShape tensor_shape;
-    TF_RETURN_IF_ERROR(
-        TensorShapeUtils::MakeShape(vec.data(), vec.size(), &tensor_shape));
-    TF_RETURN_IF_ERROR(ctx->allocate_output(index, tensor_shape, output));
-  } else if (shape.dtype() == DataType::DT_INT64) {
-    auto vec = shape.flat<int64>();
-    TensorShape tensor_shape;
-    TF_RETURN_IF_ERROR(
-        TensorShapeUtils::MakeShape(vec.data(), vec.size(), &tensor_shape));
-    TF_RETURN_IF_ERROR(ctx->allocate_output(index, tensor_shape, output));
-  } else {
-    return errors::InvalidArgument("shape must be a vector of {int32,int64}.");
-  }
-  return Status::OK();
+  TensorShape tensor_shape;
+  TF_RETURN_IF_ERROR(ctx->op_kernel().MakeShape(shape, &tensor_shape));
+  return ctx->allocate_output(index, tensor_shape, output);
 }
 
 // For now, use the same interface as RandomOp, so we can choose either one
@@ -465,6 +447,12 @@ class RandomGammaOp : public OpKernel {
 #define REGISTER(TYPE)                                                      \
   template struct functor::FillPhiloxRandom<                                \
       CPUDevice, random::UniformDistribution<random::PhiloxRandom, TYPE> >; \
+  template struct functor::FillPhiloxRandom<                                \
+      CPUDevice, random::NormalDistribution<random::PhiloxRandom, TYPE> >;  \
+  template struct functor::FillPhiloxRandom<                                \
+      CPUDevice,                                                            \
+      random::TruncatedNormalDistribution<                                  \
+          random::SingleSampleAdapter<random::PhiloxRandom>, TYPE> >;       \
   REGISTER_KERNEL_BUILDER(                                                  \
       Name("RandomUniform")                                                 \
           .Device(DEVICE_CPU)                                               \

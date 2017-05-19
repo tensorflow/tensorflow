@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector
 from tensorflow.contrib.distributions.python.ops.shape import _DistributionShape
 from tensorflow.contrib.linalg.python.ops import linear_operator
 from tensorflow.python.framework import constant_op
@@ -27,6 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops.distributions import bijector
 
 
 __all__ = [
@@ -193,7 +193,7 @@ class AffineLinearOperator(bijector.Bijector):
           y, expand_batch_dim=False)
       with ops.control_dependencies(self._maybe_collect_assertions() if
                                     self.validate_args else []):
-        y = self.scale.apply(y)
+        y = self.scale.matmul(y)
       y = self._shaper.undo_make_batch_of_event_sample_matrices(
           y, sample_shape, expand_batch_dim=False)
     if self.shift is not None:

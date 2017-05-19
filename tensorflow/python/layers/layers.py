@@ -23,6 +23,7 @@
 @@conv3d
 @@separable_conv2d
 @@conv2d_transpose
+@@conv3d_transpose
 @@average_pooling1d
 @@max_pooling1d
 @@average_pooling2d
@@ -50,6 +51,7 @@ from tensorflow.python.layers.convolutional import conv2d
 from tensorflow.python.layers.convolutional import conv3d
 from tensorflow.python.layers.convolutional import separable_conv2d
 from tensorflow.python.layers.convolutional import conv2d_transpose
+from tensorflow.python.layers.convolutional import conv3d_transpose
 
 # Pooling layers.
 from tensorflow.python.layers.pooling import average_pooling1d

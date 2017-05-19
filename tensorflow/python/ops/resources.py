@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import tf_should_use
 
 
 _Resource = collections.namedtuple("_Resource",
@@ -98,6 +99,7 @@ def report_uninitialized_resources(resource_list=None,
     return array_ops.boolean_mask(variable_names_tensor, variables_mask)
 
 
+@tf_should_use.should_use_result
 def initialize_resources(resource_list, name="init"):
   """Initializes the resources in the given list.
 

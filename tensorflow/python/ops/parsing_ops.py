@@ -58,7 +58,7 @@ class SparseFeature(
         ["index_key", "value_key", "dtype", "size", "already_sorted"])):
   """Configuration for parsing a sparse input feature from an `Example`.
 
-  Note, preferrably use `VarLenFeature` (possibly in combination with a
+  Note, preferably use `VarLenFeature` (possibly in combination with a
   `SequenceExample`) in order to parse out `SparseTensor`s instead of
   `SparseFeature` due to its simplicity.
 
@@ -845,7 +845,7 @@ def parse_single_sequence_example(
   Parses a single serialized [`SequenceExample`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
   proto given in `serialized`.
 
-  This op parses a serialize sequence example into a tuple of dictionaries
+  This op parses a serialized sequence example into a tuple of dictionaries
   mapping keys to `Tensor` and `SparseTensor` objects respectively.
   The first dictionary contains mappings for keys appearing in
   `context_features`, and the second dictionary contains mappings for keys

@@ -120,7 +120,7 @@ static SessionOptions GetOptions(int intra_threads) {
 
 // Creates a Graph which "reduce"s a 3D float tensor of "num" elements
 // into a scalar.
-static Graph* Reverse(TensorShape shape, int reverse_axis) {
+static Graph* Reverse(const TensorShape& shape, int reverse_axis) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor data(DT_FLOAT, shape);
   data.flat<float>().setRandom();

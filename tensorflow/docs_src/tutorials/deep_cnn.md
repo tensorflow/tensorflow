@@ -83,7 +83,7 @@ for details.  It consists of 1,068,298 learnable parameters and requires about
 ## Code Organization
 
 The code for this tutorial resides in
-[`tensorflow_models/tutorials/image/cifar10/`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/).
+[`models/tutorials/image/cifar10/`](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/).
 
 File | Purpose
 --- | ---
@@ -141,7 +141,7 @@ so that we may visualize them in @{$summaries_and_tensorboard$TensorBoard}.
 This is a good practice to verify that inputs are built correctly.
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:70%" src="../images/cifar_image_summary.png">
+  <img style="width:70%" src="https://www.tensorflow.org/images/cifar_image_summary.png">
 </div>
 
 Reading images from disk and distorting them can use a non-trivial amount of
@@ -170,7 +170,7 @@ Layer Name | Description
 Here is a graph generated from TensorBoard describing the inference operation:
 
 <div style="width:15%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/cifar_graph.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/cifar_graph.png">
 </div>
 
 > **EXERCISE**: The output of `inference` are un-normalized logits. Try editing
@@ -205,7 +205,7 @@ loss and all these weight decay terms, as returned by the `loss()` function.
 
 We visualize it in TensorBoard with a @{tf.summary.scalar}:
 
-![CIFAR-10 Loss](../images/cifar_loss.png "CIFAR-10 Total Loss")
+![CIFAR-10 Loss](https://www.tensorflow.org/images/cifar_loss.png "CIFAR-10 Total Loss")
 
 We train the model using standard
 [gradient descent](https://en.wikipedia.org/wiki/Gradient_descent)
@@ -214,7 +214,7 @@ with a learning rate that
 @{tf.train.exponential_decay$exponentially decays}
 over time.
 
-![CIFAR-10 Learning Rate Decay](../images/cifar_lr_decay.png "CIFAR-10 Learning Rate Decay")
+![CIFAR-10 Learning Rate Decay](https://www.tensorflow.org/images/cifar_lr_decay.png "CIFAR-10 Learning Rate Decay")
 
 The `train()` function adds the operations needed to minimize the objective by
 calculating the gradient and updating the learned variables (see
@@ -295,8 +295,8 @@ For instance, we can watch how the distribution of activations and degree of
 sparsity in `local3` features evolve during training:
 
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px; display: flex; flex-direction: row">
-  <img style="flex-grow:1; flex-shrink:1;" src="../images/cifar_sparsity.png">
-  <img style="flex-grow:1; flex-shrink:1;" src="../images/cifar_activations.png">
+  <img style="flex-grow:1; flex-shrink:1;" src="https://www.tensorflow.org/images/cifar_sparsity.png">
+  <img style="flex-grow:1; flex-shrink:1;" src="https://www.tensorflow.org/images/cifar_activations.png">
 </div>
 
 Individual loss functions, as well as the total loss, are particularly
@@ -378,7 +378,7 @@ processing a batch of data.
 Here is a diagram of this model:
 
 <div style="width:40%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/Parallelism.png">
+  <img style="width:100%" src="https://www.tensorflow.org/images/Parallelism.png">
 </div>
 
 Note that each GPU computes inference as well as the gradients for a unique

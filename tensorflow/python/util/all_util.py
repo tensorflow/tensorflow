@@ -18,9 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect as _inspect
 import re as _re
 import sys as _sys
+
+from tensorflow.python.util import tf_inspect as _tf_inspect
+
 
 _reference_pattern = _re.compile(r'^@@(\w+)$', flags=_re.MULTILINE)
 
@@ -45,7 +47,7 @@ def make_all(module_name, doc_string_modules=None):
   if doc_string_modules is None:
     doc_string_modules = [_sys.modules[module_name]]
   cur_members = set([name for name, _
-                     in _inspect.getmembers(_sys.modules[module_name])])
+                     in _tf_inspect.getmembers(_sys.modules[module_name])])
 
   results = set()
   for doc_module in doc_string_modules:

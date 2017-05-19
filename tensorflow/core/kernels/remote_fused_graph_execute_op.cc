@@ -29,8 +29,11 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
   explicit RemoteFusedGraphExecuteOp(OpKernelConstruction* const ctx)
       : OpKernel(ctx), execute_info_() {
     string serialized_proto;
-    OP_REQUIRES_OK(
-        ctx, ctx->GetAttr("serialized_graph_transfer_info", &serialized_proto));
+    OP_REQUIRES_OK(ctx,
+                   ctx->GetAttr("serialized_remote_fused_graph_execute_info",
+                                &serialized_proto));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Tinputs", &input_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Toutputs", &output_types_));
     execute_info_.ParseFromString(serialized_proto);
     if (!execute_info_.executor_name().empty()) {
       const RemoteFusedGraphExecuteUtils::ExecutorBuildFunc* build_func =
@@ -69,12 +72,15 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
   void Compute(OpKernelContext* const ctx) final {
     CHECK(ctx != nullptr);
     const int input_count = ctx->num_inputs();
-    CHECK(input_count == execute_info_.graph_input_node_name_size())
+    const int graph_input_count = execute_info_.graph_input_node_name_size();
+    CHECK(input_count == graph_input_count &&
+          input_count == input_types_.size())
         << "input_count = " << input_count
-        << ", gt input count = " << execute_info_.graph_input_node_name_size();
+        << ", gt input count = " << execute_info_.graph_input_node_name_size()
+        << ", type count = " << input_types_.size();
 
-    // 3. Send inputs into remote processor
-    for (int i = 0; i < input_count; ++i) {
+    // 3. Send first data type inputs into remote processor
+    for (int i = 0; i < graph_input_count; ++i) {
       const Tensor& input_tensor = ctx->input(i);
       const string& input_node_name = execute_info_.graph_input_node_name(i);
       if (remote_fused_graph_executor_) {
@@ -90,7 +96,8 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
 
     // 5. Load outputs from remote processor
     const int output_count = ctx->num_outputs();
-    CHECK(output_count == execute_info_.graph_output_node_name_size());
+    CHECK(output_count == execute_info_.graph_output_node_name_size() &&
+          output_count == output_types_.size());
     for (int i = 0; i < output_count; ++i) {
       Tensor* output = nullptr;
       const string& output_node_name = execute_info_.graph_output_node_name(i);
@@ -110,6 +117,8 @@ class RemoteFusedGraphExecuteOp : public OpKernel {
  private:
   RemoteFusedGraphExecuteInfo execute_info_;
   std::unique_ptr<IRemoteFusedGraphExecutor> remote_fused_graph_executor_;
+  DataTypeVector input_types_;
+  DataTypeVector output_types_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteFusedGraphExecuteOp);
 };

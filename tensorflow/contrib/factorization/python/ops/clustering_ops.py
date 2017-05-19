@@ -34,7 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.embedding_ops import embedding_lookup
 from tensorflow.python.platform import resource_loader
 
@@ -327,31 +327,34 @@ class KMeans(object):
         cluster_centers_updated back to cluster_centers.
     """
     init_value = array_ops.constant([], dtype=dtypes.float32)
-    cluster_centers = variables.Variable(init_value,
-                                         name='clusters',
-                                         validate_shape=False)
-    cluster_centers_initialized = variables.Variable(False,
-                                                     dtype=dtypes.bool,
-                                                     name='initialized')
+    cluster_centers = variable_scope.variable(init_value,
+                                              name='clusters',
+                                              validate_shape=False)
+    cluster_centers_initialized = variable_scope.variable(False,
+                                                          dtype=dtypes.bool,
+                                                          name='initialized')
 
     if self._use_mini_batch and self._mini_batch_steps_per_iteration > 1:
       # Copy of cluster centers actively updated each step according to
       # mini-batch update rule.
-      cluster_centers_updated = variables.Variable(init_value,
-                                                   name='clusters_updated',
-                                                   validate_shape=False)
+      cluster_centers_updated = variable_scope.variable(init_value,
+                                                        name='clusters_updated',
+                                                        validate_shape=False)
       # How many steps till we copy the updated clusters to cluster_centers.
-      update_in_steps = variables.Variable(self._mini_batch_steps_per_iteration,
-                                           dtype=dtypes.int64,
-                                           name='update_in_steps')
+      update_in_steps = variable_scope.variable(
+          self._mini_batch_steps_per_iteration,
+          dtype=dtypes.int64,
+          name='update_in_steps')
       # Count of points assigned to cluster_centers_updated.
-      cluster_counts = variables.Variable(array_ops.zeros([self._num_clusters],
-                                                          dtype=dtypes.int64))
+      cluster_counts = variable_scope.variable(
+          array_ops.zeros([self._num_clusters],
+                          dtype=dtypes.int64))
     else:
       cluster_centers_updated = cluster_centers
       update_in_steps = None
-      cluster_counts = (variables.Variable(array_ops.ones([self._num_clusters],
-                                                          dtype=dtypes.int64))
+      cluster_counts = (variable_scope.variable(array_ops.ones(
+          [self._num_clusters],
+          dtype=dtypes.int64))
                         if self._use_mini_batch else None)
     return (cluster_centers,
             cluster_centers_initialized,

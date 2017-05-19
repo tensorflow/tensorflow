@@ -16,6 +16,7 @@ limitations under the License.
 syntax = "proto3";
 
 package xla;
+option cc_enable_arenas = true;
 
 // Primitive types are the individual values that can be held in rectangular
 // multidimensional arrays. A description of the rectangular multidimensional
@@ -285,6 +286,7 @@ message Literal {
   repeated float f32s = 8;
   repeated double f64s = 9;
   repeated Literal tuple_literals = 10;
+  bytes f16s = 11; // Note: the F16s are encoded in little endian byte order
 }
 
 message WindowDimension {
@@ -407,7 +409,7 @@ message InfeedRequest {
   Shape shape = 2;
 
   // Additional infeed configuration for the backend.
-  string config = 3;
+  bytes config = 3;
 }
 
 message OutfeedRequest {
@@ -418,7 +420,7 @@ message OutfeedRequest {
   ComputationDataHandle operand = 2;
 
   // Backend-specific information for how to perform the outfeed.
-  string outfeed_config = 3;
+  bytes outfeed_config = 3;
 }
 
 message CallRequest {

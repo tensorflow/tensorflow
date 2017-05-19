@@ -396,7 +396,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
   // The LLVM IR verifier performs sanity checking on the IR. This helps
   // discover problems and report them in a meaningful manner, rather than let
-  // later passes report obscure assertions becasue of unfulfilled invariants.
+  // later passes report obscure assertions because of unfulfilled invariants.
   module_passes.add(llvm::createVerifierPass());
 
   // Create the function-level pass manager. It needs data layout information
