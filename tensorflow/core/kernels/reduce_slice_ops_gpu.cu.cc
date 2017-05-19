@@ -47,51 +47,63 @@ __host__ __device__ T min(T a,T b) { return a<b?a:b; }
 } // namespace reduce_functions
 
 // Kernel to do the reducton:
-// x is row index of output
-// y is column index
 template <typename T, typename Index, T reduce(T,T)>
-__global__ void ReduceSliceKernel(Index num_rows, Index num_cols, Index bound,
-    const T beginning, const Index *indices, const T *input, T *out)
+__global__ void ReduceSliceDeviceKernel(Index sizex, Index sizey, Index sizez,
+    Index jobsx, Index jobsy, Index jobsz, Index bound, const T beginning,
+    const Index *indices, const T *input, T *out)
 {
-  Index x = blockIdx.x * blockDim.x + threadIdx.x;
-  Index y = blockIdx.y * blockDim.y + threadIdx.y;
-  Index outidx = x*num_cols + y;
-  if( x<num_rows && y<num_cols ) {
-    out[outidx] = beginning;
-    Index start = indices[x*2];
-    Index end   = reduce_functions::min<Index>(bound,indices[x*2+1]);
-    for(Index j=start;j<end;j++) {
-      Index inidx = j*num_cols + y;
-      out[outidx] = reduce(out[outidx],input[inidx]);
+  Index _x = blockIdx.x * blockDim.x + threadIdx.x;
+  Index _y = blockIdx.y * blockDim.y + threadIdx.y;
+  Index _z = blockIdx.z * blockDim.z + threadIdx.z;
+  for(Index x = _x * jobsx; x < jobsx * (_x + 1); ++x) {
+    for(Index y = _y * jobsy; y < jobsy * (_y + 1); ++y) {
+      for(Index z = _z * jobsz; z < jobsz * (_z + 1); ++z) {
+        if( x<sizex && y<sizey && z<sizez ) {
+          Index outidx = x * sizey * sizez + y * sizez + z;
+          out[outidx] = beginning;
+          Index start = indices[y*2];
+          Index end   = reduce_functions::min<Index>(bound,indices[y*2+1]);
+          for(Index yin = start; yin < end; yin++) {
+            Index inidx = x * bound * sizez + y * sizez + z;
+            out[outidx] = reduce(out[outidx],input[inidx]);
+          }
+        }
+      }
     }
   }
 }
 
 template <typename T, typename Index, T beginning(), T reduce(T,T)>
-struct ReduceSliceFunctor<GPUDevice, T, Index, beginning, reduce>{
-  virtual ~ReduceSliceFunctor(){}
-  virtual void operator()(
+void ReduceSliceFunctor<GPUDevice, T, Index, beginning, reduce>::operator()(
       OpKernelContext* ctx, const GPUDevice& d,typename TTypes<Index>::ConstMatrix indices,
-      typename TTypes<T>::ConstMatrix data,typename TTypes<T>::Matrix output)
-  {
-    Index bound = data.dimension(0);
-    Index rows = output.dimension(0);
-    Index cols = output.dimension(1);
-    Cuda2DLaunchConfig config = GetCuda2DLaunchConfig(rows,cols,d);
-    ReduceSliceKernel<T,Index,reduce><<<config.block_count,
-      config.thread_per_block, 0, d.stream()>>>(rows, cols, bound, beginning(),
-            indices.data(), data.data(), output.data());
-  }
-};
+      typename TTypes<T,3>::ConstTensor data,typename TTypes<T,3>::Tensor output)
+{
+  Index bound = data.dimension(1);
+  Index sizex = output.dimension(0);
+  Index sizey = output.dimension(1);
+  Index sizez = output.dimension(2);
+  Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(sizex, sizey, sizez, d,
+                                                    ReduceSliceDeviceKernel);
+  Index threadsx = config.thread_per_block.x * config.block_count.x;
+  Index threadsy = config.thread_per_block.y * config.block_count.y;
+  Index threadsz = config.thread_per_block.z * config.block_count.z;
+  Index jobsx = (sizex + threadsx - 1) / threadsx;
+  Index jobsy = (sizey + threadsy - 1) / threadsy;
+  Index jobsz = (sizez + threadsz - 1) / threadsz;
+
+  ReduceSliceDeviceKernel<T,Index,reduce><<<config.block_count,
+    config.thread_per_block, 0, d.stream()>>>(sizex, sizey, sizez, jobsx, jobsy,
+         jobsz, bound, beginning(), indices.data(), data.data(), output.data());
+}
 
 #define DEFINE_GPU_SPECS_INDEX(T, Index)                                       \
-  template struct ReduceSliceFunctor<GPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<GPUDevice, T, Index,                      \
            reduce_functions::zero<T>, reduce_functions::sum<T>>;               \
-  template struct ReduceSliceFunctor<GPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<GPUDevice, T, Index,                      \
            reduce_functions::one<T>, reduce_functions::prod<T>>;               \
-  template struct ReduceSliceFunctor<GPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<GPUDevice, T, Index,                      \
            reduce_functions::negative_infinity<T>, reduce_functions::max<T>>;  \
-  template struct ReduceSliceFunctor<GPUDevice, T, Index,                 \
+  template struct ReduceSliceFunctor<GPUDevice, T, Index,                      \
            reduce_functions::infinity<T>, reduce_functions::min<T>>;
 
 #define DEFINE_GPU_SPECS(T)          \

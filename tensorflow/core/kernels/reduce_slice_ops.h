@@ -57,11 +57,26 @@ inline T negative_infinity() {
 // BaseFunctor for definition of PartialReductionOp
 template <typename Device, typename T, typename Index, T beginning(), T reduce(T,T)>
 struct ReduceSliceFunctor{
+
+private:
+  struct XYZ {
+    Index x,y,z;
+  };
+  inline static XYZ global_index_to_xyz(Index global,XYZ size) {
+    XYZ ret;
+    ret.x = global / (size.y * size.z);
+    ret.y = global % (size.y * size.z) / size.z;
+    ret.z = global % size.z;
+    return ret;
+  }
+
+public:
   virtual ~ReduceSliceFunctor(){}
   virtual void operator()(OpKernelContext* ctx, const Device& d,
                   typename TTypes<Index>::ConstMatrix indices,
                   typename TTypes<T>::ConstMatrix data,
                   typename TTypes<T>::Matrix output);
+
 };
 
 }  // namespace functor

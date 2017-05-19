@@ -2385,8 +2385,14 @@ Status ParticalReductionShapeFn(InferenceContext* c) {
   // "data" must have rank at least 1
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &handle));
   // shape of output tensor
-  TF_RETURN_IF_ERROR(c->ReplaceDim(handle, 0, c->Dim(c->input(1),0), &handle));
-  c->set_output(0, handle);
+  const Tensor *_axis = input_tensor(2);
+  if(nullptr == _axis) {
+    c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
+  } else {
+    int64 axis = _axis->scalar<int64>();
+    TF_RETURN_IF_ERROR(c->ReplaceDim(handle, axis, c->Dim(c->input(1),0), &handle));
+    c->set_output(0, handle);
+  }
   return Status::OK();
 }
 
@@ -2395,11 +2401,10 @@ Status ParticalReductionShapeFn(InferenceContext* c) {
 REGISTER_OP("ReduceSliceSum")
     .Input("data: T")
     .Input("indices: Tindices")
-    .Input("axis: Taxis")
+    .Input("axis: int64")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
-    .Attr("Taxis: {int32,int64}")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically sum over the first dimension of a tensor according to start and end
@@ -2441,11 +2446,10 @@ output: the computed sum values.
 REGISTER_OP("ReduceSliceProd")
     .Input("data: T")
     .Input("indices: Tindices")
-    .Input("axis: Taxis")
+    .Input("axis: int64")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
-    .Attr("Taxis: {int32,int64}")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically compute the product over the first dimension of a tensor according
@@ -2487,11 +2491,10 @@ output: the computed product values.
 REGISTER_OP("ReduceSliceMax")
     .Input("data: T")
     .Input("indices: Tindices")
-    .Input("axis: Taxis")
+    .Input("axis: int64")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
-    .Attr("Taxis: {int32,int64}")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically compute the maximum over the first dimension of a tensor according
@@ -2533,11 +2536,10 @@ output: the computed product values.
 REGISTER_OP("ReduceSliceMin")
     .Input("data: T")
     .Input("indices: Tindices")
-    .Input("axis: Taxis")
+    .Input("axis: int64")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
-    .Attr("Taxis: {int32,int64}")
     .SetShapeFn(ParticalReductionShapeFn)
     .Doc(R"doc(
 Dynamically compute the minimum over the first dimension of a tensor according
