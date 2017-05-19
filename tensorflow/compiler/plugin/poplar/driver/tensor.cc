@@ -97,11 +97,7 @@ AddConstantTensor(poplar::Graph& graph,
     case PRED:
       AddConstantTensorTyped<bool>(graph, literal, shape, type, tensor);
       break;
-    case S8:
-    case S16:
     case S32:
-    case U8:
-    case U16:
     case U32:
       AddConstantTensorTyped<int>(graph, literal, shape, type, tensor);
       break;
