@@ -766,7 +766,7 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapIncompleteSize").Device(DEVICE_CPU),
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("MapIncompleteSize").Device(DEVICE_GPU)
                         .HostMemory("size"), MapIncompleteSizeOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapIncompleteSizeOp").Device(DEVICE_GPU)
+REGISTER_KERNEL_BUILDER(Name("OrderedMapIncompleteSize").Device(DEVICE_GPU)
                         .HostMemory("size"), MapIncompleteSizeOp<true>);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
