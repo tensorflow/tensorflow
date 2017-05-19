@@ -112,26 +112,22 @@ class Compiler {
   //
   // Use the overload below to compile computations that run in parallel.
   virtual StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> module,
-      std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
+      std::unique_ptr<HloModule> module, HloDumper dump_hlo,
       perftools::gputools::StreamExecutor* executor) = 0;
 
   // Compiles a set of HLO modules that can run in parallel, potentially
   // communicating data between the modules, and returns a corresponding
   // sequence of executable objects.
   virtual StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> hlo_module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-      HloDumper dump_hlo,
+      std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlo,
       std::vector<perftools::gputools::StreamExecutor*> stream_exec) = 0;
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      std::vector<std::unique_ptr<HloModule>> module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-      HloDumper dump_hlo, const AotCompilationOptions& options) = 0;
+  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+                     HloDumper dump_hlo,
+                     const AotCompilationOptions& options) = 0;
 
   /////
   // The Compiler class also serves as a point to register compiler objects

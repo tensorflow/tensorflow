@@ -65,7 +65,8 @@ class DebugGraphDecoratorInterface {
   virtual Status DecorateGraph(Graph* graph, Device* device) = 0;
 
   // Publish Graph to debug URLs.
-  virtual Status PublishGraph(const Graph& graph) = 0;
+  virtual Status PublishGraph(const Graph& graph,
+                              const string& device_name) = 0;
 };
 
 typedef std::function<std::unique_ptr<DebuggerStateInterface>(

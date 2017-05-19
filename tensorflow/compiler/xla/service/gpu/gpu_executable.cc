@@ -110,9 +110,8 @@ class HloExecutionProfiler {
 GpuExecutable::GpuExecutable(tensorflow::StringPiece ptx,
                              std::unique_ptr<ThunkSchedule> thunk_schedule,
                              std::unique_ptr<HloModule> hlo_module,
-                             std::unique_ptr<HloModuleConfig> module_config,
                              std::unique_ptr<BufferAssignment> assignment)
-    : Executable(std::move(hlo_module), std::move(module_config)),
+    : Executable(std::move(hlo_module)),
       ptx_(ptx),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {}

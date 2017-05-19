@@ -42,7 +42,7 @@ tf_module {
   }
   member_method {
     name: "decode_bmp"
-    argspec: "args=[\'contents\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'contents\', \'channels\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "decode_gif"

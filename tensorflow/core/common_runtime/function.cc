@@ -356,21 +356,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
 Status FunctionLibraryRuntimeImpl::FunctionDefToBody(const FunctionDef& fdef,
                                                      AttrSlice attrs,
                                                      FunctionBody** fbody) {
-  // Instantiates the function template into a graph def.
-  InstantiationResult result;
-  TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig_, &result));
-
-  Graph* graph = new Graph(lib_def_);
-  GraphConstructorOptions opts;
-  opts.allow_internal_ops = true;
-  opts.expect_device_spec = false;
-  Status s = ConvertGraphDefToGraph(opts, result.gdef, graph);
-  if (!s.ok()) {
-    delete graph;
-  } else {
-    *fbody = new FunctionBody(fdef, result.arg_types, result.ret_types, graph);
-  }
-  return s;
+  return FunctionDefToBodyHelper(fdef, attrs, lib_def_, get_func_sig_, fbody);
 }
 
 Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
@@ -829,9 +815,8 @@ static bool ValidateInlining(const Node* node, const FunctionBody* fbody) {
 // Given a "caller" in "graph", which is a function call of a function
 // to "fbody". Replaces the "caller" with fbody->graph and connects
 // edges properly.
-static void InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
-                               Graph* g, Node* caller,
-                               const FunctionBody* fbody) {
+void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
+                        Node* caller, const FunctionBody* fbody) {
   if (!ValidateInlining(caller, fbody)) {
     LOG(WARNING) << "Inlining mismatch: " << caller->DebugString() << " vs. "
                  << DebugString(fbody->graph);
@@ -1236,6 +1221,28 @@ FunctionBody* SymbolicGradientHelper::Compute() {
 
 FunctionBody* SymbolicGradient(const FunctionBody& f) {
   return SymbolicGradientHelper(f).Compute();
+}
+
+Status FunctionDefToBodyHelper(
+    const FunctionDef& fdef, const AttrSlice& attrs,
+    const FunctionLibraryDefinition* const lib_def,
+    const std::function<Status(const string&, const OpDef**)>& get_func_sig,
+    FunctionBody** fbody) {
+  // Instantiates the function template into a graph def.
+  InstantiationResult result;
+  TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig, &result));
+
+  Graph* graph = new Graph(lib_def);
+  GraphConstructorOptions opts;
+  opts.allow_internal_ops = true;
+  opts.expect_device_spec = false;
+  Status s = ConvertGraphDefToGraph(opts, result.gdef, graph);
+  if (!s.ok()) {
+    delete graph;
+  } else {
+    *fbody = new FunctionBody(fdef, result.arg_types, result.ret_types, graph);
+  }
+  return s;
 }
 
 }  // end namespace tensorflow

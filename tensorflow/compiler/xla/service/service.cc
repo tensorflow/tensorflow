@@ -385,20 +385,23 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     VLOG(1) << versioned_handle;
   }
 
+  CHECK_EQ(versioned_handles.size(), module_configs.size());
   std::vector<std::unique_ptr<HloModule>> modules;
-  for (const VersionedComputationHandle& versioned_handle : versioned_handles) {
+  for (int64 i = 0; i < versioned_handles.size(); ++i) {
+    const VersionedComputationHandle& versioned_handle = versioned_handles[i];
+    const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(auto module,
                         computation_tracker_.BuildHloModule(
-                            versioned_handle,
+                            versioned_handle, &config,
                             /*include_unreachable_instructions=*/true));
     modules.push_back(std::move(module));
   }
 
   Compiler::HloDumper hlo_dumper = MakeHloDumper();
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
-                      backend->compiler()->Compile(
-                          std::move(modules), std::move(module_configs),
-                          hlo_dumper, std::move(executors)));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<Executable>> executables,
+      backend->compiler()->Compile(std::move(modules), hlo_dumper,
+                                   std::move(executors)));
 
   if (!other_directory_path.empty()) {
     for (size_t i = 0; i < versioned_handles.size(); ++i) {
@@ -441,7 +444,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
-      computation_tracker_.BuildHloModule(versioned_handle,
+      computation_tracker_.BuildHloModule(versioned_handle, module_config.get(),
                                           /*include_unreachable_instructions=*/
                                           !executable_for_compute_constant));
 
@@ -453,8 +456,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend->compiler()->Compile(std::move(module), std::move(module_config),
-                                   hlo_dumper, executor));
+      backend->compiler()->Compile(std::move(module), hlo_dumper, executor));
 
   if (!other_directory_path.empty()) {
     executable->set_session_module(std::move(session_module));
@@ -1224,7 +1226,8 @@ tensorflow::Status Service::GetComputationStats(
       user_computation->GetVersionedHandle();
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      computation_tracker_.BuildHloModule(versioned_handle));
+                      computation_tracker_.BuildHloModule(versioned_handle,
+                                                          /*config=*/nullptr));
 
   MakeHloDumper()(*module, "computation statistics subject");
 

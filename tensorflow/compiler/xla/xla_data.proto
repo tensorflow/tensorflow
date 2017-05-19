@@ -286,7 +286,7 @@ message Literal {
   repeated float f32s = 8;
   repeated double f64s = 9;
   repeated Literal tuple_literals = 10;
-  bytes f16s = 11; // Note: the F16s are encoded in little endian byte order
+  bytes f16s = 11;  // Note: the F16s are encoded in little endian byte order
 }
 
 message WindowDimension {

@@ -37,7 +37,6 @@ tensorboard_webcomponent_library(
         "vz-sorting.html",
         ":legacy_ts",
     ],
-    visibility = ["//visibility:public"],
     destdir = "vz-sorting",
 )
 

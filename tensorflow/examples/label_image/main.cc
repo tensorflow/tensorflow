@@ -107,9 +107,9 @@ Status ReadTensorFromImageFile(const string& file_name, const int input_height,
                              DecodePng::Channels(wanted_channels));
   } else if (tensorflow::StringPiece(file_name).ends_with(".gif")) {
     // gif decoder returns 4-D tensor, remove the first dim
-    image_reader = Squeeze(root.WithOpName("squeeze_first_dim"),
-                           DecodeGif(root.WithOpName("gif_reader"),
-                                     file_reader));
+    image_reader =
+        Squeeze(root.WithOpName("squeeze_first_dim"),
+                DecodeGif(root.WithOpName("gif_reader"), file_reader));
   } else if (tensorflow::StringPiece(file_name).ends_with(".bmp")) {
     image_reader = DecodeBmp(root.WithOpName("bmp_reader"), file_reader);
   } else {

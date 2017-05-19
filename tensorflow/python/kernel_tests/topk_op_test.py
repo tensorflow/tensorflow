@@ -37,16 +37,41 @@ class TopKTest(test.TestCase):
                     expected_values,
                     expected_indices,
                     sorted=True):
-    np_values = np.array(expected_values)
-    np_indices = np.array(expected_indices)
-    with self.test_session():
+    np_expected_values = np.array(expected_values)
+    np_expected_indices = np.array(expected_indices)
+    with self.test_session(use_gpu=True):
       values_op, indices_op = nn_ops.top_k(inputs, k, sorted=sorted)
       values = values_op.eval()
       indices = indices_op.eval()
-      self.assertAllClose(np_values, values)
-      self.assertAllEqual(np_indices, indices)
-      self.assertShapeEqual(np_values, values_op)
-      self.assertShapeEqual(np_indices, indices_op)
+
+      self.assertShapeEqual(np_expected_values, values_op)
+      self.assertShapeEqual(np_expected_indices, indices_op)
+
+      if sorted:
+        self.assertAllClose(np_expected_values, values)
+        self.assertAllEqual(np_expected_indices, indices)
+      else:
+        np_inputs = np.array(inputs)
+
+        # Check that the indices are valid.
+        for result_index, src_index in np.ndenumerate(indices):
+          value = values[result_index]
+          expected_value = np_inputs[result_index[0], src_index]
+          np.testing.utils.assert_almost_equal(value, expected_value)
+
+        # Check that if two elements are equal, the lower-index element appears
+        # first.
+        shape = values.shape
+        for batch_index in range(shape[0]):
+          for index in range(shape[1] - 1):
+            if np.isclose(values[batch_index, index],
+                          values[batch_index, index + 1]):
+              self.assertLess(indices[batch_index, index],
+                              indices[batch_index, index + 1])
+
+        # Now check the results, ignoring order.
+        self.assertAllEqual(np.sort(np_expected_indices), np.sort(indices))
+        self.assertAllClose(np.sort(np_expected_values), np.sort(values))
 
   def testTop1(self):
     inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.3, 0.2]]
@@ -79,7 +104,7 @@ class TopKTest(test.TestCase):
 
   def testKNegative(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       k = array_ops.placeholder(dtypes.int32)
       values, _ = nn_ops.top_k(inputs, k)
       with self.assertRaisesOpError("Need k >= 0, got -7"):
@@ -92,7 +117,7 @@ class TopKTest(test.TestCase):
       nn_ops.top_k(inputs, 4)
 
   def testTopKGradients(self):
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       inputs = array_ops.placeholder(dtypes.int32, shape=[2, 5])
       values, _ = nn_ops.top_k(inputs, 3)
       grad = sess.run(

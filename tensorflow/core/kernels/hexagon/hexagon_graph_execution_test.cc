@@ -35,6 +35,7 @@ adb push /tmp/imagenet_comp_graph_label_strings.txt /data/local/tmp
 #include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -268,8 +269,7 @@ static void RunFusedGraph(const GraphDef& fused_graph_def) {
   session_options.env = Env::Default();
   std::unique_ptr<Session> session =
       std::unique_ptr<Session>(NewSession(session_options));
-  Status status = session->Create(fused_graph_def);
-  ASSERT_TRUE(status.ok());
+  TF_ASSERT_OK(session->Create(fused_graph_def));
 
   // Setup session arguments
   RunOptions run_options;
@@ -283,9 +283,8 @@ static void RunFusedGraph(const GraphDef& fused_graph_def) {
 
   LOG(INFO) << "Run graph";
   // Run inference with all node as output
-  status = session->Run(run_options, input_tensors, output_node_names, {},
-                        &output_tensors, &run_metadata);
-  ASSERT_TRUE(status.ok());
+  TF_ASSERT_OK(session->Run(run_options, input_tensors, output_node_names, {},
+                            &output_tensors, &run_metadata));
   ASSERT_EQ(1, output_tensors.size());
   const Tensor& output_tensor = output_tensors.at(0);
   LOG(INFO) << "Output byte size = " << output_tensor.TotalBytes();

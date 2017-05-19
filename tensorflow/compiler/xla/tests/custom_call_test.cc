@@ -32,21 +32,19 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 
-extern "C" void TF_EXPORT
-R0F32Add2(float* out, float** in) {
+
+extern "C" void TF_EXPORT R0F32Add2(float* out, float** in) {
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
   *out = **in + 2.0f;
 }
 
-extern "C" void TF_EXPORT
-R2F32ReduceSum(float* out, float** in) {
+extern "C" void TF_EXPORT R2F32ReduceSum(float* out, float** in) {
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
   float* array = in[0];
   *out = array[0] + array[1] + array[2] + array[3];
 }
 
-extern "C" void TF_EXPORT
-Add1ToValues(float* out, float** in) {
+extern "C" void TF_EXPORT Add1ToValues(float* out, float** in) {
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float) * 4);
   float* array = in[0];
   out[0] = array[0] + 1;
