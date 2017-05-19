@@ -65,9 +65,9 @@ struct ApplyDelayCompensatedGradientDescent<CPUDevice, T> {
                   typename TTypes<T>::ConstScalar lr,
                   typename TTypes<T>::ConstFlat grad,
                   typename TTypes<T>::ConstScalar variance,
-                  typename TTypes<T>::Flat var_bak) {
-    var.device(d) -= lr() * (grad + variance() * grad * (var - var_bak));
-    var_bak.device(d) = var;
+                  typename TTypes<T>::Flat shadow) {
+    var.device(d) -= lr() * (grad + variance() * grad * (var - shadow));
+    shadow.device(d) = var;
   }
 };
 
@@ -432,18 +432,18 @@ class ApplyDelayCompensatedGradientDescentOp : public OpKernel {
     OP_REQUIRES(ctx, IsLegacyScalar(lambda.shape()),
                 errors::InvalidArgument("lambda is not a scalar: ",
                                         lambda.shape().DebugString()));
-    Tensor var_bak;
-    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 4, use_exclusive_lock_, &var_bak));
+    Tensor shadow;
+    OP_REQUIRES_OK(ctx, GetInputTensorFromVariable(ctx, 4, use_exclusive_lock_, &shadow));
     OP_REQUIRES(
-        ctx, var_bak.shape().IsSameSize(var.shape()),
-        errors::InvalidArgument("var_bak and var do not have the same shape",
-                                var_bak.shape().DebugString(), " ",
+        ctx, shadow.shape().IsSameSize(var.shape()),
+        errors::InvalidArgument("shadow and var do not have the same shape",
+                                shadow.shape().DebugString(), " ",
                                 var.shape().DebugString()));
 
     const Device& device = ctx->template eigen_device<Device>();
     functor::ApplyDelayCompensatedGradientDescent<Device, T>()(
         device, var.flat<T>(), alpha.scalar<T>(), delta.flat<T>(),
-         lambda.scalar<T>(), var_bak.flat<T>()
+         lambda.scalar<T>(), shadow.flat<T>()
     );
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
