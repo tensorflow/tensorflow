@@ -157,6 +157,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
   set(tf_test_src_py_exclude
     # Python source line inspection tests are flaky on Windows (b/36375074).
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/analyzer_cli_test.py"
+    "${tensorflow_source_dir}/tensorflow/python/debug/cli/profile_analyzer_cli_test.py"
     # Windows does not have the curses library and uses readline.
     "${tensorflow_source_dir}/tensorflow/python/debug/cli/curses_ui_test.py"
     # generally not working
