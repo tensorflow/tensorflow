@@ -183,8 +183,8 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",
-        "nomac",
         "no_pip",
+        "nomac",
     ],
     deps = [
         ":batch_py",
