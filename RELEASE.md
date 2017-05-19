@@ -23,11 +23,11 @@
 * We released a new open-source version of TensorBoard.
 
 ## Breaking Changes to the API
-* org.tensorflow.contrib.android.TensorFLowInferenceInterface now throws exceptions where possible and and has simplified method signatures.
+* `org.tensorflow.contrib.android.TensorFlowInferenceInterface` now throws exceptions where possible and and has simplified method signatures.
 
 ## Changes to contrib APIs
 * Added `tf.contrib.util.create_example`.
-* Added bilinear interpolation to tf.contrib.image.
+* Added bilinear interpolation to `tf.contrib.image`.
 * Add `tf.contrib.stateless` for random ops with custom seed control.
 * Add ScaM op to contrib for fast approximate nearest neighbor computation.
 * MultivariateNormalFullCovariance added to contrib/distributions/
