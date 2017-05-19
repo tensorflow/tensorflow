@@ -4,13 +4,14 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-# THIS PACKAGE HAS MOVED
-# See tensorflow/tensorboard/components/tf_tensorboard:demo
-
 web_library(
-    name = "demo_data",
-    srcs = glob(["data/**"]),
-    path = "/",
+    name = "tf_option_selector",
+    srcs = ["tf-option-selector.html"],
+    path = "/tf-option-selector",
+    deps = [
+        "//tensorflow/tensorboard/components/tf_dashboard_common",
+        "@org_polymer",
+    ],
 )
 
 filegroup(
