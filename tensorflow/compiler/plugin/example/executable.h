@@ -38,7 +38,7 @@ namespace exampleplugin {
 class ExampleExecutable : public Executable {
  public:
   ExampleExecutable(std::unique_ptr<HloModule> hlo_module,
-                   std::unique_ptr<HloModuleConfig> module_config);
+                    std::unique_ptr<HloModuleConfig> module_config);
   ~ExampleExecutable() override;
 
 

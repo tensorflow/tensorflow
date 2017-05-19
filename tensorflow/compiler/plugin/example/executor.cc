@@ -18,11 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
-#include "tensorflow/core/lib/strings/stringprintf.h"
-
-#include <fstream>
-
 #include <string.h>
+#include <stdlib.h>
 
 namespace se = ::perftools::gputools;
 
@@ -76,14 +73,14 @@ bool ExampleExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
 port::Status ExampleExecutor::SynchronousMemcpy(DeviceMemoryBase *dev_dst,
                                                 const void *host_src,
                                                 uint64 size) {
-  // Copy to device
+  memcpy(dev_dst->opaque(), host_src, size);
   return port::Status::OK();
 }
 
 port::Status ExampleExecutor::SynchronousMemcpy(void *host_dst,
                                                 const DeviceMemoryBase &dev_src,
                                                 uint64 size) {
-  // Copy from device
+  memcpy(host_dst, dev_src.opaque(), size);
   return port::Status::OK();
 }
 
@@ -131,41 +128,6 @@ DeviceDescription *ExampleExecutor::PopulateDeviceDescription() const {
 
   auto built = builder.Build();
   return built.release();
-}
-
-DeviceMemoryBase
-ExampleExecutor::AllocateSingleOutput(const xla::Shape& shape) {
-  int64 size(xla::ShapeUtil::ByteSizeOf(shape));
-  void* buf = Allocate(size);
-  memset(buf, 0, size);
-  return se::DeviceMemoryBase(buf, size);
-}
-
-port::StatusOr<DeviceMemoryBase>
-ExampleExecutor::AllocateOutputBuffer(const xla::Shape& shape) {
-
-  if (shape.element_type() != xla::TUPLE) {
-    return AllocateSingleOutput(shape);
-  } else {
-    int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
-    void** buf = reinterpret_cast<void**>(Allocate(size));
-    for (int64 n=0; n<xla::ShapeUtil::TupleElementCount(shape); n++) {
-      se::DeviceMemoryBase out(AllocateSingleOutput(shape.tuple_shapes(n)));
-      *buf++ = out.opaque();
-    }
-
-    return DeviceMemoryBase(buf, size);
-  }
-}
-
-port::StatusOr<DeviceMemoryBase>
-ExampleExecutor::ExecuteGraph(const xla::Shape& shape,
-                              Args args) {
-
-  // Execute the graph here
-  DeviceMemoryBase ret;
-  TF_ASSIGN_OR_RETURN(ret, AllocateOutputBuffer(shape));
-  return ret;
 }
 
 }  // namespace exampleplugin
