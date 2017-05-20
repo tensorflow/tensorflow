@@ -50,3 +50,33 @@ filegroup(
     srcs = glob(["**"]),
     tags = ["notsan"],
 )
+
+################################################################################
+# MARKED FOR DELETION
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
+
+tensorboard_webcomponent_library(
+    name = "legacy",
+    srcs = [
+        "tf-storage.html",
+        ":legacy_ts",
+    ],
+    destdir = "tf-storage",
+    deps = [
+        "//tensorflow/tensorboard/components/tf_globals_d3v4:legacy",
+        "//tensorflow/tensorboard/components/tf_imports_google_d3v4:lib",
+        "//third_party/javascript/polymer/v1/polymer:lib",
+    ],
+)
+
+tensorboard_ts_library(
+    name = "legacy_ts",
+    srcs = ["storage.ts"],
+    deps_mgmt = "off",
+    runtime = "nodejs",
+    deps = [
+        "//tensorflow/tensorboard/components/tf_globals_d3v4:legacy_ts",
+        "//third_party/javascript/typings/lodash",
+    ],
+)

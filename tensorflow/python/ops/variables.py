@@ -1317,8 +1317,6 @@ def report_uninitialized_variables(var_list=None,
       return array_ops.boolean_mask(variable_names_tensor, variables_mask)
 
 # pylint: disable=protected-access
-ops.register_tensor_conversion_function(Variable,
-                                        Variable._TensorConversionFunction)
 Variable._OverloadAllOperators()
 
 ops.register_tensor_conversion_function(

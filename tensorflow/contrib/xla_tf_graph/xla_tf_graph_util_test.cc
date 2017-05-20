@@ -94,7 +94,8 @@ static void DumpHloGraphForDebug(const std::vector<XlaCompiler::Argument>& args,
   xla::VersionedComputationHandle versioned_handle =
       user_computation->GetVersionedHandle();
   std::unique_ptr<xla::HloModule> hlo_module = std::move(
-      computation_tracker.BuildHloModule(versioned_handle).ValueOrDie());
+      computation_tracker.BuildHloModule(versioned_handle, /*config=*/nullptr)
+          .ValueOrDie());
   VLOG(1) << "--- DUMP HLO ---";
   VLOG(1) << hlo_module->ToString();
 }

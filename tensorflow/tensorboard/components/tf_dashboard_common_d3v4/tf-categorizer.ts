@@ -16,7 +16,7 @@ limitations under the License.
 import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
 import * as _ from 'lodash';
 
-import {compareTagNames} from '../vz-sorting/sorting';
+import {compareTagNames} from '../vz_sorting_d3v4/sorting';
 
 /**
  * This module contains methods that allow sorting tags into 'categories'.

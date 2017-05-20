@@ -45,6 +45,28 @@ package(default_visibility = [
 ])
 
 cc_library(
+    name = "partial_run_mgr",
+    srcs = ["partial_run_mgr.cc"],
+    hdrs = ["partial_run_mgr.h"],
+    deps = [
+        ":worker_interface",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_test(
+    name = "partial_run_mgr_test",
+    size = "small",
+    srcs = ["partial_run_mgr_test.cc"],
+    deps = [
+        ":partial_run_mgr",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "message_wrappers",
     srcs = ["message_wrappers.cc"],
     hdrs = ["message_wrappers.h"],
@@ -141,6 +163,7 @@ cc_library(
     ],
     deps = [
         ":graph_mgr",
+        ":partial_run_mgr",
         ":rendezvous_mgr_interface",
         ":session_mgr",
         ":worker_interface",

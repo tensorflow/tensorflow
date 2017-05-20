@@ -99,6 +99,7 @@ template <bool Forward, bool _Real, int FFTRank>
 class FFTCPU : public FFTBase {
  public:
   using FFTBase::FFTBase;
+
  protected:
   int Rank() const override { return FFTRank; }
   bool IsForward() const override { return Forward; }
@@ -111,57 +112,66 @@ class FFTCPU : public FFTBase {
     auto device = ctx->eigen_device<CPUDevice>();
 
     if (!IsReal()) {
-      auto input = ((Tensor) in).flat_inner_dims<complex64, FFTRank + 1>();
+      auto input = ((Tensor)in).flat_inner_dims<complex64, FFTRank + 1>();
       // Compute the FFT using eigen.
       auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
-      output.device(device) = input.template fft<Eigen::BothParts,
-        Forward ? Eigen::FFT_FORWARD : Eigen::FFT_REVERSE>(axes);
-    }
-    else {
+      output.device(device) = input.template fft < Eigen::BothParts,
+      Forward ? Eigen::FFT_FORWARD : Eigen::FFT_REVERSE > (axes);
+    } else {
       if (IsForward()) {
-        auto input = ((Tensor) in).flat_inner_dims<float, FFTRank + 1>();
+        auto input = ((Tensor)in).flat_inner_dims<float, FFTRank + 1>();
         auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
         Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> startIndices;
 
         // Compute the full FFT using a temporary tensor.
         Tensor temp;
-        OP_REQUIRES_OK(ctx,ctx->allocate_temp(
-          DataTypeToEnum<complex64>::v(), in.shape(), &temp
-        ));
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<complex64>::v(),
+                                               in.shape(), &temp));
         auto full_fft = temp.flat_inner_dims<complex64, FFTRank + 1>();
-        full_fft.device(device) = input.template fft<Eigen::BothParts,
-          Eigen::FFT_FORWARD>(axes);
+        full_fft.device(device) =
+            input.template fft<Eigen::BothParts, Eigen::FFT_FORWARD>(axes);
 
         // Slice away the negative frequency components.
-        output.device(device) = full_fft.slice(startIndices, output.dimensions());
-      }
-      else {
+        output.device(device) =
+            full_fft.slice(startIndices, output.dimensions());
+      } else {
         // TODO: reconstruct the full fft and take the inverse.
-        ctx->CtxFailureWithWarning(errors::Unimplemented(
-          "IRFFT is not implemented as a CPU kernel"
-        ));
+        ctx->CtxFailureWithWarning(
+            errors::Unimplemented("IRFFT is not implemented as a CPU kernel"));
       }
     }
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_CPU), FFTCPU<true, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_CPU),
+// Use labels to distinguish between internal and open source versions
+// of these kernels.
+#ifdef PLATFORM_GOOGLE
+#define FFT_LABEL "eigen"
+#else
+#define FFT_LABEL ""
+#endif
+
+REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<true, false, 1>);
+REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
                         FFTCPU<false, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
                         FFTCPU<true, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
                         FFTCPU<false, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
                         FFTCPU<true, false, 3>);
-REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
                         FFTCPU<false, false, 3>);
 
-REGISTER_KERNEL_BUILDER(Name("RFFT").Device(DEVICE_CPU), FFTCPU<true, true, 1>);
-REGISTER_KERNEL_BUILDER(Name("RFFT2D").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("RFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<true, true, 1>);
+REGISTER_KERNEL_BUILDER(Name("RFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
                         FFTCPU<true, true, 2>);
-REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
                         FFTCPU<true, true, 3>);
+
+#undef FFT_LABEL
 
 #if GOOGLE_CUDA
 
