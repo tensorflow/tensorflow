@@ -31,8 +31,10 @@ namespace {
 class SingleMachineTest : public ::testing::Test {
  public:
   void SetUp() override {
-    // Provision a single machine with 3 cpu cores
-    cluster_.reset(new SingleMachine(5 * 60, 3, 0));
+    // Provision a single machine with 3 cpu cores, and a short timeout of 5
+    // seconds: since there isn't much work to process a test graph that should
+    // be plenty.
+    cluster_.reset(new SingleMachine(5, 3, 0));
     TF_CHECK_OK(cluster_->Provision());
   }
 
@@ -130,6 +132,26 @@ TEST_F(SingleMachineTest, MultipleItems) {
     ::tensorflow::protobuf::TextFormat::PrintToString(metadata2, &s2);
     EXPECT_EQ(s1, s2);
   }
+}
+
+TEST_F(SingleMachineTest, TimeOuts) {
+  // Create a graph that will block forever: Just try to dequeue data from a
+  // queue that is never fed.
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto q = ops::FIFOQueue(root.WithOpName("queue"), {DataType::DT_INT32});
+  auto dequeue =
+      ops::QueueDequeue(root.WithOpName("dequeue"), q, {DataType::DT_INT32});
+
+  GrapplerItem item;
+  TF_CHECK_OK(root.ToGraphDef(&item.graph));
+  item.fetch.push_back("dequeue");
+
+  TF_CHECK_OK(cluster_->Initialize(item));
+  RunMetadata metadata;
+  Status s1 = cluster_->Run(item.graph, item.feed, item.fetch, &metadata);
+  EXPECT_TRUE(errors::IsDeadlineExceeded(s1));
+  Status s2 = cluster_->Run(item.graph, item.feed, item.fetch, &metadata);
+  EXPECT_TRUE(errors::IsDeadlineExceeded(s2));
 }
 
 TEST_F(SingleMachineTest, InitializationMemory) {

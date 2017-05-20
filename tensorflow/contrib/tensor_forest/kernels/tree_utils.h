@@ -197,6 +197,66 @@ float FindSparseValue(
   return 0.0;
 }
 
+// Returns the number of sparse values for example input_index.
+// Also returns the index where those features start in sparse_input_start
+// if any were found.
+// Assumes that the first column in indices is ordered.
+template <typename T1>
+int32 GetNumSparseFeatures(const T1& indices, int32 input_index,
+                           int64* sparse_input_start) {
+  // Binary search for input_index.
+  // TODO(gilberth): Consider using std::lower_bound, std::upper_bound
+  // for a simpler but possibly slower solution, or searching for
+  // input_start and input_end simultaneously.
+  const int64 num_total = indices.dimension(0);
+  int64 index;
+  int64 low = 0;
+  int64 high = num_total;
+  *sparse_input_start = -1;  // Easy error checking.
+
+  while (true) {
+    if (low == high) {
+      return 0;
+    }
+    index = low + (high - low) / 2;
+    const int64 feature_index = indices(index, 0);
+    if (feature_index == input_index) {
+      // found it.
+      break;
+    } else if (feature_index < input_index) {
+      // Correct for the implicit floor in the index assignment.
+      if (low == index) {
+        return 0;
+      }
+      low = index;
+    } else {
+      high = index;
+    }
+  }
+
+  // Scan for the start and end of the input_index range.
+  int64 input_start = index;
+  int64 val = indices(input_start, 0);
+  while (val == input_index) {
+    --input_start;
+    if (input_start < 0) {
+      break;
+    }
+    val = indices(input_start, 0);
+  }
+  *sparse_input_start = input_start + 1;
+  int32 input_end = index;
+  val = indices(input_end, 0);
+  while (val == input_index) {
+    ++input_end;
+    if (input_end >= num_total) {
+      break;
+    }
+    val = indices(input_end, 0);
+  }
+  return input_end - input_start - 1;
+}
+
 // Returns left/right decision between the input value and the threshold bias.
 // For floating point types, the decision is value > bias, but for
 // categorical data, it is value != bias.

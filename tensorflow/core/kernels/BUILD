@@ -288,6 +288,15 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "map_stage_op",
+    srcs = ["map_stage_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 cc_library(
     name = "queue_base",
     srcs = ["queue_base.cc"],
@@ -1315,6 +1324,7 @@ cc_library(
         ":fifo_queue_op",
         ":lookup_table_init_op",
         ":lookup_table_op",
+        ":map_stage_op",
         ":padding_fifo_queue_op",
         ":priority_queue_op",
         ":queue_ops",
@@ -4089,6 +4099,7 @@ filegroup(
         "tensor_array.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
+        "topk_op.h",
         "training_op_helpers.h",
         "training_ops.h",
         "transpose_functor.h",
@@ -4235,7 +4246,6 @@ filegroup(
         "transpose_op.cc",
         "warn_about_ints.cc",
         "where_op.cc",
-        "whole_file_read_ops.cc",
         "xent_op.cc",
         ":android_extended_ops_headers",
     ],
@@ -4308,6 +4318,7 @@ filegroup(
             "decode_gif_op.*",
             "identity_reader_op.*",
             "remote_fused_graph_execute_op.*",
+            "remote_fused_graph_rewriter_transform.*",
             "fixed_length_record_reader_op.*",
             "whole_file_read_ops.*",
             "sample_distorted_bounding_box_op.*",
@@ -4794,6 +4805,7 @@ cc_library(
 
 cc_library(
     name = "remote_fused_graph_execute_op_test_utils",
+    testonly = 1,
     srcs = ["remote_fused_graph_execute_op_test_utils.cc"],
     hdrs = ["remote_fused_graph_execute_op_test_utils.h"],
     deps = [
@@ -4802,6 +4814,7 @@ cc_library(
         "//tensorflow/cc:scope",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:cwise_op",
     ],
 )
@@ -4856,6 +4869,40 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "remote_fused_graph_rewriter_transform",
+    srcs = [
+        "remote_fused_graph_rewriter_transform.cc",
+    ],
+    deps = [
+        ":remote_fused_graph_execute_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:remote_fused_graph_ops",
+        "//tensorflow/core",
+        "//tensorflow/tools/graph_transforms:transform_utils",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test(
+    name = "remote_fused_graph_rewriter_transform_test",
+    size = "small",
+    srcs = ["remote_fused_graph_rewriter_transform_test.cc"],
+    deps = [
+        ":remote_fused_graph_execute_op_test_utils",
+        ":remote_fused_graph_execute_utils",
+        ":remote_fused_graph_rewriter_transform",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/tools/graph_transforms:transform_utils",
     ],
 )
 

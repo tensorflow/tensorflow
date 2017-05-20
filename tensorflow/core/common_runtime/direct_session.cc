@@ -391,7 +391,7 @@ Status DirectSession::DecorateAndPublishGraphForDebug(
       DebugGraphDecoratorRegistry::CreateDecorator(debug_options, &decorator));
 
   TF_RETURN_IF_ERROR(decorator->DecorateGraph(graph, device));
-  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph));
+  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph, device->name()));
   return Status::OK();
 }
 

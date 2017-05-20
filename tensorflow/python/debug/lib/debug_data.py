@@ -521,6 +521,10 @@ class DebugTensorDatum(object):
     return self._dump_size_bytes
 
 
+class WatchKeyDoesNotExistInDebugDumpDirError(ValueError):
+  pass
+
+
 class DebugDumpDir(object):
   """Data set from a debug-dump directory on filesystem.
 
@@ -1408,13 +1412,14 @@ class DebugDumpDir(object):
         may be dumped multiple times.
 
     Raises:
-      ValueError: If the tensor does not exist in the debug-dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor does not exist in
+        the debug-dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return [datum.file_path for datum in self._watch_key_to_datum[watch_key]]
 
@@ -1433,13 +1438,14 @@ class DebugDumpDir(object):
       List of tensors (`numpy.ndarray`) loaded from the debug-dump file(s).
 
     Raises:
-      ValueError: If the tensor does not exist in the debug-dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor does not exist in
+        the debug-dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return [datum.get_tensor() for datum in self._watch_key_to_datum[watch_key]]
 
@@ -1460,13 +1466,14 @@ class DebugDumpDir(object):
       (`list` of `int`) list of relative timestamps.
 
     Raises:
-      ValueError: If the tensor watch key does not exist in the debug dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor watch key does not
+        exist in the debug dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return self._watch_key_to_rel_time[watch_key]
 
@@ -1484,13 +1491,14 @@ class DebugDumpDir(object):
       (`list` of `int`): list of dump file sizes in bytes.
 
     Raises:
-      ValueError: If the tensor watch key does not exist in the debug dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor watch key does not
+        exist in the debug dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return self._watch_key_to_dump_size_bytes[watch_key]
 

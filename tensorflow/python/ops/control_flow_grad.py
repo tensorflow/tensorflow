@@ -72,6 +72,9 @@ def _SwitchGrad(op, *grad):
     good_grad = grad[op_ctxt.branch]
     zero_grad = grad[1 - op_ctxt.branch]
     # At this point, we have created zero_grad guarded by the right switch.
+    # Unfortunately, we may still get None here for not trainable data types.
+    if zero_grad is None:
+      return None, None
     return merge([good_grad, zero_grad], name="cond_grad")[0], None
   else:
     false_grad = switch(grad[0], op.inputs[1])[0]

@@ -1316,8 +1316,8 @@ def decode_image(contents, channels=None, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
   and `decode_png`.
 
-  Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the 
-  appropriate operation to convert the input bytes `string` into a `Tensor` of 
+  Detects whether an image is a BMP, GIF, JPEG, or PNG, and performs the
+  appropriate operation to convert the input bytes `string` into a `Tensor` of
   type `uint8`.
 
   Note: `decode_gif` returns a 4-D array `[num_frames, height, width, 3]`, as
