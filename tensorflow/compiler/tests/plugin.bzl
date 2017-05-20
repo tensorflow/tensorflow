@@ -19,7 +19,7 @@
 
 plugins = {
   "poplar": {"device":"XLA_IPU", "types":"DT_FLOAT,DT_INT32", "tags":[]},
-  "example": {"device":"XLA_EXA", "types":"DT_FLOAT,DT_INT32", "tags":[]},
+  "executor": {"device":"XLA_EXEC", "types":"DT_FLOAT,DT_INT32", "tags":[]},
 }
 
 

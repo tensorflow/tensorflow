@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_EXAMPLE_COMPILER_H_
-#define TENSORFLOW_COMPILER_EXAMPLE_COMPILER_H_
+#ifndef TENSORFLOW_COMPILER_EXECUTOR_COMPILER_H_
+#define TENSORFLOW_COMPILER_EXECUTOR_COMPILER_H_
 
 #include <memory>
 
@@ -23,15 +23,15 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
-#include "tensorflow/compiler/plugin/example/platform_id.h"
+#include "tensorflow/compiler/plugin/executor/platform_id.h"
 
 namespace xla {
-namespace exampleplugin {
+namespace executorplugin {
 
-class ExampleCompiler : public Compiler {
+class ExecutorCompiler : public Compiler {
  public:
-  ExampleCompiler() {}
-  ~ExampleCompiler() override {}
+  ExecutorCompiler() {}
+  ~ExecutorCompiler() override {}
 
   StatusOr<std::unique_ptr<Executable>> Compile(
       std::unique_ptr<HloModule> hlo_module,
@@ -55,10 +55,10 @@ class ExampleCompiler : public Compiler {
  private:
   Status RunHloOptimization(HloModule* hlo_module, HloDumper dump_hlo);
 
-  TF_DISALLOW_COPY_AND_ASSIGN(ExampleCompiler);
+  TF_DISALLOW_COPY_AND_ASSIGN(ExecutorCompiler);
 };
 
-}  // namespace exampleplugin
+}  // namespace executorplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_EXAMPLE_COMPILER_H_
+#endif  // TENSORFLOW_COMPILER_EXECUTOR_COMPILER_H_

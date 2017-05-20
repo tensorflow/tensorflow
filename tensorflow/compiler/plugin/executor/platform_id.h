@@ -13,19 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_STREAM_EXECUTOR_EXAMPLE_PLATFORM_ID_H_
-#define TENSORFLOW_STREAM_EXECUTOR_EXAMPLE_PLATFORM_ID_H_
+#ifndef TENSORFLOW_STREAM_EXECUTOR_EXECUTOR_PLATFORM_ID_H_
+#define TENSORFLOW_STREAM_EXECUTOR_EXECUTOR_PLATFORM_ID_H_
 
 #include "tensorflow/stream_executor/platform.h"
 
 namespace perftools {
 namespace gputools {
-namespace exampleplugin {
+namespace executorplugin {
 
-extern const Platform::Id kExamplePlatformId;
+extern const Platform::Id kExecutorPlatformId;
 
-}  // namespace exampleplugin
+}  // namespace executorplugin
 }  // namespace gputools
 }  // namespace perftools
 
-#endif  // TENSORFLOW_STREAM_EXECUTOR_EXAMPLE_PLATFORM_ID_H_
+#endif  // TENSORFLOW_STREAM_EXECUTOR_EXECUTOR_PLATFORM_ID_H_
