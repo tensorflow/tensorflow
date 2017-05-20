@@ -445,7 +445,7 @@ class MklConcatOp : public OpKernel {
                               .HostMemory("concat_dim")                     \
                               .Label(mkl_op_registry::kMklOpLabel),         \
                           MklConcatOp<CPUDevice, type, NAME_IS_CONCAT_DIM>) \
-  REGISTER_KERNEL_BUILDER(Name("_MklConcatV2")                               \
+  REGISTER_KERNEL_BUILDER(Name("_MklConcatV2")                              \
                               .Device(DEVICE_CPU)                           \
                               .TypeConstraint<type>("T")                    \
                               .TypeConstraint<int32>("Tidx")                \

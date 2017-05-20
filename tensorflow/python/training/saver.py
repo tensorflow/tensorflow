@@ -1461,28 +1461,31 @@ class Saver(object):
             "'latest_filename' collides with 'save_path': '%s' and '%s'" %
             (latest_filename, save_path))
 
-    if not gfile.IsDirectory(os.path.dirname(save_path)):
-      raise ValueError(
-          "Parent directory of {} doesn't exist, can't save.".format(save_path))
-
-    save_path = os.path.dirname(save_path)
     if not isinstance(sess, session.SessionInterface):
       raise TypeError("'sess' must be a Session; %s" % sess)
 
+    save_path_parent = os.path.dirname(save_path)
     if not self._is_empty:
-      model_checkpoint_path = sess.run(
-          self.saver_def.save_tensor_name,
-          {self.saver_def.filename_tensor_name: checkpoint_file})
-      model_checkpoint_path = compat.as_str(model_checkpoint_path)
-      if write_state:
-        self._MaybeDeleteOldCheckpoints(
-            model_checkpoint_path, meta_graph_suffix=meta_graph_suffix)
-        _update_checkpoint_state(
-            save_dir=save_path,
-            model_checkpoint_path=model_checkpoint_path,
-            all_model_checkpoint_paths=self.last_checkpoints,
-            latest_filename=latest_filename,
-            save_relative_paths=self._save_relative_paths)
+      try:
+        model_checkpoint_path = sess.run(
+            self.saver_def.save_tensor_name,
+            {self.saver_def.filename_tensor_name: checkpoint_file})
+        model_checkpoint_path = compat.as_str(model_checkpoint_path)
+        if write_state:
+          self._MaybeDeleteOldCheckpoints(
+              model_checkpoint_path, meta_graph_suffix=meta_graph_suffix)
+          _update_checkpoint_state(
+              save_dir=save_path_parent,
+              model_checkpoint_path=model_checkpoint_path,
+              all_model_checkpoint_paths=self.last_checkpoints,
+              latest_filename=latest_filename,
+              save_relative_paths=self._save_relative_paths)
+      except (errors.FailedPreconditionError, errors.NotFoundError) as exc:
+        if not gfile.IsDirectory(save_path_parent):
+          exc = ValueError(
+              "Parent directory of {} doesn't exist, can't save.".format(
+                  save_path))
+        raise exc
 
     if write_meta_graph:
       meta_graph_filename = self._MetaGraphFilename(

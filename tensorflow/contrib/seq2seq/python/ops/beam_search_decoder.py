@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import beam_search_ops
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.python.framework import dtypes
@@ -33,6 +32,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
 
@@ -143,7 +143,7 @@ class BeamSearchDecoder(decoder.Decoder):
       ValueError: If `start_tokens` is not a vector or
         `end_token` is not a scalar.
     """
-    if not isinstance(cell, core_rnn_cell.RNNCell):
+    if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
       raise TypeError("cell must be an RNNCell, received: %s" % type(cell))
     if (output_layer is not None
         and not isinstance(output_layer, layers_base.Layer)):
@@ -497,13 +497,22 @@ def _beam_search_step(time, logits, beam_state, batch_size, beam_width,
 
   time = ops.convert_to_tensor(time, name="time")
   # During the first time step we only consider the initial beam
+  scores_shape = array_ops.shape(scores)
   scores_flat = control_flow_ops.cond(
       time > 0,
       lambda: array_ops.reshape(scores, [batch_size, -1]),
       lambda: scores[:, 0])
+  num_available_beam = control_flow_ops.cond(
+      time > 0,
+      lambda: math_ops.reduce_prod(scores_shape[1:]),
+      lambda: math_ops.reduce_prod(scores_shape[2:]))
 
   # Pick the next beams according to the specified successors function
-  next_beam_scores, word_indices = nn_ops.top_k(scores_flat, k=beam_width)
+  next_beam_size = math_ops.minimum(
+      ops.convert_to_tensor(
+          beam_width, dtype=dtypes.int32, name="beam_width"),
+      num_available_beam)
+  next_beam_scores, word_indices = nn_ops.top_k(scores_flat, k=next_beam_size)
   next_beam_scores.set_shape([static_batch_size, beam_width])
   word_indices.set_shape([static_batch_size, beam_width])
 
@@ -561,7 +570,8 @@ def _get_scores(log_probs, sequence_lengths, length_penalty_weight):
   """Calculates scores for beam search hypotheses.
 
   Args:
-    log_probs: The log probabilities with shape [batch_size, beam_width].
+    log_probs: The log probabilities with shape
+      `[batch_size, beam_width, vocab_size]`.
     sequence_lengths: The array of sequence lengths.
     length_penalty_weight: Float weight to penalize length. Disabled with 0.0.
 

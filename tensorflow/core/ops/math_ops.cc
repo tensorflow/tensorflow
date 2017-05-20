@@ -595,7 +595,9 @@ REGISTER_OP("Mod")
     .Attr("T: {int32, int64, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
-Returns element-wise remainder of division.
+Returns element-wise remainder of division. This emulates C semantics in that
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
 
 *NOTE*: `Mod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
@@ -623,12 +625,11 @@ REGISTER_OP("TruncateMod")
     .Attr("T: {int32, int64, float, double}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
-Returns element-wise remainder of division. This emulates C semantics where
+Returns element-wise remainder of division. This emulates C semantics in that
+the result here is consistent with a truncating divide. E.g. `truncate(x / y) *
+y + truncate_mod(x, y) = x`.
 
-true, this follows C semantics in that the result here is consistent
-with a flooring divide. E.g. `floor(x / y) * y + mod(x, y) = x`.
-
-*NOTE*: `Mod` supports broadcasting. More about broadcasting
+*NOTE*: `TruncateMod` supports broadcasting. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 )doc");
 
@@ -1270,6 +1271,8 @@ REGISTER_OP("ArgMax")
     .Doc(R"doc(
 Returns the index with the largest value across dimensions of a tensor.
 
+Note that in case of ties the identity of the return value is not guaranteed.
+
 dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
   of the input Tensor to reduce across. For vectors, use dimension = 0.
 )doc");
@@ -1283,6 +1286,8 @@ REGISTER_OP("ArgMin")
     .SetShapeFn(ArgOpShape)
     .Doc(R"doc(
 Returns the index with the smallest value across dimensions of a tensor.
+
+Note that in case of ties the identity of the return value is not guaranteed.
 
 dimension: int32, 0 <= dimension < rank(input).  Describes which dimension
   of the input Tensor to reduce across. For vectors, use dimension = 0.

@@ -166,7 +166,13 @@ function setup_python {
 # This file contains customized config settings.
 rm -f .tf_configure.bazelrc
 touch .tf_configure.bazelrc
-touch .bazelrc
+if [[ ! -e .bazelrc ]]; then
+  if [[ -e "${HOME}/.bazelrc" ]]; then
+    echo "import ${HOME}/.bazelrc" >.bazelrc
+  else
+    touch .bazelrc
+  fi
+fi
 sed_in_place "/tf_configure/d" .bazelrc
 echo "import %workspace%/.tf_configure.bazelrc" >> .bazelrc
 

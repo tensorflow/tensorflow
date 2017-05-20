@@ -281,6 +281,10 @@ ifeq ($(TARGET),ANDROID)
 		CXXFLAGS += -DUSE_HEXAGON_LIBS
 	endif
 
+	ifdef ENABLE_EXPERIMENTAL_HEXNN_OPS
+		CXXFLAGS += -DENABLE_EXPERIMENTAL_HEXNN_OPS
+	endif
+
 endif  # ANDROID
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
@@ -293,7 +297,7 @@ ifeq ($(TARGET),IOS)
 	IPHONESIMULATOR_SYSROOT := $(shell xcrun --sdk iphonesimulator \
 	--show-sdk-path)
 	IOS_SDK_VERSION := $(shell xcrun --sdk iphoneos --show-sdk-version)
-	MIN_SDK_VERSION := 8.2
+	MIN_SDK_VERSION := 8.0
 # Override IOS_ARCH with ARMV7, ARMV7S, ARM64, or I386.
 	IOS_ARCH := X86_64
 	ifeq ($(IOS_ARCH),ARMV7)

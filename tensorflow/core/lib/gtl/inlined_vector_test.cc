@@ -816,7 +816,7 @@ static void BM_StdVectorFillString(int iters, int len) {
   }
   testing::ItemsProcessed(int64{iters} * len);
   // The purpose of the benchmark is to verify that inlined vector is
-  // efficient when moving is more efficent than copying. To do so, we
+  // efficient when moving is more efficient than copying. To do so, we
   // use strings that are larger than the small string optimization.
   CHECK(!StringRepresentedInline(strings[0]));
 }

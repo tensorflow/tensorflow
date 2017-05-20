@@ -36,7 +36,8 @@ patch = test.mock.patch
 _MODIR_DIR = "/tmp"
 _HPARAMS = hparam_lib.HParams(learning_rate=0.01)
 _MUST_SPECIFY_OUTPUT_DIR_MSG = "Must specify an output directory"
-_MISSING_MODEL_DIR_ERR_MSG = "Must specify a model directory in `run_config`."
+_MISSING_MODEL_DIR_ERR_MSG = (
+    "Must specify a model directory `model_dir` in `run_config`.")
 _EXP_NOT_CALLABLE_MSG = "Experiment builder .* is not callable"
 _INVALID_HPARAMS_ERR_MSG = "`hparams` must be `HParams` instance"
 _NOT_EXP_TYPE_MSG = "Experiment builder did not return an Experiment"

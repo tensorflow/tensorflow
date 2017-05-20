@@ -20,10 +20,11 @@ from __future__ import print_function
 
 from tensorflow.contrib import linalg
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import util
 from tensorflow.python.ops.distributions.util import *  # pylint: disable=wildcard-import
 
@@ -43,13 +44,11 @@ def make_diag_scale(loc, scale_diag, scale_identity_multiplier,
           check_ops.assert_positive(
               x, message="diagonal part must be positive"),
       ], x)
-    # TODO(b/35157376): Use `assert_none_equal` once it exists.
     return control_flow_ops.with_dependencies([
-        check_ops.assert_greater(
-            math_ops.abs(x),
+        check_ops.assert_none_equal(
+            x,
             array_ops.zeros([], x.dtype),
-            message="diagonal part must be non-zero"),
-    ], x)
+            message="diagonal part must be non-zero")], x)
 
   with ops.name_scope(name, "make_diag_scale",
                       values=[loc, scale_diag, scale_identity_multiplier]):
@@ -90,3 +89,110 @@ def make_diag_scale(loc, scale_diag, scale_identity_multiplier,
         is_self_adjoint=True,
         is_positive_definite=assert_positive,
         assert_proper_shapes=validate_args)
+
+
+def shapes_from_loc_and_scale(loc, scale, name="shapes_from_loc_and_scale"):
+  """Infer distribution batch and event shapes from a location and scale.
+
+  Location and scale family distributions determine their batch/event shape by
+  broadcasting the `loc` and `scale` args.  This helper does that broadcast,
+  statically if possible.
+
+  Batch shape broadcasts as per the normal rules.
+  We allow the `loc` event shape to broadcast up to that of `scale`.  We do not
+  allow `scale`'s event shape to change.  Therefore, the last dimension of `loc`
+  must either be size `1`, or the same as `scale.range_dimension`.
+
+  See `MultivariateNormalLinearOperator` for a usage example.
+
+  Args:
+    loc:  `N-D` `Tensor` with `N >= 1` (already converted to tensor) or `None`.
+      If `None`, both batch and event shape are determined by `scale`.
+    scale:  A `LinearOperator` instance.
+    name:  A string name to prepend to created ops.
+
+  Returns:
+    batch_shape:  `TensorShape` (if broadcast is done statically), or `Tensor`.
+    event_shape:  `TensorShape` (if broadcast is done statically), or `Tensor`.
+
+  Raises:
+    ValueError:  If the last dimension of `loc` is determined statically to be
+      different than the range of `scale`.
+  """
+  with ops.name_scope(name, values=[loc] + scale.graph_parents):
+    # Get event shape.
+    event_size = scale.range_dimension_tensor()
+    event_size_const = tensor_util.constant_value(event_size)
+    if event_size_const is not None:
+      event_shape = event_size_const.reshape([1])
+    else:
+      event_shape = event_size[array_ops.newaxis]
+
+    # Static check that event shapes match.
+    if loc is not None:
+      loc_event_size = loc.get_shape()[-1].value
+      if loc_event_size is not None and event_size_const is not None:
+        if loc_event_size != 1 and loc_event_size != event_size_const:
+          raise ValueError(
+              "Event size of 'scale' (%d) could not be broadcast up to that of "
+              "'loc' (%d)." % (loc_event_size, event_size_const))
+
+    # Get batch shape.
+    batch_shape = scale.batch_shape_tensor()
+    if loc is None:
+      batch_shape_const = tensor_util.constant_value(batch_shape)
+      batch_shape = (
+          batch_shape_const if batch_shape_const is not None else batch_shape)
+    else:
+      loc_batch_shape = loc.get_shape().with_rank_at_least(1)[:-1]
+      if (loc.get_shape().ndims is None or
+          not loc_batch_shape.is_fully_defined()):
+        loc_batch_shape = array_ops.shape(loc)[:-1]
+      else:
+        loc_batch_shape = ops.convert_to_tensor(loc_batch_shape,
+                                                name="loc_batch_shape")
+      batch_shape = prefer_static_broadcast_shape(batch_shape, loc_batch_shape)
+
+  return batch_shape, event_shape
+
+
+def prefer_static_broadcast_shape(
+    shape1, shape2, name="prefer_static_broadcast_shape"):
+  """Convenience function which statically broadcasts shape when possible.
+
+  Args:
+    shape1:  `1-D` integer `Tensor`.  Already converted to tensor!
+    shape2:  `1-D` integer `Tensor`.  Already converted to tensor!
+    name:  A string name to prepend to created ops.
+
+  Returns:
+    The broadcast shape, either as `TensorShape` (if broadcast can be done
+      statically), or as a `Tensor`.
+  """
+  with ops.name_scope(name, values=[shape1, shape2]):
+    if (tensor_util.constant_value(shape1) is not None and
+        tensor_util.constant_value(shape2) is not None):
+      return array_ops.broadcast_static_shape(
+          tensor_shape.TensorShape(tensor_util.constant_value(shape1)),
+          tensor_shape.TensorShape(tensor_util.constant_value(shape2)))
+    return array_ops.broadcast_dynamic_shape(shape1, shape2)
+
+
+def is_diagonal_scale(scale):
+  """Returns `True` if `scale` is a `LinearOperator` that is known to be diag.
+
+  Args:
+    scale:  `LinearOperator` instance.
+
+  Returns:
+    Python `bool`.
+
+  Raises:
+    TypeError:  If `scale` is not a `LinearOperator`.
+  """
+  if not isinstance(scale, linalg.LinearOperator):
+    raise TypeError("Expected argument 'scale' to be instance of LinearOperator"
+                    ". Found: %s" % scale)
+  return (isinstance(scale, linalg.LinearOperatorIdentity) or
+          isinstance(scale, linalg.LinearOperatorScaledIdentity) or
+          isinstance(scale, linalg.LinearOperatorDiag))

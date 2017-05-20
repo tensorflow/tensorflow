@@ -20,7 +20,6 @@ limitations under the License.
 #include <map>
 #include <string>
 
-#include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/util/padding.h"
@@ -133,7 +132,7 @@ class OpLevelCostEstimator {
       const TensorShapeProto& original_filter_shape, const OpInfo& op_features,
       bool* found_unknown_shapes);
 
- private:
+ protected:
   typedef std::function<Costs(const OpInfo& op_feature)> CostImpl;
   std::map<string, CostImpl> device_cost_impl_;
 };

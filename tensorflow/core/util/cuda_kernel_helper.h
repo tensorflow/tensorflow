@@ -27,6 +27,8 @@ limitations under the License.
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; \
        i += blockDim.x * gridDim.x)
 
+#define DIV_UP(a,b) ( ( (a) + (b) - 1 ) / (b) )
+
 namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
@@ -47,16 +49,22 @@ struct CudaLaunchConfig {
 // memory-limited.
 inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                             const GPUDevice& d) {
+  CudaLaunchConfig config;
+
+  // in case of invalid input, return the default value config, which has all -1
+  if(work_element_count <= 0) {
+    return config;
+  }
+
   const int virtual_thread_count = work_element_count;
   const int physical_thread_count = std::min(
       d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor(),
       virtual_thread_count);
   const int thread_per_block = std::min(1024, d.maxCudaThreadsPerBlock());
   const int block_count = std::min(
-      (physical_thread_count + thread_per_block - 1) / thread_per_block,
+      DIV_UP(physical_thread_count, thread_per_block),
       d.getNumCudaMultiProcessors());
 
-  CudaLaunchConfig config;
   config.virtual_thread_count = virtual_thread_count;
   config.thread_per_block = thread_per_block;
   config.block_count = block_count;
@@ -69,16 +77,20 @@ template <typename DeviceFunc>
 inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                             const GPUDevice& d, DeviceFunc func,
                                             size_t dynamic_shared_memory_size) {
+  CudaLaunchConfig config;
+
+  if(work_element_count <= 0) {
+    return config;
+  }
+
   int block_count = 0;
   int thread_per_block = 0;
   cudaOccupancyMaxPotentialBlockSize(&block_count, &thread_per_block, func,
                                      dynamic_shared_memory_size,
                                      work_element_count);
   block_count =
-      std::min(block_count,
-               (work_element_count + thread_per_block - 1) / thread_per_block);
+      std::min(block_count, DIV_UP(work_element_count, thread_per_block));
 
-  CudaLaunchConfig config;
   config.virtual_thread_count = work_element_count;
   config.thread_per_block = thread_per_block;
   config.block_count = block_count;
@@ -95,7 +107,9 @@ inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
                                                 const GPUDevice& d) {
   Cuda2DLaunchConfig config;
 
-  config.virtual_thread_count = dim3(xdim, ydim, 1);
+  if(xdim <= 0 || ydim <= 0) {
+    return config;
+  }
 
   const int kThreadsPerBlock = 256;
   int block_cols = std::min(xdim, kThreadsPerBlock);
@@ -107,15 +121,60 @@ inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
 
   const int max_blocks = std::max(physical_thread_count / kThreadsPerBlock, 1);
 
+  config.virtual_thread_count = dim3(xdim, ydim, 1);
   config.thread_per_block = dim3(block_cols, block_rows, 1);
 
-  int grid_x = std::min((xdim + block_cols - 1) / block_cols, max_blocks);
+  int grid_x = std::min(DIV_UP(xdim, block_cols), max_blocks);
 
   config.block_count = dim3(
       grid_x, std::min(max_blocks / grid_x, std::max(ydim / block_rows, 1)), 1);
 
   return config;
 }
+
+// Calculate the Cuda 2D and 3D launch config we should use for a kernel launch.
+// This variant takes the resource limits of func into account to maximize occupancy.
+using Cuda3DLaunchConfig = Cuda2DLaunchConfig;
+
+template <typename DeviceFunc>
+inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(int xdim, int ydim, int zdim,
+                                                const GPUDevice& d, DeviceFunc func,
+                                                size_t dynamic_shared_memory_size) {
+
+  Cuda3DLaunchConfig config;
+
+  if(xdim <= 0 || ydim <= 0 || zdim <= 0) {
+    return config;
+  }
+
+  int block_count = 0;
+  int thread_per_block = 0;
+  cudaOccupancyMaxPotentialBlockSize(&block_count, &thread_per_block, func,
+                                     dynamic_shared_memory_size,
+                                     xdim * ydim * zdim);
+
+  int threadsx = std::min(xdim, thread_per_block);
+  int threadsy = std::min(ydim, std::max(thread_per_block / threadsx, 1));
+  int threadsz = std::min(zdim, std::max(thread_per_block / (threadsx * threadsy), 1));
+
+  int blocksx = std::min(block_count, DIV_UP(xdim, threadsx));
+  int blocksy = std::min(DIV_UP(block_count, blocksx), DIV_UP(ydim, threadsy));
+  int blocksz = std::min(DIV_UP(block_count, (blocksx * blocksy)), DIV_UP(zdim, threadsz));
+
+  config.virtual_thread_count = dim3(xdim, ydim, zdim);
+  config.thread_per_block = dim3(threadsx, threadsy, threadsz);
+  config.block_count = dim3(blocksx, blocksy, blocksz);
+
+  return config;
+}
+
+template <typename DeviceFunc>
+inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
+                                                const GPUDevice& d, DeviceFunc func,
+                                                size_t dynamic_shared_memory_size) {
+  return GetCuda3DLaunchConfig(xdim, ydim, 1, d, func, dynamic_shared_memory_size);
+}
+
 
 namespace gpu {
 
@@ -429,6 +488,8 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T tf_max(const T& x, const T& y) {
 }
 
 }  // namespace tensorflow
+
+#undef DIV_UP
 
 #endif  // GOOGLE_CUDA
 

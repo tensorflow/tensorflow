@@ -271,9 +271,9 @@ Scope::Impl::Impl(const Scope& other, Tags::Colocate,
 std::unordered_set<string> Scope::Impl::GetColocationConstraints(
     const Operation& colocate_with_op) const {
   std::unordered_set<string> current_constraints(colocation_constraints_);
-  const NodeDef& node_def = colocate_with_op.node()->def();
+  const AttrSlice attrs = colocate_with_op.node()->attrs();
   std::vector<string> node_constraints;
-  if (GetNodeAttr(node_def, kColocationAttrName, &node_constraints).ok()) {
+  if (GetNodeAttr(attrs, kColocationAttrName, &node_constraints).ok()) {
     for (const string& entry : node_constraints) {
       StringPiece s(entry);
       if (s.Consume(kColocationGroupPrefix)) {

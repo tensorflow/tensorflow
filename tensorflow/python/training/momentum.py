@@ -28,8 +28,11 @@ class MomentumOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Momentum algorithm.
 
   Computes (if `use_nesterov = False`):
-    accumulation = momentum * accumulation + gradient
-    variable -= learning_rate * accumulation
+  
+  ```
+  accumulation = momentum * accumulation + gradient
+  variable -= learning_rate * accumulation
+  ```
 
   Note that in the dense version of this algorithm, `accumulation` is updated
   and applied regardless of a gradient's value, whereas the sparse version (when

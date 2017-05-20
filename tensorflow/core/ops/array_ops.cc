@@ -439,12 +439,12 @@ For example:
 concat_offset(2, [x, y, z]) => [0, 0, 0], [0, 2, 0], [0, 5, 0]
 ```
 
+This is typically used by gradient computations for a concat operation.
+
 concat_dim: The dimension along which to concatenate.
 shape: The `N` int32 vectors representing shape of tensors being concatenated.
 offset: The `N` int32 vectors representing the starting offset
         of input tensors within the concatenated output.
-
-This is typically used by gradient computations for a concat operation.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -575,7 +575,8 @@ REGISTER_OP("SplitV")
           else
             cumsum_outputs = split_dim_size + 1;
         }
-        if (cumsum_outputs != c->Value(c->Dim(input, split_dim)))
+        if (c->ValueKnown(c->Dim(input, split_dim)) &&
+            cumsum_outputs != c->Value(c->Dim(input, split_dim)))
           return errors::InvalidArgument(
               "Sum of output sizes must match "
               "the size of the original Tensor along the split dimension "
@@ -1003,7 +1004,7 @@ REGISTER_OP("Reverse")
     .Output("output: T")
     .Attr(
         "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
-        "complex128}")
+        "complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       ShapeHandle dims;
@@ -1080,7 +1081,7 @@ REGISTER_OP("ReverseV2")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr(
         "T: {uint8, int8, int32, int64, bool, half, float, double, complex64, "
-        "complex128}")
+        "complex128, string}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input = c->input(0);
       ShapeHandle axis;
@@ -2483,6 +2484,32 @@ shape must be exactly the shape produced by the slice of `ref`.
 // TODO(aselle): Fix this documentation once StridedSliceAssign Supports
 // broadcasting.
 // --------------------------------------------------------------------------
+
+REGISTER_OP("ResourceStridedSliceAssign")
+    .Input("ref: resource")
+    .Input("begin: Index")
+    .Input("end: Index")
+    .Input("strides: Index")
+    .Input("value: T")
+    .Attr("T: type")
+    .Attr("Index: {int32, int64}")
+    .Attr("begin_mask: int = 0")
+    .Attr("end_mask: int = 0")
+    .Attr("ellipsis_mask: int = 0")
+    .Attr("new_axis_mask: int = 0")
+    .Attr("shrink_axis_mask: int = 0")
+    .SetShapeFn(shape_inference::NoOutputs)
+    .Doc(R"doc(
+Assign `value` to the sliced l-value reference of `ref`.
+
+The values of `value` are assigned to the positions in the variable
+`ref` that are selected by the slice parameters. The slice parameters
+`begin, `end`, `strides`, etc. work exactly as in `StridedSlice`.
+
+NOTE this op currently does not support broadcasting and so `value`'s
+shape must be exactly the shape produced by the slice of `ref`.
+
+)doc");
 
 REGISTER_OP("Tile")
     .Input("input: T")

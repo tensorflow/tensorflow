@@ -60,9 +60,12 @@ namespace xla {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Backend> backend,
-      Backend::CreateBackend(platform, options.number_of_replicas()));
+  BackendOptions backend_options;
+  backend_options.set_platform(platform)
+      .set_number_of_replicas(options.number_of_replicas())
+      .set_intra_op_parallelism_threads(options.intra_op_parallelism_threads());
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> backend,
+                      Backend::CreateBackend(backend_options));
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
                       CreateComputeConstantBackend());
@@ -75,21 +78,6 @@ LocalService::LocalService(std::unique_ptr<Backend> execute_backend,
                            std::unique_ptr<Backend> compute_constant_backend)
     : Service(std::move(execute_backend), std::move(compute_constant_backend)) {
   runs_in_client_process_ = true;
-}
-
-tensorflow::Status LocalService::ResolveArguments(
-    const tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-    int device_ordinal,
-    std::vector<perftools::gputools::DeviceMemoryBase>* argument_ptrs) {
-  TF_ASSIGN_OR_RETURN(std::vector<const Allocation*> arg_allocations,
-                      ResolveAndValidateArguments(
-                          arguments, execute_backend_.get(), device_ordinal));
-  argument_ptrs->resize(arg_allocations.size());
-  for (int i = 0; i < arguments.size(); ++i) {
-    const Allocation& allocation = *arg_allocations[i];
-    (*argument_ptrs)[i] = allocation.device_memory();
-  }
-  return tensorflow::Status::OK();
 }
 
 namespace {

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 #include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace grappler {

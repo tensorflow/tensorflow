@@ -330,7 +330,7 @@ export class ScatterPlotVisualizerSprites implements ScatterPlotVisualizer {
 
   setSpriteAtlas(
       spriteImage: HTMLImageElement, spriteDimensions: [number, number],
-      spriteIndices: Uint8Array) {
+      spriteIndices: Float32Array) {
     this.disposeTextureAtlas();
     this.createTextureFromSpriteAtlas(
         spriteImage, spriteDimensions, spriteIndices);

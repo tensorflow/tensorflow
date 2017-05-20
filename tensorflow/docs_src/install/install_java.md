@@ -50,7 +50,7 @@ As an example, these steps will create a Maven project that uses TensorFlow:
          <project>
              <modelVersion>4.0.0</modelVersion>
              <groupId>org.myorg</groupId>
-             <artifactId>label-image</artifactId>
+             <artifactId>hellotf</artifactId>
              <version>1.0-SNAPSHOT</version>
              <properties>
                <exec.mainClass>HelloTF</exec.mainClass>

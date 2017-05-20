@@ -39,7 +39,7 @@ cc_library(
     deps = [
         ":op_performance_data_cc",
         ":utils",
-        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",
@@ -118,9 +118,11 @@ cc_library(
     deps = [
         ":op_performance_data_cc",
         "//third_party/eigen3",
-        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core/grappler/clusters:utils",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
     ] + if_cuda([
         "//tensorflow/core:cuda",
@@ -195,9 +197,8 @@ cc_library(
     deps = [
         ":cost_estimator",
         ":op_performance_data_cc",
-        ":utils",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core/grappler/clusters:utils",
     ],
 )
 
@@ -226,8 +227,7 @@ cc_library(
         ":utils",
         ":virtual_placer",
         ":virtual_scheduler",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",

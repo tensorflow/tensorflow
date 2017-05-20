@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_OPS_DEFINITIONS_H_
 
+#include <unordered_map>
+
 #include "i_graph_transfer_ops_definitions.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/macros.h"
@@ -29,11 +31,25 @@ class HexagonOpsDefinitions final : public IGraphTransferOpsDefinitions {
   static const IGraphTransferOpsDefinitions& getInstance();
 
   int GetTotalOpsCount() const final;
-  int GetOpIdFor(const string& op_type) const final;
+  int GetOpIdFor(const string& op_type, const DataTypeVector& dt) const final;
   GraphTransferInfo::Destination GetTransferDestination() const final;
 
  private:
-  HexagonOpsDefinitions() = default;
+  enum class SupportedOpType;
+  using DataTypeToOp = std::tuple<DataTypeVector, SupportedOpType>;
+
+  HexagonOpsDefinitions();
+
+  static void EmplaceOpType(
+      const string& op_type, const DataTypeVector& dt_vec,
+      const SupportedOpType supported_op_type,
+      std::unordered_map<string, std::vector<DataTypeToOp>>* map);
+
+  static std::unordered_map<string, std::vector<DataTypeToOp>>
+  BuildOpNameToSocOpTypeMap();
+
+  const std::unordered_map<string, std::vector<DataTypeToOp>>
+      op_name_to_soc_op_type_map_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HexagonOpsDefinitions);
 };

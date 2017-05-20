@@ -185,8 +185,15 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::Run(
   if (options.allocator() == nullptr) {
     actual_options.set_allocator(backend_->memory_allocator());
   }
-  ServiceExecutableRunOptions service_options(actual_options,
-                                              backend_->StreamBorrower());
+
+  // For local client execution on CPU backends:
+  // *) The thread pool used for eigen CPU ops is from
+  //    ExecutableRunOptions.eigen_intra_op_thread_pool.
+  // *) The thread pool used for XLA CPU ops is from
+  //    backend_->eigen_intra_op_thread_pool().
+  ServiceExecutableRunOptions service_options(
+      actual_options, backend_->StreamBorrower(),
+      backend_->eigen_intra_op_thread_pool());
 
   if (executable_->dumping()) {
     return ExecuteAndDump(&service_options, arguments);
@@ -251,14 +258,6 @@ StatusOr<std::unique_ptr<GlobalData>> LocalClient::AllocateBufferOnDevice(
                       local_service_->AllocateBufferOnDevice(
                           shape, device_ordinal, allocate_space_for_deep_copy));
   return std::unique_ptr<GlobalData>(new GlobalData(local_service_, handle));
-}
-
-tensorflow::Status LocalClient::ResolveArguments(
-    const tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-    int device_ordinal,
-    std::vector<perftools::gputools::DeviceMemoryBase>* argument_ptrs) {
-  return local_service_->ResolveArguments(arguments, device_ordinal,
-                                          argument_ptrs);
 }
 
 se::Platform* LocalClient::platform() const {

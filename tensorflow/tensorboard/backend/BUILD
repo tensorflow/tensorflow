@@ -57,7 +57,7 @@ py_test(
 py_library(
     name = "application",
     srcs = ["application.py"],
-    data = ["//tensorflow/tensorboard:frontend"],
+    data = ["//tensorflow/tensorboard:assets"],
     srcs_version = "PY2AND3",
     deps = [
         ":http_util",

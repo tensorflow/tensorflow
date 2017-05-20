@@ -319,7 +319,7 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {
   // param -> log -> reshape -> tanh
   auto builder = HloComputation::Builder(TestName());
   Shape ashape = ShapeUtil::MakeShape(F32, {1, 2, 3, 1});
-  Shape bshape = ShapeUtil::MakeShape(F32, {2, 1, 3});
+  Shape bshape = ShapeUtil::MakeShape(F32, {3, 1, 2});
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, ashape, "param"));
   auto log = builder.AddInstruction(
@@ -334,8 +334,8 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {
 
   Shape ashape_with_layout(ashape);
   Shape bshape_with_layout(bshape);
-  *ashape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2, 3});
-  *bshape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({0, 1, 2});
+  *ashape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({0, 2, 1, 3});
+  *bshape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({2, 1, 0});
 
   ComputationLayout computation_layout(computation->ComputeProgramShape());
   *computation_layout.mutable_parameter_layout(0) =
@@ -345,12 +345,12 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {
 
   auto log_minor_to_major =
       AsInt64Slice(log->shape().layout().minor_to_major());
-  EXPECT_LT(PositionInContainer(log_minor_to_major, 1),
+  EXPECT_GT(PositionInContainer(log_minor_to_major, 1),
             PositionInContainer(log_minor_to_major, 2));
 
   auto reshape_minor_to_major =
       AsInt64Slice(reshape->shape().layout().minor_to_major());
-  EXPECT_LT(PositionInContainer(reshape_minor_to_major, 0),
+  EXPECT_GT(PositionInContainer(reshape_minor_to_major, 0),
             PositionInContainer(reshape_minor_to_major, 2));
 }
 
@@ -481,7 +481,75 @@ TEST_F(LayoutAssignmentTest, ReshapeOperandHasMultipleUsers) {
   EXPECT_THAT(tanh->shape().layout().minor_to_major(), ElementsAre(0, 1));
 }
 
-// Add test which fails due to copy tuple.
+class OperandsMustBeTheSameLayoutAssignment : public LayoutAssignment {
+ public:
+  explicit OperandsMustBeTheSameLayoutAssignment(
+      ComputationLayout* entry_computation_layout)
+      : LayoutAssignment(entry_computation_layout) {}
+
+ protected:
+  Status PropagateBufferConstraint(
+      const BufferLayoutConstraint& buffer_constraint,
+      LayoutConstraints* constraints) override {
+    const LogicalBuffer& buffer = buffer_constraint.buffer();
+    const HloInstruction* instruction = buffer.instruction();
+
+    // Force the operands' layout to the output layout.
+    for (int64 operand_no = 0; operand_no < instruction->operand_count();
+         ++operand_no) {
+      const HloInstruction* operand = instruction->operand(operand_no);
+      if (ShapeUtil::Rank(instruction->shape()) !=
+          ShapeUtil::Rank(operand->shape())) {
+        continue;
+      }
+      TF_RETURN_IF_ERROR(constraints->SetArrayOperandLayout(
+          buffer_constraint.layout(), instruction, operand_no,
+          /*mandatory=*/true));
+    }
+    return PropagateBufferConstraintToUses(buffer_constraint, constraints);
+  }
+};
+
+TEST_F(LayoutAssignmentTest, MakeOperandsTheSame) {
+  // param0 -> concatenate -> reshape
+  // param1   -^
+  auto builder = HloComputation::Builder(TestName());
+  Shape ashape = ShapeUtil::MakeShape(F32, {50, 1});
+  Shape bshape = ShapeUtil::MakeShape(F32, {50, 2});
+  Shape cshape = ShapeUtil::MakeShape(F32, {100});
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, ashape, "param"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, ashape, "param"));
+  auto concatenate = builder.AddInstruction(
+      HloInstruction::CreateConcatenate(bshape, {param0, param1}, 1));
+  auto reshape = builder.AddInstruction(
+      HloInstruction::CreateReshape(cshape, concatenate));
+  HloModule module(TestName());
+  HloComputation* computation =
+      module.AddEntryComputation(builder.Build(reshape));
+
+  Shape param0_shape_with_layout(ashape);
+  Shape param1_shape_with_layout(ashape);
+  *param0_shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({0, 1});
+  *param1_shape_with_layout.mutable_layout() = LayoutUtil::MakeLayout({1, 0});
+
+  ComputationLayout computation_layout(computation->ComputeProgramShape());
+  *computation_layout.mutable_parameter_layout(0) =
+      ShapeLayout(param0_shape_with_layout);
+  *computation_layout.mutable_parameter_layout(1) =
+      ShapeLayout(param1_shape_with_layout);
+  OperandsMustBeTheSameLayoutAssignment layout_assignment(&computation_layout);
+  EXPECT_IS_OK(layout_assignment.Run(&module).status());
+
+  EXPECT_EQ(HloOpcode::kCopy, concatenate->operand(0)->opcode());
+  EXPECT_THAT(concatenate->operand(0)->shape().layout().minor_to_major(),
+              ElementsAre(1, 0));
+  EXPECT_THAT(concatenate->operand(1)->shape().layout().minor_to_major(),
+              ElementsAre(1, 0));
+  EXPECT_THAT(concatenate->shape().layout().minor_to_major(),
+              ElementsAre(1, 0));
+}
 
 }  // namespace
 }  // namespace xla

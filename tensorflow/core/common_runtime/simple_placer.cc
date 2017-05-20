@@ -34,6 +34,11 @@ namespace tensorflow {
 
 namespace {
 
+// We hoist the conversion from C-style string literal to StringPiece here,
+// so that we can avoid the many repeated calls to strlen().
+const StringPiece kColocationAttrNameStringPiece(kColocationAttrName);
+const StringPiece kColocationGroupPrefixStringPiece(kColocationGroupPrefix);
+
 // Returns a list of devices sorted by preferred type and then name
 // from 'devices' whose type is in 'supported_device_types'.  This
 // function searches the device types in 'supported_device_types' and
@@ -71,24 +76,26 @@ void ColocationGroups(const Node& node,
   std::vector<string> class_specs;
   // TODO(vrv): We should consider adding a GetNodeAttr that returns a
   // StringPiece, to avoid a copy.
-  Status s = GetNodeAttr(node.def(), kColocationAttrName, &class_specs);
-  if (!s.ok()) {
+  if (!GetNodeAttrSimple(node.attrs(), kColocationAttrNameStringPiece,
+                         &class_specs)) {
     // No attribute value is equivalent to the empty colocation_group.
-    *colocation_groups = {strings::StrCat(kColocationGroupPrefix, node.name())};
+    *colocation_groups = {
+        strings::StrCat(kColocationGroupPrefixStringPiece, node.name())};
     return;
   }
 
   bool found_spec = false;
   for (const string& class_spec : class_specs) {
     StringPiece spec(class_spec);
-    if (spec.Consume(kColocationGroupPrefix)) {
+    if (spec.Consume(kColocationGroupPrefixStringPiece)) {
       found_spec = true;
       colocation_groups->emplace_back(class_spec);
     }
   }
 
   if (!found_spec) {
-    *colocation_groups = {strings::StrCat(kColocationGroupPrefix, node.name())};
+    *colocation_groups = {
+        strings::StrCat(kColocationGroupPrefixStringPiece, node.name())};
   }
 }
 
@@ -322,7 +329,7 @@ class ColocationGraph {
         AddDebugInfo(node_root, &debug_info);
 
         DeviceNameUtils::ParsedName specified_device_name;
-        if (DeviceNameUtils::ParseFullName(node->def().device(),
+        if (DeviceNameUtils::ParseFullName(node->requested_device(),
                                            &specified_device_name) &&
             specified_device_name == members_[node_root].device_name) {
           // The specified device and merged set device match, and
@@ -341,27 +348,27 @@ class ColocationGraph {
             std::sort(device_names.begin(), device_names.end());
 
             return errors::InvalidArgument(
-                "Operation was explicitly assigned to ", node->def().device(),
-                " but available devices are [ ",
+                "Operation was explicitly assigned to ",
+                node->requested_device(), " but available devices are [ ",
                 str_util::Join(device_names, ", "), " ]. Make sure ",
                 "the device specification refers to a valid device.");
           } else if (specified_device_name.has_type) {
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",
-                node->def().device(), "' because no supported kernel for ",
+                node->requested_device(), "' because no supported kernel for ",
                 specified_device_name.type, " devices is available.",
                 debug_info);
           } else {
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",
-                node->def().device(), debug_info);
+                node->requested_device(), debug_info);
           }
         } else {
           // The specified device may be a valid device but the
           // merged set device is different, so print both.
           return errors::InvalidArgument(
               "Could not satisfy explicit device specification '",
-              node->def().device(),
+              node->requested_device(),
               "' because the node was colocated with a group of nodes that "
               "required incompatible device '",
               DeviceNameUtils::ParsedNameToString(
@@ -506,7 +513,7 @@ class ColocationGraph {
       return errors::Internal("Assigned device '", node.assigned_device_name(),
                               "' does not have registered OpKernel support "
                               "for ",
-                              node.def().op());
+                              node.type_string());
     } else {
       // This node has not yet been assigned to a device, so we
       // calculate any constraints due to the set of registered
@@ -520,25 +527,25 @@ class ColocationGraph {
           registered_device_types.insert(d->device_type());
         }
         return errors::InvalidArgument(
-            "No OpKernel was registered to support Op '", node.def().op(),
+            "No OpKernel was registered to support Op '", node.type_string(),
             "' with these attrs.  Registered devices: [",
             str_util::Join(registered_device_types, ","),
             "], Registered kernels:\n",
-            KernelsRegisteredForOp(node.def().op()));
+            KernelsRegisteredForOp(node.type_string()));
       }
 
       // If the NodeDef contains a device, then we interpret it as a
       // (partial) device specification.
-      if (!node.def().device().empty()) {
+      if (!node.requested_device().empty()) {
         // The user has specified a device in the NodeDef, try to find a
         // valid device matching their specification in the set of
         // devices.
         // NOTE: The full name may specify a device that is not in
         // n.supported_device_types(), but we check that in AssignDevice().
-        if (!DeviceNameUtils::ParseFullName(node.def().device(),
+        if (!DeviceNameUtils::ParseFullName(node.requested_device(),
                                             &member->device_name)) {
           return errors::InvalidArgument("Malformed device specification '",
-                                         node.def().device(), "'");
+                                         node.requested_device(), "'");
         }
       }
     }
@@ -637,7 +644,7 @@ Status SimplePlacer::Run() {
       continue;
     }
     status = colocation_graph.AddNode(*node);
-    if (!status.ok()) return AttachDef(status, node->def());
+    if (!status.ok()) return AttachDef(status, *node);
   }
 
   // 2. Enumerate the constraint edges, and use them to update the disjoint
@@ -700,7 +707,7 @@ Status SimplePlacer::Run() {
                                "be on the same device), but the two nodes "
                                "were assigned two different devices: ",
                                status.error_message()),
-                           node->def());
+                           *node);
         }
       }
     }
@@ -742,7 +749,7 @@ Status SimplePlacer::Run() {
       return AttachDef(
           errors::InvalidArgument("Cannot assign a device for operation '",
                                   node->name(), "': ", status.error_message()),
-          node->def());
+          *node);
     }
 
     // Returns the first device in sorted devices list so we will always
@@ -784,7 +791,7 @@ Status SimplePlacer::Run() {
       return AttachDef(
           errors::InvalidArgument("Cannot assign a device for operation '",
                                   node->name(), "': ", status.error_message()),
-          node->def());
+          *node);
     }
 
     string assigned_device = devices[0]->name();
