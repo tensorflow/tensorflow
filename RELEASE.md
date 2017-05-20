@@ -30,7 +30,6 @@
 * Added `tf.contrib.util.create_example`.
 * Added bilinear interpolation to `tf.contrib.image`.
 * Add `tf.contrib.stateless` for random ops with custom seed control.
-* Add ScaM op to contrib for fast approximate nearest neighbor computation.
 * MultivariateNormalFullCovariance added to contrib/distributions/
 * tensorflow/contrib/rnn undergoes RNN cell variable renaming for
   consistency with Keras layers. Specifically, the previous variable names
