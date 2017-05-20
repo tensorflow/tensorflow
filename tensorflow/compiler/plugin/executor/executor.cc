@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/example/executor.h"
-#include "tensorflow/compiler/plugin/example/platform_id.h"
+#include "tensorflow/compiler/plugin/executor/executor.h"
+#include "tensorflow/compiler/plugin/executor/platform_id.h"
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
@@ -25,99 +25,99 @@ namespace se = ::perftools::gputools;
 
 namespace perftools {
 namespace gputools {
-namespace exampleplugin {
+namespace executorplugin {
 
-host::HostStream *AsExampleStream(Stream *stream) {
+host::HostStream *AsExecutorStream(Stream *stream) {
   DCHECK(stream != nullptr);
   return dynamic_cast<host::HostStream *>(stream->implementation());
 }
 
-ExampleExecutor::ExampleExecutor(const PluginConfig &plugin_config)
+ExecutorExecutor::ExecutorExecutor(const PluginConfig &plugin_config)
     : plugin_config_(plugin_config) {}
 
-ExampleExecutor::~ExampleExecutor() {}
+ExecutorExecutor::~ExecutorExecutor() {}
 
-void *ExampleExecutor::Allocate(uint64 size) {
+void *ExecutorExecutor::Allocate(uint64 size) {
   void *buf = new char[size];
   return buf;
 }
 
-void *ExampleExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
+void *ExecutorExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
                                          uint64 offset_bytes,
                                          uint64 size_bytes) {
   return parent + offset_bytes;
 }
 
-void ExampleExecutor::Deallocate(DeviceMemoryBase *mem) {
+void ExecutorExecutor::Deallocate(DeviceMemoryBase *mem) {
   if (!mem->is_sub_buffer()) {
     delete[] static_cast<char *>(mem->opaque());
   }
 }
 
-bool ExampleExecutor::Memcpy(Stream *stream, void *host_dst,
+bool ExecutorExecutor::Memcpy(Stream *stream, void *host_dst,
                              const DeviceMemoryBase &dev_src, uint64 size) {
-  AsExampleStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
+  AsExecutorStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
     port::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
   });
   return true;
 }
 
-bool ExampleExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
+bool ExecutorExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
                              const void *host_src, uint64 size) {
-  AsExampleStream(stream)->EnqueueTask([this, dev_dst, host_src, size]() {
+  AsExecutorStream(stream)->EnqueueTask([this, dev_dst, host_src, size]() {
     port::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
   });
   return true;
 }
 
-port::Status ExampleExecutor::SynchronousMemcpy(DeviceMemoryBase *dev_dst,
+port::Status ExecutorExecutor::SynchronousMemcpy(DeviceMemoryBase *dev_dst,
                                                 const void *host_src,
                                                 uint64 size) {
   memcpy(dev_dst->opaque(), host_src, size);
   return port::Status::OK();
 }
 
-port::Status ExampleExecutor::SynchronousMemcpy(void *host_dst,
+port::Status ExecutorExecutor::SynchronousMemcpy(void *host_dst,
                                                 const DeviceMemoryBase &dev_src,
                                                 uint64 size) {
   memcpy(host_dst, dev_src.opaque(), size);
   return port::Status::OK();
 }
 
-bool ExampleExecutor::HostCallback(Stream *stream,
+bool ExecutorExecutor::HostCallback(Stream *stream,
                                    std::function<void()> callback) {
-  AsExampleStream(stream)->EnqueueTask(callback);
+  AsExecutorStream(stream)->EnqueueTask(callback);
   return true;
 }
 
-bool ExampleExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
-  AsExampleStream(dependent)->EnqueueTask(
+bool ExecutorExecutor::CreateStreamDependency(Stream *dependent, Stream *other) {
+  AsExecutorStream(dependent)->EnqueueTask(
       [other]() { other->BlockHostUntilDone(); });
-  AsExampleStream(dependent)->BlockUntilDone();
+  AsExecutorStream(dependent)->BlockUntilDone();
   return true;
 }
 
-bool ExampleExecutor::StartTimer(Stream *stream, Timer *timer) {
+bool ExecutorExecutor::StartTimer(Stream *stream, Timer *timer) {
   dynamic_cast<host::HostTimer *>(timer->implementation())->Start(stream);
   return true;
 }
 
-bool ExampleExecutor::StopTimer(Stream *stream, Timer *timer) {
+bool ExecutorExecutor::StopTimer(Stream *stream, Timer *timer) {
   dynamic_cast<host::HostTimer *>(timer->implementation())->Stop(stream);
   return true;
 }
 
-bool ExampleExecutor::BlockHostUntilDone(Stream *stream) {
-  AsExampleStream(stream)->BlockUntilDone();
+bool ExecutorExecutor::BlockHostUntilDone(Stream *stream) {
+  AsExecutorStream(stream)->BlockUntilDone();
   return true;
 }
 
-DeviceDescription *ExampleExecutor::PopulateDeviceDescription() const {
+DeviceDescription *ExecutorExecutor::PopulateDeviceDescription() const {
   internal::DeviceDescriptionBuilder builder;
 
   builder.set_device_address_bits(64);
 
-  builder.set_name("Example");
+  builder.set_name("Executor");
   builder.set_device_vendor("VectorName");
   builder.set_platform_version("1.0");
   builder.set_driver_version("1.0");
@@ -130,6 +130,6 @@ DeviceDescription *ExampleExecutor::PopulateDeviceDescription() const {
   return built.release();
 }
 
-}  // namespace exampleplugin
+}  // namespace executorplugin
 }  // namespace gputools
 }  // namespace perftools

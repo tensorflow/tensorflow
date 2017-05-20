@@ -13,11 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Declares the ExampleExecutor class, which is a CPU-only implementation of
+// Declares the ExecutorExecutor class, which is a CPU-only implementation of
 // the StreamExecutor interface. For now, this is used for testing and to
 // examine the performance of host-based StreamExecutor code.
-#ifndef TENSORFLOW_COMPILER_EXAMPLE_STREAM_EXECUTOR_EXAMPLE_EXECUTOR_H_
-#define TENSORFLOW_COMPILER_EXAMPLE_STREAM_EXECUTOR_EXAMPLE_EXECUTOR_H_
+#ifndef TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_EXECUTOR_H_
+#define TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_EXECUTOR_H_
 
 #include "tensorflow/stream_executor/host/host_stream.h"
 #include "tensorflow/stream_executor/host/host_timer.h"
@@ -37,14 +37,14 @@ limitations under the License.
 
 namespace perftools {
 namespace gputools {
-namespace exampleplugin {
+namespace executorplugin {
 
 using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
 
-class ExampleExecutor : public internal::StreamExecutorInterface {
+class ExecutorExecutor : public internal::StreamExecutorInterface {
  public:
-  explicit ExampleExecutor(const PluginConfig &plugin_config);
-  ~ExampleExecutor() override;
+  explicit ExecutorExecutor(const PluginConfig &plugin_config);
+  ~ExecutorExecutor() override;
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override {
     return port::Status::OK();
@@ -206,8 +206,8 @@ class ExampleExecutor : public internal::StreamExecutorInterface {
   const PluginConfig plugin_config_;
 };
 
-}  // namespace exampleplugin
+}  // namespace executorplugin
 }  // namespace gputools
 }  // namespace perftools
 
-#endif  // TENSORFLOW_COMPILER_EXAMPLE_STREAM_EXECUTOR_EXAMPLE_EXECUTOR_H_
+#endif  // TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_EXECUTOR_H_

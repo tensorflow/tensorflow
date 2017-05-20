@@ -16,8 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_EXAMPLE_DRIVER_EXAMPLE_TRANSFER_MANAGER_H_
-#define TENSORFLOW_COMPILER_EXAMPLE_DRIVER_EXAMPLE_TRANSFER_MANAGER_H_
+#ifndef TENSORFLOW_COMPILER_EXECUTOR_DRIVER_EXECUTOR_TRANSFER_MANAGER_H_
+#define TENSORFLOW_COMPILER_EXECUTOR_DRIVER_EXECUTOR_TRANSFER_MANAGER_H_
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -31,13 +31,13 @@ limitations under the License.
 namespace se = ::perftools::gputools;
 
 namespace xla {
-namespace exampleplugin {
+namespace executorplugin {
 
-class ExampleTransferManager : public TransferManager {
+class ExecutorTransferManager : public TransferManager {
  public:
-  ExampleTransferManager();
+  ExecutorTransferManager();
 
-  ~ExampleTransferManager() override {}
+  ~ExecutorTransferManager() override {}
 
   se::Platform::Id PlatformId() const override;
 
@@ -68,10 +68,10 @@ class ExampleTransferManager : public TransferManager {
   int64 GetByteSizeRequirement(const Shape& shape) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ExampleTransferManager);
+  TF_DISALLOW_COPY_AND_ASSIGN(ExecutorTransferManager);
 };
 
-}  // namespace exampleplugin
+}  // namespace executorplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_EXAMPLE_DRIVER_EXAMPLE_TRANSFER_MANAGER_H_
+#endif  // TENSORFLOW_COMPILER_EXECUTOR_DRIVER_EXECUTOR_TRANSFER_MANAGER_H_

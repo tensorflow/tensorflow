@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/example/executable.h"
-#include "tensorflow/compiler/plugin/example/executor.h"
+#include "tensorflow/compiler/plugin/executor/executable.h"
+#include "tensorflow/compiler/plugin/executor/executor.h"
 
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 
@@ -22,17 +22,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::exampleplugin;
+namespace sep = ::perftools::gputools::executorplugin;
 
 namespace xla {
-namespace exampleplugin {
+namespace executorplugin {
 
-ExampleExecutable::ExampleExecutable(std::unique_ptr<HloModule> hlo_module)
+ExecutorExecutable::ExecutorExecutable(std::unique_ptr<HloModule> hlo_module)
     : Executable(std::move(hlo_module)) {}
 
-ExampleExecutable::~ExampleExecutable() {}
+ExecutorExecutable::~ExecutorExecutable() {}
 
-static se::DeviceMemoryBase AllocateSingleOutput(sep::ExampleExecutor* executor,
+static se::DeviceMemoryBase AllocateSingleOutput(sep::ExecutorExecutor* executor,
                                                  Literal* literal) {
   int64 size(xla::ShapeUtil::ByteSizeOf(literal->shape()));
   void* buf = executor->Allocate(size);
@@ -41,7 +41,7 @@ static se::DeviceMemoryBase AllocateSingleOutput(sep::ExampleExecutor* executor,
   return se::DeviceMemoryBase(buf, size);
 }
 
-static se::DeviceMemoryBase AllocateOutputBuffer(sep::ExampleExecutor* executor,
+static se::DeviceMemoryBase AllocateOutputBuffer(sep::ExecutorExecutor* executor,
                                                  Literal* literal) {
   const Shape& shape = literal->shape();
   if (shape.element_type() != xla::TUPLE) {
@@ -59,7 +59,7 @@ static se::DeviceMemoryBase AllocateOutputBuffer(sep::ExampleExecutor* executor,
   }
 }
 
-StatusOr<se::DeviceMemoryBase> ExampleExecutable::ExecuteOnStream(
+StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
     HloExecutionProfile* hlo_execution_profile) {
@@ -103,11 +103,11 @@ StatusOr<se::DeviceMemoryBase> ExampleExecutable::ExecuteOnStream(
 
   // Copy the result into the return buffer
   perftools::gputools::StreamExecutor* executor(stream->parent());
-  sep::ExampleExecutor* exampleExecutor(
-      static_cast<sep::ExampleExecutor*>(executor->implementation()));
+  sep::ExecutorExecutor* executorExecutor(
+      static_cast<sep::ExecutorExecutor*>(executor->implementation()));
 
   se::DeviceMemoryBase ret =
-      AllocateOutputBuffer(exampleExecutor, output.get());
+      AllocateOutputBuffer(executorExecutor, output.get());
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -120,20 +120,20 @@ StatusOr<se::DeviceMemoryBase> ExampleExecutable::ExecuteOnStream(
   return ret;
 }
 
-StatusOr<std::unique_ptr<ShapedBuffer>> ExampleExecutable::ExecuteOnStream(
+StatusOr<std::unique_ptr<ShapedBuffer>> ExecutorExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   return tensorflow::errors::Unimplemented(
-      "ExecuteOnStream is not yet supported on Example.");
+      "ExecuteOnStream is not yet supported on Executor.");
 }
 
-StatusOr<se::DeviceMemoryBase> ExampleExecutable::ExecuteAsyncOnStream(
+StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   return tensorflow::errors::Unimplemented(
-      "ExecuteAsyncOnStream is not yet supported on Example.");
+      "ExecuteAsyncOnStream is not yet supported on Executor.");
 }
 
-}  // namespace exampleplugin
+}  // namespace executorplugin
 }  // namespace xla

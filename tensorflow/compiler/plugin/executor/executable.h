@@ -16,8 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_EXAMPLE_DRIVER_EXAMPLE_EXECUTABLE_H_
-#define TENSORFLOW_COMPILER_EXAMPLE_DRIVER_EXAMPLE_EXECUTABLE_H_
+#ifndef TENSORFLOW_COMPILER_EXECUTOR_DRIVER_EXECUTOR_EXECUTABLE_H_
+#define TENSORFLOW_COMPILER_EXECUTOR_DRIVER_EXECUTOR_EXECUTABLE_H_
 
 #include <cstddef>
 #include <memory>
@@ -33,12 +33,12 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace xla {
-namespace exampleplugin {
+namespace executorplugin {
 
-class ExampleExecutable : public Executable {
+class ExecutorExecutable : public Executable {
  public:
-  ExampleExecutable(std::unique_ptr<HloModule> hlo_module);
-  ~ExampleExecutable() override;
+  ExecutorExecutable(std::unique_ptr<HloModule> hlo_module);
+  ~ExecutorExecutable() override;
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
@@ -57,10 +57,10 @@ class ExampleExecutable : public Executable {
           arguments) override;
 
  private:
-  TF_DISALLOW_COPY_AND_ASSIGN(ExampleExecutable);
+  TF_DISALLOW_COPY_AND_ASSIGN(ExecutorExecutable);
 };
 
-}  // namespace exampleplugin
+}  // namespace executorplugin
 }  // namespace xla
 
-#endif  // TENSORFLOW_COMPILER_EXAMPLE_DRIVER_EXAMPLE_EXECUTABLE_H_
+#endif  // TENSORFLOW_COMPILER_EXECUTOR_DRIVER_EXECUTOR_EXECUTABLE_H_

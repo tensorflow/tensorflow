@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/example/transfer_manager.h"
-#include "tensorflow/compiler/plugin/example/platform_id.h"
+#include "tensorflow/compiler/plugin/executor/transfer_manager.h"
+#include "tensorflow/compiler/plugin/executor/platform_id.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -31,18 +31,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-namespace sep = ::perftools::gputools::exampleplugin;
+namespace sep = ::perftools::gputools::executorplugin;
 
 namespace xla {
-namespace exampleplugin {
+namespace executorplugin {
 
-ExampleTransferManager::ExampleTransferManager() {}
+ExecutorTransferManager::ExecutorTransferManager() {}
 
-se::Platform::Id ExampleTransferManager::PlatformId() const {
-  return se::exampleplugin::kExamplePlatformId;
+se::Platform::Id ExecutorTransferManager::PlatformId() const {
+  return se::executorplugin::kExecutorPlatformId;
 }
 
-Status ExampleTransferManager::TransferLiteralFromDevice(
+Status ExecutorTransferManager::TransferLiteralFromDevice(
     se::StreamExecutor* executor, const se::DeviceMemoryBase& source,
     const Shape& device_shape, const Shape& literal_shape, Literal* literal) {
   TF_RET_CHECK(ShapeUtil::Compatible(device_shape, literal_shape));
@@ -83,7 +83,7 @@ Status ExampleTransferManager::TransferLiteralFromDevice(
 }
 
 StatusOr<std::vector<se::DeviceMemoryBase>>
-ExampleTransferManager::ShallowCopyTupleFromDevice(
+ExecutorTransferManager::ShallowCopyTupleFromDevice(
     se::StreamExecutor* executor, const se::DeviceMemoryBase& source,
     const Shape& shape) {
   TF_RET_CHECK(ShapeUtil::IsTuple(shape));
@@ -114,7 +114,7 @@ ExampleTransferManager::ShallowCopyTupleFromDevice(
   return std::move(destination);
 }
 
-Status ExampleTransferManager::TransferLiteralToDevice(
+Status ExecutorTransferManager::TransferLiteralToDevice(
     se::StreamExecutor* executor, const Literal& literal,
     se::DeviceMemoryBase* destination) {
   const Shape& shape = literal.shape();
@@ -138,7 +138,7 @@ Status ExampleTransferManager::TransferLiteralToDevice(
                                 destination);
 }
 
-Status ExampleTransferManager::TransferLiteralToInfeed(
+Status ExecutorTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const Literal& literal) {
   const Shape& shape = literal.shape();
   VLOG(1) << "transferring literal shape to infeed: "
@@ -147,7 +147,7 @@ Status ExampleTransferManager::TransferLiteralToInfeed(
   return Status::OK();
 }
 
-Status ExampleTransferManager::TransferLiteralFromOutfeed(
+Status ExecutorTransferManager::TransferLiteralFromOutfeed(
     perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
     Literal* literal) {
   const Shape& shape = literal->shape();
@@ -157,26 +157,26 @@ Status ExampleTransferManager::TransferLiteralFromOutfeed(
   return Status::OK();
 }
 
-Status ExampleTransferManager::ResetDevices(
+Status ExecutorTransferManager::ResetDevices(
     tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
         executors) {
   return Unimplemented("Device reset not supported");
 }
 
-int64 ExampleTransferManager::GetByteSizeRequirement(const Shape& shape) {
+int64 ExecutorTransferManager::GetByteSizeRequirement(const Shape& shape) {
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
-}  // namespace exampleplugin
+}  // namespace executorplugin
 }  // namespace xla
 
-static xla::TransferManager* CreateExampleTransferManager() {
-  return new xla::exampleplugin::ExampleTransferManager();
+static xla::TransferManager* CreateExecutorTransferManager() {
+  return new xla::executorplugin::ExecutorTransferManager();
 }
 
 static bool InitModule() {
-  xla::TransferManager::RegisterTransferManager(sep::kExamplePlatformId,
-                                                &CreateExampleTransferManager);
+  xla::TransferManager::RegisterTransferManager(sep::kExecutorPlatformId,
+                                                &CreateExecutorTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();
