@@ -243,7 +243,7 @@ Status SimpleGraphExecutionState::InitBaseGraph(
       session_options_->config.graph_options().rewrite_options();
 
   if (grappler::MetaOptimizerEnabled(rewrite_options)) {
-    // Adding this functionalty in steps. The first step is to make sure
+    // Adding this functionality in steps. The first step is to make sure
     // we don't break dependencies. The second step will be to turn the
     // functionality on by default.
     grappler::GrapplerItem item;

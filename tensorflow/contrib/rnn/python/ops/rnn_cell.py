@@ -466,7 +466,7 @@ class GridLSTMCell(core_rnn_cell.RNNCell):
         state is clipped by this value prior to the cell output activation.
       initializer: (optional) The initializer to use for the weight and
         projection matrices, default None.
-      num_unit_shards: (optional) int, defualt 1, How to split the weight
+      num_unit_shards: (optional) int, default 1, How to split the weight
         matrix. If > 1,the weight matrix is stored across num_unit_shards.
       forget_bias: (optional) float, default 1.0, The initial bias of the
         forget gates, used to reduce the scale of forgetting at the beginning
@@ -1809,12 +1809,12 @@ class PhasedLSTMCell(core_rnn_cell.RNNCell):
           period during which the gates are open.
       trainable_ratio_on: bool, weather ratio_on is trainable.
       period_init_min: float or scalar float Tensor. With value > 0.
-          Minimum value of the initalized period.
+          Minimum value of the initialized period.
           The period values are initialized by drawing from the distribution:
           e^U(log(period_init_min), log(period_init_max))
           Where U(.,.) is the uniform distribution.
       period_init_max: float or scalar float Tensor.
-          With value > period_init_min. Maximum value of the initalized period.
+          With value > period_init_min. Maximum value of the initialized period.
       reuse: (optional) Python boolean describing whether to reuse variables
         in an existing scope. If not `True`, and the existing scope already has
         the given variables, an error is raised.

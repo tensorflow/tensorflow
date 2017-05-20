@@ -343,7 +343,7 @@ class ListScheduler {
     return freed_bytes;
   }
 
-  // Construct the scheduling priority of the given instruciton.
+  // Construct the scheduling priority of the given instruction.
   Priority GetPriority(const HloInstruction* instruction) {
     return {BytesFreedIfScheduled(instruction), instruction->user_count()};
   }

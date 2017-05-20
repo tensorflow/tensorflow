@@ -330,7 +330,7 @@ class ProfileAnalyzer(object):
     self._arg_parsers["list_profile"] = ap
 
     ap = argparse.ArgumentParser(
-        description="Print a Python source file wiht line-level profile "
+        description="Print a Python source file with line-level profile "
                     "information",
         usage=argparse.SUPPRESS)
     ap.add_argument(

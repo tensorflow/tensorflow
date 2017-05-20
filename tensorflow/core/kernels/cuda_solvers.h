@@ -116,7 +116,7 @@ class CudaSolver {
   // Launches a memcpy of solver status data specified by dev_lapack_info from
   // device to the host, and asynchronously invokes the given callback when the
   // copy is complete. The first Status argument to the callback will be
-  // Status::OK if all lapack infos retrived are zero, otherwise an error status
+  // Status::OK if all lapack infos retrieved are zero, otherwise an error status
   // is given. The second argument contains a host-side copy of the entire set
   // of infos retrieved, and can be used for generating detailed error messages.
   Status CopyLapackInfoToHostAsync(

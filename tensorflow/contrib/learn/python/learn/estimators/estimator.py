@@ -89,7 +89,7 @@ SCIKIT_DECOUPLE_INSTRUCTIONS = (
 
 
 def _verify_input_args(x, y, input_fn, feed_fn, batch_size):
-  """Verifies validity of co-existance of input arguments."""
+  """Verifies validity of co-existence of input arguments."""
   if input_fn is None:
     if x is None:
       raise ValueError('Either x or input_fn must be provided.')
@@ -358,7 +358,7 @@ class BaseEstimator(
   """
   __metaclass__ = abc.ABCMeta
 
-  # Note that for Google users, this is overriden with
+  # Note that for Google users, this is overridden with
   # learn_runner.EstimatorConfig.
   # TODO(wicke): Remove this once launcher takes over config functionality
   _Config = run_config.RunConfig  # pylint: disable=invalid-name
@@ -703,7 +703,7 @@ class BaseEstimator(
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
 
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
@@ -1149,7 +1149,7 @@ class Estimator(BaseEstimator):
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1165,7 +1165,7 @@ class Estimator(BaseEstimator):
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1204,7 +1204,7 @@ class Estimator(BaseEstimator):
   def _get_predict_ops(self, features):
     """Method that builds model graph and returns prediction ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 

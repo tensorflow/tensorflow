@@ -194,7 +194,7 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
   }
 }
 
-// This tests demonstrates the global seeding behaviour.
+// This tests demonstrates the global seeding behavior.
 // * If a seed is passed in via Execute (ExecuteAndTransfer) then the output is
 //   fixed (i.e., there is a single output for a given seed);
 // * If no seed is passed in then the output of every call can be different;
