@@ -70,7 +70,7 @@ class DecodeRawOp : public OpKernel {
     auto out = output_tensor->flat_inner_dims<T>();
     DCHECK_EQ(flat_in.size(), out.dimensions()[0]);
     T* out_data = out.data();
-    if (port::kLittleEndian == little_endian_) {
+    if (port::kLittleEndian == little_endian_ || sizeof(T) == 1) {
       for (int64 i = 0; i < flat_in.size(); ++i) {
         const T* in_data = reinterpret_cast<const T*>(flat_in(i).data());
         memcpy(out_data, in_data, str_size);
