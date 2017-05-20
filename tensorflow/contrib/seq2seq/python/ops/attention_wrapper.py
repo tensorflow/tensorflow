@@ -562,10 +562,11 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     if attention_layer_size is not None:
       self._attention_layer = layers_core.Dense(
           attention_layer_size, name="attention_layer", use_bias=False)
-      self._attention_size = attention_layer_size
+      self._attention_layer_size = attention_layer_size
     else:
       self._attention_layer = None
-      self._attention_size = attention_mechanism.values.get_shape()[-1].value
+      self._attention_layer_size = attention_mechanism.values.get_shape()[
+          -1].value
 
     self._cell = cell
     self._attention_mechanism = attention_mechanism
@@ -598,7 +599,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
   @property
   def output_size(self):
     if self._output_attention:
-      return self._attention_size
+      return self._attention_layer_size
     else:
       return self._cell.output_size
 
@@ -607,7 +608,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     return AttentionWrapperState(
         cell_state=self._cell.state_size,
         time=tensor_shape.TensorShape([]),
-        attention=self._attention_size,
+        attention=self._attention_layer_size,
         alignments=self._attention_mechanism.alignments_size,
         alignment_history=())  # alignment_history is sometimes a TensorArray
 
@@ -640,7 +641,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       return AttentionWrapperState(
           cell_state=cell_state,
           time=array_ops.zeros([], dtype=dtypes.int32),
-          attention=_zero_state_tensors(self._attention_size, batch_size,
+          attention=_zero_state_tensors(self._attention_layer_size, batch_size,
                                         dtype),
           alignments=self._attention_mechanism.initial_alignments(
               batch_size, dtype),
@@ -659,7 +660,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       alignments and the attention_mechanism's values (memory).
     - Step 6: Calculate the attention output by concatenating the cell output
       and context through the attention layer (a linear layer with
-      `attention_size` outputs).
+      `attention_layer_size` outputs).
 
     Args:
       inputs: (Possibly nested tuple of) Tensor, the input at this time step.
@@ -670,7 +671,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       A tuple `(attention_or_cell_output, next_state)`, where:
 
       - `attention_or_cell_output` depending on `output_attention`.
-      - `next_state` is an instance of `DynamicAttentionWrapperState`
+      - `next_state` is an instance of `AttentionWrapperState`
          containing the state calculated at this time step.
     """
     # Step 1: Calculate the true inputs to the cell based on the
