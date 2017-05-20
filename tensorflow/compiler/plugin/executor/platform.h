@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_EXAMPLE_STREAM_EXECUTOR_EXAMPLE_PLATFORM_H_
-#define TENSORFLOW_COMPILER_EXAMPLE_STREAM_EXECUTOR_EXAMPLE_PLATFORM_H_
+#ifndef TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_PLATFORM_H_
+#define TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_PLATFORM_H_
 
 #include <memory>
 #include <string>
@@ -32,12 +32,12 @@ limitations under the License.
 
 namespace perftools {
 namespace gputools {
-namespace exampleplugin {
+namespace executorplugin {
 
-class ExamplePlatform : public Platform {
+class ExecutorPlatform : public Platform {
  public:
-  ExamplePlatform();
-  ~ExamplePlatform() override;
+  ExecutorPlatform();
+  ~ExecutorPlatform() override;
 
   Platform::Id id() const override;
 
@@ -73,11 +73,11 @@ class ExamplePlatform : public Platform {
   // Cache of created StreamExecutors.
   ExecutorCache executor_cache_;
 
-  SE_DISALLOW_COPY_AND_ASSIGN(ExamplePlatform);
+  SE_DISALLOW_COPY_AND_ASSIGN(ExecutorPlatform);
 };
 
-}  // namespace exampleplugin
+}  // namespace executorplugin
 }  // namespace gputools
 }  // namespace perftools
 
-#endif  // TENSORFLOW_COMPILER_EXAMPLE_STREAM_EXECUTOR_EXAMPLE_PLATFORM_H_
+#endif  // TENSORFLOW_COMPILER_EXECUTOR_STREAM_EXECUTOR_EXECUTOR_PLATFORM_H_
