@@ -16,8 +16,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <fstream>
 
-#include "tensorflow/compiler/plugin/example/compiler.h"
-#include "tensorflow/compiler/plugin/example/executable.h"
+#include "tensorflow/compiler/plugin/executor/compiler.h"
+#include "tensorflow/compiler/plugin/executor/executable.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
@@ -37,20 +37,20 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace se = ::perftools::gputools;
-namespace sep = ::perftools::gputools::exampleplugin;
+namespace sep = ::perftools::gputools::executorplugin;
 namespace port = ::perftools::gputools::port;
 
 namespace xla {
-namespace exampleplugin {
+namespace executorplugin {
 
 /*
  * Run optimization passes on the module.  The graph is transformed by
  * each pass in the optimization pipeline.  The service subdirectory
  * contains useful optimization passes.
  */
-Status ExampleCompiler::RunHloOptimization(HloModule* hlo_module,
-                                           HloDumper dump_hlo) {
-  HloPassPipeline pipeline("Example", dump_hlo);
+Status ExecutorCompiler::RunHloOptimization(HloModule* hlo_module,
+                                            HloDumper dump_hlo) {
+  HloPassPipeline pipeline("Executor", dump_hlo);
   pipeline.AddPass<Inliner>();
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<HloCSE>(false);
@@ -66,7 +66,7 @@ Status ExampleCompiler::RunHloOptimization(HloModule* hlo_module,
   return pipeline.Run(hlo_module).status();
 }
 
-StatusOr<std::unique_ptr<Executable>> ExampleCompiler::Compile(
+StatusOr<std::unique_ptr<Executable>> ExecutorCompiler::Compile(
         std::unique_ptr<HloModule> hlo_module, HloDumper dump_hlo,
         se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
@@ -81,41 +81,41 @@ StatusOr<std::unique_ptr<Executable>> ExampleCompiler::Compile(
 
   // Create executable from only the Hlo module
   std::unique_ptr<Executable> executable;
-  executable.reset(new ExampleExecutable(std::move(hlo_module)));
+  executable.reset(new ExecutorExecutable(std::move(hlo_module)));
 
   return std::move(executable);
 }
 
-StatusOr<std::vector<std::unique_ptr<Executable>>> ExampleCompiler::Compile(
+StatusOr<std::vector<std::unique_ptr<Executable>>> ExecutorCompiler::Compile(
         std::vector<std::unique_ptr<HloModule>> hlo_modules,
         HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
 
   return tensorflow::errors::Unimplemented(
-      "Compilation of multiple HLO modules is not supported on Example.");
+      "Compilation of multiple HLO modules is not supported on Executor.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-ExampleCompiler::CompileAheadOfTime(
+ExecutorCompiler::CompileAheadOfTime(
     std::vector<std::unique_ptr<HloModule>> hlo_modules,
     HloDumper dump_hlo, const AotCompilationOptions& aot_options) {
 
   return tensorflow::errors::InvalidArgument(
-      "AOT compilation not supported on Example");
+      "AOT compilation not supported on Executor");
 }
 
-int64 ExampleCompiler::ShapeSizeBytes(const Shape& shape) const {
+int64 ExecutorCompiler::ShapeSizeBytes(const Shape& shape) const {
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
-se::Platform::Id ExampleCompiler::PlatformId() const {
-  return sep::kExamplePlatformId;
+se::Platform::Id ExecutorCompiler::PlatformId() const {
+  return sep::kExecutorPlatformId;
 }
 
-}  // namespace exampleplugin
+}  // namespace executorplugin
 }  // namespace xla
 
-REGISTER_MODULE_INITIALIZER(example_compiler, {
-  xla::Compiler::RegisterCompilerFactory(sep::kExamplePlatformId, []() {
-    return xla::MakeUnique<xla::exampleplugin::ExampleCompiler>();
+REGISTER_MODULE_INITIALIZER(executor_compiler, {
+  xla::Compiler::RegisterCompilerFactory(sep::kExecutorPlatformId, []() {
+    return xla::MakeUnique<xla::executorplugin::ExecutorCompiler>();
   });
 });

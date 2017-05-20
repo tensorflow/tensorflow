@@ -23,10 +23,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-const char* const DEVICE_XLA_EXA = "XLA_EXA";
-const char* const DEVICE_EXA_XLA_JIT = "XLA_EXA_JIT";
+const char* const DEVICE_XLA_EXEC = "XLA_EXEC";
+const char* const DEVICE_EXEC_XLA_JIT = "XLA_EXEC_JIT";
 
-constexpr std::array<DataType, 5> kExaAllTypes = {
+constexpr std::array<DataType, 5> kExecAllTypes = {
     {DT_INT32, DT_FLOAT, DT_BOOL}};
 
 class XlaExaDeviceFactory : public DeviceFactory {
@@ -39,25 +39,25 @@ Status XlaExaDeviceFactory::CreateDevices(const SessionOptions& options,
                                           const string& name_prefix,
                                           std::vector<Device*>* devices) {
   static XlaDeviceOpRegistrations* registrations =
-      RegisterXlaDeviceKernels(DEVICE_XLA_EXA, DEVICE_EXA_XLA_JIT);
+      RegisterXlaDeviceKernels(DEVICE_XLA_EXEC, DEVICE_EXEC_XLA_JIT);
   (void)registrations;
 
   std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create("Example", DEVICE_XLA_EXA, 0,
-                                       DEVICE_EXA_XLA_JIT, options, name_prefix,
-                                       &device));
+  TF_RETURN_IF_ERROR(XlaDevice::Create("Executor", DEVICE_XLA_EXEC, 0,
+                                       DEVICE_EXEC_XLA_JIT, options,
+                                       name_prefix, &device));
   devices->push_back(device.release());
   return Status::OK();
 }
 
-REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_EXA, XlaExaDeviceFactory, 210);
+REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_EXEC, XlaExaDeviceFactory, 210);
 
 // Kernel registrations
 
 static bool OpFilter(KernelDef* kdef) { return true; }
 
-REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_EXA, XlaDeviceLaunchOp, kExaAllTypes);
-REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_EXA, kExaAllTypes);
-REGISTER_XLA_BACKEND(DEVICE_EXA_XLA_JIT, kExaAllTypes, OpFilter);
+REGISTER_XLA_LAUNCH_KERNEL(DEVICE_XLA_EXEC, XlaDeviceLaunchOp, kExecAllTypes);
+REGISTER_XLA_DEVICE_KERNELS(DEVICE_XLA_EXEC, kExecAllTypes);
+REGISTER_XLA_BACKEND(DEVICE_EXEC_XLA_JIT, kExecAllTypes, OpFilter);
 
 }  // namespace tensorflow
