@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 
-
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -29,14 +28,14 @@ limitations under the License.
 namespace xla {
 namespace exampleplugin {
 
-
 class ExampleCompiler : public Compiler {
  public:
   ExampleCompiler() {}
   ~ExampleCompiler() override {}
 
   StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> hlo_module, HloDumper dump_hlo,
+      std::unique_ptr<HloModule> hlo_module,
+      HloDumper dump_hlo,
       perftools::gputools::StreamExecutor* stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
@@ -54,9 +53,7 @@ class ExampleCompiler : public Compiler {
   perftools::gputools::Platform::Id PlatformId() const override;
 
  private:
-
-  Status RunHloOptimization(HloModule* hlo_module,
-                            HloDumper dump_hlo);
+  Status RunHloOptimization(HloModule* hlo_module, HloDumper dump_hlo);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ExampleCompiler);
 };

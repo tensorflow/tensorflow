@@ -39,14 +39,12 @@ ExamplePlatform::~ExamplePlatform() {}
 
 Platform::Id ExamplePlatform::id() const { return kExamplePlatformId; }
 
-int ExamplePlatform::VisibleDeviceCount() const {
-  return 1;
-}
+int ExamplePlatform::VisibleDeviceCount() const { return 1; }
 
 const string& ExamplePlatform::Name() const { return name_; }
 
-port::StatusOr<StreamExecutor*>
-ExamplePlatform::ExecutorForDevice(int ordinal) {
+port::StatusOr<StreamExecutor*> ExamplePlatform::ExecutorForDevice(
+    int ordinal) {
   StreamExecutorConfig config;
   config.ordinal = ordinal;
   config.plugin_config = PluginConfig();
@@ -119,8 +117,7 @@ static void InitializeExamplePlatform() {
 }  // namespace gputools
 }  // namespace perftools
 
-REGISTER_MODULE_INITIALIZER(
-    example_platform, sep::InitializeExamplePlatform());
+REGISTER_MODULE_INITIALIZER(example_platform, sep::InitializeExamplePlatform());
 
 DECLARE_MODULE_INITIALIZER(multi_platform_manager);
 // Note that module initialization sequencing is not supported in the

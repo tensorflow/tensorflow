@@ -40,25 +40,23 @@ class ExampleExecutable : public Executable {
   ExampleExecutable(std::unique_ptr<HloModule> hlo_module);
   ~ExampleExecutable() override;
 
-
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-          const ServiceExecutableRunOptions* run_options,
-          tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+      const ServiceExecutableRunOptions* run_options,
+      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
-          HloExecutionProfile* hlo_execution_profile) override;
+      HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
-          const ServiceExecutableRunOptions* run_options,
-          tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-          HloExecutionProfile* hlo_execution_profile) override;
+      const ServiceExecutableRunOptions* run_options,
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
-          const ServiceExecutableRunOptions* run_options,
-          tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
+      const ServiceExecutableRunOptions* run_options,
+      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments) override;
 
  private:
-
   TF_DISALLOW_COPY_AND_ASSIGN(ExampleExecutable);
 };
 

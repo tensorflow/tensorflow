@@ -35,46 +35,40 @@ namespace xla {
 namespace exampleplugin {
 
 class ExampleTransferManager : public TransferManager {
-public:
+ public:
   ExampleTransferManager();
 
   ~ExampleTransferManager() override {}
 
   se::Platform::Id PlatformId() const override;
 
-  StatusOr<std::vector<se::DeviceMemoryBase>>
-  ShallowCopyTupleFromDevice(
-          se::StreamExecutor* executor,
-          const se::DeviceMemoryBase& source,
-          const Shape& shape) override;
+  StatusOr<std::vector<se::DeviceMemoryBase>> ShallowCopyTupleFromDevice(
+      se::StreamExecutor* executor, const se::DeviceMemoryBase& source,
+      const Shape& shape) override;
 
-  Status TransferLiteralFromDevice(
-          se::StreamExecutor* executor,
-          const se::DeviceMemoryBase& source,
-          const Shape& device_shape,
-          const Shape& literal_shape,
-          Literal* literal) override;
+  Status TransferLiteralFromDevice(se::StreamExecutor* executor,
+                                   const se::DeviceMemoryBase& source,
+                                   const Shape& device_shape,
+                                   const Shape& literal_shape,
+                                   Literal* literal) override;
 
-  Status TransferLiteralToDevice(
-          se::StreamExecutor* executor,
-          const Literal& literal,
-          se::DeviceMemoryBase* destination) override;
+  Status TransferLiteralToDevice(se::StreamExecutor* executor,
+                                 const Literal& literal,
+                                 se::DeviceMemoryBase* destination) override;
 
-  Status
-  TransferLiteralToInfeed(se::StreamExecutor *executor,
-                          const Literal &literal) override;
+  Status TransferLiteralToInfeed(se::StreamExecutor* executor,
+                                 const Literal& literal) override;
 
-  Status TransferLiteralFromOutfeed(
-          se::StreamExecutor* executor,
-          const Shape& literal_shape,
-          Literal* literal) override;
+  Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
+                                    const Shape& literal_shape,
+                                    Literal* literal) override;
 
   Status ResetDevices(
-          tensorflow::gtl::ArraySlice<se::StreamExecutor*> executors) override;
+      tensorflow::gtl::ArraySlice<se::StreamExecutor*> executors) override;
 
   int64 GetByteSizeRequirement(const Shape& shape) override;
 
-private:
+ private:
   TF_DISALLOW_COPY_AND_ASSIGN(ExampleTransferManager);
 };
 

@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/status_macros.h"
 
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 namespace se = ::perftools::gputools;
 
@@ -33,18 +33,18 @@ host::HostStream *AsExampleStream(Stream *stream) {
 }
 
 ExampleExecutor::ExampleExecutor(const PluginConfig &plugin_config)
-    : plugin_config_(plugin_config) {
-}
+    : plugin_config_(plugin_config) {}
 
 ExampleExecutor::~ExampleExecutor() {}
 
 void *ExampleExecutor::Allocate(uint64 size) {
-  void* buf = new char[size];
+  void *buf = new char[size];
   return buf;
 }
 
 void *ExampleExecutor::AllocateSubBuffer(DeviceMemoryBase *parent,
-                                      uint64 offset_bytes, uint64 size_bytes) {
+                                         uint64 offset_bytes,
+                                         uint64 size_bytes) {
   return parent + offset_bytes;
 }
 
@@ -55,18 +55,18 @@ void ExampleExecutor::Deallocate(DeviceMemoryBase *mem) {
 }
 
 bool ExampleExecutor::Memcpy(Stream *stream, void *host_dst,
-                          const DeviceMemoryBase &dev_src, uint64 size) {
-  AsExampleStream(stream)->EnqueueTask(
-      [this, host_dst, dev_src, size]() {
-        port::Status ok = SynchronousMemcpy(host_dst, dev_src, size); });
+                             const DeviceMemoryBase &dev_src, uint64 size) {
+  AsExampleStream(stream)->EnqueueTask([this, host_dst, dev_src, size]() {
+    port::Status ok = SynchronousMemcpy(host_dst, dev_src, size);
+  });
   return true;
 }
 
 bool ExampleExecutor::Memcpy(Stream *stream, DeviceMemoryBase *dev_dst,
-                          const void *host_src, uint64 size) {
-  AsExampleStream(stream)->EnqueueTask(
-      [this, dev_dst, host_src, size]() {
-        port::Status ok = SynchronousMemcpy(dev_dst, host_src, size); });
+                             const void *host_src, uint64 size) {
+  AsExampleStream(stream)->EnqueueTask([this, dev_dst, host_src, size]() {
+    port::Status ok = SynchronousMemcpy(dev_dst, host_src, size);
+  });
   return true;
 }
 
@@ -85,7 +85,7 @@ port::Status ExampleExecutor::SynchronousMemcpy(void *host_dst,
 }
 
 bool ExampleExecutor::HostCallback(Stream *stream,
-                                std::function<void()> callback) {
+                                   std::function<void()> callback) {
   AsExampleStream(stream)->EnqueueTask(callback);
   return true;
 }
