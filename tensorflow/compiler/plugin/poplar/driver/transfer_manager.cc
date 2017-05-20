@@ -34,6 +34,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+namespace sep = ::perftools::gputools::poplarplugin;
+
 namespace xla {
 namespace poplarplugin {
 
