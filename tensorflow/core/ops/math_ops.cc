@@ -2374,7 +2374,7 @@ output_max: the computed max output.
 
 namespace {
 
-Status ParticalReductionShapeFn(InferenceContext* c) {
+Status ReduceSliceShapeFn(InferenceContext* c) {
   ShapeHandle handle;
   DimensionHandle dimhandle;
   // "axis" must be a scala
@@ -2405,7 +2405,7 @@ REGISTER_OP("ReduceSliceSum")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
-    .SetShapeFn(ParticalReductionShapeFn)
+    .SetShapeFn(ReduceSliceShapeFn)
     .Doc(R"doc(
 Dynamically sum over the first dimension of a tensor according to start and end
 indices specified at 'index'.
@@ -2450,7 +2450,7 @@ REGISTER_OP("ReduceSliceProd")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
-    .SetShapeFn(ParticalReductionShapeFn)
+    .SetShapeFn(ReduceSliceShapeFn)
     .Doc(R"doc(
 Dynamically compute the product over the first dimension of a tensor according
 to start and end indices specified at 'indices'.
@@ -2495,7 +2495,7 @@ REGISTER_OP("ReduceSliceMax")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
-    .SetShapeFn(ParticalReductionShapeFn)
+    .SetShapeFn(ReduceSliceShapeFn)
     .Doc(R"doc(
 Dynamically compute the maximum over the first dimension of a tensor according
 to start and end indices specified at "indices".
@@ -2540,7 +2540,7 @@ REGISTER_OP("ReduceSliceMin")
     .Output("output: T")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32,int64}")
-    .SetShapeFn(ParticalReductionShapeFn)
+    .SetShapeFn(ReduceSliceShapeFn)
     .Doc(R"doc(
 Dynamically compute the minimum over the first dimension of a tensor according
 to start and end indices specified at 'indices'.
