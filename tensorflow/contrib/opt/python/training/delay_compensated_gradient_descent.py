@@ -51,10 +51,10 @@ class _DenseResourceVariableAsynchronousProcessor(optimizer._DenseResourceVariab
 
 def _get_processor(v):
   """The processor of v."""
-  if isinstance(v, variables.Variable):
-    return _RefVariableAsynchronousProcessor(v)
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableAsynchronousProcessor(v)
+  if isinstance(v, variables.Variable):
+    return _RefVariableAsynchronousProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
@@ -239,7 +239,7 @@ class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
         self._get_or_make_slot(v, var2, "shadow_{0}".format(index),
                                self._name)
 
-  def _apply_dense(self, grad, var, worker_index=0):
+  def _resource_apply_dense(self, grad, var, worker_index=0):
     # Get previous value of the variable from the slot
     shadow = self.get_slot(var, "shadow_{0}".format(worker_index))
     return training_ops.apply_delay_compensated_gradient_descent(
