@@ -113,7 +113,6 @@ public:
 };
 
 Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
-                                          HloModuleConfig* module_config,
                                           HloDumper dump_hlo) {
   HloPassPipeline pipeline("IPU", dump_hlo);
   pipeline.AddPass<Inliner>();
@@ -132,15 +131,14 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
 }
 
 StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
+    std::unique_ptr<HloModule> hlo_module, HloDumper dump_hlo,
     se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
   VLOG(1) << "Generate graph " << hlo_module->name();
 
   TF_RETURN_IF_ERROR(
-          RunHloOptimization(hlo_module.get(), module_config.get(), dump_hlo));
+          RunHloOptimization(hlo_module.get(), dump_hlo));
 
   sep::PoplarExecutor* poplarExecutor(
           static_cast<sep::PoplarExecutor*>(stream_exec->implementation()));
@@ -221,7 +219,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   std::unique_ptr<Executable> executable;
   executable.reset(
           new PoplarExecutable(std::move(hlo_module),
-                               std::move(module_config),
                                std::move(engine),
                                std::move(visitor.output_map)));
 
@@ -230,7 +227,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
 
   return tensorflow::errors::Unimplemented(
@@ -240,9 +236,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 PoplarCompiler::CompileAheadOfTime(
     std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     HloDumper dump_hlo, const AotCompilationOptions& aot_options) {
-  TF_RET_CHECK(hlo_modules.size() == module_configs.size());
 
   return tensorflow::errors::InvalidArgument(
       "AOT compilation not supported on Poplar");

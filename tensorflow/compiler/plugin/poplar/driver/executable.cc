@@ -27,11 +27,9 @@ namespace poplarplugin {
 
 PoplarExecutable::PoplarExecutable(
         std::unique_ptr<HloModule> hlo_module,
-        std::unique_ptr<HloModuleConfig> module_config,
         std::unique_ptr<poplar::Engine> engine,
         const std::map<int64, int64>& output_map)
-    : Executable(std::move(hlo_module),
-                 std::move(module_config)),
+    : Executable(std::move(hlo_module)),
       poplar_engine_(std::move(engine)),
       output_map_(output_map) {
 }

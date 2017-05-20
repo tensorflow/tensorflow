@@ -41,21 +41,16 @@ class PoplarCompiler : public Compiler {
   ~PoplarCompiler() override {}
 
   StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> hlo_module,
-      std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
-      perftools::gputools::StreamExecutor* stream_exec) override;
+          std::unique_ptr<HloModule> module, HloDumper dump_hlo,
+          perftools::gputools::StreamExecutor* executor) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> hlo_module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-      HloDumper dump_hlo,
-      std::vector<perftools::gputools::StreamExecutor*> stream_exec) override;
+          std::vector<std::unique_ptr<HloModule>>, HloDumper,
+          std::vector<perftools::gputools::StreamExecutor*>) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      std::vector<std::unique_ptr<HloModule>> module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-      HloDumper dump_hlo, const AotCompilationOptions& options) override;
+  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>>, HloDumper,
+  const AotCompilationOptions&) override;
 
   int64 ShapeSizeBytes(const Shape& shape) const override;
 
@@ -64,7 +59,6 @@ class PoplarCompiler : public Compiler {
  private:
 
   Status RunHloOptimization(HloModule* hlo_module,
-                            HloModuleConfig* module_config,
                             HloDumper dump_hlo);
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarCompiler);

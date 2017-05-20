@@ -36,20 +36,17 @@ class ExampleCompiler : public Compiler {
   ~ExampleCompiler() override {}
 
   StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> hlo_module,
-      std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
+      std::unique_ptr<HloModule> hlo_module, HloDumper dump_hlo,
       perftools::gputools::StreamExecutor* stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::vector<std::unique_ptr<HloModule>> hlo_module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
       HloDumper dump_hlo,
       std::vector<perftools::gputools::StreamExecutor*> stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(
       std::vector<std::unique_ptr<HloModule>> module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
       HloDumper dump_hlo, const AotCompilationOptions& options) override;
 
   int64 ShapeSizeBytes(const Shape& shape) const override;
@@ -59,7 +56,6 @@ class ExampleCompiler : public Compiler {
  private:
 
   Status RunHloOptimization(HloModule* hlo_module,
-                            HloModuleConfig* module_config,
                             HloDumper dump_hlo);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ExampleCompiler);
