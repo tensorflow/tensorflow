@@ -49,7 +49,6 @@ namespace exampleplugin {
  * contains useful optimization passes.
  */
 Status ExampleCompiler::RunHloOptimization(HloModule* hlo_module,
-                                           HloModuleConfig* module_config,
                                            HloDumper dump_hlo) {
   HloPassPipeline pipeline("Example", dump_hlo);
   pipeline.AddPass<Inliner>();
@@ -68,15 +67,13 @@ Status ExampleCompiler::RunHloOptimization(HloModule* hlo_module,
 }
 
 StatusOr<std::unique_ptr<Executable>> ExampleCompiler::Compile(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
-    se::StreamExecutor* stream_exec) {
+        std::unique_ptr<HloModule> hlo_module, HloDumper dump_hlo,
+        se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
   VLOG(1) << "Generate graph " << hlo_module->name();
 
-  TF_RETURN_IF_ERROR(
-      RunHloOptimization(hlo_module.get(), module_config.get(), dump_hlo));
+  TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get(), dump_hlo));
 
   // Typically you would visit the HLO graph, building up a compiled equivalent
   // In this case we are using an Hlo evaluator at execution time, so we don't
@@ -84,16 +81,15 @@ StatusOr<std::unique_ptr<Executable>> ExampleCompiler::Compile(
 
   // Create executable from only the Hlo module
   std::unique_ptr<Executable> executable;
-  executable.reset(
-      new ExampleExecutable(std::move(hlo_module), std::move(module_config)));
+  executable.reset(new ExampleExecutable(std::move(hlo_module)));
 
   return std::move(executable);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> ExampleCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-    HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
+        std::vector<std::unique_ptr<HloModule>> hlo_modules,
+        HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
+
   return tensorflow::errors::Unimplemented(
       "Compilation of multiple HLO modules is not supported on Example.");
 }
@@ -101,9 +97,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> ExampleCompiler::Compile(
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
 ExampleCompiler::CompileAheadOfTime(
     std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     HloDumper dump_hlo, const AotCompilationOptions& aot_options) {
-  TF_RET_CHECK(hlo_modules.size() == module_configs.size());
 
   return tensorflow::errors::InvalidArgument(
       "AOT compilation not supported on Example");

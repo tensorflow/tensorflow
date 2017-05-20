@@ -27,10 +27,8 @@ namespace sep = ::perftools::gputools::exampleplugin;
 namespace xla {
 namespace exampleplugin {
 
-ExampleExecutable::ExampleExecutable(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config)
-    : Executable(std::move(hlo_module), std::move(module_config)) {}
+ExampleExecutable::ExampleExecutable(std::unique_ptr<HloModule> hlo_module)
+    : Executable(std::move(hlo_module)) {}
 
 ExampleExecutable::~ExampleExecutable() {}
 
