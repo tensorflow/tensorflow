@@ -108,7 +108,6 @@ REGISTER_OP("ApplyDelayCompensatedGradientDescent")
     .Input("delta: T")
     .Input("lambda: T")
     .Input("shadow: resource")
-    .Output("out: Ref(T)")
     .Attr("T: numbertype")
     .Attr("use_locking: bool = false")
     .SetShapeFn(ApplyGradientDescentShapeFn)
@@ -121,7 +120,6 @@ alpha: Scaling factor. Must be a scalar.
 delta: The change.
 lambda: The variance paramter.
 shadow: Same as "var".
-out: Same as "var".
 use_locking: If `True`, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");
