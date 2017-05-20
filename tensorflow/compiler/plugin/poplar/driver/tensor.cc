@@ -65,11 +65,11 @@ AddTensor(poplar::Graph& graph,
 
 template<typename TYPE>
 static void
-AddConstantTensorTyped(poplar::Graph&graph,
-                       const xla::Literal &literal,
-                       const xla::Shape &shape,
-                       const std::string &type,
-                       poplar::Tensor& tensor) {
+AddConstantTensor(poplar::Graph&graph,
+                  const xla::Literal &literal,
+                  const xla::Shape &shape,
+                  const std::string &type,
+                  poplar::Tensor& tensor) {
   int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
   const TYPE* data(static_cast<const TYPE*>(LiteralUtil::InternalData(literal)));
@@ -95,17 +95,17 @@ AddConstantTensor(poplar::Graph& graph,
 
   switch (literal.shape().element_type()) {
     case PRED:
-      AddConstantTensorTyped<bool>(graph, literal, shape, type, tensor);
+      AddConstantTensor<bool>(graph, literal, shape, type, tensor);
       break;
     case S32:
     case U32:
-      AddConstantTensorTyped<int>(graph, literal, shape, type, tensor);
+      AddConstantTensor<int>(graph, literal, shape, type, tensor);
       break;
     case F16:
-      AddConstantTensorTyped<poplar::IeeeHalf>(graph, literal, shape, type, tensor);
+      AddConstantTensor<poplar::IeeeHalf>(graph, literal, shape, type, tensor);
       break;
     case F32:
-      AddConstantTensorTyped<float>(graph, literal, shape, type, tensor);
+      AddConstantTensor<float>(graph, literal, shape, type, tensor);
       break;
     default:
       // The unsupported cases were caught in the call to PoplarDataType above
