@@ -23,6 +23,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -34,6 +35,17 @@ namespace xla {
 HloModule::HloModule(const string& name,
                      const VersionedComputationHandle& entry_computation_handle)
     : name_(name),
+      config_(nullptr),
+      entry_computation_(nullptr),
+      has_entry_computation_handle_(true),
+      entry_computation_handle_(entry_computation_handle),
+      computation_name_uniquer_(/*separator=*/".") {}
+
+HloModule::HloModule(const string& name,
+                     const VersionedComputationHandle& entry_computation_handle,
+                     const HloModuleConfig& config)
+    : name_(name),
+      config_(MakeUnique<HloModuleConfig>(config)),
       entry_computation_(nullptr),
       has_entry_computation_handle_(true),
       entry_computation_handle_(entry_computation_handle),
@@ -41,8 +53,13 @@ HloModule::HloModule(const string& name,
 
 HloModule::HloModule(const string& name)
     : name_(name),
+      config_(nullptr),
       entry_computation_(nullptr),
       computation_name_uniquer_(/*separator=*/".") {}
+
+void HloModule::set_config(const HloModuleConfig& config) {
+  config_ = MakeUnique<HloModuleConfig>(config);
+}
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {

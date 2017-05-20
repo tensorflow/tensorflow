@@ -39,6 +39,25 @@ class RemoteFusedGraphExecuteUtils {
   // TODO(satok): Use "_output_shapes" to share a spec with other ops
   static constexpr const char* const ATTR_OUTPUT_SHAPES =
       "_default_remote_output_shapes";
+  static constexpr const char* const
+      ATTR_SERIALIZED_REMOTE_FUSED_GRAPH_EXECUTE_INFO =
+          "serialized_remote_fused_graph_execute_info";
+
+  // Argument key strings to fuse a subgraph into RemoteFusedGraphExecuteOp.
+  static constexpr const char* const
+      TRANSFORM_ARG_REMOTE_FUSED_GRAPH_EXECUTOR_NAME =
+          "remote_fused_graph_executor_name";
+  static constexpr const char* const
+      TRANSFORM_ARG_REMOTE_FUSED_GRAPH_NODE_NAME =
+          "remote_fused_graph_node_name";
+  static constexpr const char* const TRANSFORM_ARG_FUSED_NODES = "fused_nodes";
+  static constexpr const char* const TRANSFORM_ARG_BORDER_INPUTS =
+      "border_inputs";
+  static constexpr const char* const TRANSFORM_ARG_BORDER_OUTPUTS =
+      "border_outputs";
+  static constexpr const char* const TRANSFORM_ARG_INPUT_TYPES = "input_types";
+  static constexpr const char* const TRANSFORM_ARG_INPUT_SHAPES =
+      "input_shapes";
 
   using ExecutorBuildFunc = std::function<Status(
       std::unique_ptr<IRemoteFusedGraphExecutor>* executor)>;

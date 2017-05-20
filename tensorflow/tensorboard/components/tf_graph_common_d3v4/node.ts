@@ -380,7 +380,7 @@ function labelBuild(nodeGroup, renderNodeInfo: render.RenderNodeInfo,
  */
 export function enforceLabelWidth(
     txtElementSelection: d3.Selection<any, any, any, any>, nodeType: NodeType | number,
-    renderNodeInfo?: render.RenderNodeInfo) {
+    renderNodeInfo?: render.RenderNodeInfo): any {
   // Get text element itself and its on-screen width.
   let txtNode = <SVGTextElement>txtElementSelection.node();
   let computedTxtLength = txtNode.getComputedTextLength();
@@ -475,7 +475,7 @@ function labelPosition(nodeGroup, cx: number, cy: number,
  * @param nodeClass class for the element.
  * @return Selection of the shape.
  */
-export function buildShape(nodeGroup, d, nodeClass: string) {
+export function buildShape(nodeGroup, d, nodeClass: string): d3.Selection<any, any, any, any> {
   // Create a group to house the underlying visual elements.
   let shapeGroup = scene.selectOrCreateChild(nodeGroup, 'g', nodeClass);
   // TODO(jimbo): DOM structure should be templated in HTML somewhere, not JS.

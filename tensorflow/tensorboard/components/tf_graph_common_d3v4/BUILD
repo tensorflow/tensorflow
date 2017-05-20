@@ -1,9 +1,7 @@
 package(default_visibility = ["//tensorflow:internal"])
 
 load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -38,4 +36,37 @@ filegroup(
     name = "all_files",
     srcs = glob(["**"]),
     tags = ["notsan"],
+)
+
+################################################################################
+# MARKED FOR DELETION
+
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
+
+tensorboard_webcomponent_library(
+    name = "legacy",
+    srcs = [
+        "tf-graph-common.html",
+        ":legacy_ts",
+    ],
+    destdir = "tf-graph-common",
+    deps = [
+        "//tensorflow/tensorboard/components/tf_imports_google_d3v4:lib",
+        "//third_party/javascript/polymer/v1/polymer:lib",
+    ],
+)
+
+tensorboard_ts_library(
+    name = "legacy_ts",
+    srcs = glob(["*.ts"]),
+    deps_mgmt = "off",
+    runtime = "nodejs",
+    deps = [
+        "//third_party/javascript/node_modules/typescript:es2015.promise",
+        "//third_party/javascript/typings/d3_v4:bundle",
+        "//third_party/javascript/typings/lodash",
+        "//third_party/javascript/typings/polymer:polymer_without_externs",
+        "//third_party/javascript/typings/webcomponents_js",
+    ],
 )

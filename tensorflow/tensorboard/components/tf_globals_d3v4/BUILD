@@ -31,3 +31,25 @@ filegroup(
     srcs = glob(["**"]),
     tags = ["notsan"],
 )
+
+################################################################################
+# MARKED FOR DELETION
+
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
+
+tensorboard_webcomponent_library(
+    name = "legacy",
+    srcs = [
+        "tf-globals.html",
+        ":legacy_ts",
+    ],
+    destdir = "tf-globals",
+)
+
+tensorboard_ts_library(
+    name = "legacy_ts",
+    srcs = ["globals.ts"],
+    deps_mgmt = "off",
+    runtime = "nodejs",
+)

@@ -123,6 +123,7 @@ cc_library(
         "hlo_opcode.h",
     ],
     deps = [
+        ":hlo_module_config",
         ":name_uniquer",
         ":versioned_computation_handle",
         "//tensorflow/compiler/xla:literal_util",
@@ -567,6 +568,7 @@ cc_library(
     hdrs = ["computation_tracker.h"],
     deps = [
         ":hlo",
+        ":hlo_module_config",
         ":session_proto",
         ":user_computation",
         ":versioned_computation_handle",
