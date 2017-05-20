@@ -31,6 +31,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+namespace sep = ::perftools::gputools::exampleplugin;
+
 namespace xla {
 namespace exampleplugin {
 
