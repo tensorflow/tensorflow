@@ -136,13 +136,13 @@ class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
 
     vars_with_grad = [v for g, v in grads_and_vars if g is not None]
     if not vars_with_grad:
-        raise ValueError(
-            "No gradients provided for any variable, check your graph for ops"
-            " that do not support gradients, between variables %s and loss %s." %
-            ([str(v) for _, v in grads_and_vars], loss))
+      raise ValueError(
+          "No gradients provided for any variable, check your graph for ops"
+          " that do not support gradients, between variables %s and loss %s." %
+          ([str(v) for _, v in grads_and_vars], loss))
 
     return self.apply_gradients(grads_and_vars, global_step=global_step,
-                                    name=name, worker_index=worker_index)
+                                name=name, worker_index=worker_index)
 
   def apply_gradients(self,
                       grads_and_vars,
@@ -243,12 +243,12 @@ class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
     # Get previous value of the variable from the slot
     shadow = self.get_slot(var, "shadow_{0}".format(worker_index))
     return training_ops.apply_delay_compensated_gradient_descent(
-        var,
-        math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),
+        var.handle,
+        math_ops.cast(self._learning_rate_tensor, grad.dtype.base_dtype),
         grad,
-        math_ops.cast(self._lambda_tensor, var.dtype.base_dtype),
-        shadow,
-        use_locking=self._use_locking).op
+        math_ops.cast(self._lambda_tensor, grad.dtype.base_dtype),
+        shadow.handle,
+        use_locking=self._use_locking)
 
   def _prepare(self):
     self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,

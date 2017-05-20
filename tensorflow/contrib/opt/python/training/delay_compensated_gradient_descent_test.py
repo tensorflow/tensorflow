@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,16 +20,17 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.contrib.opt.python.training import delay_compensated_gradient_descent
+import delay_compensated_gradient_descent
 
 class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
   def testBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session():
-        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
-        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
+        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         optimizer = (delay_compensated_gradient_descent.
@@ -54,8 +55,8 @@ class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session():
-        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
-        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
+        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         lrate = constant_op.constant(3.0)
@@ -98,8 +99,8 @@ class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session():
         global_step = variables.Variable(0, trainable=False)
-        var0 = variables.Variable([1.0, 2.0], dtype=dtype)
-        var1 = variables.Variable([3.0, 4.0], dtype=dtype)
+        var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
+        var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         optimizer = (delay_compensated_gradient_descent.
