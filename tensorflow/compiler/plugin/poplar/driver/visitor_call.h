@@ -32,8 +32,8 @@ namespace poplarplugin {
 class CallVisitor : public FullVisitor {
 public:
   CallVisitor(poplar::Graph* graph,
-                    CompilerResources& res,
-                    const std::vector<poplar::Tensor>& inputs);
+              CompilerResources& res,
+              const std::vector<poplar::Tensor>& inputs);
 
   Status HandleParameter(HloInstruction* inst) override;
   Status FinishVisit(HloInstruction* inst) override;
