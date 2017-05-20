@@ -48,31 +48,51 @@ inline T min(T a,T b) { return a<b?a:b; }
 #endif // !GOOGLE_CUDA
 
 template <typename T, typename Index, T beginning(), T reduce(T,T)>
-void ReduceSliceFunctor<CPUDevice, T, Index, beginning, reduce>::operator()(
-      OpKernelContext* ctx, const CPUDevice& d,typename TTypes<Index>::ConstMatrix indices,
-      typename TTypes<T,3>::ConstTensor data,typename TTypes<T,3>::Tensor output)
-{
-  Index bound = data.dimension(1);
-  Index dim1 = output.dimension(0);
-  Index dim2 = output.dimension(1);
-  Index dim3 = output.dimension(2);
-  T zero = beginning();
-  ThreadPool* thread_pool = ctx->device()->tensorflow_cpu_worker_threads()->workers;
-  // shard the work by columns
-  auto work = [&](Index start, Index end) {
-    for(Index global = start; global < end; ++global) {
-      XYZ xyz = global_index_to_xyz(global);
-      Index x = xyz.x;
-      Index y = xyz.y;
-      Index z = xyz.z;
-      output(x, y, z) = zero;
-      Index slice_head = indices(y, 0);
-      Index slice_end = std::min(indices(y,1),bound);
-      for(Index i = slice_head; i < slice_end; ++i) {
-        output(x, y, z) = reduce(output(x, y, z), data(x, i, z));
+struct ReduceSliceFunctor<CPUDevice, T, Index, beginning, reduce>{
+
+private:
+  struct XYZ {
+    Index x,y,z;
+  };
+  inline static XYZ global_index_to_xyz(Index global,XYZ size) {
+    XYZ ret;
+    ret.x = global / (size.y * size.z);
+    ret.y = global % (size.y * size.z) / size.z;
+    ret.z = global % size.z;
+    return ret;
+  }
+
+public:
+  virtual ~ReduceSliceFunctor(){}
+  virtual void operator()(OpKernelContext* ctx, const CPUDevice& d,
+                          typename TTypes<Index>::ConstMatrix indices,
+                          typename TTypes<T,3>::ConstTensor data,
+                          typename TTypes<T,3>::Tensor output)
+  {
+    Index bound = data.dimension(1);
+    Index dim1 = output.dimension(0);
+    Index dim2 = output.dimension(1);
+    Index dim3 = output.dimension(2);
+    T zero = beginning();
+    ThreadPool* thread_pool = ctx->device()->tensorflow_cpu_worker_threads()->workers;
+    // shard the work
+    auto work = [&](Index start, Index end) {
+      for(Index global = start; global < end; ++global) {
+        XYZ xyz = global_index_to_xyz(global);
+        Index x = xyz.x;
+        Index y = xyz.y;
+        Index z = xyz.z;
+        output(x, y, z) = zero;
+        Index slice_head = indices(y, 0);
+        Index slice_end = std::min(indices(y,1),bound);
+        for(Index i = slice_head; i < slice_end; ++i) {
+          output(x, y, z) = reduce(output(x, y, z), data(x, i, z));
+        }
       }
-    }
+  }
 };
+void ReduceSliceFunctor<CPUDevice, T, Index, beginning, reduce>::operator()(
+;
 // Here assumes the number of average CPU cycles for each slice equals the
 // average length of each slice
 thread_pool->ParallelFor(dim1*dim2*dim3,std:max(bound/dim2,1),work);
@@ -107,14 +127,6 @@ TF_CALL_REAL_NUMBER_TYPES(DEFINE_CPU_MINMAX_SPECS)
 #undef DEFINE_CPU_MINMAX_SPECS
 
 } // namespace functor
-
-.Input("data: T")
-.Input("indices: Tindices")
-.Input("axis: Taxis")
-.Output("output: T")
-.Attr("T: numbertype")
-.Attr("Tindices: {int32,int64}")
-.Attr("Taxis: {int32,int64}")
 
 template <typename Device, typename T, typename Index, T beginning(), T reduce(T,T)>
 class ReduceSliceKernel : public OpKernel {

@@ -2385,11 +2385,11 @@ Status ReduceSliceShapeFn(InferenceContext* c) {
   // "data" must have rank at least 1
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &handle));
   // shape of output tensor
-  const Tensor *_axis = input_tensor(2);
+  const Tensor *_axis = c->input_tensor(2);
   if(nullptr == _axis) {
     c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
   } else {
-    int64 axis = _axis->scalar<int64>();
+    int64 axis = _axis->scalar<int64>()(0);
     TF_RETURN_IF_ERROR(c->ReplaceDim(handle, axis, c->Dim(c->input(1),0), &handle));
     c->set_output(0, handle);
   }

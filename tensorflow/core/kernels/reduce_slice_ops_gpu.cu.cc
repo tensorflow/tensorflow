@@ -74,27 +74,31 @@ __global__ void ReduceSliceDeviceKernel(Index sizex, Index sizey, Index sizez,
 }
 
 template <typename T, typename Index, T beginning(), T reduce(T,T)>
-void ReduceSliceFunctor<GPUDevice, T, Index, beginning, reduce>::operator()(
-      OpKernelContext* ctx, const GPUDevice& d,typename TTypes<Index>::ConstMatrix indices,
-      typename TTypes<T,3>::ConstTensor data,typename TTypes<T,3>::Tensor output)
-{
-  Index bound = data.dimension(1);
-  Index sizex = output.dimension(0);
-  Index sizey = output.dimension(1);
-  Index sizez = output.dimension(2);
-  Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(sizex, sizey, sizez, d,
-                                                    ReduceSliceDeviceKernel);
-  Index threadsx = config.thread_per_block.x * config.block_count.x;
-  Index threadsy = config.thread_per_block.y * config.block_count.y;
-  Index threadsz = config.thread_per_block.z * config.block_count.z;
-  Index jobsx = (sizex + threadsx - 1) / threadsx;
-  Index jobsy = (sizey + threadsy - 1) / threadsy;
-  Index jobsz = (sizez + threadsz - 1) / threadsz;
+struct ReduceSliceFunctor<GPUDevice, T, Index, beginning, reduce>{
+  virtual ~ReduceSliceFunctor(){}
+  virtual void operator()(OpKernelContext* ctx, const GPUDevice& d,
+                          typename TTypes<Index>::ConstMatrix indices,
+                          typename TTypes<T,3>::ConstTensor data,
+                          typename TTypes<T,3>::Tensor output)
+  {
+    Index bound = data.dimension(1);
+    Index sizex = output.dimension(0);
+    Index sizey = output.dimension(1);
+    Index sizez = output.dimension(2);
+    Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(sizex, sizey, sizez, d,
+                                                      ReduceSliceDeviceKernel);
+    Index threadsx = config.thread_per_block.x * config.block_count.x;
+    Index threadsy = config.thread_per_block.y * config.block_count.y;
+    Index threadsz = config.thread_per_block.z * config.block_count.z;
+    Index jobsx = (sizex + threadsx - 1) / threadsx;
+    Index jobsy = (sizey + threadsy - 1) / threadsy;
+    Index jobsz = (sizez + threadsz - 1) / threadsz;
 
-  ReduceSliceDeviceKernel<T,Index,reduce><<<config.block_count,
-    config.thread_per_block, 0, d.stream()>>>(sizex, sizey, sizez, jobsx, jobsy,
-         jobsz, bound, beginning(), indices.data(), data.data(), output.data());
-}
+    ReduceSliceDeviceKernel<T,Index,reduce><<<config.block_count,
+      config.thread_per_block, 0, d.stream()>>>(sizex, sizey, sizez, jobsx, jobsy,
+           jobsz, bound, beginning(), indices.data(), data.data(), output.data());
+  }
+};
 
 #define DEFINE_GPU_SPECS_INDEX(T, Index)                                       \
   template struct ReduceSliceFunctor<GPUDevice, T, Index,                      \
