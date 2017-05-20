@@ -4813,7 +4813,7 @@ type QueueCloseV2Attr func(optionalAttr)
 // QueueCloseV2CancelPendingEnqueues sets the optional cancel_pending_enqueues attribute to value.
 //
 // value: If true, all pending enqueue requests that are
-// blocked on the given queue will be cancelled.
+// blocked on the given queue will be canceled.
 // If not specified, defaults to false
 func QueueCloseV2CancelPendingEnqueues(value bool) QueueCloseV2Attr {
 	return func(m optionalAttr) {

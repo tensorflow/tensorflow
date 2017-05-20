@@ -64,7 +64,7 @@
 #
 #   TF_DOCKER_BUILD_OPTIONS
 #     (Optional)
-#     Specifices the desired build options. Defaults to OPT.
+#     Specifies the desired build options. Defaults to OPT.
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

@@ -516,7 +516,7 @@ class QueueBase(object):
     that would block will fail immediately.
 
     If `cancel_pending_enqueues` is `True`, all pending requests will also
-    be cancelled.
+    be canceled.
 
     Args:
       cancel_pending_enqueues: (Optional.) A boolean, defaulting to
@@ -988,7 +988,7 @@ class Barrier(object):
     TakeMany operations that would block will fail immediately.
 
     If `cancel_pending_enqueues` is `True`, all pending requests to the
-    underlying queue will also be cancelled, and completing of already
+    underlying queue will also be canceled, and completing of already
     started values is also not acceptable anymore.
 
     Args:

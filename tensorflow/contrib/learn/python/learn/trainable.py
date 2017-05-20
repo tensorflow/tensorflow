@@ -49,7 +49,7 @@ class Trainable(object):
       steps: Number of steps for which to train model. If `None`, train forever.
         'steps' works incrementally. If you call two times fit(steps=10) then
         training occurs in total 20 steps. If you don't want to have incremental
-        behaviour please set `max_steps` instead. If set, `max_steps` must be
+        behavior please set `max_steps` instead. If set, `max_steps` must be
         `None`.
       batch_size: minibatch size to use on the input, defaults to first
         dimension of `x`. Must be `None` if `input_fn` is provided.

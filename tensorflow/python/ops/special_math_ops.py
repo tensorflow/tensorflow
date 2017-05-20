@@ -424,7 +424,7 @@ def _exponential_space_einsum(equation, *inputs):
   missing_idx = set(idx_out).difference(idx_all)
   if missing_idx:
     raise ValueError(
-        'Unknown ouput axes: %s' % missing_idx
+        'Unknown output axes: %s' % missing_idx
     )
 
   axis_order = {}

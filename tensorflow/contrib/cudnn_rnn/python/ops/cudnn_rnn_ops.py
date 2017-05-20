@@ -141,7 +141,7 @@ _cudnn_rnn_common_doc_string = """
     * Once a while, the user saves the parameter buffer into model checkpoints
         with Saver.save().
     * When restoring, the user creates a RNNParamsSaveable object and uses
-      Saver.restore() to restore the paramter buffer from the canonical format
+      Saver.restore() to restore the parameter buffer from the canonical format
       to a user-defined format, as well as to restore other savable objects
       in the checkpoint file.
 """

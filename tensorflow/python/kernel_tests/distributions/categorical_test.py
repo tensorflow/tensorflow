@@ -127,7 +127,7 @@ class CategoricalTest(test.TestCase):
       self.assertAllClose(dist.prob(0).eval(), 0.2)
 
   def testCDFWithDynamicEventShape(self):
-    """Test that dynamically-sized events with unkown shape work."""
+    """Test that dynamically-sized events with unknown shape work."""
     batch_size = 2
     histograms = array_ops.placeholder(dtype=dtypes.float32,
                                        shape=(batch_size, None))

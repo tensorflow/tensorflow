@@ -35,7 +35,7 @@ void WorkerCacheLogger::SetLogging(bool v) {
     ++want_logging_count_;
   } else {
     --want_logging_count_;
-    // If RPCs get cancelled, it may be possible for the count
+    // If RPCs get canceled, it may be possible for the count
     // to go negative.  This should not be a fatal error, since
     // logging is non-critical.
     if (want_logging_count_ < 0) want_logging_count_ = 0;
