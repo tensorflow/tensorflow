@@ -23,7 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-import delay_compensated_gradient_descent
+from tensorflow.contrib.opt.python.training import delay_compensated_gradient_descent
 
 class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
   def testBasic(self):
