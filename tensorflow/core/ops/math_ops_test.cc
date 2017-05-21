@@ -479,9 +479,9 @@ TEST(MathOpstest, RequantizationRange_ShapeFn) {
   INFER_ERROR("must be rank 0", op, "?;?;[2]");
 }
 
-TEST(MathOpstest, PartialSum_ShapeFn) {
-  ShapeInferenceTestOp op("PartialSum");
-
+TEST(MathOpstest, ReduceSliceSum_ShapeFn) {
+  ShapeInferenceTestOp op("ReduceSliceSum");
+  LOG(INFO) << "debug1\n";
   INFER_OK(op, "?;?;?", "?");
   INFER_OK(op, "[10,20];[100,2];[]", "[?,?]");
   INFER_OK(op, "[10,20];[?,2];[]", "[?,?]");
@@ -490,7 +490,7 @@ TEST(MathOpstest, PartialSum_ShapeFn) {
   INFER_OK(op, "[?];[123,2];[]", "[?]");
   INFER_OK(op, "[1,2,3,4];[100,2];[]", "[?,?,?,?]");
 
-  INFER_ERROR("must be rank 0", op, "?;[?,2];[?];[1]");
+  INFER_ERROR("must be rank 0", op, "?;[?,2];[?]");
   INFER_ERROR("must be rank 2", op, "?;[1];[]");
   INFER_ERROR("must be equal, but are 1 and 2", op, "?;[?,1];[]");
   INFER_ERROR("must be at least rank 1", op, "[];?;[]");
