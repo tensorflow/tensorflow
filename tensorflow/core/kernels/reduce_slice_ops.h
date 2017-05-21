@@ -26,12 +26,6 @@ limitations under the License.
 #define Max(a,b) ((a)>(b)?(a):(b))
 #define Min(a,b) ((a)<(b)?(a):(b))
 
-#define CALL_ALL_REDUCEOPS(func)  \
-  func(Sum)                      \
-  func(Prod)                     \
-  func(Max)                      \
-  func(Min)
-
 namespace tensorflow {
 
 class OpKernelContext;
@@ -60,8 +54,15 @@ inline T negative_infinity() {
 
 } // namespace reduce_functions
 
-#define ReduceSliceFunctorReduceop(reduceop)                                   \
-  template <typename Device, typename T, typename Index, T beginning()>        \
+#define CALL_ALL_REDUCEOPS(func)                                      \
+  func(Sum, functor::reduce_functions::zero)                          \
+  func(Prod, functor::reduce_functions::one)                          \
+  func(Max, functor::reduce_functions::negative_infinity)             \
+  func(Min, functor::reduce_functions::infinity)
+
+
+#define ReduceSliceFunctorReduceop(reduceop, beginning)                        \
+  template <typename Device, typename T, typename Index>                       \
   struct ReduceSliceFunctor##reduceop {                                        \
     virtual ~ReduceSliceFunctor##reduceop(){}                                  \
     virtual void operator()(OpKernelContext* ctx, const Device& d,             \

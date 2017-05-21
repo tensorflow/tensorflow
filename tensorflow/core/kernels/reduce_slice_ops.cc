@@ -30,9 +30,9 @@ using thread::ThreadPool;
 
 namespace functor {
 
-#define CPUReduceSliceFunctorReduceop(reduceop)                                \
-  template <typename T, typename Index, T beginning()>                         \
-  struct ReduceSliceFunctor##reduceop<CPUDevice, T, Index, beginning> {        \
+#define CPUReduceSliceFunctorReduceop(reduceop, beginning)                     \
+  template <typename T, typename Index>                                        \
+  struct ReduceSliceFunctor##reduceop<CPUDevice, T, Index> {                   \
                                                                                \
   private:                                                                     \
     struct XYZ {                                                               \
@@ -59,7 +59,7 @@ namespace functor {
       Index dim1 = output.dimension(0);                                        \
       Index dim2 = output.dimension(1);                                        \
       Index dim3 = output.dimension(2);                                        \
-      T zero = beginning();                                                    \
+      T zero = beginning<T>();                                                 \
       ThreadPool* thread_pool = ctx->device()->                                \
                                   tensorflow_cpu_worker_threads()->workers;    \
       /* shard the work */                                                     \
@@ -73,7 +73,7 @@ namespace functor {
           Index slice_head = indices(y, 0);                                    \
           Index slice_end = std::min(indices(y,1), bound);                     \
           for(Index i = slice_head; i < slice_end; ++i) {                      \
-            output(x, y, z) = reduceop(output(x, y, z), data(x, i, z));          \
+            output(x, y, z) = reduceop(output(x, y, z), data(x, i, z));        \
           }                                                                    \
         }                                                                      \
       };                                                                       \
@@ -88,16 +88,12 @@ CALL_ALL_REDUCEOPS(CPUReduceSliceFunctorReduceop)
 #undef CPUReduceSliceFunctorReduceop
 
 #define DEFINE_CPU_SUMPROD_SPECS_INDEX(T, Index)                               \
-  template struct ReduceSliceFunctorSum<CPUDevice, T, Index,                   \
-           reduce_functions::zero<T>>;                                         \
-  template struct ReduceSliceFunctorProd<CPUDevice, T, Index,                  \
-           reduce_functions::one<T>>;
+  template struct ReduceSliceFunctorSum<CPUDevice, T, Index>;                  \
+  template struct ReduceSliceFunctorProd<CPUDevice, T, Index>;
 
 #define DEFINE_CPU_MINMAX_SPECS_INDEX(T, Index)                                \
-  template struct ReduceSliceFunctorMax<CPUDevice, T, Index,                   \
-           reduce_functions::negative_infinity<T>>;                            \
-  template struct ReduceSliceFunctorMin<CPUDevice, T, Index,                   \
-           reduce_functions::infinity<T>>;
+  template struct ReduceSliceFunctorMax<CPUDevice, T, Index>;                  \
+  template struct ReduceSliceFunctorMin<CPUDevice, T, Index>;
 
 #define DEFINE_CPU_SUMPROD_SPECS(T)          \
   DEFINE_CPU_SUMPROD_SPECS_INDEX(T, int32);  \
@@ -118,9 +114,8 @@ TF_CALL_REAL_NUMBER_TYPES(DEFINE_CPU_MINMAX_SPECS)
 } // namespace functor
 
 
-template <typename Device, typename T, typename Index, T beginning(),
-          template <typename Device2, typename T2, typename Index2,
-                    T2 beginning()> typename Functor>
+template <typename Device, typename T, typename Index,
+          template <typename Device2, typename T2, typename Index2> typename Functor>
 class ReduceSliceKernel : public OpKernel {
 public:
   explicit ReduceSliceKernel(OpKernelConstruction* context) : OpKernel(context) {}
@@ -134,7 +129,7 @@ public:
     output_shape.set_dim(axis,indices.shape().dim_size(0));
     Tensor *output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    auto functor = Functor<Device, T, Index, beginning>();
+    auto functor = Functor<Device, T, Index>();
     functor(context, context->eigen_device<Device>(), indices.matrix<Index>(),
         data.flat_inner_outer_dims<T,3>(axis-1), output->flat_inner_outer_dims<T,3>(axis-1));
   }
@@ -146,14 +141,12 @@ public:
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<CPUDevice, type, index_type,       \
-                          functor::reduce_functions::zero<type>,               \
                           functor::ReduceSliceFunctorSum>);                    \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceProd")                              \
                               .Device(DEVICE_CPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<CPUDevice, type, index_type,       \
-                          functor::reduce_functions::one<type>,                \
                           functor::ReduceSliceFunctorProd>);
 
 #define REGISTER_CPU_MINMAX_REDUCE_SLICE_KERNELS(type, index_type)             \
@@ -162,14 +155,12 @@ public:
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<CPUDevice, type, index_type,       \
-                          functor::reduce_functions::negative_infinity<type>,  \
                           functor::ReduceSliceFunctorMax>);                    \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceMin")                               \
                               .Device(DEVICE_CPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<CPUDevice, type, index_type,       \
-                          functor::reduce_functions::infinity<type>,           \
                           functor::ReduceSliceFunctorMin>);
 
 #define REGISTER_CPU_SUMPROD_REDUCE_SLICE_KERNELS_ALL(type)           \
@@ -196,28 +187,24 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_SUMPROD_REDUCE_SLICE_KERNELS_ALL)
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<GPUDevice, type, index_type,       \
-                          functor::reduce_functions::zero<type>,               \
                           functor::ReduceSliceFunctorSum>);                    \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceProd")                              \
                               .Device(DEVICE_GPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<GPUDevice, type, index_type,       \
-                          functor::reduce_functions::one<type>,                \
                           functor::ReduceSliceFunctorProd>);                   \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceMax")                               \
                               .Device(DEVICE_GPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<GPUDevice, type, index_type,       \
-                          functor::reduce_functions::negative_infinity<type>,  \
                           functor::ReduceSliceFunctorMax>);                    \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceMin")                               \
                               .Device(DEVICE_GPU)                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<GPUDevice, type, index_type,       \
-                          functor::reduce_functions::infinity<type>,           \
                           functor::ReduceSliceFunctorMin>);
 
 #define REGISTER_GPU_REDUCE_SLICE_KERNELS_ALL(type) \

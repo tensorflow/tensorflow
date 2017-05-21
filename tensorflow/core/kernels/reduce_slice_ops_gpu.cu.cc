@@ -30,11 +30,11 @@ using GPUDevice = Eigen::GpuDevice;
 
 namespace functor {
 
-#define GPUReduceSliceFunctorReduceop(reduceop)                                \
+#define GPUReduceSliceFunctorReduceop(reduceop, beginning)                     \
   template <typename T, typename Index>                                        \
   __global__ void ReduceSliceDeviceKernel##reduceop(Index sizex, Index sizey,  \
       Index sizez, Index jobsx, Index jobsy, Index jobsz, Index bound,         \
-      const T beginning, const Index *indices, const T *input, T *out)         \
+      const T begin, const Index *indices, const T *input, T *out)             \
   {                                                                            \
     Index _x = blockIdx.x * blockDim.x + threadIdx.x;                          \
     Index _y = blockIdx.y * blockDim.y + threadIdx.y;                          \
@@ -44,7 +44,7 @@ namespace functor {
         for(Index z = _z * jobsz; z < jobsz * (_z + 1); ++z) {                 \
           if( x<sizex && y<sizey && z<sizez ) {                                \
             Index outidx = x * sizey * sizez + y * sizez + z;                  \
-            out[outidx] = beginning;                                           \
+            out[outidx] = begin;                                               \
             Index start = indices[y*2];                                        \
             Index end   = Min(bound,indices[y*2+1]);                           \
             for(Index yin = start; yin < end; yin++) {                         \
@@ -57,8 +57,8 @@ namespace functor {
     }                                                                          \
   }                                                                            \
                                                                                \
-  template <typename T, typename Index, T beginning()>                         \
-  struct ReduceSliceFunctor##reduceop<GPUDevice, T, Index, beginning> {        \
+  template <typename T, typename Index>                                        \
+  struct ReduceSliceFunctor##reduceop<GPUDevice, T, Index> {                   \
     virtual ~ReduceSliceFunctor##reduceop(){}                                  \
     virtual void operator()(OpKernelContext* ctx, const GPUDevice& d,          \
                             typename TTypes<Index>::ConstMatrix indices,       \
@@ -80,7 +80,7 @@ namespace functor {
                                                                                \
       ReduceSliceDeviceKernel##reduceop<T,Index> <<<config.block_count,        \
         config.thread_per_block, 0, d.stream()>>> (sizex, sizey, sizez,        \
-                                    jobsx, jobsy, jobsz, bound, beginning(),   \
+                                    jobsx, jobsy, jobsz, bound, beginning<T>(),\
                                     indices.data(),data.data(), output.data());\
     }                                                                          \
   };
@@ -90,14 +90,10 @@ CALL_ALL_REDUCEOPS(GPUReduceSliceFunctorReduceop)
 
 
 #define DEFINE_GPU_SPECS_INDEX(T, Index)                                       \
-  template struct ReduceSliceFunctorSum<GPUDevice, T, Index,                   \
-           reduce_functions::zero<T>>;                                         \
-  template struct ReduceSliceFunctorProd<GPUDevice, T, Index,                  \
-           reduce_functions::one<T>>;                                          \
-  template struct ReduceSliceFunctorMax<GPUDevice, T, Index,                   \
-           reduce_functions::negative_infinity<T>>;                            \
-  template struct ReduceSliceFunctorMin<GPUDevice, T, Index,                   \
-           reduce_functions::infinity<T>>;
+  template struct ReduceSliceFunctorSum<GPUDevice, T, Index>;                  \
+  template struct ReduceSliceFunctorProd<GPUDevice, T, Index>;                 \
+  template struct ReduceSliceFunctorMax<GPUDevice, T, Index>;                  \
+  template struct ReduceSliceFunctorMin<GPUDevice, T, Index>;
 
 #define DEFINE_GPU_SPECS(T)          \
   DEFINE_GPU_SPECS_INDEX(T, int32);  \
