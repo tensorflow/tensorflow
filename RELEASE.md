@@ -24,7 +24,7 @@
 * We released a new open-source version of TensorBoard.
 
 ## Breaking Changes to the API
-* `org.tensorflow.contrib.android.TensorFlowInferenceInterface` now throws exceptions where possible and and has simplified method signatures.
+* `org.tensorflow.contrib.android.TensorFlowInferenceInterface` now throws exceptions where possible and has simplified method signatures.
 
 ## Changes to contrib APIs
 * Added `tf.contrib.util.create_example`.
