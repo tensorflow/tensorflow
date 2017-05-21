@@ -40,7 +40,7 @@ class QuantizedDeconv2DTest : public OpsTestBase {
 
 TEST_F(QuantizedDeconv2DTest, Small) {
   const int stride = 1;
-  TF_ASSERT_OK(NodeDefBuilder("quantized_deconv_op", "QuantizedDeconv2D")
+  TF_ASSERT_OK(NodeDefBuilder("quantized_deconv_op", "QuantizedConv2DBackpropInput")
                    .Input(FakeInput(DT_QUINT8))
                    .Input(FakeInput(DT_QUINT8))
                    .Input(FakeInput(DT_INT32))
@@ -105,7 +105,7 @@ TEST_F(QuantizedDeconv2DTest, Small) {
 
 TEST_F(QuantizedDeconv2DTest, SmallWithStrideLargerThanOne) {
   const int stride = 2;
-  TF_ASSERT_OK(NodeDefBuilder("quantized_deconv_op", "QuantizedDeconv2D")
+  TF_ASSERT_OK(NodeDefBuilder("quantized_deconv_op", "QuantizedConv2DBackpropInput")
                    .Input(FakeInput(DT_QUINT8))
                    .Input(FakeInput(DT_QUINT8))
                    .Input(FakeInput(DT_INT32))

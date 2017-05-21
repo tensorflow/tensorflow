@@ -84,6 +84,13 @@ const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
        DT_QINT32,
        {},
        QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
+      {"Conv2DBackpropInput",
+       {"strides", "padding"},
+       {{"Tinput", DT_QUINT8}, {"Tfilter", DT_QUINT8}, {"out_type", DT_QINT32}},
+       DT_QUINT8,
+       DT_QINT32,
+       {},
+       QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"MatMul",
        {"transpose_a", "transpose_b"},
        {{"T1", DT_QUINT8}, {"T2", DT_QUINT8}, {"Toutput", DT_QINT32}},
@@ -714,6 +721,7 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
             continue;
           }
           if (input_types[i] != DT_FLOAT) {
+            LOG(INFO) << float_node.name() << " " << i << " " << input_types[i];
             are_all_float = false;
           }
         }
@@ -724,6 +732,7 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
         }
         // This isn't a float op, so don't quantize it.
         if (!are_all_float) {
+          LOG(INFO) << SummarizeNodeDef(float_node);
           CopyOriginalMatch(match, new_nodes);
           return Status::OK();
         }

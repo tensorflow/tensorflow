@@ -2417,7 +2417,7 @@ max_output: The float value that the highest quantized output value represents.
 //
 // Some discussions for the output_shape parameter:
 // https://github.com/tensorflow/tensorflow/issues/2118
-REGISTER_OP("QuantizedDeconv2D")
+REGISTER_OP("QuantizedConv2DBackpropInput")
   .Input("value: Tinput")
   .Input("filter: Tfilter")
   .Input("output_sizes: int32")

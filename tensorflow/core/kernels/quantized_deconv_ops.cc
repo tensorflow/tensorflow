@@ -213,10 +213,15 @@ class QuantizedDeconv2DOp: public OpKernel {
 
       // Get other constants
       const int64 in_depth = input.dim_size(3);
-      OP_REQUIRES(context, in_depth == filter.dim_size(2),
-          errors::InvalidArgument("input and filter doesn't match dimensions"));
+      OP_REQUIRES(context, in_depth == filter.dim_size(3),
+          errors::InvalidArgument(
+            "input(",
+            in_depth,
+            ") and filter(",
+            filter.dim_size(3),
+            ") doesn't match dimensions"));
 
-      const int64 out_depth = filter.dim_size(3);
+      const int64 out_depth = filter.dim_size(2);
 
       const int64 input_rows = input.dim_size(1);
       const int64 filter_rows = filter.dim_size(0);
@@ -236,7 +241,8 @@ class QuantizedDeconv2DOp: public OpKernel {
       // 1. batch number should be the same
       // 2. the conditions for VALID padding should be matched
 
-      CHECK_EQ(batch, output_sizes.vec<int32>()(0));
+      OP_REQUIRES(context, batch == output_sizes.vec<int32>()(0),
+          errors::InvalidArgument("batch should match output_sizes[0]"));
 
       // compute the expected input shape from the output shape
       // with the VALID padding condition
@@ -299,7 +305,7 @@ class QuantizedDeconv2DOp: public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(
-    Name("QuantizedDeconv2D")
+    Name("QuantizedConv2DBackpropInput")
       .Device(DEVICE_CPU)
       .TypeConstraint<quint8>("Tinput")
       .TypeConstraint<quint8>("Tfilter")
