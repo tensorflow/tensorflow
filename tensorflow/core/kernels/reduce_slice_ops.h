@@ -21,6 +21,17 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
+#define Sum(a,b) ((a)+(b))
+#define Prod(a,b) ((a)*(b))
+#define Max(a,b) ((a)>(b)?(a):(b))
+#define Min(a,b) ((a)<(b)?(a):(b))
+
+#define CALL_ALL_REDUCEOPS(func)  \
+  func(Sum)                      \
+  func(Prod)                     \
+  func(Max)                      \
+  func(Min)
+
 namespace tensorflow {
 
 class OpKernelContext;
@@ -28,11 +39,6 @@ class OpKernelContext;
 namespace functor {
 
 namespace reduce_functions {
-
-template <typename T> T sum(T a,T b);
-template <typename T> T prod(T a,T b);
-template <typename T> T max(T a,T b);
-template <typename T> T min(T a,T b);
 
 template <typename T>
 inline T zero() { return T(0); }
@@ -54,16 +60,18 @@ inline T negative_infinity() {
 
 } // namespace reduce_functions
 
-// BaseFunctor for definition of PartialReductionOp
-template <typename Device, typename T, typename Index, T beginning(), T reduce(T,T)>
-struct ReduceSliceFunctor {
-  virtual ~ReduceSliceFunctor(){}
-  virtual void operator()(OpKernelContext* ctx, const Device& d,
-                          typename TTypes<Index>::ConstMatrix indices,
-                          typename TTypes<T,3>::ConstTensor data,
-                          typename TTypes<T,3>::Tensor output);
+#define ReduceSliceFunctorReduceop(reduceop)                                   \
+  template <typename Device, typename T, typename Index, T beginning()>        \
+  struct ReduceSliceFunctor##reduceop {                                        \
+    virtual ~ReduceSliceFunctor##reduceop(){}                                  \
+    virtual void operator()(OpKernelContext* ctx, const Device& d,             \
+                            typename TTypes<Index>::ConstMatrix indices,       \
+                            typename TTypes<T,3>::ConstTensor data,            \
+                            typename TTypes<T,3>::Tensor output);              \
+  };
 
-};
+CALL_ALL_REDUCEOPS(ReduceSliceFunctorReduceop)
+#undef ReduceSliceFunctorReduceop
 
 }  // namespace functor
 }  // namespace tensorflow
