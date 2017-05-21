@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
@@ -59,8 +59,7 @@ def _get_processor(v):
 
 
 class DelayCompensatedGradientDescentOptimizer(optimizer.Optimizer):
-  """Optimizer that implements the gradient descent algorithm with delay
-  compensation.
+  """Optimizer that implements gradient descent with delay compensation.
 
   See [Zheng, Shuxin, et al., 2016](https://arxiv.org/abs/1609.08326)
   ([pdf](https://arxiv.org/pdf/1609.08326.pdf)).
