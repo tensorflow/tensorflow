@@ -56,12 +56,12 @@ inline T negative_infinity() {
 
 // BaseFunctor for definition of PartialReductionOp
 template <typename Device, typename T, typename Index, T beginning(), T reduce(T,T)>
-struct ReduceSliceFunctor{
+struct ReduceSliceFunctor {
   virtual ~ReduceSliceFunctor(){}
   virtual void operator()(OpKernelContext* ctx, const Device& d,
-                  typename TTypes<Index>::ConstMatrix indices,
-                  typename TTypes<T>::ConstMatrix data,
-                  typename TTypes<T>::Matrix output);
+                          typename TTypes<Index>::ConstMatrix indices,
+                          typename TTypes<T,3>::ConstTensor data,
+                          typename TTypes<T,3>::Tensor output);
 
 };
 

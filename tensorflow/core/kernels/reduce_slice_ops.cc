@@ -15,6 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include <algorithm>
 #include "tensorflow/core/kernels/reduce_slice_ops.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -48,11 +49,13 @@ inline T min(T a,T b) { return a<b?a:b; }
 #endif // !GOOGLE_CUDA
 
 template <typename T, typename Index, T beginning(), T reduce(T,T)>
-struct ReduceSliceFunctor<CPUDevice, T, Index, beginning, reduce>{
+struct ReduceSliceFunctor<CPUDevice, T, Index, beginning, reduce> {
 
 private:
   struct XYZ {
-    Index x,y,z;
+    Index x, y, z;
+    XYZ() = default;
+    XYZ(Index x, Index y, Index z) : x(x), y(y), z(z) {}
   };
   inline static XYZ global_index_to_xyz(Index global,XYZ size) {
     XYZ ret;
@@ -78,25 +81,23 @@ public:
     // shard the work
     auto work = [&](Index start, Index end) {
       for(Index global = start; global < end; ++global) {
-        XYZ xyz = global_index_to_xyz(global);
+        XYZ xyz = global_index_to_xyz(global, XYZ(dim1, dim2, dim3));
         Index x = xyz.x;
         Index y = xyz.y;
         Index z = xyz.z;
         output(x, y, z) = zero;
         Index slice_head = indices(y, 0);
-        Index slice_end = std::min(indices(y,1),bound);
+        Index slice_end = std::min(indices(y,1), bound);
         for(Index i = slice_head; i < slice_end; ++i) {
           output(x, y, z) = reduce(output(x, y, z), data(x, i, z));
         }
       }
+    };
+    // Here assumes the number of average CPU cycles for each slice equals the
+    // average length of each slice
+    thread_pool->ParallelFor(dim1*dim2*dim3,std::max(bound/dim2, (Index)1), work);
   }
 };
-void ReduceSliceFunctor<CPUDevice, T, Index, beginning, reduce>::operator()(
-;
-// Here assumes the number of average CPU cycles for each slice equals the
-// average length of each slice
-thread_pool->ParallelFor(dim1*dim2*dim3,std:max(bound/dim2,1),work);
-}
 
 #define DEFINE_CPU_SUMPROD_SPECS_INDEX(T, Index)                               \
   template struct ReduceSliceFunctor<CPUDevice, T, Index,                      \
@@ -137,7 +138,7 @@ public:
     const Tensor &data = context->input(0);
     const Tensor &indices = context->input(1);
     const Tensor &_axis = context->input(2);
-    int64 axis = _axis->scalar<int64>();
+    int64 axis = _axis.scalar<int64>()(0);
     TensorShape output_shape = data.shape();
     output_shape.set_dim(axis,indices.shape().dim_size(0));
     Tensor *output = nullptr;

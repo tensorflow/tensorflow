@@ -74,7 +74,7 @@ __global__ void ReduceSliceDeviceKernel(Index sizex, Index sizey, Index sizez,
 }
 
 template <typename T, typename Index, T beginning(), T reduce(T,T)>
-struct ReduceSliceFunctor<GPUDevice, T, Index, beginning, reduce>{
+struct ReduceSliceFunctor<GPUDevice, T, Index, beginning, reduce> {
   virtual ~ReduceSliceFunctor(){}
   virtual void operator()(OpKernelContext* ctx, const GPUDevice& d,
                           typename TTypes<Index>::ConstMatrix indices,
@@ -82,11 +82,11 @@ struct ReduceSliceFunctor<GPUDevice, T, Index, beginning, reduce>{
                           typename TTypes<T,3>::Tensor output)
   {
     Index bound = data.dimension(1);
-    Index sizex = output.dimension(0);
-    Index sizey = output.dimension(1);
-    Index sizez = output.dimension(2);
+    int sizex = output.dimension(0);
+    int sizey = output.dimension(1);
+    int sizez = output.dimension(2);
     Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(sizex, sizey, sizez, d,
-                                                      ReduceSliceDeviceKernel);
+                                  ReduceSliceDeviceKernel<T, Index, reduce>, 0);
     Index threadsx = config.thread_per_block.x * config.block_count.x;
     Index threadsy = config.thread_per_block.y * config.block_count.y;
     Index threadsz = config.thread_per_block.z * config.block_count.z;
