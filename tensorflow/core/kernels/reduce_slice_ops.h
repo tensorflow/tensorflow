@@ -54,14 +54,14 @@ inline T negative_infinity() {
 
 } // namespace reduce_functions
 
-#define CALL_ALL_REDUCEOPS(func)                                      \
-  func(Sum, functor::reduce_functions::zero)                          \
-  func(Prod, functor::reduce_functions::one)                          \
-  func(Max, functor::reduce_functions::negative_infinity)             \
-  func(Min, functor::reduce_functions::infinity)
+#define CALL_ALL_REDUCEOPS(func, ...)                                          \
+  func(Sum, functor::reduce_functions::zero, ##__VA_ARGS__)                    \
+  func(Prod, functor::reduce_functions::one, ##__VA_ARGS__)                    \
+  func(Max, functor::reduce_functions::negative_infinity, ##__VA_ARGS__)       \
+  func(Min, functor::reduce_functions::infinity, ##__VA_ARGS__)
 
 
-#define ReduceSliceFunctorReduceop(reduceop, beginning)                        \
+#define ReduceSliceFunctorReduceop(reduceop, dummy)                            \
   template <typename Device, typename T, typename Index>                       \
   struct ReduceSliceFunctor##reduceop {                                        \
     virtual ~ReduceSliceFunctor##reduceop(){}                                  \

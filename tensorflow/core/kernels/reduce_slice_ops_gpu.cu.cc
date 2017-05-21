@@ -88,21 +88,17 @@ namespace functor {
 CALL_ALL_REDUCEOPS(GPUReduceSliceFunctorReduceop)
 #undef GPUReduceSliceFunctorReduceop
 
+#define DEFINE_GPU_REDUCEOP_SPECS_INDEX(reduceop, dummy, T)                    \
+  template struct ReduceSliceFunctor##reduceop<GPUDevice, T, int32>;           \
+  template struct ReduceSliceFunctor##reduceop<GPUDevice, T, int64>;
 
-#define DEFINE_GPU_SPECS_INDEX(T, Index)                                       \
-  template struct ReduceSliceFunctorSum<GPUDevice, T, Index>;                  \
-  template struct ReduceSliceFunctorProd<GPUDevice, T, Index>;                 \
-  template struct ReduceSliceFunctorMax<GPUDevice, T, Index>;                  \
-  template struct ReduceSliceFunctorMin<GPUDevice, T, Index>;
-
-#define DEFINE_GPU_SPECS(T)          \
-  DEFINE_GPU_SPECS_INDEX(T, int32);  \
-  DEFINE_GPU_SPECS_INDEX(T, int64);
+#define DEFINE_GPU_SPECS(T)                                                    \
+  CALL_ALL_REDUCEOPS(DEFINE_GPU_REDUCEOP_SPECS_INDEX, T)
 
 TF_CALL_REAL_NUMBER_TYPES(DEFINE_GPU_SPECS)
 
+#undef DEFINE_GPU_REDUCEOP_SPECS_INDEX
 #undef DEFINE_GPU_SPECS
-#undef DEFINE_GPU_SPECS_INDEX
 
 }  // namespace functor
 }  // namespace tensorflow
