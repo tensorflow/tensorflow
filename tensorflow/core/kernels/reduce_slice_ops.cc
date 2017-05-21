@@ -184,24 +184,28 @@ TF_CALL_NUMBER_TYPES(REGISTER_CPU_SUMPROD_REDUCE_SLICE_KERNELS_ALL)
 #define REGISTER_GPU_REDUCE_SLICE_KERNELS(type, index_type)                    \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceSum")                               \
                               .Device(DEVICE_GPU)                              \
+                              .HostMemory("axis")                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<GPUDevice, type, index_type,       \
                           functor::ReduceSliceFunctorSum>);                    \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceProd")                              \
                               .Device(DEVICE_GPU)                              \
+                              .HostMemory("axis")                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<GPUDevice, type, index_type,       \
                           functor::ReduceSliceFunctorProd>);                   \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceMax")                               \
                               .Device(DEVICE_GPU)                              \
+                              .HostMemory("axis")                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<GPUDevice, type, index_type,       \
                           functor::ReduceSliceFunctorMax>);                    \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceMin")                               \
                               .Device(DEVICE_GPU)                              \
+                              .HostMemory("axis")                              \
                               .TypeConstraint<type>("T")                       \
                               .TypeConstraint<index_type>("Tindices"),         \
                           ReduceSliceKernel<GPUDevice, type, index_type,       \

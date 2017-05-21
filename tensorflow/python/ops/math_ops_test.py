@@ -471,7 +471,7 @@ class ReduceSliceTest(test_util.TensorFlowTestCase):
     indices = np.array([[0, 1], [0, 3], [1, 2], [1, 3], [0,2]], dtype=np.int32)
     result = np.array([[1, 2, 3], [28, 80, 162], [4, 5, 6], [28, 40, 54], [4, 10, 18]], dtype=np.int32)
     with self.test_session(use_gpu=True):
-      y_tf = math_ops.reduce_slice_prod(x,indices).eval()
+      y_tf = math_ops.reduce_slice_prod(x,indices,0).eval()
       self.assertAllEqual(y_tf, result)
 
   def testReduceSliceMax(self):

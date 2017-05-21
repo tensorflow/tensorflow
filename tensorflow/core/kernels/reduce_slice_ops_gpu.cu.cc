@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/framework/register_types.h"
-#include <limits>
 
 namespace tensorflow {
 
@@ -42,14 +41,14 @@ namespace functor {
     for(Index x = _x * jobsx; x < jobsx * (_x + 1); ++x) {                     \
       for(Index y = _y * jobsy; y < jobsy * (_y + 1); ++y) {                   \
         for(Index z = _z * jobsz; z < jobsz * (_z + 1); ++z) {                 \
-          if( x<sizex && y<sizey && z<sizez ) {                                \
+          if( x < sizex && y < sizey && z < sizez ) {                          \
             Index outidx = x * sizey * sizez + y * sizez + z;                  \
             out[outidx] = begin;                                               \
             Index start = indices[y*2];                                        \
-            Index end   = Min(bound,indices[y*2+1]);                           \
+            Index end   = Min(bound, indices[y * 2 + 1]);                      \
             for(Index yin = start; yin < end; yin++) {                         \
-              Index inidx = x * bound * sizez + y * sizez + z;                 \
-              out[outidx] = reduceop(out[outidx],input[inidx]);                \
+              Index inidx = x * bound * sizez + yin * sizez + z;               \
+              out[outidx] = reduceop(out[outidx], input[inidx]);               \
             }                                                                  \
           }                                                                    \
         }                                                                      \
@@ -78,10 +77,10 @@ namespace functor {
       Index jobsy = (sizey + threadsy - 1) / threadsy;                         \
       Index jobsz = (sizez + threadsz - 1) / threadsz;                         \
                                                                                \
-      ReduceSliceDeviceKernel##reduceop<T,Index> <<<config.block_count,        \
+      ReduceSliceDeviceKernel##reduceop<T,Index> <<<config.block_count         \
         config.thread_per_block, 0, d.stream()>>> (sizex, sizey, sizez,        \
-                                    jobsx, jobsy, jobsz, bound, beginning<T>(),\
-                                    indices.data(),data.data(), output.data());\
+                                   jobsx, jobsy, jobsz, bound, beginning<T>(), \
+                                   indices.data(), data.data(), output.data());\
     }                                                                          \
   };
 
