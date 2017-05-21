@@ -65,7 +65,7 @@ void ConcatCPU(DeviceBase* d,
   template void ConcatCPU<T>(                                                  \
       DeviceBase*,                                                             \
       const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&, \
-      typename TTypes<T, 2>::Matrix* output);
+      TTypes<T, 2>::Matrix* output);
 TF_CALL_ALL_TYPES(REGISTER)
 REGISTER(quint8)
 REGISTER(qint8)

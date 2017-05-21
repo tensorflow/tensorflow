@@ -86,7 +86,7 @@ struct HasGetHelper : public M {
 // Defines HasGet() for a particular method, container, and checker. If
 // HasGet()==true, provides Get() that delegates to the method.
 template <typename M, typename Checker, typename C,
-          bool /*has_get*/ = HasGetHelper<M, Checker, C>::HasGet()>
+          bool /*has_get*/ = typename HasGetHelper<M, Checker, C>::HasGet()>
 struct Wrapper {
   static constexpr bool HasGet() { return false; }
 };

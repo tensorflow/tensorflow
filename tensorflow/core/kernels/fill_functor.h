@@ -56,7 +56,7 @@ struct SetZeroFunctor<Eigen::SyclDevice, T> {
 template <>
 struct SetZeroFunctor<Eigen::ThreadPoolDevice, string> {
   void operator()(const Eigen::ThreadPoolDevice& d,
-                  typename TTypes<string>::Flat out);
+                  TTypes<string>::Flat out);
 };
 
 template <typename Device, typename T>
@@ -83,7 +83,7 @@ struct SetOneFunctor<Eigen::SyclDevice, T> {
 template <>
 struct SetOneFunctor<Eigen::ThreadPoolDevice, string> {
   void operator()(const Eigen::ThreadPoolDevice& d,
-                  typename TTypes<string>::Flat out);
+                  TTypes<string>::Flat out);
 };
 
 }  // namespace functor

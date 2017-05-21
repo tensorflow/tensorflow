@@ -111,9 +111,9 @@ struct LaunchBackwardInputConvolution {
 template <>
 struct LaunchBackwardInputConvolution<CPUDevice, float> {
   bool operator()(OpKernelContext* context, const CPUDevice& d,
-                  typename TTypes<float, 4>::Tensor input_backward,
-                  typename TTypes<float, 4>::ConstTensor kernel,
-                  typename TTypes<float, 4>::ConstTensor output_backward,
+                  TTypes<float, 4>::Tensor input_backward,
+                  TTypes<float, 4>::ConstTensor kernel,
+                  TTypes<float, 4>::ConstTensor output_backward,
                   int input_rows, int input_cols, int row_stride,
                   int col_stride, TensorFormat data_format) const {
     functor::SpatialConvolutionBackwardInput<CPUDevice, float>()(

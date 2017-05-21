@@ -77,8 +77,8 @@ struct FusedBatchNorm<CPUDevice, T> {
 
 #if !defined(EIGEN_HAS_INDEX_LIST)
     Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
-    Eigen::array<int, 1> reduce_dims({0});
-    Eigen::array<int, 2> bcast_spec({rest_size, 1});
+    Eigen::array<int, 1> reduce_dims{0};
+    Eigen::array<int, 2> bcast_spec{rest_size, 1};
 #else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
     one_by_depth.set(1, depth);
@@ -166,8 +166,8 @@ struct FusedBatchNormGrad<CPUDevice, T> {
 
 #if !defined(EIGEN_HAS_INDEX_LIST)
     Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
-    Eigen::array<int, 1> reduce_dims({0});
-    Eigen::array<int, 2> bcast_spec({rest_size, 1});
+    Eigen::array<int, 1> reduce_dims{0};
+    Eigen::array<int, 2> bcast_spec{rest_size, 1};
 #else
     Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
     one_by_depth.set(1, depth);
@@ -603,10 +603,10 @@ class FusedBatchNormGradOp : public OpKernel {
     // used for inference and thus not needed here for gradient computation.
     Tensor* placeholder_1 = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(3, TensorShape({}), &placeholder_1));
+        context, context->allocate_output(3, TensorShape{}, &placeholder_1));
     Tensor* placeholder_2 = nullptr;
     OP_REQUIRES_OK(
-        context, context->allocate_output(4, TensorShape({}), &placeholder_2));
+        context, context->allocate_output(4, TensorShape{}, &placeholder_2));
 
     functor::FusedBatchNormGrad<Device, T>()(
         context, y_backprop, x, scale, saved_mean, saved_maybe_inv_var,

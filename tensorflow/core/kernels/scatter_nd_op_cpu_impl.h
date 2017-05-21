@@ -158,10 +158,10 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
       const CPUDevice& d, const Index slice_size,                            \
       const Eigen::array<Eigen::DenseIndex, CPU_PROVIDED_IXDIM>              \
           output_shape_prefix,                                               \
-      typename TTypes<T, 2>::Tensor Tparams,                                 \
-      typename TTypes<Index, 2>::ConstTensor Tindices,                       \
-      typename TTypes<T, 2>::ConstTensor Tupdates,                           \
-      typename TTypes<T, 2>::Tensor Toutput)
+      TTypes<T, 2>::Tensor Tparams,                                 \
+      TTypes<Index, 2>::ConstTensor Tindices,                       \
+      TTypes<T, 2>::ConstTensor Tupdates,                           \
+      TTypes<T, 2>::Tensor Toutput)
 
 #define REGISTER_SCATTER_ND_INDEX(type, op)  \
   REGISTER_SCATTER_ND_FULL(type, int32, op); \
