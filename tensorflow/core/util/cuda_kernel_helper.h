@@ -147,19 +147,32 @@ inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(int xdim, int ydim, int zdim,
     return config;
   }
 
+  int dev;
+  cudaGetDevice(&dev);
+  cudaDeviceProp deviceProp;
+  cudaGetDeviceProperties(&deviceProp, dev);
+  int xthreadlimit = deviceProp.maxThreadsDim[0];
+  int ythreadlimit = deviceProp.maxThreadsDim[1];
+  int zthreadlimit = deviceProp.maxThreadsDim[2];
+  int xgridlimit = deviceProp.maxGridSize[0];
+  int ygridlimit = deviceProp.maxGridSize[1];
+  int zgridlimit = deviceProp.maxGridSize[2];
+
   int block_count = 0;
   int thread_per_block = 0;
   cudaOccupancyMaxPotentialBlockSize(&block_count, &thread_per_block, func,
                                      dynamic_shared_memory_size,
                                      xdim * ydim * zdim);
 
-  int threadsx = std::min(xdim, thread_per_block);
-  int threadsy = std::min(ydim, std::max(thread_per_block / threadsx, 1));
-  int threadsz = std::min(zdim, std::max(thread_per_block / (threadsx * threadsy), 1));
+  #define MIN3(a,b,c) std::min((a), std::min((b), (c)))
+  int threadsx = MIN3(xdim, thread_per_block, xthreadlimit);
+  int threadsy = MIN3(ydim, std::max(thread_per_block / threadsx, 1), ythreadlimit);
+  int threadsz = MIN3(zdim, std::max(thread_per_block / (threadsx * threadsy), 1), zthreadlimit);
 
-  int blocksx = std::min(block_count, DIV_UP(xdim, threadsx));
-  int blocksy = std::min(DIV_UP(block_count, blocksx), DIV_UP(ydim, threadsy));
-  int blocksz = std::min(DIV_UP(block_count, (blocksx * blocksy)), DIV_UP(zdim, threadsz));
+  int blocksx = MIN3(block_count, DIV_UP(xdim, threadsx), xgridlimit);
+  int blocksy = MIN3((DIV_UP(block_count, blocksx), DIV_UP(ydim, threadsy), ygridlimit);
+  int blocksz = MIN3(DIV_UP(block_count, (blocksx * blocksy)), DIV_UP(zdim, threadsz), zgridlimit);
+  #undef MIN3
 
   config.virtual_thread_count = dim3(xdim, ydim, zdim);
   config.thread_per_block = dim3(threadsx, threadsy, threadsz);
