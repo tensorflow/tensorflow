@@ -170,7 +170,7 @@ inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(int xdim, int ydim, int zdim,
   int threadsz = MIN3(zdim, std::max(thread_per_block / (threadsx * threadsy), 1), zthreadlimit);
 
   int blocksx = MIN3(block_count, DIV_UP(xdim, threadsx), xgridlimit);
-  int blocksy = MIN3((DIV_UP(block_count, blocksx), DIV_UP(ydim, threadsy), ygridlimit);
+  int blocksy = MIN3(DIV_UP(block_count, blocksx), DIV_UP(ydim, threadsy), ygridlimit);
   int blocksz = MIN3(DIV_UP(block_count, (blocksx * blocksy)), DIV_UP(zdim, threadsz), zgridlimit);
   #undef MIN3
 
