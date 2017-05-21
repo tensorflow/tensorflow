@@ -151,7 +151,7 @@ public:
 
 #if GOOGLE_CUDA
 
-#define REGISTER_GPU_PARTIAL_REDUCE_KERNELS(type, index_type)                  \
+#define REGISTER_GPU_REDUCE_SLICE_KERNELS(type, index_type)                    \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceSum")                               \
                               .Device(DEVICE_GPU)                              \
                               .TypeConstraint<type>("T")                       \
@@ -181,18 +181,18 @@ public:
                           functor::reduce_functions::infinity<type>,           \
                           functor::reduce_functions::min<type>>);
 
-#define REGISTER_GPU_PARTIAL_REDUCE_KERNELS_ALL(type) \
-  REGISTER_GPU_PARTIAL_REDUCE_KERNELS(type, int32);   \
-  REGISTER_GPU_PARTIAL_REDUCE_KERNELS(type, int64);
+#define REGISTER_GPU_REDUCE_SLICE_KERNELS_ALL(type) \
+  REGISTER_GPU_REDUCE_SLICE_KERNELS(type, int32);   \
+  REGISTER_GPU_REDUCE_SLICE_KERNELS(type, int64);
 
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_PARTIAL_REDUCE_KERNELS_ALL);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_REDUCE_SLICE_KERNELS_ALL);
 
-#undef REGISTER_GPU_PARTIAL_REDUCE_KERNELS
-#undef REGISTER_GPU_PARTIAL_REDUCE_KERNELS_ALL
+#undef REGISTER_GPU_REDUCE_SLICE_KERNELS
+#undef REGISTER_GPU_REDUCE_SLICE_KERNELS_ALL
 
 #endif  // GOOGLE_CUDA
 
-#define REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS(type, index_type)          \
+#define REGISTER_CPU_SUMPROD_REDUCE_SLICE_KERNELS(type, index_type)            \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceSum")                               \
                               .Device(DEVICE_CPU)                              \
                               .TypeConstraint<type>("T")                       \
@@ -208,7 +208,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_PARTIAL_REDUCE_KERNELS_ALL);
                           functor::reduce_functions::one<type>,                \
                           functor::reduce_functions::prod<type>>);
 
-#define REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS(type, index_type)           \
+#define REGISTER_CPU_MINMAX_REDUCE_SLICE_KERNELS(type, index_type)             \
   REGISTER_KERNEL_BUILDER(Name("ReduceSliceMax")                               \
                               .Device(DEVICE_CPU)                              \
                               .TypeConstraint<type>("T")                       \
@@ -224,20 +224,20 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_PARTIAL_REDUCE_KERNELS_ALL);
                           functor::reduce_functions::infinity<type>,           \
                           functor::reduce_functions::min<type>>);
 
-#define REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS_ALL(type)           \
-  REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS(type, int32);             \
-  REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS(type, int64);
+#define REGISTER_CPU_SUMPROD_REDUCE_SLICE_KERNELS_ALL(type)           \
+  REGISTER_CPU_SUMPROD_REDUCE_SLICE_KERNELS(type, int32);             \
+  REGISTER_CPU_SUMPROD_REDUCE_SLICE_KERNELS(type, int64);
 
-#define REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS_ALL(type)           \
-  REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS(type, int32);             \
-  REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS(type, int64);
+#define REGISTER_CPU_MINMAX_REDUCE_SLICE_KERNELS_ALL(type)           \
+  REGISTER_CPU_MINMAX_REDUCE_SLICE_KERNELS(type, int32);             \
+  REGISTER_CPU_MINMAX_REDUCE_SLICE_KERNELS(type, int64);
 
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS_ALL)
-TF_CALL_NUMBER_TYPES(REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS_ALL)
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_MINMAX_REDUCE_SLICE_KERNELS_ALL)
+TF_CALL_NUMBER_TYPES(REGISTER_CPU_SUMPROD_REDUCE_SLICE_KERNELS_ALL)
 
-#undef REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS
-#undef REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS
-#undef REGISTER_CPU_SUMPROD_PARTIAL_REDUCE_KERNELS_ALL
-#undef REGISTER_CPU_MINMAX_PARTIAL_REDUCE_KERNELS_ALL
+#undef REGISTER_CPU_SUMPROD_REDUCE_SLICE_KERNELS
+#undef REGISTER_CPU_MINMAX_REDUCE_SLICE_KERNELS
+#undef REGISTER_CPU_SUMPROD_REDUCE_SLICE_KERNELS_ALL
+#undef REGISTER_CPU_MINMAX_REDUCE_SLICE_KERNELS_ALL
 
 }  // namespace tensorflow
