@@ -972,7 +972,7 @@ TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinct) {
                                   op::Copy(old_init->operand(1)->operand(0)))));
 }
 
-// Tests while init instruction buffer which interfers with while result buffer.
+// Tests while init instruction buffer which interferes with while result buffer.
 //
 //     init_data = Broadcast(...)
 //     add_unrelated = Add(init_data) // takes a reference to cause interference

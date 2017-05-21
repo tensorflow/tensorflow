@@ -618,7 +618,7 @@ def identity(labeled_tensor, name=None):
 def slice_function(labeled_tensor, selection, name=None):
   """Slice out a subset of the tensor.
 
-  This is an analogue of tf.slice.
+  This is an analog of tf.slice.
   For example:
   >>> tensor = tf.reshape(tf.range(0, 6), [3, 2])
   >>> labeled_tensor = lt.LabeledTensor(tensor, ['a', ('b', ['foo', 'bar'])])

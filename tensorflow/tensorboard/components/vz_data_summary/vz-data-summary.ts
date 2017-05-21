@@ -118,7 +118,7 @@ function createRect(
   // Set dimensions.
   rect.setAttribute('width', sliceWidth.toString());
   rect.setAttribute('height', height.toString());
-  // Set colour.
+  // Set color.
   rect.setAttribute('fill', color);
 
   return rect;

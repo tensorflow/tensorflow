@@ -230,7 +230,7 @@ if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
     if [ -z "$MKL_INSTALL_PATH" ]; then
       MKL_INSTALL_PATH=$default_mkl_path
     fi
-    # Result returned from "read" will be used unexpanded. That make "~" unuseable.
+    # Result returned from "read" will be used unexpanded. That make "~" unusable.
     # Going through one more level of expansion to handle that.
     MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`
   fi
@@ -565,7 +565,7 @@ while true; do
     if [ -z "$CUDNN_INSTALL_PATH" ]; then
       CUDNN_INSTALL_PATH=$default_cudnn_path
     fi
-    # Result returned from "read" will be used unexpanded. That make "~" unuseable.
+    # Result returned from "read" will be used unexpanded. That make "~" unusable.
     # Going through one more level of expansion to handle that.
     CUDNN_INSTALL_PATH=`"${PYTHON_BIN_PATH}" -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
   fi

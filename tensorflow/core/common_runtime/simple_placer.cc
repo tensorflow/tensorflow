@@ -660,7 +660,7 @@ Status SimplePlacer::Run() {
       if (!edge->IsControlEdge() &&
           (IsRefType(node->input_type(edge->dst_input())) ||
            node->input_type(edge->dst_input()) == DT_RESOURCE)) {
-        // If both the source node and this node have paritally
+        // If both the source node and this node have partially
         // specified a device, then 'node's device should be
         // cleared: the reference edge forces 'node' to be on the
         // same device as the source node.

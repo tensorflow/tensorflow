@@ -118,7 +118,7 @@ Many users of TensorFlow will be saving graphs and trained models to disk for
 later evaluation or more training, often changing versions of TensorFlow in the
 process.  First, following semver, any graph or checkpoint written out with one
 version of TensorFlow can be loaded and evaluated with a later version of
-TensorFlow with the same major release.  However, we will endeavour to preserve
+TensorFlow with the same major release.  However, we will endeavor to preserve
 backwards compatibility even across major releases when possible, so that the
 serialized files are usable over long periods of time.
 

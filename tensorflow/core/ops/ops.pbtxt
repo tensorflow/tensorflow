@@ -2380,7 +2380,7 @@ op {
     default_value {
       b: false
     }
-    description: "If true, all pending enqueue requests that are\nblocked on the barrier\'s queue will be cancelled. InsertMany will fail, even\nif no new key is introduced."
+    description: "If true, all pending enqueue requests that are\nblocked on the barrier\'s queue will be canceled. InsertMany will fail, even\nif no new key is introduced."
   }
   summary: "Closes the given barrier."
   description: "This operation signals that no more new elements will be inserted in the\ngiven barrier. Subsequent InsertMany that try to introduce a new key will fail.\nSubsequent InsertMany operations that just add missing components to already\nexisting elements will continue to succeed. Subsequent TakeMany operations will\ncontinue to succeed if sufficient completed elements remain in the barrier.\nSubsequent TakeMany operations that would block will fail immediately."
@@ -15613,7 +15613,7 @@ op {
     default_value {
       b: false
     }
-    description: "If true, all pending enqueue requests that are\nblocked on the given queue will be cancelled."
+    description: "If true, all pending enqueue requests that are\nblocked on the given queue will be canceled."
   }
   summary: "Closes the given queue."
   description: "This operation signals that no more elements will be enqueued in the\ngiven queue. Subsequent Enqueue(Many) operations will fail.\nSubsequent Dequeue(Many) operations will continue to succeed if\nsufficient elements remain in the queue. Subsequent Dequeue(Many)\noperations that would block will fail immediately."
@@ -15631,7 +15631,7 @@ op {
     default_value {
       b: false
     }
-    description: "If true, all pending enqueue requests that are\nblocked on the given queue will be cancelled."
+    description: "If true, all pending enqueue requests that are\nblocked on the given queue will be canceled."
   }
   summary: "Closes the given queue."
   description: "This operation signals that no more elements will be enqueued in the\ngiven queue. Subsequent Enqueue(Many) operations will fail.\nSubsequent Dequeue(Many) operations will continue to succeed if\nsufficient elements remain in the queue. Subsequent Dequeue(Many)\noperations that would block will fail immediately."

@@ -281,7 +281,7 @@ class _FuncGraph(ops.Graph):
   _FuncGraph overrides ops.Graph's create_op() so that we can keep
   track of every inputs into every op created inside the function.  If
   any input is from other graphs, we keep track of it in self.capture
-  and substitue the input with a place holder.
+  and substitute the input with a place holder.
 
   Each captured input's corresponding place holder is converted into a
   function argument and the caller passes in the captured tensor.

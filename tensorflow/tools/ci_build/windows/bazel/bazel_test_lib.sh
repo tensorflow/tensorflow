@@ -97,7 +97,7 @@ exclude_cpu_cc_tests="${failing_cpu_cc_tests} + ${broken_cpu_cc_tests}"
 exclude_gpu_cc_tests="${extra_failing_gpu_cc_tests} + ${exclude_cpu_cc_tests}"
 
 # Python tests
-# The first argument is the name of the python test direcotry
+# The first argument is the name of the python test directory
 function get_failing_cpu_py_tests() {
     echo "
     //$1/tensorflow/python:basic_session_run_hooks_test + \

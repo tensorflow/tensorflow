@@ -273,7 +273,7 @@ class LayoutAssignment : public HloPassInterface {
     return Status::OK();
   }
 
-  // This method can be overriden to mark instructions as requiring the operands
+  // This method can be overridden to mark instructions as requiring the operands
   // to have the same layout as the result, for performance or correctness. This
   // will propagate constraints through the instruction from the result into the
   // operands.

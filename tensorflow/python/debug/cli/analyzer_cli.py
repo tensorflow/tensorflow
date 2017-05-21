@@ -368,7 +368,7 @@ class DebugAnalyzer(object):
   def add_tensor_filter(self, filter_name, filter_callable):
     """Add a tensor filter.
 
-    A tensor filter is a named callable of the siganture:
+    A tensor filter is a named callable of the signature:
       filter_callable(dump_datum, tensor),
 
     wherein dump_datum is an instance of debug_data.DebugTensorDatum carrying
