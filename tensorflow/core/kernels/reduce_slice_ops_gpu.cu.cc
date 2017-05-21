@@ -77,7 +77,7 @@ namespace functor {
       Index jobsy = (sizey + threadsy - 1) / threadsy;                         \
       Index jobsz = (sizez + threadsz - 1) / threadsz;                         \
                                                                                \
-      ReduceSliceDeviceKernel##reduceop<T,Index> <<<config.block_count         \
+      ReduceSliceDeviceKernel##reduceop<T,Index> <<<config.block_count,        \
         config.thread_per_block, 0, d.stream()>>> (sizex, sizey, sizez,        \
                                    jobsx, jobsy, jobsz, bound, beginning<T>(), \
                                    indices.data(), data.data(), output.data());\
