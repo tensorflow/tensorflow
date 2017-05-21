@@ -31,7 +31,7 @@ def import_to_tensorboard(model_dir, log_dir):
 
   Args:
     model_dir: The location of the protobuf (`pb`) model to visualize
-    log_dir: The location for the Tensorboard log to begin visualisation from.
+    log_dir: The location for the Tensorboard log to begin visualization from.
 
   Usage:
     Call this function with your model location and desired log directory.

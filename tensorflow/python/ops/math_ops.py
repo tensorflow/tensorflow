@@ -386,7 +386,7 @@ def sign(x, name=None):
     A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
 
   @compatibility(numpy)
-  Equivalent to numpy.sign except for the behaviour for input values of NaN.
+  Equivalent to numpy.sign except for the behavior for input values of NaN.
   @end_compatibility
   """
   with ops.name_scope(name, "Sign", [x]) as name:

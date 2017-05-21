@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 
 class RegressionTargetColumnTest(test.TestCase):
 
-  # TODO(zakaria): test multilabel regresssion.
+  # TODO(zakaria): test multilabel regression.
   def testRegression(self):
     target_column = target_column_lib.regression_target()
     with ops.Graph().as_default(), session.Session() as sess:

@@ -309,7 +309,7 @@ def get_most_recent_export(export_dir_base):
                      directories.
 
   Returns:
-    A gc.Path, whith is just a namedtuple of (path, export_version).
+    A gc.Path, with is just a namedtuple of (path, export_version).
   """
   select_filter = gc.largest_export_versions(1)
   results = select_filter(gc.get_paths(export_dir_base,

@@ -91,7 +91,7 @@ _IMAGE_DATA_FORMAT = 'channels_last'
 def backend():
   """Publicly accessible method for determining the current backend.
 
-  Only exists for API compatibily with multi-backend Keras.
+  Only exists for API compatibility with multi-backend Keras.
 
   Returns:
       The string "tensorflow".
@@ -2617,7 +2617,7 @@ def in_train_phase(x, alt, training=None):
           (tensor or callable that returns a tensor).
       training: Optional scalar tensor
           (or Python boolean, or Python integer)
-          specifing the learning phase.
+          specifying the learning phase.
 
   Returns:
       Either `x` or `alt` based on the `training` flag.
@@ -2660,7 +2660,7 @@ def in_test_phase(x, alt, training=None):
           (tensor or callable that returns a tensor).
       training: Optional scalar tensor
           (or Python boolean, or Python integer)
-          specifing the learning phase.
+          specifying the learning phase.
 
   Returns:
       Either `x` or `alt` based on `K.learning_phase`.

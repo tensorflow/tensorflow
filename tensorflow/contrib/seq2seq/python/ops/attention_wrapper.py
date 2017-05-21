@@ -474,7 +474,7 @@ class AttentionWrapperState(
 
     Returns:
       A new `AttentionWrapperState` whose properties are the same as
-      this one, except any overriden properties as provided in `kwargs`.
+      this one, except any overridden properties as provided in `kwargs`.
     """
     return super(AttentionWrapperState, self)._replace(**kwargs)
 

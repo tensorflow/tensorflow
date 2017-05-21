@@ -282,7 +282,7 @@ class _VariableStore(object):
 
     # If a *_ref type is passed in an error would be triggered further down the
     # stack. We prevent this using base_dtype to get a non-ref version of the
-    # type, before doing anything else. When _ref types are removed in favour of
+    # type, before doing anything else. When _ref types are removed in favor of
     # resources, this line can be removed.
     try:
       dtype = dtype.base_dtype

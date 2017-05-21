@@ -37,7 +37,7 @@ namespace {
 // patterns to match.
 //
 // Each ExprTree node is comprised of an HloOpcode, and a set of operands (each
-// of type ExprTree). Operands can be added by specifing the index and HloOpcode
+// of type ExprTree). Operands can be added by specifying the index and HloOpcode
 // of the operand.
 //
 // For example, the following computation:
