@@ -25,7 +25,9 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.contrib.opt.python.training import delay_compensated_gradient_descent
 
+
 class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
+
   def testBasic(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
       with self.test_session():
@@ -124,6 +126,7 @@ class DelayCompensatedGradientDescentOptimizerTest(test.TestCase):
         self.assertAllCloseAccordingToType(
             [3.0 - 3.0 * 0.01, 4.0 - 3.0 * 0.01], var1.eval())
         self.assertAllCloseAccordingToType(1, global_step.eval())
+
 
 if __name__ == "__main__":
   test.main()
