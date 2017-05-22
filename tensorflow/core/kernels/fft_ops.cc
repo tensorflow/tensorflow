@@ -17,7 +17,6 @@ limitations under the License.
 
 // See docs in ../ops/spectral_ops.cc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
@@ -54,9 +54,8 @@ class FFTBase : public OpKernel {
     // instead of inferring it from the input shape.
     if (IsReal()) {
       const Tensor& fft_length = ctx->input(1);
-      OP_REQUIRES(ctx,
-                  fft_length.shape().dims() == 1 &&
-                      fft_length.shape().dim_size(0) == fft_rank,
+      OP_REQUIRES(ctx, fft_length.shape().dims() == 1 &&
+                           fft_length.shape().dim_size(0) == fft_rank,
                   errors::InvalidArgument("fft_length must  have shape [",
                                           fft_rank, "]"));
 
@@ -135,9 +134,52 @@ class FFTCPU : public FFTBase {
         output.device(device) =
             full_fft.slice(startIndices, output.dimensions());
       } else {
-        // TODO: reconstruct the full fft and take the inverse.
-        ctx->CtxFailureWithWarning(
-            errors::Unimplemented("IRFFT is not implemented as a CPU kernel"));
+        // Reconstruct the full fft and take the inverse.
+        auto input = ((Tensor)in).flat_inner_dims<complex64, FFTRank + 1>();
+        auto output = out->flat_inner_dims<float, FFTRank + 1>();
+
+        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> startIndices;
+        auto sizes = input.dimensions();
+
+        // Calculate the shape of full-fft temporary tensor
+        TensorShape fullShape;
+        fullShape.AddDim(sizes[0]);
+        for (auto i = 1; i <= FFTRank; i++) {
+          fullShape.AddDim(fft_shape[i - 1]);
+        }
+
+        // Calculate the starting point and range of the source of
+        // negative frequency part
+        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> negStartIndices,
+            negTargetIndices;
+        auto negSizes = input.dimensions();
+
+        for (auto i = 1; i <= FFTRank; i++) {
+          negStartIndices[i] = 1;
+          negSizes[i] = fft_shape[i - 1] - sizes[i];
+          negTargetIndices[i] = sizes[i];
+        }
+
+        Tensor temp;
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<complex64>::v(),
+                                               fullShape, &temp));
+        auto full_fft = temp.flat_inner_dims<complex64, FFTRank + 1>();
+
+        // Reconstruct the full fft by appending reversed and conjugated
+        // spectrum as the negative frequency part
+        Eigen::array<bool, FFTRank + 1> reversedAxis;
+        for (auto i = 1; i <= FFTRank; i++) {
+          reversedAxis[i] = true;
+        }
+
+        full_fft.slice(startIndices, sizes) = input.slice(startIndices, sizes);
+        full_fft.slice(negTargetIndices, negSizes) =
+            input.slice(negStartIndices, negSizes)
+                .reverse(reversedAxis)
+                .conjugate();
+
+        output.device(device) =
+            full_fft.template fft<Eigen::RealPart, Eigen::FFT_REVERSE>(axes);
       }
     }
   }
@@ -166,10 +208,16 @@ REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
 
 REGISTER_KERNEL_BUILDER(Name("RFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
                         FFTCPU<true, true, 1>);
+REGISTER_KERNEL_BUILDER(Name("IRFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<false, true, 1>);
 REGISTER_KERNEL_BUILDER(Name("RFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
                         FFTCPU<true, true, 2>);
+REGISTER_KERNEL_BUILDER(Name("IRFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<false, true, 2>);
 REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
                         FFTCPU<true, true, 3>);
+REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<false, true, 3>);
 
 #undef FFT_LABEL
 
