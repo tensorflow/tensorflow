@@ -6,12 +6,15 @@
 import tensorflow as tf
 import numpy as np
 
-def _get_variable(name, shape, initializer, dtype=tf.float32):
+datatype = tf.float32
+
+def _get_variable(name, shape, initializer):
 
   return tf.get_variable(name,
                          shape=shape,
                          initializer=initializer,
-                         dtype=dtype)
+                         dtype=datatype)
+
 def inference(x):
 
   with tf.variable_scope('scale1', use_resource=True):
@@ -100,15 +103,13 @@ def block(x, first_stride, internal_filters, final_filters):
     x = conv(x, 1, 1, final_filters)
 
   with tf.variable_scope('shortcut', use_resource=True):
-    pad = int(x.get_shape()[-1] - shape_in[-1])
-    kernel = np.reshape(np.concatenate((np.identity(shape_in[-1], dtype=np.float32),
-                                        np.zeros([pad, shape_in[-1]]))),
-                        [1, 1, shape_in[-1], final_filters])
-
-    shortcut = tf.nn.conv2d(shortcut,
-                            kernel,
-                            [1,first_stride,first_stride,1],
-                            padding='SAME')
+    # shortcut
+    if (first_stride != 1):
+      shortcut = tf.strided_slice(shortcut, [0,0,0,0], shortcut.get_shape(),
+                                  strides=[1, first_stride, first_stride, 1])
+    pad = int(x.get_shape()[3] - shape_in[3])
+    if (pad != 0):
+      shortcut = tf.pad(shortcut, paddings=[[0,0],[0,0],[0,0],[0,pad]])
 
   return tf.nn.relu(x + shortcut)
 
