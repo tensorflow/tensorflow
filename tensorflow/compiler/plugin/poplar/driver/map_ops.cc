@@ -1,6 +1,7 @@
 #include <algorithm>
 
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_map.h"
@@ -113,23 +114,33 @@ CreateCallOp(poplar::Graph &graph,
              TensorMap& tensor_map) {
 
   int64 op_count(inst->operand_count());
+  HloComputation* comp = inst->to_apply();
+  poplar::program::Sequence seq;
 
   CallVisitor visitor(&graph, res, op_count);
-  TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
+  CallVisitor* v = &visitor;
 
-  poplar::program::Sequence seq;
+  if (res.computation_map.find(comp) != res.computation_map.end()) {
+    v = &(res.computation_map.at(comp));
+  } else {
+    TF_RETURN_IF_ERROR(comp->Accept(&visitor));
+  }
 
   for (int64 i = 0; i < op_count; i++) {
     poplar::Tensor t;
     TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i, 0));
-    seq.add(poplar::program::Copy(t, visitor.inputs()[i]));
+    seq.add(poplar::program::Copy(t, v->inputs()[i]));
   }
 
-  seq.add(visitor.sequence);
+  seq.add(v->sequence);
 
-  for (size_t i=0; i<visitor.outputs().size(); i++) {
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
-                                       visitor.outputs()[i]));
+  for (size_t i=0; i<v->outputs().size(); i++) {
+    // TODO use 'clone' when poplar supports it
+    poplar::Tensor o = graph.addTensor(
+            graph.getTensorElementType(v->outputs()[i]),
+            v->outputs()[i].shape());
+    seq.add(poplar::program::Copy(v->outputs()[i], o));
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
   }
 
   return seq;

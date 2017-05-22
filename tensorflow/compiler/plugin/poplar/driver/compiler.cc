@@ -149,8 +149,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
-  VLOG(1) << "Generate graph " << hlo_module->name();
-
   TF_RETURN_IF_ERROR(
           RunHloOptimization(hlo_module.get(), dump_hlo));
 
@@ -188,9 +186,16 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     if (comp != entry) {
       // If this computation is a target of a 'call' then compile
       // it and store in compiler resources
-      VLOG(2) << "Compiling sub-graph " << comp->name();
+      VLOG(1) << "Compiling sub-computation " << comp->name();
+      resources.computation_map.emplace(
+              std::piecewise_construct,
+              std::forward_as_tuple(comp),
+              std::forward_as_tuple(graph, resources, comp->num_parameters()));
+      TF_RETURN_IF_ERROR(comp->Accept(&(resources.computation_map.at(comp))));
     }
   }
+
+  VLOG(1) << "Compiling computation " << entry->name();
 
   // Visit the graph, building up a poplar equivalent
   EntryVisitor visitor(graph, resources, entry->num_parameters());
