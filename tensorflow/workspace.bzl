@@ -2,6 +2,7 @@
 
 load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
+load("//third_party/ipus:poplar_configure.bzl", "poplar_configure")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "web_library_external")
@@ -139,6 +140,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   check_version("0.4.5")
   cuda_configure(name="local_config_cuda")
   sycl_configure(name="local_config_sycl")
+  poplar_configure(name="local_config_poplar")
   python_configure(name="local_config_python")
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used " +

@@ -12,25 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Additional XLA devices to be included in the unit test suite."""
 
-"""Configuration file for an XLA plugin.
-- please don't check in changes to this file
-- to prevent changes appearing in git status, use:
-  git update-index --assume-unchanged tensorflow/compiler/plugin/BUILD
+# If you wish to edit this file without checking it into the repo, consider:
+#   git update-index --assume-unchanged tensorflow/compiler/tests/plugin.bzl
 
-To add additional devices to the XLA subsystem, add targets to the
-dependency list in the 'plugin' target. For instance:
+plugins = {
+  "poplar": {"device":"XLA_IPU", "types":"DT_FLOAT,DT_INT32", "tags":[]},
+  "executor": {"device":"XLA_EXEC", "types":"DT_FLOAT,DT_INT32", "tags":[]},
+}
 
-    deps = ["//tensorflow/compiler/plugin/example:plugin_lib"],
-"""
 
-package(
-    default_visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "plugin",
-    deps = [
-      "//tensorflow/compiler/plugin/poplar:poplar_lib",
-    ],
-)
