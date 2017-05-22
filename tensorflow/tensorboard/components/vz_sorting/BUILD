@@ -1,13 +1,13 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
 
-webfiles(
+web_library(
     name = "vz_sorting",
     srcs = [
         "vz-sorting.html",
@@ -37,12 +37,12 @@ tensorboard_webcomponent_library(
         "vz-sorting.html",
         ":legacy_ts",
     ],
-    visibility = ["//visibility:public"],
     destdir = "vz-sorting",
 )
 
 tensorboard_ts_library(
     name = "legacy_ts",
     srcs = ["sorting.ts"],
-    deps = ["//tensorflow/tensorboard/components:common_deps"],
+    deps_mgmt = "off",
+    runtime = "nodejs",
 )

@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 import numpy as np
 import six
 
@@ -31,6 +33,21 @@ RL = debugger_cli_common.RichLine
 # Default threshold number of elements above which ellipses will be used
 # when printing the value of the tensor.
 DEFAULT_NDARRAY_DISPLAY_THRESHOLD = 2000
+
+COLOR_BLACK = "black"
+COLOR_BLUE = "blue"
+COLOR_CYAN = "cyan"
+COLOR_GRAY = "gray"
+COLOR_GREEN = "green"
+COLOR_MAGENTA = "magenta"
+COLOR_RED = "red"
+COLOR_WHITE = "white"
+COLOR_YELLOW = "yellow"
+
+TIME_UNIT_US = "us"
+TIME_UNIT_MS = "ms"
+TIME_UNIT_S = "s"
+TIME_UNITS = [TIME_UNIT_US, TIME_UNIT_MS, TIME_UNIT_S]
 
 
 def bytes_to_readable_str(num_bytes, include_b=False):
@@ -61,6 +78,34 @@ def bytes_to_readable_str(num_bytes, include_b=False):
   if include_b:
     result += "B"
   return result
+
+
+def time_to_readable_str(value_us, force_time_unit=None):
+  """Convert time value to human-readable string.
+
+  Args:
+    value_us: time value in microseconds.
+    force_time_unit: force the output to use the specified time unit. Must be
+      in TIME_UNITS.
+
+  Returns:
+    Human-readable string representation of the time value.
+
+  Raises:
+    ValueError: if force_time_unit value is not in TIME_UNITS.
+  """
+  if not value_us:
+    return "0"
+  if force_time_unit:
+    if force_time_unit not in TIME_UNITS:
+      raise ValueError("Invalid time unit: %s" % force_time_unit)
+    order = TIME_UNITS.index(force_time_unit)
+    time_unit = force_time_unit
+    return "{:.10g}{}".format(value_us / math.pow(10.0, 3*order), time_unit)
+  else:
+    order = min(len(TIME_UNITS) - 1, int(math.log(value_us, 10) / 3))
+    time_unit = TIME_UNITS[order]
+    return "{:.3g}{}".format(value_us / math.pow(10.0, 3*order), time_unit)
 
 
 def parse_ranges_highlight(ranges_string):
@@ -154,7 +199,7 @@ def error(msg):
   """
 
   return debugger_cli_common.rich_text_lines_from_rich_line_list([
-      RL("ERROR: " + msg, "red")])
+      RL("ERROR: " + msg, COLOR_RED)])
 
 
 def _get_fetch_name(fetch):

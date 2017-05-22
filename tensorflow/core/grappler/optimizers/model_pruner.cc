@@ -46,29 +46,32 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
       continue;
     }
-    // Don't remove nodes that are explicitely placed.
+    // Don't remove nodes that are explicitly placed.
     if (!node.device().empty()) {
       continue;
     }
     // Don't remove nodes that drive control dependencies.
-    if (!rewriter.DrivesControlDependency(node)) {
+    // Don't remove nodes that are driven by control dependencies either since
+    // we can't ensure (yet) that we won't increase the number of control
+    // dependency edges by deleting them (for example, removing a node driven by
+    // 10 control edges and driving 10 control edges would result in the
+    // creation of 100 edges).
+    if (!rewriter.DrivesControlDependency(node) &&
+        !rewriter.IsDrivenByControlDependency(node)) {
       nodes_to_delete.insert(&node);
     }
   }
 
   for (auto& node : item.graph.node()) {
-    if (nodes_to_delete.find(&node) != nodes_to_delete.end()) {
-      continue;
-    }
     NodeDef* new_node = pruned_graph->add_node();
     *new_node = node;
     new_node->clear_input();
     rewriter.ForwardInputs(node, nodes_to_delete, new_node);
   }
 
-  LOG(INFO) << "Pruned " << nodes_to_delete.size()
-            << " nodes from the graph. The graph now contains "
-            << pruned_graph->node_size() << " nodes.";
+  VLOG(1) << "Pruned " << nodes_to_delete.size()
+          << " nodes from the graph. The graph now contains "
+          << pruned_graph->node_size() << " nodes.";
 
   return Status::OK();
 }

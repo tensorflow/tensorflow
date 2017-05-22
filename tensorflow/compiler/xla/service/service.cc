@@ -112,6 +112,16 @@ ServiceOptions& ServiceOptions::set_number_of_replicas(int number_of_replicas) {
 
 int ServiceOptions::number_of_replicas() const { return number_of_replicas_; }
 
+ServiceOptions& ServiceOptions::set_intra_op_parallelism_threads(
+    int num_threads) {
+  intra_op_parallelism_threads_ = num_threads;
+  return *this;
+}
+
+int ServiceOptions::intra_op_parallelism_threads() const {
+  return intra_op_parallelism_threads_;
+}
+
 /* static */ StatusOr<std::unique_ptr<Service>> Service::NewService(
     perftools::gputools::Platform* platform) {
   ServiceOptions default_options;
@@ -126,9 +136,10 @@ int ServiceOptions::number_of_replicas() const { return number_of_replicas_; }
   if (platform == nullptr) {
     TF_ASSIGN_OR_RETURN(platform, PlatformUtil::GetDefaultPlatform());
   }
-  TF_ASSIGN_OR_RETURN(
-      execute_backend,
-      Backend::CreateBackend(platform, options.number_of_replicas()));
+  BackendOptions backend_options;
+  backend_options.set_platform(platform);
+  backend_options.set_number_of_replicas(options.number_of_replicas());
+  TF_ASSIGN_OR_RETURN(execute_backend, Backend::CreateBackend(backend_options));
   TF_ASSIGN_OR_RETURN(std::unique_ptr<Backend> compute_constant_backend,
                       CreateComputeConstantBackend());
   std::unique_ptr<Service> service(new Service(
@@ -142,7 +153,10 @@ Service::CreateComputeConstantBackend() {
                       PlatformUtil::GetSupportedPlatforms());
   for (auto* platform : platforms) {
     if (platform->id() == se::host::kHostPlatformId) {
-      return Backend::CreateBackend(platform, /*replica_count=*/1);
+      BackendOptions backend_options;
+      backend_options.set_platform(platform);
+      backend_options.set_number_of_replicas(1);
+      return Backend::CreateBackend(backend_options);
     }
   }
   return NotFound("CPU platform not found");
@@ -180,20 +194,24 @@ Service::Service(std::unique_ptr<Backend> execute_backend,
                  std::unique_ptr<Backend> compute_constant_backend)
     : execute_backend_(std::move(execute_backend)),
       compute_constant_backend_(std::move(compute_constant_backend)) {
-  LOG(INFO) << Printf(
-      "XLA service %p executing computations on platform %s. Devices:", this,
-      execute_backend_->platform()->Name().c_str());
-  for (int i = 0; i < execute_backend_->device_count(); ++i) {
-    if (execute_backend_->device_ordinal_supported(i)) {
-      se::StreamExecutor* executor =
-          execute_backend_->stream_executor(i).ValueOrDie();
-      const auto& description = executor->GetDeviceDescription();
-      LOG(INFO) << Printf("  StreamExecutor device (%d): %s, %s", i,
-                          description.name().c_str(),
-                          description.platform_version().c_str());
-    } else {
-      LOG(INFO) << Printf("  StreamExecutor device (%d) not supported", i);
+  if (execute_backend_) {
+    LOG(INFO) << Printf(
+        "XLA service %p executing computations on platform %s. Devices:", this,
+        execute_backend_->platform()->Name().c_str());
+    for (int i = 0; i < execute_backend_->device_count(); ++i) {
+      if (execute_backend_->device_ordinal_supported(i)) {
+        se::StreamExecutor* executor =
+            execute_backend_->stream_executor(i).ValueOrDie();
+        const auto& description = executor->GetDeviceDescription();
+        LOG(INFO) << Printf("  StreamExecutor device (%d): %s, %s", i,
+                            description.name().c_str(),
+                            description.platform_version().c_str());
+      } else {
+        LOG(INFO) << Printf("  StreamExecutor device (%d) not supported", i);
+      }
     }
+  } else {
+    VLOG(1) << "XLA compile-only service constructed";
   }
 }
 
@@ -286,7 +304,7 @@ StatusOr<std::vector<const Allocation*>> Service::ResolveAndValidateArguments(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-    const ExecutionOptions& execution_options) {
+    const ExecutionOptions& execution_options, Backend* backend) {
   auto module_config = MakeUnique<HloModuleConfig>(program_shape);
   auto* computation_layout = module_config->mutable_entry_computation_layout();
 
@@ -326,7 +344,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     module_config->enable_hlo_profiling(true);
   }
 
-  module_config->set_replica_count(execute_backend_->Replicas().size());
+  module_config->set_replica_count(backend->Replicas().size());
   module_config->set_fast_math_disabled(execution_options.disable_fast_math());
   module_config->set_seed(execution_options.seed());
 
@@ -367,20 +385,23 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     VLOG(1) << versioned_handle;
   }
 
+  CHECK_EQ(versioned_handles.size(), module_configs.size());
   std::vector<std::unique_ptr<HloModule>> modules;
-  for (const VersionedComputationHandle& versioned_handle : versioned_handles) {
+  for (int64 i = 0; i < versioned_handles.size(); ++i) {
+    const VersionedComputationHandle& versioned_handle = versioned_handles[i];
+    const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(auto module,
                         computation_tracker_.BuildHloModule(
-                            versioned_handle,
+                            versioned_handle, &config,
                             /*include_unreachable_instructions=*/true));
     modules.push_back(std::move(module));
   }
 
   Compiler::HloDumper hlo_dumper = MakeHloDumper();
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
-                      backend->compiler()->Compile(
-                          std::move(modules), std::move(module_configs),
-                          hlo_dumper, std::move(executors)));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<Executable>> executables,
+      backend->compiler()->Compile(std::move(modules), hlo_dumper,
+                                   std::move(executors)));
 
   if (!other_directory_path.empty()) {
     for (size_t i = 0; i < versioned_handles.size(); ++i) {
@@ -423,7 +444,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
-      computation_tracker_.BuildHloModule(versioned_handle,
+      computation_tracker_.BuildHloModule(versioned_handle, module_config.get(),
                                           /*include_unreachable_instructions=*/
                                           !executable_for_compute_constant));
 
@@ -435,8 +456,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend->compiler()->Compile(std::move(module), std::move(module_config),
-                                   hlo_dumper, executor));
+      backend->compiler()->Compile(std::move(module), hlo_dumper, executor));
 
   if (!other_directory_path.empty()) {
     executable->set_session_module(std::move(session_module));
@@ -474,7 +494,7 @@ StatusOr<std::shared_ptr<Executable>> Service::BuildAndCacheExecutable(
       std::unique_ptr<Executable> executable_unique_ptr,
       BuildExecutable(versioned_handle, std::move(module_config),
                       /*executable_for_compute_constant=*/false, arguments,
-                      execute_backend_.get(), executor));
+                      backend, executor));
 
   if (profile != nullptr) {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
@@ -569,21 +589,21 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     options.set_inter_op_thread_pool(backend->inter_op_thread_pool());
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
-    run_options.emplace_back(options, backend->StreamBorrower());
+    run_options.emplace_back(options, backend->StreamBorrower(),
+                             backend->inter_op_thread_pool());
   }
 
   perftools::gputools::DeviceMemoryBase result;
   if (backend->Replicas().size() == 1) {
     TF_ASSIGN_OR_RETURN(
-        result,
-        ExecuteOnStreamWrapper<StatusOr<se::DeviceMemoryBase>>(
-            executable, &run_options[0], profile, execute_backend_.get(),
-            [&arguments](Executable* executable,
-                         const ServiceExecutableRunOptions* run_options,
-                         HloExecutionProfile* hlo_execution_profile) {
-              return executable->ExecuteOnStream(run_options, arguments,
-                                                 hlo_execution_profile);
-            }));
+        result, ExecuteOnStreamWrapper<StatusOr<se::DeviceMemoryBase>>(
+                    executable, &run_options[0], profile, backend,
+                    [&arguments](Executable* executable,
+                                 const ServiceExecutableRunOptions* run_options,
+                                 HloExecutionProfile* hlo_execution_profile) {
+                      return executable->ExecuteOnStream(run_options, arguments,
+                                                         hlo_execution_profile);
+                    }));
   } else {
     std::vector<
         tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
@@ -666,7 +686,8 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
     // the program and the argument allocations.
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
                         CreateModuleConfig(*program_shape, arg_allocations,
-                                           request.execution_options()));
+                                           request.execution_options(),
+                                           execute_backend_.get()));
     VLOG(3) << "ExecuteParallel created HloModuleConfig computation layout: "
             << module_config->entry_computation_layout().ToString();
 
@@ -751,9 +772,10 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
       ResolveAndValidateArguments(arg->arguments(), execute_backend_.get(),
                                   execute_backend_->default_device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
-                      CreateModuleConfig(*program_shape, arg_allocations,
-                                         arg->execution_options()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModuleConfig> module_config,
+      CreateModuleConfig(*program_shape, arg_allocations,
+                         arg->execution_options(), execute_backend_.get()));
 
   VLOG(3) << "Execute created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -818,9 +840,10 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
       ResolveAndValidateArguments(arg->arguments(), execute_backend_.get(),
                                   execute_backend_->default_device_ordinal()));
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
-                      CreateModuleConfig(*program_shape, arg_allocations,
-                                         arg->execution_options()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModuleConfig> module_config,
+      CreateModuleConfig(*program_shape, arg_allocations,
+                         arg->execution_options(), execute_backend_.get()));
 
   VLOG(3) << "ExecuteAsync created HloModuleConfig computation layout: "
           << module_config->entry_computation_layout().ToString();
@@ -1141,7 +1164,8 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
   }
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModuleConfig> module_config,
-                      CreateModuleConfig(program_shape, {}, execution_options));
+                      CreateModuleConfig(program_shape, {}, execution_options,
+                                         compute_constant_backend_.get()));
 
   TF_ASSIGN_OR_RETURN(
       std::shared_ptr<Executable> executable,
@@ -1202,7 +1226,8 @@ tensorflow::Status Service::GetComputationStats(
       user_computation->GetVersionedHandle();
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      computation_tracker_.BuildHloModule(versioned_handle));
+                      computation_tracker_.BuildHloModule(versioned_handle,
+                                                          /*config=*/nullptr));
 
   MakeHloDumper()(*module, "computation statistics subject");
 

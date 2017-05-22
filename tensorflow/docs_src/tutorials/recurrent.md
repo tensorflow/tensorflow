@@ -51,11 +51,28 @@ The core of the model consists of an LSTM cell that processes one word at a
 time and computes probabilities of the possible values for the next word in the
 sentence. The memory state of the network is initialized with a vector of zeros
 and gets updated after reading each word. For computational reasons, we will
-process data in mini-batches of size `batch_size`.
+process data in mini-batches of size `batch_size`.  In this example, it is important 
+to note that `current_batch_of_words` does not correspond to a "sentence" of words.  
+Every word in a batch should correspond to time t.  Tensorflow will automatically sum 
+the gradients of each batch for you.
+
+For example:
+```
+ t=0  t=1    t=2  t=3     t=4
+[The, brown, fox, is,     quick]
+[The, red,   fox, jumped, high]
+
+words_in_dataset[0] = [The, The]
+words_in_dataset[1] = [fox, fox]
+words_in_dataset[2] = [is, jumped]
+words_in_dataset[3] = [quick, high]
+num_batches = 4, batch_size = 2, time_steps = 5
+```
 
 The basic pseudocode is as follows:
 
 ```python
+words_in_dataset = tf.placeholder(tf.float32, [num_batches, batch_size, num_features])
 lstm = tf.contrib.rnn.BasicLSTMCell(lstm_size)
 # Initial state of the LSTM memory.
 state = tf.zeros([batch_size, lstm.state_size])
@@ -156,9 +173,10 @@ the second and so on.
 We have a class called `MultiRNNCell` that makes the implementation seamless:
 
 ```python
-lstm = tf.contrib.rnn.BasicLSTMCell(lstm_size, state_is_tuple=False)
-stacked_lstm = tf.contrib.rnn.MultiRNNCell([lstm] * number_of_layers,
-    state_is_tuple=False)
+def lstm_cell():
+  return tf.contrib.rnn.BasicLSTMCell(lstm_size)
+stacked_lstm = tf.contrib.rnn.MultiRNNCell(
+    [lstm_cell() for _ in range(number_of_layers)])
 
 initial_state = state = stacked_lstm.zero_state(batch_size, tf.float32)
 for i in range(num_steps):
@@ -173,15 +191,22 @@ final_state = state
 
 ## Run the Code
 
-Start by cloning the [TensorFlow models repo](https://github.com/tensorflow/models) from GitHub.
-You'll also need to download the PTB dataset, as discussed at the beginning of
-this tutorial; we'll assume the dataset is located in `/tmp/simple-examples/data`.
+Before running the code, download the PTB dataset, as discussed at the beginning
+of this tutorial.  Then, extract the PTB dataset underneath your home directory
+as follows:
 
-Run the following commands:
+```bsh
+tar xvfz simple-examples.tgz -C $HOME
+```
+_(Note: On Windows, you may need to use
+[other tools](https://wiki.haskell.org/How_to_unpack_a_tar_file_in_Windows).)_
 
-```bash
+Now, clone the [TensorFlow models repo](https://github.com/tensorflow/models)
+from GitHub. Run the following commands:
+
+```bsh
 cd models/tutorials/rnn/ptb
-python ptb_word_lm.py --data_path=/tmp/simple-examples/data/ --model=small
+python ptb_word_lm.py --data_path=$HOME/simple-examples/data/ --model=small
 ```
 
 There are 3 supported model configurations in the tutorial code: "small",

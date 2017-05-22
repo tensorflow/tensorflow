@@ -318,7 +318,7 @@ REGISTER_OP("SelfAdjointEigV2")
     .Output("e: T")
     .Output("v: T")
     .Attr("compute_v: bool = True")
-    .Attr("T: {double, float}")
+    .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(SelfAdjointEigV2ShapeFn)
     .Doc(R"doc(
 Computes the eigen decomposition of one or more square self-adjoint matrices.

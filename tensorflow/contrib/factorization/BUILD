@@ -35,6 +35,7 @@ tf_custom_op_py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":factorization_ops_test_utils_py",
         ":gen_clustering_ops",
         ":gen_factorization_ops",
         "//tensorflow/contrib/framework:framework_py",
@@ -137,6 +138,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
     ],
     tags = [
+        "no_pip",  # b/38283730
         "notsan",  # Flaky: b/30756419
     ],
 )
@@ -161,12 +163,28 @@ tf_py_test(
     ],
 )
 
+py_library(
+    name = "factorization_ops_test_utils_py",
+    srcs = [
+        "python/ops/factorization_ops_test_utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:embedding_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+    ],
+)
+
 tf_py_test(
     name = "factorization_ops_test",
     srcs = ["python/ops/factorization_ops_test.py"],
     additional_deps = [
         ":factorization_py",
         ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        ":factorization_ops_test_utils_py",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -185,6 +203,7 @@ tf_py_test(
     additional_deps = [
         ":factorization_py",
         ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        ":factorization_ops_test_utils_py",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

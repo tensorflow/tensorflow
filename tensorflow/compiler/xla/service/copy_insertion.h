@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 
@@ -32,9 +33,6 @@ namespace xla {
 // different lifetimes than computation results.
 class CopyInsertion : public HloPassInterface {
  public:
-  explicit CopyInsertion(bool copy_param_and_const = true)
-      : copy_param_and_const_(copy_param_and_const) {}
-  ~CopyInsertion() override {}
   tensorflow::StringPiece name() const override { return "copy-insertion"; }
 
   // Run the pass on the given module. Returns whether the module was changed
@@ -46,13 +44,9 @@ class CopyInsertion : public HloPassInterface {
   // duplicate copies.
   StatusOr<HloInstruction*> FindOrInsertCopy(HloInstruction* hlo);
 
-  // Determines whether to insert copies if the root instruction is, or
-  // points-to, any constant or parameter instruction.
-  const bool copy_param_and_const_;
-
   // A map containing all copies inserted during the copy insertion pass. The
   // key is the copied instruction and the value is the copy.
-  std::unordered_map<HloInstruction*, HloInstruction*> inserted_copies_;
+  tensorflow::gtl::FlatMap<HloInstruction*, HloInstruction*> inserted_copies_;
 };
 
 }  // namespace xla

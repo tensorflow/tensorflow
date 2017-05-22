@@ -568,7 +568,6 @@ Status GPUTracerImpl::Collect(StepStatsCollector *collector) {
   const int id = 0;
   const string stream_device = strings::StrCat(prefix, "/gpu:", id, "/stream:");
   const string memcpy_device = strings::StrCat(prefix, "/gpu:", id, "/memcpy");
-  const string sync_device = strings::StrCat(prefix, "/gpu:", id, "/sync");
 
   mutex_lock l2(trace_mu_);
   for (const auto &rec : kernel_records_) {

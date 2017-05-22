@@ -1617,5 +1617,14 @@ TEST(GcsFileSystemTest, DeleteRecursively_NotAFolder) {
   EXPECT_EQ(1, undeleted_dirs);
 }
 
+TEST(GcsFileSystemTest, OverrideReadaheadBufferSize) {
+  GcsFileSystem fs1;
+  EXPECT_EQ(256 * 1024 * 1024, fs1.get_readahead_buffer_size());
+
+  setenv("GCS_READAHEAD_BUFFER_SIZE_BYTES", "123456789", 1);
+  GcsFileSystem fs2;
+  EXPECT_EQ(123456789L, fs2.get_readahead_buffer_size());
+}
+
 }  // namespace
 }  // namespace tensorflow

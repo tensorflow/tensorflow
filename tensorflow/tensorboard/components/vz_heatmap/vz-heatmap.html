@@ -20,7 +20,7 @@ limitations under the License.
 
 <!--
 `vz-heatmap` A simple heatmap to visualize 2D data using predefined or user
-defined colour scheme, with a dependency on d3.js. The heatmap automatically
+defined color scheme, with a dependency on d3.js. The heatmap automatically
 fits itself to the width of the container it is placed in.
 
 @element vz-heatmap
@@ -89,7 +89,7 @@ fits itself to the width of the container it is placed in.
         _generatedColorScale: {
           type: Object,
           value: (function () {
-            var retFunction = d3.scale.linear();
+            var retFunction = d3.scaleLinear();
             if (this.colors) {
               retFunction.range(this.colors)
             }
@@ -277,7 +277,7 @@ fits itself to the width of the container it is placed in.
        */
       _updateColorFunction: function () {
         if (Array.isArray(this.colors) && this.colors.length) {
-          this._generatedColorScale = d3.scale.linear().range(this.colors);
+          this._generatedColorScale = d3.scaleLinear().range(this.colors);
         }
 
         if (this.values) {
@@ -287,14 +287,14 @@ fits itself to the width of the container it is placed in.
             this._generatedColorScale.domain(this.values);
           }
 
-          // If values reset, and data field contains valid data, set colour scale
+          // If values reset, and data field contains valid data, set color scale
           // to use the data extent as domain.
         } else if (this._currentDataValid) {
           this._generatedColorScale.domain(this._dataExtent);
         }
       },
       _getLinearInterpolation: function (domain, range) {
-        return d3.scale.linear().domain(domain).range(range);
+        return d3.scaleLinear().domain(domain).range(range);
       },
       /**
        * Find side length of each tile in heat map by dividing current width

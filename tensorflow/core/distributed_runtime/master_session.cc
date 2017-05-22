@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/profile_handler.h"
 #include "tensorflow/core/common_runtime/stats_publisher_interface.h"
+#include "tensorflow/core/debug/debug_graph_utils.h"
 #include "tensorflow/core/distributed_runtime/scheduler.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
 #include "tensorflow/core/distributed_runtime/worker_interface.h"
@@ -35,11 +36,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -60,38 +63,23 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   ReffedClientGraph(const string& handle, const BuildGraphOptions& bopts,
                     std::unique_ptr<SimpleClientGraph> cg,
                     const SessionOptions& session_opts,
-                    StatsPublisherFactory stats_publisher_factory,
+                    const StatsPublisherFactory& stats_publisher_factory,
                     SimpleGraphExecutionState* execution_state, bool is_partial,
                     WorkerCacheInterface* worker_cache)
       : session_handle_(handle),
         client_graph_(std::move(cg)),
         session_opts_(session_opts),
         is_partial_(is_partial),
+        debug_opts_(bopts.debug_options),
         worker_cache_(worker_cache) {
     VLOG(1) << "Created ReffedClientGraph for node with "
             << client_graph_->graph.num_node_ids();
 
     stats_publisher_ = stats_publisher_factory(handle, bopts, session_opts);
 
-    // If this is a partial run we need to initialize a name to node map for
-    // testing that fetches are reachable.
-    if (is_partial) {
-      std::unordered_set<StringPiece, StringPiece::Hasher> names;
-      for (const string& input : bopts.feed_endpoints) {
-        TensorId id(ParseTensorName(input));
-        names.emplace(id.first);
-      }
-      for (const string& output : bopts.fetch_endpoints) {
-        TensorId id(ParseTensorName(output));
-        names.emplace(id.first);
-      }
-      // We use the graph from the execution_state because we want the graph
-      // nodes before they are rewritten replaced by the rewriter.
-      for (Node* n : execution_state->full_graph()->nodes()) {
-        if (names.count(n->name()) > 0) {
-          name_to_node_.insert({n->name(), n});
-        }
-      }
+    // Initialize a name to node map for testing that fetches are reachable.
+    for (Node* n : execution_state->full_graph()->nodes()) {
+      name_to_node_.insert({n->name(), n});
     }
   }
 
@@ -146,8 +134,9 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
       for (auto& p : partitions_) {
         LoggingResponse* resp = new LoggingResponse;
         p.worker->LoggingAsync(
-            &req, resp, [step_id, ss, resp, &scoped_mu, &waiting_for,
-                         &all_done](const Status& s) {
+            &req, resp,
+            [step_id, ss, resp, &scoped_mu, &waiting_for,
+             &all_done](const Status& s) {
               {
                 mutex_lock l(scoped_mu);
                 if (s.ok()) {
@@ -175,14 +164,12 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   // Partitions the graph into subgraphs and registers them on
   // workers.
   Status RegisterPartitions(const PartitionOptions& popts,
-                            const FunctionDefLibrary& func_def_lib);
+                            const FunctionLibraryDefinition& flib_def);
 
   // Runs one step of all partitions.
   Status RunPartitions(const MasterEnv* env, int64 step_id,
-                       int64 execution_count,
-                       SimpleGraphExecutionState* execution_state,
-                       PerStepState* pss, CallOptions* opts,
-                       const RunStepRequestWrapper& req,
+                       int64 execution_count, PerStepState* pss,
+                       CallOptions* opts, const RunStepRequestWrapper& req,
                        MutableRunStepResponseWrapper* resp,
                        CancellationManager* cm, const bool is_last_partial_run);
 
@@ -192,18 +179,16 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 
   // Post-processing of any runtime statistics gathered during execution.
   void ProcessStats(int64 step_id, PerStepState* pss,
-                    SimpleGraphExecutionState* execution_state,
                     ProfileHandler* ph, const RunOptions& options,
                     RunMetadata* resp);
   void ProcessDeviceStats(ProfileHandler* ph,
-                          const SimpleGraphExecutionState* execution_state,
                           const DeviceStepStats& ds, bool is_rpc);
   // Checks that the requested fetches can be computed from the provided feeds.
   Status CheckFetches(const RunStepRequestWrapper& req,
                       const RunState* run_state,
                       SimpleGraphExecutionState* execution_state);
 
-  string DetailText(const NodeDef& def, const NodeExecStats& ns) {
+  string DetailText(const Node& node, const NodeExecStats& ns) {
     int64 tot = 0;
     for (auto& no : ns.output()) {
       tot += no.tensor_description().allocation_description().requested_bytes();
@@ -212,12 +197,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     if (tot >= 0.1 * 1048576.0) {
       bytes = strings::Printf("[%.1fMB] ", tot / 1048576.0);
     }
-    return strings::StrCat(
-        bytes, def.name(), " = ", def.op(), "(",
-        str_util::Join(
-            std::vector<StringPiece>(def.input().begin(), def.input().end()),
-            ", "),
-        ")");
+    return strings::StrCat(bytes, node.name(), " = ", node.type_string(), "(",
+                           str_util::Join(node.requested_inputs(), ", "), ")");
   }
 
  private:
@@ -225,6 +206,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
   const std::unique_ptr<SimpleClientGraph> client_graph_;
   const SessionOptions session_opts_;
   const bool is_partial_;
+  const DebugOptions& debug_opts_;
   WorkerCacheInterface* const worker_cache_;  // Not owned.
   std::unordered_map<StringPiece, Node*, StringPiece::Hasher> name_to_node_;
 
@@ -289,7 +271,7 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
 };
 
 Status MasterSession::ReffedClientGraph::RegisterPartitions(
-    const PartitionOptions& popts, const FunctionDefLibrary& func_def_lib) {
+    const PartitionOptions& popts, const FunctionLibraryDefinition& flib_def) {
   {  // Ensure register once.
     mu_.lock();
     if (!init_started_) {
@@ -297,17 +279,20 @@ Status MasterSession::ReffedClientGraph::RegisterPartitions(
       mu_.unlock();
       std::unordered_map<string, GraphDef> graph_defs;
       Status s = DoBuildPartitions(popts, &graph_defs);
-      // NOTE(mrry): The pointers in `graph_defs_for_publishing` do not remain
-      // valid after the call to DoRegisterPartitions begins, so
-      // `stats_publisher_` must make a copy if it wants to retain the
-      // GraphDef objects.
-      std::vector<const GraphDef*> graph_defs_for_publishing;
-      graph_defs_for_publishing.reserve(partitions_.size());
-      for (const auto& name_def : graph_defs) {
-        graph_defs_for_publishing.push_back(&name_def.second);
+      if (s.ok()) {
+        // NOTE(mrry): The pointers in `graph_defs_for_publishing` do not remain
+        // valid after the call to DoRegisterPartitions begins, so
+        // `stats_publisher_` must make a copy if it wants to retain the
+        // GraphDef objects.
+        std::vector<const GraphDef*> graph_defs_for_publishing;
+        graph_defs_for_publishing.reserve(partitions_.size());
+        for (const auto& name_def : graph_defs) {
+          graph_defs_for_publishing.push_back(&name_def.second);
+        }
+        stats_publisher_->PublishGraphProto(graph_defs_for_publishing);
+        s = DoRegisterPartitions(popts, flib_def.ToProto(),
+                                 std::move(graph_defs));
       }
-      stats_publisher_->PublishGraphProto(graph_defs_for_publishing);
-      s = DoRegisterPartitions(popts, func_def_lib, std::move(graph_defs));
       mu_.lock();
       init_result_ = s;
       init_done_.Notify();
@@ -382,7 +367,6 @@ Status MasterSession::ReffedClientGraph::DoBuildPartitions(
   }
 
   // Partition the graph.
-  Status s;
   return Partition(popts, &client_graph_->graph, out_partitions);
 }
 
@@ -424,6 +408,7 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     // For simplicity, we ship the library completely to every worker.
     *c->req.mutable_graph_def()->mutable_library() = func_def_lib;
     *c->req.mutable_graph_options() = session_opts_.config.graph_options();
+    *c->req.mutable_debug_options() = debug_opts_;
     VLOG(2) << "Register " << c->req.graph_def().DebugString();
     auto cb = [c, &done](const Status& s) {
       c->status = s;
@@ -438,19 +423,6 @@ Status MasterSession::ReffedClientGraph::DoRegisterPartitions(
     partitions_[i].graph_handle = c->resp.graph_handle();
   }
   return s;
-}
-
-static bool CopyIfNeeded(TensorProto* in, TensorProto* out) {
-  if (in->tensor_content().empty()) {
-    // If the tensor is not encoded in tensor_content or contains 0
-    // elements, we can return it to the client directly.
-    out->Swap(in);
-  } else {
-    Tensor t(in->dtype());
-    if (!t.FromProto(cpu_allocator(), *in)) return false;
-    t.AsProtoTensorContent(out);
-  }
-  return true;
 }
 
 // Helper class to manage "num" parallel RunGraph calls.
@@ -511,8 +483,7 @@ class RunManyGraphs {
 
 Status MasterSession::ReffedClientGraph::RunPartitions(
     const MasterEnv* env, int64 step_id, int64 execution_count,
-    SimpleGraphExecutionState* execution_state, PerStepState* pss,
-    CallOptions* call_opts, const RunStepRequestWrapper& req,
+    PerStepState* pss, CallOptions* call_opts, const RunStepRequestWrapper& req,
     MutableRunStepResponseWrapper* resp, CancellationManager* cm,
     const bool is_last_partial_run) {
   VLOG(2) << "RunPartitions step_id " << step_id << " execution_count "
@@ -555,6 +526,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       c->req->set_is_partial(is_partial_);
       c->req->set_is_last_partial_run(is_last_partial_run);
     }
+    c->req->set_session_handle(session_handle_);
     c->req->set_graph_handle(part.graph_handle);
     c->req->set_step_id(step_id);
     *c->req->mutable_exec_opts() = exec_opts;
@@ -565,7 +537,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
     // We keep these as separate paths for now, to ensure we aren't
     // inadvertently slowing down the normal run path.
     if (is_partial_) {
-      for (int i = 0; i < req.num_feeds(); ++i) {
+      for (size_t i = 0; i < req.num_feeds(); ++i) {
         const string& name = req.feed_name(i);
         auto iter = part.feed_key.find(name);
         if (iter == part.feed_key.end()) {
@@ -577,7 +549,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
         if (feeds_iter == feeds.end()) {
           return errors::InvalidArgument("No feed is provided for feed=", name,
                                          ", key=", key);
-        } else if (feeds_iter->second != i) {
+        } else if (feeds_iter->second != static_cast<size_t>(i)) {
           return errors::Internal("Cannot find feed named \"", name,
                                   " in request.");
         }
@@ -585,7 +557,7 @@ Status MasterSession::ReffedClientGraph::RunPartitions(
       }
       // TODO(suharshs): Make a map from feed to fetch_key to make this faster.
       // For now, we just iterate through partitions to find the matching key.
-      for (int i = 0; i < req.num_fetches(); ++i) {
+      for (int i = 0; static_cast<size_t>(i) < req.num_fetches(); ++i) {
         const string& req_fetch = req.fetch_name(i);
         for (const auto& key_fetch : part.key_fetch) {
           if (key_fetch.second == req_fetch) {
@@ -736,10 +708,11 @@ void MasterSession::ReffedClientGraph::CleanupPartitionsAsync(
   }
 }
 
-void MasterSession::ReffedClientGraph::ProcessStats(
-    int64 step_id, PerStepState* pss,
-    SimpleGraphExecutionState* execution_state, ProfileHandler* ph,
-    const RunOptions& options, RunMetadata* resp) {
+void MasterSession::ReffedClientGraph::ProcessStats(int64 step_id,
+                                                    PerStepState* pss,
+                                                    ProfileHandler* ph,
+                                                    const RunOptions& options,
+                                                    RunMetadata* resp) {
   if (!pss->collect_costs && !pss->collect_timeline) return;
 
   // Out-of-band logging data is collected now, during post-processing.
@@ -751,13 +724,13 @@ void MasterSession::ReffedClientGraph::ProcessStats(
     const StepStats& ss = pss->step_stats[i];
     if (ph) {
       for (const auto& ds : ss.dev_stats()) {
-        ProcessDeviceStats(ph, execution_state, ds, false /*is_rpc*/);
+        ProcessDeviceStats(ph, ds, false /*is_rpc*/);
       }
     }
   }
   if (ph) {
     for (const auto& ds : pss->rpc_stats.dev_stats()) {
-      ProcessDeviceStats(ph, execution_state, ds, true /*is_rpc*/);
+      ProcessDeviceStats(ph, ds, true /*is_rpc*/);
     }
     ph->StepDone(pss->start_micros, pss->end_micros,
                  Microseconds(0) /*cleanup_time*/, 0 /*total_runops*/,
@@ -781,8 +754,7 @@ void MasterSession::ReffedClientGraph::ProcessStats(
 }
 
 void MasterSession::ReffedClientGraph::ProcessDeviceStats(
-    ProfileHandler* ph, const SimpleGraphExecutionState* execution_state,
-    const DeviceStepStats& ds, bool is_rpc) {
+    ProfileHandler* ph, const DeviceStepStats& ds, bool is_rpc) {
   const string& dev_name = ds.device();
   VLOG(1) << "Device " << dev_name << " reports stats for "
           << ds.node_stats_size() << " nodes";
@@ -793,7 +765,7 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
       ph->RecordOneOp(dev_name, ns, true /*is_copy*/, "", ns.node_name(),
                       ns.timeline_label());
     } else {
-      const Node* node = execution_state->get_node_by_name(ns.node_name());
+      const Node* node = name_to_node_[ns.node_name()];
       const bool found_node_in_graph = node != nullptr;
       if (!found_node_in_graph && ns.timeline_label().empty()) {
         // The counter incrementing is not thread-safe. But we don't really
@@ -814,7 +786,7 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
       if (!ns.timeline_label().empty()) {
         details = ns.timeline_label();
       } else if (found_node_in_graph) {
-        details = DetailText(node->def(), ns);
+        details = DetailText(*node, ns);
       } else {
         // Leave details string empty
       }
@@ -828,16 +800,20 @@ void MasterSession::ReffedClientGraph::ProcessDeviceStats(
 // TODO(suharsh,mrry): Build a map from fetch target to set of feeds it depends
 // on once at setup time to prevent us from computing the dependencies
 // everytime.
+// TODO(suharshs,mrry): Consider removing the need for execution_state to reduce
+// contention.
 Status MasterSession::ReffedClientGraph::CheckFetches(
     const RunStepRequestWrapper& req, const RunState* run_state,
     SimpleGraphExecutionState* execution_state) {
   // Build the set of pending feeds that we haven't seen.
   std::unordered_set<TensorId, TensorId::Hasher> pending_feeds;
-  for (const string& feed : run_state->pending_inputs) {
-    TensorId id(ParseTensorName(feed));
+  for (const auto& input : run_state->pending_inputs) {
+    // Skip if already fed.
+    if (input.second) continue;
+    TensorId id(ParseTensorName(input.first));
     auto it = name_to_node_.find(id.first);
     if (it == name_to_node_.end()) {
-      return errors::NotFound("Feed ", feed, ": not found");
+      return errors::NotFound("Feed ", input.first, ": not found");
     }
     pending_feeds.insert(id);
   }
@@ -894,6 +870,7 @@ void MasterSession::ReffedClientGraph::DeregisterPartitions() {
     // The graph handle may be empty if we failed during partition registration.
     if (!part.graph_handle.empty()) {
       Call* c = new Call;
+      c->req.set_session_handle(session_handle_);
       c->req.set_graph_handle(part.graph_handle);
       // NOTE(mrry): We must capture `worker_cache_` since `this`
       // could be deleted before the callback is called.
@@ -927,6 +904,10 @@ void BuildBuildGraphOptions(const RunStepRequestWrapper& req,
     opts->target_nodes.push_back(req.target_name(i));
   }
 
+  if (!req.options().debug_options().debug_tensor_watch_opts().empty()) {
+    opts->debug_options = req.options().debug_options();
+  }
+
   std::sort(opts->feed_endpoints.begin(), opts->feed_endpoints.end());
   std::sort(opts->target_nodes.begin(), opts->target_nodes.end());
   std::sort(opts->fetch_endpoints.begin(), opts->fetch_endpoints.end());
@@ -944,6 +925,8 @@ void BuildBuildGraphOptions(const PartialRunSetupRequest& req,
     opts->target_nodes.push_back(target);
   }
 
+  // TODO(cais): Add TFDBG support to partial runs.
+
   std::sort(opts->feed_endpoints.begin(), opts->feed_endpoints.end());
   std::sort(opts->target_nodes.begin(), opts->target_nodes.end());
   std::sort(opts->fetch_endpoints.begin(), opts->fetch_endpoints.end());
@@ -960,6 +943,13 @@ uint64 HashBuildGraphOptions(const BuildGraphOptions& opts) {
   for (const string& name : opts.fetch_endpoints) {
     h = Hash64(name.c_str(), name.size(), h);
   }
+
+  if (!opts.debug_options.debug_tensor_watch_opts().empty()) {
+    const string watch_summary = SummarizeDebugTensorWatches(
+        opts.debug_options.debug_tensor_watch_opts());
+    h = Hash64(watch_summary.c_str(), watch_summary.size(), h);
+  }
+
   return h;
 }
 
@@ -983,31 +973,25 @@ string BuildGraphOptionsString(const BuildGraphOptions& opts) {
 MasterSession::MasterSession(
     const SessionOptions& opt, const MasterEnv* env,
     std::unique_ptr<std::vector<std::unique_ptr<Device>>> remote_devs,
+    std::unique_ptr<WorkerCacheInterface> worker_cache,
+    std::unique_ptr<DeviceSet> device_set,
     StatsPublisherFactory stats_publisher_factory)
     : session_opts_(opt),
       env_(env),
       handle_(strings::FpToString(random::New64())),
       remote_devs_(std::move(remote_devs)),
+      worker_cache_(std::move(worker_cache)),
+      devices_(std::move(device_set)),
       stats_publisher_factory_(std::move(stats_publisher_factory)),
       graph_version_(0),
       run_graphs_(5),
       partial_run_graphs_(5) {
   UpdateLastAccessTime();
+  CHECK(devices_) << "device_set was null!";
 
   VLOG(1) << "Session " << handle_ << " #local " << env->local_devices.size()
           << " #remote " << remote_devs_->size();
-  for (auto&& d : *remote_devs_) {
-    devices_.AddDevice(d.get());
-  }
-  int num_local_devices = 0;
-  for (Device* d : env->local_devices) {
-    devices_.AddDevice(d);
-    if (num_local_devices == 0) {
-      // Uses the first local device as the client device.
-      devices_.set_client_device(d);
-    }
-    num_local_devices++;
-  }
+
   LOG(INFO) << "Start master session " << handle_
             << " with config: " << std::endl
             << session_opts_.config.DebugString();
@@ -1022,7 +1006,8 @@ void MasterSession::UpdateLastAccessTime() {
   last_access_time_usec_.store(Env::Default()->NowMicros());
 }
 
-Status MasterSession::Create(GraphDef* graph_def) {
+Status MasterSession::Create(GraphDef* graph_def,
+                             const WorkerCacheFactoryOptions& options) {
   if (session_opts_.config.graph_options().place_pruned_graph()) {
     // TODO(b/29900832): Fix this or remove the option.
     LOG(WARNING) << "Distributed session does not support the "
@@ -1030,12 +1015,91 @@ Status MasterSession::Create(GraphDef* graph_def) {
     session_opts_.config.mutable_graph_options()->set_place_pruned_graph(false);
   }
 
-  SimpleGraphExecutionStateOptions options;
-  options.device_set = &devices_;
-  options.session_options = &session_opts_;
-  TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForBaseGraph(
-      graph_def, options, &execution_state_));
+  SimpleGraphExecutionStateOptions execution_options;
+  execution_options.device_set = devices_.get();
+  execution_options.session_options = &session_opts_;
+  {
+    mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(SimpleGraphExecutionState::MakeForBaseGraph(
+        graph_def, execution_options, &execution_state_));
+  }
+  if (options.cluster_def != nullptr) {
+    return CreateWorkerSessions(options);
+  }
   return Status::OK();
+}
+
+Status MasterSession::CreateWorkerSessions(
+    const WorkerCacheFactoryOptions& options) {
+  CHECK(worker_cache_) << "CreateWorkerSessions should be called only with "
+                       << "dynamic cluster membership.";
+  std::vector<string> worker_names;
+  worker_cache_->ListWorkers(&worker_names);
+
+  struct WorkerGroup {
+    // The worker name. (Not owned.)
+    const string* name;
+
+    // The worker referenced by name. (Not owned.)
+    WorkerInterface* worker = nullptr;
+
+    // Request and responses used for a given worker.
+    CreateWorkerSessionRequest request;
+    CreateWorkerSessionResponse response;
+    Status status = Status::OK();
+  };
+  BlockingCounter done(worker_names.size());
+  std::vector<WorkerGroup> workers(worker_names.size());
+
+  // Release the workers.
+  auto cleanup = gtl::MakeCleanup([this, &workers] {
+    for (auto&& worker_group : workers) {
+      if (worker_group.worker != nullptr) {
+        worker_cache_->ReleaseWorker(*worker_group.name, worker_group.worker);
+      }
+    }
+  });
+
+  Status status = Status::OK();
+  // Create all the workers & kick off the computations.
+  for (size_t i = 0; i < worker_names.size(); ++i) {
+    workers[i].name = &worker_names[i];
+    workers[i].worker = worker_cache_->CreateWorker(worker_names[i]);
+    workers[i].request.set_session_handle(handle_);
+    *workers[i].request.mutable_server_def()->mutable_cluster() =
+        *options.cluster_def;
+    workers[i].request.mutable_server_def()->set_protocol(*options.protocol);
+
+    DeviceNameUtils::ParsedName name;
+    if (!DeviceNameUtils::ParseFullName(worker_names[i], &name)) {
+      status = errors::Internal("Could not parse name ", worker_names[i]);
+      LOG(WARNING) << status;
+      return status;
+    }
+    if (!name.has_job || !name.has_task) {
+      status = errors::Internal("Incomplete worker name ", worker_names[i]);
+      LOG(WARNING) << status;
+      return status;
+    }
+
+    workers[i].request.mutable_server_def()->set_job_name(name.job);
+    workers[i].request.mutable_server_def()->set_task_index(name.task);
+  }
+
+  for (size_t i = 0; i < worker_names.size(); ++i) {
+    auto cb = [i, &workers, &done](const Status& s) {
+      workers[i].status = s;
+      done.DecrementCount();
+    };
+    workers[i].worker->CreateWorkerSessionAsync(&workers[i].request,
+                                                &workers[i].response, cb);
+  }
+
+  done.Wait();
+  for (size_t i = 0; i < workers.size(); ++i) {
+    status.Update(workers[i].status);
+  }
+  return status;
 }
 
 Status MasterSession::Extend(const ExtendSessionRequest* req,
@@ -1046,15 +1110,6 @@ Status MasterSession::Extend(const ExtendSessionRequest* req,
     mutex_lock l(mu_);
     if (closed_) {
       return errors::FailedPrecondition("Session is closed.");
-    }
-
-    // TODO(mrry): Redesign the locking with reader/writer locks to prevent
-    //   starvation due to concurrent steps being issued. This is not
-    //   immediately important because we expect Extend to be used in
-    //   development/interactive exploration, and not during high-throughput
-    //   training.
-    while (num_running_ != 0) {
-      num_running_is_zero_.wait(l);
     }
 
     if (graph_version_ != req->current_graph_version()) {
@@ -1074,6 +1129,13 @@ Status MasterSession::Extend(const ExtendSessionRequest* req,
     resp->set_new_graph_version(graph_version_);
   }
   return Status::OK();
+}
+
+WorkerCacheInterface* MasterSession::get_worker_cache() const {
+  if (worker_cache_) {
+    return worker_cache_.get();
+  }
+  return env_->worker_cache;
 }
 
 Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
@@ -1099,10 +1161,11 @@ Status MasterSession::StartStep(const BuildGraphOptions& opts, int64* count,
               << "\n";
       std::unique_ptr<SimpleClientGraph> client_graph;
       TF_RETURN_IF_ERROR(execution_state_->BuildGraph(opts, &client_graph));
+      WorkerCacheInterface* worker_cache = get_worker_cache();
       auto entry = new ReffedClientGraph(
           handle_, opts, std::move(client_graph), session_opts_,
           stats_publisher_factory_, execution_state_.get(), is_partial,
-          env_->worker_cache);
+          worker_cache);
       iter = m->insert({hash, entry}).first;
       VLOG(1) << "Preparing to execute new graph";
     }
@@ -1177,6 +1240,8 @@ Status MasterSession::Run(CallOptions* opts, const RunStepRequestWrapper& req,
       return errors::FailedPrecondition("Session is closed.");
     }
     ++num_running_;
+    // Note: all code paths must eventually call MarkRunCompletion()
+    // in order to appropriate decrement the num_running_ counter.
   }
   Status status;
   if (!req.partial_run_handle().empty()) {
@@ -1184,14 +1249,16 @@ Status MasterSession::Run(CallOptions* opts, const RunStepRequestWrapper& req,
   } else {
     status = DoRunWithLocalExecution(opts, req, resp);
   }
-  {
-    mutex_lock l(mu_);
-    --num_running_;
-    if (num_running_ == 0) {
-      num_running_is_zero_.notify_all();
-    }
-  }
   return status;
+}
+
+// Decrements num_running_ and broadcasts if num_running_ is zero.
+void MasterSession::MarkRunCompletion() {
+  mutex_lock l(mu_);
+  --num_running_;
+  if (num_running_ == 0) {
+    num_running_is_zero_.notify_all();
+  }
 }
 
 Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
@@ -1203,7 +1270,7 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
     return strings::StrCat(prefix, "_S", next_node_id_++);
   };
   popts.get_incarnation = [this](const string& name) -> int64 {
-    Device* d = devices_.FindDeviceByName(name);
+    Device* d = devices_->FindDeviceByName(name);
     if (d == nullptr) {
       return PartitionOptions::kIllegalIncarnation;
     } else {
@@ -1230,7 +1297,7 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
   }
 
   TF_RETURN_IF_ERROR(
-      rcg->RegisterPartitions(popts, rcg->client_graph()->flib_def->ToProto()));
+      rcg->RegisterPartitions(popts, *rcg->client_graph()->flib_def));
 
   return Status::OK();
 }
@@ -1238,6 +1305,7 @@ Status MasterSession::BuildAndRegisterPartitions(ReffedClientGraph* rcg) {
 Status MasterSession::DoPartialRun(CallOptions* opts,
                                    const RunStepRequestWrapper& req,
                                    MutableRunStepResponseWrapper* resp) {
+  auto cleanup = gtl::MakeCleanup([this] { MarkRunCompletion(); });
   const string& prun_handle = req.partial_run_handle();
   RunState* run_state = nullptr;
   {
@@ -1283,10 +1351,14 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
 
   // Make sure that this is a new set of feeds that are still pending.
   for (size_t i = 0; i < req.num_feeds(); ++i) {
-    auto it = run_state->pending_inputs.find(req.feed_name(i));
+    const string& feed = req.feed_name(i);
+    auto it = run_state->pending_inputs.find(feed);
     if (it == run_state->pending_inputs.end()) {
-      return errors::InvalidArgument("The feed ", req.feed_name(i),
-                                     " had already been fed.");
+      return errors::InvalidArgument(
+          "The feed ", feed, " was not specified in partial_run_setup.");
+    } else if (it->second) {
+      return errors::InvalidArgument("The feed ", feed,
+                                     " has already been fed.");
     }
   }
   // Check that this is a new set of fetches that are still pending.
@@ -1294,29 +1366,35 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     const string& fetch = req.fetch_name(i);
     auto it = run_state->pending_outputs.find(fetch);
     if (it == run_state->pending_outputs.end()) {
+      return errors::InvalidArgument(
+          "The fetch ", fetch, " was not specified in partial_run_setup.");
+    } else if (it->second) {
       return errors::InvalidArgument("The fetch ", fetch,
-                                     " had already been fetched.");
+                                     " has already been fetched.");
     }
   }
 
   // Ensure that the requested fetches can be computed from the provided feeds.
-  TF_RETURN_IF_ERROR(
-      run_state->rcg->CheckFetches(req, run_state, execution_state_.get()));
+  {
+    mutex_lock l(mu_);
+    TF_RETURN_IF_ERROR(
+        run_state->rcg->CheckFetches(req, run_state, execution_state_.get()));
+  }
 
   // Determine if this partial run satisfies all the pending inputs and ouputs.
   for (size_t i = 0; i < req.num_feeds(); ++i) {
-    run_state->pending_inputs.erase(req.feed_name(i));
+    auto it = run_state->pending_inputs.find(req.feed_name(i));
+    it->second = true;
   }
   for (size_t i = 0; i < req.num_fetches(); ++i) {
-    run_state->pending_outputs.erase(req.fetch_name(i));
+    auto it = run_state->pending_outputs.find(req.fetch_name(i));
+    it->second = true;
   }
-  bool is_last_partial_run =
-      (run_state->pending_inputs.empty() && run_state->pending_outputs.empty());
+  bool is_last_partial_run = run_state->PendingDone();
 
   Status s = run_state->rcg->RunPartitions(
-      env_, run_state->step_id, run_state->count, execution_state_.get(),
-      &run_state->pss, opts, req, resp, &cancellation_manager_,
-      is_last_partial_run);
+      env_, run_state->step_id, run_state->count, &run_state->pss, opts, req,
+      resp, &cancellation_manager_, is_last_partial_run);
 
   // Delete the run state if there is an error or all fetches are done.
   if (!s.ok() || is_last_partial_run) {
@@ -1324,15 +1402,16 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
     run_state->pss.end_micros = Env::Default()->NowMicros();
     // Schedule post-processing and cleanup to be done asynchronously.
     rcg->Ref();
-    rcg->ProcessStats(run_state->step_id, &run_state->pss,
-                      execution_state_.get(), run_state->ph.get(),
+    rcg->ProcessStats(run_state->step_id, &run_state->pss, run_state->ph.get(),
                       req.options(), resp->mutable_metadata());
+    cleanup.release();  // MarkRunCompletion called in done closure.
     rcg->CleanupPartitionsAsync(
         run_state->step_id, [this, rcg, prun_handle](const Status& s) {
           if (!s.ok()) {
             LOG(ERROR) << "Cleanup partition error: " << s;
           }
           rcg->Unref();
+          MarkRunCompletion();
         });
     mutex_lock l(mu_);
     partial_runs_.erase(prun_handle);
@@ -1340,13 +1419,44 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
   return s;
 }
 
+Status MasterSession::CreateDebuggerState(
+    const DebugOptions& debug_options, const RunStepRequestWrapper& req,
+    int64 rcg_execution_count,
+    std::unique_ptr<DebuggerStateInterface>* debugger_state) {
+  TF_RETURN_IF_ERROR(
+      DebuggerStateRegistry::CreateState(debug_options, debugger_state));
+
+  std::vector<string> input_names;
+  for (size_t i = 0; i < req.num_feeds(); ++i) {
+    input_names.push_back(req.feed_name(i));
+  }
+  std::vector<string> output_names;
+  for (size_t i = 0; i < req.num_fetches(); ++i) {
+    output_names.push_back(req.fetch_name(i));
+  }
+  std::vector<string> target_names;
+  for (size_t i = 0; i < req.num_targets(); ++i) {
+    target_names.push_back(req.target_name(i));
+  }
+
+  // TODO(cais): We currently use -1 as a dummy value for session run count.
+  // While this counter value is straightforward to define and obtain for
+  // DirectSessions, it is less so for non-direct Sessions. Devise a better
+  // way to get its value when the need arises.
+  TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
+      debug_options.global_step(), -1, rcg_execution_count, input_names,
+      output_names, target_names));
+
+  return Status::OK();
+}
+
 Status MasterSession::DoRunWithLocalExecution(
     CallOptions* opts, const RunStepRequestWrapper& req,
     MutableRunStepResponseWrapper* resp) {
-  VLOG(2) << "DoRunWithLocalExecution "
-          << "req: " << req.DebugString();
+  VLOG(2) << "DoRunWithLocalExecution req: " << req.DebugString();
   PerStepState pss;
   pss.start_micros = Env::Default()->NowMicros();
+  auto cleanup = gtl::MakeCleanup([this] { MarkRunCompletion(); });
 
   // Prepare.
   BuildGraphOptions bgopts;
@@ -1358,6 +1468,13 @@ Status MasterSession::DoRunWithLocalExecution(
   // Unref "rcg" when out of scope.
   core::ScopedUnref unref(rcg);
 
+  std::unique_ptr<DebuggerStateInterface> debugger_state;
+  const DebugOptions& debug_options = req.options().debug_options();
+
+  if (!debug_options.debug_tensor_watch_opts().empty()) {
+    TF_RETURN_IF_ERROR(
+        CreateDebuggerState(debug_options, req, count, &debugger_state));
+  }
   TF_RETURN_IF_ERROR(BuildAndRegisterPartitions(rcg));
 
   // Keeps the highest 8 bits 0x01: we reserve some bits of the
@@ -1384,15 +1501,14 @@ Status MasterSession::DoRunWithLocalExecution(
     pss.collect_rpcs = ph->should_collect_rpcs();
   }
 
-  Status s =
-      rcg->RunPartitions(env_, step_id, count, execution_state_.get(), &pss,
-                         opts, req, resp, &cancellation_manager_, false);
+  Status s = rcg->RunPartitions(env_, step_id, count, &pss, opts, req, resp,
+                                &cancellation_manager_, false);
   if (s.ok()) {
     pss.end_micros = Env::Default()->NowMicros();
 
     // Schedule post-processing and cleanup to be done asynchronously.
-    rcg->ProcessStats(step_id, &pss, execution_state_.get(), ph.get(),
-                      req.options(), resp->mutable_metadata());
+    rcg->ProcessStats(step_id, &pss, ph.get(), req.options(),
+                      resp->mutable_metadata());
   } else if (errors::IsCancelled(s)) {
     mutex_lock l(mu_);
     if (closed_) {
@@ -1407,11 +1523,13 @@ Status MasterSession::DoRunWithLocalExecution(
     }
   }
   rcg->Ref();
-  rcg->CleanupPartitionsAsync(step_id, [rcg](const Status& s) {
+  cleanup.release();  // MarkRunCompletion called in done closure.
+  rcg->CleanupPartitionsAsync(step_id, [this, rcg](const Status& s) {
     if (!s.ok()) {
       LOG(ERROR) << "Cleanup partition error: " << s;
     }
     rcg->Unref();
+    MarkRunCompletion();
   });
   return s;
 }
@@ -1452,15 +1570,25 @@ MasterSession::RunState::RunState(const std::vector<string>& input_names,
     : rcg(rcg), step_id(step_id), count(count) {
   // Initially all the feeds and fetches are pending.
   for (auto& name : input_names) {
-    pending_inputs.emplace(name);
+    pending_inputs[name] = false;
   }
   for (auto& name : output_names) {
-    pending_outputs.emplace(name);
+    pending_outputs[name] = false;
   }
 }
 
 MasterSession::RunState::~RunState() {
   if (rcg) rcg->Unref();
+}
+
+bool MasterSession::RunState::PendingDone() const {
+  for (const auto& it : pending_inputs) {
+    if (!it.second) return false;
+  }
+  for (const auto& it : pending_outputs) {
+    if (!it.second) return false;
+  }
+  return true;
 }
 
 }  // end namespace tensorflow

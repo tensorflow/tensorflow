@@ -103,7 +103,7 @@ TEST_F(QuantizeTrainingTest, SignedInput) {
       a       b
   */
   const int num_bits = 8;
-  TF_ASSERT_OK(DoQuantizeTraining(num_bits, g));
+  TF_ASSERT_OK(DoQuantizeTraining(num_bits, "QuantizeAndDequantizeV2", g));
 
   EXPECT_EQ(63, g->num_nodes());
 
@@ -112,17 +112,15 @@ TEST_F(QuantizeTrainingTest, SignedInput) {
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(identity->name(), "/QuantizeAndDequantizeV2"),
                &identity_q_node));
-  NodeDef identity_q = identity_q_node->def();
   ASSERT_EQ("true",
-            SummarizeAttrValue(identity_q.attr().find("signed_input")->second));
+            SummarizeAttrValue(*identity_q_node->attrs().Find("signed_input")));
   // Quantize_and_dequantize node for relu should have signed_input==false.
   Node* relu_q_node;
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(relu->name(), "/QuantizeAndDequantizeV2"),
                &relu_q_node));
-  NodeDef relu_q = relu_q_node->def();
   ASSERT_EQ("false",
-            SummarizeAttrValue(relu_q.attr().find("signed_input")->second));
+            SummarizeAttrValue(*relu_q_node->attrs().Find("signed_input")));
 }
 
 TEST_F(QuantizeTrainingTest, RangeGivenTrue) {
@@ -156,7 +154,7 @@ TEST_F(QuantizeTrainingTest, RangeGivenTrue) {
       a       b
   */
   const int num_bits = 8;
-  TF_ASSERT_OK(DoQuantizeTraining(num_bits, g));
+  TF_ASSERT_OK(DoQuantizeTraining(num_bits, "QuantizeAndDequantizeV2", g));
 
   EXPECT_EQ(38, g->num_nodes());
 
@@ -165,20 +163,18 @@ TEST_F(QuantizeTrainingTest, RangeGivenTrue) {
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(relu6->name(), "/QuantizeAndDequantizeV2"),
                &relu6_q_node));
-  NodeDef identity_q = relu6_q_node->def();
   ASSERT_EQ("true",
-            SummarizeAttrValue(identity_q.attr().find("range_given")->second));
+            SummarizeAttrValue(*relu6_q_node->attrs().Find("range_given")));
   // Quantize_and_dequantize node for relu should have range_given==true.
   Node* relu_q_node;
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(relu->name(), "/QuantizeAndDequantizeV2"),
                &relu_q_node));
-  NodeDef relu_q = relu_q_node->def();
   ASSERT_EQ("true",
-            SummarizeAttrValue(relu_q.attr().find("range_given")->second));
+            SummarizeAttrValue(*relu_q_node->attrs().Find("range_given")));
 }
 
-TEST_F(QuantizeTrainingTest, WithBackwardNodes) {
+TEST_F(QuantizeTrainingTest, WithBackwardNodes_QuantizeAndDequantize) {
   // Construct a graph with an additional backward Matmul.
   Reset();
   Graph* g = g_.get();
@@ -211,11 +207,11 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes) {
   g->AddControlEdge(backward_m, g->sink_node());
 
   int num_bits = 8;
-  TF_ASSERT_OK(DoQuantizeTraining(num_bits, g));
+  TF_ASSERT_OK(DoQuantizeTraining(num_bits, "QuantizeAndDequantizeV2", g));
 
   EXPECT_EQ(95, g->num_nodes());
 
-  // Ensure that we the backwards matmul input was not quantized.
+  // Ensure that the backwards matmul input was not quantized.
   Node* found_node;
   Status s = FindNode(g, strings::StrCat(d->name(), "/QuantizeAndDequantizeV2"),
                       &found_node);
@@ -230,6 +226,60 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes) {
                &found_node));
   TF_ASSERT_OK(FindNode(
       g, strings::StrCat(c->name(), "/QuantizeAndDequantizeV2"), &found_node));
+}
+
+TEST_F(QuantizeTrainingTest, WithBackwardNodes_FakeQuant) {
+  // Construct a graph with an additional backward Matmul.
+  Reset();
+  Graph* g = g_.get();
+  Node* a = Constant<float>({1.0, 2.0, 3.0, 4.0}, {2, 2});
+  Node* b = Constant<float>({1.0, 2.0, 3.0, 4.0}, {2, 2});
+  Node* c = Constant<float>({0.0, 1.0, 1.0, 0.0}, {2, 2});
+  // We will use node d as input to the backwards matmul to ensure that it
+  // isn't quantized.
+  Node* d = Constant<float>({0.0, 1.0, 1.0, 0.0}, {2, 2});
+  g->AddControlEdge(g->source_node(), a);
+  g->AddControlEdge(g->source_node(), b);
+  g->AddControlEdge(g->source_node(), c);
+  g->AddControlEdge(g->source_node(), d);
+  Node* relu = test::graph::Relu(g, a);
+  Node* identity = test::graph::Identity(g, b);
+  Node* m1 = test::graph::Matmul(g, relu, identity, false, false);
+  Node* m2 = test::graph::Matmul(g, identity, c, false, false);
+  g->AddControlEdge(m1, g->sink_node());
+  g->AddControlEdge(m2, g->sink_node());
+
+  // Add a Matmul node with name starting with "gradients". We will check that
+  // its input d was not quantized.
+  Node* backward_m;
+  TF_ASSERT_OK(NodeBuilder(g->NewName("gradients/n"), "MatMul")
+                   .Input(d)
+                   .Input(m2)
+                   .Attr("transpose_a", true)
+                   .Attr("transpose_b", false)
+                   .Finalize(g, &backward_m));
+  g->AddControlEdge(backward_m, g->sink_node());
+
+  int num_bits = 8;
+  TF_ASSERT_OK(DoQuantizeTraining(num_bits, "FakeQuantWithMinMaxVars", g));
+
+  EXPECT_EQ(95, g->num_nodes());
+
+  // Ensure that the backwards matmul input was not quantized.
+  Node* found_node;
+  Status s = FindNode(g, strings::StrCat(d->name(), "/FakeQuantWithMinMaxVars"),
+                      &found_node);
+  EXPECT_TRUE(StringPiece(s.ToString()).contains("not found")) << s;
+
+  // Ensure that m1 and m2's inputs were quantized.
+  TF_ASSERT_OK(
+      FindNode(g, strings::StrCat(relu->name(), "/FakeQuantWithMinMaxVars"),
+               &found_node));
+  TF_ASSERT_OK(
+      FindNode(g, strings::StrCat(identity->name(), "/FakeQuantWithMinMaxVars"),
+               &found_node));
+  TF_ASSERT_OK(FindNode(
+      g, strings::StrCat(c->name(), "/FakeQuantWithMinMaxVars"), &found_node));
 }
 
 TEST_F(QuantizeTrainingTest, QuantizeGraphDef) {
@@ -254,8 +304,8 @@ TEST_F(QuantizeTrainingTest, QuantizeGraphDef) {
   input_graph.SerializeToString(&input_string);
 
   string result_string;
-  TF_ASSERT_OK(DoQuantizeTrainingOnSerializedGraphDef(input_string, num_bits,
-                                                      &result_string));
+  TF_ASSERT_OK(DoQuantizeTrainingOnSerializedGraphDef(
+      input_string, num_bits, "QuantizeAndDequantizeV2", &result_string));
 
   GraphDef result_graphdef;
   EXPECT_TRUE(ParseProtoUnlimited(&result_graphdef, result_string));
@@ -265,11 +315,11 @@ TEST_F(QuantizeTrainingTest, QuantizeGraphDef) {
   GraphConstructorOptions opts;
   Graph result_graph(OpRegistry::Global());
   TF_ASSERT_OK(ConvertGraphDefToGraph(opts, result_graphdef, &result_graph));
-  TF_ASSERT_OK(DoQuantizeTraining(num_bits, graph));
+  TF_ASSERT_OK(DoQuantizeTraining(num_bits, "QuantizeAndDequantizeV2", graph));
   EXPECT_EQ(graph->num_nodes(), result_graph.num_nodes());
 }
 
-TEST_F(QuantizeTrainingTest, FixedRangeAndEMARange) {
+TEST_F(QuantizeTrainingTest, FixedRangeAndEMARange_QuantizeAndDequantize) {
   // Construct the following graph
   // Relu has an unknown range, so we will check if the EMA correctly estimates
   // the range.
@@ -306,7 +356,101 @@ TEST_F(QuantizeTrainingTest, FixedRangeAndEMARange) {
       a       c
   */
   const int num_bits = 8;
-  TF_ASSERT_OK(DoQuantizeTraining(num_bits, g));
+  TF_ASSERT_OK(DoQuantizeTraining(num_bits, "QuantizeAndDequantizeV2", g));
+
+  SessionOptions options;
+  Session* sess;
+  TF_ASSERT_OK(NewSession(options, &sess));
+  GraphDef gdef;
+  g->ToGraphDef(&gdef);
+  TF_ASSERT_OK(sess->Create(gdef));
+
+  // The min and max values of the relu6 quantization should be constant values
+  // of 0 and 6.
+  string min_const_name = strings::StrCat(relu6->name(), "/InputMin");
+  string max_const_name = strings::StrCat(relu6->name(), "/InputMax");
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(sess->Run({}, {min_const_name, max_const_name}, {}, &outputs));
+  EXPECT_EQ(outputs[0].flat<float>()(0), 0.0);
+  EXPECT_EQ(outputs[1].flat<float>()(0), 6.0);
+
+  Tensor a1(DT_FLOAT, TensorShape({2, 2}));
+  test::FillValues<float>(&a1, {0.0, 1.0, 2.0, 3.0});
+  Tensor a2(DT_FLOAT, TensorShape({2, 2}));
+  test::FillValues<float>(&a2, {1.0, 2.0, 3.0, 4.0});
+
+  TF_ASSERT_OK(sess->Run({{"a", a1}}, {m1->name()}, {}, &outputs));
+
+  // The value of the min and max should be set to the min and max of a1 since
+  // this is the first run that initializes the EMA variables.
+  string min_var_name = strings::StrCat(relu->name(), "/Min/Variable");
+  string max_var_name = strings::StrCat(relu->name(), "/Max/Variable");
+  TF_ASSERT_OK(sess->Run({}, {min_var_name, max_var_name}, {}, &outputs));
+  EXPECT_EQ(outputs[0].flat<float>()(0), 0.0);
+  EXPECT_EQ(outputs[1].flat<float>()(0), 3.0);
+
+  // The relu6 quantization range should remain unchanged.
+  TF_ASSERT_OK(sess->Run({}, {min_const_name, max_const_name}, {}, &outputs));
+  EXPECT_EQ(outputs[0].flat<float>()(0), 0.0);
+  EXPECT_EQ(outputs[1].flat<float>()(0), 6.0);
+
+  // Now when we run with new inputs, we should get a moving average for the min
+  // and max variables. They should be equal to:
+  // min_var = old_min_var * decay + min(a2) * (1 - decay)
+  // max_var = old_max_var * decay + max(a2) * (1 - decay)
+  TF_ASSERT_OK(sess->Run({{"a", a2}}, {m1->name()}, {}, &outputs));
+
+  TF_ASSERT_OK(sess->Run({}, {min_var_name, max_var_name}, {}, &outputs));
+  const float decay = 0.999;
+  const float expected_min = 0.0 * decay + 1.0 * (1.0 - decay);
+  const float expected_max = 3.0 * decay + 4.0 * (1.0 - decay);
+  EXPECT_NEAR(outputs[0].flat<float>()(0), expected_min, 1e-4);
+  EXPECT_NEAR(outputs[1].flat<float>()(0), expected_max, 1e-4);
+
+  // The relu6 quantization range should remain unchanged.
+  TF_ASSERT_OK(sess->Run({}, {min_const_name, max_const_name}, {}, &outputs));
+  EXPECT_EQ(outputs[0].flat<float>()(0), 0.0);
+  EXPECT_EQ(outputs[1].flat<float>()(0), 6.0);
+}
+
+TEST_F(QuantizeTrainingTest, FixedRangeAndEMARange_FakeQuant) {
+  // Construct the following graph
+  // Relu has an unknown range, so we will check if the EMA correctly estimates
+  // the range.
+  /*
+           m1
+        /      \
+      Relu    Relu6
+        |       |
+        a       c
+  */
+  Reset();
+  Graph* g = g_.get();
+  Node* a;
+  TF_ASSERT_OK(Placeholder(g, "a", {2, 2}, &a));
+  Node* c = Constant<float>({2.0, 3.0, 4.0, 5.0}, {2, 2});
+  g->AddControlEdge(g->source_node(), a);
+  g->AddControlEdge(g->source_node(), c);
+  Node* relu = test::graph::Relu(g, a);
+  Node* relu6 = test::graph::Relu6(g, c);
+  Node* m1 = test::graph::Matmul(g, relu, relu6, false, false);
+  g->AddControlEdge(m1, g->sink_node());
+
+  // This is rewritten into the following subgraph, where Q_a and Q_c are
+  // quantize and dequantize subgraphs.
+  // Since relu's range is unknown, we check that the exponential moving average
+  // works correctly.
+  /*
+         m1
+      /      \
+     Q_a     Q_c
+      |       |
+    Relu     Relu6
+      |       |
+      a       c
+  */
+  const int num_bits = 8;
+  TF_ASSERT_OK(DoQuantizeTraining(num_bits, "FakeQuantWithMinMaxVars", g));
 
   SessionOptions options;
   Session* sess;

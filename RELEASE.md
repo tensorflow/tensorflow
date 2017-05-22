@@ -1,3 +1,35 @@
+# Changes since the last release
+
+## Major Features and Improvements
+* Added `tf.layers.conv3d_transpose` layer for spatio temporal deconvolution.
+* Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
+* Added ibverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
+* `RNNCell` objects now subclass `tf.layers._Layer`.  The strictness described
+  in the TensorFlow 1.1 release is gone:  The first time an RNNCell is used,
+  it caches its scope.  All future uses of the RNNCell will reuse variables from
+  that same scope.  This is a breaking change from the behavior of RNNCells
+  in TensorFlow versions <= 1.0.1.  TensorFlow 1.1 had checks in place to
+  ensure old code works correctly with the new semantics; this version
+  allows more flexible uses of RNNCell but can lead to subtle errors if
+  using code meant for TensorFlow <= 1.0.1.  For example, writing:
+  `MultiRNNCell([lstm] * 5)` will now build a 5-layer LSTM stack where each
+  layer shares the **same** parameters.  To get 5 layers each with their own
+  parameters, write: `MultiRNNCell([LSTMCell(...) for _ in range(5)])`.
+  If at all unsure, first test your code with TF 1.1; ensure it raises no
+  errors, and then upgrade to TF 1.2.
+
+## Bug Fixes and Other Changes
+* In python, `Operation.get_attr` on type attributes returns the Python DType
+  version of the type to match expected get_attr documentation rather than the
+  protobuf enum.
+* tensorflow/contrib/rnn undergoes RNN cell variable renaming for
+  consistency with Keras layers. Specifically, the previous variable names
+  "weights" and "biases" are changed to "kernel" and "bias", respectively.
+  This may cause backward incompatibility with regard to your old
+  checkpoints containing such RNN cells, in which case you can use the
+  [checkpoint_convert script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/rnn/python/tools/checkpoint_convert.py)
+  to convert the variable names in your old checkpoints.
+
 # Release 1.1.0
 
 ## Major Features and Improvements
@@ -15,6 +47,8 @@
   * Ability to inspect Python source file against TF ops and tensors (command `print_source` / `ps`)
   * New navigation bar in Curses-based UI
   * NodeStepper (command `invoke_stepper`) now uses intermediate tensor dumps. It also uses `TensorHandles` as direct feeds during successive `cont` calls for improved performance and reduced memory consumption.
+* Initial release of installation guides for Java, C, and Go.
+* Added Text Dashboard to TensorBoard.
 
 ## Deprecations
 
@@ -68,38 +102,41 @@
 * Multiple tfdbg bug fixes:
   * Fixed Windows compatibility issues.
   * Command history now persists across runs.
+  * Bug fix in graph validation related to `tf.while_loops`.
+* Java Maven fixes for bugs with Windows installation.
+* Backport fixes and improvements from external keras.
+* Keras config file handling fix.
 
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
 A. Besir Kurtulmus, Adal Chiriliuc, @akash, Alec-Desouza, Alex Rothberg, Alex
-Sergeev, Alexander Heinecke, Allen Guo, Andreas Madsen, Ankesh Anand, Anton
+Sergeev, Alexander Heinecke, Allen Guo, Andreas Madsen, Ankesh Anand, Anton 
 Loss, @Aravind, @Arie, Ashutosh Das, AuréLien Geron, Bairen Yi, @bakunyo, Ben
-Visser, Brady Zhou, Calpa Liu, Changming Sun, Chi Zeng, Chih Cheng Liang,
-Christopher Berner, Clark Zinzow, @Conchylicultor, Courtial Florian, Dan Ellis,
-Dan J, Dan Jarvis, Daniel Ylitalo, Darren Garvey, David Norman, David Truong,
-@DavidNorman, Dimitar Pavlov, Dmitry Persiyanov, @Eddie, @elirex, Erfan
-Noury, Eron Wright, Evgeny Mazovetskiy, Fabrizio (Misto) Milo, @fanlu, Fisher
-Coder, Franck Dernoncourt, Gagan Goel, Gao, Xiang, @Gautam, Gefu Tang,
-@guilherme, @guschmue, Hannah Provenza, Hans Pabst, @hartb, Hsiao Yi, Huazuo
-Gao, Igor ChorążEwicz, Ivan Smirnov, Jakub Kolodziejczyk, Jason Gavris, Jason
-Morton, Jay Young, Jayaram Bobba, Jeremy Sawruk, Jiaming Liu, Jihun Choi,
-@jiqiu, Joan Thibault, John C F, Jojy G Varghese, Jon Malmaud, Julian Berman,
-Julian Niedermeier, Junpeng Lao, Kai Sasaki, @Kankroc, Karl Lessard, Kyle
-Bostelmann, @Lezcano, Li Yi, Luo Yun, @lurker, Mahmoud-Abuzaina, Mandeep Singh,
-Marek Kolodziej, Mark Szepieniec, Martial Hue, Medhat Omr, Memo Akten, Michael
-Gharbi, MichaëL Defferrard, Milan Straka, @MircoT, @mlucool, Muammar Ibn Faisal,
-Nayana Thorat, @nghiattran, Nicholas Connor, Nikolaas Steenbergen, Niraj Patel,
-Niranjan Hasabnis, @Panmari, Pavel Bulanov, Philip Pries Henningsen, Philipp
-Jund, @polonez, Prayag Verma, Rahul Kavi, Raphael Gontijo Lopes, @rasbt, Raven
-Iqqe, Reid Pryzant, Richard Shin, Rizwan Asif, Russell Kaplan, Ryo Asakura,
-RüDiger Busche, Saisai Shao, Sam Abrahams, @sanosay, Sean Papay, @seaotterman,
-@selay01, Shaurya Sharma, Sriram Narayanamoorthy, Stefano Probst, @taknevski,
-@tbonza, @teldridge11, Yuan (Terry) Tang, Tim Anglade, Tomas Reimers, Tomer Gafner,
-Valentin Iovene, Vamsi Sripathi, Viktor Malyi, Vit Stepanovs, Vivek Rane, Vlad
-Firoiu, @wangg12, @will, Xiaoyu Tao, Yaroslav Bulatov, Yuan (Terry) Tang,
-@Yufeng, Yuming Wang, Yuxin Wu, Zafar Takhirov, Ziming Dong
+Visser, Brady Zhou, Calpa Liu, Changming Sun, Chih Cheng Liang, Christopher
+Berner, Clark Zinzow, @Conchylicultor, Dan Ellis, Dan J, Dan Jarvis, Daniel
+Ylitalo, Darren Garvey, David Norman, David Truong, @DavidNorman, Dimitar
+Pavlov, Dmitry Persiyanov, @Eddie, @elirex, Erfan Noury, Eron Wright, Evgeny
+Mazovetskiy, Fabrizio (Misto) Milo, @fanlu, Fisher Coder, Florian Courtial,
+Franck Dernoncourt, Gagan Goel, Gao, Xiang, @Gautam, Gefu Tang, @guilherme,
+@guschmue, Hannah Provenza, Hans Pabst, @hartb, Hsiao Yi, Huazuo Gao, Igor
+ChorążEwicz, Ivan Smirnov, Jakub Kolodziejczyk, Jason Gavris, Jason Morton, Jay
+Young, Jayaram Bobba, Jeremy Sawruk, Jiaming Liu, Jihun Choi, @jiqiu, Joan Thibault,
+John C F, Jojy George Varghese, Jon Malmaud, Julian Berman, Julian Niedermeier,
+Junpeng Lao, Kai Sasaki, @Kankroc, Karl Lessard, Kyle Bostelmann, @Lezcano, Li
+Yi, Luo Yun, @lurker, Mahmoud-Abuzaina, Mandeep Singh, Marek Kolodziej, Mark
+Szepieniec, Martial Hue, Medhat Omr, Memo Akten, Michael Gharbi, MichaëL Defferrard,
+Milan Straka, @MircoT, @mlucool, Muammar Ibn Faisal, Nayana Thorat, @nghiattran,
+Nicholas Connor, Nikolaas Steenbergen, Niraj Patel, Niranjan Hasabnis, @Panmari,
+Pavel Bulanov, Philip Pries Henningsen, Philipp Jund, @polonez, Prayag Verma, Rahul
+Kavi, Raphael Gontijo Lopes, @rasbt, Raven Iqqe, Reid Pryzant, Richard Shin, Rizwan
+Asif, Russell Kaplan, Ryo Asakura, RüDiger Busche, Saisai Shao, Sam Abrahams, @sanosay,
+Sean Papay, @seaotterman, @selay01, Shaurya Sharma, Sriram Narayanamoorthy, Stefano
+Probst, @taknevski, @tbonza, @teldridge11, Tim Anglade, Tomas Reimers, Tomer Gafner,
+Valentin Iovene, Vamsi Sripathi, Viktor Malyi, Vit Stepanovs, Vivek Rane, Vlad Firoiu,
+@wangg12, @will, Xiaoyu Tao, Yaroslav Bulatov, Yi Liu, Yuan (Terry) Tang, @Yufeng,
+Yuming Wang, Yuxin Wu, Zafar Takhirov, Ziming Dong
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.

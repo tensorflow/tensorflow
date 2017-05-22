@@ -66,8 +66,8 @@ def _get_single_cell(cell_type, num_units):
     ValueError: `cell_type` is an invalid `RNNCell` name.
     TypeError: `cell_type` is not a string or a subclass of `RNNCell`.
   """
-  cell_type = _CELL_TYPES.get(cell_type)
-  if cell_type is None and not issubclass(cell_type, contrib_rnn.RNNCell):
+  cell_type = _CELL_TYPES.get(cell_type, cell_type)
+  if not cell_type or not issubclass(cell_type, contrib_rnn.RNNCell):
     raise ValueError('The supported cell types are {}; got {}'.format(
         list(_CELL_TYPES.keys()), cell_type))
   return cell_type(num_units=num_units)
@@ -119,7 +119,7 @@ def apply_dropout(cells, dropout_keep_probabilities, random_seed=None):
   """
   if len(dropout_keep_probabilities) != len(cells) + 1:
     raise ValueError(
-        'The number of dropout probabilites must be one greater than the '
+        'The number of dropout probabilities must be one greater than the '
         'number of cells. Got {} cells and {} dropout probabilities.'.format(
             len(cells), len(dropout_keep_probabilities)))
   wrapped_cells = [

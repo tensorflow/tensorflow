@@ -20,6 +20,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -27,6 +28,8 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
+
+ops._USE_C_API = True
 
 exp = np.exp
 log = np.log
@@ -53,7 +56,8 @@ class ReduceTest(test_util.TensorFlowTestCase):
   def testReduceInvalidAxis(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     axis = np.array([[0], [1]])
-    with self.assertRaisesRegexp(ValueError, "must be at most rank 1"):
+    with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                 "must be at most rank 1"):
       math_ops.reduce_sum(x, axis)
 
 
@@ -278,7 +282,8 @@ class AddNTest(test_util.TensorFlowTestCase):
     for _ in range(98):
       partials.append(math_ops.add_n([constant_op.constant(1)]))
     partials.append(
-        math_ops.add_n([constant_op.constant(1), constant_op.constant(1)]))
+        math_ops.add_n([constant_op.constant(1),
+                        constant_op.constant(1)]))
 
     res = math_ops.add_n(partials) + constant_op.constant(0)
     with self.test_session(use_gpu=True):
@@ -408,9 +413,9 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       tf_divs = array_ops.constant(divs)
       tf2_result = (tf_nums // tf_divs * tf_divs + tf_nums % tf_divs).eval()
       np_result = (nums // divs) * divs + (nums % divs)
-      # consistentcy with numpy
+      # Consistent with numpy
       self.assertAllEqual(tf_result, np_result)
-      # consistentcy with two forms of divide
+      # Consistent with two forms of divide
       self.assertAllEqual(tf_result, tf2_result)
       # consistency for truncation form
       tf3_result = (math_ops.truncatediv(nums, divs) * divs +

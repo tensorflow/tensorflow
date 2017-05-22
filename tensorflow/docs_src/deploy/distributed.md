@@ -2,7 +2,7 @@
 
 This document shows how to create a cluster of TensorFlow servers, and how to
 distribute a computation graph across that cluster. We assume that you are
-familiar with the @{$get_started$basic concepts} of
+familiar with the @{$get_started/get_started$basic concepts} of
 writing TensorFlow programs.
 
 ## Hello distributed TensorFlow!
@@ -178,7 +178,7 @@ simplify the work of specifying a replicated model. Possible approaches include:
   values for the current parameters, compute gradients in parallel, and then
   apply them together. It is compatible with in-graph replication (e.g. using
   gradient averaging as in the
-  [CIFAR-10 multi-GPU trainer](https://www.tensorflow.org/code/tensorflow_models/tutorials/image/cifar10/cifar10_multi_gpu_train.py)),
+  [CIFAR-10 multi-GPU trainer](https://github.com/tensorflow/models/tree/master/tutorials/image/cifar10/cifar10_multi_gpu_train.py)),
   and between-graph replication (e.g. using the
   @{tf.train.SyncReplicasOptimizer}).
 

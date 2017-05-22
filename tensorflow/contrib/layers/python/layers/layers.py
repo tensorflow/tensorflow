@@ -59,6 +59,7 @@ __all__ = ['avg_pool2d',
            'convolution2d_in_plane',
            'convolution2d_transpose',
            'dropout',
+           'elu',
            'flatten',
            'fully_connected',
            'layer_norm',
@@ -277,7 +278,7 @@ def _fused_batch_norm(
         trainable=trainable_gamma)
 
     # Create moving_mean and moving_variance variables and add them to the
-    # appropiate collections.
+    # appropriate collections.
     moving_mean_collections = utils.get_variable_collections(
         variables_collections, 'moving_mean')
     moving_mean_initializer = param_initializers.get(
@@ -379,7 +380,10 @@ def batch_norm(inputs,
                fused=False,
                data_format=DATA_FORMAT_NHWC,
                zero_debias_moving_mean=False,
-               scope=None):
+               scope=None,
+               renorm=False,
+               renorm_clipping=None,
+               renorm_decay=0.99):
   """Adds a Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
     "Batch Normalization: Accelerating Deep Network Training by Reducing
@@ -446,6 +450,19 @@ def batch_norm(inputs,
     zero_debias_moving_mean: Use zero_debias for moving_mean. It creates a new
       pair of variables 'moving_mean/biased' and 'moving_mean/local_step'.
     scope: Optional scope for `variable_scope`.
+    renorm: Whether to use Batch Renormalization
+      (https://arxiv.org/abs/1702.03275). This adds extra variables during
+      training. The inference is the same for either value of this parameter.
+    renorm_clipping: A dictionary that may map keys 'rmax', 'rmin', 'dmax' to
+      scalar `Tensors` used to clip the renorm correction. The correction
+      `(r, d)` is used as `corrected_value = normalized_value * r + d`, with
+      `r` clipped to [rmin, rmax], and `d` to [-dmax, dmax]. Missing rmax, rmin,
+      dmax are set to inf, 0, inf, respectively.
+    renorm_decay: Momentum used to update the moving means and standard
+      deviations with renorm. Unlike `momentum`, this affects training
+      and should be neither too small (which would add noise) nor too large
+      (which would give stale estimates). Note that `decay` is still applied
+      to get the means and variances for inference.
 
   Returns:
     A `Tensor` representing the output of the operation.
@@ -464,6 +481,8 @@ def batch_norm(inputs,
     if param_regularizers is not None:
       raise ValueError('Regularizers are not currently '
                        'supported for fused batch norm.')
+    if renorm:
+      raise ValueError('Renorm is not supported for fused batch norm.')
     return _fused_batch_norm(
         inputs,
         decay=decay,
@@ -524,6 +543,9 @@ def batch_norm(inputs,
           beta_regularizer=beta_regularizer,
           gamma_regularizer=gamma_regularizer,
           trainable=trainable,
+          renorm=renorm,
+          renorm_clipping=renorm_clipping,
+          renorm_momentum=renorm_decay,
           name=sc.name,
           _scope=sc,
           _reuse=reuse)
@@ -551,6 +573,9 @@ def batch_norm(inputs,
     # Custom updates collections are not supported because the update logic
     # is different in this case, in particular w.r.t. "forced updates" and
     # update op reuse.
+    if renorm:
+      raise ValueError('renorm is not supported with batch_weights, '
+                       'updates_collections or zero_debias_moving_mean')
     inputs_shape = inputs.get_shape()
     inputs_rank = inputs_shape.ndims
     if inputs_rank is None:
@@ -607,7 +632,7 @@ def batch_norm(inputs,
                                        trainable=trainable)
 
     # Create moving_mean and moving_variance variables and add them to the
-    # appropiate collections. We disable variable partitioning while creating
+    # appropriate collections. We disable variable partitioning while creating
     # them, because assign_moving_average is not yet supported for partitioned
     # variables.
     partitioner = variable_scope.get_variable_scope().partitioner
@@ -819,7 +844,7 @@ def convolution(inputs,
   variable would be created and added the activations. Finally, if
   `activation_fn` is not `None`, it is applied to the activations as well.
 
-  Performs a'trous convolution with input stride/dilation rate equal to `rate`
+  Performs atrous convolution with input stride/dilation rate equal to `rate`
   if a value > 1 for any dimension of `rate` is specified.  In this case
   `stride` values != 1 are not supported.
 
@@ -845,7 +870,7 @@ def convolution(inputs,
       "NCW".  For N=2, the valid values are "NHWC" (default) and "NCHW".
       For N=3, the valid values are "NDHWC" (default) and "NCDHW".
     rate: A sequence of N positive integers specifying the dilation rate to use
-      for a'trous convolution.  Can be a single integer to specify the same
+      for atrous convolution.  Can be a single integer to specify the same
       value for all spatial dimensions.  Specifying any `rate` value != 1 is
       incompatible with specifying any `stride` value != 1.
     activation_fn: Activation function. The default value is a ReLU function.
@@ -1062,7 +1087,7 @@ def convolution2d_transpose(
   """Adds a convolution2d_transpose with an optional batch normalization layer.
 
   The function creates a variable called `weights`, representing the
-  kernel, that is convolved with the input. If `batch_norm_params` is `None`, a
+  kernel, that is convolved with the input. If `normalizer_fn` is `None`, a
   second variable called 'biases' is added to the result of the operation.
 
   Args:
@@ -1241,6 +1266,13 @@ def flatten(inputs,
 
 def _sparse_inner_flatten(inputs, new_rank):
   """Helper function for `inner_flatten`."""
+  inputs_rank = inputs.dense_shape.get_shape().as_list()[0]
+  if inputs_rank < new_rank:
+    raise ValueError(
+        'Inputs has rank less than new_rank. {} must have rank at least'
+        ' {}. Received rank {}, shape {}'.format(inputs, new_rank, inputs_rank,
+                                                 inputs.get_shape()))
+
   outer_dimensions = inputs.dense_shape[:new_rank - 1]
   inner_dimensions = inputs.dense_shape[new_rank - 1:]
   new_shape = array_ops.concat((outer_dimensions,
@@ -1815,9 +1847,9 @@ def separable_convolution2d(
   This op first performs a depthwise convolution that acts separately on
   channels, creating a variable called `depthwise_weights`. If `num_outputs`
   is not None, it adds a pointwise convolution that mixes channels, creating a
-  variable called `pointwise_weights`. Then, if `batch_norm_params` is None,
-  it adds bias to the result, creating a variable called 'biases', otherwise
-  it adds a batch normalization layer. It finally applies an activation function
+  variable called `pointwise_weights`. Then, if `normalizer_fn` is None,
+  it adds bias to the result, creating a variable called 'biases', otherwise,
+  the `normalizer_fn` is applied. It finally applies an activation function
   to produce the end result.
 
   Args:
@@ -1833,7 +1865,7 @@ def separable_convolution2d(
       depthwise convolution stride. Can be an int if both strides are the same.
     padding: One of 'VALID' or 'SAME'.
     rate: A list of length 2: [rate_height, rate_width], specifying the dilation
-      rates for a'trous convolution. Can be an int if both rates are the same.
+      rates for atrous convolution. Can be an int if both rates are the same.
       If any value is larger than one, then both stride values need to be one.
     activation_fn: Activation function. The default value is a ReLU function.
       Explicitly set it to None to skip it and maintain a linear activation.
@@ -1942,6 +1974,7 @@ def separable_convolution2d(
                                             dtype=dtype,
                                             initializer=biases_initializer,
                                             regularizer=biases_regularizer,
+                                            trainable=trainable,
                                             collections=biases_collections)
           outputs = nn.bias_add(outputs, biases)
 
@@ -2201,6 +2234,7 @@ def legacy_fully_connected(x,
 
 # TODO(eiderm): Verify and fix autocomplete in colab (also relu6).
 # Simple aliases which remove the activation_fn parameter.
+elu = functools.partial(fully_connected, activation_fn=nn.elu)
 legacy_relu = functools.partial(legacy_fully_connected, activation_fn=nn.relu)
 legacy_linear = functools.partial(legacy_fully_connected, activation_fn=None)
 relu = functools.partial(fully_connected, activation_fn=nn.relu)

@@ -339,7 +339,7 @@ class WishartCholeskyTest(test.TestCase):
                             chol_scale_deferred: chol_scale})
 
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
-                                   "LLT decomposition was not successful"):
+                                   "Cholesky decomposition was not successful"):
         chol_w = distributions.WishartFull(
             df=df_deferred, scale=chol_scale_deferred)
         # np.ones((3, 3)) is not positive, definite.

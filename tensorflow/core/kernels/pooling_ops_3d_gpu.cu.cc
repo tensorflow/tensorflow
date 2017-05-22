@@ -17,8 +17,8 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -159,12 +159,11 @@ bool MaxPool3dGradBackward<T>::operator()(
         bottom_diff);
   }
   return d.ok();
-};
+}
 
 }  // namespace functor
 
-#define DEFINE_GPU_SPECS(T) \
-  template struct functor::MaxPool3dGradBackward<T>;
+#define DEFINE_GPU_SPECS(T) template struct functor::MaxPool3dGradBackward<T>;
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
 #undef DEFINE_GPU_SPECS
 

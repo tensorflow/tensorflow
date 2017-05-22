@@ -67,7 +67,7 @@ constexpr char kGceTokenUrl[] =
 // The authentication token scope to request.
 constexpr char kOAuthScope[] = "https://www.googleapis.com/auth/cloud-platform";
 
-// The default intial delay between retries with exponential backoff.
+// The default initial delay between retries with exponential backoff.
 constexpr int kInitialRetryDelayUsec = 500000;  // 0.5 sec
 
 /// Returns whether the given path points to a readable file.

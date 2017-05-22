@@ -36,9 +36,9 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
+#include "tensorflow/core/util/mkl_util.h"
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
-#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
@@ -98,10 +98,9 @@ class MklConv2DOp : public OpKernel {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(
-          context,
-          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
-          errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
+                                           std::numeric_limits<int>::max()),
+                  errors::InvalidArgument("filter too large"));
     }
 
     const int64 input_depth =
@@ -175,7 +174,7 @@ class MklConv2DOp : public OpKernel {
       // Nothing to do, allocate output tensor and return
       MklShape mkl_output_mkl_shape;
       mkl_output_mkl_shape.SetMklTensor(false);
-      AllocateOutputSetMklshape(context, 0, &output, input.shape(),
+      AllocateOutputSetMklShape(context, 0, &output, input.shape(),
                                 mkl_output_mkl_shape);
       return;
     }
@@ -261,7 +260,7 @@ class MklConv2DOp : public OpKernel {
         dnnLayoutGetMemorySize_F32(
             static_cast<dnnLayout_t>(mkl_output_mkl_shape.GetMklLayout())) /
         sizeof(T));
-    AllocateOutputSetMklshape(context, 0, &output, mkl_output_tf_shape,
+    AllocateOutputSetMklShape(context, 0, &output, mkl_output_tf_shape,
                               mkl_output_mkl_shape);
     mkl_context.conv_res[dnnResourceDst] =
         static_cast<void*>(output->flat<T>().data());
@@ -434,16 +433,16 @@ class MklConv2DOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-#define REGISTER_MKL_CPU(T)                                               \
-  REGISTER_KERNEL_BUILDER(Name("MklConv2D")                               \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
-                          MklConv2DOp<CPUDevice, T, false>);              \
-  REGISTER_KERNEL_BUILDER(Name("MklConv2DWithBias")                       \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+#define REGISTER_MKL_CPU(T)                                         \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2D")                        \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
+                          MklConv2DOp<CPUDevice, T, false>);        \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DWithBias")                \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklConv2DOp<CPUDevice, T, true>);
 
 TF_CALL_float(REGISTER_MKL_CPU);

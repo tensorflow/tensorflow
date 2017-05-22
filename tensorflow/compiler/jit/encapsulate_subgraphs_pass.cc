@@ -88,9 +88,12 @@ class Encapsulator {
 
   // Build a FunctionDef for each subgraph, and add it 'library'. The values of
   // the 'group_attribute' annotations become the function names.
+  // If 'reuse_existing_functions' is set, use an existing function with the
+  // same name, if any.
   // If 'rewrite_subgraph_fn' is set, it is applied to each subgraph before
   // function conversion.
   Status BuildFunctionDefs(const RewriteSubgraphFn& rewrite_subgraph_fn,
+                           bool reuse_existing_functions,
                            FunctionLibraryDefinition* library);
 
   // Write a copy of the input graph to 'graph_out', where the subgraphs are
@@ -162,7 +165,7 @@ static const char* const kRetValOp = "_Retval";
 // none.
 string Encapsulator::GetFunctionNameAttr(Node const* node) const {
   string attr;
-  if (!GetNodeAttr(node->def(), group_attribute_, &attr).ok()) {
+  if (!GetNodeAttr(node->attrs(), group_attribute_, &attr).ok()) {
     attr.clear();
   }
   return attr;
@@ -192,7 +195,7 @@ Status Encapsulator::SplitIntoSubgraphs() {
 
     // Check the device matches any existing device.
     string device = node->assigned_device_name().empty()
-                        ? node->def().device()
+                        ? node->requested_device()
                         : node->assigned_device_name();
 
     if (subgraph.device.empty()) {
@@ -236,9 +239,16 @@ Status Encapsulator::SplitIntoSubgraphs() {
         // Create a new _Retval node
         DataType dtype = edge->src()->output_type(edge->src_output());
 
+        if (IsRefType(dtype)) {
+          return errors::InvalidArgument(
+              "Ref Tensors (e.g., Variables) are not supported: tensor ",
+              edge->src()->name(), ":", edge->src_output());
+        }
+
         NodeDef ret_def;
         ret_def.set_op(kRetValOp);
-        ret_def.set_name(src_subgraph.graph->NewName("output"));
+        ret_def.set_name(strings::StrCat(edge->src()->name(), "_",
+                                         edge->src_output(), "_retval"));
         AddNodeAttr("T", dtype, &ret_def);
         AddNodeAttr("index", ret_index, &ret_def);
         Node* ret = src_subgraph.graph->AddNode(ret_def, &s);
@@ -263,8 +273,16 @@ Status Encapsulator::SplitIntoSubgraphs() {
         // This is the first time we have seen this tensor. Create an _Arg node.
         DataType dtype = edge->dst()->input_type(edge->dst_input());
 
+        if (IsRefType(dtype)) {
+          return errors::InvalidArgument(
+              "Ref Tensors (e.g., Variables) are not supported: tensor ",
+              edge->src()->name(), ":", edge->src_output());
+        }
+
         NodeDef arg_def;
-        NodeDefBuilder builder(dst_subgraph.graph->NewName("input"), kArgOp);
+        NodeDefBuilder builder(strings::StrCat(edge->src()->name(), "_",
+                                               edge->src_output(), "_arg"),
+                               kArgOp);
         builder.Attr("T", dtype);
         builder.Attr("index", arg_index);
         s = builder.Finalize(&arg_def);
@@ -291,11 +309,11 @@ Status Encapsulator::SplitIntoSubgraphs() {
 }
 
 Status Encapsulator::BuildFunctionDefs(
-    const RewriteSubgraphFn& rewrite_subgraph_fn,
+    const RewriteSubgraphFn& rewrite_subgraph_fn, bool reuse_existing_functions,
     FunctionLibraryDefinition* library) {
   // For each subgraph, build a FunctionDef.
   for (auto& subgraph_entry : subgraphs_) {
-    const string& name = subgraph_entry.first;
+    string name = subgraph_entry.first;
     Subgraph& subgraph = subgraph_entry.second;
 
     subgraph.call_node_def.set_op(name);
@@ -332,6 +350,8 @@ Status Encapsulator::BuildFunctionDefs(
       for (auto& result : subgraph.results) {
         result.second = output_permutation[result.second];
       }
+
+      name = subgraph.call_node_def.op();
     }
 
     FunctionDef fdef;
@@ -346,7 +366,9 @@ Status Encapsulator::BuildFunctionDefs(
           strings::StrCat("encapsulate_fdef_", name), fdef);
     }
 
-    TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+    if (!reuse_existing_functions || library->Find(name) == nullptr) {
+      TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+    }
   }
   return Status::OK();
 }
@@ -545,14 +567,16 @@ Status Encapsulator::BuildOutputGraph(bool parallel_checking,
 Status EncapsulateSubgraphsInFunctions(
     string group_attribute, const Graph& graph_in,
     const RewriteSubgraphFn& rewrite_subgraph_fn, bool parallel_checking,
-    std::unique_ptr<Graph>* graph_out, FunctionLibraryDefinition* library) {
+    bool reuse_existing_functions, std::unique_ptr<Graph>* graph_out,
+    FunctionLibraryDefinition* library) {
   Status s;
 
   Encapsulator encapsulator(std::move(group_attribute), &graph_in);
   s = encapsulator.SplitIntoSubgraphs();
   if (!s.ok()) return s;
 
-  s = encapsulator.BuildFunctionDefs(rewrite_subgraph_fn, library);
+  s = encapsulator.BuildFunctionDefs(rewrite_subgraph_fn,
+                                     reuse_existing_functions, library);
   if (!s.ok()) return s;
 
   std::unique_ptr<Graph> out(new Graph(library));
@@ -569,7 +593,7 @@ static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
   for (Node* n : graph.nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       if (index < 0 || index >= types->size()) {
         return errors::InvalidArgument("Invalid argument number");
       }
@@ -586,7 +610,7 @@ static Status RenumberArguments(Graph* graph,
   for (Node* n : graph->nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       if (index < 0 || index >= permutation.size()) {
         return errors::InvalidArgument("Invalid argument number");
       }
@@ -674,7 +698,8 @@ Status EncapsulateSubgraphsPass::Run(
 
   TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
       kXlaClusterAttr, **options.graph, rewrite_subgraph,
-      flags->tf_xla_parallel_checking, &graph_out, library));
+      flags->tf_xla_parallel_checking, /*reuse_existing_functions=*/false,
+      &graph_out, library));
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile("after_encapsulate_subgraphs", *graph_out,
@@ -688,7 +713,7 @@ Status EncapsulateSubgraphsPass::Run(
 bool IsXlaCompiledKernel(const Node& node) {
   bool is_compiled = false;
   bool has_compilation_attr =
-      GetNodeAttr(node.def(), kXlaCompiledKernelAttr, &is_compiled).ok() &&
+      GetNodeAttr(node.attrs(), kXlaCompiledKernelAttr, &is_compiled).ok() &&
       is_compiled;
   return has_compilation_attr ? is_compiled : false;
 }

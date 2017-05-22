@@ -158,12 +158,12 @@ func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, in
 `))
 
 	tmplOp = template.Must(template.New("op").Funcs(template.FuncMap{
-		"MakeComment": makeComment,
-		"GoType":      goType,
-		"CamelCase":   camelCase,
-		"Identifier":  identifier,
-		"IsListArg":   isListArg,
-		"IsListAttr":  isListAttr,
+		"MakeComment":       makeComment,
+		"GoType":            goType,
+		"CamelCase":         camelCase,
+		"Identifier":        identifier,
+		"IsListArg":         isListArg,
+		"IsListAttr":        isListAttr,
 		"StripLeadingColon": stripLeadingColon,
 	}).Parse(`
 {{if .OptionalAttrs -}}

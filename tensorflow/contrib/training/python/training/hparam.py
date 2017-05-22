@@ -84,9 +84,12 @@ def parse_values(values, type_map):
     name = m_dict['name']
     if name not in type_map:
       raise ValueError('Unknown hyperparameter type for %s' % name)
-    def parse_fail():
-      raise ValueError('Could not parse hparam %s in %s' % (name, values))
-    if type_map[name] == bool:
+    type_ = type_map[name]
+    def parse_fail(value):
+      raise ValueError(
+          'Could not parse hparam \'%s\' of type \'%s\' with value \'%s\' in %s'
+          % (name, type_.__name__, value, values))
+    if type_ == bool:
       def parse_bool(value):
         if value == 'true':
           return True
@@ -95,24 +98,24 @@ def parse_values(values, type_map):
         else:
           try:
             return bool(int(value))
-          except ValueError:
-            parse_fail()
+          except (ValueError, TypeError):
+            parse_fail(value)
       parse = parse_bool
     else:
-      parse = type_map[name]
+      parse = type_
     if m_dict['val'] is not None:
       try:
         ret[name] = parse(m_dict['val'])
-      except ValueError:
-        parse_fail()
+      except (ValueError, TypeError):
+        parse_fail(m_dict['val'])
     elif m_dict['vals'] is not None:
       elements = filter(None, re.split('[ ,]', m_dict['vals']))
       try:
         ret[name] = [parse(e) for e in elements]
-      except ValueError:
-        parse_fail()
+      except (ValueError, TypeError):
+        parse_fail(m_dict['vals'])
     else:
-      parse_fail()
+      parse_fail('')
   return ret
 
 
@@ -161,7 +164,7 @@ class HParams(object):
   import argparse
   parser = argparse.ArgumentParser(description='Train my model.')
   parser.add_argument('--hparams', type=str,
-                      help='Comma seperated list of "name=value" pairs.')
+                      help='Comma separated list of "name=value" pairs.')
   args = parser.parse_args()
   ...
   def my_program():
@@ -419,7 +422,7 @@ class HParams(object):
     elif issubclass(param_type, float):
       typename = 'float'
     else:
-      raise ValueError('Unsupported paramter type: %s' % str(param_type))
+      raise ValueError('Unsupported parameter type: %s' % str(param_type))
 
     suffix = 'list' if is_list else 'value'
     return '_'.join([typename, suffix])

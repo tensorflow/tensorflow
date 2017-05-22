@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import inspect
 import os
 import tempfile
 
@@ -48,6 +47,9 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
+
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'config'])
@@ -89,14 +91,18 @@ class Estimator(object):
 
     Args:
       model_fn: Model function. Follows the signature:
+
         * Args:
-          * `features`: single `Tensor` or `dict` of `Tensor`s
-                 (depending on data passed to `train`),
-          * `labels`: `Tensor` or `dict` of `Tensor`s (for multi-head
-                 models). If mode is `ModeKeys.PREDICT`, `labels=None` will be
-                 passed. If the `model_fn`'s signature does not accept
-                 `mode`, the `model_fn` must still be able to handle
-                 `labels=None`.
+
+          * `features`: This is the first item returned from the `input_fn`
+                 passed to `train`, 'evaluate`, and `predict`. This should be a
+                 single `Tensor` or `dict` of same.
+          * `labels`: This is the second item returned from the `input_fn`
+                 passed to `train`, 'evaluate`, and `predict`. This should be a
+                 single `Tensor` or `dict` of same (for multi-head models). If
+                 mode is `ModeKeys.PREDICT`, `labels=None` will be passed. If
+                 the `model_fn`'s signature does not accept `mode`, the
+                 `model_fn` must still be able to handle `labels=None`.
           * `mode`: Optional. Specifies if this training, evaluation or
                  prediction. See `ModeKeys`.
           * `params`: Optional `dict` of hyperparameters.  Will receive what
@@ -109,9 +115,12 @@ class Estimator(object):
 
         * Returns:
           `EstimatorSpec`
+
       model_dir: Directory to save model parameters, graph and etc. This can
         also be used to load checkpoints from the directory into a estimator to
-        continue training a previously saved model.
+        continue training a previously saved model. If `None`, the model_dir in
+        `config` will be used if set. If both are set, they must be same. If
+        both are `None`, a temporary directory will be used.
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
@@ -122,12 +131,6 @@ class Estimator(object):
         a member of `Estimator`.
     """
     Estimator._assert_members_are_not_overridden(self)
-    # Model directory.
-    self._model_dir = model_dir
-    if self._model_dir is None:
-      self._model_dir = tempfile.mkdtemp()
-      logging.warning('Using temporary folder as model directory: %s',
-                      self._model_dir)
 
     if config is None:
       self._config = run_config.RunConfig()
@@ -139,7 +142,29 @@ class Estimator(object):
             config)
       self._config = config
 
+    # Model directory.
+    if (model_dir is not None) and (self._config.model_dir is not None):
+      if model_dir != self._config.model_dir:
+        # pylint: disable=g-doc-exception
+        raise ValueError(
+            "model_dir are set both in constructor and RunConfig, but with "
+            "different values. In constructor: '{}', in RunConfig: "
+            "'{}' ".format(model_dir, self._config.model_dir))
+        # pylint: enable=g-doc-exception
+
+    self._model_dir = model_dir or self._config.model_dir
+    if self._model_dir is None:
+      self._model_dir = tempfile.mkdtemp()
+      logging.warning('Using temporary folder as model directory: %s',
+                      self._model_dir)
+    if self._config.model_dir is None:
+      self._config = self._config.replace(model_dir=self._model_dir)
     logging.info('Using config: %s', str(vars(self._config)))
+
+    if self._config.session_config is None:
+      self._session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    else:
+      self._session_config = self._config.session_config
 
     self._device_fn = _get_replica_device_setter(self._config)
 
@@ -175,7 +200,7 @@ class Estimator(object):
         error. 'steps' works incrementally. If you call two times
         train(steps=10) then training occurs in total 20 steps. If `OutOfRange`
         or `StopIteration` error occurs in the middle, training stops before 20
-        steps. If you don't want to have incremental behaviour please set
+        steps. If you don't want to have incremental behavior please set
         `max_steps` instead. If set, `max_steps` must be `None`.
       max_steps: Number of total steps for which to train model. If `None`,
         train forever or train until input_fn generates the `OutOfRange` or
@@ -198,10 +223,10 @@ class Estimator(object):
     if (steps is not None) and (max_steps is not None):
       raise ValueError('Can not provide both steps and max_steps.')
     if steps is not None and steps <= 0:
-      raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+      raise ValueError('Must specify steps > 0, given: {}'.format(steps))
     if max_steps is not None and max_steps <= 0:
       raise ValueError(
-          'Must specify max_steps >= 0, given: {}'.format(max_steps))
+          'Must specify max_steps > 0, given: {}'.format(max_steps))
 
     if max_steps is not None:
       start_step = _load_global_step_from_checkpoint_dir(self._model_dir)
@@ -256,7 +281,7 @@ class Estimator(object):
     hooks = _check_hooks_type(hooks)
     if steps is not None:
       if steps <= 0:
-        raise ValueError('Must specify steps >= 0, given: {}'.format(steps))
+        raise ValueError('Must specify steps > 0, given: {}'.format(steps))
       hooks.append(evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
           num_evals=steps))
 
@@ -266,7 +291,11 @@ class Estimator(object):
         checkpoint_path=checkpoint_path,
         name=name)
 
-  def predict(self, input_fn, predict_keys=None, hooks=None, checkpoint_path=None):
+  def predict(self,
+              input_fn,
+              predict_keys=None,
+              hooks=None,
+              checkpoint_path=None):
     """Returns predictions for given features.
 
     Args:
@@ -313,7 +342,7 @@ class Estimator(object):
           session_creator=training.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
               scaffold=estimator_spec.scaffold,
-              config=config_pb2.ConfigProto(allow_soft_placement=True)),
+              config=self._session_config),
           hooks=hooks) as mon_sess:
         while not mon_sess.should_stop():
           preds_evaluated = mon_sess.run(predictions)
@@ -504,7 +533,7 @@ class Estimator(object):
     Raises:
       ValueError: if model_fn returns invalid objects.
     """
-    model_fn_args = _get_arguments(self._model_fn).args
+    model_fn_args = _model_fn_args(self._model_fn)
     kwargs = {}
     if 'mode' in model_fn_args:
       kwargs['mode'] = mode
@@ -548,7 +577,8 @@ class Estimator(object):
                               training.Saver(
                                   sharded=True,
                                   max_to_keep=self._config.keep_checkpoint_max,
-                                  defer_build=True))
+                                  defer_build=True,
+                                  save_relative_paths=True))
 
       chief_hooks = []
       if (self._config.save_checkpoints_secs or
@@ -556,7 +586,7 @@ class Estimator(object):
         saver_hook_exists = any([
             isinstance(h, training.CheckpointSaverHook)
             for h in (all_hooks + chief_hooks +
-                      estimator_spec.training_chief_hooks)
+                      list(estimator_spec.training_chief_hooks))
         ])
         if not saver_hook_exists:
           chief_hooks = [
@@ -572,10 +602,11 @@ class Estimator(object):
           checkpoint_dir=self._model_dir,
           scaffold=estimator_spec.scaffold,
           hooks=all_hooks,
-          chief_only_hooks=chief_hooks + estimator_spec.training_chief_hooks,
+          chief_only_hooks=(
+              tuple(chief_hooks) + tuple(estimator_spec.training_chief_hooks)),
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
-          config=config_pb2.ConfigProto(allow_soft_placement=True)) as mon_sess:
+          config=self._session_config) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([estimator_spec.train_op, estimator_spec.loss])
@@ -630,7 +661,7 @@ class Estimator(object):
           eval_ops=update_op,
           final_ops=eval_dict,
           hooks=hooks,
-          config=config_pb2.ConfigProto(allow_soft_placement=True))
+          config=self._session_config)
 
       _write_dict_to_summary(
           output_dir=eval_dir,
@@ -638,12 +669,6 @@ class Estimator(object):
           current_global_step=eval_results[ops.GraphKeys.GLOBAL_STEP])
 
     return eval_results
-
-  def _verify_default_metric_key(self, metric_key, eval_dict):
-    if metric_key in six.iterkeys(eval_dict):
-      raise ValueError(
-          'Metric with name `%s` is not allowed, because Estimator '
-          'already defines a default metric with the same name.' % metric_key)
 
 
 def _check_hooks_type(hooks):
@@ -689,35 +714,48 @@ def _get_replica_device_setter(config):
     return None
 
 
-def _get_arguments(func):
-  """Returns a spec of given func."""
-  if hasattr(func, '__code__'):
-    # Regular function.
-    return inspect.getargspec(func)
-  elif hasattr(func, '__call__'):
-    # Callable object.
-    return _get_arguments(func.__call__)
-  elif hasattr(func, 'func'):
-    # Partial function.
-    return _get_arguments(func.func)
+def _model_fn_args(fn):
+  """Get argument names for function-like object.
+
+  Args:
+    fn: Function, or function-like object (e.g., result of `functools.partial`).
+
+  Returns:
+    `tuple` of string argument names.
+
+  Raises:
+    ValueError: if partial function has positionally bound arguments
+  """
+  _, fn = tf_decorator.unwrap(fn)
+  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
+    # Handle functools.partial and similar objects.
+    return tuple([
+        arg for arg in tf_inspect.getargspec(fn.func).args[len(fn.args):]
+        if arg not in set(fn.keywords.keys())
+    ])
+  # Handle function.
+  return tuple(tf_inspect.getargspec(fn).args)
 
 
 def _verify_model_fn_args(model_fn, params):
   """Verifies model fn arguments."""
-  fn_spec = _get_arguments(model_fn)
-  if 'features' not in fn_spec.args:
+  args = set(_model_fn_args(model_fn))
+  if 'features' not in args:
     raise ValueError('model_fn (%s) must include features argument.' % model_fn)
-  if 'labels' not in fn_spec.args:
+  if 'labels' not in args:
     raise ValueError('model_fn (%s) must include labels argument.' % model_fn)
-  if params is not None and 'params' not in fn_spec.args:
+  if params is not None and 'params' not in args:
     raise ValueError('model_fn (%s) does not include params argument, '
                      'but params (%s) is passed to Estimator.' % (model_fn,
                                                                   params))
-  if params is None and 'params' in fn_spec.args:
+  if params is None and 'params' in args:
     logging.warning('Estimator\'s model_fn (%s) includes params '
                     'argument, but params are not passed to Estimator.',
                     model_fn)
-  non_valid_args = list(set(fn_spec.args) - _VALID_MODEL_FN_ARGS)
+  if tf_inspect.ismethod(model_fn):
+    if 'self' in args:
+      args.remove('self')
+  non_valid_args = list(args - _VALID_MODEL_FN_ARGS)
   if non_valid_args:
     raise ValueError('model_fn (%s) has following not expected args: %s' %
                      (model_fn, non_valid_args))
@@ -779,13 +817,20 @@ def _write_dict_to_summary(output_dir,
   for key in dictionary:
     if dictionary[key] is None:
       continue
+    if key == 'global_step':
+      continue
     value = summary_proto.value.add()
     value.tag = key
     if (isinstance(dictionary[key], np.float32) or
         isinstance(dictionary[key], float)):
       value.simple_value = float(dictionary[key])
+    elif (isinstance(dictionary[key], np.int64) or
+          isinstance(dictionary[key], np.int32) or
+          isinstance(dictionary[key], int)):
+      value.simple_value = int(dictionary[key])
     else:
-      logging.warn('Skipping summary for %s, must be a float or np.float32.',
-                   key)
+      logging.warn(
+          'Skipping summary for %s, must be a float, np.float32, np.int64, np.int32 or int.',
+          key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()

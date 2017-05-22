@@ -21,8 +21,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import defaultdict
-import errno
 import json
 import os
 import warnings
@@ -93,7 +91,7 @@ _IMAGE_DATA_FORMAT = 'channels_last'
 def backend():
   """Publicly accessible method for determining the current backend.
 
-  Only exists for API compatibily with multi-backend Keras.
+  Only exists for API compatibility with multi-backend Keras.
 
   Returns:
       The string "tensorflow".
@@ -246,17 +244,40 @@ def set_image_data_format(data_format):
 
 
 def get_uid(prefix=''):
-  global _GRAPH_UID_DICTS  # pylint: disable=global-variable-not-assigned
-  graph = ops.get_default_graph()
-  if graph not in _GRAPH_UID_DICTS:
-    _GRAPH_UID_DICTS[graph] = defaultdict(int)
-  _GRAPH_UID_DICTS[graph][prefix] += 1
-  return _GRAPH_UID_DICTS[graph][prefix]
+  """Associates a string prefix with an integer counter in a TensorFlow graph.
+
+  Arguments:
+    prefix: String prefix to index.
+
+  Returns:
+    Unique integer ID.
+
+  Example:
+
+  ```
+    >>> get_uid('dense')
+    1
+    >>> get_uid('dense')
+    2
+  ```
+  """
+  layer_name_uids_collection = ops.get_collection('LAYER_NAME_UIDS')
+  if not layer_name_uids_collection:
+    layer_name_uids = {}
+    ops.add_to_collection('LAYER_NAME_UIDS', layer_name_uids)
+  else:
+    layer_name_uids = layer_name_uids_collection[0]
+  if prefix not in layer_name_uids:
+    layer_name_uids[prefix] = 1
+  else:
+    layer_name_uids[prefix] += 1
+  return layer_name_uids[prefix]
 
 
 def reset_uids():
-  global _GRAPH_UID_DICTS
-  _GRAPH_UID_DICTS = {}
+  layer_name_uids_collection = ops.get_collection_ref('LAYER_NAME_UIDS')
+  if layer_name_uids_collection:
+    layer_name_uids_collection.pop()
 
 
 def clear_session():
@@ -270,6 +291,7 @@ def clear_session():
   reset_uids()
   _SESSION = None
   phase = array_ops.placeholder(dtype='bool', name='keras_learning_phase')
+  _GRAPH_LEARNING_PHASES = {}
   _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = phase
 
 
@@ -351,7 +373,8 @@ def get_session():
       _SESSION = session_module.Session(config=config)
     session = _SESSION
   if not _MANUAL_VAR_INIT:
-    _initialize_variables()
+    with session.graph.as_default():
+      _initialize_variables()
   return session
 
 
@@ -1257,6 +1280,34 @@ def prod(x, axis=None, keepdims=False):
   return math_ops.reduce_prod(x, reduction_indices=axis, keep_dims=keepdims)
 
 
+def cumsum(x, axis=0):
+  """Cumulative sum of the values in a tensor, alongside the specified axis.
+
+  Arguments:
+      x: A tensor or variable.
+      axis: An integer, the axis to compute the sum.
+
+  Returns:
+      A tensor of the cumulative sum of values of `x` along `axis`.
+  """
+  axis = _normalize_axis(axis, ndim(x))
+  return math_ops.cumsum(x, axis=axis)
+
+
+def cumprod(x, axis=0):
+  """Cumulative product of the values in a tensor, alongside the specified axis.
+
+  Arguments:
+      x: A tensor or variable.
+      axis: An integer, the axis to compute the product.
+
+  Returns:
+      A tensor of the cumulative product of values of `x` along `axis`.
+  """
+  axis = _normalize_axis(axis, ndim(x))
+  return math_ops.cumprod(x, axis=axis)
+
+
 def var(x, axis=None, keepdims=False):
   """Variance of a tensor, alongside the specified axis.
 
@@ -1330,8 +1381,7 @@ def any(x, axis=None, keepdims=False):
   """
   axis = _normalize_axis(axis, ndim(x))
   x = math_ops.cast(x, dtypes_module.bool)
-  x = math_ops.reduce_any(x, reduction_indices=axis, keep_dims=keepdims)
-  return math_ops.cast(x, dtypes_module.uint8)
+  return math_ops.reduce_any(x, reduction_indices=axis, keep_dims=keepdims)
 
 
 def all(x, axis=None, keepdims=False):
@@ -1347,8 +1397,7 @@ def all(x, axis=None, keepdims=False):
   """
   axis = _normalize_axis(axis, ndim(x))
   x = math_ops.cast(x, dtypes_module.bool)
-  x = math_ops.reduce_all(x, reduction_indices=axis, keep_dims=keepdims)
-  return math_ops.cast(x, dtypes_module.uint8)
+  return math_ops.reduce_all(x, reduction_indices=axis, keep_dims=keepdims)
 
 
 def argmax(x, axis=-1):
@@ -1645,7 +1694,7 @@ def normalize_batch_in_training(x, gamma, beta, reduction_axes, epsilon=1e-3):
   """
   mean, var = nn.moments(
       x, reduction_axes, shift=None, name=None, keep_dims=False)
-  if sorted(reduction_axes) == range(ndim(x))[:-1]:
+  if sorted(reduction_axes) == list(range(ndim(x)))[:-1]:
     normed = nn.batch_normalization(x, mean, var, beta, gamma, epsilon)
   else:
     # need broadcasting
@@ -2324,8 +2373,8 @@ def rnn(step_function,
           (no time dimension),
           containing the initial values for the states used in
           the step function.
-      go_backwards: boolean. If True, do the iteration over
-          the time dimension in reverse order.
+      go_backwards: boolean. If True, do the iteration over the time
+          dimension in reverse order and return the reversed sequence.
       mask: binary tensor with shape `(samples, time, 1)`,
           with a zero for every element that is masked.
       constants: a list of constant values passed at each step.
@@ -2414,9 +2463,9 @@ def rnn(step_function,
         states = return_states
         successive_outputs.append(output)
         successive_states.append(states)
-        last_output = successive_outputs[-1]
-        new_states = successive_states[-1]
-        outputs = array_ops.stack(successive_outputs)
+      last_output = successive_outputs[-1]
+      new_states = successive_states[-1]
+      outputs = array_ops.stack(successive_outputs)
     else:
       for inp in input_list:
         output, states = step_function(inp, states + constants)
@@ -2568,7 +2617,7 @@ def in_train_phase(x, alt, training=None):
           (tensor or callable that returns a tensor).
       training: Optional scalar tensor
           (or Python boolean, or Python integer)
-          specifing the learning phase.
+          specifying the learning phase.
 
   Returns:
       Either `x` or `alt` based on the `training` flag.
@@ -2611,7 +2660,7 @@ def in_test_phase(x, alt, training=None):
           (tensor or callable that returns a tensor).
       training: Optional scalar tensor
           (or Python boolean, or Python integer)
-          specifing the learning phase.
+          specifying the learning phase.
 
   Returns:
       Either `x` or `alt` based on `K.learning_phase`.
@@ -2872,13 +2921,14 @@ def in_top_k(predictions, targets, k):
   """Returns whether the `targets` are in the top `k` `predictions`.
 
   Arguments:
-      predictions: A tensor of shape `batch_size` x classes and type `float32`.
-      targets: A tensor of shape batch_size and type `int32` or `int64`.
+      predictions: A tensor of shape `(batch_size, classes)` and type `float32`.
+      targets: A 1D tensor of length `batch_size` and type `int32` or `int64`.
       k: An `int`, number of top elements to consider.
 
   Returns:
-      A tensor of shape `batch_size` and type `bool`. `output_i` is `True` if
-      `targets_i` is within top-k values of `predictions_i`
+      A 1D tensor of length `batch_size` and type `bool`.
+      `output[i]` is `True` if `predictions[i, targets[i]]` is within top-`k`
+      values of `predictions[i]`.
   """
   return nn.in_top_k(predictions, targets, k)
 
@@ -3426,8 +3476,9 @@ def ctc_label_dense_to_sparse(labels, label_lengths):
   max_num_labels_tns = array_ops.stack([label_shape[1]])
 
   def range_less_than(_, current_input):
-    return array_ops.expand_dims(math_ops.range(
-        label_shape[1]), 0) < array_ops.fill(max_num_labels_tns, current_input)
+    return array_ops.expand_dims(
+        math_ops.range(label_shape[1]), 0) < array_ops.fill(
+            max_num_labels_tns, current_input)
 
   init = math_ops.cast(
       array_ops.fill([1, label_shape[1]], 0), dtypes_module.bool)
@@ -3534,19 +3585,19 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
 # HIGH ORDER FUNCTIONS
 
 
-def map_fn(fn, elems, name=None):
+def map_fn(fn, elems, name=None, dtype=None):
   """Map the function fn over the elements elems and return the outputs.
 
   Arguments:
       fn: Callable that will be called upon each element in elems
       elems: tensor
       name: A string name for the map node in the graph
+      dtype: Output data type.
 
   Returns:
-      Tensor with first dimension equal to the elems and second depending on
-      fn
+      Tensor with dtype `dtype`.
   """
-  return functional_ops.map_fn(fn, elems, name=name)
+  return functional_ops.map_fn(fn, elems, name=name, dtype=dtype)
 
 
 def foldl(fn, elems, initializer=None, name=None):
@@ -3560,7 +3611,7 @@ def foldl(fn, elems, initializer=None, name=None):
       name: A string name for the foldl node in the graph
 
   Returns:
-      Same type and shape as initializer
+      Tensor with same type and shape as `initializer`.
   """
   return functional_ops.foldl(fn, elems, initializer=initializer, name=name)
 
@@ -3583,27 +3634,42 @@ def foldr(fn, elems, initializer=None, name=None):
 
 # Load Keras default configuration from config file if present.
 _keras_base_dir = os.path.expanduser('~')
-if not os.access(_keras_base_dir, os.W_OK):
-  _keras_base_dir = '/tmp'
 _keras_dir = os.path.join(_keras_base_dir, '.keras')
-if not os.path.exists(_keras_dir):
-  try:
-    os.makedirs(_keras_dir)
-  except OSError as e:
-    if e.errno == errno.EEXIST:
-      pass
-    else:
-      raise
 _config_path = os.path.expanduser(os.path.join(_keras_dir, 'keras.json'))
 if os.path.exists(_config_path):
-  _config = json.load(open(_config_path))
+  try:
+    _config = json.load(open(_config_path))
+  except ValueError:
+    _config = {}
   _floatx = _config.get('floatx', floatx())
   assert _floatx in {'float16', 'float32', 'float64'}
   _epsilon = _config.get('epsilon', epsilon())
   assert isinstance(_epsilon, float)
-  _backend = backend()
   _image_data_format = _config.get('image_data_format', image_data_format())
   assert _image_data_format in {'channels_last', 'channels_first'}
   set_floatx(_floatx)
   set_epsilon(_epsilon)
   set_image_data_format(_image_data_format)
+
+# Save config file.
+if not os.path.exists(_keras_dir):
+  try:
+    os.makedirs(_keras_dir)
+  except OSError:
+    # Except permission denied and potential race conditions
+    # in multi-threaded environments.
+    pass
+
+if not os.path.exists(_config_path):
+  _config = {
+      'floatx': floatx(),
+      'epsilon': epsilon(),
+      'backend': 'tensorflow',
+      'image_data_format': image_data_format()
+  }
+  try:
+    with open(_config_path, 'w') as f:
+      f.write(json.dumps(_config, indent=4))
+  except IOError:
+    # Except permission denied.
+    pass

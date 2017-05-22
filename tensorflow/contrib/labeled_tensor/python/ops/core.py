@@ -618,7 +618,7 @@ def identity(labeled_tensor, name=None):
 def slice_function(labeled_tensor, selection, name=None):
   """Slice out a subset of the tensor.
 
-  This is an analogue of tf.slice.
+  This is an analog of tf.slice.
   For example:
   >>> tensor = tf.reshape(tf.range(0, 6), [3, 2])
   >>> labeled_tensor = lt.LabeledTensor(tensor, ['a', ('b', ['foo', 'bar'])])
@@ -810,7 +810,7 @@ def axis_order_scope(axis_order=None):
   Example usage:
 
     with lt.axis_order_scope(['x', 'y', 'z']):
-      # result is guranteed to have the correct axis order
+      # result is guaranteed to have the correct axis order
       result = w + b
 
   You can nest scopes, in which case only the inner-most scope applies, e.g.,

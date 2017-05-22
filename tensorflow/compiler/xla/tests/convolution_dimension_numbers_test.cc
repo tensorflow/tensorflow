@@ -25,12 +25,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -43,8 +42,8 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidInputDimensionNumbers) {
   auto dimension_numbers_status =
       ComputationBuilder::CreateConvDimensionNumbers(0, 2, 2, 3, 0, 1, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
-  ASSERT_MATCH(dimension_numbers_status.status().error_message(),
-               testing::ContainsRegex("input are not unique"));
+  ASSERT_THAT(dimension_numbers_status.status().error_message(),
+              ::testing::HasSubstr("input are not unique"));
 }
 
 // Tests the convolution operation with invalid weight dimension numbers.
@@ -52,8 +51,8 @@ TEST_F(ConvolutionDimensionNumbersTest, InvalidWeightDimensionNumbers) {
   auto dimension_numbers_status =
       ComputationBuilder::CreateConvDimensionNumbers(0, 1, 2, 3, 2, 3, 2, 3);
   ASSERT_FALSE(dimension_numbers_status.ok());
-  ASSERT_MATCH(dimension_numbers_status.status().error_message(),
-               testing::ContainsRegex("weight are not unique"));
+  ASSERT_THAT(dimension_numbers_status.status().error_message(),
+              ::testing::HasSubstr("weight are not unique"));
 }
 
 XLA_TEST_F(ConvolutionDimensionNumbersTest,

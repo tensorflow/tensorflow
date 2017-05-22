@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -254,6 +255,22 @@ XLA_TEST_F(CopyOpTest, CopyConstantR4Layout0231_MultipleTilesPerLayer) {
 
 XLA_TEST_F(CopyOpTest, CopyConstantR4Layout0312_MultipleTilesPerLayer) {
   TestCopyConstantLayoutR4(2, 14, 5, 35, {0, 3, 1, 2});
+}
+
+using CopyOpClientTest = ClientLibraryTestBase;
+
+XLA_TEST_F(CopyOpClientTest, Copy0x0) {
+  Shape in_shape = ShapeUtil::MakeShapeWithLayout(F32, {0, 0}, {0, 1});
+  Shape out_shape = ShapeUtil::MakeShapeWithLayout(F32, {0, 0}, {1, 0});
+  auto empty = LiteralUtil::CreateFromShape(in_shape);
+
+  ComputationBuilder builder(client_, TestName());
+  auto param0 = builder.Parameter(0, in_shape, "input");
+  auto input_data = client_->TransferToServer(*empty).ConsumeValueOrDie();
+
+  auto actual = ExecuteAndTransfer(&builder, {input_data.get()}, &out_shape)
+                    .ConsumeValueOrDie();
+  LiteralTestUtil::ExpectEqual(*empty, *actual);
 }
 
 }  // namespace

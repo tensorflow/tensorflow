@@ -22,12 +22,11 @@ from __future__ import print_function
 import abc
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -103,7 +102,8 @@ class Scaffold(object):
                ready_for_local_init_op=None,
                local_init_op=None,
                summary_op=None,
-               saver=None):
+               saver=None,
+               copy_from_scaffold=None):
     """Create a scaffold.
 
     Args:
@@ -126,22 +126,42 @@ class Scaffold(object):
         string tensor containing a serialized `Summary` proto.
       saver: Optional `tf.train.Saver` object to use to save and restore
         variables.
+      copy_from_scaffold: Optional scaffold object to copy fields from. Its
+        fields will be overwritten by the provided fields in this function.
     """
+    if copy_from_scaffold is not None:
+      if not isinstance(copy_from_scaffold, Scaffold):
+        raise TypeError('copy_from_scaffold is not a Scaffold instance.')
+      # We need _coalesce since Tensor is not converted to bool automatically,
+      # so the common idiom of (a or b) does not work.
+      coalesce = lambda a, b: a if a is not None else b
+      init_op = coalesce(init_op, copy_from_scaffold.init_op)
+      init_feed_dict = coalesce(init_feed_dict,
+                                copy_from_scaffold.init_feed_dict)
+      # Use the original init_fn provided by the user to init the new Scaffold.
+      init_fn = coalesce(init_fn, copy_from_scaffold._user_init_fn)  # pylint: disable=protected-access
+      ready_op = coalesce(ready_op, copy_from_scaffold.ready_op)
+      ready_for_local_init_op = coalesce(
+          ready_for_local_init_op, copy_from_scaffold.ready_for_local_init_op)
+      local_init_op = coalesce(local_init_op, copy_from_scaffold.local_init_op)
+      summary_op = coalesce(summary_op, copy_from_scaffold.summary_op)
+      saver = coalesce(saver, copy_from_scaffold.saver)
 
     # NOTE(touts): modifying the init function to be passed the scaffold is a
     # hack to make it easy to find the saver.  Is there a better way?
+    self._user_init_fn = init_fn
     if init_fn:
       self._init_fn = lambda sess: init_fn(self, sess)
     else:
       self._init_fn = None
 
     self._init_op = init_op
+    self._init_feed_dict = init_feed_dict
     self._ready_op = ready_op
     self._ready_for_local_init_op = ready_for_local_init_op
     self._local_init_op = local_init_op
     self._summary_op = summary_op
     self._saver = saver
-    self._init_feed_dict = init_feed_dict
 
   def finalize(self):
     """Creates operations if needed and finalizes the graph."""
@@ -180,11 +200,7 @@ class Scaffold(object):
                                                  summary.merge_all)
     # pylint: disable=g-long-lambda
     if self._saver is None:
-      self._saver = Scaffold.get_or_default(
-          'saver',
-          ops.GraphKeys.SAVERS,
-          lambda: training_saver.Saver(sharded=True, allow_empty=True,
-                                       write_version=saver_pb2.SaverDef.V2))
+      self._saver = training_saver._get_saver_or_default()  # pylint: disable=protected-access
     # pylint: enable=g-long-lambda
     self._saver.build()
 
@@ -243,7 +259,7 @@ class Scaffold(object):
   @staticmethod
   def _default_local_init_op():
     return control_flow_ops.group(variables.local_variables_initializer(),
-                                  data_flow_ops.tables_initializer())
+                                  lookup_ops.tables_initializer())
 
 
 def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
@@ -257,7 +273,7 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
                              save_summaries_secs=None,
                              config=None,
                              stop_grace_period_secs=120,
-                             log_step_count_steps=10000):
+                             log_step_count_steps=100):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -427,7 +443,9 @@ class WorkerSessionCreator(SessionCreator):
   def create_session(self):
     self._scaffold.finalize()
     return self._get_session_manager().wait_for_session(
-        self._master, config=self._config)
+        self._master, config=self._config,
+        max_wait_secs=30 * 60  # Wait up to 30 mins for the session to be ready.
+    )
 
 
 class _MonitoredSession(object):
@@ -562,7 +580,7 @@ class MonitoredSession(_MonitoredSession):
 
   ```python
   saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
+  summary_hook = SummarySaverHook(...)
   with MonitoredSession(session_creator=ChiefSessionCreator(...),
                         hooks=[saver_hook, summary_hook]) as sess:
     while not sess.should_stop():
@@ -651,7 +669,7 @@ class SingularMonitoredSession(_MonitoredSession):
   Example usage:
   ```python
   saver_hook = CheckpointSaverHook(...)
-  summary_hook = SummaryHook(...)
+  summary_hook = SummarySaverHook(...)
   with SingularMonitoredSession(hooks=[saver_hook, summary_hook]) as sess:
     while not sess.should_stop():
       sess.run(train_op)

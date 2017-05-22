@@ -18,11 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
-
 import numpy as np
 
 from tensorflow.contrib.keras.python import keras
+from tensorflow.python.util import tf_inspect
 
 
 def get_test_data(train_samples,
@@ -98,7 +97,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   layer.set_weights(weights)
 
   # test and instantiation from weights
-  if 'weights' in inspect.getargspec(layer_cls.__init__):
+  if 'weights' in tf_inspect.getargspec(layer_cls.__init__):
     kwargs['weights'] = weights
     layer = layer_cls(**kwargs)
 

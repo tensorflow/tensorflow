@@ -72,8 +72,7 @@ class DeviceSimple : public DeviceBase {
                              Tensor* tensor) override {
     Tensor parsed(tensor_proto.dtype());
     if (!parsed.FromProto(cpu_allocator(), tensor_proto)) {
-      return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                     tensor_proto.DebugString());
+      return errors::InvalidArgument("Cannot parse tensor from tensor_proto.");
     }
     *tensor = parsed;
     return Status::OK();
@@ -130,7 +129,6 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   if (!status.ok()) {
     return false;
   }
-
   if (op_def->is_stateful()) {
     return false;
   }
@@ -141,6 +139,15 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
 
   // Folding not applicable to ops with no inputs.
   if (node.input().empty()) {
+    return false;
+  }
+
+  // No need to (and don't) fold nodes that have no outgoing edges. Such nodes
+  // could be introduced by an earlier constant folding pass and are preserved
+  // in case users want to fetch their values; re-processing them would
+  // lead to an error of adding a duplicated node to graph.
+  auto outputs = node_map_->GetOutputs(node.name());
+  if (outputs.empty()) {
     return false;
   }
 
@@ -224,8 +231,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     Status(error::INVALID_ARGUMENT, "Expected at least one output.");
   }
   for (int i = 0; i < output_tensors.size(); i++) {
-    string node_name = strings::StrCat(
-        AddPrefixToNodeName(node.name(), kConstantFoldingConst));
+    string node_name = AddPrefixToNodeName(node.name(), kConstantFoldingConst);
     if (output_tensors.size() > 1) {
       node_name = strings::StrCat(node_name, "-", i);
     }
@@ -299,6 +305,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
     nodes_to_preserve_.insert(NodeName(node));
   }
   device_.reset(new DeviceSimple());
+  *output = GraphDef();
   TF_RETURN_IF_ERROR(FoldGraph(output));
   LOG(INFO) << "Optimized graph size: " << output->node_size();
   return Status::OK();

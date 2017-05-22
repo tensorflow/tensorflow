@@ -11,18 +11,19 @@ exports_files(["LICENSE"])
 libxsmm_interface_arguments = "0 1"
 
 # Arguments to ./scripts/libxsmm_config.py, see that file for detailed description.
-#  ilp64: 0 (no)
-#  big: 0 (no)
-#  offload: 0 (no)
+#  ilp64: no
+#  big: no
+#  offload: no
 #  alignment [b]
-#  prefetch: -1 (auto)
-#  threshold: 0 (auto)
+#  prefetch: 1 (auto)
+#  threshold: fallback to BLAS if n*m*k above this
 #  synchronize: yes
-#  jit: 1 (yes)
-#  flags: 0 (none)
+#  jit: yes
+#  flags
 #  alpha = 1
 #  beta = 1
-libxsmm_config_arguments = "0 0 0 64 -1 0 1 1 0 1 1"
+#  gemm = 2
+libxsmm_config_arguments = "0 0 0 64 1 0 1 1 0 1 1 2"
 
 # Arguments to ./scripts/libxsmm_dispatch.py, see that file for detailed description.
 #  (dummy argument)
@@ -66,6 +67,8 @@ cc_library(
         "src/libxsmm_dnn_convolution_winograd_weight_update.c",
         "src/libxsmm_dnn_handle.c",
         "src/libxsmm_dump.c",
+        "src/libxsmm_ext_gemm.c",
+        "src/libxsmm_ext_trans.c",
         "src/libxsmm_fsspmdm.c",
         "src/libxsmm_gemm.c",
         "src/libxsmm_main.c",
@@ -92,11 +95,15 @@ cc_library(
         "include/libxsmm_sync.h",
         "include/libxsmm_timer.h",
         "include/libxsmm_typedefs.h",
+        # Source files #included internally:
+        "src/libxsmm_gemm_diff.c",
+        "src/libxsmm_hash.c",
         # Generated:
         "include/libxsmm.h",
         "include/libxsmm_config.h",
         "include/libxsmm_dispatch.h",
-    ] + glob([ # trigger rebuild if template changed
+    ] + glob([
+        # trigger rebuild if template changed
         "src/template/*.c",
     ]),
     copts = [

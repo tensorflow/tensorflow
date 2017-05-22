@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import colorsys
+import functools
 import math
 import os
 import time
@@ -1175,12 +1176,7 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
     offset_height, offset_width = [0, 0]
     target_height, target_width = [2, 2]
 
-    for x_shape in ([3, 5],):
-      self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
-                         target_width,
-                         "'image' must be at least three-dimensional.")
-
-    for x_shape in ([1, 3, 5, 1, 1],):
+    for x_shape in ([3, 5], [1, 3, 5, 1, 1]):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
                          target_width,
                          "'image' must have either 3 or 4 dimensions.")
@@ -1426,12 +1422,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     offset_height, offset_width = [0, 0]
     target_height, target_width = [2, 2]
 
-    for x_shape in ([3, 5],):
-      self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
-                         target_width,
-                         "'image' must be at least three-dimensional")
-
-    for x_shape in ([1, 3, 5, 1, 1],):
+    for x_shape in ([3, 5], [1, 3, 5, 1, 1]):
       self._assertRaises(x, x_shape, offset_height, offset_width, target_height,
                          target_width,
                          "'image' must have either 3 or 4 dimensions.")
@@ -1458,7 +1449,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           use_tensor_inputs_options=[False])
 
       # The orignal error message does not contain back slashes. However, they
-      # are added by either the assert op or the runtime. If this behaviour
+      # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(
           x,
@@ -1652,8 +1643,8 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     self.assertEqual(y.get_shape().as_list(), [None] + post_shape)
 
   def shouldRunOnGPU(self, opt, nptype):
-    if opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR \
-            and nptype in [np.float32, np.float64]:
+    if (opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR and
+        nptype in [np.float32, np.float64]):
       return True
     else:
       return False
@@ -1676,15 +1667,13 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       img_np = np.array(data, dtype=nptype).reshape(img_shape)
 
       for opt in self.OPTIONS:
-        if test.is_gpu_available() and self.shouldRunOnGPU(opt, nptype):
-          with self.test_session(use_gpu=True) as sess:
-            image = constant_op.constant(img_np, shape=img_shape)
-            y = image_ops.resize_images(image, [target_height, target_width],
-                                        opt)
-            yshape = array_ops.shape(y)
-            resized, newshape = sess.run([y, yshape])
-            self.assertAllEqual(img_shape, newshape)
-            self.assertAllClose(resized, img_np, atol=1e-5)
+        with self.test_session(use_gpu=True) as sess:
+          image = constant_op.constant(img_np, shape=img_shape)
+          y = image_ops.resize_images(image, [target_height, target_width], opt)
+          yshape = array_ops.shape(y)
+          resized, newshape = sess.run([y, yshape])
+          self.assertAllEqual(img_shape, newshape)
+          self.assertAllClose(resized, img_np, atol=1e-5)
 
       # Resizing with a single image must leave the shape unchanged also.
       with self.test_session(use_gpu=True):
@@ -1822,7 +1811,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               resized = y.eval()
               self.assertAllClose(resized, expected, atol=1e-5)
 
-  def testResizeUp(self):
+  def testResizeUpAlignCornersFalse(self):
     img_shape = [1, 3, 2, 1]
     data = [64, 32,
             32, 64,
@@ -1857,16 +1846,63 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
           image_ops.ResizeMethod.BILINEAR,
           image_ops.ResizeMethod.NEAREST_NEIGHBOR,
           image_ops.ResizeMethod.AREA]:
-        if test.is_gpu_available() and self.shouldRunOnGPU(opt, nptype):
-          with self.test_session(use_gpu=True):
-            img_np = np.array(data, dtype=nptype).reshape(img_shape)
-            image = constant_op.constant(img_np, shape=img_shape)
-            y = image_ops.resize_images(
-                image, [target_height, target_width], opt)
-            resized = y.eval()
-            expected = np.array(expected_data[opt]).reshape(
-                [1, target_height, target_width, 1])
-            self.assertAllClose(resized, expected, atol=1e-05)
+        with self.test_session(use_gpu=True):
+          img_np = np.array(data, dtype=nptype).reshape(img_shape)
+          image = constant_op.constant(img_np, shape=img_shape)
+          y = image_ops.resize_images(
+              image, [target_height, target_width], opt, align_corners=False)
+          resized = y.eval()
+          expected = np.array(expected_data[opt]).reshape(
+              [1, target_height, target_width, 1])
+          self.assertAllClose(resized, expected, atol=1e-05)
+
+  def testResizeUpAlignCornersTrue(self):
+    img_shape = [1, 3, 2, 1]
+    data = [6, 3,
+            3, 6,
+            6, 9]
+    target_height = 5
+    target_width = 4
+    expected_data = {}
+    expected_data[image_ops.ResizeMethod.BILINEAR] = [
+        6.0, 5.0, 4.0, 3.0,
+        4.5, 4.5, 4.5, 4.5,
+        3.0, 4.0, 5.0, 6.0,
+        4.5, 5.5, 6.5, 7.5,
+        6.0, 7.0, 8.0, 9.0
+    ]
+    expected_data[image_ops.ResizeMethod.NEAREST_NEIGHBOR] = [
+        6.0, 6.0, 3.0, 3.0,
+        3.0, 3.0, 6.0, 6.0,
+        3.0, 3.0, 6.0, 6.0,
+        6.0, 6.0, 9.0, 9.0,
+        6.0, 6.0, 9.0, 9.0
+    ]
+    # TODO(b/37749740): Improve alignment of ResizeMethod.AREA when
+    # align_corners=True.
+    expected_data[image_ops.ResizeMethod.AREA] = [
+        6.0, 6.0, 6.0, 3.0,
+        6.0, 6.0, 6.0, 3.0,
+        3.0, 3.0, 3.0, 6.0,
+        3.0, 3.0, 3.0, 6.0,
+        6.0, 6.0, 6.0, 9.0
+    ]
+
+    for nptype in self.TYPES:
+      for opt in [
+          image_ops.ResizeMethod.BILINEAR,
+          image_ops.ResizeMethod.NEAREST_NEIGHBOR,
+          image_ops.ResizeMethod.AREA
+      ]:
+        with self.test_session(use_gpu=True):
+          img_np = np.array(data, dtype=nptype).reshape(img_shape)
+          image = constant_op.constant(img_np, shape=img_shape)
+          y = image_ops.resize_images(
+              image, [target_height, target_width], opt, align_corners=True)
+          resized = y.eval()
+          expected = np.array(expected_data[opt]).reshape(
+              [1, target_height, target_width, 1])
+          self.assertAllClose(resized, expected, atol=1e-05)
 
   def testResizeUpBicubic(self):
     img_shape = [1, 6, 6, 1]
@@ -2245,7 +2281,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           use_tensor_inputs_options=[False])
 
       # The orignal error message does not contain back slashes. However, they
-      # are added by either the assert op or the runtime. If this behaviour
+      # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(
           x,
@@ -2755,6 +2791,38 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
     # Check that TensorFlow correctly calculates the total variation
     # for each image individually and returns the correct array.
     self._test(multi, tot_var * np.array([1.0, 1.1, 1.2]))
+
+
+class FormatTest(test_util.TensorFlowTestCase):
+
+  def testFormats(self):
+    prefix = "tensorflow/core/lib"
+    paths = ("png/testdata/lena_gray.png", "jpeg/testdata/jpeg_merge_test1.jpg",
+             "gif/testdata/lena.gif")
+    decoders = {
+        "jpeg": functools.partial(image_ops.decode_jpeg, channels=3),
+        "png": functools.partial(image_ops.decode_png, channels=3),
+        "gif": lambda s: array_ops.squeeze(image_ops.decode_gif(s), axis=0),
+    }
+    with self.test_session():
+      for path in paths:
+        contents = io_ops.read_file(os.path.join(prefix, path)).eval()
+        images = {}
+        for name, decode in decoders.items():
+          image = decode(contents).eval()
+          self.assertEqual(image.ndim, 3)
+          for prev_name, prev in images.items():
+            print("path %s, names %s %s, shapes %s %s" %
+                  (path, name, prev_name, image.shape, prev.shape))
+            self.assertAllEqual(image, prev)
+          images[name] = image
+
+  def testError(self):
+    path = "tensorflow/core/lib/gif/testdata/scan.gif"
+    with self.test_session():
+      for decode in image_ops.decode_jpeg, image_ops.decode_png:
+        with self.assertRaisesOpError(r"Got 12 frames"):
+          decode(io_ops.read_file(path)).eval()
 
 
 if __name__ == "__main__":

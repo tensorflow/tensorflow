@@ -42,20 +42,6 @@ string MakeAddress(const string& job, int task) {
   return strings::StrCat("/job:", job, "/replica:0/task:", task);
 }
 
-}  // namespace
-
-SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target) {
-  // TODO(mrry): Implement secure channels.
-  ::grpc::ChannelArguments args;
-  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
-  // NOTE(mrry): Some versions of gRPC use a 20-second minimum backoff
-  // on connection failure, which makes our tests time out.
-  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
-  return ::grpc::CreateCustomChannel(
-      target, ::grpc::InsecureChannelCredentials(), args);
-}
-
-namespace {
 Status ValidateHostPortPair(const string& host_port) {
   uint32 port;
   std::vector<string> parts = str_util::Split(host_port, ':');
@@ -68,6 +54,35 @@ Status ValidateHostPortPair(const string& host_port) {
   return Status::OK();
 }
 }  // namespace
+
+Status NewHostPortGrpcChannel(const string& target,
+                              SharedGrpcChannelPtr* channel_pointer) {
+  // Minimally ensure that the target is valid
+  TF_RETURN_IF_ERROR(ValidateHostPortPair(target));
+
+  // TODO(mrry): Implement secure channels.
+  ::grpc::ChannelArguments args;
+  args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
+  // NOTE(mrry): Some versions of gRPC use a 20-second minimum backoff
+  // on connection failure, which makes our tests time out.
+  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  *channel_pointer = ::grpc::CreateCustomChannel(
+      target, ::grpc::InsecureChannelCredentials(), args);
+  return Status::OK();
+}
+
+ChannelCreationFunction ConvertToChannelCreationFunction(
+    const std::function<Status(string, SharedGrpcChannelPtr*)>&
+        new_channel_func_ptr) {
+  return [new_channel_func_ptr](const string& target) -> SharedGrpcChannelPtr {
+    SharedGrpcChannelPtr channel_ptr;
+    if (new_channel_func_ptr(target, &channel_ptr).ok()) {
+      return channel_ptr;
+    } else {
+      return nullptr;
+    }
+  };
+}
 
 Status GrpcChannelSpec::AddHostPortsJob(const string& job_id,
                                         const std::vector<string>& host_ports) {

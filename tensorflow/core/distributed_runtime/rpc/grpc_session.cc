@@ -43,7 +43,7 @@ const size_t kSchemePrefixLength = strlen(kSchemePrefix);
 /* static */
 Status GrpcSession::Create(const SessionOptions& options,
                            std::unique_ptr<GrpcSession>* out_session) {
-  std::unique_ptr<GrpcSession> ret(new GrpcSession(options));
+  std::unique_ptr<GrpcSession> session(new GrpcSession(options));
   std::unique_ptr<MasterInterface> master;
   // For testing, we enable the client to disable the use of the local
   // master registry, so that the RPC stack is exercised.
@@ -51,12 +51,13 @@ Status GrpcSession::Create(const SessionOptions& options,
     master = LocalMaster::Lookup(options.target);
   }
   if (!master) {
-    SharedGrpcChannelPtr master_channel =
-        NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength));
+    SharedGrpcChannelPtr master_channel;
+    TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
+        options.target.substr(kSchemePrefixLength), &master_channel));
     master.reset(NewGrpcMaster(master_channel));
   }
-  ret->SetRemoteMaster(std::move(master));
-  *out_session = std::move(ret);
+  session->SetRemoteMaster(std::move(master));
+  *out_session = std::move(session);
   return Status::OK();
 }
 
@@ -101,6 +102,7 @@ Status GrpcSession::CreateImpl(CallOptions* call_options,
   CreateSessionRequest req;
   *req.mutable_config() = options_.config;
   *req.mutable_graph_def() = graph;
+  req.set_target(options_.target);
   ReEncodeConsts(req.mutable_graph_def());
   CreateSessionResponse resp;
   Status s = master_->CreateSession(call_options, &req, &resp);
@@ -176,6 +178,11 @@ Status GrpcSession::RunHelper(
 
   *req->mutable_options() = run_options;
 
+  if (run_options.timeout_in_ms() == 0) {
+    req->mutable_options()->set_timeout_in_ms(
+        options_.config.operation_timeout_in_ms());
+  }
+
   if (!prun_handle.empty()) {
     req->set_partial_run_handle(prun_handle);
   }
@@ -196,7 +203,7 @@ Status GrpcSession::RunHelper(
   }
 
   CallOptions call_options;
-  call_options.SetTimeout(run_options.timeout_in_ms());
+  call_options.SetTimeout(req->options().timeout_in_ms());
   TF_RETURN_IF_ERROR(RunProto(&call_options, req.get(), resp.get()));
 
   if (!output_tensor_names.empty()) {
@@ -344,8 +351,9 @@ void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {
 // Static method.
 Status GrpcSession::Reset(const SessionOptions& options,
                           const std::vector<string>& containers) {
-  SharedGrpcChannelPtr master_channel =
-      NewHostPortGrpcChannel(options.target.substr(kSchemePrefixLength));
+  SharedGrpcChannelPtr master_channel;
+  TF_RETURN_IF_ERROR(NewHostPortGrpcChannel(
+      options.target.substr(kSchemePrefixLength), &master_channel));
   auto master = NewGrpcMaster(master_channel);
   ResetRequest req;
   for (const auto& c : containers) req.add_container(c);

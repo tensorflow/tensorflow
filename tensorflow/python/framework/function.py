@@ -23,7 +23,6 @@ from __future__ import print_function
 
 import collections
 import hashlib
-import inspect
 import re
 
 from tensorflow.core.framework import attr_value_pb2
@@ -36,6 +35,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 def _make_argname_from_tensor_name(name):
@@ -112,18 +113,19 @@ def _add_op_node(op, func, input_dict):
   node_def = func.node_def[-1]
   for i in range(len(node_def.input)):
     if not node_def.input[i].startswith("^"):
-      assert node_def.input[i] in input_dict, (
-          "%s missing from %s" % (node_def.input[i], input_dict.items()))
+      assert node_def.input[i] in input_dict, ("%s missing from %s" %
+                                               (node_def.input[i],
+                                                input_dict.items()))
       node_def.input[i] = input_dict[node_def.input[i]]
 
 
-def _graph_to_function_def(graph, inputs, outputs, out_names=None):
+def _graph_to_function_def(graph, operations, inputs, outputs, out_names=None):
   """Returns `graph` as a `FunctionDef` protocol buffer.
 
   This method creates a [`FunctionDef`](
   https://www.tensorflow.org/code/tensorflow/core/framework/function.proto)
-  protocol buffer that contains all the ops present in the graph.  The
-  graph effectively becomes the body of the function.
+  protocol buffer that contains all the ops in `operations`.  The
+  operations become the body of the function.
 
   The arguments `inputs` and `outputs` will be listed as the inputs
   and outputs tensors of the function.  They must be lists of
@@ -131,6 +133,8 @@ def _graph_to_function_def(graph, inputs, outputs, out_names=None):
 
   Args:
     graph: Graph.
+    operations: the operations to put in the function. Must be a subset of
+     the operations in the graph.
     inputs: List of tensors. Inputs to the function.
     outputs: List of tensors. Outputs of the function.
     out_names: Optional list of string names for the outputs.
@@ -144,12 +148,12 @@ def _graph_to_function_def(graph, inputs, outputs, out_names=None):
   func = function_pb2.FunctionDef()
   func.signature.name = "_"
   used_names = set()
-  func.signature.input_arg.extend([_tensor_to_argdef(i, used_names=used_names)
-                                   for i in inputs])
+  func.signature.input_arg.extend(
+      [_tensor_to_argdef(i, used_names=used_names) for i in inputs])
   if out_names is None:
     used_names = set()
-    func.signature.output_arg.extend([
-        _tensor_to_argdef(o, used_names=used_names) for o in outputs])
+    func.signature.output_arg.extend(
+        [_tensor_to_argdef(o, used_names=used_names) for o in outputs])
   elif len(outputs) != len(out_names):
     raise ValueError(
         "Length of out_names (%d) does not match number of outputs (%d): %s" %
@@ -158,12 +162,12 @@ def _graph_to_function_def(graph, inputs, outputs, out_names=None):
     raise ValueError(
         "Must not have duplicates in out_names: %s" % ", ".join(out_names))
   else:
-    func.signature.output_arg.extend([
-        _tensor_to_argdef(o, name=n) for o, n in zip(outputs, out_names)])
+    func.signature.output_arg.extend(
+        [_tensor_to_argdef(o, name=n) for o, n in zip(outputs, out_names)])
   func_arg_placeholders = set([i.name for i in inputs])
   input_dict = _create_input_dict(graph, func_arg_placeholders)
 
-  for op in graph.get_operations():
+  for op in operations:
     if _is_in_placeholders(op, func_arg_placeholders):
       continue
     _add_op_node(op, func, input_dict)
@@ -259,10 +263,11 @@ def _call(sig, *inputs, **kwargs):
 
 
 def _get_func_name(func):
+  _, func = tf_decorator.unwrap(func)
   if callable(func):
-    if inspect.isfunction(func):
+    if tf_inspect.isfunction(func):
       return func.__name__
-    elif inspect.ismethod(func):
+    elif tf_inspect.ismethod(func):
       return "%s.%s" % (func.__self__.__name__, func.__name__)
     else:  # Probably a class instance with __call__
       return type(func)
@@ -276,7 +281,7 @@ class _FuncGraph(ops.Graph):
   _FuncGraph overrides ops.Graph's create_op() so that we can keep
   track of every inputs into every op created inside the function.  If
   any input is from other graphs, we keep track of it in self.capture
-  and substitue the input with a place holder.
+  and substitute the input with a place holder.
 
   Each captured input's corresponding place holder is converted into a
   function argument and the caller passes in the captured tensor.
@@ -293,16 +298,18 @@ class _FuncGraph(ops.Graph):
     self.extra_args = []
     self.extra_vars = []
 
-  def getvar(self,
-             getter,
-             name,
-             shape=None,
-             dtype=None,
-             initializer=None,
-             trainable=True,
-             collections=None,  # pylint: disable=redefined-outer-name
-             use_resource=None,
-             **kwargs):
+  def getvar(
+      self,
+      getter,
+      name,
+      shape=None,
+      dtype=None,
+      initializer=None,
+      reuse=None,
+      trainable=True,
+      collections=None,  # pylint: disable=redefined-outer-name
+      use_resource=None,
+      **kwargs):
     """A custom variable getter."""
     # Here, we switch the default graph to the outer graph and ask the
     # variable scope in which the function is defined to give us the
@@ -319,6 +326,7 @@ class _FuncGraph(ops.Graph):
           shape=shape,
           dtype=dtype,
           initializer=initializer,
+          reuse=reuse,
           trainable=trainable,
           collections=collections,
           use_resource=use_resource)
@@ -534,20 +542,23 @@ class _DefinedFunction(object):
 
     # Build the FunctionDef
     self._definition = _graph_to_function_def(
-        temp_graph, inputs, outputs, out_names=self._out_names)
+        temp_graph,
+        temp_graph.get_operations(),
+        inputs,
+        outputs,
+        out_names=self._out_names)
 
     # Extra kwargs are treated as attrs on the function def.
     sig_pre_func_name = self._func_name or _get_func_name(self._func)
-    kwargs_attr = _parse_kwargs_as_attrs(
-        sig_pre_func_name, **self._extra_kwargs)
+    kwargs_attr = _parse_kwargs_as_attrs(sig_pre_func_name,
+                                         **self._extra_kwargs)
     for k in kwargs_attr:
       self._definition.attr[k].CopyFrom(kwargs_attr[k])
 
     # Hash the definition and its dependencies.
     self._hash_str = self._create_hash_str(
         self._definition.signature.input_arg,
-        self._definition.signature.output_arg,
-        self._definition.node_def)
+        self._definition.signature.output_arg, self._definition.node_def)
 
     # Finally, we decide the function name to use.  If not specified,
     # make up something which is almost certainly unique (but deterministic).
@@ -654,8 +665,8 @@ def _from_definition(fdef, grad_func=None):
   # have access to such a callable here).
   func = None
   argnames = [arg.name for arg in fdef.signature.input_arg]
-  input_types = tuple(dtypes.as_dtype(arg.type)
-                      for arg in fdef.signature.input_arg)
+  input_types = tuple(
+      dtypes.as_dtype(arg.type) for arg in fdef.signature.input_arg)
   func_name = fdef.signature.name
   # Note: FunctionDefs do not include python gradient functions, so if the
   # original _DefinedFunction included one it will not be reflected here.
@@ -671,8 +682,7 @@ def _from_definition(fdef, grad_func=None):
   result._extra_inputs = []
   result._hash_str = result._create_hash_str(
       result._definition.signature.input_arg,
-      result._definition.signature.output_arg,
-      result._definition.node_def)
+      result._definition.signature.output_arg, result._definition.node_def)
   # pylint: enable=protected-access
   return result
 
@@ -692,7 +702,8 @@ def _from_library(lib):
   Raises:
     ValueError: `lib` is invalid
   """
-  if not lib.function and not lib.gradient: return []
+  if not lib.function and not lib.gradient:
+    return []
 
   # function name -> FunctionDef proto
   funcs = {fdef.signature.name: fdef for fdef in lib.function}
@@ -716,8 +727,9 @@ def _from_library(lib):
     grad_to_funcs[gdef.gradient_func].append(gdef.function_name)
 
   # Start with functions without gradients
-  ready = [fdef for fdef in lib.function
-           if func_to_grad[fdef.signature.name] is None]
+  ready = [
+      fdef for fdef in lib.function if func_to_grad[fdef.signature.name] is None
+  ]
   if not ready:
     raise ValueError("FunctionDefLibrary contains cyclic gradient functions!\n"
                      + str(lib))
@@ -729,7 +741,8 @@ def _from_library(lib):
     name = fdef.signature.name
 
     grad = initialized.get(func_to_grad[name])
-    if func_to_grad[name]: assert grad
+    if func_to_grad[name]:
+      assert grad
     defined_func = _from_definition(fdef, grad_func=grad)
     initialized[name] = defined_func
 
@@ -831,10 +844,15 @@ class _OverloadedFunction(object):
       name = self._func_name
       if name is not None:
         name = "_".join([name, key])
-      defined = _DefinedFunction(self._func, self._argnames, input_types, name,
-                                 None, self._python_grad_func,
-                                 out_names=self._out_names,
-                                 **self._extra_kwargs)
+      defined = _DefinedFunction(
+          self._func,
+          self._argnames,
+          input_types,
+          name,
+          None,
+          self._python_grad_func,
+          out_names=self._out_names,
+          **self._extra_kwargs)
       _ = defined.name  # Fully instantiate the function definition.
       if self._grad_func:
         # If _grad_func is given, it is another
@@ -845,8 +863,8 @@ class _OverloadedFunction(object):
             for _ in defined.definition.signature.output_arg
         ]
         # pylint: disable=protected-access
-        defined._grad_func = self._grad_func.instantiate(input_types +
-                                                         output_types)
+        defined._grad_func = self._grad_func.instantiate(
+            input_types + output_types)
         # pylint: enable=protected-access
       self._overload[key] = defined
     return defined
@@ -885,6 +903,11 @@ class Defun(object):
   default graph and adds the definition of the function into the
   default graph. Because the addition of the function into the graph
   is deferred, the decorator can be used anywhere in the program.
+
+  Any variables created inside of the function are hoisted into the outer graph.
+  Note that the variables are created in the variable scope that was active
+  during the first call to the function. Subsequent function calls will refer to
+  the same set of variables.
 
   Definitions of functions are frozen in a graph as soon as the graph is used to
   create a session. Therefore, nodes using the function must be created in the
@@ -948,7 +971,7 @@ class Defun(object):
       raise ValueError("func %s must be callable" % func)
 
     # Func should not use kwargs and defaults.
-    argspec = inspect.getargspec(func)
+    argspec = tf_inspect.getargspec(func)
     if argspec.keywords or argspec.defaults:
       raise ValueError("Functions with argument defaults or keyword "
                        "arguments are not supported.")
@@ -959,7 +982,7 @@ class Defun(object):
     if argspec.varargs:
       max_args = 1000000
     argnames = argspec.args
-    if inspect.ismethod(func):
+    if tf_inspect.ismethod(func):
       # 1st argument is the "class" type.
       min_args -= 1
       argnames = argnames[1:]
@@ -972,22 +995,36 @@ class Defun(object):
         raise ValueError(
             "The function has fewer arguments than the number of specified "
             "input types.")
-      return _DefinedFunction(func, argnames, self._input_types,
-                              self._func_name, self._grad_func,
-                              self._python_grad_func,
-                              out_names=self._out_names, **self._extra_kwargs)
+      return _DefinedFunction(
+          func,
+          argnames,
+          self._input_types,
+          self._func_name,
+          self._grad_func,
+          self._python_grad_func,
+          out_names=self._out_names,
+          **self._extra_kwargs)
 
     # 'func' expects no arguments and input types is an empty list.
     if min_args == 0 and max_args == 0:
-      return _DefinedFunction(func, [], [], self._func_name, self._grad_func,
-                              self._python_grad_func,
-                              out_names=self._out_names, **self._extra_kwargs)
+      return _DefinedFunction(
+          func, [], [],
+          self._func_name,
+          self._grad_func,
+          self._python_grad_func,
+          out_names=self._out_names,
+          **self._extra_kwargs)
 
     # Input types are unknown. It's an overloaded function and hence
     # its definition needs to be deferred until it's called.
-    return _OverloadedFunction(func, argnames, self._func_name, self._grad_func,
-                               self._python_grad_func,
-                               out_names=self._out_names, **self._extra_kwargs)
+    return _OverloadedFunction(
+        func,
+        argnames,
+        self._func_name,
+        self._grad_func,
+        self._python_grad_func,
+        out_names=self._out_names,
+        **self._extra_kwargs)
 
 
 class Declare(object):
@@ -1030,8 +1067,10 @@ class Declare(object):
       names = [n for n, t in args]
       if len(names) != len(set(names)):
         raise ValueError("Expected names to all be unique: %s" % str(names))
-      return [op_def_pb2.OpDef.ArgDef(type=t.as_datatype_enum, name=n)
-              for n, t in args]
+      return [
+          op_def_pb2.OpDef.ArgDef(type=t.as_datatype_enum, name=n)
+          for n, t in args
+      ]
 
     self._sig.input_arg.extend(_to_argdef_list(inputs))
     self._sig.output_arg.extend(_to_argdef_list(outputs))

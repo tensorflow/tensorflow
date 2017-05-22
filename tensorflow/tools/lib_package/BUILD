@@ -1,11 +1,16 @@
-# Packaging the TensorFlow C API and Java libraries into standalone archives
-# for use with language bindings and installations without Python.
-#
-# TODO(ashankar): Something similar for the C++ API (caveat: ABI compatibility)
+# Packaging for TensorFlow artifacts other than the Python API (pip whl).
+# This includes the C API, Java API, and protocol buffer files.
 
 package(default_visibility = ["//visibility:private"])
 
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
+
+genrule(
+    name = "libtensorflow_proto",
+    srcs = ["//tensorflow/core:protos_all_proto_srcs"],
+    outs = ["libtensorflow_proto.zip"],
+    cmd = "zip $@ $(SRCS)",
+)
 
 pkg_tar(
     name = "libtensorflow",
@@ -79,11 +84,13 @@ genrule(
     srcs = [
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
+        "//third_party/fft2d:LICENSE",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
+        "@fft2d//:fft/readme.txt",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
@@ -106,11 +113,13 @@ genrule(
     srcs = [
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
+        "//third_party/fft2d:LICENSE",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
+        "@fft2d//:fft/readme.txt",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",

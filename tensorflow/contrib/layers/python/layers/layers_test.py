@@ -71,7 +71,6 @@ class AvgPool2DTest(test.TestCase):
     height, width = 3, 6
     images = np.random.uniform(size=(5, 2, height, width))
     output = _layers.avg_pool2d(images, [3, 3], data_format='NCHW')
-    self.assertEquals(output.op.name, 'AvgPool2D/AvgPool')
     self.assertListEqual(output.get_shape().as_list(), [5, 2, 1, 2])
 
   def testCollectOutputs(self):
@@ -247,7 +246,7 @@ class ConvolutionTest(test.TestCase):
   def testCreateConv(self):
     height, width = 7, 9
     with self.test_session():
-      images = np.random.uniform(size=(5, height, width, 4))
+      images = np.random.uniform(size=(5, height, width, 4)).astype(np.float32)
       output = layers_lib.convolution2d(images, 32, [3, 3])
       self.assertEqual(output.op.name, 'Conv/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
@@ -259,7 +258,7 @@ class ConvolutionTest(test.TestCase):
   def testCreateConvNCHW(self):
     height, width = 7, 9
     with self.test_session():
-      images = np.random.uniform(size=(5, 4, height, width))
+      images = np.random.uniform(size=(5, 4, height, width)).astype(np.float32)
       output = layers_lib.convolution2d(images, 32, [3, 3], data_format='NCHW')
       self.assertEqual(output.op.name, 'Conv/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 32, height, width])
@@ -1465,6 +1464,30 @@ class PartialFlattenTest(test.TestCase):
     flattened5 = _layers._inner_flatten(inputs, 5)
     self.assertEqual([2, None, 4, None, 30], flattened5.get_shape().as_list())
 
+  def testDenseFlattenRankAssertion(self):
+    """Test `_inner_flatten` rank assertion for dense tensors."""
+    shape = [2, 3]
+    new_rank = 3
+    inputs = array_ops.placeholder(dtypes.int32)
+    inputs.set_shape(shape)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 'inputs has rank less than new_rank'):
+      _layers._inner_flatten(inputs, new_rank)
+
+  def testSparseFlattenRankAssertion(self):
+    """Test `_inner_flatten` rank assertion for sparse tensors."""
+    shape = [2, 3]
+    new_rank = 3
+    np.random.seed(10301)
+    random_ = np.random.rand(*shape)
+    indices, values, _ = _sparsify(random_)
+    inputs = sparse_tensor.SparseTensor(indices, values, shape)
+
+    with self.assertRaisesRegexp(ValueError,
+                                 'Inputs has rank less than new_rank'):
+      _layers._inner_flatten(inputs, new_rank)
+
 
 class FCTest(test.TestCase):
 
@@ -2668,7 +2691,6 @@ class MaxPool2DTest(test.TestCase):
     height, width = 3, 6
     images = np.random.uniform(size=(5, 3, height, width)).astype(np.float32)
     output = _layers.max_pool2d(images, [3, 3], data_format='NCHW')
-    self.assertEquals(output.op.name, 'MaxPool2D/MaxPool')
     self.assertListEqual(output.get_shape().as_list(), [5, 3, 1, 2])
 
   def testCollectOutputs(self):
@@ -2756,7 +2778,7 @@ class RepeatTests(test.TestCase):
   def testRepeat(self):
     height, width = 3, 3
     with self.test_session():
-      images = np.random.uniform(size=(5, height, width, 3))
+      images = np.random.uniform(size=(5, height, width, 3)).astype(np.float32)
       output = _layers.repeat(images, 3, layers_lib.conv2d, 32, [3, 3])
       self.assertEqual(output.op.name, 'Repeat/convolution_3/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, 3, 3, 32])
@@ -2787,15 +2809,6 @@ class SeparableConv2dTest(test.TestCase):
     with self.test_session():
       images = random_ops.random_uniform(
           (5, height, width, 3), seed=1, dtype=dtypes.float32)
-      output = layers_lib.separable_conv2d(images, 32, [3, 3], 2)
-      self.assertEqual(output.op.name, 'SeparableConv2d/Relu')
-      self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
-
-  def testCreateConvFloat64(self):
-    height, width = 3, 3
-    with self.test_session():
-      images = random_ops.random_uniform(
-          (5, height, width, 3), seed=1, dtype=dtypes.float64)
       output = layers_lib.separable_conv2d(images, 32, [3, 3], 2)
       self.assertEqual(output.op.name, 'SeparableConv2d/Relu')
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 32])
@@ -2979,6 +2992,20 @@ class SeparableConv2dTest(test.TestCase):
       sess.run(init_op)
       sess.run(net, feed_dict={images_placeholder: images})
 
+  def testTrainableFlagIsPassedOn(self):
+    for trainable in [True, False]:
+      for num_filters in [None, 8]:
+        with ops.Graph().as_default():
+          input_size = [5, 10, 12, 3]
+
+          images = random_ops.random_uniform(input_size, seed=1)
+          layers_lib.separable_conv2d(
+              images, num_filters, [3, 3], 1, trainable=trainable)
+          model_variables = variables.get_model_variables()
+          trainable_variables = variables_lib.trainable_variables()
+          for model_variable in model_variables:
+            self.assertEqual(trainable, model_variable in trainable_variables)
+
 
 class ScaleGradientTests(test.TestCase):
   """Simple tests of the scale_gradient function."""
@@ -3077,6 +3104,15 @@ class StackTests(test.TestCase):
           (5, height * width * 3), seed=1, name='images')
       output = _layers.stack(images, layers_lib.relu, [10, 20, 30])
       self.assertEqual(output.op.name, 'Stack/fully_connected_3/Relu')
+      self.assertListEqual(output.get_shape().as_list(), [5, 30])
+
+  def testStackElu(self):
+    height, width = 3, 3
+    with self.test_session():
+      images = random_ops.random_uniform(
+          (5, height * width * 3), seed=1, name='images')
+      output = _layers.stack(images, layers_lib.elu, [10, 20, 30])
+      self.assertEqual(output.op.name, 'Stack/fully_connected_3/Elu')
       self.assertListEqual(output.get_shape().as_list(), [5, 30])
 
   def testStackConvolution2d(self):

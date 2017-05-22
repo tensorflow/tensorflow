@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
-#include "tensorflow/compiler/xla/port/initialize.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -58,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/parallel_cpu_executable.h"
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -192,16 +192,16 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
   }
   // It is important to recurse for "while" or else we risk overly coarse
   // profiling information.
-  Status HandleWhile(HloInstruction* xla_while, HloInstruction* /*init*/,
-                     HloComputation* condition, HloComputation* body) override {
+  Status HandleWhile(HloInstruction* xla_while) override {
     TF_RETURN_IF_ERROR(DefaultAction(xla_while));
 
     CollectProfileCandidates candidates_for_condition(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(
-        condition->root_instruction()->Accept(&candidates_for_condition));
+    TF_RETURN_IF_ERROR(xla_while->while_condition()->root_instruction()->Accept(
+        &candidates_for_condition));
 
     CollectProfileCandidates candidates_for_body(hlo_to_profile_idx_);
-    TF_RETURN_IF_ERROR(body->root_instruction()->Accept(&candidates_for_body));
+    TF_RETURN_IF_ERROR(xla_while->while_body()->root_instruction()->Accept(
+        &candidates_for_body));
 
     return Status::OK();
   }
@@ -210,9 +210,7 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 };
 }  // namespace
 
-Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
-                                 HloModuleConfig* module_config,
-                                 HloDumper dump_hlo) {
+Status CpuCompiler::RunHloPasses(HloModule* module, HloDumper dump_hlo) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU", dump_hlo);
   pipeline.AddInvariantChecker<HloVerifier>();
@@ -232,12 +230,18 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
     pass.AddPass<ReshapeMover>();
     pass.AddPass<HloConstantFolding>();
   }
-  pipeline.AddPass<TransposeFolding>(PotentiallyImplementedAsEigenDot);
-  pipeline.AddPass<HloSubcomputationUnification>();
+  pipeline.AddPass<TransposeFolding>(
+      [](const HloInstruction& dot,
+         const TransposeFolding::OperandIndices& candidate_operands) {
+        return PotentiallyImplementedAsEigenDot(dot)
+                   ? candidate_operands
+                   : TransposeFolding::OperandIndices{};
+      },
+      TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
   pipeline.AddPass<CpuInstructionFusion>();
   pipeline.AddPass<CpuLayoutAssignment>(
-      module_config->mutable_entry_computation_layout());
+      module->mutable_config()->mutable_entry_computation_layout());
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
@@ -250,10 +254,13 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
   if (flags->xla_cpu_parallel) {
     pipeline.AddPass<ParallelizationPreparation>();
   }
-  // Copy insertion should be performed immediately before IR emission to
-  // avoid inserting unnecessary copies (later pass adds an instruction which
-  // materializes the value) or missing a necessary copy (later pass removes
-  // an instruction which materializes a value).
+  // Copy insertion should be performed immediately before IR emission to avoid
+  // inserting unnecessary copies (later pass adds an instruction which
+  // materializes the value) or missing a necessary copy (later pass removes an
+  // instruction which materializes a value). DCE must be run immediately before
+  // (and sometime after) copy insertion, to avoid dead code from interfering
+  // with the rewrites.
+  pipeline.AddPass<HloDCE>();
   pipeline.AddPass<CopyInsertion>();
   if (flags->xla_cpu_parallel) {
     // Re-run the outlining, in case any copies were inserted into the entry
@@ -261,7 +268,8 @@ Status CpuCompiler::RunHloPasses(HloModule* hlo_module,
     pipeline.AddPass<ParallelizationPreparation>();
   }
   pipeline.AddPass<HloDCE>();
-  return pipeline.Run(hlo_module).status();
+  pipeline.AddPass<FlattenCallGraph>();
+  return pipeline.Run(module).status();
 }
 
 namespace {
@@ -295,8 +303,7 @@ llvm::CodeGenOpt::Level CodeGenOptLevel() {
 }  // namespace
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
+    std::unique_ptr<HloModule> module, HloDumper dump_hlo,
     se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
@@ -304,17 +311,16 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   auto llvm_context = MakeUnique<llvm::LLVMContext>();
   auto llvm_module =
       MakeUnique<llvm::Module>("__compute_module", *llvm_context);
-  auto jit = MakeUnique<SimpleOrcJIT>(CompilerTargetOptions(*module_config),
+  auto jit = MakeUnique<SimpleOrcJIT>(CompilerTargetOptions(module->config()),
                                       CodeGenOptLevel());
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
-  TF_RETURN_IF_ERROR(
-      RunHloPasses(hlo_module.get(), module_config.get(), dump_hlo));
+  TF_RETURN_IF_ERROR(RunHloPasses(module.get(), dump_hlo));
 
-  HloComputation* computation = hlo_module->entry_computation();
+  HloComputation* computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx;
-  if (module_config->hlo_profiling_enabled()) {
+  if (module->config().hlo_profiling_enabled()) {
     TF_ASSIGN_OR_RETURN(
         hlo_to_profile_idx,
         CollectProfileCandidates::GetCandidatesForComputation(computation));
@@ -331,8 +337,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // uses data dependencies for determining order.
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
-        BufferAssigner::Run(hlo_module.get(),
-                            MakeUnique<DependencyHloOrdering>(hlo_module.get()),
+        BufferAssigner::Run(module.get(),
+                            MakeUnique<DependencyHloOrdering>(module.get()),
                             [this](const LogicalBuffer& buffer) {
                               return ShapeSizeBytes(buffer.shape());
                             },
@@ -363,13 +369,13 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
       // The parallel preparation should have ensured that the top-level
       // computation consists solely of Call instructions.
       TF_RET_CHECK(instruction->opcode() == HloOpcode::kCall)
-          << hlo_module->ToString();
+          << module->ToString();
       HloComputation* to_apply = instruction->to_apply();
       parallel_computations.emplace(to_apply, instruction);
     }
 
-    IrEmitter ir_emitter(*hlo_module, *module_config, *assignment,
-                         llvm_module.get(), &hlo_to_profile_idx);
+    IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
+                         &hlo_to_profile_idx);
     std::unique_ptr<std::map<HloInstruction*, string>> function_names(
         new std::map<HloInstruction*, string>());
     for (auto embedded_computation :
@@ -403,9 +409,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // JIT compile the LLVM IR module to in-memory machine code.
     jit->AddModule(std::move(llvm_module));
     cpu_executable.reset(new ParallelCpuExecutable(
-        std::move(jit), std::move(assignment), std::move(hlo_module),
-        std::move(module_config), std::move(function_names),
-        std::move(hlo_to_profile_idx), std::move(aligned_constants)));
+        std::move(jit), std::move(assignment), std::move(module),
+        std::move(function_names), std::move(hlo_to_profile_idx),
+        std::move(aligned_constants)));
 
     if (flags->xla_cpu_embed_ir) {
       static_cast<CpuExecutable&>(*cpu_executable)
@@ -417,7 +423,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // and reduced memory usage (as compared to using DependencyHloOrdering).
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
-        CreateMemoryMinimizingSequence(*hlo_module,
+        CreateMemoryMinimizingSequence(*module,
                                        [this](const LogicalBuffer& buffer) {
                                          return ShapeSizeBytes(buffer.shape());
                                        }));
@@ -426,20 +432,20 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // temporary buffers are required to run the computation.
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
-        BufferAssigner::Run(hlo_module.get(),
-                            MakeUnique<SequentialHloOrdering>(hlo_module.get(),
-                                                              module_sequence),
-                            [this](const LogicalBuffer& buffer) {
-                              return ShapeSizeBytes(buffer.shape());
-                            },
-                            kMemoryAlignment));
+        BufferAssigner::Run(
+            module.get(),
+            MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
+            [this](const LogicalBuffer& buffer) {
+              return ShapeSizeBytes(buffer.shape());
+            },
+            kMemoryAlignment));
 
     // Each computation is a single function.  Emit all embedded computations
     // before the entry computation. The order of computations returned from
     // GetEmbeddedComputations guarantees that a called computation occurs
     // before a caller computation.
-    IrEmitter ir_emitter(*hlo_module, *module_config, *assignment,
-                         llvm_module.get(), &hlo_to_profile_idx);
+    IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
+                         &hlo_to_profile_idx);
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
       TF_RETURN_IF_ERROR(
@@ -466,10 +472,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
     // JIT compile the LLVM IR module to in-memory machine code.
     jit->AddModule(std::move(llvm_module));
-    cpu_executable.reset(
-        new CpuExecutable(std::move(jit), std::move(assignment),
-                          std::move(hlo_module), std::move(module_config),
-                          function_name, std::move(hlo_to_profile_idx)));
+    cpu_executable.reset(new CpuExecutable(
+        std::move(jit), std::move(assignment), std::move(module), function_name,
+        std::move(hlo_to_profile_idx)));
 
     if (flags->xla_cpu_embed_ir) {
       static_cast<CpuExecutable&>(*cpu_executable)
@@ -481,27 +486,24 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> CpuCompiler::Compile(
-    std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-    HloDumper dump_hlos, std::vector<se::StreamExecutor*> stream_execs) {
+    std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlos,
+    std::vector<se::StreamExecutor*> stream_execs) {
   return Unimplemented(
       "Compilation of multiple HLO modules is not yet supported on CPU.");
 }
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-CpuCompiler::CompileAheadOfTime(
-    std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
-    HloDumper dump_hlo, const AotCompilationOptions& aot_options) {
-  TF_RET_CHECK(hlo_modules.size() == module_configs.size());
-  TF_RET_CHECK(!hlo_modules.empty());
+CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+                                HloDumper dump_hlo,
+                                const AotCompilationOptions& aot_options) {
+  TF_RET_CHECK(!modules.empty());
 
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags. At the moment, the only
   // flag that needs to be consistent is fast-math.
-  bool fast_math_disabled = module_configs[0]->fast_math_disabled();
-  for (const auto& module_config : module_configs) {
-    if (module_config->fast_math_disabled() != fast_math_disabled) {
+  bool fast_math_disabled = modules[0]->config().fast_math_disabled();
+  for (const auto& module : modules) {
+    if (module->config().fast_math_disabled() != fast_math_disabled) {
       return InvalidArgument(
           "All HLO module configs must have the same value for "
           "fast_math_disabled.");
@@ -559,7 +561,7 @@ CpuCompiler::CompileAheadOfTime(
   std::unique_ptr<llvm::TargetMachine> target_machine =
       WrapUnique(target->createTargetMachine(
           triple.getTriple(), cpu_name, features,
-          CompilerTargetOptions(*module_configs[0]), reloc_model,
+          CompilerTargetOptions(modules[0]->config()), reloc_model,
           llvm::CodeModel::Default, opt_level));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
@@ -575,15 +577,14 @@ CpuCompiler::CompileAheadOfTime(
   }
 
   std::vector<std::unique_ptr<AotCompilationResult>> results;
-  for (size_t i = 0; i < hlo_modules.size(); ++i) {
-    HloModule* hlo_module = hlo_modules[i].get();
-    HloModuleConfig* module_config = module_configs[i].get();
+  for (size_t i = 0; i < modules.size(); ++i) {
+    HloModule* module = modules[i].get();
 
-    TF_RETURN_IF_ERROR(RunHloPasses(hlo_module, module_config, dump_hlo));
+    TF_RETURN_IF_ERROR(RunHloPasses(module, dump_hlo));
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
-        CreateMemoryMinimizingSequence(*hlo_module,
+        CreateMemoryMinimizingSequence(*module,
                                        [this](const LogicalBuffer& buffer) {
                                          return ShapeSizeBytes(buffer.shape());
                                        }));
@@ -593,16 +594,15 @@ CpuCompiler::CompileAheadOfTime(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(
-            hlo_module,
-            MakeUnique<SequentialHloOrdering>(hlo_module, module_sequence),
+            module, MakeUnique<SequentialHloOrdering>(module, module_sequence),
             [this](const LogicalBuffer& buffer) {
               return ShapeSizeBytes(buffer.shape());
             },
             kMemoryAlignment));
 
-    IrEmitter ir_emitter(*hlo_module, *module_config, *assignment, &llvm_module,
+    IrEmitter ir_emitter(*module, *assignment, &llvm_module,
                          /*hlo_to_profile_idx=*/nullptr);
-    HloComputation* computation = hlo_module->entry_computation();
+    HloComputation* computation = module->entry_computation();
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
       TF_RETURN_IF_ERROR(
@@ -672,8 +672,10 @@ int64 CpuCompiler::ShapeSizeBytes(const Shape& shape) const {
 }  // namespace cpu
 }  // namespace xla
 
-REGISTER_MODULE_INITIALIZER(cpu_compiler, {
+static bool InitModule() {
   xla::Compiler::RegisterCompilerFactory(se::host::kHostPlatformId, []() {
     return xla::MakeUnique<xla::cpu::CpuCompiler>();
   });
-});
+  return true;
+}
+static bool module_initialized = InitModule();

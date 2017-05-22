@@ -34,7 +34,7 @@ class NodeMap {
   NodeDef* GetNode(const string& name);
   std::set<NodeDef*> GetOutputs(const string& node_name);
   // This method doesn't record the outputs of the added node; the outputs need
-  // to be explictly added by the AddOutput method.
+  // to be explicitly added by the AddOutput method.
   void AddNode(const string& name, NodeDef* node);
   void AddOutput(const string& node, const string& output);
   void UpdateOutput(const string& node, const string& old_output,

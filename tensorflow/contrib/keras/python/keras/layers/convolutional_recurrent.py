@@ -357,7 +357,7 @@ class ConvLSTM2D(ConvRecurrent2D):
       self.states = [None, None]
 
     if self.data_format == 'channels_first':
-      channel_axis = 1
+      channel_axis = 2
     else:
       channel_axis = -1
     if input_shape[channel_axis] is None:
@@ -369,20 +369,20 @@ class ConvLSTM2D(ConvRecurrent2D):
     recurrent_kernel_shape = self.kernel_size + (self.filters, self.filters * 4)
 
     self.kernel = self.add_weight(
-        kernel_shape,
+        shape=kernel_shape,
         initializer=self.kernel_initializer,
         name='kernel',
         regularizer=self.kernel_regularizer,
         constraint=self.kernel_constraint)
     self.recurrent_kernel = self.add_weight(
-        recurrent_kernel_shape,
+        shape=recurrent_kernel_shape,
         initializer=self.recurrent_initializer,
         name='recurrent_kernel',
         regularizer=self.recurrent_regularizer,
         constraint=self.recurrent_constraint)
     if self.use_bias:
       self.bias = self.add_weight(
-          (self.filters * 4,),
+          shape=(self.filters * 4,),
           initializer=self.bias_initializer,
           name='bias',
           regularizer=self.bias_regularizer,

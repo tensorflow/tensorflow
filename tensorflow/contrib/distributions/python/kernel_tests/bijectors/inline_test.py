@@ -20,8 +20,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops.bijectors import exp as exp_lib
-from tensorflow.contrib.distributions.python.ops.bijectors import inline as inline_lib
+from tensorflow.contrib.distributions.python.ops.bijectors.exp import Exp
+from tensorflow.contrib.distributions.python.ops.bijectors.inline import Inline
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -33,8 +33,8 @@ class InlineBijectorTest(test.TestCase):
 
   def testBijector(self):
     with self.test_session():
-      exp = exp_lib.Exp(event_ndims=1)
-      inline = inline_lib.Inline(
+      exp = Exp(event_ndims=1)
+      inline = Inline(
           forward_fn=math_ops.exp,
           inverse_fn=math_ops.log,
           inverse_log_det_jacobian_fn=(
@@ -57,7 +57,7 @@ class InlineBijectorTest(test.TestCase):
 
   def testShapeGetters(self):
     with self.test_session():
-      bijector = inline_lib.Inline(
+      bijector = Inline(
           forward_event_shape_tensor_fn=lambda x: array_ops.concat((x, [1]), 0),
           forward_event_shape_fn=lambda x: x.as_list() + [1],
           inverse_event_shape_tensor_fn=lambda x: x[:-1],

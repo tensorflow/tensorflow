@@ -93,10 +93,11 @@ TEST(ShapeInferenceTestutilTest, Failures) {
             RunInferShapes(op, "[1];[2];[1]", "e", fn_copy_input_0));
   EXPECT_CONTAINS(RunInferShapes(op, "[1];[2];[1]", "[1];[2]", fn_copy_input_0),
                   "wrong number of outputs");
-  EXPECT_EQ("Op type not registered 'NoSuchOp'",
-            ShapeInferenceTestutil::InferShapes(
-                ShapeInferenceTestOp("NoSuchOp"), "", "")
-                .error_message());
+  auto error_message = ShapeInferenceTestutil::InferShapes(
+                           ShapeInferenceTestOp("NoSuchOp"), "", "")
+                           .error_message();
+  EXPECT_TRUE(StringPiece(error_message)
+                  .starts_with("Op type not registered 'NoSuchOp'"));
 
   // Wrong shape error messages.
   EXPECT_CONTAINS(RunInferShapes(op, "[1];[2];[1]", "?", fn_copy_input_0),

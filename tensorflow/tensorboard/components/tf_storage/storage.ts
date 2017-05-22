@@ -22,7 +22,7 @@ limitations under the License.
  * which TensorBoard uses after like localhost:8000/#events&runPrefix=train*
  * to store state in the URI.
  *
- * It also allows saving the values to localStorage for long-term persistance.
+ * It also allows saving the values to localStorage for long-term persistence.
  */
 module TF.URIStorage {
   type StringDict = {[key: string]: string};
@@ -36,7 +36,7 @@ module TF.URIStorage {
   /**
    * The name of the property for users to set on a Polymer component
    * in order for its stored properties to be stored in the URI unambiguously.
-   * (No need to set this if you want mutliple instances of the component to
+   * (No need to set this if you want multiple instances of the component to
    * share URI state)
    *
    * Example:
@@ -257,7 +257,7 @@ module TF.URIStorage {
    * Convert dictionary of strings into a URI Component.
    * All key value entries get added as key value pairs in the component,
    * with the exception of a key with the TAB value, which if present
-   * gets prepended to the URI Component string for backwards comptability
+   * gets prepended to the URI Component string for backwards compatibility
    * reasons.
    */
   function _dictToComponent(items: StringDict): string {

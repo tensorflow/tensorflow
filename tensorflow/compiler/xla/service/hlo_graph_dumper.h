@@ -25,8 +25,25 @@ limitations under the License.
 namespace xla {
 namespace hlo_graph_dumper {
 
-// Dumps a graph of the computation to the GraphViz server and returns
-// a description of the rendered graph (e.g., a URL).
+// Abstract interface for classes that render HLO graphs (e.g. DOT graph,
+// tensorflow GraphDef).
+class GraphRendererInterface {
+ public:
+  enum GraphKind {
+    DOT_GRAPH,
+    TF_GRAPHDEF,
+  };
+
+  virtual ~GraphRendererInterface() = default;
+
+  // Renders a DOT graph, returning a description of the rendered output
+  // (e.g., a URL)
+  virtual string RenderGraph(const string& graph, GraphKind graph_kind) = 0;
+};
+
+// Dumps a graph of the computation and returns a description of the rendered
+// graph (e.g., a URL) based on the renderer. The "best" renderer in the
+// registry is used.
 string DumpGraph(const HloComputation& computation, const string& label,
                  bool show_addresses, bool show_layouts,
                  const HloExecutionProfile* hlo_execution_profile = nullptr);
@@ -39,16 +56,6 @@ string DumpGraph(const HloComputation& computation, const string& label,
 // as the filename directly.
 void DumpText(const HloModule& module, const string& label,
               const string& directory_path, bool do_prefix = true);
-
-// Abstract interface for classes that render DOT graphs.
-class GraphRendererInterface {
- public:
-  virtual ~GraphRendererInterface() = default;
-
-  // Renders a DOT graph, returning a description of the rendered output
-  // (e.g., a URL)
-  virtual string RenderGraph(const string& graph) = 0;
-};
 
 // Graph renderers may be added using a registration mechanism, e.g.:
 // XLA_REGISTER_GRAPH_RENDERER(AGraphRendererClass, 100)

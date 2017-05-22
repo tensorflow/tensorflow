@@ -26,49 +26,139 @@ limitations under the License.
 #include "cuda/include/cudnn.h"
 #endif
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/tensor_id.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
 
-std::vector<OpInfo::TensorProperties> FindInputFeatures(
-    const NodeDef& node,
-    const std::unordered_map<string, const CostGraphDef::Node*>& name_to_cost) {
-  std::vector<OpInfo::TensorProperties> inputs;
-  for (const auto& input_name : node.input()) {
-    // Skip control inputs. These are prefixed with the ^ character.
-    CHECK(!input_name.empty());
-    if (input_name[0] == '^') {
-      continue;
-    }
+static OpInfo::TensorProperties UnknownInput() {
+  OpInfo::TensorProperties input;
+  input.set_dtype(DataType::DT_INVALID);
+  input.mutable_shape()->set_unknown_rank(true);
+  return input;
+}
 
-    // Each input is "node_name:output_imdex" with "node_name" being a string
-    // name and "output_index" indicating which output tensor to use from
-    // "node_name". If "output_index" is 0 the ":0" suffix can be omitted.
-    string input_node_name;
-    int output_index = -1;
-    const size_t pos = input_name.rfind(':');
-    if (pos == string::npos) {
-      input_node_name = input_name;
-      output_index = 0;
-    } else {
-      string index = input_name.substr(pos);
-      if (strings::safe_strto32(index, &output_index)) {
-        input_node_name = input_name.substr(0, pos);
+static std::vector<TensorProto> ExtractTensors(const AttrValue& attr_value) {
+  std::vector<TensorProto> tensors;
+  switch (attr_value.value_case()) {
+    case AttrValue::kTensor: {
+      tensors.push_back(attr_value.tensor());
+      break;
+    }
+    case AttrValue::kList: {
+      for (const auto& tensor_proto : attr_value.list().tensor()) {
+        tensors.push_back(tensor_proto);
+      }
+      break;
+    }
+    default: {}
+  }
+  return tensors;
+}
+
+static void ExtractExtraProperties(
+    const NodeDef& node,
+    const std::unordered_map<string, const NodeDef*>& name_to_node,
+    std::vector<OpInfo::TensorProperties>* extra_inputs,
+    protobuf::Map<string, AttrValue>* attr_map) {
+  OpRegistry* op_registry = OpRegistry::Global();
+  const OpDef* op_def;
+  auto s = op_registry->LookUpOpDef(node.op(), &op_def);
+  if (!s.ok()) {
+    op_def = nullptr;
+  }
+
+  for (int i = 0; i < node.input_size(); ++i) {
+    const string input_name = node.input(i);
+    CHECK(!input_name.empty());
+    TensorId input_tensor_id = ParseTensorName(input_name);
+    const string input_node_name = input_tensor_id.first.ToString();
+
+    auto iter = name_to_node.find(input_node_name);
+    if (iter == name_to_node.end()) continue;
+    const NodeDef* input_node = iter->second;
+
+    // The value attribute in Const input is useful for cost prediction.
+    if (input_node->op() == "Const") {
+      auto it = input_node->attr().find("value");
+      if (it == input_node->attr().end()) continue;
+
+      const AttrValue& attr_value = it->second;
+      std::vector<TensorProto> tensors = ExtractTensors(attr_value);
+      if (tensors.empty()) continue;
+
+      const TensorProto& t = tensors[0];
+      OpInfo::TensorProperties input;
+      input.set_dtype(t.dtype());
+      *(input.mutable_shape()) = t.tensor_shape();
+      *(input.mutable_value()) = t;
+      extra_inputs->push_back(input);
+
+      // For filename input, the file size can also be useful.
+      if (op_def &&
+          op_def->input_arg(i).name().find("filename") != std::string::npos) {
+        Tensor tensor;
+        CHECK(tensor.FromProto(t));
+        const string filename = tensor.scalar<string>()();
+
+        Env* env = Env::Default();
+        FileStatistics stat;
+        Status s = env->Stat(filename, &stat);
+        if (s.ok()) {
+          AttrValue attr;
+          attr.set_i(stat.length);
+          string attr_key = strings::StrCat("input_", i, "_filesize");
+          (*attr_map)[attr_key] = attr;
+        }
       }
     }
 
-    auto it = name_to_cost.find(input_name);
+    // When the input is a handle (e.g. look up table handle), the information
+    // in the op itself is not sufficient to predict the op memory.
+    if (op_def &&
+        op_def->input_arg(i).name().find("handle") != std::string::npos) {
+      string new_key = strings::StrCat("parent_", i, "_op");
+      AttrValue attr;
+      attr.set_s(input_node->op());
+      (*attr_map)[new_key] = attr;
+      // TODO(yuefengz): Only parent node's op name is copied. Copy inputs
+      // and attributes when necessary.
+    }
+  }
+}
+
+std::vector<OpInfo::TensorProperties> FindInputFeatures(
+    const NodeDef& node,
+    const std::unordered_map<string, const CostGraphDef::Node*>& name_to_cost,
+    const std::unordered_map<string, const NodeDef*>& name_to_node) {
+  std::vector<OpInfo::TensorProperties> inputs;
+  for (const auto& input_name : node.input()) {
+    CHECK(!input_name.empty());
+    TensorId input_tensor_id = ParseTensorName(input_name);
+    const string input_node_name = input_tensor_id.first.ToString();
+    const int output_index = input_tensor_id.second;
+
+    // Skip control inputs.
+    if (output_index == Graph::kControlSlot) {
+      continue;
+    }
+
+    auto it = name_to_cost.find(input_node_name);
     if (it == name_to_cost.end() || output_index < 0) {
-      OpInfo::TensorProperties input;
-      input.set_dtype(DataType::DT_INVALID);
-      input.mutable_shape()->set_unknown_rank(true);
-      inputs.push_back(input);
+      inputs.push_back(UnknownInput());
     } else {
       const CostGraphDef::Node* input_cost = it->second;
       const CostGraphDef::Node::OutputInfo& output =
@@ -83,76 +173,44 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
   return inputs;
 }
 
-OpInfo::DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
+DeviceProperties GetDeviceInfo(const string& device_str) {
   DeviceNameUtils::ParsedName parsed;
-  if (DeviceNameUtils::ParseFullName(node.device(), &parsed)) {
+  if (DeviceNameUtils::ParseFullName(device_str, &parsed)) {
     if (parsed.type == "GPU") {
       return GetLocalGPUInfo(parsed.id);
     } else if (parsed.type == "CPU") {
       return GetLocalCPUInfo();
     }
   }
-  OpInfo::DeviceProperties device;
+  DeviceProperties device;
   device.set_type("UNKNOWN");
   return device;
 }
 
-OpInfo::DeviceProperties GetLocalCPUInfo() {
-  OpInfo::DeviceProperties device;
-  device.set_type("CPU");
-
-  device.set_num_cores(port::NumSchedulableCPUs());
-  device.set_l1_cache_size(Eigen::l1CacheSize());
-  device.set_l2_cache_size(Eigen::l2CacheSize());
-  device.set_l3_cache_size(Eigen::l3CacheSize());
-
-  (*device.mutable_environment())["cpu_instruction_set"] =
-      Eigen::SimdInstructionSetsInUse();
-
-  (*device.mutable_environment())["eigen"] = strings::StrCat(
-      EIGEN_WORLD_VERSION, ".", EIGEN_MAJOR_VERSION, ".", EIGEN_MINOR_VERSION);
-#ifdef EIGEN_USE_LIBXSMM
-  (*device.mutable_environment())["libxsmm"] = LIBXSMM_VERSION;
-#endif
-
-  return device;
+DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node) {
+  return GetDeviceInfo(node.device());
 }
 
-OpInfo::DeviceProperties GetLocalGPUInfo(int gpu_id) {
-  OpInfo::DeviceProperties device;
-  device.set_type("GPU");
-
-#if GOOGLE_CUDA
-  cudaDeviceProp properties;
-  cudaError_t error = cudaGetDeviceProperties(&properties, gpu_id);
-  if (error == cudaSuccess) {
-    device.set_vendor("NVidia");
-    device.set_model(properties.name);
-    device.set_frequency(properties.clockRate / 1000);
-    device.set_num_cores(properties.multiProcessorCount);
-    device.set_num_registers(properties.regsPerMultiprocessor);
-    // For compute capability less than 5, l1 cache size is configurable to
-    // either 16 KB or 48 KB. We use the initial configuration 16 KB here. For
-    // compute capability larger or equal to 5, l1 cache (unified with texture
-    // cache) size is 24 KB. This number may need to be updated for future
-    // compute capabilities.
-    device.set_l1_cache_size((properties.major < 5) ? 16 * 1024 : 24 * 1024);
-    device.set_l2_cache_size(properties.l2CacheSize);
-    device.set_l3_cache_size(0);
-    device.set_shared_memory_size_per_multiprocessor(
-        properties.sharedMemPerMultiprocessor);
-    device.set_memory_size(properties.totalGlobalMem);
-    // 8 is the number of bits per byte. 2 is accounted for
-    // double data rate (DDR).
-    device.set_bandwidth(properties.memoryBusWidth / 8 *
-                         properties.memoryClockRate * 2);
+OpInfo BuildOpInfo(
+    const NodeDef& node, const string& device_str,
+    const std::unordered_map<string, const NodeDef*>& name_to_node,
+    const std::vector<OpInfo::TensorProperties>& inputs) {
+  OpInfo op_info;
+  op_info.set_op(node.op());
+  *op_info.mutable_attr() = node.attr();
+  *op_info.mutable_device() = GetDeviceInfo(device_str);
+  for (auto& input : inputs) {
+    *op_info.add_inputs() = input;
   }
 
-  (*device.mutable_environment())["cuda"] = strings::StrCat(CUDA_VERSION);
-  (*device.mutable_environment())["cudnn"] = strings::StrCat(CUDNN_VERSION);
-#endif
+  std::vector<OpInfo::TensorProperties> extra_inputs;
+  ExtractExtraProperties(node, name_to_node, &extra_inputs,
+                         op_info.mutable_attr());
+  for (auto& input : extra_inputs) {
+    *op_info.add_inputs() = input;
+  }
 
-  return device;
+  return op_info;
 }
 
 }  // end namespace grappler
