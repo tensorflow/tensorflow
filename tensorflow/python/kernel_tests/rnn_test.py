@@ -73,6 +73,35 @@ class RNNTest(test.TestCase):
           dtype=dtypes.float32,
           sequence_length=[[4]])
 
+  def testBatchSizeFromInput(self):
+    cell = Plus1RNNCell()
+    # With static batch size
+    inputs = array_ops.placeholder(dtypes.float32, shape=(3, 4, 5))
+    # - Without initial_state
+    outputs, state = rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
+    self.assertEqual(3, outputs.shape[0].value)
+    self.assertEqual(3, state.shape[0].value)
+    # - With initial_state
+    outputs, state = rnn.dynamic_rnn(
+        cell,
+        inputs,
+        initial_state=array_ops.placeholder(dtypes.float32, shape=(3, 5)))
+    self.assertEqual(3, outputs.shape[0].value)
+    self.assertEqual(3, state.shape[0].value)
+    # Without static batch size
+    inputs = array_ops.placeholder(dtypes.float32, shape=(None, 4, 5))
+    # - Without initial_state
+    outputs, state = rnn.dynamic_rnn(cell, inputs, dtype=dtypes.float32)
+    self.assertEqual(None, outputs.shape[0].value)
+    self.assertEqual(None, state.shape[0].value)
+    # - With initial_state
+    outputs, state = rnn.dynamic_rnn(
+        cell,
+        inputs,
+        initial_state=array_ops.placeholder(dtypes.float32, shape=(None, 5)))
+    self.assertEqual(None, outputs.shape[0].value)
+    self.assertEqual(None, state.shape[0].value)
+
 
 ######### Benchmarking RNN code
 
@@ -136,18 +165,17 @@ def graph_creation_static_vs_dynamic_rnn_benchmark(max_time):
   inputs = np.dstack(inputs_list).transpose([0, 2, 1])  # batch x time x depth
 
   def _create_static_rnn():
-    with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+    with session.Session(config=config, graph=ops_lib.Graph()):
       inputs_list_t = [
           variables_lib.Variable(
               x, trainable=False).value() for x in inputs_list
       ]
-      ops = _static_vs_dynamic_rnn_benchmark_static(inputs_list_t,
-                                                    sequence_length)
+      _static_vs_dynamic_rnn_benchmark_static(inputs_list_t, sequence_length)
 
   def _create_dynamic_rnn():
-    with session.Session(config=config, graph=ops_lib.Graph()) as sess:
+    with session.Session(config=config, graph=ops_lib.Graph()):
       inputs_t = variables_lib.Variable(inputs, trainable=False).value()
-      ops = _static_vs_dynamic_rnn_benchmark_dynamic(inputs_t, sequence_length)
+      _static_vs_dynamic_rnn_benchmark_dynamic(inputs_t, sequence_length)
 
   delta_static = timeit.timeit(_create_static_rnn, number=5)
   delta_dynamic = timeit.timeit(_create_dynamic_rnn, number=5)
