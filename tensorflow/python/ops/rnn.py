@@ -185,6 +185,9 @@ def _rnn_step(
   flat_zero_output = nest.flatten(zero_output)
 
   def _copy_one_through(output, new_output):
+    # If the state contains a scalar value we simply pass it through.
+    if output.shape.ndims == 0:
+      return new_output
     copy_cond = (time >= sequence_length)
     with ops.colocate_with(new_output):
       return array_ops.where(copy_cond, output, new_output)
@@ -522,7 +525,6 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     TypeError: If `cell` is not an instance of RNNCell.
     ValueError: If inputs is None or an empty list.
   """
-
   if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
 
