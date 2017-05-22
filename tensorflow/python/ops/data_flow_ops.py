@@ -1627,9 +1627,7 @@ class RecordInput(object):
       file_pattern: File path to the dataset, possibly containing wildcards.
         All matching files will be iterated over each epoch.
       batch_size: How many records to return at a time.
-      buffer_size: The maximum number of records the buffer will contain.  This
-        _must_ be smaller than the total number of records in an epoch or
-        deadlock can occur.
+      buffer_size: The maximum number of records the buffer will contain.
       parallelism: How many reader threads to use for reading from files.
       shift_ratio: What percentage of the total number files to move the start
         file forward by each epoch.
