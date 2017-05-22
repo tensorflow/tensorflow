@@ -19,6 +19,7 @@
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
+#include <popstd/ActivationMapping.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -139,6 +140,7 @@ CreateCallOp(poplar::Graph &graph,
     poplar::Tensor o = graph.addTensor(
             graph.getTensorElementType(v->outputs()[i]),
             v->outputs()[i].shape());
+    popstd::mapTensor(graph, o);    
     seq.add(poplar::program::Copy(v->outputs()[i], o));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
   }
