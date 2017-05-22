@@ -638,22 +638,14 @@ Status SimplePlacer::Run() {
   // 1. First add all of the nodes. Note that steps (1) and (2)
   // requires two passes over the nodes because the graph (and hence
   // the constraints) may not be acyclic.
-  for (Node* node : graph_->nodes()) {
-    // Skip the source and sink nodes.
-    if (!node->IsOp()) {
-      continue;
-    }
+  for (Node* node : graph_->op_nodes()) {
     status = colocation_graph.AddNode(*node);
     if (!status.ok()) return AttachDef(status, *node);
   }
 
   // 2. Enumerate the constraint edges, and use them to update the disjoint
   // node set.
-  for (Node* node : graph_->nodes()) {
-    if (!node->IsOp()) {
-      continue;
-    }
-
+  for (Node* node : graph_->op_nodes()) {
     // If `node` has an input edge with reference type, add an
     // edge from the source of that edge to `node`.
     for (const auto& edge : node->in_edges()) {
@@ -717,12 +709,7 @@ Status SimplePlacer::Run() {
   // disjoint node set.
   std::vector<Device*> devices;
   std::vector<Node*> second_pass;
-  for (Node* node : graph_->nodes()) {
-    // Skip the source and sink nodes.
-    if (!node->IsOp()) {
-      continue;
-    }
-
+  for (Node* node : graph_->op_nodes()) {
     // The graph may have come pre-populated by the framework with assigned
     // devices (e.g., for stateful placements), so the placer should not try to
     // place nodes that are already placed.
