@@ -558,6 +558,16 @@ class LSTMCell(_LayerRNNCell):
 
   The class uses optional peep-hole connections, optional cell clipping, and
   an optional projection layer.
+  
+  Layer normalization implementation is based on:
+
+    https://arxiv.org/abs/1607.06450.
+
+  "Layer Normalization"
+  Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
+
+  and is applied before the internal nonlinearities.
+  
   """
 
   def __init__(self, num_units,
