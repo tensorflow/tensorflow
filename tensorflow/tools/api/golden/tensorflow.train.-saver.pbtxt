@@ -8,7 +8,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'var_list\', \'reshape\', \'sharded\', \'max_to_keep\', \'keep_checkpoint_every_n_hours\', \'name\', \'restore_sequentially\', \'saver_def\', \'builder\', \'defer_build\', \'allow_empty\', \'write_version\', \'pad_step_number\', \'save_relative_paths\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'False\', \'5\', \'10000.0\', \'None\', \'False\', \'None\', \'None\', \'False\', \'False\', \'2\', \'False\', \'False\'], "
+    argspec: "args=[\'self\', \'var_list\', \'reshape\', \'sharded\', \'max_to_keep\', \'keep_checkpoint_every_n_hours\', \'name\', \'restore_sequentially\', \'saver_def\', \'builder\', \'defer_build\', \'allow_empty\', \'write_version\', \'pad_step_number\', \'save_relative_paths\', \'filename\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'False\', \'5\', \'10000.0\', \'None\', \'False\', \'None\', \'None\', \'False\', \'False\', \'2\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "as_saver_def"
