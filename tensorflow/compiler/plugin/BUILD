@@ -32,6 +32,5 @@ cc_library(
     name = "plugin",
     deps = [
       "//tensorflow/compiler/plugin/poplar:poplar_lib",
-      "//tensorflow/compiler/plugin/executor:plugin_lib",
     ],
 )
