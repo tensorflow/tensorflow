@@ -40,7 +40,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-struct MPISendTensorCall {
+class MPISendTensorCall {
+ public:
   char* send_buffer_;
   char* send_buffer2_;
 
@@ -82,7 +83,8 @@ struct MPISendTensorCall {
   }
 };
 
-struct MPIRequestTensorCall {
+class MPIRequestTensorCall {
+ public:
   Rendezvous::DoneCallback done_;
   RecvTensorRequest req_;
   MPI_Request mpi_request_;
