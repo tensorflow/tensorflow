@@ -98,7 +98,8 @@ CreateParallelMap(poplar::Graph &graph,
   TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
 
   for (size_t i=0; i<visitor.output().size(); i++) {
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, visitor.output()[i]));
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
+                                       visitor.output()[i]));
   }
 
   return visitor.sequence;
