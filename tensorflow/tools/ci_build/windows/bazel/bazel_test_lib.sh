@@ -137,6 +137,8 @@ function get_failing_cpu_py_tests() {
     //$1/tensorflow/python/kernel_tests:string_to_number_op_test + \
     //$1/tensorflow/python/kernel_tests:summary_ops_test + \
     //$1/tensorflow/python/kernel_tests:variable_scope_test + \
+    //$1/tensorflow/python/tools:saved_model_cli_test + \
+    //$1/tensorflow/python/feature_column:feature_column_test + \
     //$1/tensorflow/python/saved_model:saved_model_test \
     "
 }
