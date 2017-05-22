@@ -138,6 +138,7 @@ function setup_python {
   # Convert python path to Windows style before writing into bazel.rc
   if is_windows; then
     PYTHON_BIN_PATH="$(cygpath -m "$PYTHON_BIN_PATH")"
+    PYTHON_LIB_PATH="$(cygpath -m "$PYTHON_LIB_PATH")"
   fi
 
   # Set-up env variables used by python_configure.bzl
