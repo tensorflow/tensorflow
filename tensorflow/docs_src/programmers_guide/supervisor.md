@@ -137,10 +137,10 @@ For example this code runs the summary op every 100 steps in the training loop:
       if sv.should_stop():
         break
       if step % 100 == 0:
-        _, summ = session.run([my_train_op, my_summary_op])
+        _, summ = sess.run([my_train_op, my_summary_op])
         sv.summary_computed(sess, summ)
       else:
-        session.run(my_train_op)
+        sess.run(my_train_op)
 ```
 
 ## Pre-trained Model Scenario
