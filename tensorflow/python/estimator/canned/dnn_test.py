@@ -682,6 +682,105 @@ class _SummaryHook(session_run_hook.SessionRunHook):
     return tuple(self._summaries)
 
 
+def _assert_checkpoint(
+    testcase, global_step, input_units, hidden_units, output_units, model_dir):
+  """Asserts checkpoint contains expected variables with proper shapes.
+
+  Args:
+    testcase: A TestCase instance.
+    global_step: Expected global step value.
+    input_units: The dimension of input layer.
+    hidden_units: Iterable of integer sizes for the hidden layers.
+    output_units: The dimension of output layer (logits).
+    model_dir: The model directory.
+  """
+  shapes = {
+      name: shape
+      for (name, shape) in checkpoint_utils.list_variables(model_dir)
+  }
+
+  # Global step.
+  testcase.assertEqual([], shapes[ops.GraphKeys.GLOBAL_STEP])
+  testcase.assertEqual(
+      global_step,
+      checkpoint_utils.load_variable(
+          model_dir, ops.GraphKeys.GLOBAL_STEP))
+
+  # Hidden layer weights.
+  prev_layer_units = input_units
+  for i in range(len(hidden_units)):
+    layer_units = hidden_units[i]
+    testcase.assertAllEqual((prev_layer_units, layer_units),
+                            shapes[_HIDDEN_WEIGHTS_NAME_PATTERN % i])
+    testcase.assertAllEqual((layer_units,),
+                            shapes[_HIDDEN_BIASES_NAME_PATTERN % i])
+    prev_layer_units = layer_units
+
+  # Output layer weights.
+  testcase.assertAllEqual((prev_layer_units, output_units),
+                          shapes[_LOGITS_WEIGHTS_NAME])
+  testcase.assertAllEqual((output_units,), shapes[_LOGITS_BIASES_NAME])
+
+
+def _mock_optimizer(testcase, hidden_units, expected_loss=None):
+  """Creates a mock optimizer to test the train method.
+
+  Args:
+    testcase: A TestCase instance.
+    hidden_units: Iterable of integer sizes for the hidden layers.
+    expected_loss: If given, will assert the loss value.
+
+  Returns:
+    A mock Optimizer.
+  """
+  hidden_weights_names = [
+      (_HIDDEN_WEIGHTS_NAME_PATTERN + '/part_0:0') % i
+      for i in range(len(hidden_units))]
+  hidden_biases_names = [
+      (_HIDDEN_BIASES_NAME_PATTERN + '/part_0:0') % i
+      for i in range(len(hidden_units))]
+  expected_var_names = (
+      hidden_weights_names + hidden_biases_names +
+      [_LOGITS_WEIGHTS_NAME + '/part_0:0', _LOGITS_BIASES_NAME + '/part_0:0'])
+
+  def _minimize(loss, global_step):
+    trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+    testcase.assertItemsEqual(
+        expected_var_names,
+        [var.name for var in trainable_vars])
+
+    # Verify loss. We can't check the value directly, so we add an assert op.
+    testcase.assertEquals(0, loss.shape.ndims)
+    if expected_loss is None:
+      return state_ops.assign_add(global_step, 1).op
+    assert_loss = _assert_close(
+        math_ops.to_float(expected_loss, name='expected'), loss,
+        name='assert_loss')
+    with ops.control_dependencies((assert_loss,)):
+      return state_ops.assign_add(global_step, 1).op
+
+  mock_optimizer = test.mock.NonCallableMagicMock(
+      spec=optimizer.Optimizer,
+      wraps=optimizer.Optimizer(use_locking=False, name='my_optimizer'))
+  mock_optimizer.minimize = test.mock.MagicMock(wraps=_minimize)
+
+  return mock_optimizer
+
+
+def _assert_simple_summary(testcase, expected_values, actual_summary):
+  """Assert summary the specified simple values.
+
+  Args:
+    testcase: A TestCase instance.
+    expected_values: Dict of expected tags and simple values.
+    actual_summary: `summary_pb2.Summary`.
+  """
+  testcase.assertAllClose(expected_values, {
+      v.tag: v.simple_value
+      for v in actual_summary.value if (v.tag in expected_values)
+  })
+
+
 class DNNRegressorTrainTest(test.TestCase):
 
   def setUp(self):
@@ -690,89 +789,6 @@ class DNNRegressorTrainTest(test.TestCase):
   def tearDown(self):
     if self._model_dir:
       shutil.rmtree(self._model_dir)
-
-  def _assert_checkpoint(
-      self, global_step, input_units, hidden_units, output_units):
-    """Asserts checkpoint contains expected variables with proper shapes.
-
-    Args:
-      global_step: Expected global step value.
-      input_units: The dimension of input layer.
-      hidden_units: Iterable of integer sizes for the hidden layers.
-      output_units: The dimension of output layer (logits).
-    """
-    shapes = {
-        name: shape
-        for (name, shape) in checkpoint_utils.list_variables(self._model_dir)
-    }
-
-    # Global step.
-    self.assertEqual([], shapes[ops.GraphKeys.GLOBAL_STEP])
-    self.assertEqual(
-        global_step,
-        checkpoint_utils.load_variable(
-            self._model_dir, ops.GraphKeys.GLOBAL_STEP))
-
-    # Hidden layer weights.
-    prev_layer_units = input_units
-    for i in range(len(hidden_units)):
-      layer_units = hidden_units[i]
-      self.assertAllEqual((prev_layer_units, layer_units),
-                          shapes[_HIDDEN_WEIGHTS_NAME_PATTERN % i])
-      self.assertAllEqual((layer_units,),
-                          shapes[_HIDDEN_BIASES_NAME_PATTERN % i])
-      prev_layer_units = layer_units
-
-    # Output layer weights.
-    self.assertAllEqual((prev_layer_units, output_units),
-                        shapes[_LOGITS_WEIGHTS_NAME])
-    self.assertAllEqual((output_units,), shapes[_LOGITS_BIASES_NAME])
-
-  def _mockOptimizer(self, hidden_units, expected_loss=None):
-    hidden_weights_names = [
-        (_HIDDEN_WEIGHTS_NAME_PATTERN + '/part_0:0') % i
-        for i in range(len(hidden_units))]
-    hidden_biases_names = [
-        (_HIDDEN_BIASES_NAME_PATTERN + '/part_0:0') % i
-        for i in range(len(hidden_units))]
-    expected_var_names = (
-        hidden_weights_names + hidden_biases_names +
-        [_LOGITS_WEIGHTS_NAME + '/part_0:0', _LOGITS_BIASES_NAME + '/part_0:0'])
-
-    def _minimize(loss, global_step):
-      trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
-      self.assertItemsEqual(
-          expected_var_names,
-          [var.name for var in trainable_vars])
-
-      # Verify loss. We can't check the value directly, so we add an assert op.
-      self.assertEquals(0, loss.shape.ndims)
-      if expected_loss is None:
-        return state_ops.assign_add(global_step, 1).op
-      assert_loss = _assert_close(
-          math_ops.to_float(expected_loss, name='expected'), loss,
-          name='assert_loss')
-      with ops.control_dependencies((assert_loss,)):
-        return state_ops.assign_add(global_step, 1).op
-
-    mock_optimizer = test.mock.NonCallableMagicMock(
-        spec=optimizer.Optimizer,
-        wraps=optimizer.Optimizer(use_locking=False, name='my_optimizer'))
-    mock_optimizer.minimize = test.mock.MagicMock(wraps=_minimize)
-
-    return mock_optimizer
-
-  def _assert_simple_summary(self, expected_values, actual_summary):
-    """Assert summary the specified simple values.
-
-    Args:
-      expected_values: Dict of expected tags and simple values.
-      actual_summary: `summary_pb2.Summary`.
-    """
-    self.assertAllClose(expected_values, {
-        v.tag: v.simple_value
-        for v in actual_summary.value if (v.tag in expected_values)
-    })
 
   def test_from_scratch_with_default_optimizer(self):
     hidden_units = (2, 2)
@@ -785,12 +801,13 @@ class DNNRegressorTrainTest(test.TestCase):
     num_steps = 5
     dnn_regressor.train(
         input_fn=lambda: ({'age': ((1,),)}, ((10,),)), steps=num_steps)
-    self._assert_checkpoint(
-        num_steps, input_units=1, hidden_units=hidden_units, output_units=1)
+    _assert_checkpoint(
+        self, num_steps, input_units=1, hidden_units=hidden_units,
+        output_units=1, model_dir=self._model_dir)
 
   def test_from_scratch(self):
     hidden_units = (2, 2)
-    mock_optimizer = self._mockOptimizer(hidden_units=hidden_units)
+    mock_optimizer = _mock_optimizer(self, hidden_units=hidden_units)
     dnn_regressor = dnn.DNNRegressor(
         hidden_units=hidden_units,
         feature_columns=(feature_column.numeric_column('age'),),
@@ -806,8 +823,9 @@ class DNNRegressorTrainTest(test.TestCase):
         input_fn=lambda: ({'age': ((1,),)}, ((5.,),)), steps=num_steps,
         hooks=(summary_hook,))
     self.assertEqual(1, mock_optimizer.minimize.call_count)
-    self._assert_checkpoint(
-        num_steps, input_units=1, hidden_units=hidden_units, output_units=1)
+    _assert_checkpoint(
+        self, num_steps, input_units=1, hidden_units=hidden_units,
+        output_units=1, model_dir=self._model_dir)
     summaries = summary_hook.summaries()
     self.assertEqual(num_steps, len(summaries))
     for summary in summaries:
@@ -829,8 +847,8 @@ class DNNRegressorTrainTest(test.TestCase):
     # prediction = 1778
     # loss = (10-1778)^2 = 3125824
     expected_loss = 3125824.
-    mock_optimizer = self._mockOptimizer(
-        hidden_units=hidden_units, expected_loss=expected_loss)
+    mock_optimizer = _mock_optimizer(
+        self, hidden_units=hidden_units, expected_loss=expected_loss)
     dnn_regressor = dnn.DNNRegressor(
         hidden_units=hidden_units,
         feature_columns=(feature_column.numeric_column('age'),),
@@ -849,19 +867,22 @@ class DNNRegressorTrainTest(test.TestCase):
     summaries = summary_hook.summaries()
     self.assertEqual(num_steps, len(summaries))
     for summary in summaries:
-      self._assert_simple_summary({
-          metric_keys.MetricKeys.LOSS_MEAN: expected_loss,
-          'dnn/dnn/hiddenlayer_0_activation': 0.,
-          'dnn/dnn/hiddenlayer_0_fraction_of_zero_values': 0.,
-          'dnn/dnn/hiddenlayer_1_activation': 0.,
-          'dnn/dnn/hiddenlayer_1_fraction_of_zero_values': 0.,
-          'dnn/dnn/logits_activation': 0.,
-          'dnn/dnn/logits_fraction_of_zero_values': 0.,
-          metric_keys.MetricKeys.LOSS: expected_loss,
-      }, summary)
-    self._assert_checkpoint(
-        base_global_step + num_steps, input_units=1, hidden_units=hidden_units,
-        output_units=1)
+      _assert_simple_summary(
+          self,
+          {
+              metric_keys.MetricKeys.LOSS_MEAN: expected_loss,
+              'dnn/dnn/hiddenlayer_0_activation': 0.,
+              'dnn/dnn/hiddenlayer_0_fraction_of_zero_values': 0.,
+              'dnn/dnn/hiddenlayer_1_activation': 0.,
+              'dnn/dnn/hiddenlayer_1_fraction_of_zero_values': 0.,
+              'dnn/dnn/logits_activation': 0.,
+              'dnn/dnn/logits_fraction_of_zero_values': 0.,
+              metric_keys.MetricKeys.LOSS: expected_loss,
+          },
+          summary)
+    _assert_checkpoint(
+        self, base_global_step + num_steps, input_units=1,
+        hidden_units=hidden_units, output_units=1, model_dir=self._model_dir)
 
   def test_activation_fn(self):
     base_global_step = 100
@@ -877,8 +898,8 @@ class DNNRegressorTrainTest(test.TestCase):
     # prediction = 36
     # loss = (10-36)^2 = 676
     expected_loss = 676.
-    mock_optimizer = self._mockOptimizer(
-        hidden_units=hidden_units, expected_loss=expected_loss)
+    mock_optimizer = _mock_optimizer(
+        self, hidden_units=hidden_units, expected_loss=expected_loss)
     dnn_regressor = dnn.DNNRegressor(
         hidden_units=hidden_units,
         feature_columns=(feature_column.numeric_column('age'),),
@@ -898,19 +919,22 @@ class DNNRegressorTrainTest(test.TestCase):
     summaries = summary_hook.summaries()
     self.assertEqual(num_steps, len(summaries))
     for summary in summaries:
-      self._assert_simple_summary({
-          metric_keys.MetricKeys.LOSS: expected_loss,
-          metric_keys.MetricKeys.LOSS_MEAN: expected_loss,
-          'dnn/dnn/hiddenlayer_0_activation': 0.,
-          'dnn/dnn/hiddenlayer_0_fraction_of_zero_values': 0.,
-          'dnn/dnn/hiddenlayer_1_activation': 0.,
-          'dnn/dnn/hiddenlayer_1_fraction_of_zero_values': 0.,
-          'dnn/dnn/logits_activation': 0.,
-          'dnn/dnn/logits_fraction_of_zero_values': 0.,
-      }, summary)
-    self._assert_checkpoint(
-        base_global_step + num_steps, input_units=1, hidden_units=hidden_units,
-        output_units=1)
+      _assert_simple_summary(
+          self,
+          {
+              metric_keys.MetricKeys.LOSS: expected_loss,
+              metric_keys.MetricKeys.LOSS_MEAN: expected_loss,
+              'dnn/dnn/hiddenlayer_0_activation': 0.,
+              'dnn/dnn/hiddenlayer_0_fraction_of_zero_values': 0.,
+              'dnn/dnn/hiddenlayer_1_activation': 0.,
+              'dnn/dnn/hiddenlayer_1_fraction_of_zero_values': 0.,
+              'dnn/dnn/logits_activation': 0.,
+              'dnn/dnn/logits_fraction_of_zero_values': 0.,
+          },
+          summary)
+    _assert_checkpoint(
+        self, base_global_step + num_steps, input_units=1,
+        hidden_units=hidden_units, output_units=1, model_dir=self._model_dir)
 
   def test_weighted_multi_example_multi_column(self):
     hidden_units = (2, 2)
@@ -931,8 +955,8 @@ class DNNRegressorTrainTest(test.TestCase):
     # ]
     # loss = sum(label_weights*(labels-predictions)^2) = 3.10290850204e+14
     expected_loss = 3.10290850204e+14
-    mock_optimizer = self._mockOptimizer(
-        hidden_units=hidden_units, expected_loss=expected_loss)
+    mock_optimizer = _mock_optimizer(
+        self, hidden_units=hidden_units, expected_loss=expected_loss)
     dnn_regressor = dnn.DNNRegressor(
         hidden_units=hidden_units,
         feature_columns=(
@@ -992,33 +1016,40 @@ class DNNRegressorTrainTest(test.TestCase):
     self.assertEqual(1, mock_optimizer.minimize.call_count)
     summaries = summary_hook.summaries()
     self.assertEqual(1, len(summaries))
-    self._assert_simple_summary({
-        metric_keys.MetricKeys.LOSS: expected_loss,
-        # average_loss = loss / sum(label_weights) = 3.10290850204e+14 / 5.
-        #              = 6.205817e+13
-        metric_keys.MetricKeys.LOSS_MEAN: 6.205817e+13,
-        'dnn/dnn/hiddenlayer_0_activation': 0.,
-        'dnn/dnn/hiddenlayer_0_fraction_of_zero_values': 0.,
-        'dnn/dnn/hiddenlayer_1_activation': 0.,
-        'dnn/dnn/hiddenlayer_1_fraction_of_zero_values': 0.,
-        'dnn/dnn/logits_activation': 0.,
-        'dnn/dnn/logits_fraction_of_zero_values': 0.,
-    }, summaries[0])
-    self._assert_checkpoint(
+    _assert_simple_summary(
+        self,
+        {
+            metric_keys.MetricKeys.LOSS: expected_loss,
+            # average_loss = loss / sum(label_weights) = 3.10290850204e+14 / 5.
+            #              = 6.205817e+13
+            metric_keys.MetricKeys.LOSS_MEAN: 6.205817e+13,
+            'dnn/dnn/hiddenlayer_0_activation': 0.,
+            'dnn/dnn/hiddenlayer_0_fraction_of_zero_values': 0.,
+            'dnn/dnn/hiddenlayer_1_activation': 0.,
+            'dnn/dnn/hiddenlayer_1_fraction_of_zero_values': 0.,
+            'dnn/dnn/logits_activation': 0.,
+            'dnn/dnn/logits_fraction_of_zero_values': 0.,
+        },
+        summaries[0])
+    _assert_checkpoint(
+        self,
         base_global_step + 1,
         input_units=4,  # Sum of feature column dimensions.
         hidden_units=hidden_units,
-        output_units=3)  # = label_dimension
+        output_units=3,  # = label_dimension
+        model_dir=self._model_dir)
 
     # Train for 3 steps - we should still get the same loss since we're not
     # updating weights.
     dnn_regressor.train(input_fn=input_fn, steps=3)
     self.assertEqual(2, mock_optimizer.minimize.call_count)
-    self._assert_checkpoint(
+    _assert_checkpoint(
+        self,
         base_global_step + 4,
         input_units=4,  # Sum of feature column dimensions.
         hidden_units=hidden_units,
-        output_units=3)  # = label_dimension
+        output_units=3,  # = label_dimension
+        model_dir=self._model_dir)
 
   def test_weighted_multi_batch(self):
     hidden_units = (2, 2)
@@ -1029,7 +1060,7 @@ class DNNRegressorTrainTest(test.TestCase):
         (((1., 2., 3.), (4., 5., 6.),), (7., 8., 9.)),
     ), base_global_step, self._model_dir)
 
-    mock_optimizer = self._mockOptimizer(hidden_units=hidden_units)
+    mock_optimizer = _mock_optimizer(self, hidden_units=hidden_units)
     dnn_regressor = dnn.DNNRegressor(
         hidden_units=hidden_units,
         feature_columns=(
@@ -1102,21 +1133,194 @@ class DNNRegressorTrainTest(test.TestCase):
     # ] = [4416928875, 1.1560563e+14, 8.95093e+13, 0]
     expected_step_average_losses = (4416928875, 1.1560563e+14, 8.95093e+13, 0)
     for i in range(len(summaries)):
-      self._assert_simple_summary({
-          metric_keys.MetricKeys.LOSS: expected_step_losses[i],
-          metric_keys.MetricKeys.LOSS_MEAN: expected_step_average_losses[i],
-          'dnn/dnn/hiddenlayer_0_activation': 0.,
-          'dnn/dnn/hiddenlayer_0_fraction_of_zero_values': 0.,
-          'dnn/dnn/hiddenlayer_1_activation': 0.,
-          'dnn/dnn/hiddenlayer_1_fraction_of_zero_values': 0.,
-          'dnn/dnn/logits_activation': 0.,
-          'dnn/dnn/logits_fraction_of_zero_values': 0.,
-      }, summaries[i])
-    self._assert_checkpoint(
+      _assert_simple_summary(
+          self,
+          {
+              metric_keys.MetricKeys.LOSS: expected_step_losses[i],
+              metric_keys.MetricKeys.LOSS_MEAN: expected_step_average_losses[i],
+              'dnn/dnn/hiddenlayer_0_activation': 0.,
+              'dnn/dnn/hiddenlayer_0_fraction_of_zero_values': 0.,
+              'dnn/dnn/hiddenlayer_1_activation': 0.,
+              'dnn/dnn/hiddenlayer_1_fraction_of_zero_values': 0.,
+              'dnn/dnn/logits_activation': 0.,
+              'dnn/dnn/logits_fraction_of_zero_values': 0.,
+          },
+          summaries[i])
+    _assert_checkpoint(
+        self,
         base_global_step + num_steps,
         input_units=4,  # Sum of feature column dimensions.
         hidden_units=hidden_units,
-        output_units=3)  # = label_dimension
+        output_units=3,  # = label_dimension
+        model_dir=self._model_dir)
+
+
+class DNNClassifierTrainTest(test.TestCase):
+
+  def setUp(self):
+    self._model_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    if self._model_dir:
+      shutil.rmtree(self._model_dir)
+
+  def test_from_scratch_with_default_optimizer_binary(self):
+    hidden_units = (2, 2)
+    dnn_classifier = dnn.DNNClassifier(
+        hidden_units=hidden_units,
+        feature_columns=(feature_column.numeric_column('age'),),
+        model_dir=self._model_dir)
+
+    # Train for a few steps, then validate final checkpoint.
+    num_steps = 5
+    dnn_classifier.train(
+        input_fn=lambda: ({'age': [[10.]]}, [[1]]), steps=num_steps)
+    _assert_checkpoint(
+        self, num_steps, input_units=1, hidden_units=hidden_units,
+        output_units=1, model_dir=self._model_dir)
+
+  def test_from_scratch_with_default_optimizer_multi_class(self):
+    hidden_units = (2, 2)
+    n_classes = 3
+    dnn_classifier = dnn.DNNClassifier(
+        hidden_units=hidden_units,
+        feature_columns=(feature_column.numeric_column('age'),),
+        n_classes=n_classes,
+        model_dir=self._model_dir)
+
+    # Train for a few steps, then validate final checkpoint.
+    num_steps = 5
+    dnn_classifier.train(
+        input_fn=lambda: ({'age': [[10.]]}, [[2]]), steps=num_steps)
+    _assert_checkpoint(
+        self, num_steps, input_units=1, hidden_units=hidden_units,
+        output_units=n_classes, model_dir=self._model_dir)
+
+  def test_from_scratch_validate_summary(self):
+    hidden_units = (2, 2)
+    mock_optimizer = _mock_optimizer(self, hidden_units=hidden_units)
+    dnn_classifier = dnn.DNNClassifier(
+        hidden_units=hidden_units,
+        feature_columns=(feature_column.numeric_column('age'),),
+        optimizer=mock_optimizer,
+        model_dir=self._model_dir)
+    self.assertEqual(0, mock_optimizer.minimize.call_count)
+
+    # Train for a few steps, then validate optimizer, summaries, and
+    # checkpoint.
+    num_steps = 5
+    summary_hook = _SummaryHook()
+    dnn_classifier.train(
+        input_fn=lambda: ({'age': [[10.]]}, [[1]]), steps=num_steps,
+        hooks=(summary_hook,))
+    self.assertEqual(1, mock_optimizer.minimize.call_count)
+    _assert_checkpoint(
+        self, num_steps, input_units=1, hidden_units=hidden_units,
+        output_units=1, model_dir=self._model_dir)
+    summaries = summary_hook.summaries()
+    self.assertEqual(num_steps, len(summaries))
+    for summary in summaries:
+      summary_keys = [v.tag for v in summary.value]
+      self.assertIn(metric_keys.MetricKeys.LOSS, summary_keys)
+      self.assertIn(metric_keys.MetricKeys.LOSS_MEAN, summary_keys)
+
+  def test_binary_classification(self):
+    base_global_step = 100
+    hidden_units = (2, 2)
+    _create_checkpoint((
+        ([[.6, .5]], [.1, -.1]),
+        ([[1., .8], [-.8, -1.]], [.2, -.2]),
+        ([[-1.], [1.]], [.3]),
+    ), base_global_step, self._model_dir)
+
+    # Create DNNClassifier with mock optimizer.
+    # logits = [-2.08] => probabilities = [0.889, 0.111]
+    # loss = -1. * log(0.111) = 2.19772100
+    expected_loss = 2.19772100
+    mock_optimizer = _mock_optimizer(
+        self, hidden_units=hidden_units, expected_loss=expected_loss)
+    dnn_classifier = dnn.DNNClassifier(
+        hidden_units=hidden_units,
+        feature_columns=(feature_column.numeric_column('age'),),
+        optimizer=mock_optimizer,
+        model_dir=self._model_dir)
+    self.assertEqual(0, mock_optimizer.minimize.call_count)
+
+    # Train for a few steps, then validate optimizer, summaries, and
+    # checkpoint.
+    num_steps = 5
+    summary_hook = _SummaryHook()
+    dnn_classifier.train(
+        input_fn=lambda: ({'age': [[10.]]}, [[1]]), steps=num_steps,
+        hooks=(summary_hook,))
+    self.assertEqual(1, mock_optimizer.minimize.call_count)
+    summaries = summary_hook.summaries()
+    self.assertEqual(num_steps, len(summaries))
+    for summary in summaries:
+      _assert_simple_summary(
+          self,
+          {
+              metric_keys.MetricKeys.LOSS_MEAN: expected_loss,
+              'dnn/dnn/hiddenlayer_0_fraction_of_zero_values': 0.,
+              'dnn/dnn/hiddenlayer_1_fraction_of_zero_values': .5,
+              'dnn/dnn/logits_fraction_of_zero_values': 0.,
+              metric_keys.MetricKeys.LOSS: expected_loss,
+          },
+          summary)
+    _assert_checkpoint(
+        self, base_global_step + num_steps, input_units=1,
+        hidden_units=hidden_units, output_units=1, model_dir=self._model_dir)
+
+  def test_multi_class(self):
+    n_classes = 3
+    base_global_step = 100
+    hidden_units = (2, 2)
+    _create_checkpoint((
+        ([[.6, .5]], [.1, -.1]),
+        ([[1., .8], [-.8, -1.]], [.2, -.2]),
+        ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3, .0]),
+    ), base_global_step, self._model_dir)
+
+    # Create DNNClassifier with mock optimizer.
+    # logits = [-2.08, 2.08, 1.19] => probabilities = [0.0109, 0.7011, 0.2879]
+    # loss = -1. * log(0.7011) = 0.35505795
+    expected_loss = 0.35505795
+    mock_optimizer = _mock_optimizer(
+        self, hidden_units=hidden_units, expected_loss=expected_loss)
+    dnn_classifier = dnn.DNNClassifier(
+        n_classes=n_classes,
+        hidden_units=hidden_units,
+        feature_columns=(feature_column.numeric_column('age'),),
+        optimizer=mock_optimizer,
+        model_dir=self._model_dir)
+    self.assertEqual(0, mock_optimizer.minimize.call_count)
+
+    # Train for a few steps, then validate optimizer, summaries, and
+    # checkpoint.
+    num_steps = 5
+    summary_hook = _SummaryHook()
+    dnn_classifier.train(
+        input_fn=lambda: ({'age': [[10.]]}, [[1]]), steps=num_steps,
+        hooks=(summary_hook,))
+    self.assertEqual(1, mock_optimizer.minimize.call_count)
+    summaries = summary_hook.summaries()
+    self.assertEqual(num_steps, len(summaries))
+    for summary in summaries:
+      _assert_simple_summary(
+          self,
+          {
+              metric_keys.MetricKeys.LOSS_MEAN: expected_loss,
+              'dnn/dnn/hiddenlayer_0_fraction_of_zero_values': 0.,
+              'dnn/dnn/hiddenlayer_1_fraction_of_zero_values': .5,
+              'dnn/dnn/logits_fraction_of_zero_values': 0.,
+              metric_keys.MetricKeys.LOSS: expected_loss,
+          },
+          summary)
+    _assert_checkpoint(
+        self, base_global_step + num_steps, input_units=1,
+        hidden_units=hidden_units, output_units=n_classes,
+        model_dir=self._model_dir)
+
 
 if __name__ == '__main__':
   test.main()
