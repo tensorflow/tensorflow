@@ -591,7 +591,7 @@ class StepperAssignAddTest(test_util.TensorFlowTestCase):
     with NodeStepper(self.sess, [self.q, self.v_add]) as stepper:
       self.assertIsNone(stepper.last_updated())
 
-  def testContToUpdateInvalidatesDumpedIntermedates(self):
+  def testContToUpdateInvalidatesDumpedIntermediates(self):
     with NodeStepper(self.sess, [self.q, self.v_add]) as stepper:
       self.assertAllClose(400.0, stepper.cont("q:0"))
       self.assertItemsEqual(["v/read:0", "p:0"],
