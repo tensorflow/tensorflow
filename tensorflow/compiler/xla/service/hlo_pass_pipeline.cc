@@ -40,11 +40,19 @@ void DumpModule(const Compiler::HloDumper& dumper_, const HloModule& module,
 }  // namespace
 
 StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
+  run_called_ = true;
+
+  VLOG(1) << "Running HLO pass pipeline " << name();
+
   legacy_flags::HloPassPipelineFlags* flags =
       legacy_flags::GetHloPassPipelineFlags();
   std::vector<string> tmp =
       tensorflow::str_util::Split(flags->xla_disable_hlo_passes, ',');
   tensorflow::gtl::FlatSet<string> disabled_passes(tmp.begin(), tmp.end());
+  if (!disabled_passes.empty()) {
+    VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
+            << tensorflow::str_util::Join(disabled_passes, ", ");
+  }
 
   auto run_invariant_checkers = [this, module]() -> Status {
     for (auto& invariant_checker : invariant_checkers_) {
@@ -60,8 +68,12 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   for (auto& pass : passes_) {
     if (!disabled_passes.empty() &&
         disabled_passes.count(pass->name().ToString()) > 0) {
+      VLOG(1) << "  Skipping HLO pass " << pass->name()
+              << ", disabled by --xla_disable_hlo_passes";
       continue;
     }
+
+    VLOG(1) << "  HLO pass " << pass->name();
 
     // Emit label containing: "after foo-pass, before bar-pass".
     message.clear();

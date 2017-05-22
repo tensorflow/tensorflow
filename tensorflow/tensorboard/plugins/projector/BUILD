@@ -7,17 +7,15 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 
 py_library(
     name = "projector_plugin",
     srcs = ["projector_plugin.py"],
     srcs_version = "PY2AND3",
-    visibility = [
-        "//learning/vis/projector:__subpackages__",
-        "//tensorflow:internal",
-    ],
+    visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/contrib/tensorboard:protos_all_py",
+        ":protos_all_py",
         "//tensorflow/python:errors",
         "//tensorflow/python:image_ops",
         "//tensorflow/python:lib",
@@ -52,6 +50,12 @@ py_test(
         "//third_party/py/numpy",
         "@org_pocoo_werkzeug//:werkzeug",
     ],
+)
+
+tf_proto_library(
+    name = "protos_all",
+    srcs = glob(["*.proto"]),
+    visibility = ["//visibility:public"],
 )
 
 filegroup(

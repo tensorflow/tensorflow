@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_DEBUG_NODE_INSERTER_H_
 
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/debugger_state_interface.h"
@@ -28,35 +27,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/debug.pb.h"
 
 namespace tensorflow {
-
-class DebuggerState : public DebuggerStateInterface {
- public:
-  DebuggerState(const DebugOptions& debug_options);
-  virtual ~DebuggerState();
-
-  // Returns a summary string for RepeatedPtrFields of DebugTensorWatches.
-  const string SummarizeDebugTensorWatches() override;
-
-  // Insert special-purpose debug nodes to graph. See the documentation of
-  // DebugNodeInserter::InsertNodes() for details.
-  Status DecorateGraphForDebug(Graph* graph, Device* device) override;
-
-  const protobuf::RepeatedPtrField<DebugTensorWatch>& watches;
-
-  // Publish metadata about the debugged Session::Run() call.
-  //
-  // See the doc string of DebuggerStateInterface::PublishDebugMetadata() for
-  // details.
-  Status PublishDebugMetadata(const int64 global_step,
-                              const int64 session_run_count,
-                              const int64 executor_step_count,
-                              const std::vector<string>& input_names,
-                              const std::vector<string>& output_names,
-                              const std::vector<string>& target_names);
-
- private:
-  std::unordered_set<string> debug_urls_;
-};
 
 class DebugNodeInserter {
  public:
@@ -121,11 +91,11 @@ class DebugNodeInserter {
                                        const string& debug_op_name);
 
  private:
-  static Status CreateCopyNode(Graph* graph, const DeviceType device_type,
-                               const bool is_host_memory,
-                               const string& src_node_name,
-                               const int src_output, const DataType src_dt,
-                               const string& tensor_name, Node** copy_node);
+  static Status CreateCopyNode(
+      Graph* graph, const DeviceType device_type, const bool is_host_memory,
+      const string& src_node_name, const int src_output, const DataType src_dt,
+      const string& tensor_name, const std::vector<string>& debug_ops,
+      const std::vector<string>& debug_urls, Node** copy_node);
 
   // Parse the debug_op_name string to extract proper op name and attributes.
   // debug_op_name can be the proper op name only, e.g., "DebugNumericSummary".

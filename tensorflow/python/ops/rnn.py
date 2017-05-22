@@ -33,8 +33,39 @@ from tensorflow.python.util import nest
 
 
 # pylint: disable=protected-access
-_state_size_with_prefix = rnn_cell_impl._state_size_with_prefix
+_concat = rnn_cell_impl._concat
+_like_rnncell = rnn_cell_impl._like_rnncell
 # pylint: enable=protected-access
+
+
+def _transpose_batch_time(x):
+  """Transpose the batch and time dimensions of a Tensor.
+
+  Retains as much of the static shape information as possible.
+
+  Args:
+    x: A tensor of rank 2 or higher.
+
+  Returns:
+    x transposed along the first two dimensions.
+
+  Raises:
+    ValueError: if `x` is rank 1 or lower.
+  """
+  x_static_shape = x.get_shape()
+  if x_static_shape.ndims is not None and x_static_shape.ndims < 2:
+    raise ValueError(
+        "Expected input tensor %s to have rank at least 2, but saw shape: %s" %
+        (x, x_static_shape))
+  x_rank = array_ops.rank(x)
+  x_t = array_ops.transpose(
+      x, array_ops.concat(
+          ([1, 0], math_ops.range(2, x_rank)), axis=0))
+  x_t.set_shape(
+      tensor_shape.TensorShape([
+          x_static_shape[1].value, x_static_shape[0].value
+      ]).concatenate(x_static_shape[2:]))
+  return x_t
 
 
 def _infer_state_dtype(explicit_dtype, state):
@@ -65,15 +96,6 @@ def _infer_state_dtype(explicit_dtype, state):
     return inferred_dtypes[0]
   else:
     return state.dtype
-
-
-def _on_device(fn, device):
-  """Build the subgraph defined by lambda `fn` on `device` if it's not None."""
-  if device:
-    with ops.device(device):
-      return fn()
-  else:
-    return fn()
 
 
 # pylint: disable=unused-argument
@@ -137,9 +159,8 @@ def _rnn_step(
 
   def _copy_one_through(output, new_output):
     copy_cond = (time >= sequence_length)
-    return _on_device(
-        lambda: array_ops.where(copy_cond, output, new_output),
-        device=new_output.op.device)
+    with ops.colocate_with(new_output):
+      return array_ops.where(copy_cond, output, new_output)
 
   def _copy_some_through(flat_new_output, flat_new_state):
     # Use broadcasting select to determine which values should get
@@ -258,11 +279,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
                               swap_memory=False, time_major=False, scope=None):
   """Creates a dynamic version of bidirectional recurrent neural network.
 
-  Similar to the unidirectional case above (rnn) but takes input and builds
-  independent forward and backward RNNs. The input_size of forward and
-  backward cell must match. The initial state for both directions is zero by
-  default (but can be set optionally) and no intermediate states are ever
-  returned -- the network is fully unrolled for the given (passed in)
+  Takes input and builds independent forward and backward RNNs. The input_size
+  of forward and backward cell must match. The initial state for both directions
+  is zero by default (but can be set optionally) and no intermediate states are
+  ever returned -- the network is fully unrolled for the given (passed in)
   length(s) of the sequence(s) or completely unrolled if length(s) is not
   given.
 
@@ -332,12 +352,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell_fw, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell_fw):
     raise TypeError("cell_fw must be an instance of RNNCell")
-  if not isinstance(cell_bw, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell_bw):
     raise TypeError("cell_bw must be an instance of RNNCell")
-  # pylint: enable=protected-access
 
   with vs.variable_scope(scope or "bidirectional_rnn"):
     # Forward direction
@@ -389,12 +407,10 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
                 time_major=False, scope=None):
   """Creates a recurrent neural network specified by RNNCell `cell`.
 
-  This function is functionally identical to the function `rnn` above, but
-  performs fully dynamic unrolling of `inputs`.
+  Performs fully dynamic unrolling of `inputs`.
 
-  Unlike `rnn`, the input `inputs` is not a Python list of `Tensors`, one for
-  each frame.  Instead, `inputs` may be a single `Tensor` where
-  the maximum time is either the first or second dimension (see the parameter
+  `Inputs` may be a single `Tensor` where the maximum time is either the first
+  or second dimension (see the parameter
   `time_major`).  Alternatively, it may be a (possibly nested) tuple of
   Tensors, each of them having matching batch and time dimensions.
   The corresponding output is either a single `Tensor` having the same number
@@ -403,7 +419,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
   The parameter `sequence_length` is optional and is used to copy-through state
   and zero-out outputs when past a batch element's sequence length. So it's more
-  for correctness than performance, unlike in rnn().
+  for correctness than performance.
 
   Args:
     cell: An instance of RNNCell.
@@ -480,10 +496,8 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     ValueError: If inputs is None or an empty list.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
-  # pylint: enable=protected-access
 
   # By default, time_major==False and inputs are batch-major: shaped
   #   [batch, time, depth]
@@ -492,8 +506,8 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
   if not time_major:
     # (B,T,D) => (T,B,D)
-    flat_input = tuple(array_ops.transpose(input_, [1, 0, 2])
-                       for input_ in flat_input)
+    flat_input = [ops.convert_to_tensor(input_) for input_ in flat_input]
+    flat_input = tuple(_transpose_batch_time(input_) for input_ in flat_input)
 
   parallel_iterations = parallel_iterations or 32
   if sequence_length is not None:
@@ -556,11 +570,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     # to shape [batch, time, depth]
     if not time_major:
       # (T,B,D) => (B,T,D)
-      flat_output = nest.flatten(outputs)
-      flat_output = [array_ops.transpose(output, [1, 0, 2])
-                     for output in flat_output]
-      outputs = nest.pack_sequence_as(
-          structure=outputs, flat_sequence=flat_output)
+      outputs = nest.map_structure(_transpose_batch_time, outputs)
 
     return (outputs, final_state)
 
@@ -637,7 +647,7 @@ def _dynamic_rnn_loop(cell,
 
   # Prepare dynamic conditional copying of state & output
   def _create_zero_arrays(size):
-    size = _state_size_with_prefix(size, prefix=[batch_size])
+    size = _concat(batch_size, size)
     return array_ops.zeros(
         array_ops.stack(size), _infer_state_dtype(dtype, state))
 
@@ -723,8 +733,8 @@ def _dynamic_rnn_loop(cell,
 
   # Restore some shape information
   for output, output_size in zip(final_outputs, flat_output_size):
-    shape = _state_size_with_prefix(
-        output_size, prefix=[const_time_steps, const_batch_size])
+    shape = _concat(
+        [const_time_steps, const_batch_size], output_size, static=True)
     output.set_shape(shape)
 
   final_outputs = nest.pack_sequence_as(
@@ -898,10 +908,8 @@ def raw_rnn(cell, loop_fn,
       a `callable`.
   """
 
-  # pylint: disable=protected-access
-  if not isinstance(cell, rnn_cell_impl._RNNCell):
+  if not _like_rnncell(cell):
     raise TypeError("cell must be an instance of RNNCell")
-  # pylint: enable=protected-access
   if not callable(loop_fn):
     raise TypeError("loop_fn must be a callable")
 
@@ -958,9 +966,7 @@ def raw_rnn(cell, loop_fn,
     emit_ta = nest.pack_sequence_as(structure=emit_structure,
                                     flat_sequence=flat_emit_ta)
     flat_zero_emit = [
-        array_ops.zeros(
-            _state_size_with_prefix(size_i, prefix=[batch_size]),
-            dtype_i)
+        array_ops.zeros(_concat(batch_size, size_i), dtype_i)
         for size_i, dtype_i in zip(flat_emit_size, flat_emit_dtypes)]
     zero_emit = nest.pack_sequence_as(structure=emit_structure,
                                       flat_sequence=flat_zero_emit)
@@ -1003,33 +1009,18 @@ def raw_rnn(cell, loop_fn,
 
       def _copy_some_through(current, candidate):
         """Copy some tensors through via array_ops.where."""
-        current_flat = nest.flatten(current)
-        candidate_flat = nest.flatten(candidate)
-        # pylint: disable=g-long-lambda,cell-var-from-loop
-        result_flat = [
-            _on_device(
-                lambda: array_ops.where(
-                    elements_finished, current_i, candidate_i),
-                device=candidate_i.op.device)
-            for (current_i, candidate_i) in zip(current_flat, candidate_flat)]
-        # pylint: enable=g-long-lambda,cell-var-from-loop
-        return nest.pack_sequence_as(
-            structure=current, flat_sequence=result_flat)
+        def copy_fn(cur_i, cand_i):
+          with ops.colocate_with(cand_i):
+            return array_ops.where(elements_finished, cur_i, cand_i)
+        return nest.map_structure(copy_fn, current, candidate)
 
       emit_output = _copy_some_through(zero_emit, emit_output)
       next_state = _copy_some_through(state, next_state)
 
-      emit_output_flat = nest.flatten(emit_output)
-      emit_ta_flat = nest.flatten(emit_ta)
+      emit_ta = nest.map_structure(
+          lambda ta, emit: ta.write(time, emit), emit_ta, emit_output)
 
       elements_finished = math_ops.logical_or(elements_finished, next_finished)
-
-      emit_ta_flat = [
-          ta.write(time, emit)
-          for (ta, emit) in zip(emit_ta_flat, emit_output_flat)]
-
-      emit_ta = nest.pack_sequence_as(
-          structure=emit_structure, flat_sequence=emit_ta_flat)
 
       return (next_time, elements_finished, next_input,
               emit_ta, next_state, loop_state)

@@ -12,16 +12,6 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-filegroup(
-    name = "android_srcs",
-    srcs = glob(
-        [
-            "utils.*",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 cc_library(
     name = "utils",
     srcs = [

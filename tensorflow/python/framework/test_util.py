@@ -29,6 +29,12 @@ import threading
 import numpy as np
 import six
 
+try:
+  import portpicker  # pylint: disable=g-import-not-at-top
+except ImportError as _portpicker_import_error:
+  portpicker = None
+
+# pylint: disable=g-import-not-at-top
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
@@ -45,6 +51,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util.protobuf import compare
 
@@ -115,6 +122,36 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
                                                 expected.SerializeToString())
   if diff:
     raise AssertionError(compat.as_str(diff))
+
+
+def assert_meta_graph_protos_equal(tester, a, b):
+  """Compares MetaGraphDefs `a` and `b` in unit test class `tester`."""
+  # Carefully check the collection_defs
+  tester.assertEqual(set(a.collection_def), set(b.collection_def))
+  collection_keys = a.collection_def.keys()
+  for k in collection_keys:
+    a_value = a.collection_def[k]
+    b_value = b.collection_def[k]
+    proto_type = ops.get_collection_proto_type(k)
+    if proto_type:
+      a_proto = proto_type()
+      b_proto = proto_type()
+      # Number of entries in the collections is the same
+      tester.assertEqual(len(a_value.bytes_list.value),
+                         len(b_value.bytes_list.value))
+      for (a_value_item, b_value_item) in zip(
+          a_value.bytes_list.value,
+          b_value.bytes_list.value):
+        a_proto.ParseFromString(a_value_item)
+        b_proto.ParseFromString(b_value_item)
+        tester.assertProtoEquals(a_proto, b_proto)
+    else:
+      tester.assertEquals(a_value, b_value)
+  # Compared the fields directly, remove their raw values from the
+  # proto comparison below.
+  a.ClearField("collection_def")
+  b.ClearField("collection_def")
+  tester.assertProtoEquals(a, b)
 
 
 # Matches attributes named via _SHARDED_SUFFIX in
@@ -220,7 +257,7 @@ class TensorFlowTestCase(googletest.TestCase):
     """Returns a unique temporary directory for the test to use.
 
     If you call this method multiple times during in a test, it will return the
-    same folder. However, accross different runs the directories will be
+    same folder. However, across different runs the directories will be
     different. This will ensure that across different runs tests will not be
     able to pollute each others environment.
     If you need multiple unique directories within a single test, you should
@@ -534,15 +571,7 @@ class TensorFlowTestCase(googletest.TestCase):
       a = np.array(a)
     return a
 
-  def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
-    """Asserts that two numpy arrays have near values.
-
-    Args:
-      a: a numpy ndarray or anything can be converted to one.
-      b: a numpy ndarray or anything can be converted to one.
-      rtol: relative tolerance.
-      atol: absolute tolerance.
-    """
+  def _assertArrayLikeAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     self.assertEqual(a.shape, b.shape, "Shape mismatch: expected %s, got %s." %
@@ -570,7 +599,37 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
       print("dtype = %s, shape = %s" % (a.dtype, a.shape))
-      np.testing.assert_allclose(a, b, rtol=rtol, atol=atol)
+      np.testing.assert_allclose(a, b, rtol=rtol, atol=atol, err_msg=msg)
+
+  def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
+    """Asserts that two numpy arrays, or dicts of same, have near values.
+
+    This does not support nested dicts.
+
+    Args:
+      a: A numpy ndarray (or anything can be converted to one), or dict of same.
+        Must be a dict iff `b` is a dict.
+      b: A numpy ndarray (or anything can be converted to one), or dict of same.
+        Must be a dict iff `a` is a dict.
+      rtol: relative tolerance.
+      atol: absolute tolerance.
+
+    Raises:
+      ValueError: if only one of `a` and `b` is a dict.
+    """
+    is_a_dict = isinstance(a, dict)
+    if is_a_dict != isinstance(b, dict):
+      raise ValueError("Can't compare dict to non-dict, %s vs %s." % (a, b))
+    if is_a_dict:
+      self.assertItemsEqual(
+          a.keys(), b.keys(),
+          msg="mismatched keys, expected %s, got %s" % (a.keys(), b.keys()))
+      for k in a:
+        self._assertArrayLikeAllClose(
+            a[k], b[k], rtol=rtol, atol=atol,
+            msg="%s: expected %s, got %s." % (k, a, b))
+    else:
+      self._assertArrayLikeAllClose(a, b, rtol=rtol, atol=atol)
 
   def assertAllCloseAccordingToType(self,
                                     a,
@@ -724,3 +783,62 @@ class TensorFlowTestCase(googletest.TestCase):
     assertItemsEqual = googletest.TestCase.assertCountEqual
 
     # pylint: enable=invalid-name
+
+
+def create_local_cluster(num_workers, num_ps, protocol="grpc"):
+  """Create and start local servers and return the associated `Server` objects.
+
+  Example:
+  ```python
+  workers, _ = tf.test.create_local_cluster(num_workers=2, num_ps=2)
+
+  worker_sessions = [tf.Session(w.target) for w in workers]
+
+  with tf.device("/job:ps/task:0"):
+    ...
+  with tf.device("/job:ps/task:1"):
+    ...
+  with tf.device("/job:worker/task:0"):
+    ...
+  with tf.device("/job:worker/task:1"):
+    ...
+
+  worker_sessions[0].run(...)
+  ```
+
+  Args:
+    num_workers: Number of worker servers to start.
+    num_ps: Number of PS servers to start.
+    protocol: Communication protocol.  Allowed values are documented in
+      the documentation of `tf.train.Server`.
+
+  Returns:
+    A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list
+    of `num_workers` objects of type `tf.train.Server` (all running locally);
+    and `ps_servers` is a list of `num_ps` objects of similar type.
+
+  Raises:
+    ImportError: if portpicker module was not found at load time
+  """
+  if not portpicker:
+    raise _portpicker_import_error
+  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
+  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
+  cluster_dict = {
+      "worker": ["localhost:%s" % port for port in worker_ports],
+      "ps": ["localhost:%s" % port for port in ps_ports]
+  }
+  cs = server_lib.ClusterSpec(cluster_dict)
+
+  workers = [
+      server_lib.Server(
+          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
+      for ix in range(num_workers)
+  ]
+  ps_servers = [
+      server_lib.Server(
+          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
+      for ix in range(num_ps)
+  ]
+
+  return workers, ps_servers

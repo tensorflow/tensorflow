@@ -53,8 +53,7 @@ namespace tensorflow {
 
 class Device : public DeviceBase {
  public:
-  Device(Env* env, const DeviceAttributes& device_attributes,
-         Allocator* device_allocator);
+  Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
   // Full name of this device (see top comment).

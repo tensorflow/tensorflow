@@ -14,19 +14,14 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-filegroup(
-    name = "android_srcs",
-    srcs = [
-        "devices.cc",
-        "devices.h",
-        "grappler_item.h",
-        "utils.cc",
-        "utils.h",
-        "//tensorflow/core/grappler/clusters:android_srcs",
-        "//tensorflow/core/grappler/inputs:android_srcs",
-        "//tensorflow/core/grappler/optimizers:android_srcs",
+cc_library(
+    name = "op_types",
+    srcs = ["op_types.cc"],
+    hdrs = ["op_types.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:protos_all_cc",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
 )
 
 cc_library(
@@ -73,6 +68,7 @@ cc_library(
     hdrs = ["grappler_item.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_types",
         ":utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
@@ -88,7 +84,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":grappler_item",
+        ":op_types",
         ":utils",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",

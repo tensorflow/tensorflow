@@ -210,8 +210,8 @@ Status SymbolicGradientBuilder::Initialize() {
 
   {
     // Initialize backprop with `grad_inputs_`.
-    const int num_dy = grad_inputs_.size();
-    for (int i = 0; i < num_dy; ++i) {
+    const size_t num_dy = grad_inputs_.size();
+    for (size_t i = 0; i < num_dy; ++i) {
       TF_RETURN_IF_ERROR(BackpropAlongEdge(grad_inputs_[i], outputs_[i]));
     }
   }
@@ -308,7 +308,7 @@ Status SymbolicGradientBuilder::AddGradients() {
       continue;
     }
 
-    const int num_no_grad = no_grad_dy_indices.size();
+    const size_t num_no_grad = no_grad_dy_indices.size();
     if (IsPrimitiveOpWithNoGrad(n->type_string()) || num_no_grad == num_y) {
       // No grad defined for this op, or all outputs returned 'NoGradient':
       // Backprop 'NoGradient' along the in edges.
@@ -365,6 +365,19 @@ Status AddSymbolicGradients(const Scope& scope,
   SymbolicGradientBuilder builder(scope, ops::GradOpRegistry::Global(), outputs,
                                   inputs, grad_inputs, grad_outputs);
   return builder.AddGradients();
+}
+
+Status AddSymbolicGradients(const Scope& scope,
+                            const std::vector<Output>& outputs,
+                            const std::vector<Output>& inputs,
+                            std::vector<Output>* grad_outputs) {
+  std::vector<Output> grad_inputs;
+  grad_inputs.reserve(outputs.size());
+  for (const Output& output : outputs) {
+    grad_inputs.emplace_back(ops::OnesLike(scope, output));
+  }
+  return AddSymbolicGradients(scope, outputs, inputs, grad_inputs,
+                              grad_outputs);
 }
 
 Output NoGradient() { return SymbolicGradientBuilder::NoGradient(); }

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <string.h>
 #include <sys/types.h>
+#include <zlib.h>
 #include <string>
 #include <utility>
 #include <vector>
@@ -152,7 +153,10 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
   if (components != NULL) {
     switch (context.color_type) {
       case PNG_COLOR_TYPE_PALETTE:
-        *components = (context.info_ptr->valid & PNG_INFO_tRNS) ? 4 : 3;
+        *components =
+            (png_get_valid(context.png_ptr, context.info_ptr, PNG_INFO_tRNS))
+                ? 4
+                : 3;
         break;
       case PNG_COLOR_TYPE_GRAY:
         *components = 1;
@@ -176,8 +180,11 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
   }
   if (metadata != NULL) {
     metadata->clear();
-    for (int i = 0; i < context.info_ptr->num_text; i++) {
-      const png_text& text = context.info_ptr->text[i];
+    png_textp text_ptr = NULL;
+    int num_text = 0;
+    png_get_text(context.png_ptr, context.info_ptr, &text_ptr, &num_text);
+    for (int i = 0; i < num_text; i++) {
+      const png_text& text = text_ptr[i];
       metadata->push_back(std::make_pair(text.key, text.text));
     }
   }
@@ -228,9 +235,10 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
     return false;
   }
   if (context->channels == 0) {  // Autodetect number of channels
-    context->channels = context->info_ptr->channels;
+    context->channels = png_get_channels(context->png_ptr, context->info_ptr);
   }
-  const bool has_tRNS = (context->info_ptr->valid & PNG_INFO_tRNS) != 0;
+  const bool has_tRNS =
+      (png_get_valid(context->png_ptr, context->info_ptr, PNG_INFO_tRNS)) != 0;
   const bool has_alpha = (context->color_type & PNG_COLOR_MASK_ALPHA) != 0;
   if ((context->channels & 1) == 0) {  // We desire alpha
     if (has_alpha) {                   // There is alpha
@@ -268,7 +276,9 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
   const bool want_gray = (context->channels < 3);
   const bool is_gray = !(context->color_type & PNG_COLOR_MASK_COLOR);
   if (is_gray) {  // upconvert gray to 8-bit if needed.
-    if (context->bit_depth < 8) png_set_gray_1_2_4_to_8(context->png_ptr);
+    if (context->bit_depth < 8) {
+      png_set_expand_gray_1_2_4_to_8(context->png_ptr);
+    }
   }
   if (want_gray) {  // output is grayscale
     if (!is_gray)
@@ -301,7 +311,9 @@ bool CommonFinishDecode(png_bytep data, int row_bytes, DecodeContext* context) {
     }
   }
 
-  context->info_ptr->valid |= PNG_INFO_IDAT;
+  // Marks iDAT as valid.
+  png_set_rows(context->png_ptr, context->info_ptr,
+               png_get_rows(context->png_ptr, context->info_ptr));
   png_read_end(context->png_ptr, context->info_ptr);
 
   // Clean up.

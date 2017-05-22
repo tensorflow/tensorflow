@@ -35,6 +35,15 @@ struct ApplyGradientDescent {
 };
 
 template <typename Device, typename T>
+struct ApplyDelayCompensatedGradientDescent {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::ConstScalar alpha,
+                  typename TTypes<T>::ConstFlat delta,
+                  typename TTypes<T>::ConstScalar lambda,
+                  typename TTypes<T>::Flat shadow);
+};
+
+template <typename Device, typename T>
 struct ApplyAdadelta {
   void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat accum,
@@ -123,7 +132,7 @@ struct ApplyAdam {
                   typename TTypes<T>::ConstScalar beta1,
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
-                  typename TTypes<T>::ConstFlat grad);
+                  typename TTypes<T>::ConstFlat grad, bool use_nesterov);
 };
 
 template <typename Device, typename T>
@@ -148,7 +157,6 @@ struct ApplyCenteredRMSProp {
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad);
 };
-
 }  // end namespace functor
 }  // end namespace tensorflow
 

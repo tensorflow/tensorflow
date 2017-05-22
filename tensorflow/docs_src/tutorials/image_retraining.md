@@ -14,11 +14,16 @@ laptop, without requiring a GPU. This tutorial will show you how to run the
 example script on your own images, and will explain some of the options you have
 to help control the training process.
 
+Note: This version of the tutorial mainly uses bazel. A bazel free version is
+also available
+[as a codelab](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets/#0).
+
 [TOC]
 
 ## Training on Flowers
 
-![Daisies by Kelly Sikkema](../images/daisies.jpg)
+![Daisies by Kelly Sikkema](https://www.tensorflow.org/images/daisies.jpg)
+
 [Image by Kelly Sikkema](https://www.flickr.com/photos/95072945@N05/9922116524/)
 
 Before you start any training, you'll need a set of images to teach the network
@@ -148,10 +153,10 @@ Here's an example of how to build and run the label_image example with your
 retrained graphs:
 
 ```sh
-bazel build tensorflow/examples/label_image:label_image && \
-bazel-bin/tensorflow/examples/label_image/label_image \
+bazel build tensorflow/examples/image_retraining:label_image && \
+bazel-bin/tensorflow/examples/image_retraining/label_image \
 --graph=/tmp/output_graph.pb --labels=/tmp/output_labels.txt \
---output_layer=final_result \
+--output_layer=final_result:0 \
 --image=$HOME/flower_photos/daisy/21652746_cc379e0eea_m.jpg
 ```
 
@@ -160,7 +165,10 @@ You should see a list of flower labels, in most cases with daisy on top
 `--image` parameter with your own images to try those out, and use the C++ code
 as a template to integrate with your own applications.
 
-If you'd like to use the retrained model in a Python program [this example from @eldor4do shows what you'll need to do](https://github.com/eldor4do/TensorFlow-Examples/blob/master/retraining-example.py).
+If you'd like to use the retrained model in your own Python program, then the
+above
+[`label_image` script](https://www.tensorflow.org/code/tensorflow/examples/image_retraining/label_image.py)
+is a reasonable starting point.
 
 ## Training on Your Own Categories
 
@@ -174,7 +182,7 @@ you do that and pass the root folder of the subdirectories as the argument to
 Here's what the folder structure of the flowers archive looks like, to give you
 and example of the kind of layout the script is looking for:
 
-![Folder Structure](../images/folder_structure.png)
+![Folder Structure](https://www.tensorflow.org/images/folder_structure.png)
 
 In practice it may take some work to get the accuracy you want. I'll try to
 guide you through some of the common problems you might encounter below.
@@ -260,7 +268,7 @@ them destroys their meaning.
 
 There are several other parameters you can try adjusting to see if they help
 your results. The `--learning_rate` controls the magnitude of the updates to the
-final layer during training. Intuitively if this is smaller then the learning
+final layer during training. Intuitively if this is smaller than the learning
 will take longer, but it can end up helping the overall precision. That's not
 always the case though, so you need to experiment carefully to see what works
 for your case. The `--train_batch_size` controls how many images are examined

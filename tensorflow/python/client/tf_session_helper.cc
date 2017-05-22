@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstring>
 
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
@@ -30,20 +31,8 @@ namespace tensorflow {
 
 namespace {
 
-// Container types for the various temporary values used internally in
-// the wrapper.
-
-// A TF_TensorVector is a vector of borrowed pointers to TF_Tensors.
-typedef gtl::InlinedVector<TF_Tensor*, 8> TF_TensorVector;
-
-// Safe containers for (an) owned TF_Tensor(s). On destruction, the
-// tensor will be deleted by TF_DeleteTensor.
-typedef std::unique_ptr<TF_Tensor, decltype(&TF_DeleteTensor)>
-    Safe_TF_TensorPtr;
-typedef std::vector<Safe_TF_TensorPtr> Safe_TF_TensorVector;
-Safe_TF_TensorPtr make_safe(TF_Tensor* tensor) {
-  return Safe_TF_TensorPtr(tensor, TF_DeleteTensor);
-}
+static const char* kFeedDictErrorMsg =
+    "feed_dict must be a dictionary mapping strings to NumPy arrays.";
 
 Status PyArrayDescr_to_TF_DataType(PyArray_Descr* descr,
                                    TF_DataType* out_tf_datatype) {
@@ -138,78 +127,6 @@ Status PyArray_TYPE_to_TF_DataType(PyArrayObject* array,
     default:
       // TODO(mrry): Support these.
       return errors::Internal("Unsupported feed type");
-  }
-  return Status::OK();
-}
-
-Status TF_DataType_to_PyArray_TYPE(TF_DataType tf_datatype,
-                                   int* out_pyarray_type) {
-  switch (tf_datatype) {
-    case TF_HALF:
-      *out_pyarray_type = NPY_FLOAT16;
-      break;
-    case TF_FLOAT:
-      *out_pyarray_type = NPY_FLOAT32;
-      break;
-    case TF_DOUBLE:
-      *out_pyarray_type = NPY_FLOAT64;
-      break;
-    case TF_INT32:
-      *out_pyarray_type = NPY_INT32;
-      break;
-    case TF_UINT8:
-      *out_pyarray_type = NPY_UINT8;
-      break;
-    case TF_UINT16:
-      *out_pyarray_type = NPY_UINT16;
-      break;
-    case TF_INT8:
-      *out_pyarray_type = NPY_INT8;
-      break;
-    case TF_INT16:
-      *out_pyarray_type = NPY_INT16;
-      break;
-    case TF_INT64:
-      *out_pyarray_type = NPY_INT64;
-      break;
-    case TF_BOOL:
-      *out_pyarray_type = NPY_BOOL;
-      break;
-    case TF_COMPLEX64:
-      *out_pyarray_type = NPY_COMPLEX64;
-      break;
-    case TF_COMPLEX128:
-      *out_pyarray_type = NPY_COMPLEX128;
-      break;
-    case TF_STRING:
-      *out_pyarray_type = NPY_OBJECT;
-      break;
-    case TF_RESOURCE:
-      *out_pyarray_type = NPY_VOID;
-      break;
-    // TODO(keveman): These should be changed to NPY_VOID, and the type used for
-    // the resulting numpy array should be the custom struct types that we
-    // expect for quantized types.
-    case TF_QINT8:
-      *out_pyarray_type = NPY_INT8;
-      break;
-    case TF_QUINT8:
-      *out_pyarray_type = NPY_UINT8;
-      break;
-    case TF_QINT16:
-      *out_pyarray_type = NPY_INT16;
-      break;
-    case TF_QUINT16:
-      *out_pyarray_type = NPY_UINT16;
-      break;
-    case TF_QINT32:
-      *out_pyarray_type = NPY_INT32;
-      break;
-    case TF_BFLOAT16:
-      *out_pyarray_type = NPY_UINT16;
-      break;
-    default:
-      return errors::Internal("Unsupported fetch type");
   }
   return Status::OK();
 }
@@ -375,6 +292,8 @@ Status GetPyArrayDescrForTensor(const TF_Tensor* tensor,
     PyObject* fields = PyList_New(1);
     PyList_SetItem(fields, 0, field);
     int convert_result = PyArray_DescrConverter(fields, descr);
+    Py_CLEAR(field);
+    Py_CLEAR(fields);
     if (convert_result != 1) {
       return errors::Internal("Failed to create numpy array description for ",
                               "TF_RESOURCE-type tensor");
@@ -389,29 +308,39 @@ Status GetPyArrayDescrForTensor(const TF_Tensor* tensor,
   return Status::OK();
 }
 
-// Converts the given TF_Tensor to a Numpy array.
+// Converts the given TF_Tensor to a numpy ndarray.
 // If the returned status is OK, the caller becomes the owner of *out_array.
-Status TF_Tensor_to_PyObject(TF_Tensor* tensor, PyObject** out_array) {
+Status TFTensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
   // A fetched operation will correspond to a null tensor, and a None
   // in Python.
   if (tensor == nullptr) {
     Py_INCREF(Py_None);
-    *out_array = Py_None;
+    *out_ndarray = Py_None;
     return Status::OK();
   }
 
   tensorflow::int64 nelems = -1;
   gtl::InlinedVector<npy_intp, 4> dims =
-      GetPyArrayDimensionsForTensor(tensor, &nelems);
+      GetPyArrayDimensionsForTensor(tensor.get(), &nelems);
 
   // Convert TensorFlow dtype to numpy type descriptor.
   PyArray_Descr* descr = nullptr;
-  TF_RETURN_IF_ERROR(GetPyArrayDescrForTensor(tensor, &descr));
+  TF_RETURN_IF_ERROR(GetPyArrayDescrForTensor(tensor.get(), &descr));
+
+  // If the type is neither string nor resource we can reuse the Tensor memory.
+  TF_Tensor* original = tensor.get();
+  TF_Tensor* moved = TF_TensorMaybeMove(tensor.release());
+  if (moved != nullptr) {
+    if (ArrayFromMemory(dims.size(), dims.data(), TF_TensorData(moved),
+                        static_cast<DataType>(TF_TensorType(moved)),
+                        [moved] { TF_DeleteTensor(moved); }, out_ndarray)
+            .ok()) {
+      return Status::OK();
+    }
+  }
+  tensor.reset(original);
 
   // Copy the TF_TensorData into a newly-created ndarray and return it.
-  // TODO(mrry): Perhaps investigate zero-copy approaches. This would involve
-  // creating an ndarray-like object that wraps the TF_Tensor buffer, and
-  // maps its destructor to TF_DeleteTensor.
   Safe_PyObjectPtr safe_out_array =
       tensorflow::make_safe(PyArray_Empty(dims.size(), dims.data(), descr, 0));
   if (!safe_out_array) {
@@ -420,37 +349,100 @@ Status TF_Tensor_to_PyObject(TF_Tensor* tensor, PyObject** out_array) {
   PyArrayObject* py_array =
       reinterpret_cast<PyArrayObject*>(safe_out_array.get());
   if (PyArray_NBYTES(py_array) !=
-      static_cast<int64>(TF_TensorByteSize(tensor))) {
-    if (TF_TensorType(tensor) == TF_STRING) {
+      static_cast<int64>(TF_TensorByteSize(tensor.get()))) {
+    if (TF_TensorType(tensor.get()) == TF_STRING) {
       // Copy element by element.
       auto iter = tensorflow::make_safe(PyArray_IterNew(safe_out_array.get()));
       for (tensorflow::int64 i = 0; i < nelems; ++i) {
-        auto s =
-            CopyStringToPyArrayElement(py_array, iter.get(), tensor, nelems, i);
+        auto s = CopyStringToPyArrayElement(py_array, iter.get(), tensor.get(),
+                                            nelems, i);
         if (!s.ok()) {
           return s;
         }
         PyArray_ITER_NEXT(iter.get());
       }
-    } else if (TF_TensorType(tensor) == TF_RESOURCE) {
+    } else if (TF_TensorType(tensor.get()) == TF_RESOURCE) {
       ResourceHandle* resource_handle =
-          reinterpret_cast<ResourceHandle*>(TF_TensorData(tensor));
+          reinterpret_cast<ResourceHandle*>(TF_TensorData(tensor.get()));
       memcpy(PyArray_DATA(py_array),
              resource_handle->SerializeAsString().c_str(),
              PyArray_NBYTES(py_array));
     } else {
       return errors::Internal("ndarray was ", PyArray_NBYTES(py_array),
                               " bytes but TF_Tensor was ",
-                              TF_TensorByteSize(tensor), " bytes");
+                              TF_TensorByteSize(tensor.get()), " bytes");
     }
   } else {
-    memcpy(PyArray_DATA(py_array), TF_TensorData(tensor),
+    memcpy(PyArray_DATA(py_array), TF_TensorData(tensor.get()),
            PyArray_NBYTES(py_array));
   }
 
   // PyArray_Return turns rank 0 arrays into numpy scalars
-  *out_array = PyArray_Return(
+  *out_ndarray = PyArray_Return(
       reinterpret_cast<PyArrayObject*>(safe_out_array.release()));
+  return Status::OK();
+}
+
+// Converts the given numpy ndarray to a (safe) TF_Tensor. If `ndarray` contains
+// a resource handle, `*resource_handle` will be set to the deserialized
+// handle. Otherwise it is set to nullptr. `resource_handle` and `out_tensor`
+// must be non-null. Caller retains ownership of `ndarray` and becomes owner of
+// `*resource_handle` if it's set.
+Status PyArrayToTFTensor(PyObject* ndarray, Safe_TF_TensorPtr* out_tensor,
+                         ResourceHandle** resource_handle) {
+  DCHECK(out_tensor != nullptr);
+  DCHECK(resource_handle != nullptr);
+  *resource_handle = nullptr;
+
+  // Make sure we dereference this array object in case of error, etc.
+  Safe_PyObjectPtr array_safe(make_safe(
+      PyArray_FromAny(ndarray, nullptr, 0, 0, NPY_ARRAY_CARRAY, nullptr)));
+  if (!array_safe) return errors::InvalidArgument(kFeedDictErrorMsg);
+  PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_safe.get());
+
+  // Convert numpy dtype to TensorFlow dtype.
+  TF_DataType dtype = TF_FLOAT;
+  TF_RETURN_IF_ERROR(PyArray_TYPE_to_TF_DataType(array, &dtype));
+
+  tensorflow::int64 nelems = 1;
+  gtl::InlinedVector<int64_t, 4> dims;
+  for (int i = 0; i < PyArray_NDIM(array); ++i) {
+    dims.push_back(PyArray_SHAPE(array)[i]);
+    nelems *= dims[i];
+  }
+
+  // Create a TF_Tensor based on the fed data. In the case of non-string data
+  // type, this steals a reference to array, which will be relinquished when
+  // the underlying buffer is deallocated. For string, a new temporary buffer
+  // is allocated into which the strings are encoded.
+  if (dtype == TF_RESOURCE) {
+    const string serialized(reinterpret_cast<char*>(PyArray_DATA(array)),
+                            PyArray_NBYTES(array));
+    *resource_handle = new ResourceHandle();
+    (*resource_handle)->ParseFromString(serialized);
+    TF_Tensor* tf_tensor =
+        TF_AllocateTensor(dtype, {}, 0, sizeof(ResourceHandle));
+    std::memcpy(TF_TensorData(tf_tensor),
+                reinterpret_cast<void*>(*resource_handle),
+                sizeof(ResourceHandle));
+    *out_tensor = make_safe(tf_tensor);
+  } else if (dtype != TF_STRING) {
+    size_t size = PyArray_NBYTES(array);
+    array_safe.release();
+    *out_tensor = make_safe(TF_NewTensor(dtype, dims.data(), dims.size(),
+                                         PyArray_DATA(array), size,
+                                         &DelayedNumpyDecref, array));
+  } else {
+    size_t size = 0;
+    void* encoded = nullptr;
+    TF_RETURN_IF_ERROR(EncodePyBytesArray(array, nelems, &size, &encoded));
+    *out_tensor =
+        make_safe(TF_NewTensor(dtype, dims.data(), dims.size(), encoded, size,
+                               [](void* data, size_t len, void* arg) {
+                                 delete[] reinterpret_cast<char*>(data);
+                               },
+                               array));
+  }
   return Status::OK();
 }
 
@@ -460,15 +452,16 @@ Safe_PyObjectPtr make_safe(PyObject* o) {
   return Safe_PyObjectPtr(o, Py_DECREF_wrapper);
 }
 
+Safe_TF_TensorPtr make_safe(TF_Tensor* tensor) {
+  return Safe_TF_TensorPtr(tensor, TF_DeleteTensor);
+}
+
 void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
                            const TF_Buffer* run_options, PyObject* feed_dict,
                            const NameVector& output_names,
                            const NameVector& target_nodes,
                            TF_Status* out_status, PyObjectVector* out_values,
                            TF_Buffer* run_outputs) {
-  static const char* kFeedDictErrorMsg =
-      "feed_dict must be a dictionary mapping strings to NumPy arrays.";
-
   // 1. Convert the feed inputs to the appropriate form for TF_Run.
   if (!PyDict_Check(feed_dict)) {
     Set_TF_Status_from_Status(out_status,
@@ -477,7 +470,7 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
   }
 
   NameVector input_names;
-  Safe_TF_TensorVector inputs_safe;  // Used to delete tensors.
+  std::vector<Safe_TF_TensorPtr> inputs_safe;  // Used to delete tensors.
   TF_TensorVector inputs_unsafe;     // Used to contain the arg to TF_Run.
 
   PyObject* key;
@@ -496,71 +489,13 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
     }
     input_names.push_back(key_string);
 
-    // The array object will be dereferenced at the end of this iteration
-    // (or if we return early due to an error).
-    Safe_PyObjectPtr array_safe(make_safe(
-        PyArray_FromAny(value, nullptr, 0, 0, NPY_ARRAY_CARRAY, nullptr)));
-    if (!array_safe) {
-      Set_TF_Status_from_Status(out_status,
-                                errors::InvalidArgument(kFeedDictErrorMsg));
-      return;
-    }
-    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_safe.get());
-
-    // Convert numpy dtype to TensorFlow dtype.
-    TF_DataType dtype = TF_FLOAT;
-    s = PyArray_TYPE_to_TF_DataType(array, &dtype);
-    if (!s.ok()) {
-      Set_TF_Status_from_Status(out_status, s);
-      return;
-    }
-
-    tensorflow::int64 nelems = 1;
-    gtl::InlinedVector<int64_t, 4> dims;
-    for (int i = 0; i < PyArray_NDIM(array); ++i) {
-      dims.push_back(PyArray_SHAPE(array)[i]);
-      nelems *= dims[i];
-    }
-
-    // Create a TF_Tensor based on the fed data. In the case of non-string data
-    // type, this steals a reference to array, which will be relinquished when
-    // the underlying buffer is deallocated. For string, a new temporary buffer
-    // is allocated into which the strings are encoded.
-    if (dtype == TF_RESOURCE) {
-      const string serialized(reinterpret_cast<char*>(PyArray_DATA(array)),
-                              PyArray_NBYTES(array));
-      std::shared_ptr<ResourceHandle> resource_handle(new ResourceHandle());
-      resource_handle->ParseFromString(serialized);
-      resource_handles.emplace_back(resource_handle);
-      TF_Tensor* tensor =
-          TF_AllocateTensor(dtype, {}, 0, sizeof(ResourceHandle));
-      std::memcpy(TF_TensorData(tensor),
-                  reinterpret_cast<void*>(resource_handle.get()),
-                  sizeof(ResourceHandle));
-      inputs_safe.emplace_back(make_safe(tensor));
-    } else if (dtype != TF_STRING) {
-      size_t size = PyArray_NBYTES(array);
-      array_safe.release();
-      TF_Tensor* tensor =
-          TF_NewTensor(dtype, dims.data(), dims.size(), PyArray_DATA(array),
-                       size, &DelayedNumpyDecref, array);
-      inputs_safe.emplace_back(make_safe(tensor));
-    } else {
-      size_t size = 0;
-      void* encoded = nullptr;
-      Status s = EncodePyBytesArray(array, nelems, &size, &encoded);
-      if (!s.ok()) {
-        Set_TF_Status_from_Status(out_status, s);
-        return;
-      }
-      inputs_safe.emplace_back(
-          make_safe(TF_NewTensor(dtype, dims.data(), dims.size(), encoded, size,
-                                 [](void* data, size_t len, void* arg) {
-                                   delete[] reinterpret_cast<char*>(data);
-                                 },
-                                 array)));
-    }
+    inputs_safe.emplace_back(make_safe(static_cast<TF_Tensor*>(nullptr)));
+    ResourceHandle* resource_handle;
+    s = PyArrayToTFTensor(value, &inputs_safe.back(), &resource_handle);
     inputs_unsafe.push_back(inputs_safe.back().get());
+    if (resource_handle != nullptr) {
+      resource_handles.emplace_back(resource_handle);
+    }
     ++index;
   }
 
@@ -598,17 +533,17 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
 
   // 4. We now own the fetched tensors, so set up a safe container to
   // delete them when we exit this scope.
-  Safe_TF_TensorVector tf_outputs_safe;
+  std::vector<Safe_TF_TensorPtr> tf_outputs_safe;
   for (const auto& output : outputs) {
     tf_outputs_safe.emplace_back(make_safe(output));
   }
 
   // 5. Convert the fetched tensors into numpy ndarrays. Store them in a safe
   // container so that we do not leak
-  Safe_PyObjectVector py_outputs_safe;
+  std::vector<Safe_PyObjectPtr> py_outputs_safe;
   for (size_t i = 0; i < output_names.size(); ++i) {
     PyObject* py_array;
-    s = TF_Tensor_to_PyObject(outputs[i], &py_array);
+    s = TFTensorToPyArray(std::move(tf_outputs_safe[i]), &py_array);
     if (!s.ok()) {
       Set_TF_Status_from_Status(out_status, s);
       return;
@@ -648,6 +583,14 @@ void TF_PRunSetup_wrapper(TF_DeprecatedSession* session,
       const_cast<const char**>(output_names.data()), output_names.size(),
       const_cast<const char**>(target_nodes.data()), target_nodes.size(),
       out_handle, out_status);
+  // TF_PRunSetup leaves out_handle undefined if it fails, but SWIG will call
+  // free(out_handle) on the returned handle regardless. Thus, must make sure it
+  // is valid.
+  if (TF_GetCode(out_status) != TF_OK) {
+    char* tmp = new char[1];
+    tmp[0] = '\0';
+    *out_handle = tmp;
+  }
   Py_END_ALLOW_THREADS;
 }
 

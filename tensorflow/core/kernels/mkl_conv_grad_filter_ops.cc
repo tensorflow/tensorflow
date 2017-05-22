@@ -217,7 +217,7 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
     mkl_context.grad_filter_shape.SetTfLayout(mkl_context.filter_dims,
                                               mkl_context.filter_sizes,
                                               mkl_context.filter_strides);
-    AllocateOutputSetMklshape(context, 0, &grad_filter, filter_shape,
+    AllocateOutputSetMklShape(context, 0, &grad_filter, filter_shape,
                               mkl_context.grad_filter_shape);
 
     // Need to set member variable for TF layout
@@ -266,8 +266,11 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
     int input_offsets[2];
     size_t conv_strides[2];
     MklShape input_shape, grad_filter_shape, out_backprop_shape;
-    dnnPrimitive_t prim_conv_bwdfilter, convert_bwdfilter;
-    dnnLayout_t lt_input, lt_grad_filter, lt_out_backprop;
+    dnnPrimitive_t prim_conv_bwdfilter = nullptr;
+    dnnPrimitive_t convert_bwdfilter = nullptr;
+    dnnLayout_t lt_input = nullptr;
+    dnnLayout_t lt_grad_filter = nullptr;
+    dnnLayout_t lt_out_backprop = nullptr;
     void* conv_res[dnnResourceNumber];
 
     void MklCleanup() {
@@ -408,11 +411,11 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-#define REGISTER_MKL_FILTER_KERNELS(T)                                    \
-  REGISTER_KERNEL_BUILDER(Name("MklConv2DBackpropFilter")                 \
-                              .Device(DEVICE_CPU)                         \
-                              .TypeConstraint<T>("T")                     \
-                              .Label(mkl_layer_registry::kMklLayerLabel), \
+#define REGISTER_MKL_FILTER_KERNELS(T)                              \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilter")          \
+                              .Device(DEVICE_CPU)                   \
+                              .TypeConstraint<T>("T")               \
+                              .Label(mkl_op_registry::kMklOpLabel), \
                           MklConv2DCustomBackpropFilterOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);

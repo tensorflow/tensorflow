@@ -59,7 +59,7 @@ def identity_block(input_tensor, kernel_size, filters, stage, block):
 
   Arguments:
       input_tensor: input tensor
-      kernel_size: defualt 3, the kernel size of middle conv layer at main path
+      kernel_size: default 3, the kernel size of middle conv layer at main path
       filters: list of integers, the filterss of 3 conv layer at main path
       stage: integer, current stage label, used for generating layer names
       block: 'a','b'..., current block label, used for generating layer names
@@ -98,7 +98,7 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2,
 
   Arguments:
       input_tensor: input tensor
-      kernel_size: defualt 3, the kernel size of middle conv layer at main path
+      kernel_size: default 3, the kernel size of middle conv layer at main path
       filters: list of integers, the filterss of 3 conv layer at main path
       stage: integer, current stage label, used for generating layer names
       block: 'a','b'..., current block label, used for generating layer names
@@ -163,8 +163,8 @@ def ResNet50(include_top=True,
   specified in your Keras config file.
 
   Arguments:
-      include_top: whether to include the 3 fully-connected
-          layers at the top of the network.
+      include_top: whether to include the fully-connected
+          layer at the top of the network.
       weights: one of `None` (random initialization)
           or "imagenet" (pre-training on ImageNet).
       input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)

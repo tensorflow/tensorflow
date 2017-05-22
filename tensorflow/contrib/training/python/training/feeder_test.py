@@ -156,7 +156,7 @@ class FeederTest(test.TestCase):
     coord.join()
 
   def testFeederSeparateThread(self):
-    # Start a feeder on a seperate thread, but with a shared local queue
+    # Start a feeder on a separate thread, but with a shared local queue
     servers = self._create_local_cluster(worker=1)
     coord = coordinator.Coordinator()
     feed_thread = FeederThread(self, coord, servers, 'worker', 0)

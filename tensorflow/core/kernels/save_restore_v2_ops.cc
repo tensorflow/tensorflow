@@ -47,8 +47,9 @@ void ValidateInputs(bool is_save_op, OpKernelContext* context,
       context, prefix.NumElements() == 1,
       errors::InvalidArgument("Input prefix should have a single element, got ",
                               prefix.NumElements(), " instead."));
-  OP_REQUIRES(context, TensorShapeUtils::IsVector(tensor_names.shape()) &&
-                           TensorShapeUtils::IsVector(shape_and_slices.shape()),
+  OP_REQUIRES(context,
+              TensorShapeUtils::IsVector(tensor_names.shape()) &&
+                  TensorShapeUtils::IsVector(shape_and_slices.shape()),
               errors::InvalidArgument(
                   "Input tensor_names and shape_and_slices "
                   "should be an 1-D tensors, got ",
@@ -105,6 +106,7 @@ class SaveV2 : public OpKernel {
     const auto& shape_and_slices_flat = shape_and_slices.flat<string>();
 
     BundleWriter writer(Env::Default(), prefix_string);
+    OP_REQUIRES_OK(context, writer.status());
     VLOG(1) << "BundleWriter, prefix_string: " << prefix_string;
 
     for (int i = 0; i < num_tensors; ++i) {

@@ -213,6 +213,14 @@ def _build_module_page(page_info):
 
 def _build_signature(obj_info):
   """Returns a md code block showing the function signature."""
+  # Special case tf.range, since it has an optional first argument
+  if obj_info.full_name == 'tf.range':
+    return (
+        '``` python\n'
+        "range(limit, delta=1, dtype=None, name='range')\n"
+        "range(start, limit, delta=1, dtype=None, name='range')\n"
+        '```\n\n')
+
   signature_template = '\n'.join([
       '``` python',
       '{name}({sig})',
@@ -230,7 +238,7 @@ def _build_signature(obj_info):
 
 
 def _build_compatibility(compatibility):
-  """Return the compatability section as an md string."""
+  """Return the compatibility section as an md string."""
   parts = []
   sorted_keys = sorted(compatibility.keys())
   for key in sorted_keys:

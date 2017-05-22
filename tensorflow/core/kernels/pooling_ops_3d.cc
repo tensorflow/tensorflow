@@ -580,8 +580,7 @@ struct LaunchMaxPooling3dGradGradOp<CPUDevice, T> {
         *(context->device()->tensorflow_cpu_worker_threads());
 
     auto shard = [&params, &in_mat, &out_mat, &top_diff_mat, &bottom_diff_mat](
-        int64 start, int64 limit) {
-
+                     int64 start, int64 limit) {
       const int32 depth = params.depth;
       const int32 in_planes = params.tensor_in_planes;
       const int32 in_rows = params.tensor_in_rows;
@@ -682,10 +681,9 @@ class MaxPooling3dGradGradOp : public OpKernel {
                     "Pooling is not yet supported on the batch dimension."));
     const int32 ksize_c = GetTensorDim(ksize_, data_format_, 'C');
     const int32 stride_c = GetTensorDim(stride_, data_format_, 'C');
-    OP_REQUIRES(
-        context, ksize_c == 1 && stride_c == 1,
-        errors::Unimplemented(
-            "MaxPooling3dGradGrad is not yet supported on the depth dimension."));
+    OP_REQUIRES(context, ksize_c == 1 && stride_c == 1,
+                errors::Unimplemented("MaxPooling3dGradGrad is not yet "
+                                      "supported on the depth dimension."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -703,7 +701,7 @@ class MaxPooling3dGradGradOp : public OpKernel {
         context, out_grad_backprop.dims() == 5,
         errors::InvalidArgument("out_grad_backprop must be 5-dimensional"));
 
-    Pool3dParameters params{context, ksize_, stride_,
+    Pool3dParameters params{context,  ksize_,       stride_,
                             padding_, data_format_, tensor_in.shape()};
 
     Tensor* output = nullptr;
@@ -736,12 +734,11 @@ class MaxPooling3dGradGradOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("AvgPool3D").Device(DEVICE_##D).TypeConstraint<T>("T"),         \
       Pooling3DOp<D##Device, T, AVG>);                                     \
-  REGISTER_KERNEL_BUILDER(                                                 \
-      Name("AvgPool3DGrad")                                                \
-          .Device(DEVICE_##D)                                              \
-          .TypeConstraint<T>("T")                                          \
-          .HostMemory("orig_input_shape"),                                 \
-      AvgPooling3dGradOp<D##Device, T>);
+  REGISTER_KERNEL_BUILDER(Name("AvgPool3DGrad")                            \
+                              .Device(DEVICE_##D)                          \
+                              .TypeConstraint<T>("T")                      \
+                              .HostMemory("orig_input_shape"),             \
+                          AvgPooling3dGradOp<D##Device, T>);
 
 #define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T)
 TF_CALL_float(REGISTER_CPU_KERNELS);
@@ -835,8 +832,7 @@ struct LaunchMaxPooling3dGradGradOp<GPUDevice, T> {
 };
 
 #define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T)
-TF_CALL_float(REGISTER_GPU_KERNELS)
-TF_CALL_half(REGISTER_GPU_KERNELS)
+TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
 
 #endif  // GOOGLE_CUDA

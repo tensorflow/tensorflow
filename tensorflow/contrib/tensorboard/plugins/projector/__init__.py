@@ -28,11 +28,10 @@ from __future__ import print_function
 import os
 
 from google.protobuf import text_format
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import EmbeddingInfo
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
 from tensorflow.python.lib.io import file_io
 from tensorflow.tensorboard.plugins.projector import projector_plugin
 # pylint: disable=wildcard-import
+from tensorflow.tensorboard.plugins.projector.projector_config_pb2 import *
 from tensorflow.tensorboard.plugins.projector.projector_plugin import *
 # pylint: enable=wildcard-import
 
@@ -41,7 +40,7 @@ def visualize_embeddings(summary_writer, config):
   """Stores a config file used by the embedding projector.
 
   Args:
-    summary_writer: The summary writer used for writting events.
+    summary_writer: The summary writer used for writing events.
     config: `tf.contrib.tensorboard.plugins.projector.ProjectorConfig`
       proto that holds the configuration for the projector such as paths to
       checkpoint files and metadata files for the embeddings. If

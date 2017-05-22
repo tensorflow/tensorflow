@@ -53,6 +53,10 @@ class RecordWriter {
   RecordWriter(WritableFile* dest,
                const RecordWriterOptions& options = RecordWriterOptions());
 
+  // Calls Close() and logs if an error occurs.
+  //
+  // TODO(jhseu): Require that callers explicitly call Close() and remove the
+  // implicit Close() call in the destructor.
   ~RecordWriter();
 
   Status WriteRecord(StringPiece slice);
@@ -61,6 +65,12 @@ class RecordWriter {
   // RecordWriter to the WritableFile. Does *not* flush the
   // WritableFile.
   Status Flush();
+
+  // Writes all output to the file. Does *not* close the WritableFile.
+  //
+  // After calling Close(), any further calls to `WriteRecord()` or `Flush()`
+  // are invalid.
+  Status Close();
 
  private:
   WritableFile* dest_;

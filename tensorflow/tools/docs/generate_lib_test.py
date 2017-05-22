@@ -56,7 +56,7 @@ class GenerateTest(googletest.TestCase):
 
   def test_extraction(self):
     py_modules = [('tf', tf), ('tfdbg', tf_debug)]
-    _ = tf.contrib.__name__  # Trigger loading of tf.contrib
+
     try:
       generate_lib.extract(
           py_modules, generate_lib._get_default_do_not_descend_map())

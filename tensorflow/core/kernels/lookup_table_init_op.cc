@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #define EIGEN_USE_THREADS
+
+#include "tensorflow/core/kernels/lookup_table_init_op.h"
 
 #include <algorithm>
 #include <memory>
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/initializable_lookup_table.h"
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -304,6 +304,8 @@ class TextFileLineIterator
   TF_DISALLOW_COPY_AND_ASSIGN(TextFileLineIterator);
 };
 
+}  // namespace
+
 // Helper function to initialize an InitializableLookupTable from a text file.
 Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
                                    char delimiter, int32 key_index,
@@ -349,7 +351,6 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
   return s;
 }
 
-}  // namespace
 }  // namespace lookup
 
 // Kernel to initialize a look table given a key and value tensors.
@@ -366,7 +367,9 @@ class InitializeTableOp : public OpKernel {
                    GetInitializableLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {DT_STRING_REF, table->key_dtype(),
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
     DataTypeVector expected_outputs = {};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
@@ -407,6 +410,8 @@ class InitializeTableOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("InitializeTable").Device(DEVICE_CPU),
                         InitializeTableOp);
+REGISTER_KERNEL_BUILDER(Name("InitializeTableV2").Device(DEVICE_CPU),
+                        InitializeTableOp);
 
 // Kernel to initialize a lookup table from a text file.
 //
@@ -432,7 +437,9 @@ class InitializeTableFromTextFileOp : public OpKernel {
                    GetInitializableLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {DT_STRING_REF, DT_STRING};
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, DT_STRING};
     DataTypeVector expected_outputs = {};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
 
@@ -471,5 +478,8 @@ class InitializeTableFromTextFileOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("InitializeTableFromTextFile").Device(DEVICE_CPU),
                         InitializeTableFromTextFileOp);
+REGISTER_KERNEL_BUILDER(
+    Name("InitializeTableFromTextFileV2").Device(DEVICE_CPU),
+    InitializeTableFromTextFileOp);
 
 }  // namespace tensorflow

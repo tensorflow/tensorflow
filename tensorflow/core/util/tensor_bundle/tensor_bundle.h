@@ -31,7 +31,7 @@ limitations under the License.
 // (tensorflow::table::Table).  Each key is a name of a tensor and its value is
 // a serialized BundleEntryProto.  Each BundleEntryProto describes the metadata
 // of a tensor: which of the "data" files contains the content of a tensor, the
-// offset into that file, checksum, some auxilary data, etc.
+// offset into that file, checksum, some auxiliary data, etc.
 //
 // A tensor bundle can be accessed randomly using a BundleReader.  Usage:
 //
@@ -100,11 +100,14 @@ extern const int kTensorBundleVersion;
 extern const char* const kHeaderEntryKey;
 
 // Builds a string-string table of tensor names to BundleEntryProto (metadata).
+//
+// On construction, attempts to create a directory given by the dirname of
+// "prefix", so "status()" must be checked before calling any member functions.
+//
 // All threads accessing the same BundleWriter must synchronize.
 class BundleWriter {
  public:
   BundleWriter(Env* env, StringPiece prefix);
-  ~BundleWriter();
 
   // Adds the tensor "val" under key "key".
   // Across calls "key" must be unique but can be added in any order.
@@ -209,6 +212,10 @@ class BundleReader {
 
   // Looks up the slices of the tensor keyed by "key".  On OK, "slices"
   // is non-empty if and only if the tensor is a partitioned tensor.
+  //
+  // Warning - there is no guaranteed ordering for the returned slices, so
+  // a slice with a larger start index in some dimension could come before
+  // another slice with a smaller start index in the same dimension.
   // REQUIRES: status().ok()
   Status LookupTensorSlices(StringPiece key, std::vector<TensorSlice>* slices)
       TF_MUST_USE_RESULT;

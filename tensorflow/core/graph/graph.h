@@ -71,6 +71,7 @@ class Node {
   int cost_id() const { return cost_id_; }
   const string& name() const { return props_->node_def_.name(); }
   const string& type_string() const { return props_->node_def_.op(); }
+
   // def() provides the NodeDef the user supplied, but the specifics
   // of this Node may have changed due to placement, optimization, etc.
   // In particular:
@@ -80,17 +81,22 @@ class Node {
   // * def().device() is the "user's requested device" and may not match
   //   the actual assigned device, see assigned_device_name() below;
   // * def().attr() is authoritative.
+  // TODO(irving): Replace with NodeInfo.
   const NodeDef& def() const { return props_->node_def_; }
   const OpDef& op_def() const { return *props_->op_def_; }
 
   // input and output types
-  int num_inputs() const { return props_->input_types_.size(); }
-  DataType input_type(int i) const { return props_->input_types_[i]; }
+  int32 num_inputs() const { return props_->input_types_.size(); }
+  DataType input_type(int32 i) const { return props_->input_types_[i]; }
   const DataTypeVector& input_types() const { return props_->input_types_; }
 
-  int num_outputs() const { return props_->output_types_.size(); }
-  DataType output_type(int o) const { return props_->output_types_[o]; }
+  int32 num_outputs() const { return props_->output_types_.size(); }
+  DataType output_type(int32 o) const { return props_->output_types_[o]; }
   const DataTypeVector& output_types() const { return props_->output_types_; }
+
+  // The device requested by the user.  For the actual assigned device,
+  // use assigned_device_name() below.
+  const string& requested_device() const { return def().device(); }
 
   // This gives the device the runtime has assigned this node to.  If
   // you want the device the user requested, use def().device() instead.
@@ -101,6 +107,14 @@ class Node {
   string assigned_device_name() const { return assigned_device_name_; }
   void set_assigned_device_name(const string& device_name) {
     assigned_device_name_ = device_name;
+  }
+
+  // Read only access to attributes
+  AttrSlice attrs() const { return AttrSlice(def()); }
+
+  // Inputs requested by the NodeDef.  For the actual inputs, use in_edges.
+  const protobuf::RepeatedPtrField<string>& requested_inputs() const {
+    return def().input();
   }
 
   // Get the neighboring nodes via edges either in or out of this node.
@@ -159,6 +173,7 @@ class Node {
   // Returns into '*n' the node that has an output connected to the
   // 'idx' input of this Node.
   Status input_node(int idx, const Node** n) const;
+  Status input_node(int idx, Node** n) const;
 
  private:
   friend class Graph;
@@ -220,6 +235,10 @@ class Node {
     NC_OTHER  // Not a special kind of node
   };
 
+  static const std::unordered_map<string, NodeClass>& kNodeClassTable;
+
+  static NodeClass GetNodeClassForOp(const string& ts);
+
   int id_;       // -1 until Initialize() is called
   int cost_id_;  // -1 if there is no corresponding cost accounting node
   NodeClass class_;
@@ -265,6 +284,66 @@ class Edge {
   int id_;
   int src_output_;
   int dst_input_;
+};
+
+// Allows for iteration of the edges of a Graph, by iterating the underlying
+// Graph.edges_ vector while skipping over null entries.
+class GraphEdgesIterable {
+ private:
+  const std::vector<Edge*>& edges_;
+
+ public:
+  explicit GraphEdgesIterable(const std::vector<Edge*>& edges)
+      : edges_(edges) {}
+
+  typedef Edge* value_type;
+
+  class const_iterator {
+   private:
+    // The underlying iterator.
+    std::vector<value_type>::const_iterator iter_;
+
+    // The end of the underlying iterator.
+    std::vector<value_type>::const_iterator end_;
+
+    // Advances iter_ until it reaches a non-null item, or reaches the end.
+    void apply_filter() {
+      while (iter_ != end_ && *iter_ == nullptr) {
+        ++iter_;
+      }
+    }
+
+   public:
+    const_iterator(std::vector<value_type>::const_iterator iter,
+                   std::vector<value_type>::const_iterator end)
+        : iter_(iter), end_(end) {
+      apply_filter();
+    }
+
+    bool operator==(const const_iterator& other) const {
+      return iter_ == other.iter_;
+    }
+
+    bool operator!=(const const_iterator& other) const {
+      return iter_ != other.iter_;
+    }
+
+    // This is the prefix increment operator (++x), which is the operator
+    // used by C++ range iteration (for (x : y) ...).  We intentionally do not
+    // provide a postfix increment operator.
+    const_iterator& operator++() {
+      ++iter_;
+      apply_filter();
+      return *this;
+    }
+
+    value_type operator*() { return *iter_; }
+  };
+
+  const_iterator begin() {
+    return const_iterator(edges_.begin(), edges_.end());
+  }
+  const_iterator end() { return const_iterator(edges_.end(), edges_.end()); }
 };
 
 // Thread compatible but not thread safe.
@@ -324,6 +403,12 @@ class Graph {
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
 
+  // Adds the function and gradient definitions in `fdef_lib` to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib);
+
   // The number of live nodes in the graph.
   //
   // Because nodes can be removed from the graph, num_nodes() is often
@@ -338,7 +423,7 @@ class Graph {
   // smaller than num_edge_ids(). If one needs to create an array of
   // edges indexed by edge ids, num_edge_ids() should be used as the
   // array's size.
-  int num_edges() const { return edges().size(); }
+  int num_edges() const { return num_edges_; }
 
   // Serialize the nodes starting at `from_node_id` to a GraphDef.
   void ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const;
@@ -374,7 +459,7 @@ class Graph {
 
   // Access to the set of all edges.  Example usage:
   //   for (const Edge* e : graph.edges()) { ... }
-  const EdgeSet& edges() const { return edge_set_; }
+  GraphEdgesIterable edges() const { return GraphEdgesIterable(edges_); }
 
   // The pre-defined nodes.
   enum { kSourceId = 0, kSinkId = 1 };
@@ -414,9 +499,8 @@ class Graph {
   // the edge with that id was removed from the graph.
   std::vector<Edge*> edges_;
 
-  // For ease of iteration, we currently just keep a set of all live
-  // edges.  May want to optimize by removing this copy.
-  EdgeSet edge_set_;
+  // The number of entries in edges_ that are not nullptr.
+  int num_edges_ = 0;
 
   // Allocated but free nodes and edges.
   std::vector<Node*> free_nodes_;

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import time
 
 import numpy as np
@@ -322,6 +323,48 @@ class FunctionTest(test.TestCase):
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "assertion"):
         _ = MyFn(100.0).eval()
+
+  def testControlFlowStrictness(self):
+    """Inlined functions must not execute in a untaken control flow branch."""
+
+    @function.Defun(dtypes.int32)
+    def AssertFail(x):
+      # Assertion that always fails and does not have a data dependency on `x`.
+      assert_false = control_flow_ops.Assert(False, [42])
+      with ops.control_dependencies([assert_false]):
+        return array_ops.identity(x)
+
+    with ops.device("CPU"):
+      pred = array_ops.placeholder(dtypes.bool)
+      x = array_ops.placeholder(dtypes.int32)
+      cond = control_flow_ops.cond(pred, lambda: x + 1, lambda: AssertFail(x))
+      # pylint: disable=unnecessary-lambda
+      loop = control_flow_ops.while_loop(lambda y: pred,
+                                         lambda y: AssertFail(y), [x])
+      # pylint: enable=unnecessary-lambda
+
+    # Enables inlining.
+    config = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
+        optimizer_options=config_pb2.OptimizerOptions(
+            opt_level=config_pb2.OptimizerOptions.L0,
+            do_common_subexpression_elimination=True,
+            do_function_inlining=True,
+            do_constant_folding=True)))
+
+    with session.Session(config=config) as sess:
+      # Since the 'False' branch is not taken, the assertion should not fire.
+      self.assertEqual(4, sess.run(cond, {pred: True, x: 3}))
+
+      # The assertion should still fire if the False branch is taken.
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   "assertion"):
+        sess.run(cond, {pred: False, x: 3})
+
+      # Similarly for loops.
+      self.assertEqual(3, sess.run(loop, {pred: False, x: 3}))
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   "assertion"):
+        sess.run(loop, {pred: True, x: 3})
 
   def testVar(self):
 
@@ -722,6 +765,58 @@ class FunctionTest(test.TestCase):
       y = Bar(array_ops.zeros([1, 2, 3]))
       self.assertAllEqual(y.get_shape().as_list(), [1, 1, 2, 3])
 
+  def testVariableReuse(self):
+    def LinearWithReuse(input_tensor, reuse=None):
+      size = input_tensor.shape.dims[1]
+      with variable_scope.variable_scope("linear", reuse=reuse):
+        w = variable_scope.get_variable("w", shape=[size, size],
+                                        dtype=input_tensor.dtype)
+      return math_ops.matmul(input_tensor, w)
+
+    @function.Defun(dtypes.float32)
+    def Foo(inputs):
+      inputs = array_ops.reshape(inputs, [32, 100])
+      hidden = LinearWithReuse(inputs)
+      return LinearWithReuse(hidden, reuse=True)
+
+    input_op = array_ops.placeholder(shape=[32, 100], dtype=dtypes.float32)
+    output_op = Foo(input_op)
+
+    global_vars = variables.global_variables()
+    self.assertEqual(len(global_vars), 1)
+    self.assertEqual(global_vars[0].name, "linear/w:0")
+
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      output_val = sess.run(output_op,
+                            feed_dict={input_op: np.random.rand(32, 100)})
+      self.assertEqual(output_val.shape, (32, 100))
+
+  def testFunctionCallInDifferentVariableScopes(self):
+    @function.Defun(dtypes.float32)
+    def Foo(inputs):
+      var = variable_scope.get_variable("var", shape=[10], dtype=dtypes.float32,
+                                        initializer=init_ops.ones_initializer())
+      return inputs + var
+
+    input_op = array_ops.placeholder(shape=[10], dtype=dtypes.float32)
+    with variable_scope.variable_scope("vs1"):
+      out1_op = Foo(input_op)
+
+    with variable_scope.variable_scope("vs2"):
+      out2_op = Foo(input_op)
+
+    global_vars = variables.global_variables()
+    self.assertEqual(len(global_vars), 1)
+    self.assertEqual(global_vars[0].name, "vs1/var:0")
+
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      out1, out2 = sess.run([out1_op, out2_op],
+                            feed_dict={input_op: np.linspace(1, 10, 10)})
+      self.assertAllEqual(out1, np.linspace(2, 11, 10))
+      self.assertAllEqual(out2, np.linspace(2, 11, 10))
+
 
 class FunctionsFromProtos(test.TestCase):
 
@@ -1102,6 +1197,7 @@ class FunctionInlineControlTest(test.TestCase):
             do_common_subexpression_elimination=True,
             do_function_inlining=True,
             do_constant_folding=True)))
+    cell_func_call_pattern = re.compile(r"Cell[^/]*\(")
     for noinline in [False, True]:
 
       @function.Defun(dtype, noinline=noinline)
@@ -1140,7 +1236,7 @@ class FunctionInlineControlTest(test.TestCase):
       def MetadataHasCell(run_metadata):
         for dev_stats in run_metadata.step_stats.dev_stats:
           for node_stats in dev_stats.node_stats:
-            if "Cell" in node_stats.timeline_label:
+            if cell_func_call_pattern.search(node_stats.timeline_label):
               return True
         return False
 

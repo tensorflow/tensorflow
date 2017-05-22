@@ -57,7 +57,7 @@ py_test(
 py_library(
     name = "application",
     srcs = ["application.py"],
-    data = ["//tensorflow/tensorboard:frontend"],
+    data = ["//tensorflow/tensorboard:assets"],
     srcs_version = "PY2AND3",
     deps = [
         ":http_util",
@@ -65,9 +65,6 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/tensorboard/backend/event_processing:event_accumulator",
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
-        "//tensorflow/tensorboard/plugins/debugger:debugger_plugin",
-        "//tensorflow/tensorboard/plugins/projector:projector_plugin",
-        "//tensorflow/tensorboard/plugins/text:text_plugin",
         "@org_pocoo_werkzeug//:werkzeug",
         "@six_archive//:six",
     ],
@@ -90,6 +87,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/tensorboard",
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
+        "//tensorflow/tensorboard/plugins:base_plugin",
         "@org_pocoo_werkzeug//:werkzeug",
     ],
 )

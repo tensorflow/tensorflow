@@ -205,6 +205,19 @@ class TransformGraphTest : public ::testing::Test {
     EXPECT_EQ(0, params_list.size());
   }
 
+  void TestParseExtraSpaces() {
+    TransformParameters params_list;
+    ParseTransformParameters(" ", &params_list).IgnoreError();
+    EXPECT_EQ(0, params_list.size());
+
+    TF_EXPECT_OK(ParseTransformParameters("  foo bar \\\n", &params_list));
+    EXPECT_EQ(2, params_list.size());
+    EXPECT_EQ("foo", params_list[0].first);
+    EXPECT_TRUE(params_list[0].second.empty());
+    EXPECT_EQ("bar", params_list[1].first);
+    EXPECT_TRUE(params_list[1].second.empty());
+  }
+
   void TestShouldIgnoreErrors() {
     bool ignore_errors;
     TF_EXPECT_OK(

@@ -37,7 +37,8 @@ class IGraphTransferOpsDefinitions {
   // Return total ops count supported by SOC
   virtual int GetTotalOpsCount() const = 0;
   // Return op id for given string op name
-  virtual int GetOpIdFor(const string& op_name) const = 0;
+  virtual int GetOpIdFor(const string& op_name,
+                         const DataTypeVector& dt) const = 0;
   // Return destination of transfer
   virtual GraphTransferInfo::Destination GetTransferDestination() const = 0;
 

@@ -41,7 +41,7 @@ def load_data(path='imdb.npz',
       num_words: max number of words to include. Words are ranked
           by how often they occur (in the training set) and only
           the most frequent words are kept
-      skip_top: skip the top N most frequently occuring words
+      skip_top: skip the top N most frequently occurring words
           (which may not be informative).
       maxlen: truncate sequences after this length.
       seed: random seed for sample shuffling.
@@ -100,10 +100,10 @@ def load_data(path='imdb.npz',
         new_labels.append(y)
     xs = new_xs
     labels = new_labels
-  if not xs:
-    raise ValueError('After filtering for sequences shorter than maxlen=' + str(
-        maxlen) + ', no sequence was kept. '
-                     'Increase maxlen.')
+    if not xs:
+      raise ValueError('After filtering for sequences shorter than maxlen=' +
+                       str(maxlen) + ', no sequence was kept. '
+                       'Increase maxlen.')
   if not num_words:
     num_words = max([max(x) for x in xs])
 

@@ -47,8 +47,7 @@ class EqualGraphDefTest : public ::testing::Test {
  protected:
   EqualGraphDefTest()
       : e_(GraphDefBuilder::kFailImmediately),
-        a_(GraphDefBuilder::kFailImmediately) {
-  }
+        a_(GraphDefBuilder::kFailImmediately) {}
 
   bool Match() {
     GraphDef expected;
@@ -89,11 +88,7 @@ TEST_F(EqualGraphDefTest, ExtraNode) {
   Input(a_.opts().WithName("A"));
   Input(a_.opts().WithName("B"));
   EXPECT_FALSE(Match());
-  EXPECT_EQ(strings::StrCat(
-                "Found unexpected node 'B = Input[]()' not in expected graph:\n"
-                "versions = producer: ",
-                TF_GRAPH_DEF_VERSION, ";\n", "A = Input[]();\n"),
-            diff_);
+  EXPECT_EQ("Found unexpected node 'B = Input[]()'", diff_);
 }
 
 TEST_F(EqualGraphDefTest, NodeOrder) {
@@ -169,21 +164,23 @@ TEST_F(EqualGraphDefTest, ControlInputOrder) {
   Node* b = Input(e_.opts().WithName("B"));
   Node* c = Input(e_.opts().WithName("C"));
   Node* d = Input(e_.opts().WithName("D"));
-  Combine(a, a, e_.opts()
-                    .WithName("E")
-                    .WithControlInput(b)
-                    .WithControlInput(c)
-                    .WithControlInput(d));
+  Combine(a, a,
+          e_.opts()
+              .WithName("E")
+              .WithControlInput(b)
+              .WithControlInput(c)
+              .WithControlInput(d));
 
   a = Input(a_.opts().WithName("A"));
   b = Input(a_.opts().WithName("B"));
   c = Input(a_.opts().WithName("C"));
   d = Input(a_.opts().WithName("D"));
-  Combine(a, a, a_.opts()
-                    .WithName("E")
-                    .WithControlInput(c)
-                    .WithControlInput(d)
-                    .WithControlInput(b));
+  Combine(a, a,
+          a_.opts()
+              .WithName("E")
+              .WithControlInput(c)
+              .WithControlInput(d)
+              .WithControlInput(b));
   EXPECT_TRUE(Match()) << diff_;
 }
 

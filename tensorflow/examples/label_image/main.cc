@@ -30,8 +30,12 @@ limitations under the License.
 // the top of the main() function.
 //
 // The googlenet_graph.pb file included by default is created from Inception.
+//
+// Note that, for GIF inputs, to reuse existing code, only single-frame ones
+// are supported.
 
 #include <fstream>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/cc/ops/const_op.h"
@@ -46,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -62,7 +67,7 @@ using tensorflow::int32;
 // Takes a file name, and loads a list of labels from it, one per line, and
 // returns a vector of the strings. It pads with empty strings so the length
 // of the result is a multiple of 16, because our model expects that.
-Status ReadLabelsFile(string file_name, std::vector<string>* result,
+Status ReadLabelsFile(const string& file_name, std::vector<string>* result,
                       size_t* found_label_count) {
   std::ifstream file(file_name);
   if (!file) {
@@ -82,9 +87,32 @@ Status ReadLabelsFile(string file_name, std::vector<string>* result,
   return Status::OK();
 }
 
+static Status ReadEntireFile(tensorflow::Env* env, const string& filename,
+                             Tensor* output) {
+
+  tensorflow::uint64 file_size = 0;
+  TF_RETURN_IF_ERROR(env->GetFileSize(filename, &file_size));
+
+  string contents;
+  contents.resize(file_size);
+
+  std::unique_ptr<tensorflow::RandomAccessFile> file;
+  TF_RETURN_IF_ERROR(env->NewRandomAccessFile(filename, &file));
+
+  tensorflow::StringPiece data;
+  TF_RETURN_IF_ERROR(file->Read(0, file_size, &data, &(contents)[0]));
+  if (data.size() != file_size) {
+    return tensorflow::errors::DataLoss("Truncated read of '", filename,
+                                        "' expected ", file_size, " got ",
+                                        data.size());
+  }
+  output->scalar<string>()() = data.ToString();
+  return Status::OK();
+}
+
 // Given an image file name, read in the data, try to decode it as an image,
 // resize it to the requested size, and then scale the values as desired.
-Status ReadTensorFromImageFile(string file_name, const int input_height,
+Status ReadTensorFromImageFile(const string& file_name, const int input_height,
                                const int input_width, const float input_mean,
                                const float input_std,
                                std::vector<Tensor>* out_tensors) {
@@ -93,8 +121,20 @@ Status ReadTensorFromImageFile(string file_name, const int input_height,
 
   string input_name = "file_reader";
   string output_name = "normalized";
-  auto file_reader =
-      tensorflow::ops::ReadFile(root.WithOpName(input_name), file_name);
+
+  // read file_name into a tensor named input
+  Tensor input(tensorflow::DT_STRING, tensorflow::TensorShape());
+  TF_RETURN_IF_ERROR(ReadEntireFile(tensorflow::Env::Default(), file_name,
+                                    &input));
+
+  // use a placeholder to read input data
+  auto file_reader = Placeholder(root.WithOpName("input"),
+                                 tensorflow::DataType::DT_STRING);
+
+  std::vector<std::pair<string, tensorflow::Tensor>> inputs = {
+    {"input", input},
+  };
+
   // Now try to figure out what kind of file it is and decode it.
   const int wanted_channels = 3;
   tensorflow::Output image_reader;
@@ -102,7 +142,12 @@ Status ReadTensorFromImageFile(string file_name, const int input_height,
     image_reader = DecodePng(root.WithOpName("png_reader"), file_reader,
                              DecodePng::Channels(wanted_channels));
   } else if (tensorflow::StringPiece(file_name).ends_with(".gif")) {
-    image_reader = DecodeGif(root.WithOpName("gif_reader"), file_reader);
+    // gif decoder returns 4-D tensor, remove the first dim
+    image_reader =
+        Squeeze(root.WithOpName("squeeze_first_dim"),
+                DecodeGif(root.WithOpName("gif_reader"), file_reader));
+  } else if (tensorflow::StringPiece(file_name).ends_with(".bmp")) {
+    image_reader = DecodeBmp(root.WithOpName("bmp_reader"), file_reader);
   } else {
     // Assume if it's neither a PNG nor a GIF then it must be a JPEG.
     image_reader = DecodeJpeg(root.WithOpName("jpeg_reader"), file_reader,
@@ -132,13 +177,13 @@ Status ReadTensorFromImageFile(string file_name, const int input_height,
   std::unique_ptr<tensorflow::Session> session(
       tensorflow::NewSession(tensorflow::SessionOptions()));
   TF_RETURN_IF_ERROR(session->Create(graph));
-  TF_RETURN_IF_ERROR(session->Run({}, {output_name}, {}, out_tensors));
+  TF_RETURN_IF_ERROR(session->Run({inputs}, {output_name}, {}, out_tensors));
   return Status::OK();
 }
 
 // Reads a model graph definition from disk, and creates a session object you
 // can use to run it.
-Status LoadGraph(string graph_file_name,
+Status LoadGraph(const string& graph_file_name,
                  std::unique_ptr<tensorflow::Session>* session) {
   tensorflow::GraphDef graph_def;
   Status load_graph_status =
@@ -185,7 +230,7 @@ Status GetTopLabels(const std::vector<Tensor>& outputs, int how_many_labels,
 // Given the output of a model run, and the name of a file containing the labels
 // this prints out the top five highest-scoring values.
 Status PrintTopLabels(const std::vector<Tensor>& outputs,
-                      string labels_file_name) {
+                      const string& labels_file_name) {
   std::vector<string> labels;
   size_t label_count;
   Status read_labels_status =
@@ -307,11 +352,11 @@ int main(int argc, char* argv[]) {
   }
 
   // This is for automated testing to make sure we get the expected result with
-  // the default settings. We know that label 866 (military uniform) should be
+  // the default settings. We know that label 653 (military uniform) should be
   // the top label for the Admiral Hopper image.
   if (self_test) {
     bool expected_matches;
-    Status check_status = CheckTopLabel(outputs, 866, &expected_matches);
+    Status check_status = CheckTopLabel(outputs, 653, &expected_matches);
     if (!check_status.ok()) {
       LOG(ERROR) << "Running check failed: " << check_status;
       return -1;

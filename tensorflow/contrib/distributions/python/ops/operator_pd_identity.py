@@ -115,7 +115,7 @@ class OperatorPDIdentity(operator_pd.OperatorPDBase):
     """Static check that the argument `x` is proper `shape`, `dtype`."""
     # x is a typical argument e.g. to matmul or solve.  In both cases, x should
     # have the same type/shape since this is a square matrix.  These checks are
-    # ususally not needed since we ususally have some tensor backing this
+    # usually not needed since we usually have some tensor backing this
     # distribution, and the calls to tf.matmul do a shape/type check.
     #
     # Static checks only for efficiency, the identity should be fast.

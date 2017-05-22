@@ -112,6 +112,8 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import re
+import threading
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -216,6 +218,9 @@ class OnRunStartAction(object):
 
   # Run once with debug tensor-watching.
   DEBUG_RUN = "debug_run"
+
+  # Run once with profiler.
+  PROFILE_RUN = "profile_run"
 
   # Run without debug tensor-watching.
   NON_DEBUG_RUN = "non_debug_run"
@@ -327,11 +332,17 @@ class BaseDebugWrapperSession(session.SessionInterface):
   # TODO(cais): Add on_cont_start and on_cont_end callbacks once the stepper is
   # is available.
 
-  def __init__(self, sess):
+  def __init__(self, sess, thread_name_filter=None):
     """Constructor of `BaseDebugWrapperSession`.
 
     Args:
       sess: An (unwrapped) TensorFlow session instance.
+      thread_name_filter: Regular-expression filter (whitelist) for name(s) of
+        thread(s) on which the wrapper session will be active. This regular
+        expression is used in a start-anchored fashion on the thread name, i.e.,
+        by applying the `match` method of the compiled pattern. The default
+        `None` means that the wrapper session will be active on all threads.
+        E.g., r"MainThread$", r"QueueRunnerThread.*".
 
     Raises:
       ValueError: On invalid `OnSessionInitAction` value.
@@ -340,14 +351,10 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
     _check_type(sess, session.BaseSession)
 
-    # TODO(cais): Remove this check once tfdbg is integrated with GrpcSession.
-    if sess.sess_str:
-      raise NotImplementedError(
-          "Non-DirectSession support is not available from TensorFlow "
-          "Debugger yet (sess_str=%s)" % sess.sess_str)
-
     # The session being wrapped.
     self._sess = sess
+    self._thread_name_filter_pattern = (re.compile(thread_name_filter)
+                                        if thread_name_filter else None)
 
     # Keeps track of number of run calls that have been performed on this
     # debug-wrapper session.
@@ -404,6 +411,11 @@ class BaseDebugWrapperSession(session.SessionInterface):
     """
 
     self._run_call_count += 1
+    if self._is_disabled_thread():
+      return self._sess.run(fetches,
+                            feed_dict=feed_dict,
+                            options=options,
+                            run_metadata=run_metadata)
 
     # Invoke on-run-start callback and obtain response.
     run_start_resp = self.on_run_start(
@@ -416,7 +428,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
       decorated_run_options = options or config_pb2.RunOptions()
       run_metadata = run_metadata or config_pb2.RunMetadata()
 
-      self._decorate_run_options(
+      self._decorate_run_options_for_debug(
           decorated_run_options,
           run_start_resp.debug_urls,
           debug_ops=run_start_resp.debug_ops,
@@ -444,6 +456,19 @@ class BaseDebugWrapperSession(session.SessionInterface):
           run_metadata=run_metadata,
           client_graph_def=self._sess.graph.as_graph_def(),
           tf_error=tf_error)
+
+    elif run_start_resp.action == OnRunStartAction.PROFILE_RUN:
+      decorated_run_options = options or config_pb2.RunOptions()
+      run_metadata = run_metadata or config_pb2.RunMetadata()
+      self._decorate_run_options_for_profile(decorated_run_options)
+      retvals = self._sess.run(fetches,
+                               feed_dict=feed_dict,
+                               options=decorated_run_options,
+                               run_metadata=run_metadata)
+      run_end_req = OnRunEndRequest(
+          run_start_resp.action,
+          run_metadata=run_metadata,
+          client_graph_def=self._sess.graph.as_graph_def())
 
     elif (run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN or
           run_start_resp.action == OnRunStartAction.INVOKE_STEPPER):
@@ -473,6 +498,11 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
     return retvals
 
+  def _is_disabled_thread(self):
+    thread_name = threading.current_thread().name or ""
+    return (self._thread_name_filter_pattern and
+            not self._thread_name_filter_pattern.match(thread_name))
+
   def partial_run_setup(self, fetches, feeds=None):
     """Sets up the feeds and fetches for partial runs in the session."""
     raise NotImplementedError(
@@ -482,14 +512,15 @@ class BaseDebugWrapperSession(session.SessionInterface):
     raise NotImplementedError(
         "partial_run is not implemented for debug-wrapper sessions.")
 
-  def _decorate_run_options(self,
-                            run_options,
-                            debug_urls,
-                            debug_ops="DebugIdentity",
-                            node_name_regex_whitelist=None,
-                            op_type_regex_whitelist=None,
-                            tensor_dtype_regex_whitelist=None,
-                            tolerate_debug_op_creation_failures=False):
+  def _decorate_run_options_for_debug(
+      self,
+      run_options,
+      debug_urls,
+      debug_ops="DebugIdentity",
+      node_name_regex_whitelist=None,
+      op_type_regex_whitelist=None,
+      tensor_dtype_regex_whitelist=None,
+      tolerate_debug_op_creation_failures=False):
     """Modify a RunOptions object for debug tensor watching.
 
     Specifies request for outputting partition graphs. Adds
@@ -519,6 +550,15 @@ class BaseDebugWrapperSession(session.SessionInterface):
         op_type_regex_whitelist=op_type_regex_whitelist,
         tensor_dtype_regex_whitelist=tensor_dtype_regex_whitelist,
         tolerate_debug_op_creation_failures=tolerate_debug_op_creation_failures)
+
+  def _decorate_run_options_for_profile(self, run_options):
+    """Modify a RunOptions object for profiling TensorFlow graph execution.
+
+    Args:
+      run_options: (RunOptions) the modified RunOptions object.
+    """
+
+    run_options.trace_level = config_pb2.RunOptions.FULL_TRACE
 
   @abc.abstractmethod
   def on_session_init(self, request):
@@ -626,7 +666,7 @@ class WatchOptions(object):
         are set, the two filtering operations will occur in a logical `AND`
         relation. In other words, a node will be included if and only if it
         hits both whitelists.
-      tensor_dtype_regex_whitelist: Regular-experssion whitelist for Tensor
+      tensor_dtype_regex_whitelist: Regular-expression whitelist for Tensor
         data type, e.g., `"^int.*"`.
         This whitelist operates in logical `AND` relations to the two whitelists
         above.
@@ -656,7 +696,7 @@ class WatchOptions(object):
 class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
   """Base class for non-interactive (i.e., non-CLI) debug wrapper sessions."""
 
-  def __init__(self, sess, watch_fn=None):
+  def __init__(self, sess, watch_fn=None, thread_name_filter=None):
     """Constructor of DumpingDebugWrapperSession.
 
     Args:
@@ -672,11 +712,15 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
            the debug ops to use, the node names, op types and/or tensor data
            types to watch, etc. See the documentation of `tf_debug.WatchOptions`
            for more details.
+      thread_name_filter: Regular-expression white list for threads on which the
+        wrapper session will be active. See doc of `BaseDebugWrapperSession` for
+        more details.
     Raises:
        TypeError: If a non-None `watch_fn` is specified and it is not callable.
     """
 
-    BaseDebugWrapperSession.__init__(self, sess)
+    BaseDebugWrapperSession.__init__(
+        self, sess, thread_name_filter=thread_name_filter)
 
     self._watch_fn = None
     if watch_fn is not None:

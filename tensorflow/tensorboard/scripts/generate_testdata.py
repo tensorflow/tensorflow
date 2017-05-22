@@ -38,7 +38,7 @@ from tensorflow.python.platform import app
 from tensorflow.python.platform import flags
 from tensorflow.python.summary.writer import writer as writer_lib
 
-tf.flags.DEFINE_string("target", None, """The directoy where serialized data
+tf.flags.DEFINE_string("target", None, """The directory where serialized data
 will be written""")
 
 flags.DEFINE_boolean("overwrite", False, """Whether to remove and overwrite
@@ -138,7 +138,7 @@ def WriteAudioSeries(writer, tag, n_audio=1):
   min_frequency_hz = 440
   max_frequency_hz = 880
   sample_rate = 4000
-  duration_frames = sample_rate * 0.5  # 0.5 seconds.
+  duration_frames = sample_rate // 2  # 0.5 seconds.
   frequencies_per_run = 1
   num_channels = 2
 

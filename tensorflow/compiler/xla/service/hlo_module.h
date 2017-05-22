@@ -25,6 +25,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -41,19 +43,18 @@ namespace xla {
 // computations are owned by the module.
 class HloModule {
  public:
-  explicit HloModule(const string& name,
-                     const VersionedComputationHandle& entry_computation_handle)
-      : name_(name),
-        entry_computation_(nullptr),
-        has_entry_computation_handle_(true),
-        entry_computation_handle_(entry_computation_handle) {}
+  HloModule(const string& name,
+            const VersionedComputationHandle& entry_computation_handle);
+
+  HloModule(const string& name,
+            const VersionedComputationHandle& entry_computation_handle,
+            const HloModuleConfig& config);
 
   // Constructor without a versioned computation handle. This constructor should
   // only be used for HloModules used outside of the XLA service (eg
   // tests). The versioned handle is used by the service in the compilation
   // cache.
-  explicit HloModule(const string& name)
-      : name_(name), entry_computation_(nullptr) {}
+  explicit HloModule(const string& name);
 
   // Adds an entry computation to the module. A module can only have one entry
   // computation. Returns a pointer to the newly added computation.
@@ -95,6 +96,14 @@ class HloModule {
   // computation B, then A will appear after B in the sort.
   std::list<HloComputation*> MakeComputationPostOrder() const;
 
+  bool has_config() const { return config_ != nullptr; }
+
+  void set_config(const HloModuleConfig& config);
+
+  const HloModuleConfig& config() const { return *config_; }
+
+  HloModuleConfig* mutable_config() { return config_.get(); }
+
   string ToString() const;
 
   // Outlines the given expression from the given computation.
@@ -110,8 +119,17 @@ class HloModule {
   // Returns a randomly generated uint64.
   uint64 RandomNew64() const;
 
+  // Returns the unique name for a computation in this module.
+  string GetUniqueCompuationName(const string& prefix) {
+    return computation_name_uniquer_.GetUniqueName(prefix);
+  }
+
  private:
+  HloComputation* AddComputationInternal(
+      std::unique_ptr<HloComputation> computation);
+
   const string name_;
+  std::unique_ptr<HloModuleConfig> config_;
   HloComputation* entry_computation_;
   std::vector<std::unique_ptr<HloComputation>> computations_;
 
@@ -125,6 +143,9 @@ class HloModule {
   // Versioned handle of the entry computation of the module.
   bool has_entry_computation_handle_ = false;
   VersionedComputationHandle entry_computation_handle_;
+
+  // Unique name generator for computation names, which are unique per module.
+  NameUniquer computation_name_uniquer_;
 };
 
 }  // namespace xla

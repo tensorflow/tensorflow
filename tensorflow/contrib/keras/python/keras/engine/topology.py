@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import inspect
 import json
 import os
 import re
@@ -30,11 +29,13 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.keras.python.keras import backend as K
-from tensorflow.contrib.keras.python.keras import initializers
 from tensorflow.contrib.keras.python.keras.utils import conv_utils
 from tensorflow.contrib.keras.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.contrib.keras.python.keras.utils.layer_utils import print_summary as print_layer_summary
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.layers import base as tf_base_layers
+from tensorflow.python.util import tf_inspect
 
 
 # pylint: disable=g-import-not-at-top
@@ -207,7 +208,7 @@ class Node(object):
     }
 
 
-class Layer(object):
+class Layer(tf_base_layers.Layer):
   """Abstract base layer class.
 
   # Properties
@@ -272,42 +273,53 @@ class Layer(object):
   # Internal methods:
       build(input_shape)
       _add_inbound_node(layer, index=0)
-      assert_input_compatibility()
   """
 
   def __init__(self, **kwargs):
+    # These properties should be set by the user via keyword arguments.
+    # note that 'dtype', 'input_shape' and 'batch_input_shape'
+    # are only applicable to input layers: do not pass these keywords
+    # to non-input layers.
+    allowed_kwargs = {
+        'input_shape',
+        'batch_input_shape',
+        'batch_size',
+        'dtype',
+        'name',
+        'trainable',
+        'weights',
+    }
+    # Validate optional keyword arguments.
+    for kwarg in kwargs:
+      if kwarg not in allowed_kwargs:
+        raise TypeError('Keyword argument not understood:', kwarg)
+
+    # Get layer name.
+    name = kwargs.get('name')
+
+    # Get `trainable` status.
+    trainable = kwargs.get('trainable', True)
+
+    # Get `dtype`.
+    dtype = kwargs.get('dtype')
+    if dtype is None:
+      dtype = K.floatx()
+
+    # Call super, which will set all properties common to Keras layers
+    # and core TF layers.
+    super(Layer, self).__init__(name=name, dtype=dtype, trainable=trainable)
+
+    # Add properties that are Keras-only for now.
     self.input_spec = None
     self.supports_masking = False
-
-    # These properties will be set upon call of self.build()
-    self._trainable_weights = []
-    self._non_trainable_weights = []
     self._constraints = {}  # dict {tensor: constraint instance}
-    self.built = False
 
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
     self.inbound_nodes = []
     self.outbound_nodes = []
 
-    # These properties should be set by the user via keyword arguments.
-    # note that 'dtype', 'input_shape' and 'batch_input_shape'
-    # are only applicable to input layers: do not pass these keywords
-    # to non-input layers.
-    allowed_kwargs = {
-        'input_shape', 'batch_input_shape', 'batch_size', 'dtype', 'name',
-        'trainable', 'weights'
-    }
-    for kwarg in kwargs:
-      if kwarg not in allowed_kwargs:
-        raise TypeError('Keyword argument not understood:', kwarg)
-    name = kwargs.get('name')
-    if not name:
-      prefix = self.__class__.__name__
-      name = _to_snake_case(prefix) + '_' + str(K.get_uid(prefix))
-    self.name = name
-
-    self.trainable = kwargs.get('trainable', True)
+    # Manage input shape information if passed.
     if 'input_shape' in kwargs or 'batch_input_shape' in kwargs:
       # In this case we will later create an input layer
       # to insert before the current layer
@@ -320,8 +332,8 @@ class Layer(object):
           batch_size = None
         batch_input_shape = (batch_size,) + tuple(kwargs['input_shape'])
       self.batch_input_shape = batch_input_shape
-      dtype = kwargs.get('dtype', K.floatx())
-      self.dtype = dtype
+
+    # Manage initial weight values if passed.
     if 'weights' in kwargs:
       self._initial_weights = kwargs['weights']
     else:
@@ -335,161 +347,45 @@ class Layer(object):
   def constraints(self, constraints):
     self._constraints = constraints
 
-  @property
-  def trainable_weights(self):
-    trainable = getattr(self, 'trainable', True)
-    if trainable:
-      return self._trainable_weights
-    else:
-      return []
-
-  @trainable_weights.setter
-  def trainable_weights(self, weights):
-    self._trainable_weights = weights
-
-  @property
-  def non_trainable_weights(self):
-    trainable = getattr(self, 'trainable', True)
-    if not trainable:
-      return self._trainable_weights + self._non_trainable_weights
-    else:
-      return self._non_trainable_weights
-
-  @non_trainable_weights.setter
-  def non_trainable_weights(self, weights):
-    self._non_trainable_weights = weights
-
   def add_weight(self,
+                 name,
                  shape,
-                 initializer,
-                 name=None,
-                 trainable=True,
+                 dtype=None,
+                 initializer=None,
                  regularizer=None,
+                 trainable=True,
                  constraint=None):
     """Adds a weight variable to the layer.
 
     Arguments:
-        shape: The shape tuple of the weight.
-        initializer: An Initializer instance (callable).
         name: String, the name for the weight variable.
+        shape: The shape tuple of the weight.
+        dtype: The dtype of the weight.
+        initializer: An Initializer instance (callable).
+        regularizer: An optional Regularizer instance.
         trainable: A boolean, whether the weight should
             be trained via backprop or not (assuming
             that the layer itself is also trainable).
-        regularizer: An optional Regularizer instance.
         constraint: An optional Constraint instance.
 
     Returns:
         The created weight variable.
     """
-    shape = tuple(tensor_shape.TensorShape(shape).as_list())
-    initializer = initializers.get(initializer)
-    weight = K.variable(initializer(shape), dtype=K.floatx(), name=name)
-    if regularizer is not None:
-      self.add_loss(regularizer(weight))
+    if dtype is None:
+      dtype = K.floatx()
+    weight = self.add_variable(
+        name, shape, dtype=dtype,
+        initializer=initializer, regularizer=regularizer, trainable=trainable)
     if constraint is not None:
       self.constraints[weight] = constraint
-    if trainable:
-      self._trainable_weights.append(weight)
-    else:
-      self._non_trainable_weights.append(weight)
     return weight
 
-  def assert_input_compatibility(self, inputs):
-    """Checks compatibility between the layer and provided inputs.
-
-    This checks that the tensor(s) `input`
-    verify the input assumptions of the layer
-    (if any). If not, exceptions are raised.
-
-    Arguments:
-        inputs: input tensor or list of input tensors.
-
-    Raises:
-        ValueError: in case of mismatch between
-            the provided inputs and the expectations of the layer.
-    """
-    if not self.input_spec:
-      return
-    if not isinstance(self.input_spec, (list, tuple)):
-      input_spec = _to_list(self.input_spec)
-    else:
-      input_spec = self.input_spec
-    inputs = _to_list(inputs)
-    if len(inputs) != len(input_spec):
-      raise ValueError('Layer ' + self.name + ' expects ' + str(
-          len(input_spec)) + ' inputs, '
-                       'but it received ' + str(len(inputs)) +
-                       ' input tensors. Input received: ' + str(input))
-    for input_index, (x, spec) in enumerate(zip(inputs, input_spec)):
-      if spec is None:
-        continue
-
-      # Check ndim.
-      if spec.ndim is not None:
-        if K.ndim(x) != spec.ndim:
-          raise ValueError('Input ' + str(
-              input_index) + ' is incompatible with layer ' + self.name +
-                           ': expected ndim=' + str(
-                               spec.ndim) + ', found ndim=' + str(K.ndim(x)))
-      if spec.max_ndim is not None:
-        ndim = K.ndim(x)
-        if ndim is not None and ndim > spec.max_ndim:
-          raise ValueError('Input ' + str(
-              input_index) + ' is incompatible with layer ' + self.name +
-                           ': expected max_ndim=' + str(spec.max_ndim) +
-                           ', found ndim=' + str(K.ndim(x)))
-      if spec.min_ndim is not None:
-        ndim = K.ndim(x)
-        if ndim is not None and ndim < spec.min_ndim:
-          raise ValueError('Input ' + str(
-              input_index) + ' is incompatible with layer ' + self.name +
-                           ': expected min_ndim=' + str(spec.min_ndim) +
-                           ', found ndim=' + str(K.ndim(x)))
-      # Check dtype.
-      if spec.dtype is not None:
-        if K.dtype(x) != spec.dtype:
-          raise ValueError('Input ' + str(
-              input_index) + ' is incompatible with layer ' + self.name +
-                           ': expected dtype=' + str(
-                               spec.dtype) + ', found dtype=' + str(K.dtype(x)))
-      # Check specific shape axes.
-      if spec.axes:
-        try:
-          x_shape = K.int_shape(x)
-        except TypeError:
-          x_shape = None
-        if x_shape is not None:
-          for axis, value in spec.axes.items():
-            if hasattr(value, 'value'):
-              value = value.value
-            if value is not None and x_shape[int(axis)] not in {value, None}:
-              raise ValueError(
-                  'Input ' + str(input_index) + ' is incompatible with layer ' +
-                  self.name + ': expected axis ' + str(
-                      axis) + ' of input shape to have '
-                  'value ' + str(value) + ' but got shape ' + str(x_shape))
-      # Check shape.
-      if spec.shape is not None:
-        try:
-          x_shape = K.int_shape(x)
-        except TypeError:
-          x_shape = None
-        if x_shape is not None:
-          for spec_dim, dim in zip(spec.shape, x_shape):
-            if hasattr(spec_dim, 'value'):
-              spec_dim = spec_dim.value
-            if spec_dim is not None and dim is not None:
-              if spec_dim != dim:
-                raise ValueError('Input ' + str(
-                    input_index) + ' is incompatible with layer ' + self.name +
-                                 ': expected shape=' + str(spec.shape) +
-                                 ', found shape=' + str(x_shape))
-
-  def call(self, inputs):
+  def call(self, inputs, **kwargs):  # pylint: disable=unused-argument
     """This is where the layer's logic lives.
 
     Arguments:
-        inputs: input tensor, or list/tuple of input tensors.
+        inputs: Input tensor, or list/tuple of input tensors.
+        **kwargs: Additional keyword arguments.
 
     Returns:
         A tensor or list/tuple of tensors.
@@ -518,65 +414,43 @@ class Layer(object):
         ValueError: in case the layer is missing shape information
             for its `build` call.
     """
+    if isinstance(inputs, list):
+      inputs = inputs[:]
+
+    # Handle mask propagation.
+    previous_mask = _collect_previous_mask(inputs)
+    user_kwargs = copy.copy(kwargs)
+    if not _is_all_none(previous_mask):
+      # The previous layer generated a mask.
+      if 'mask' in tf_inspect.getargspec(self.call).args:
+        if 'mask' not in kwargs:
+          # If mask is explicitly passed to __call__,
+          # we should override the default mask.
+          kwargs['mask'] = previous_mask
+
+    # Actually call the layer (optionally building it).
+    output = super(Layer, self).__call__(inputs, **kwargs)
+
+    # Handle mask computation.
     with K.name_scope(self.name):
-      # Handle laying building (weight creating, input spec locking).
-      if not self.built:
-        # Raise exceptions in case the input is not compatible
-        # with the input_spec specified in the layer constructor.
-        self.assert_input_compatibility(inputs)
-
-        # Collect input shapes to build layer.
-        input_shapes = []
-        for x_elem in _to_list(inputs):
-          input_shapes.append(K.int_shape(x_elem))
-        if len(input_shapes) == 1:
-          self.build(input_shapes[0])
-        else:
-          self.build(input_shapes)
-        self.built = True
-
-        # Load weights that were specified at layer instantiation.
-        if self._initial_weights is not None:
-          self.set_weights(self._initial_weights)
-
-      # Raise exceptions in case the input is not compatible
-      # with the input_spec set at build time.
-      self.assert_input_compatibility(inputs)
-
-      # Handle mask propagation.
-      previous_mask = _collect_previous_mask(inputs)
-      if not _is_all_none(previous_mask):
-        # The previous layer generated a mask.
-        if 'mask' in inspect.getargspec(self.call).args:
-          if 'mask' not in kwargs:
-            # If mask is explicitly passed to __call__,
-            # we should override the default mask.
-            kwargs['mask'] = previous_mask
-
-      # Actually call the layer, collecting output(s), mask(s), and shape(s).
-      output = self.call(inputs, **kwargs)
       output_mask = self.compute_mask(inputs, previous_mask)
 
-      # Add an inbound node to the layer, so that it keeps track
-      # of the call and of all new variables created during the call.
-      # This also updates the layer history of the output tensor(s).
-      # If the input tensor(s) had not previous Keras history,
-      # this does nothing.
-      self._add_inbound_node(
-          input_tensors=inputs,
-          output_tensors=output,
-          input_masks=previous_mask,
-          output_masks=output_mask,
-          arguments=kwargs)
+    # Add an inbound node to the layer, so that it keeps track
+    # of the call and of all new variables created during the call.
+    # This also updates the layer history of the output tensor(s).
+    # If the input tensor(s) had not previous Keras history,
+    # this does nothing.
+    self._add_inbound_node(
+        input_tensors=inputs,
+        output_tensors=output,
+        input_masks=previous_mask,
+        output_masks=output_mask,
+        arguments=user_kwargs)
 
-      # Apply activity regularizer if any:
-      if hasattr(
-          self,
-          'activity_regularizer') and self.activity_regularizer is not None:
-        regularization_losses = [
-            self.activity_regularizer(x) for x in _to_list(output)
-        ]
-        self.add_loss(regularization_losses, _to_list(inputs))
+    # Optionally load weight values that were specified at layer instantiation.
+    if hasattr(self, '_initial_weights') and self._initial_weights is not None:
+      self.set_weights(self._initial_weights)
+      del self._initial_weights
     return output
 
   def _add_inbound_node(self,
@@ -678,7 +552,7 @@ class Layer(object):
                           'but was passed an input_mask: ' + str(mask))
       # masking not explicitly supported: return None as mask
       return None
-    # if masking is explictly supported, by default
+    # if masking is explicitly supported, by default
     # carry over the input mask
     return mask
 
@@ -720,9 +594,9 @@ class Layer(object):
       raise RuntimeError('The layer has never been called '
                          'and thus has no defined ' + attr_name + '.')
     if not len(self.inbound_nodes) > node_index:
-      raise ValueError('Asked to get ' + attr_name + ' at node ' + str(
-          node_index) + ', but the layer has only ' + str(
-              len(self.inbound_nodes)) + ' inbound nodes.')
+      raise ValueError('Asked to get ' + attr_name + ' at node ' +
+                       str(node_index) + ', but the layer has only ' +
+                       str(len(self.inbound_nodes)) + ' inbound nodes.')
     values = getattr(self.inbound_nodes[node_index], attr)
     if len(values) == 1:
       return values[0]
@@ -922,14 +796,14 @@ class Layer(object):
 
   @property
   def input_shape(self):
-    """Retrieves the input shape tuple(s) of a layer.
+    """Retrieves the input shape(s) of a layer.
 
     Only applicable if the layer has exactly one inbound node,
     i.e. if it is connected to one incoming layer.
 
     Returns:
-        Input shape tuple
-        (or list of input shape tuples, one tuple per input tensor).
+        Input shape, as `TensorShape`
+        (or list of `TensorShape`, one tuple per input tensor).
 
     Raises:
         AttributeError: if the layer is connected to
@@ -960,14 +834,14 @@ class Layer(object):
 
   @property
   def output_shape(self):
-    """Retrieves the output shape tuple(s) of a layer.
+    """Retrieves the output shape(s) of a layer.
 
     Only applicable if the layer has one inbound node,
     or if all inbound nodes have the same output shape.
 
     Returns:
-        Output shape tuple
-        (or list of input shape tuples, one tuple per output tensor).
+        Output shape, as `TensorShape`
+        (or list of `TensorShape`, one tuple per output tensor).
 
     Raises:
         AttributeError: if the layer is connected to
@@ -996,114 +870,6 @@ class Layer(object):
                            'Use `get_output_shape_at(node_index)` '
                            'instead.')
 
-  def add_loss(self, losses, inputs=None):
-    """Add losses to the layer.
-
-    The loss may potentially be conditional on some inputs tensors,
-    for instance activity losses are conditional on the layer's inputs.
-
-    Arguments:
-        losses: loss tensor or list of loss tensors
-            to add to the layer.
-        inputs: input tensor or list of inputs tensors to mark
-            the losses as conditional on these inputs.
-            If None is passed, the loss is assumed unconditional
-            (e.g. L2 weight regularization, which only depends
-            on the layer's weights variables, not on any inputs tensors).
-    """
-    if losses is None:
-      return
-    # Update self.losses
-    losses = _to_list(losses)
-    if not hasattr(self, 'losses'):
-      self.losses = []
-    try:
-      self.losses += losses
-    except AttributeError:
-      # In case self.losses isn't settable
-      # (i.e. it's a getter method).
-      # In that case the `losses` property is
-      # auto-computed and shouldn't be set.
-      pass
-    # Update self._per_input_updates
-    if not hasattr(self, '_per_input_losses'):
-      self._per_input_losses = {}
-    if inputs is not None:
-      inputs_hash = _object_list_uid(inputs)
-    else:
-      # Updates indexed by None are unconditional
-      # rather than input-dependent
-      inputs_hash = None
-    if inputs_hash not in self._per_input_losses:
-      self._per_input_losses[inputs_hash] = []
-    self._per_input_losses[inputs_hash] += losses
-
-  def add_update(self, updates, inputs=None):
-    """Add updates to the layer.
-
-    The updates may potentially be conditional on some inputs tensors,
-    for instance batch norm updates are conditional on the layer's inputs.
-
-    Arguments:
-        updates: update op or list of update ops
-            to add to the layer.
-        inputs: input tensor or list of inputs tensors to mark
-            the updates as conditional on these inputs.
-            If None is passed, the updates are assumed unconditional.
-    """
-    if updates is None:
-      return
-    # Update self.updates
-    updates = _to_list(updates)
-    if not hasattr(self, 'updates'):
-      self.updates = []
-    try:
-      self.updates += updates
-    except AttributeError:
-      # In case self.updates isn't settable
-      # (i.e. it's a getter method).
-      # In that case the `updates` property is
-      # auto-computed and shouldn't be set.
-      pass
-    # Update self._per_input_updates
-    if not hasattr(self, '_per_input_updates'):
-      self._per_input_updates = {}
-    if inputs is not None:
-      inputs_hash = _object_list_uid(inputs)
-    else:
-      # Updates indexed by None are unconditional
-      # rather than input-dependent
-      inputs_hash = None
-    if inputs_hash not in self._per_input_updates:
-      self._per_input_updates[inputs_hash] = []
-    self._per_input_updates[inputs_hash] += updates
-
-  def get_updates_for(self, inputs):
-    if not hasattr(self, '_per_input_updates'):
-      return []
-    if inputs is not None:
-      inputs_hash = _object_list_uid(inputs)
-    else:
-      inputs_hash = None
-    if inputs_hash in self._per_input_updates:
-      return self._per_input_updates[inputs_hash]
-    return []
-
-  def get_losses_for(self, inputs):
-    if not hasattr(self, '_per_input_losses'):
-      return []
-    if inputs is not None:
-      inputs_hash = _object_list_uid(inputs)
-    else:
-      inputs_hash = None
-    if inputs_hash in self._per_input_losses:
-      return self._per_input_losses[inputs_hash]
-    return []
-
-  @property
-  def weights(self):
-    return self.trainable_weights + self.non_trainable_weights
-
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
 
@@ -1121,10 +887,10 @@ class Layer(object):
     params = self.weights
     if len(params) != len(weights):
       raise ValueError('You called `set_weights(weights)` on layer "' +
-                       self.name + '" with a  weight list of length ' + str(
-                           len(weights)) + ', but the layer was expecting ' +
-                       str(len(params)) + ' weights. Provided weights: ' + str(
-                           weights)[:50] + '...')
+                       self.name + '" with a  weight list of length ' +
+                       str(len(weights)) + ', but the layer was expecting ' +
+                       str(len(params)) + ' weights. Provided weights: ' +
+                       str(weights)[:50] + '...')
     if not params:
       return
     weight_value_tuples = []
@@ -1237,9 +1003,12 @@ class InputLayer(Layer):
     if not name:
       prefix = 'input'
       name = prefix + '_' + str(K.get_uid(prefix))
+    if not dtype:
+      if input_tensor is None:
+        dtype = K.floatx()
+      else:
+        dtype = K.dtype(input_tensor)
     super(InputLayer, self).__init__(dtype=dtype, name=name)
-
-    self.trainable = False
     self.built = True
     self.sparse = sparse
 
@@ -1267,15 +1036,7 @@ class InputLayer(Layer):
         batch_input_shape = (batch_size,) + tuple(input_shape)
     else:
       batch_input_shape = tuple(batch_input_shape)
-
-    if not dtype:
-      if input_tensor is None:
-        dtype = K.floatx()
-      else:
-        dtype = K.dtype(input_tensor)
-
     self.batch_input_shape = batch_input_shape
-    self.dtype = dtype
 
     if input_tensor is None:
       self.is_placeholder = True
@@ -1417,7 +1178,7 @@ class Container(Layer):
       get_weights
       set_weights
       get_config
-      get_output_shape_for
+      compute_output_shape
 
   # Class Methods
       from_config
@@ -1429,9 +1190,18 @@ class Container(Layer):
       prefix = self.__class__.__name__.lower()
       name = prefix + '_' + str(K.get_uid(prefix))
     self.name = name
-
     self.supports_masking = False
     self.trainable = True
+    self._per_input_losses = {}
+    self._per_input_updates = {}
+
+    # The following properties are not actually used by Keras;
+    # they exist for compatibility with TF.
+    self._updates = []
+    self._scope = None
+    self._reuse = None
+    self._base_name = name
+    self._graph = ops.get_default_graph()
 
     # Container-specific properties.
     if isinstance(inputs, (list, tuple)):
@@ -1482,8 +1252,8 @@ class Container(Layer):
       if not hasattr(x, '_keras_history'):
         cls_name = self.__class__.__name__
         raise TypeError('Input tensors to a ' + cls_name + ' ' +
-                        'must be Keras tensors. Found: ' + str(
-                            x) + ' (missing Keras metadata).')
+                        'must be Keras tensors. Found: ' + str(x) +
+                        ' (missing Keras metadata).')
       # Check that x is an input tensor.
       layer, node_index, tensor_index = x._keras_history
       if len(layer.inbound_nodes) > 1 or (
@@ -1691,8 +1461,8 @@ class Container(Layer):
                                  'cannot obtain value for tensor ' + str(x) +
                                  ' at layer "' + layer.name + '". '
                                  'The following previous layers '
-                                 'were accessed without issue: ' + str(
-                                     layers_with_complete_input))
+                                 'were accessed without issue: ' +
+                                 str(layers_with_complete_input))
           for x in node.output_tensors:
             computable_tensors.append(x)
           layers_with_complete_input.append(layer.name)
@@ -1706,8 +1476,8 @@ class Container(Layer):
     all_names = [layer.name for layer in self.layers]
     for name in all_names:
       if all_names.count(name) != 1:
-        raise RuntimeError('The name "' + name + '" is used ' + str(
-            all_names.count(name)) + ' times in the model. '
+        raise RuntimeError('The name "' + name + '" is used ' +
+                           str(all_names.count(name)) + ' times in the model. '
                            'All layer names should be unique.')
 
     # Layer parameters.
@@ -1756,9 +1526,9 @@ class Container(Layer):
     # without the container being notified of it.
     if index is not None:
       if len(self.layers) <= index:
-        raise ValueError('Was asked to retrieve layer at index ' +
-                         str(index) + ' but model only has ' + str(
-                             len(self.layers)) + ' layers.')
+        raise ValueError('Was asked to retrieve layer at index ' + str(index) +
+                         ' but model only has ' + str(len(self.layers)) +
+                         ' layers.')
       else:
         return self.layers[index]
     else:
@@ -1776,7 +1546,7 @@ class Container(Layer):
     """Retrieve the model's updates.
 
     Will only include updates that are either
-    inconditional, or conditional on inputs to this model
+    unconditional, or conditional on inputs to this model
     (e.g. will not include updates that depend on tensors
     that aren't inputs to this model).
 
@@ -1786,19 +1556,16 @@ class Container(Layer):
     updates = []
     for layer in self.layers:
       if hasattr(layer, 'updates'):
-        if len(layer.inbound_nodes) == 1:
-          updates += layer.updates
-        else:
-          # Collect updates that are dependent on inputs
-          # that are part of the model.
-          for node_index, node in enumerate(layer.inbound_nodes):
-            node_key = layer.name + '_ib-' + str(node_index)
-            if node_key in self.container_nodes:
-              # The model owns this layer node.
-              inputs = node.input_tensors
-              updates += layer.get_updates_for(inputs)
-          # Collect unconditional updates.
-          updates += layer.get_updates_for(None)
+        # Collect updates that are dependent on inputs
+        # that are part of the model.
+        for node_index, node in enumerate(layer.inbound_nodes):
+          node_key = layer.name + '_ib-' + str(node_index)
+          if node_key in self.container_nodes:
+            # The model owns this layer node.
+            inputs = node.input_tensors
+            updates += layer.get_updates_for(inputs)
+        # Collect unconditional updates.
+        updates += layer.get_updates_for(None)
     return updates
 
   @property
@@ -1806,7 +1573,7 @@ class Container(Layer):
     """Retrieve the model's losses.
 
     Will only include losses that are either
-    inconditional, or conditional on inputs to this model
+    unconditional, or conditional on inputs to this model
     (e.g. will not include losses that depend on tensors
     that aren't inputs to this model).
 
@@ -1817,22 +1584,18 @@ class Container(Layer):
     # Retrieve losses for all internal layers.
     for layer in self.layers:
       if hasattr(layer, 'losses'):
-        if len(layer.inbound_nodes) == 1:
-          losses += layer.losses
-        else:
-          # Collect losses that are dependent on inputs
-          # that are part of the model.
-          for node_index, node in enumerate(layer.inbound_nodes):
-            node_key = layer.name + '_ib-' + str(node_index)
-            if node_key in self.container_nodes:
-              # The model owns this layer node.
-              inputs = node.input_tensors
-              losses += layer.get_losses_for(inputs)
-          # Collect unconditional losses.
-          losses += layer.get_losses_for(None)
+        # Collect losses that are dependent on inputs
+        # that are part of the model.
+        for node_index, node in enumerate(layer.inbound_nodes):
+          node_key = layer.name + '_ib-' + str(node_index)
+          if node_key in self.container_nodes:
+            # The model owns this layer node.
+            inputs = node.input_tensors
+            losses += layer.get_losses_for(inputs)
+        # Collect unconditional losses.
+        losses += layer.get_losses_for(None)
     # Add any potential unconditional model-level loss.
-    if hasattr(self, '_per_input_losses'):
-      losses += self._per_input_losses.get(None, [])
+    losses += self.get_losses_for(None)
     return losses
 
   @property
@@ -2009,9 +1772,9 @@ class Container(Layer):
         input_shapes = [None]
 
     if len(input_shapes) != len(self.input_layers):
-      raise ValueError('Invalid input_shape argument ' +
-                       str(input_shape) + ': model has ' + str(
-                           len(self.input_layers)) + ' tensor inputs.')
+      raise ValueError('Invalid input_shape argument ' + str(input_shape) +
+                       ': model has ' + str(len(self.input_layers)) +
+                       ' tensor inputs.')
 
     cache_key = ','.join([str(x) for x in input_shapes])
     if cache_key in self._output_shape_cache:
@@ -2029,7 +1792,7 @@ class Container(Layer):
       for i in range(len(input_shapes)):
         layer = self.input_layers[i]
         input_shape = input_shapes[i]
-        # It's an input layer: get_output_shape_for is identity,
+        # It's an input layer: compute_output_shape is identity,
         # and there is only one node and one tensor output.
         shape_key = layer.name + '_0_0'
         layers_to_output_shapes[shape_key] = input_shape
@@ -2144,6 +1907,7 @@ class Container(Layer):
         for x in reference_input_tensors:
           if str(id(x)) in tensor_map:
             computed_data.append(tensor_map[str(id(x))])
+
         if len(computed_data) == len(reference_input_tensors):
           # call layer
           with K.name_scope(layer.name):
@@ -2153,7 +1917,7 @@ class Container(Layer):
               kwargs = {}
             if len(computed_data) == 1:
               computed_tensor, computed_mask = computed_data[0]
-              if 'mask' in inspect.getargspec(layer.call).args:
+              if 'mask' in tf_inspect.getargspec(layer.call).args:
                 if 'mask' not in kwargs:
                   kwargs['mask'] = computed_mask
               output_tensors = _to_list(layer.call(computed_tensor, **kwargs))
@@ -2164,23 +1928,30 @@ class Container(Layer):
             else:
               computed_tensors = [x[0] for x in computed_data]
               computed_masks = [x[1] for x in computed_data]
-              if 'mask' in inspect.getargspec(layer.call).args:
+              if 'mask' in tf_inspect.getargspec(layer.call).args:
                 if 'mask' not in kwargs:
                   kwargs['mask'] = computed_masks
               output_tensors = _to_list(layer.call(computed_tensors, **kwargs))
               output_masks = _to_list(
                   layer.compute_mask(computed_tensors, computed_masks))
 
+            # Apply activity regularizer if any:
+            if hasattr(layer, 'activity_regularizer'
+                      ) and layer.activity_regularizer is not None:
+              regularization_losses = [
+                  layer.activity_regularizer(x) for x in computed_tensors
+              ]
+              layer.add_loss(regularization_losses, computed_tensors)
+
           # Update model updates and losses:
-          layer_inputs = [x[0] for x in computed_data]
           # Keep track of updates that depend on the inputs
           # (e.g. BN updates).
-          self.add_update(layer.get_updates_for(layer_inputs), inputs)
+          self.add_update(layer.get_updates_for(computed_tensors), inputs)
           # Keep track of unconditional updates (e.g. a counter).
           self.add_update(layer.get_updates_for(None), None)
           # Keep track of losses that depend on the inputs
           # (e.g. activity regularizers).
-          self.add_loss(layer.get_losses_for(layer_inputs), inputs)
+          self.add_loss(layer.get_losses_for(computed_tensors), inputs)
           # Keep track of unconditional losses
           # (e.g. weight regularizers).
           self.add_loss(layer.get_losses_for(None), None)
@@ -2404,7 +2175,7 @@ class Container(Layer):
       output_tensors.append(layer_output_tensors[tensor_index])
     return cls(inputs=input_tensors, outputs=output_tensors, name=name)
 
-  def save(self, filepath, overwrite=True):
+  def save(self, filepath, overwrite=True, include_optimizer=True):
     """Save the model to a single HDF5 file.
 
     The savefile includes:
@@ -2425,6 +2196,7 @@ class Container(Layer):
         filepath: String, path to the file to save the weights to.
         overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
+        include_optimizer: If True, save optimizer's state together.
 
     Example:
 
@@ -2440,7 +2212,7 @@ class Container(Layer):
     ```
     """
     from tensorflow.contrib.keras.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
-    save_model(self, filepath, overwrite)
+    save_model(self, filepath, overwrite, include_optimizer)
 
   def save_weights(self, filepath, overwrite=True):
     """Dumps all layer weights to a HDF5 file.
@@ -2869,9 +2641,9 @@ def load_weights_from_hdf5_group(f, layers):
   layer_names = filtered_layer_names
   if len(layer_names) != len(filtered_layers):
     raise ValueError('You are trying to load a weight file '
-                     'containing ' + str(len(
-                         layer_names)) + ' layers into a model with ' + str(
-                             len(filtered_layers)) + ' layers.')
+                     'containing ' + str(len(layer_names)) +
+                     ' layers into a model with ' + str(len(filtered_layers)) +
+                     ' layers.')
 
   # We batch weight value assignments in a single backend call
   # which provides a speedup in TensorFlow.
@@ -2890,8 +2662,8 @@ def load_weights_from_hdf5_group(f, layers):
                        'correspond to layer ' + name + ' in the save file. '
                        'However the new layer ' + layer.name + ' expects ' +
                        str(len(symbolic_weights)) +
-                       ' weights, but the saved weights have ' + str(
-                           len(weight_values)) + ' elements.')
+                       ' weights, but the saved weights have ' +
+                       str(len(weight_values)) + ' elements.')
     weight_value_tuples += zip(symbolic_weights, weight_values)
   K.batch_set_value(weight_value_tuples)
 
@@ -2942,10 +2714,10 @@ def load_weights_from_hdf5_group_by_name(f, layers):
       weight_values = preprocess_weights_for_loading(
           layer, weight_values, original_keras_version, original_backend)
       if len(weight_values) != len(symbolic_weights):
-        raise ValueError('Layer #' + str(
-            k) + ' (named "' + layer.name + '") expects ' + str(
-                len(symbolic_weights)) + ' weight(s), but the saved weights' +
-                         ' have ' + str(len(weight_values)) + ' element(s).')
+        raise ValueError('Layer #' + str(k) + ' (named "' + layer.name +
+                         '") expects ' + str(len(symbolic_weights)) +
+                         ' weight(s), but the saved weights' + ' have ' +
+                         str(len(weight_values)) + ' element(s).')
       # Set values.
       for i in range(len(weight_values)):
         weight_value_tuples.append((symbolic_weights[i], weight_values[i]))

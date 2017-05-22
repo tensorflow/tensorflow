@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/random_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -137,7 +138,8 @@ Output ConstructOp(const Scope& scope, const string& op_type,
                    const gtl::ArraySlice<Input>& inputs) {
   if (!scope.ok()) return Output();
   const string unique_name = scope.GetUniqueNameForOp(op_type);
-  auto builder = NodeBuilder(unique_name, op_type);
+  auto builder =
+      NodeBuilder(unique_name, op_type, scope.graph()->op_registry());
   for (auto const& input : inputs) {
     builder.Input(ops::NodeOut(input.node(), input.index()));
   }
@@ -186,6 +188,15 @@ class GraphPartitionTest : public ::testing::Test {
     TF_EXPECT_OK(scope_b_.ToGraphDef(&graph_def));
     string b = "/job:a/replica:0/task:0/cpu:1";
     TF_EXPECT_GRAPH_EQ(graph_def, partitions_[b]);
+  }
+
+  void ExpectFunctions(const FunctionDefLibrary& library,
+                       const std::set<string>& expected_names) {
+    std::set<string> actual_names;
+    for (const FunctionDef& fdef : library.function()) {
+      actual_names.insert(fdef.signature().name());
+    }
+    EXPECT_EQ(actual_names, expected_names);
   }
 
   Scope in_;
@@ -399,6 +410,28 @@ TEST_F(GraphPartitionTest, PartitionIncompleteGraph) {
   // Partitioning should fail, but not crash like it did before the
   // changes that accompanied the addition of this test.
   EXPECT_EQ(error::INVALID_ARGUMENT, status.code()) << status;
+}
+
+TEST_F(GraphPartitionTest, Functions) {
+  FunctionDefLibrary fdef_lib;
+  *fdef_lib.add_function() = test::function::XTimesTwo();
+  *fdef_lib.add_function() = test::function::XTimesFour();
+  TF_ASSERT_OK(in_.graph()->AddFunctionLibrary(fdef_lib));
+
+  using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
+  auto a1 = FloatInput(in_.WithOpName("A1"));
+  auto b1 = FloatInput(in_.WithOpName("B1"));
+  ConstructOp(in_.WithOpName("A2"), "XTimesTwo", {a1});
+  ConstructOp(in_.WithOpName("B2"), "XTimesFour", {b1});
+
+  Partition(ToGraphDef(), &partitions_);
+  EXPECT_EQ(2, partitions_.size());
+
+  // Test that partition graphs inherit function library from original graph
+  string a = "/job:a/replica:0/task:0/cpu:0";
+  string b = "/job:a/replica:0/task:0/cpu:1";
+  ExpectFunctions(partitions_[a].library(), {"XTimesTwo", "XTimesFour"});
+  ExpectFunctions(partitions_[b].library(), {"XTimesTwo", "XTimesFour"});
 }
 
 }  // namespace

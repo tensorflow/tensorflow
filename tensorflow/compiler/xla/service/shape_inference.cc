@@ -244,8 +244,11 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     }
     if (ShapeUtil::Rank(*arg_shape) != ShapeUtil::Rank(*shape)) {
       return InvalidArgument(
-          "cannot concatenate arrays with different ranks: %lld vs %lld",
-          ShapeUtil::Rank(*arg_shape), ShapeUtil::Rank(*shape));
+          "Cannot concatenate arrays with different ranks: %lld (%s) vs %lld "
+          "(%s)",
+          ShapeUtil::Rank(*arg_shape),
+          ShapeUtil::HumanString(*arg_shape).c_str(), ShapeUtil::Rank(*shape),
+          ShapeUtil::HumanString(*shape).c_str());
     }
     if (arg_shape->element_type() != shape->element_type()) {
       return InvalidArgument(
@@ -309,6 +312,10 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     return InvalidArgument(
         "the rank of the operand and the padding configuration do not match.");
   }
+  if (operand_shape.element_type() != padding_value_shape.element_type()) {
+    return InvalidArgument(
+        "the element types of the operands to pad do not match");
+  }
   std::vector<int64> dimensions(ShapeUtil::Rank(operand_shape));
   for (int64 i = 0; i < operand_shape.dimensions_size(); ++i) {
     dimensions[i] = operand_shape.dimensions(i) +
@@ -338,7 +345,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 
   // Check if both element types are the same.
   if (lhs.element_type() != rhs.element_type()) {
-    return fail("element types mismatch");
+    return fail("element types do not match");
   }
 
   if (ShapeUtil::Rank(lhs) < 1 || ShapeUtil::Rank(lhs) > 2 ||
@@ -633,26 +640,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   TF_DCHECK_OK(ShapeUtil::ValidateShape(ehs));
   switch (operation) {
     case TRIOP_CLAMP:
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(lhs, "lhs of ternary operation"));
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(rhs, "rhs of ternary operation"));
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(ehs, "ehs of ternary operation"));
-      if (((ShapeUtil::Compatible(lhs, rhs) || ShapeUtil::Rank(lhs) == 0) &&
-           (ShapeUtil::Compatible(rhs, ehs) || ShapeUtil::Rank(ehs) == 0))) {
-        return rhs;
-      }
-      if (ShapeUtil::Rank(rhs) == 0) {
-        if (ShapeUtil::Compatible(lhs, ehs)) {
-          return lhs;
-        }
-        return ShapeUtil::Rank(ehs) == 0 ? lhs : ehs;
-      }
-      return Unimplemented("not yet implemented: %s, %s <clamp> %s",
-                           lhs.ShortDebugString().c_str(),
-                           ehs.ShortDebugString().c_str(),
-                           rhs.ShortDebugString().c_str());
+      return InferClampShape(lhs, rhs, ehs);
     case TRIOP_SELECT:
       return InferSelectShape(lhs, rhs, ehs);
     case TRIOP_UPDATE:
@@ -1332,6 +1320,41 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   return ShapeUtil::PermuteDimensions(InversePermutation(dimensions), operand);
 }
 
+// TODO(b/36794510): Make broadcast semantics more consistent, by supporting
+// "degenerate" cases, as with binary elementwise ops.
+/* static */ StatusOr<Shape> ShapeInference::InferClampShape(
+    const Shape& min, const Shape& operand, const Shape& max) {
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(min, "clamp min"));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(operand, "clamp operand"));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(max, "clamp max"));
+  if (!ShapeUtil::SameElementType(min, operand) ||
+      !ShapeUtil::SameElementType(max, operand)) {
+    return InvalidArgument("clamp op with different operand types: %s, %s, %s",
+                           ShapeUtil::HumanString(min).c_str(),
+                           ShapeUtil::HumanString(operand).c_str(),
+                           ShapeUtil::HumanString(max).c_str());
+  }
+  if (((ShapeUtil::Compatible(min, operand) || ShapeUtil::IsScalar(min)) &&
+       (ShapeUtil::Compatible(max, operand) || ShapeUtil::IsScalar(max)))) {
+    return operand;
+  }
+  if (ShapeUtil::IsScalar(operand)) {
+    if (ShapeUtil::Compatible(min, max)) {
+      return min;
+    } else if (ShapeUtil::IsScalar(min)) {
+      return max;
+    } else if (ShapeUtil::IsScalar(max)) {
+      return min;
+    }
+  }
+  return Unimplemented(
+      "not yet implemented: %s, %s <clamp> %s", min.ShortDebugString().c_str(),
+      max.ShortDebugString().c_str(), operand.ShortDebugString().c_str());
+}
+
+// TODO(b/36794510): Make broadcast semantics more consistent, by supporting
+// "degenerate" cases, as with binary elementwise ops, as well as scalar
+// broadcast from all operands, not just the predicate.
 /* static */ StatusOr<Shape> ShapeInference::InferSelectShape(
     const Shape& pred, const Shape& on_true, const Shape& on_false) {
   if (!ShapeUtil::Compatible(on_true, on_false)) {
