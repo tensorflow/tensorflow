@@ -39,26 +39,16 @@ class MPIUtils {
  public:
   explicit MPIUtils(const std::string& worker_name);
 
-  const int GetSourceID(const std::string& key) const {
-    auto it = name_to_id_.find(GetWorkerName(key, 0));
+  const int GetSourceID(const std::string& task_id) const {
+    auto it = name_to_id_.find(task_id);
     if (it == name_to_id_.end()) {
-      LOG(FATAL) << "Failed to convert worker name to MPI index: " << key;
+      LOG(FATAL) << "Failed to convert worker name to MPI index: " << task_id;
     }
     return it->second;
   }
 
  private:
   void InitMPI();
-
-  // Returns the name of the destination specified in a rendezvous key
-  // For idx=0 it is the source, for idx=2 it is the destination
-  std::string GetWorkerName(const std::string& key, const int idx) const {
-    const std::vector<std::string> num_strings = str_util::Split(key, ';');
-    // Sanity check, should be 5 src;id;dst;name;frame_iter
-    assert(num_strings.size() == 5);
-    // Strip the device eg /cpu:0 to get the worker name
-    return num_strings[idx].substr(0, num_strings[idx].find_last_of('/'));
-  }
 
   std::map<std::string, int> name_to_id_;
 };
