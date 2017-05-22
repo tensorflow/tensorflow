@@ -1,3 +1,4 @@
+licenses(["restricted"])
 
 filegroup(
     name = "all_files",
