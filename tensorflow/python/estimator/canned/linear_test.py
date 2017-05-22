@@ -92,7 +92,7 @@ class LinearRegressorPartitionerTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
-      shutil.rmtree(self._model_dir)
+      shutil.rmtree(self._model_dir, ignore_errors=True)
 
   def testPartitioner(self):
     x_dim = 64

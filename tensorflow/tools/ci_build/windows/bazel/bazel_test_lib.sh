@@ -130,6 +130,7 @@ function get_failing_cpu_py_tests() {
     //$1/tensorflow/python/kernel_tests:decode_image_op_test + \
     //$1/tensorflow/python/kernel_tests:depthwise_conv_op_test + \
     //$1/tensorflow/python/kernel_tests:functional_ops_test + \
+    //$1/tensorflow/python/kernel_tests:neon_depthwise_conv_op_test + \
     //$1/tensorflow/python/kernel_tests:py_func_test + \
     //$1/tensorflow/python/kernel_tests:rnn_test + \
     //$1/tensorflow/python/kernel_tests:sets_test + \

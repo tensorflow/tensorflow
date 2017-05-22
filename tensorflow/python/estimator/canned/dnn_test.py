@@ -102,7 +102,7 @@ class DNNRegressorEvaluateTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
-      shutil.rmtree(self._model_dir)
+      shutil.rmtree(self._model_dir, ignore_errors=True)
 
   def test_simple(self):
     # Create checkpoint: num_inputs=1, hidden_units=(2, 2), num_outputs=1.
