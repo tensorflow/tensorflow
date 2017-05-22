@@ -1,9 +1,10 @@
-# Changes since the last release
+# Release 1.2.0
 
 ## Major Features and Improvements
 * Added `tf.layers.conv3d_transpose` layer for spatio temporal deconvolution.
 * Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
-* Added ibverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
+* Added libverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
+* Bring `tf.feature_column.*` into the API. Non-deprecated functionality from `tf.contrib.layers.*` is moved to `tf.feature_column.*` with cosmetic changes.
 * `RNNCell` objects now subclass `tf.layers._Layer`.  The strictness described
   in the TensorFlow 1.1 release is gone:  The first time an RNNCell is used,
   it caches its scope.  All future uses of the RNNCell will reuse variables from
@@ -17,6 +18,26 @@
   parameters, write: `MultiRNNCell([LSTMCell(...) for _ in range(5)])`.
   If at all unsure, first test your code with TF 1.1; ensure it raises no
   errors, and then upgrade to TF 1.2.
+* TensorForest Estimator now supports SavedModel export for serving.
+* Support client-provided ClusterSpec's and propagate them to all workers to enable the creation of dynamic TensorFlow clusters.
+* TensorFlow C library now available for Windows.
+* We released a new open-source version of TensorBoard.
+
+## Breaking Changes to the API
+* `org.tensorflow.contrib.android.TensorFlowInferenceInterface` now throws exceptions where possible and and has simplified method signatures.
+
+## Changes to contrib APIs
+* Added `tf.contrib.util.create_example`.
+* Added bilinear interpolation to `tf.contrib.image`.
+* Add `tf.contrib.stateless` for random ops with custom seed control.
+* MultivariateNormalFullCovariance added to contrib/distributions/
+* tensorflow/contrib/rnn undergoes RNN cell variable renaming for
+  consistency with Keras layers. Specifically, the previous variable names
+  "weights" and "biases" are changed to "kernel" and "bias", respectively.
+  This may cause backward incompatibility with regard to your old
+  checkpoints containing such RNN cells, in which case you can use the
+  [checkpoint_convert script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/rnn/python/tools/checkpoint_convert.py)
+  to convert the variable names in your old checkpoints.
 
 ## Bug Fixes and Other Changes
 * In python, `Operation.get_attr` on type attributes returns the Python DType
@@ -29,6 +50,71 @@
   checkpoints containing such RNN cells, in which case you can use the
   [checkpoint_convert script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/rnn/python/tools/checkpoint_convert.py)
   to convert the variable names in your old checkpoints.
+* Changed MIN_SDK version to 8.0 when building iOS libraries.
+* Fixed LIBXSMM integration.
+* Make decode_jpeg/decode_png/decode_gif handle all formats, since users frequently try to decode an image as the wrong type.
+* Improve implicit broadcasting lowering.
+* Improving stability of GCS/Bigquery clients by a faster retrying of stale transmissions.
+* Remove OpKernelConstruction::op_def() as part of minimizing proto dependencies.
+* VectorLaplaceDiag distribution added.
+* Android demo no longer requires libtensorflow_demo.so to run (libtensorflow_inference.so still required)
+* Added `categorical_column_with_vocabulary_file`.
+* Introduce ops for batching/unbatching tensors across Session::Run() calls.
+* Add tf.log_sigmoid(x) = tf.log(tf.sigmoid(x)) = -tf.nn.softplus(-x).
+* Changed hooks lists to immutable tuples, and now allow any iterable for the associated arguments.
+* Introduce TFDecorator.
+* Added an Mfcc op for speech feature generation.
+* Improved DirectSession::Run() overhead and error checking. Feeding a value of the wrong type will now synchronously raise an INVALID_ARGUMENT error instead of asynchronously raising an INTERNAL error. Code that depends on the (undefined) behavior when feeding a tensor of the wrong type may need to be updated.
+* Added unreduced NONE, and reduced MEAN options for losses. Removed "WEIGHTED_" prefix from other Reduction constants.
+* assertAllClose now handles dicts.
+* Added Gmock matcher for HloInstructions.
+* Add var name to errors on variable restore.
+* Added an AudioSpectrogram op for audio feature generation.
+* Added `reduction` arg to losses.
+* `tf.placeholder` can represent scalar shapes and partially known.
+* Remove estimator_spec(mode) argument.
+* Added an AudioSpectrogram op for audio feature generation.
+* TensorBoard disables all runs by default if there are more than 40 runs.
+* Removed old doc generator code.
+* GCS file system integration now supports domain buckets, e.g gs://bucket.domain.com/path.
+* Add `tf.summary.text` for outputting text to TensorBoard.
+* The "run" command of tfdbg's command-line interface now supports filtering of tensors by node name, op type and tensor dtype.
+* `tf.string_to_number` now supports int64 and float64 outputs.
+* `SavedModel CLI` tool available to inspect and execute MetaGraph in SavedModel
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+4F2E4A2E, Aaron Schumacher, Abhi Agg, admcrae, Adriano Carmezim, Adrià Arrufat,
+agramesh1, Akimitsu Seo, Alan Mosca, Alex Egg, Alex Rothberg, Alexander Heinecke,
+Alexander Matyasko, Alexandr Baranezky, Alexandre Caulier, Ali Siddiqui, Anand Venkat,
+Andrew Hundt, Androbin, Anmol Sharma, Arie, Arno Leist, Arron Cao, AuréLien Geron, Bairen Yi,
+Beomsu Kim, Carl Thomé, cfperez, Changming Sun, Corey Wharton, critiqjo, Dalei Li, Daniel
+Rasmussen, Daniel Trebbien, DaríO Hereñú, David Eng, David Norman, David Y. Zhang, Davy Song, ddurham2,
+Deepak Subburam, Dmytro Kyrychuk, Dominic Rossi, Dominik SchlöSser, Dustin Tran,
+Eduardo Pinho, Egil Martinsson, Elliot Saba, Eric Bigelow, Erik Smistad, Evan Klitzke,
+Fabrizio Milo, Falcon Dai, Fei Gao, FloopCZ, Fung Lam, Gautam, GBLin5566, Greg Peatfield,
+Gu Wang, Guenther Schmuelling, Hans Pabst, Harun Gunaydin, Huaizheng, Ido Shamay, Ikaro
+Silva, Ilya Edrenkin, Immexxx, James Mishra, Jamie Cooke, Jay Young, Jayaram Bobba,
+Jianfei Wang, jinghua2, Joey Meyer, John Maidens, Jonghoon Jin, Julian Villella,
+Jun Kim, Jun Shi, Junwei Pan, jyegerlehner, Karan Desai, Karel Van De Plassche,
+Kb Sriram, KhabarlakKonstantin, Koan-Sin Tan, krivard, Kwotsin, Leandro Gracia Gil,
+Li Chen, Liangliang He, Louie Helm, lspvic, Luiz Henrique Soares, LáSzló Csomor,
+Mark Wong, Mathew Wicks, Matthew Rahtz, Maxwell Paul Brickner, Michael Hofmann, Miguel
+Flores Ruiz De Eguino, MikeTam1021, Mortada Mehyar, Mycosynth, Namnamseo,
+Nate Harada, Neven Miculinic, Nghia Tran, Nick Lyu, Niranjan Hasabnis, Nishidha, Oleksii
+Kuchaiev, Oyesh Mann Singh, Panmari, Patrick, Paul Van Eck, Piyush Chaudhary, Quim Llimona,
+Raingo, Richard Davies, Ruben Vereecken, Sahit Chintalapudi, Sam Abrahams, Santiago Castro,
+Scott Sievert, Sean O'Keefe, Sebastian Schlecht, Shane, Shubhankar Deshpande, Spencer Schaber,
+Sunyeop Lee, t13m, td2014, Thomas H. P. Andersen, Toby Petty, Umang Mehta,
+Vadim Markovtsev, Valentin Iovene, Vincent Zhao, Vit Stepanovs, Vivek Rane, Vu Pham, wannabesrevenge,
+weipingpku, wuhaixutab, wydwww, Xiang Gao, Xiaolin Lin, xiaoyaozhuzi, Yaroslav Bulatov, Yi Liu,
+Yoshihiro Sugi, Yuan (Terry) Tang, Yuming Wang, Yuxin Wu, Zader Zheng, Zhaojun Zhang, zhengjiajin,
+ZhipengShen, Ziming Dong, zjj2wry
+
+We are also grateful to all who filed issues or helped resolve them, asked and
+answered questions, and were part of inspiring discussions.
 
 # Release 1.1.0
 
