@@ -149,6 +149,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
 
+  VLOG(1) << "Begin compilation of module " << hlo_module->name();
+
   TF_RETURN_IF_ERROR(
           RunHloOptimization(hlo_module.get(), dump_hlo));
 
@@ -195,7 +197,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     }
   }
 
-  VLOG(1) << "Compiling computation " << entry->name();
+  VLOG(1) << "Compiling main computation " << entry->name();
 
   // Visit the graph, building up a poplar equivalent
   EntryVisitor visitor(graph, resources, entry->num_parameters());
