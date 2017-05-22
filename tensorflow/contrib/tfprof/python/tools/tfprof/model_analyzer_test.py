@@ -187,6 +187,32 @@ class PrintModelAnalysisTest(test.TestCase):
         leaf = leaf.children[0]
       self.assertEqual(1, len(leaf.graph_nodes))
 
+  def testTimeline(self):
+    ops.reset_default_graph()
+    opts = model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS.copy()
+    outfile = os.path.join(test.get_temp_dir(), 'timeline')
+    opts['output'] = 'timeline:outfile=' + outfile
+    opts['account_type_regexes'] = ['.*']
+    opts['max_depth'] = 100000
+
+    with session.Session() as sess, ops.device('/cpu:0'):
+      x = lib.BuildFullModel()
+
+      sess.run(variables.global_variables_initializer())
+      run_meta = config_pb2.RunMetadata()
+      _ = sess.run(
+          x,
+          options=config_pb2.RunOptions(
+              trace_level=config_pb2.RunOptions.FULL_TRACE),
+          run_metadata=run_meta)
+
+      _ = model_analyzer.print_model_analysis(
+          sess.graph, run_meta, tfprof_cmd='graph', tfprof_options=opts)
+
+      with gfile.Open(outfile, 'r') as f:
+        # Test that a json file is created.
+        self.assertLess(1000, len(f.read()))
+
 
 if __name__ == '__main__':
   test.main()

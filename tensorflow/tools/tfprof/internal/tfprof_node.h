@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 #include "tensorflow/tools/tfprof/tfprof_log.pb.h"
 
@@ -41,7 +42,14 @@ class TFGraphNode {
       : node_(node),
         code_(nullptr),
         step_stat_(nullptr),
+        all_start_micros_(0),
+        latest_end_rel_micros_(0),
         requested_bytes_(0),
+        host_temp_bytes_(0),
+        host_persistent_bytes_(0),
+        accelerator_temp_bytes_(0),
+        accelerator_persistent_bytes_(0),
+        allocator_bytes_in_use_(0),
         float_ops_(0) {
     if (!node) return;
 
@@ -88,7 +96,7 @@ class TFGraphNode {
   const NodeExecStats* step_stats() const { return step_stat_; }
 
   const std::map<string, TFGraphNode*>& inputs() const { return inputs_; }
-  const std::map<string, int64>& output_idx() { return output_idx_; }
+  const std::map<string, int64>& output_idx() const { return output_idx_; }
 
   // This is time spent in kernel execution.
   int64 kernel_exec_micros() const {
@@ -101,14 +109,30 @@ class TFGraphNode {
     }
     return total;
   }
+
+  int64 all_start_micros() const { return all_start_micros_; }
+  int64 latest_end_rel_micros() const { return latest_end_rel_micros_; }
   const std::map<string, std::vector<std::pair<int64, int64>>>&
   op_kernel_execs() const {
     return op_kernel_execs_;
   }
 
   int64 requested_bytes() const { return requested_bytes_; }
+  int64 accelerator_temp_bytes() const { return accelerator_temp_bytes_; }
+  int64 host_temp_bytes() const { return host_temp_bytes_; }
+  int64 accelerator_persistent_bytes() const {
+    return accelerator_persistent_bytes_;
+  }
+  int64 host_persistent_bytes() const { return host_persistent_bytes_; }
+  const std::map<int64, std::pair<int64, uint64>>& output_bytes() const {
+    return output_bytes_;
+  }
+  int64 allocator_bytes_in_use() const { return allocator_bytes_in_use_; }
+
   int64 float_ops() const { return float_ops_; }
   const CodeDef* code() { return code_; }
+  string canonical_device() const { return canonical_device_; }
+  string host_device() const { return host_device_; }
   std::set<string> devices() const { return devices_; }
   const std::set<string>& op_types() const { return op_types_; }
 
@@ -127,11 +151,33 @@ class TFGraphNode {
   std::vector<int64> shape_;
   std::set<string> op_types_;
 
+  // The earliest/latest time including scheduling and kernel execution.
+  int64 all_start_micros_;
+  int64 latest_end_rel_micros_;
   // device -> vector of {op_start_micros, op_kernel_exec_micros} pairs.
   std::map<string, std::vector<std::pair<int64, int64>>> op_kernel_execs_;
 
+  // /j:#/t:#/r:#/device:#. A canonical device name without extra suffix.
+  string canonical_device_;
+  // The host device name.
+  string host_device_;
+  // All devices the op is associated with (e.g. gpu:0 (scheduling),
+  // gpu:0:stream:xx (kernel exec), cpu:0 host)
   std::set<string> devices_;
+
+  // Total output bytes requested by the op.
   int64 requested_bytes_;
+  // Total temporary bytes allocated and released by the op.
+  int64 host_temp_bytes_;
+  // Total persistent bytes (e.g. variable) allocated by the op.
+  int64 host_persistent_bytes_;
+  int64 accelerator_temp_bytes_;
+  int64 accelerator_persistent_bytes_;
+  // The total number of bytes currently allocated by the allocator if >0.
+  int64 allocator_bytes_in_use_;
+  // output_idx -> {output_bytes, memory_ptr}
+  std::map<int64, std::pair<int64, uint64>> output_bytes_;
+
   int64 float_ops_;
 };
 
