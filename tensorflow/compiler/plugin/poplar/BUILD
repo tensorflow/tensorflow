@@ -3,7 +3,6 @@ licenses(["restricted"])
 package(default_visibility = ["//visibility:public"])
 
 load("@local_config_poplar//poplar:build_defs.bzl", "poplar_lib_directory")
-load("@local_config_poplar//poplar:build_defs.bzl", "popnn_lib_directory")
 
 # Rule for creating the vertex program pre-compiled object
 genrule(
@@ -53,7 +52,6 @@ cc_library(
         "@protobuf//:protobuf_headers",
         "@local_config_cuda//cuda:cuda_headers",
         "@local_config_poplar//poplar:poplar_headers",
-        "@local_config_poplar//popnn:popnn_headers",
     ],
 )
 
@@ -105,14 +103,11 @@ cc_library(
     ],
     linkopts = [
         "$(locations @local_config_poplar//poplar:poplar_lib)",
-        "$(locations @local_config_poplar//popnn:popnn_lib)",
         "-Wl,-rpath," + poplar_lib_directory(),
-        "-Wl,-rpath," + popnn_lib_directory(),
     ],
     data = [
         ":tf_graph_program",
         "@local_config_poplar//poplar:poplar_lib",
-        "@local_config_poplar//popnn:popnn_lib"
     ],
     linkstatic=0,
 )

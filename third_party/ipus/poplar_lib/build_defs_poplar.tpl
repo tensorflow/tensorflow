@@ -9,8 +9,3 @@ def poplar_lib_directory():
     """Returns the full path to the Poplar libraries directory
     """
     return "POPLAR_LIB_DIRECTORY"
-
-def popnn_lib_directory():
-    """Returns the full path to the Popnn libraries directory
-    """
-    return "POPNN_LIB_DIRECTORY"
