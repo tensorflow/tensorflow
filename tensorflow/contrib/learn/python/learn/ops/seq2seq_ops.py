@@ -140,7 +140,7 @@ def rnn_seq2seq(encoder_inputs,
     scope: Scope to use, if None new will be produced.
 
   Returns:
-    List of tensors for outputs and states for trianing and sampling sub-graphs.
+    List of tensors for outputs and states for training and sampling sub-graphs.
   """
   with vs.variable_scope(scope or "rnn_seq2seq"):
     _, last_enc_state = rnn.static_rnn(

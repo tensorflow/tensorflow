@@ -38,7 +38,7 @@ class _FakeVectorStudentT(object):
 
   Other `Vector*` implementations need only test new code. That we don't need
   to test every Vector* distribution is good because there aren't SciPy
-  analogues and reimplementing everything in NumPy sort of defeats the point of
+  analogs and reimplementing everything in NumPy sort of defeats the point of
   having the `TransformedDistribution + Affine` API.
   """
 

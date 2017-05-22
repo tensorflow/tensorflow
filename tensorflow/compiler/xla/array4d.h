@@ -65,7 +65,7 @@ class Array4D {
     Fill(T());
   }
 
-  // Creates a 4D array, initalized to value.
+  // Creates a 4D array, initialized to value.
   Array4D(int64 planes, int64 depth, int64 height, int64 width, T value)
       : Array4D(planes, depth, height, width) {
     Fill(value);

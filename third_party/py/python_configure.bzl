@@ -113,7 +113,7 @@ def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name):
     # Copy the source directory to the output directory.
     # Creating a junction pointing to the source directory and declaring the
     # outputs like we do on Linux, then expecting that Bazel would pick up these
-    # outputs via the junction is ill-concieved, because Bazel deletes the
+    # outputs via the junction is ill-conceived, because Bazel deletes the
     # output files from previous build prior to executing the action, meaning it
     # would delete the actual files via the old junction.
     cmd_script = "%s-cmd.cmd" % genrule_name

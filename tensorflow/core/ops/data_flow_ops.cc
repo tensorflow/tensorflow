@@ -827,7 +827,7 @@ operations that would block will fail immediately.
 
 handle: The handle to a queue.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the given queue will be cancelled.
+  blocked on the given queue will be canceled.
 )doc");
 
 REGISTER_OP("QueueCloseV2")
@@ -845,7 +845,7 @@ operations that would block will fail immediately.
 
 handle: The handle to a queue.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the given queue will be cancelled.
+  blocked on the given queue will be canceled.
 )doc");
 
 REGISTER_OP("QueueSize")
@@ -1879,7 +1879,7 @@ Subsequent TakeMany operations that would block will fail immediately.
 
 handle: The handle to a barrier.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the barrier's queue will be cancelled. InsertMany will fail, even
+  blocked on the barrier's queue will be canceled. InsertMany will fail, even
   if no new key is introduced.
 )doc");
 

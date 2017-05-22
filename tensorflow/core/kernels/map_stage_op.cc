@@ -238,7 +238,7 @@ private:
     {
       IncompleteTuple empty(dtypes_.size());
 
-      // Initialise empty tuple with given dta
+      // Initialize empty tuple with given dta
       for(std::size_t i = 0; i < findices.dimension(0); ++i)
       {
         std::size_t index = findices(i);

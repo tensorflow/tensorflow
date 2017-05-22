@@ -517,7 +517,7 @@ TEST(GrpcSessionTest, Error) {
     //
     // Subgraph for "b" sleeps at the node "b_delay". When the sleep
     // finishes, the subgraph "b" will continue execution till it
-    // notices that it is cancelled. Meanwhile, subgraph's executor
+    // notices that it is canceled. Meanwhile, subgraph's executor
     // and its related state (registered ops) should still be alive.
     auto b = test::graph::Constant(&g, Tensor());
     b->set_assigned_device_name(dev_b);

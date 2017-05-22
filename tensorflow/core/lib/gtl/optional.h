@@ -541,7 +541,7 @@ class optional : private internal_optional::optional_data<T>,
   // opt.emplace(arg1,arg2,arg3);  (Constructs Foo(arg1,arg2,arg3))
   //
   // If the optional is non-empty, and the `args` refer to subobjects of the
-  // current object, then behaviour is undefined.  This is because the current
+  // current object, then behavior is undefined.  This is because the current
   // object will be destructed before the new object is constructed with `args`.
   //
   template <typename... Args,
@@ -586,7 +586,7 @@ class optional : private internal_optional::optional_data<T>,
 
   // [optional.observe], observers
   // You may use `*opt`, and `opt->m`, to access the underlying T value and T's
-  // member `m`, respectively.  If the optional is empty, behaviour is
+  // member `m`, respectively.  If the optional is empty, behavior is
   // undefined.
   constexpr const T* operator->() const { return this->pointer(); }
   T* operator->() {
