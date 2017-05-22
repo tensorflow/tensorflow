@@ -112,6 +112,20 @@ public:
 
 };
 
+class CallTargetFinder : public DfsHloVisitorWithDefault {
+public:
+  CallTargetFinder() {}
+
+  Status DefaultAction(HloInstruction*) override { return Status::OK(); }
+
+  Status HandleCall(HloInstruction* call) override {
+    targets.insert(call->to_apply());
+    return Status::OK();
+  }
+
+  std::set<HloComputation*> targets;
+};
+
 Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
                                           HloDumper dump_hlo) {
   HloPassPipeline pipeline("IPU", dump_hlo);
@@ -163,16 +177,22 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
 
   CompilerResources resources;
 
+  HloComputation* entry = hlo_module->entry_computation();
+
+  // Find all Call instructions
+  CallTargetFinder call_finder;
+  TF_RETURN_IF_ERROR(entry->Accept(&call_finder));
+
   // Find subgraphs that will not be inlined and construct poplar equivalents
-  for (const auto& comp : hlo_module->computations()) {
-    if (comp.get() != hlo_module->entry_computation()) {
+  for (const auto& comp : call_finder.targets) {
+    if (comp != entry) {
       // If this computation is a target of a 'call' then compile
       // it and store in compiler resources
+      VLOG(2) << "Compiling sub-graph " << comp->name();
     }
   }
 
   // Visit the graph, building up a poplar equivalent
-  HloComputation* entry = hlo_module->entry_computation();
   EntryVisitor visitor(graph, resources, entry->num_parameters());
   try {
     TF_RETURN_IF_ERROR(entry->Accept(&visitor));

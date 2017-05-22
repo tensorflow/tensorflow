@@ -36,14 +36,16 @@ namespace poplarplugin {
 
 CallVisitor::CallVisitor(poplar::Graph* graph,
                          CompilerResources& res,
-                         const std::vector<poplar::Tensor>& inputs)
-        : FullVisitor(graph, res),
-          operands_(std::move(inputs)) {
+                         int64 num_parameters)
+        : FullVisitor(graph, res) {
+  inputs_.resize(num_parameters);
 }
 
 Status CallVisitor::HandleParameter(HloInstruction* inst) {
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0,
-                                     operands_[inst->parameter_number()]));
+  poplar::Tensor out;
+  TF_ASSIGN_OR_RETURN(out, AddTensor(*graph_, inst->name(), inst->shape()));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
+  inputs_[inst->parameter_number()] = out;
   return Status::OK();
 }
 
@@ -56,7 +58,7 @@ Status CallVisitor::FinishVisit(HloInstruction* inst) {
   for (int64 i=0; i<c; i++) {
     poplar::Tensor out;
     TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, i));
-    output_.push_back(out);
+    outputs_.push_back(out);
   }
 
   tensor_map.clear();

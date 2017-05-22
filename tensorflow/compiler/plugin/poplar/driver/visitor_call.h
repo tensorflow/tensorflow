@@ -33,18 +33,22 @@ class CallVisitor : public FullVisitor {
 public:
   CallVisitor(poplar::Graph* graph,
               CompilerResources& res,
-              const std::vector<poplar::Tensor>& inputs);
+              int64 num_operands);
 
   Status HandleParameter(HloInstruction* inst) override;
   Status FinishVisit(HloInstruction* inst) override;
 
-  const std::vector<poplar::Tensor>& output() {
-    return output_;
+  const std::vector<poplar::Tensor>& inputs() {
+    return inputs_;
+  }
+
+  const std::vector<poplar::Tensor>& outputs() {
+    return outputs_;
   }
 
 private:
-  std::vector<poplar::Tensor> operands_;
-  std::vector<poplar::Tensor> output_;
+  std::vector<poplar::Tensor> inputs_;
+  std::vector<poplar::Tensor> outputs_;
 };
 
 }  // namespace poplarplugin

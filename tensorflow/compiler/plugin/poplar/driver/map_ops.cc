@@ -112,22 +112,26 @@ CreateCallOp(poplar::Graph &graph,
              TensorMap& tensor_map) {
 
   int64 op_count(inst->operand_count());
-  std::vector<poplar::Tensor> inputs;
+
+  CallVisitor visitor(&graph, res, op_count);
+  TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
+
+  poplar::program::Sequence seq;
 
   for (int64 i = 0; i < op_count; i++) {
     poplar::Tensor t;
     TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i, 0));
-    inputs.push_back(t);
+    seq.add(poplar::program::Copy(t, visitor.inputs()[i]));
   }
 
-  CallVisitor visitor(&graph, res, inputs);
-  TF_RETURN_IF_ERROR(inst->to_apply()->Accept(&visitor));
+  seq.add(visitor.sequence);
 
-  for (size_t i=0; i<visitor.output().size(); i++) {
-    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, visitor.output()[i]));
+  for (size_t i=0; i<visitor.outputs().size(); i++) {
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i,
+                                       visitor.outputs()[i]));
   }
 
-  return visitor.sequence;
+  return seq;
 }
 
 port::StatusOr<poplar::program::Program>
@@ -143,33 +147,30 @@ CreateWhileOp(poplar::Graph &graph,
                         "operations");
   }
 
+  CallVisitor body_visitor(&graph, res, 1);
+  TF_RETURN_IF_ERROR(inst->while_body()->Accept(&body_visitor));
+
+  CallVisitor condition_visitor(&graph, res, 1);
+  TF_RETURN_IF_ERROR(inst->while_condition()->Accept(&condition_visitor));
+
+  poplar::Tensor body_input = body_visitor.inputs()[0];
+  poplar::Tensor body_output = body_visitor.outputs()[0];
+  poplar::Tensor cond_input = condition_visitor.inputs()[0];
+
   poplar::Tensor init;
   TF_ASSIGN_OR_RETURN(init, FindInstructionInput(tensor_map, inst, 0, 0));
-
-  poplar::Tensor body_input;
-  TF_ASSIGN_OR_RETURN(body_input,
-                      AddTensor(graph,
-                                port::StrCat(inst->name(), "_input"),
-                                output));
 
   poplar::program::Sequence main_seq;
   main_seq.add(poplar::program::Copy(init, body_input));
 
   // Body
-  std::vector<poplar::Tensor> body_inputs(1, body_input);
-  CallVisitor body_visitor(&graph, res, body_inputs);
-  TF_RETURN_IF_ERROR(inst->while_body()->Accept(&body_visitor));
+  body_visitor.sequence.add(poplar::program::Copy(body_output, body_input));
+  body_visitor.sequence.add(poplar::program::Copy(body_output, cond_input));
 
-  body_visitor.sequence.add(poplar::program::Copy(body_visitor.output()[0],
-                                                  body_input));
-
-  poplar::Tensor body_output = body_visitor.output()[0];
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, body_output));
 
   // Condition
   std::vector<poplar::Tensor> condition_inputs(1, body_output);
-  CallVisitor condition_visitor(&graph, res, condition_inputs);
-  TF_RETURN_IF_ERROR(inst->while_condition()->Accept(&condition_visitor));
 
   poplar::program::RepeatWhileTrue repeat_while_true(condition_visitor.sequence,
                                                      body_visitor.sequence);
