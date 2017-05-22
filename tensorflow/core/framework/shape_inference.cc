@@ -524,7 +524,7 @@ ShapeHandle InferenceContext::UnknownShapeOfRank(int64 rank) {
   if(rank == kUnknownRank) {
     return UnknownShape();
   }
-  CHECK_GE(rank,0) << "rank must not be negative";
+  CHECK_GE(rank, 0) << "rank must not be negative";
   std::vector<DimensionHandle> dims(rank);
   for (int32 i = 0; i < rank; ++i) {
     dims[i] = UnknownDim();
