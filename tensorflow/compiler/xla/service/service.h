@@ -151,11 +151,6 @@ class Service : public ServiceInterface {
       const TransferToClientRequest* arg,
       TransferToClientResponse* result) override;
 
-  // Requests that global data be copied into a buffer supplied by the client.
-  tensorflow::Status TransferToClientInProcess(
-      const TransferToClientInProcessRequest* arg,
-      TransferToClientInProcessResponse* result) override;
-
   // Transfers data from a literal provided by the client, into device memory.
   tensorflow::Status TransferToServer(
       const TransferToServerRequest* arg,
@@ -172,11 +167,6 @@ class Service : public ServiceInterface {
   tensorflow::Status TransferFromOutfeed(
       const TransferFromOutfeedRequest* arg,
       TransferFromOutfeedResponse* result) override;
-
-  // Transfers data from a buffer provided by the client, into device memory.
-  tensorflow::Status TransferToServerInProcess(
-      const TransferToServerInProcessRequest* arg,
-      TransferToServerInProcessResponse* result) override;
 
   // Resets devices, clearing all existing state on all the devices associated
   // with this service (including memory allocated on the devices).
