@@ -77,7 +77,7 @@ py_binary(
         # These targets don't build on Windows yet. Exclude them for now.
         # rules_closure currently doesn't build on Windows due to
         # https://github.com/bazelbuild/rules_closure/pull/206
-        # Since tensorboard dependes on rules_closure, exclude tensorboard until it's fixed. 
+        # Since tensorboard dependes on rules_closure, exclude tensorboard until it's fixed.
         # "//tensorflow/tensorboard",
         # "//tensorflow/contrib/ndlstm",
         # "//tensorflow/contrib/slim",
