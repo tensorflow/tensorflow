@@ -23517,22 +23517,22 @@ op {
   name: "SparseFillEmptyRows"
   input_arg {
     name: "indices"
-    description: "2-D tensor represents the indices of the sparse tensor."
+    description: "2-D. the indices of the sparse tensor."
     type: DT_INT64
   }
   input_arg {
     name: "values"
-    description: "1-D tensor represents the values of the sparse tensor."
+    description: "1-D. the values of the sparse tensor."
     type_attr: "T"
   }
   input_arg {
     name: "dense_shape"
-    description: "1-D. tensor represents the shape of the sparse tensor."
+    description: "1-D. the shape of the sparse tensor."
     type: DT_INT64
   }
   input_arg {
     name: "default_value"
-    description: "0-D. default value for missing rows.\noutput indices: 2-D."
+    description: "0-D. default value to insert into location `[row, 0, ..., 0]`\n  for rows missing from the input sparse tensor.\noutput indices: 2-D. the indices of the filled sparse tensor."
     type_attr: "T"
   }
   output_arg {
@@ -23541,51 +23541,54 @@ op {
   }
   output_arg {
     name: "output_values"
-    description: "1-D."
+    description: "1-D. the values of the filled sparse tensor."
     type_attr: "T"
   }
   output_arg {
     name: "empty_row_indicator"
+    description: "1-D. whether the dense row was missing in the\ninput sparse tensor."
     type: DT_BOOL
   }
   output_arg {
     name: "reverse_index_map"
-    description: "1-D."
+    description: "1-D. a map from the input indices to the output indices."
     type: DT_INT64
   }
   attr {
     name: "T"
     type: "type"
   }
-  summary: "TODO(ebrevdo): fill in"
+  summary: "Fills empty rows in the input 2-D `SparseTensor` with a default value."
+  description: "The input `SparseTensor` is represented via the tuple of inputs\n(`indices`, `values`, `dense_shape`).  The output `SparseTensor` has the\nsame `dense_shape` but with indices `output_indices` and values\n`output_values`.\n\nThis op inserts a single entry for every row that doesn\'t have any values.\nThe index is created as `[row, 0, ..., 0]` and the inserted value\nis `default_value`.\n\nFor example, suppose `sp_input` has shape `[5, 6]` and non-empty values:\n\n    [0, 1]: a\n    [0, 3]: b\n    [2, 0]: c\n    [3, 1]: d\n\nRows 1 and 4 are empty, so the output will be of shape `[5, 6]` with values:\n\n    [0, 1]: a\n    [0, 3]: b\n    [1, 0]: default_value\n    [2, 0]: c\n    [3, 1]: d\n    [4, 0]: default_value\n\nThe output `SparseTensor` will be in row-major order and will have the\nsame shape as the input.\n\nThis op also returns an indicator vector shaped `[dense_shape[0]]` such that\n\n    empty_row_indicator[i] = True iff row i was an empty row.\n\nAnd a reverse index map vector shaped `[indices.shape[0]]` that is used during\nbackpropagation,\n\n    reverse_index_map[j] = out_j s.t. indices[j, :] == output_indices[out_j, :]"
 }
 op {
   name: "SparseFillEmptyRowsGrad"
   input_arg {
     name: "reverse_index_map"
-    description: "1-D."
+    description: "1-D.  The reverse index map from SparseFillEmptyRows."
     type: DT_INT64
   }
   input_arg {
     name: "grad_values"
-    description: "1-D."
+    description: "1-D.  The gradients from backprop."
     type_attr: "T"
   }
   output_arg {
-    name: "d_grad"
-    description: "1-D."
+    name: "d_values"
+    description: "1-D.  The backprop into values."
     type_attr: "T"
   }
   output_arg {
     name: "d_default_value"
-    description: "0-D."
+    description: "0-D.  The backprop into default_value."
     type_attr: "T"
   }
   attr {
     name: "T"
     type: "type"
   }
-  summary: "TODO(ebrevdo): fill in"
+  summary: "The gradient of SparseFillEmptyRows."
+  description: "Takes vectors reverse_index_map, shaped `[N]`, and grad_values,\nshaped `[N_full]`, where `N_full >= N` and copies data into either\n`d_values` or `d_default_value`.  Here `d_values` is shaped `[N]` and\n`d_default_value` is a scalar.\n\n  d_values[j] = grad_values[reverse_index_map[j]]\n  d_default_value = sum_{k : 0 .. N_full - 1} (\n     grad_values[k] * 1{k not in reverse_index_map})"
 }
 op {
   name: "SparseMatMul"
