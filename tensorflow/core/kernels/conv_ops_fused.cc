@@ -74,8 +74,9 @@ enum SamplingMode {
 //       my_vector[current] *= 10.0f;
 //     }
 // });
-void FusedConvParallelFor(OpKernelContext* context, int64 begin, int64 end,
-                          std::function<void(int64, int64)> task_function) {
+void FusedConvParallelFor(
+    OpKernelContext* context, int64 begin, int64 end,
+    const std::function<void(int64, int64)>& task_function) {
 // On iOS, the thread management imposes a very big performance penalty, so
 // just call the function directly with no multithreading.
 #if defined(__APPLE__) && defined(IS_MOBILE_PLATFORM)
@@ -712,7 +713,7 @@ class FusedResizeConv2DUsingGemmOp : public OpKernel {
       const int32 before =
           paddings_matrix(d, 0);  // Pad before existing elements.
       const int32 after =
-          paddings_matrix(d, 1);  // Pad after exisitng elements.
+          paddings_matrix(d, 1);  // Pad after existing elements.
       OP_REQUIRES(context, before >= 0 && after >= 0,
                   errors::InvalidArgument("paddings must be non-negative: ",
                                           before, " ", after));

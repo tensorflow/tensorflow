@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
+from sklearn import datasets
 from sklearn import metrics
 from sklearn import model_selection
 
@@ -26,7 +26,7 @@ import tensorflow as tf
 
 def main(unused_argv):
   # Load dataset.
-  iris = tf.contrib.learn.datasets.load_dataset('iris')
+  iris = datasets.load_iris()
   x_train, x_test, y_train, y_test = model_selection.train_test_split(
       iris.data, iris.target, test_size=0.2, random_state=42)
 

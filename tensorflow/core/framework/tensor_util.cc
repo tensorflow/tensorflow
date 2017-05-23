@@ -42,12 +42,6 @@ Tensor DeepCopy(const Tensor& other) {
   return tmp;
 }
 
-Tensor Concat(const gtl::ArraySlice<Tensor>& tensors) {
-  Tensor result;
-  TF_CHECK_OK(Concat(tensors, &result));
-  return result;
-}
-
 Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
   if (tensors.empty()) {
     return errors::InvalidArgument("Cannot concatenate zero tensors");
@@ -107,13 +101,6 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
   }
 
   return Status::OK();
-}
-
-std::vector<Tensor> Split(const Tensor& tensor,
-                          const gtl::ArraySlice<int64>& sizes) {
-  std::vector<Tensor> result;
-  TF_CHECK_OK(Split(tensor, sizes, &result));
-  return result;
 }
 
 Status Split(const Tensor& tensor, const gtl::ArraySlice<int64>& sizes,

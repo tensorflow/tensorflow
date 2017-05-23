@@ -20,7 +20,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
-#include "tensorflow/core/kernels/assign_op.h"
 #include "tensorflow/core/kernels/constant_op.h"
 #include "tensorflow/core/kernels/control_flow_ops.h"
 #include "tensorflow/core/kernels/identity_op.h"
@@ -29,14 +28,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/variable_ops.h"
 
 namespace tensorflow {
-
-// Implementation of Assign for XLA devices.
-class XlaDeviceAssignOp : public AssignOp {
- public:
-  using AssignOp::AssignOp;
-
-  void Copy(OpKernelContext* context, Tensor* lhs, const Tensor& rhs) override;
-};
 
 // Dummy OpKernel, used for kernels assigned to an XLA device that should be
 // compiled. Should never be called at runtime since such ops should be
@@ -73,50 +64,8 @@ class XlaDeviceDummyOp : public OpKernel {
                           PlaceholderOp);                                      \
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
-      Name("Variable").Device(DEVICE).TypeConstraint("dtype", TYPES),          \
-      VariableOp);                                                             \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("VariableV2").Device(DEVICE).TypeConstraint("dtype", TYPES),        \
-      VariableOp);                                                             \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("TemporaryVariable").Device(DEVICE).TypeConstraint("dtype", TYPES), \
-      TemporaryVariableOp);                                                    \
-  REGISTER_KERNEL_BUILDER(Name("DestroyTemporaryVariable")                     \
-                              .Device(DEVICE)                                  \
-                              .TypeConstraint("T", TYPES),                     \
-                          DestroyTemporaryVariableOp);                         \
-  REGISTER_KERNEL_BUILDER(Name("IsVariableInitialized")                        \
-                              .Device(DEVICE)                                  \
-                              .TypeConstraint("dtype", TYPES)                  \
-                              .HostMemory("is_initialized"),                   \
-                          IsVariableInitializedOp);                            \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("Assign").Device(DEVICE).TypeConstraint("T", TYPES),                \
-      XlaDeviceAssignOp);                                                      \
-                                                                               \
-  REGISTER_KERNEL_BUILDER(Name("ControlTrigger").Device(DEVICE),               \
-                          ControlTriggerOp);                                   \
-  REGISTER_KERNEL_BUILDER(Name("Enter").Device(DEVICE), EnterOp);              \
-  REGISTER_KERNEL_BUILDER(Name("Exit").Device(DEVICE), ExitOp);                \
-  REGISTER_KERNEL_BUILDER(Name("NextIteration").Device(DEVICE),                \
-                          NextIterationOp);                                    \
-  REGISTER_KERNEL_BUILDER(Name("Switch").Device(DEVICE).HostMemory("pred"),    \
-                          SwitchOp);                                           \
-  REGISTER_KERNEL_BUILDER(                                                     \
-      Name("Merge").Device(DEVICE).HostMemory("value_index"), MergeOp);        \
-  REGISTER_KERNEL_BUILDER(Name("LoopCond")                                     \
-                              .Device(DEVICE)                                  \
-                              .HostMemory("input")                             \
-                              .HostMemory("output"),                           \
-                          IdentityOp);                                         \
-                                                                               \
-  REGISTER_KERNEL_BUILDER(                                                     \
       Name("VarHandleOp").Device(DEVICE).HostMemory("resource"),               \
       ResourceHandleOp<Var>);
-
-// TODO(b/32507444): the registrations for the control flow operators are
-// temporary and exist primarily to work around a bug in the graph partitioning
-// code.
 
 }  // namespace tensorflow
 

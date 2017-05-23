@@ -34,6 +34,10 @@ class APIChangeSpec(object):
     # Maps from a function name to a dictionary that describes how to
     # map from an old argument keyword to the new argument keyword.
     self.function_keyword_renames = {
+        "tf.batch_matmul": {
+            "adj_x": "adjoint_a",
+            "adj_y": "adjoint_b",
+        },
         "tf.count_nonzero": {
             "reduction_indices": "axis"
         },
@@ -149,6 +153,7 @@ class APIChangeSpec(object):
         "tf.batch_matmul": "tf.matmul",
         "tf.pack": "tf.stack",
         "tf.unpack": "tf.unstack",
+        "tf.op_scope": "tf.name_scope",
     }
 
     self.change_to_function = {
@@ -169,7 +174,8 @@ class APIChangeSpec(object):
         "tf.nn.sparse_softmax_cross_entropy_with_logits": [
             "logits", "labels", "name"],
         "tf.nn.sigmoid_cross_entropy_with_logits": [
-            "logits", "labels", "name"]
+            "logits", "labels", "name"],
+        "tf.op_scope": ["values", "name", "default_name"],
     }
 
     # Specially handled functions.

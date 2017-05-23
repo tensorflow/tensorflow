@@ -176,17 +176,24 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::Run(
   TF_RETURN_IF_ERROR(ValidateExecutionOptions(arguments, options, *backend_));
 
   ExecutableRunOptions actual_options = options;
-  Backend::StreamPtr stream;
   if (options.stream() == nullptr) {
     TF_ASSIGN_OR_RETURN(
-        stream, BorrowStreamForDevice(options.device_ordinal(), backend_));
+        Backend::StreamPtr stream,
+        BorrowStreamForDevice(options.device_ordinal(), backend_));
     actual_options.set_stream(stream.get());
   }
   if (options.allocator() == nullptr) {
     actual_options.set_allocator(backend_->memory_allocator());
   }
-  ServiceExecutableRunOptions service_options(actual_options,
-                                              backend_->StreamBorrower());
+
+  // For local client execution on CPU backends:
+  // *) The thread pool used for eigen CPU ops is from
+  //    ExecutableRunOptions.eigen_intra_op_thread_pool.
+  // *) The thread pool used for XLA CPU ops is from
+  //    backend_->eigen_intra_op_thread_pool().
+  ServiceExecutableRunOptions service_options(
+      actual_options, backend_->StreamBorrower(),
+      backend_->eigen_intra_op_thread_pool());
 
   if (executable_->dumping()) {
     return ExecuteAndDump(&service_options, arguments);
@@ -253,46 +260,6 @@ StatusOr<std::unique_ptr<GlobalData>> LocalClient::AllocateBufferOnDevice(
   return std::unique_ptr<GlobalData>(new GlobalData(local_service_, handle));
 }
 
-tensorflow::Status LocalClient::ResolveArguments(
-    const tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
-    int device_ordinal,
-    std::vector<perftools::gputools::DeviceMemoryBase>* argument_ptrs) {
-  return local_service_->ResolveArguments(arguments, device_ordinal,
-                                          argument_ptrs);
-}
-
-StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-LocalClient::CompileAheadOfTime(
-    const tensorflow::gtl::ArraySlice<AheadOfTimeComputationInstance>
-        computations,
-    const AotCompilationOptions& options) {
-  std::vector<LocalService::AheadOfTimeComputationInstance> service_instances;
-  service_instances.reserve(computations.size());
-  for (const AheadOfTimeComputationInstance& instance : computations) {
-    service_instances.push_back({});
-    LocalService::AheadOfTimeComputationInstance& service_instance =
-        service_instances.back();
-    TF_RET_CHECK(instance.computation != nullptr);
-    service_instance.computation = instance.computation->handle();
-    service_instance.argument_layouts = instance.argument_layouts;
-    service_instance.result_layout = instance.result_layout;
-  }
-  return local_service_->CompileAheadOfTime(service_instances, options);
-}
-
-int64 LocalClient::PointerSizeForTriple(tensorflow::StringPiece target_triple) {
-  llvm::Triple triple(
-      llvm::Triple::normalize(llvm_ir::AsStringRef(target_triple)));
-  if (triple.isArch64Bit()) {
-    return 8;
-  } else if (triple.isArch32Bit()) {
-    return 4;
-  } else {
-    CHECK(triple.isArch16Bit());
-    return 2;
-  }
-}
-
 se::Platform* LocalClient::platform() const {
   return local_service_->backend().platform();
 }
@@ -307,6 +274,14 @@ bool LocalClient::device_ordinal_supported(int device_ordinal) const {
 
 int LocalClient::default_device_ordinal() const {
   return local_service_->backend().default_device_ordinal();
+}
+
+const Backend& LocalClient::backend() const {
+  return local_service_->backend();
+}
+
+Backend* LocalClient::mutable_backend() {
+  return local_service_->mutable_backend();
 }
 
 StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(

@@ -93,15 +93,15 @@ creates a part of the graph and returns output tensors.
  put the arguments with names of the collections right before `name` argument.
 
 * Tensor arguments should be either a single tensor or an iterable of tensors.
-  E.g. a "Tensor or list of Tensors" is too broad. See `assert_proper_iterable`.
+ E.g. a "Tensor or list of Tensors" is too broad. See `assert_proper_iterable`.
 
 * Operations that take tensors as arguments should call `convert_to_tensor`
  to convert non-tensor inputs into tensors if they are using C++ operations.
  Note that the arguments are still described as a `Tensor` object
  of a specific dtype in the documentation.
 
-* Each Python operation should have an `op_scope` like below.
- Pass list of input tensors, `name` and a default name of the op as arguments.
+* Each Python operation should have a `name_scope` like below. Pass as
+ arguments `name`, a default name of the op, and a list of the input tensors.
 
 * Operations should contain an extensive Python comment with Args and Returns
  declarations that explain both the type and meaning of each value. Possible
@@ -115,31 +115,31 @@ Example:
 
     def my_op(tensor_in, other_tensor_in, my_param, other_param=0.5,
               output_collections=(), name=None):
-    """My operation that adds two tensors with given coefficients.
+      """My operation that adds two tensors with given coefficients.
 
-    Args:
-      tensor_in: `Tensor`, input tensor.
-      other_tensor_in: `Tensor`, same shape as `tensor_in`, other input tensor.
-      my_param: `float`, coefficient for `tensor_in`.
-      other_param: `float`, coefficient for `other_tensor_in`.
-      output_collections: `tuple` of `string`s, name of the collection to
-                          collect result of this op.
-      name: `string`, name of the operation.
+      Args:
+        tensor_in: `Tensor`, input tensor.
+        other_tensor_in: `Tensor`, same shape as `tensor_in`, other input tensor.
+        my_param: `float`, coefficient for `tensor_in`.
+        other_param: `float`, coefficient for `other_tensor_in`.
+        output_collections: `tuple` of `string`s, name of the collection to
+                            collect result of this op.
+        name: `string`, name of the operation.
 
-    Returns:
-      `Tensor` of same shape as `tensor_in`, sum of input values with coefficients.
+      Returns:
+        `Tensor` of same shape as `tensor_in`, sum of input values with coefficients.
 
-    Example:
-      >>> my_op([1., 2.], [3., 4.], my_param=0.5, other_param=0.6,
-                output_collections=['MY_OPS'], name='add_t1t2')
-      [2.3, 3.4]
-    """
-    with tf.name_scope(name, "my_op", [tensor_in, other_tensor_in]):
-      tensor_in = tf.convert_to_tensor(tensor_in)
-      other_tensor_in = tf.convert_to_tensor(other_tensor_in)
-      result = my_param * tensor_in + other_param * other_tensor_in
-      tf.add_to_collections(output_collections, result)
-      return result
+      Example:
+        >>> my_op([1., 2.], [3., 4.], my_param=0.5, other_param=0.6,
+                  output_collections=['MY_OPS'], name='add_t1t2')
+        [2.3, 3.4]
+      """
+      with tf.name_scope(name, "my_op", [tensor_in, other_tensor_in]):
+        tensor_in = tf.convert_to_tensor(tensor_in)
+        other_tensor_in = tf.convert_to_tensor(other_tensor_in)
+        result = my_param * tensor_in + other_param * other_tensor_in
+        tf.add_to_collection(output_collections, result)
+        return result
 
 Usage:
 
@@ -162,9 +162,9 @@ operation.
   - `reuse`: `bool` indicator if the variable should be reused if
              it's present in the scope.
 
-* Layers that behave differently during training should have:
-  - `is_training`: `bool` to indicate if a training graph is been built.
-
+* Layers that behave differently during training should take:
+  - `is_training`: `bool` indicator to conditionally choose different 
+                   computation paths (e.g. using `tf.cond`) during execution.
 
 Example:
 

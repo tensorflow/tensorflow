@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """ExportStrategy class represents different flavors of model export."""
 
 from __future__ import absolute_import
@@ -20,13 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import inspect
+
+from tensorflow.python.util import tf_inspect
 
 __all__ = ['ExportStrategy']
 
 
-class ExportStrategy(collections.namedtuple('ExportStrategy',
-                                            ['name', 'export_fn'])):
+class ExportStrategy(
+    collections.namedtuple('ExportStrategy', ['name', 'export_fn'])):
   """A class representing a type of model export.
 
   Typically constructed by a utility function specific to the exporter, such as
@@ -43,10 +43,11 @@ class ExportStrategy(collections.namedtuple('ExportStrategy',
       result or based on an internal timer or any other criterion, if exports
       are not desired for every checkpoint.
 
-      The signature of this function must be one of:
-        * (estimator, export_path) -> export_path`
-        * (estimator, export_path, checkpoint_path) -> export_path`
-        * (estimator, export_path, checkpoint_path, eval_result) -> export_path`
+    The signature of this function must be one of:
+
+    * `(estimator, export_path) -> export_path`
+    * `(estimator, export_path, checkpoint_path) -> export_path`
+    * `(estimator, export_path, checkpoint_path, eval_result) -> export_path`
   """
 
   def export(self,
@@ -73,7 +74,7 @@ class ExportStrategy(collections.namedtuple('ExportStrategy',
     """
     # don't break existing export_fns that don't accept checkpoint_path and
     # eval_result
-    export_fn_args = inspect.getargspec(self.export_fn).args
+    export_fn_args = tf_inspect.getargspec(self.export_fn).args
     kwargs = {}
     if 'checkpoint_path' in export_fn_args:
       kwargs['checkpoint_path'] = checkpoint_path
@@ -84,5 +85,3 @@ class ExportStrategy(collections.namedtuple('ExportStrategy',
       kwargs['eval_result'] = eval_result
 
     return self.export_fn(estimator, export_path, **kwargs)
-
-

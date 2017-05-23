@@ -84,10 +84,10 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     self.assertAllCloseAccordingToType(
         tf_val,
         np_val,
-        float_rtol=1e-5,
-        float_atol=1e-5,
-        half_rtol=0.1,
-        half_atol=0.1)
+        float_rtol=2e-5,
+        float_atol=2e-5,
+        half_rtol=0.2,
+        half_atol=0.2)
 
   return Test
 

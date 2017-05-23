@@ -18,6 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import
-from tensorflow.python.estimator.inputs.numpy_io import numpy_input_fn
-# pylint: enable=unused-import
+from tensorflow.python.estimator.inputs.numpy_io import numpy_input_fn as core_numpy_input_fn
+
+
+def numpy_input_fn(x,
+                   y=None,
+                   batch_size=128,
+                   num_epochs=1,
+                   shuffle=True,
+                   queue_capacity=1000,
+                   num_threads=1):
+  """This input_fn diffs from the core version with default `shuffle`."""
+  return core_numpy_input_fn(x=x,
+                             y=y,
+                             batch_size=batch_size,
+                             shuffle=shuffle,
+                             num_epochs=num_epochs,
+                             queue_capacity=queue_capacity,
+                             num_threads=num_threads)

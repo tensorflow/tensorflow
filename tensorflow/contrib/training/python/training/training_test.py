@@ -19,13 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
-
-# pylint: disable=g-import-not-at-top
-# TODO(jart): #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -515,7 +508,7 @@ class TrainTest(test.TestCase):
         # Initialize the variables.
         session.run(variables_lib2.global_variables_initializer())
 
-        # Get the intial weights and biases values.
+        # Get the initial weights and biases values.
         weights_values, biases_values = session.run([weights, biases])
         self.assertGreater(np.linalg.norm(weights_values), 0)
         self.assertAlmostEqual(np.linalg.norm(biases_values), 0)

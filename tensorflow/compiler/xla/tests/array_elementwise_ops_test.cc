@@ -29,13 +29,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/casts.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -240,6 +240,150 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantZeroElementF32s) {
   auto add = builder.Div(a, b);
 
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
+}
+
+TEST_F(ArrayElementwiseOpTest, DivS32s) {
+  // clang-format off
+  // Some interesting values to test.
+  std::vector<int32> vals = {
+    INT32_MIN, INT32_MIN + 1, INT32_MIN + 2, -0x40000000, -0x3fffffff,
+    -271181, -1309, -17, -10, -5, -3, -2, -1, 0, 1, 2, 3, 5, 10, 17, 26, 101,
+    7919, 0x40000000, INT32_MAX - 2, INT32_MAX - 1, INT32_MAX};
+  // clang-format on
+
+  std::vector<int32> dividends, divisors, quotients, remainders;
+  for (int32 divisor : vals) {
+    if (divisor != 0) {
+      for (int32 dividend : vals) {
+        // Avoid integer overflow.
+        if (dividend != INT32_MIN || divisor != -1) {
+          dividends.push_back(dividend);
+          divisors.push_back(divisor);
+          quotients.push_back(dividend / divisor);
+          remainders.push_back(dividend % divisor);
+        }
+      }
+    }
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    ComputationDataHandle divisor;
+    auto dividend_data =
+        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
+    auto divisor_data =
+        CreateR1Parameter<int32>(divisors, 1, "divisor", &builder, &divisor);
+    builder.Div(dividend, divisor);
+
+    ComputeAndCompareR1<int32>(&builder, quotients,
+                               {dividend_data.get(), divisor_data.get()});
+  }
+
+  // Test with a compile-time constant divisor.
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    auto dividend_data =
+        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
+    builder.Div(dividend, builder.ConstantR1<int32>(divisors));
+
+    ComputeAndCompareR1<int32>(&builder, quotients, {dividend_data.get()});
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    ComputationDataHandle divisor;
+    auto dividend_data =
+        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
+    auto divisor_data =
+        CreateR1Parameter<int32>(divisors, 1, "divisor", &builder, &divisor);
+    builder.Rem(dividend, divisor);
+
+    ComputeAndCompareR1<int32>(&builder, remainders,
+                               {dividend_data.get(), divisor_data.get()});
+  }
+
+  // Test with a compile-time constant divisor.
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    auto dividend_data =
+        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
+    builder.Rem(dividend, builder.ConstantR1<int32>(divisors));
+
+    ComputeAndCompareR1<int32>(&builder, remainders, {dividend_data.get()});
+  }
+}
+
+TEST_F(ArrayElementwiseOpTest, DivU32s) {
+  // clang-format off
+  // Some interesting values to test.
+  std::vector<uint32> vals = {
+    0, 1, 2, 17, 101, 3333, 0x7FFFFFFF, 0xABCDEF12, 0xCAFEBEEF, 0x80000000,
+    0x80000001, UINT32_MAX - 2, UINT32_MAX - 1, UINT32_MAX};
+  // clang-format on
+
+  std::vector<uint32> dividends, divisors, quotients, remainders;
+  for (uint32 divisor : vals) {
+    if (divisor != 0) {
+      for (uint32 dividend : vals) {
+        dividends.push_back(dividend);
+        divisors.push_back(divisor);
+        quotients.push_back(dividend / divisor);
+        remainders.push_back(dividend % divisor);
+      }
+    }
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    ComputationDataHandle divisor;
+    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
+                                                   &builder, &dividend);
+    auto divisor_data =
+        CreateR1Parameter<uint32>(divisors, 1, "divisor", &builder, &divisor);
+    builder.Div(dividend, divisor);
+
+    ComputeAndCompareR1<uint32>(&builder, quotients,
+                                {dividend_data.get(), divisor_data.get()});
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
+                                                   &builder, &dividend);
+    builder.Div(dividend, builder.ConstantR1<uint32>(divisors));
+
+    ComputeAndCompareR1<uint32>(&builder, quotients, {dividend_data.get()});
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    ComputationDataHandle divisor;
+    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
+                                                   &builder, &dividend);
+    auto divisor_data =
+        CreateR1Parameter<uint32>(divisors, 1, "divisor", &builder, &divisor);
+    builder.Rem(dividend, divisor);
+
+    ComputeAndCompareR1<uint32>(&builder, remainders,
+                                {dividend_data.get(), divisor_data.get()});
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
+                                                   &builder, &dividend);
+    builder.Rem(dividend, builder.ConstantR1<uint32>(divisors));
+
+    ComputeAndCompareR1<uint32>(&builder, remainders, {dividend_data.get()});
+  }
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, RemF32s) {
@@ -486,6 +630,18 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareEqZeroElementS32s) {
   ComputeAndCompareR1<bool>(&builder, {}, {});
 }
 
+TEST_F(ArrayElementwiseOpTest, CompareNeF32s) {
+  // Disable fast-math because we're operating on NaNs.
+  SetFastMathDisabled(true);
+
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, NAN, 6.0f});
+  auto rhs = builder.ConstantR1<float>({10.0f, 25.5f, 1.0f, 10.0f, NAN});
+  auto compare = builder.Ne(lhs, rhs);
+
+  ComputeAndCompareR1<bool>(&builder, {true, false, true, true, true}, {});
+}
+
 TEST_F(ArrayElementwiseOpTest, CompareNeS32s) {
   const int32 min = std::numeric_limits<int32>::min();
   const int32 max = std::numeric_limits<int32>::max();
@@ -620,12 +776,14 @@ TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 TEST_F(ArrayElementwiseOpTest, PowF32s) {
   SetFastMathDisabled(true);
   ComputationBuilder builder(client_, TestName());
-  auto lhs = builder.ConstantR1<float>({4.0f, 2.0f, 2.0f, NAN, 6.0f});
-  auto rhs = builder.ConstantR1<float>({2.0f, -2.0f, 3.0f, 10.0f, NAN});
+  auto lhs =
+      builder.ConstantR1<float>({4.0f, 2.0f, 2.0f, NAN, 6.0f, -2.0f, -2.0f});
+  auto rhs =
+      builder.ConstantR1<float>({2.0f, -2.0f, 3.0f, 10.0f, NAN, 3.0f, 4.0f});
   auto minimum = builder.Pow(lhs, rhs);
 
-  ComputeAndCompareR1<float>(&builder, {16.0f, 0.25f, 8.0f, NAN, NAN}, {},
-                             error_spec_);
+  ComputeAndCompareR1<float>(
+      &builder, {16.0f, 0.25f, 8.0f, NAN, NAN, -8.0f, 16.0f}, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowZeroElementF32s) {
@@ -1667,9 +1825,9 @@ TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
   auto concatenated = builder.Add(x, x);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_MATCH(computation_status.status().ToString(),
-               testing::ContainsRegex(
-                   "Expected non-opaque argument for lhs of binary operation"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              ::testing::ContainsRegex(
+                  "Expected non-opaque argument for lhs of binary operation"));
 }
 
 // Regression test for b/31927799. "slice - y" is fused and requires implicit

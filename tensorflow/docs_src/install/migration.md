@@ -68,7 +68,7 @@ There are a few things to watch out for. Specifically:
    will likely not work. We recommend deleting those lines and replacing
    them with lines such as the following:
 
-   <pre>
+   <pre class="prettyprint">
    with tf.variable_scope(tf.get_variable_scope(), reuse=True):
      ...
    </pre>

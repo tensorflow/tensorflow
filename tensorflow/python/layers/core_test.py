@@ -44,13 +44,14 @@ class DenseTest(test.TestCase):
     self.assertEqual(dense.bias_regularizer, None)
     self.assertEqual(dense.activity_regularizer, None)
     self.assertEqual(dense.use_bias, True)
-    self.assertEqual(dense.name, 'my_dense')
 
     # Test auto-naming
     dense = core_layers.Dense(2, activation=nn_ops.relu)
-    self.assertEqual(dense.name, 'dense')
-    dense = core_layers.Dense(2, activation=nn_ops.relu)
+    dense.apply(random_ops.random_uniform((5, 2)))
     self.assertEqual(dense.name, 'dense_1')
+    dense = core_layers.Dense(2, activation=nn_ops.relu)
+    dense.apply(random_ops.random_uniform((5, 2)))
+    self.assertEqual(dense.name, 'dense_2')
 
   def testCall(self):
     dense = core_layers.Dense(2, activation=nn_ops.relu, name='my_dense')
@@ -59,8 +60,6 @@ class DenseTest(test.TestCase):
     self.assertListEqual(dense.variables, [dense.kernel, dense.bias])
     self.assertListEqual(dense.trainable_variables, [dense.kernel, dense.bias])
     self.assertListEqual(dense.non_trainable_variables, [])
-    self.assertListEqual(dense._trainable_variables, [dense.kernel, dense.bias])
-    self.assertListEqual(dense._non_trainable_variables, [])
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 2)
     self.assertEqual(dense.kernel.name, 'my_dense/kernel:0')
@@ -86,8 +85,6 @@ class DenseTest(test.TestCase):
     self.assertListEqual(dense.non_trainable_variables,
                          [dense.kernel, dense.bias])
     self.assertListEqual(dense.trainable_variables, [])
-    self.assertListEqual(dense._trainable_variables, [dense.kernel, dense.bias])
-    self.assertListEqual(dense._non_trainable_variables, [])
     self.assertEqual(
         len(ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)), 0)
 
@@ -286,10 +283,11 @@ class DenseTest(test.TestCase):
 class DropoutTest(test.TestCase):
 
   def testDropoutProperties(self):
-    dp = core_layers.Dropout(0.5)
+    dp = core_layers.Dropout(0.5, name='dropout')
     self.assertEqual(dp.rate, 0.5)
-    self.assertEqual(dp.name, 'dropout')
     self.assertEqual(dp.noise_shape, None)
+    dp.apply(np.ones(()))
+    self.assertEqual(dp.name, 'dropout')
 
   def testBooleanLearningPhase(self):
     with self.test_session() as sess:

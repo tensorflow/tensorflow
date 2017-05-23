@@ -13,6 +13,7 @@
     *   [Eight-bit Calculations](#eight-bit-calculations)
 *   [Transform Reference](#transform-reference)
     *   [add_default_attributes](#add_default_attributes)
+    *   [backport_concatv2](#backport_concatv2)
     *   [fold_batch_norms](#fold_batch_norms)
     *   [fold_constants](#fold_constants)
     *   [fold_old_batch_norms](#fold_old_batch_norms)
@@ -80,10 +81,10 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --out_graph=optimized_inception_graph.pb \
 --inputs='Mul:0' \
 --outputs='softmax:0' \
---transforms='\
-strip_unused_nodes(type=float, shape="1,299,299,3") \
-remove_nodes(op=Identity, op=CheckNumerics) \
-fold_old_batch_norms \
+--transforms='
+strip_unused_nodes(type=float, shape="1,299,299,3")
+remove_nodes(op=Identity, op=CheckNumerics)
+fold_old_batch_norms
 '
 ```
 
@@ -93,7 +94,10 @@ transforms to modify the graph with. The transforms are given as a list of
 names, and can each have arguments themselves. These transforms define the
 pipeline of modifications that are applied in order to produce the output.
 Sometimes you need some transforms to happen before others, and the ordering
-within the list lets you specify which happen first.
+within the list lets you specify which happen first. 
+Note that the optimization 
+`remove_nodes(op=Identity, op=CheckNumerics)` will break the model with control 
+flow operations, such as `tf.cond`, `tf.map_fn`, and `tf.while`.
 
 ## Inspecting Graphs
 
@@ -102,8 +106,8 @@ output layers of the model are. The best source for these is the model training
 process, where for a classifier the inputs will be the nodes that receive the
 data from the training set, and the output will be the predictions. If you're
 unsure, the
-[summarize_graph](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/graph_transforms/summarize_graph.cc)
-can inspect the model and provide guesses about likely input and output nodes,
+[`summarize_graph`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/graph_transforms/summarize_graph_main.cc)
+tool can inspect the model and provide guesses about likely input and output nodes,
 as well as other information that's useful for debugging. Here's an example of
 how to use it on the [Inception V3
 graph](http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz):
@@ -135,15 +139,14 @@ bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --in_graph=tensorflow_inception_graph.pb \
 --out_graph=optimized_inception_graph.pb \
---inputs='Mul:0' \
---outputs='softmax:0' \
---transforms='\
-strip_unused_nodes(type=float, shape="1,299,299,3") \
-remove_nodes(op=Identity, op=CheckNumerics) \
-fold_constants(ignore_errors=true) \
-fold_batch_norms \
-fold_old_batch_norms\
-'
+--inputs='Mul' \
+--outputs='softmax' \
+--transforms='
+  strip_unused_nodes(type=float, shape="1,299,299,3")
+  remove_nodes(op=Identity, op=CheckNumerics)
+  fold_constants(ignore_errors=true)
+  fold_batch_norms
+  fold_old_batch_norms'
 ```
 
 The batch norm folding is included twice because there are two different flavors
@@ -169,21 +172,20 @@ then you'll need to make local modifications to the build files to include the
 right .cc file that defines it. In a lot of cases the op is just a vestigial
 remnant from the training process though, and if that's true then you can run
 the [strip_unused_nodes](#strip_unused_nodes), specifying the inputs and outputs
-of your inference usage, to remove those unneccessary nodes:
+of your inference usage, to remove those unnecessary nodes:
 
 ```bash
 bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --in_graph=tensorflow_inception_graph.pb \
 --out_graph=optimized_inception_graph.pb \
---inputs='Mul:0' \
---outputs='softmax:0' \
---transforms='\
-strip_unused_nodes(type=float, shape="1,299,299,3") \
-fold_constants(ignore_errors=true) \
-fold_batch_norms \
-fold_old_batch_norms\
-'
+--inputs='Mul' \
+--outputs='softmax' \
+--transforms='
+  strip_unused_nodes(type=float, shape="1,299,299,3")
+  fold_constants(ignore_errors=true)
+  fold_batch_norms
+  fold_old_batch_norms'
 ```
 
 ### Shrinking File Size
@@ -211,11 +213,14 @@ bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --in_graph=tensorflow_inception_graph.pb \
 --out_graph=optimized_inception_graph.pb \
---inputs='Mul:0' \
---outputs='softmax:0' \
---transforms='\
-round_weights(num_steps=256) \
-'
+--inputs='Mul' \
+--outputs='softmax' \
+--transforms='
+  strip_unused_nodes(type=float, shape="1,299,299,3")
+  fold_constants(ignore_errors=true)
+  fold_batch_norms
+  fold_old_batch_norms
+  round_weights(num_steps=256)'
 ```
 
 You should see that the `optimized_inception_graph.pb` output file is the same
@@ -235,11 +240,14 @@ bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --in_graph=tensorflow_inception_graph.pb \
 --out_graph=optimized_inception_graph.pb \
---inputs='Mul:0' \
---outputs='softmax:0' \
---transforms='\
-quantize_weights \
-'
+--inputs='Mul' \
+--outputs='softmax' \
+--transforms='
+  strip_unused_nodes(type=float, shape="1,299,299,3")
+  fold_constants(ignore_errors=true)
+  fold_batch_norms
+  fold_old_batch_norms
+  quantize_weights'
 ```
 
 You should see that the size of the output graph is about a quarter of the
@@ -262,9 +270,8 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --out_graph=optimized_inception_graph.pb \
 --inputs='Mul:0' \
 --outputs='softmax:0' \
---transforms='\
-obfuscate_names \
-'
+--transforms='
+  obfuscate_names'
 ```
 
 ### Eight-bit Calculations
@@ -279,17 +286,19 @@ bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --in_graph=tensorflow_inception_graph.pb \
 --out_graph=optimized_inception_graph.pb \
---inputs='Mul:0' \
---outputs='softmax:0' \
+--inputs='Mul' \
+--outputs='softmax' \
 --transforms='
- add_default_attributes
- strip_unused_nodes(type=float, shape="1,299,299,3")
- remove_nodes(op=Identity, op=CheckNumerics)
- fold_old_batch_norms
- quantize_weights
- quantize_nodes
- strip_unused_nodes
- sort_by_execution_order'
+  add_default_attributes
+  strip_unused_nodes(type=float, shape="1,299,299,3")
+  remove_nodes(op=Identity, op=CheckNumerics)
+  fold_constants(ignore_errors=true)
+  fold_batch_norms
+  fold_old_batch_norms
+  quantize_weights
+  quantize_nodes
+  strip_unused_nodes
+  sort_by_execution_order'
 ```
 
 This process converts all the operations in the graph that have eight-bit
@@ -314,7 +323,7 @@ themselves contain commas (for example shape definitions).
 The --inputs and --outputs are shared across all transforms, since it's common
 to need to know what the ingoing and outgoing nodes in the graph are. You should
 make sure you set these correctly before calling the graph transform tool, and
-if you're in doubt check with the model's author, or use the `check_graph` tool
+if you're in doubt check with the model's author, or use the [`summarize_graph`](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/tools/graph_transforms#inspecting-graphs) tool
 to examine likely inputs and outputs.
 
 All transforms can be passed the `ignore_errors` flag, with the value set to
@@ -335,6 +344,15 @@ your model is going to be processed outside of the main TensorFlow framework it
 can be useful to run this update process as a transform. This process finds any
 op attributes that are defined in the current TensorFlow list of ops but not
 within the saved model, and sets them to the defined default for that attribute.
+
+### backport_concatv2
+
+Args: None
+
+If you have a GraphDef file that has been produced by a newer version of the
+TensorFlow framework and includes ConcatV2, and you want to run it on an older
+version that only supports Concat, this transform will take care of converting
+those newer ops to the equivalent older form.
 
 ### fold_batch_norms
 
@@ -413,12 +431,11 @@ graph:
 ```bash
 bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
---logtostderr \
 --in_graph=/tmp/quantized_inception.pb \
 --out_graph=/tmp/logged_quantized_inception.pb \
 --inputs=Mul \
 --outputs=softmax \
---transforms='\
+--transforms='
 insert_logging(op=RequantizationRange, show_name=true, message="__requant_min_max:")\
 '
 ```
@@ -432,12 +449,10 @@ log:
 bazel build tensorflow/examples/label_image:label_image
 bazel-bin/tensorflow/examples/label_image/label_image \
 --image=${HOME}/Downloads/grace_hopper.jpg \
---logtostderr \
 --input_layer=Mul \
 --output_layer=softmax \
 --graph=/tmp/logged_quantized_inception.pb \
---labels=learning/brain/models/image/inception_v3/imagenet_comp_graph_label_strings.txt \
---logtostderr \
+--labels=${HOME}/Downloads/imagenet_comp_graph_label_strings.txt \
 2>/tmp/min_max_log_small.txt
 ```
 
@@ -570,7 +585,10 @@ Converts any large (more than 15 element) float Const op into an eight-bit
 equivalent, followed by a float conversion op so that the result is usable by
 subsequent nodes. This is mostly useful for [shrinking file
 sizes](#shrinking-file-size), but also helps with the more advanced
-[quantize_nodes](#quantize_nodes) transform.
+[quantize_nodes](#quantize_nodes) transform. Even though there are no
+prerequesites, it is advisable to run [fold_batch_norms](#fold_batch_norms) or
+[fold_old_batch_norms](#fold_old_batch_norms), because rounding variances down
+to zero may cause significant loss of precision.
 
 ### remove_attribute
 
@@ -655,7 +673,11 @@ Rounds all float values in large Const ops (more than 15 elements) to the given
 number of steps. The unique values are chosen per buffer by linearly allocating
 between the largest and smallest values present. This is useful when you'll be
 deploying on mobile, and you want a model that will compress effectively. See
-[shrinking file size](#shrinking-file-size) for more details.
+[shrinking file size](#shrinking-file-size) for more details. Even though there
+are no prerequesites, it is advisable to run
+[fold_batch_norms](#fold_batch_norms) or
+[fold_old_batch_norms](#fold_old_batch_norms), because rounding variances down
+to zero may cause significant loss of precision.
 
 ### sparsify_gather
 
@@ -976,7 +998,7 @@ There are a few things to know about the `ReplaceMatchingOpTypes` function:
     important nodes are listed in the `output_nodes` argument that's passed into
     each replacement function call. You can disable this checking by setting
     `allow_inconsistencies` to true in the options, but otherwise any
-    replacements that break the graph constraints will be cancelled. If you do
+    replacements that break the graph constraints will be canceled. If you do
     allow inconsistencies, it's your transform's responsibility to fix them up
     before you return your final result. Functions like `RenameNodeInputs` can
     be useful if you are doing wholesale node renaming for example.

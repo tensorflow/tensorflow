@@ -36,7 +36,7 @@ images into [1000 classes], like "Zebra", "Dalmatian", and "Dishwasher".
 For example, here are the results from [AlexNet] classifying some images:
 
 <div style="width:50%; margin:auto; margin-bottom:10px; margin-top:20px;">
-<img style="width:100%" src="../images/AlexClassification.png">
+<img style="width:100%" src="https://www.tensorflow.org/images/AlexClassification.png">
 </div>
 
 To compare models, we examine how often the model fails to predict the
@@ -75,7 +75,7 @@ Start by cloning the [TensorFlow models repo](https://github.com/tensorflow/mode
 The above command will classify a supplied image of a panda bear.
 
 <div style="width:15%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/cropped_panda.jpg">
+  <img style="width:100%" src="https://www.tensorflow.org/images/cropped_panda.jpg">
 </div>
 
 If the model runs correctly, the script will produce the following output:
@@ -100,9 +100,8 @@ the model like this (running from the root directory of the TensorFlow
 repository):
 
 ```bash
-wget https://storage.googleapis.com/download.tensorflow.org/models/inception_dec_2015.zip -O tensorflow/examples/label_image/data/inception_dec_2015.zip
-
-unzip tensorflow/examples/label_image/data/inception_dec_2015.zip -d tensorflow/examples/label_image/data/
+curl -L "https://storage.googleapis.com/download.tensorflow.org/models/inception_v3_2016_08_28_frozen.pb.tar.gz" |
+  tar -C tensorflow/examples/label_image/data -xz
 ```
 
 Next, we need to compile the C++ binary that includes the code to load and run the graph.
@@ -125,20 +124,20 @@ This uses the default example image that ships with the framework, and should
 output something similar to this:
 
 ```
-I tensorflow/examples/label_image/main.cc:200] military uniform (866): 0.647296
-I tensorflow/examples/label_image/main.cc:200] suit (794): 0.0477196
-I tensorflow/examples/label_image/main.cc:200] academic gown (896): 0.0232411
-I tensorflow/examples/label_image/main.cc:200] bow tie (817): 0.0157356
-I tensorflow/examples/label_image/main.cc:200] bolo tie (940): 0.0145024
+I tensorflow/examples/label_image/main.cc:206] military uniform (653): 0.834306
+I tensorflow/examples/label_image/main.cc:206] mortarboard (668): 0.0218692
+I tensorflow/examples/label_image/main.cc:206] academic gown (401): 0.0103579
+I tensorflow/examples/label_image/main.cc:206] pickelhaube (716): 0.00800814
+I tensorflow/examples/label_image/main.cc:206] bulletproof vest (466): 0.00535088
 ```
 In this case, we're using the default image of
 [Admiral Grace Hopper](https://en.wikipedia.org/wiki/Grace_Hopper), and you can
 see the network correctly identifies she's wearing a military uniform, with a high
-score of 0.6.
+score of 0.8.
 
 
 <div style="width:45%; margin:auto; margin-bottom:10px; margin-top:20px;">
-  <img style="width:100%" src="../images/grace_hopper.jpg">
+  <img style="width:100%" src="https://www.tensorflow.org/images/grace_hopper.jpg">
 </div>
 
 Next, try it out on your own images by supplying the --image= argument, e.g.

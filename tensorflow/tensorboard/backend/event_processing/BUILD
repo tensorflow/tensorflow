@@ -91,6 +91,7 @@ py_library(
     deps = [
         ":directory_watcher",
         ":event_file_loader",
+        ":plugin_asset_util",
         ":reservoir",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
@@ -143,6 +144,30 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform",
+    ],
+)
+
+py_library(
+    name = "plugin_asset_util",
+    srcs = ["plugin_asset_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_test(
+    name = "plugin_asset_util_test",
+    size = "small",
+    srcs = ["plugin_asset_util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":event_multiplexer",
+        ":plugin_asset_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
     ],
 )
 

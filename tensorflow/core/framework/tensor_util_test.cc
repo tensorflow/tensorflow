@@ -208,7 +208,10 @@ TEST(TensorUtil, ConcatSplitStrings) {
     x.flat<string>()(i) = strings::StrCat("foo_", i);
   }
 
-  Tensor x_round_tripped = tensor::Concat(tensor::Split(x, {2, 1, 1}));
+  std::vector<Tensor> split;
+  TF_ASSERT_OK(tensor::Split(x, {2, 1, 1}, &split));
+  Tensor x_round_tripped;
+  TF_ASSERT_OK(tensor::Concat(split, &x_round_tripped));
   ASSERT_EQ(x.shape(), x_round_tripped.shape());
   for (int i = 0; i < 4 * 3; ++i) {
     EXPECT_EQ(x.flat<string>()(i), x_round_tripped.flat<string>()(i));

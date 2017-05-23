@@ -38,6 +38,7 @@ from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.contrib.metrics.python.ops import metric_ops
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
@@ -325,6 +326,49 @@ class DNNClassifierTest(test.TestCase):
       for i in range(expected_n_classes):
         self._assertInRange(0.0, 1.0, probabilities[b][i])
 
+  def testEstimatorWithCoreFeatureColumns(self):
+
+    def _input_fn(num_epochs=None):
+      features = {
+          'age':
+              input_lib.limit_epochs(
+                  constant_op.constant([[.8], [0.2], [.1]]),
+                  num_epochs=num_epochs),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      return features, constant_op.constant([[1], [0], [0]], dtype=dtypes.int32)
+
+    language_column = fc_core.categorical_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        fc_core.embedding_column(language_column, dimension=1),
+        fc_core.numeric_column('age')
+    ]
+
+    classifier = dnn.DNNClassifier(
+        n_classes=2,
+        feature_columns=feature_columns,
+        hidden_units=[10, 10],
+        config=run_config.RunConfig(tf_random_seed=1))
+
+    classifier.fit(input_fn=_input_fn, steps=50)
+
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predicted_classes = list(
+        classifier.predict_classes(input_fn=predict_input_fn, as_iterable=True))
+    self._assertBinaryPredictions(3, predicted_classes)
+    predictions = list(
+        classifier.predict(input_fn=predict_input_fn, as_iterable=True))
+    self.assertAllEqual(predicted_classes, predictions)
+
   def testLogisticRegression_TensorData(self):
     """Tests binary classification using tensor data as input."""
 
@@ -474,6 +518,60 @@ class DNNClassifierTest(test.TestCase):
     classifier.fit(x=train_x, y=train_y, steps=200)
     scores = classifier.evaluate(x=train_x, y=train_y, steps=1)
     self._assertInRange(0.0, 1.0, scores['accuracy'])
+
+  def testMultiClassLabelKeys(self):
+    """Tests n_classes > 2 with label_keys vocabulary for labels."""
+    # Byte literals needed for python3 test to pass.
+    label_keys = [b'label0', b'label1', b'label2']
+
+    def _input_fn(num_epochs=None):
+      features = {
+          'age':
+              input_lib.limit_epochs(
+                  constant_op.constant([[.8], [0.2], [.1]]),
+                  num_epochs=num_epochs),
+          'language':
+              sparse_tensor.SparseTensor(
+                  values=input_lib.limit_epochs(
+                      ['en', 'fr', 'zh'], num_epochs=num_epochs),
+                  indices=[[0, 0], [0, 1], [2, 0]],
+                  dense_shape=[3, 2])
+      }
+      labels = constant_op.constant(
+          [[label_keys[1]], [label_keys[0]], [label_keys[0]]],
+          dtype=dtypes.string)
+      return features, labels
+
+    language_column = feature_column.sparse_column_with_hash_bucket(
+        'language', hash_bucket_size=20)
+    feature_columns = [
+        feature_column.embedding_column(
+            language_column, dimension=1),
+        feature_column.real_valued_column('age')
+    ]
+
+    classifier = dnn.DNNClassifier(
+        n_classes=3,
+        feature_columns=feature_columns,
+        hidden_units=[10, 10],
+        label_keys=label_keys,
+        config=run_config.RunConfig(tf_random_seed=1))
+
+    classifier.fit(input_fn=_input_fn, steps=50)
+
+    scores = classifier.evaluate(input_fn=_input_fn, steps=1)
+    self._assertInRange(0.0, 1.0, scores['accuracy'])
+    self.assertIn('loss', scores)
+    predict_input_fn = functools.partial(_input_fn, num_epochs=1)
+    predicted_classes = list(
+        classifier.predict_classes(
+            input_fn=predict_input_fn, as_iterable=True))
+    self.assertEqual(3, len(predicted_classes))
+    for pred in predicted_classes:
+      self.assertIn(pred, label_keys)
+    predictions = list(
+        classifier.predict(input_fn=predict_input_fn, as_iterable=True))
+    self.assertAllEqual(predicted_classes, predictions)
 
   def testLoss(self):
     """Tests loss calculation."""

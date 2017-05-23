@@ -137,16 +137,16 @@ which to operate must always be given explicitly. This is the reason why
 
 ## Module: reroute
 
-*   @{tf.contrib.graph_editor.reroute.swap_ts}
-*   @{tf.contrib.graph_editor.reroute.reroute_ts}
-*   @{tf.contrib.graph_editor.reroute.swap_inputs}
-*   @{tf.contrib.graph_editor.reroute.reroute_inputs}
-*   @{tf.contrib.graph_editor.reroute.swap_outputs}
-*   @{tf.contrib.graph_editor.reroute.reroute_outputs}
-*   @{tf.contrib.graph_editor.reroute.swap_ios}
-*   @{tf.contrib.graph_editor.reroute.reroute_ios}
-*   @{tf.contrib.graph_editor.reroute.remove_control_inputs}
-*   @{tf.contrib.graph_editor.reroute.add_control_inputs}
+*   @{tf.contrib.graph_editor.swap_ts}
+*   @{tf.contrib.graph_editor.reroute_ts}
+*   @{tf.contrib.graph_editor.swap_inputs}
+*   @{tf.contrib.graph_editor.reroute_inputs}
+*   @{tf.contrib.graph_editor.swap_outputs}
+*   @{tf.contrib.graph_editor.reroute_outputs}
+*   @{tf.contrib.graph_editor.swap_ios}
+*   @{tf.contrib.graph_editor.reroute_ios}
+*   @{tf.contrib.graph_editor.remove_control_inputs}
+*   @{tf.contrib.graph_editor.add_control_inputs}
 
 ## Module: edit
 
@@ -169,11 +169,6 @@ which to operate must always be given explicitly. This is the reason why
 *   @{tf.contrib.graph_editor.copy}
 *   @{tf.contrib.graph_editor.copy_with_input_replacements}
 *   @{tf.contrib.graph_editor.graph_replace}
-
-## Module: match
-
-*   @{tf.contrib.graph_editor.op_type}
-*   @{tf.contrib.graph_editor.OpMatcher}
 
 ## Useful aliases
 

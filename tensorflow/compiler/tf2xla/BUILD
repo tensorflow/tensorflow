@@ -23,7 +23,6 @@ package(
 cc_library(
     name = "xla_compiler",
     srcs = [
-        "op_registrations.cc",
         "xla_compilation_device.cc",
         "xla_compiler.cc",
         "xla_context.cc",
@@ -39,12 +38,14 @@ cc_library(
         "xla_op_kernel.h",
         "xla_op_registry.h",
     ],
+    visibility = [":friends"],
     deps = [
         ":common",
         ":dump_graph",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation",
@@ -56,6 +57,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
     alwayslink = 1,

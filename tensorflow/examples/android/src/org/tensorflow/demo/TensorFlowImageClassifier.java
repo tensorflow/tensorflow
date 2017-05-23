@@ -32,10 +32,6 @@ import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 
 /** A classifier specialized to label images using TensorFlow. */
 public class TensorFlowImageClassifier implements Classifier {
-  static {
-    System.loadLibrary("tensorflow_demo");
-  }
-
   private static final String TAG = "TensorFlowImageClassifier";
 
   // Only return this many results with at least this confidence.
@@ -55,6 +51,8 @@ public class TensorFlowImageClassifier implements Classifier {
   private float[] floatValues;
   private float[] outputs;
   private String[] outputNames;
+
+  private boolean logStats = false;
 
   private TensorFlowInferenceInterface inferenceInterface;
 
@@ -102,16 +100,10 @@ public class TensorFlowImageClassifier implements Classifier {
       throw new RuntimeException("Problem reading label file!" , e);
     }
 
-    c.inferenceInterface = new TensorFlowInferenceInterface();
-    if (c.inferenceInterface.initializeTensorFlow(assetManager, modelFilename) != 0) {
-      throw new RuntimeException("TF initialization failed");
-    }
+    c.inferenceInterface = new TensorFlowInferenceInterface(assetManager, modelFilename);
+
     // The shape of the output is [N, NUM_CLASSES], where N is the batch size.
-    final Operation operation = c.inferenceInterface.graph().operation(outputName);
-    if (operation == null) {
-      throw new RuntimeException("Node '" + outputName + "' does not exist in model '"
-          + modelFilename + "'");
-    }
+    final Operation operation = c.inferenceInterface.graphOperation(outputName);
     final int numClasses = (int) operation.output(0).shape().size(1);
     Log.i(TAG, "Read " + c.labels.size() + " labels, output layer size is " + numClasses);
 
@@ -149,19 +141,18 @@ public class TensorFlowImageClassifier implements Classifier {
     Trace.endSection();
 
     // Copy the input data into TensorFlow.
-    Trace.beginSection("fillNodeFloat");
-    inferenceInterface.fillNodeFloat(
-        inputName, new int[] {1, inputSize, inputSize, 3}, floatValues);
+    Trace.beginSection("feed");
+    inferenceInterface.feed(inputName, floatValues, 1, inputSize, inputSize, 3);
     Trace.endSection();
 
     // Run the inference call.
-    Trace.beginSection("runInference");
-    inferenceInterface.runInference(outputNames);
+    Trace.beginSection("run");
+    inferenceInterface.run(outputNames, logStats);
     Trace.endSection();
 
     // Copy the output Tensor back into the output array.
-    Trace.beginSection("readNodeFloat");
-    inferenceInterface.readNodeFloat(outputName, outputs);
+    Trace.beginSection("fetch");
+    inferenceInterface.fetch(outputName, outputs);
     Trace.endSection();
 
     // Find the best classifications.
@@ -192,8 +183,8 @@ public class TensorFlowImageClassifier implements Classifier {
   }
 
   @Override
-  public void enableStatLogging(boolean debug) {
-    inferenceInterface.enableStatLogging(debug);
+  public void enableStatLogging(boolean logStats) {
+    this.logStats = logStats;
   }
 
   @Override

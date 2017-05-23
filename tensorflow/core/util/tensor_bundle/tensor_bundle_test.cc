@@ -245,15 +245,14 @@ TEST(TensorBundleTest, PartitionedVariables) {
   // Adds two slices.
   // First slice: column 0, all zeros.
   // Second slice: column 1 to rest, all ones.
+  TensorSlice slice1 = TensorSlice::ParseOrDie("-:0,1");
+  TensorSlice slice2 = TensorSlice::ParseOrDie("-:1,9");
   {
     BundleWriter writer(Env::Default(), Prefix("foo"));
-    TensorSlice slice = TensorSlice::ParseOrDie("-:0,1");
 
-    TF_ASSERT_OK(writer.AddSlice("foo", kFullShape,
-                                 TensorSlice::ParseOrDie("-:0,1"),
+    TF_ASSERT_OK(writer.AddSlice("foo", kFullShape, slice1,
                                  Constant<float>(0., TensorShape({5, 1}))));
-    TF_ASSERT_OK(writer.AddSlice("foo", kFullShape,
-                                 TensorSlice::ParseOrDie("-:1,9"),
+    TF_ASSERT_OK(writer.AddSlice("foo", kFullShape, slice2,
                                  Constant<float>(1., TensorShape({5, 9}))));
     TF_ASSERT_OK(writer.Finish());
   }
@@ -273,6 +272,18 @@ TEST(TensorBundleTest, PartitionedVariables) {
     Tensor val(DT_FLOAT, kFullShape);
     TF_ASSERT_OK(reader.Lookup("foo", &val));
     test::ExpectTensorEqual<float>(val, expected_val);
+  }
+  // Reads all slices.
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+
+    std::vector<TensorSlice> slices;
+    TF_ASSERT_OK(reader.LookupTensorSlices("foo", &slices));
+
+    EXPECT_EQ(2, slices.size());
+    EXPECT_EQ(slice1.DebugString(), slices[0].DebugString());
+    EXPECT_EQ(slice2.DebugString(), slices[1].DebugString());
   }
   // Reads a slice consisting of first two columns, "cutting" both slices.
   {

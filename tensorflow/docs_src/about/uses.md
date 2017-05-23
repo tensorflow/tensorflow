@@ -1,14 +1,26 @@
-# TensorFlow Uses
+# TensorFlow In Use
 
-This page describes some of the current uses of the TensorFlow system.
+This page highlights TensorFlow models in real world use.
+
+
+## Model zoo
+
+Please visit our collection of TensorFlow models in the 
+[TensorFlow Zoo](https://github.com/tensorflow/models).
+
+If you have built a model with TensorFlow, please consider publishing it in
+the Zoo.
+
+
+## Current uses
+
+This section describes some of the current uses of the TensorFlow system.
 
 > If you are using TensorFlow for research, for education, or for production
 > usage in some product, we would love to add something about your usage here.
 > Please feel free to email us a brief description of how you're using
 > TensorFlow, or even better, send us a pull request to add an entry to this
 > file.
-
-Listed below are some of the many uses of TensorFlow.
 
 * **RankBrain**
 <ul>

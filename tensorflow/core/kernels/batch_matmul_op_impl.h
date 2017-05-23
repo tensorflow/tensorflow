@@ -343,21 +343,70 @@ struct LaunchBatchMatMul<GPUDevice, Scalar> {
     // C = A x B
     // where A, B and C are assumed to be in column major.
     // We want the output to be in row-major, so we can compute
-    // C' = B' x A' (' stands for transpose)
-    CublasScratchAllocator scratch_allocator(context);
-    bool blas_launch_status =
-        stream
-            ->ThenBlasGemmBatchedWithScratch(
-                blas_transpose_b, blas_transpose_a, n, m, k,
-                static_cast<Scalar>(1.0), b_ptrs, adj_y ? k : n, a_ptrs,
-                adj_x ? m : k, static_cast<Scalar>(0.0), c_ptrs, n, batch_size,
-                &scratch_allocator)
-            .ok();
-    if (!blas_launch_status) {
-      context->SetStatus(errors::Internal(
-          "Blas SGEMMBatched launch failed : a.shape=",
-          in_x.shape().DebugString(), ", b.shape=", in_y.shape().DebugString(),
-          ", m=", m, ", n=", n, ", k=", k, ", batch_size=", batch_size));
+    // C' = B' x A', where ' stands for transpose (not adjoint).
+    // TODO(yangzihao): Choose the best of the three strategies using autotune.
+    if (batch_size == 1) {
+      // This is a regular matrix*matrix or matrix*vector multiply. Avoid the
+      // overhead of the scratch allocator and the batch interface.
+      if (n == 1 &&
+          blas_transpose_b !=
+              perftools::gputools::blas::Transpose::kConjugateTranspose &&
+          blas_transpose_a !=
+              perftools::gputools::blas::Transpose::kConjugateTranspose) {
+        // This is a matrix*vector multiply so use GEMV to compute A * b.
+        // Here we are multiplying in the natural order, so we have to flip
+        // the transposition flag to compensate for the tensor being stored
+        // row-major. Since GEMV doesn't provide a way to just conjugate an
+        // argument, we have to defer those cases to GEMM below.
+        auto gemv_trans_a =
+            blas_transpose_a == perftools::gputools::blas::Transpose::kTranspose
+                ? perftools::gputools::blas::Transpose::kNoTranspose
+                : perftools::gputools::blas::Transpose::kTranspose;
+        bool blas_launch_status =
+            stream
+                ->ThenBlasGemv(gemv_trans_a, adj_x ? m : k, adj_x ? k : m,
+                               static_cast<Scalar>(1.0), *(a_ptrs[0]),
+                               adj_x ? m : k, *(b_ptrs[0]), 1,
+                               static_cast<Scalar>(0.0), c_ptrs[0], 1)
+                .ok();
+        if (!blas_launch_status) {
+          context->SetStatus(errors::Internal(
+              "Blas xGEMV launch failed : a.shape=", in_x.shape().DebugString(),
+              ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
+              ", k=", k));
+        }
+      } else {
+        bool blas_launch_status =
+            stream
+                ->ThenBlasGemm(blas_transpose_b, blas_transpose_a, n, m, k,
+                               static_cast<Scalar>(1.0), *(b_ptrs[0]),
+                               adj_y ? k : n, *(a_ptrs[0]), adj_x ? m : k,
+                               static_cast<Scalar>(0.0), c_ptrs[0], n)
+                .ok();
+        if (!blas_launch_status) {
+          context->SetStatus(errors::Internal(
+              "Blas xGEMM launch failed : a.shape=", in_x.shape().DebugString(),
+              ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
+              ", k=", k));
+        }
+      }
+    } else {
+      CublasScratchAllocator scratch_allocator(context);
+      bool blas_launch_status =
+          stream
+              ->ThenBlasGemmBatchedWithScratch(
+                  blas_transpose_b, blas_transpose_a, n, m, k,
+                  static_cast<Scalar>(1.0), b_ptrs, adj_y ? k : n, a_ptrs,
+                  adj_x ? m : k, static_cast<Scalar>(0.0), c_ptrs, n,
+                  batch_size, &scratch_allocator)
+              .ok();
+      if (!blas_launch_status) {
+        context->SetStatus(errors::Internal(
+            "Blas xGEMMBatched launch failed : a.shape=",
+            in_x.shape().DebugString(),
+            ", b.shape=", in_y.shape().DebugString(), ", m=", m, ", n=", n,
+            ", k=", k, ", batch_size=", batch_size));
+      }
     }
   }
 };

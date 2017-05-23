@@ -139,34 +139,6 @@ def GetShrunkInceptionShapes(shrink=10):
     yield i, f, o, s, p
 
 
-def NHWCToNCHW(input_tensor):
-  """Convert the input from NHWC format to NCHW.
-
-  Args:
-    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
-  Returns:
-    the converted tensor or a shape array
-  """
-  if isinstance(input_tensor, ops.Tensor):
-    return array_ops.transpose(input_tensor, [0, 3, 1, 2])
-  else:
-    return [input_tensor[0], input_tensor[3], input_tensor[1], input_tensor[2]]
-
-
-def NCHWToNHWC(input_tensor):
-  """Convert the input from NCHW format to NHWC.
-
-  Args:
-    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
-  Returns:
-    the converted tensor or a shape array
-  """
-  if isinstance(input_tensor, ops.Tensor):
-    return array_ops.transpose(input_tensor, [0, 2, 3, 1])
-  else:
-    return [input_tensor[0], input_tensor[2], input_tensor[3], input_tensor[1]]
-
-
 def GetTestConfigs():
   """Get all the valid tests configs to run.
 
@@ -222,12 +194,12 @@ class Conv2DTest(test.TestCase):
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
       strides = [1] + strides + [1]
       if data_format == "NCHW":
-        t1 = NHWCToNCHW(t1)
-        strides = NHWCToNCHW(strides)
+        t1 = test_util.NHWCToNCHW(t1)
+        strides = test_util.NHWCToNCHW(strides)
       conv = nn_ops.conv2d(
           t1, t2, strides=strides, padding=padding, data_format=data_format)
       if data_format == "NCHW":
-        conv = NCHWToNHWC(conv)
+        conv = test_util.NCHWToNHWC(conv)
 
       return conv
 
@@ -252,12 +224,12 @@ class Conv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=filter_in_sizes)
         strides = [1] + conv_strides + [1]
         if data_format == "NCHW":
-          t1 = NHWCToNCHW(t1)
-          strides = NHWCToNCHW(strides)
+          t1 = test_util.NHWCToNCHW(t1)
+          strides = test_util.NHWCToNCHW(strides)
         conv = nn_ops.conv2d(
             t1, t2, strides=strides, padding=padding, data_format=data_format)
         if data_format == "NCHW":
-          conv = NCHWToNHWC(conv)
+          conv = test_util.NCHWToNHWC(conv)
         return conv
 
     tensors = []
@@ -427,18 +399,18 @@ class Conv2DTest(test.TestCase):
     x2 = [f * 1.0 for f in range(1, total_output_size + 1)]
     with self.test_session(use_gpu=use_gpu) as sess:
       if data_format == "NCHW":
-        input_sizes = NHWCToNCHW(input_sizes)
+        input_sizes = test_util.NHWCToNCHW(input_sizes)
       t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
       t1 = constant_op.constant(x1, shape=filter_sizes)
       t2 = constant_op.constant(x2, shape=output_sizes)
       strides = [1] + strides + [1]
       if data_format == "NCHW":
-        t2 = NHWCToNCHW(t2)
-        strides = NHWCToNCHW(strides)
+        t2 = test_util.NHWCToNCHW(t2)
+        strides = test_util.NHWCToNCHW(strides)
       conv = nn_ops.conv2d_backprop_input(
           t0, t1, t2, strides=strides, padding=padding, data_format=data_format)
       if data_format == "NCHW":
-        conv = NCHWToNHWC(conv)
+        conv = test_util.NCHWToNHWC(conv)
       # "values" consists of two tensors for two backprops
       value = sess.run(conv)
       self.assertShapeEqual(value, conv)
@@ -454,7 +426,7 @@ class Conv2DTest(test.TestCase):
     def _GetVal(data_format, use_gpu):
       with self.test_session(use_gpu=use_gpu) as sess:
         if data_format == "NCHW":
-          new_input_sizes = NHWCToNCHW(input_sizes)
+          new_input_sizes = test_util.NHWCToNCHW(input_sizes)
         else:
           new_input_sizes = input_sizes
         t0 = constant_op.constant(new_input_sizes, shape=[len(new_input_sizes)])
@@ -462,8 +434,8 @@ class Conv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         strides = [1] + conv_strides + [1]
         if data_format == "NCHW":
-          t2 = NHWCToNCHW(t2)
-          strides = NHWCToNCHW(strides)
+          t2 = test_util.NHWCToNCHW(t2)
+          strides = test_util.NHWCToNCHW(strides)
         conv = nn_ops.conv2d_backprop_input(
             t0,
             t1,
@@ -472,7 +444,7 @@ class Conv2DTest(test.TestCase):
             padding=padding,
             data_format=data_format)
         if data_format == "NCHW":
-          conv = NCHWToNHWC(conv)
+          conv = test_util.NCHWToNHWC(conv)
         ret = conv.eval()
         self.assertShapeEqual(ret, conv)
         return ret
@@ -586,9 +558,9 @@ class Conv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes, dtype=dtype)
         explicit_strides = [1] + strides + [1]
         if data_format == "NCHW":
-          t0 = NHWCToNCHW(t0)
-          t2 = NHWCToNCHW(t2)
-          explicit_strides = NHWCToNCHW(explicit_strides)
+          t0 = test_util.NHWCToNCHW(t0)
+          t2 = test_util.NHWCToNCHW(t2)
+          explicit_strides = test_util.NHWCToNCHW(explicit_strides)
         conv = nn_ops.conv2d_backprop_filter(
             t0,
             t1,
@@ -614,9 +586,9 @@ class Conv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         strides = [1] + conv_strides + [1]
         if data_format == "NCHW":
-          t0 = NHWCToNCHW(t0)
-          t2 = NHWCToNCHW(t2)
-          strides = NHWCToNCHW(strides)
+          t0 = test_util.NHWCToNCHW(t0)
+          t2 = test_util.NHWCToNCHW(t2)
+          strides = test_util.NHWCToNCHW(strides)
         conv = nn_ops.conv2d_backprop_filter(
             t0,
             t1,
@@ -739,8 +711,8 @@ class Conv2DTest(test.TestCase):
             filter_data, shape=filter_shape, dtype=dtype, name="filter")
         strides = [1, stride_rows, stride_cols, 1]
         if data_format == "NCHW":
-          new_input_tensor = NHWCToNCHW(input_tensor)
-          strides = NHWCToNCHW(strides)
+          new_input_tensor = test_util.NHWCToNCHW(input_tensor)
+          strides = test_util.NHWCToNCHW(strides)
         else:
           new_input_tensor = input_tensor
         conv = nn_ops.conv2d(
@@ -751,7 +723,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             name="conv")
         if data_format == "NCHW":
-          conv = NCHWToNHWC(conv)
+          conv = test_util.NCHWToNHWC(conv)
         self.assertEqual(output_shape, conv.get_shape())
         if test_input:
           jacob_t, jacob_n = gradient_checker.compute_gradient(input_tensor,

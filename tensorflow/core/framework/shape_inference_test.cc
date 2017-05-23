@@ -134,6 +134,7 @@ TEST_F(ShapeInferenceTest, Run) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 6, &h));
       c->set_output(0, c->input(0));
+      c->set_output(1, c->input(0));
       return Status::OK();
     };
     TF_ASSERT_OK(c.Run(fn));
@@ -144,6 +145,7 @@ TEST_F(ShapeInferenceTest, Run) {
       ShapeHandle h;
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(0), 0, &h));
       c->set_output(0, c->input(0));
+      c->set_output(1, c->input(0));
       return Status::OK();
     };
     Status s = c.Run(fn);
@@ -555,6 +557,11 @@ TEST_F(ShapeInferenceTest, MergeShape) {
   EXPECT_EQ("[1,2]", c.DebugString(out));
   EXPECT_TRUE(SameHandle(c.Dim(s_1_u, 0), c.Dim(out, 0)));
   EXPECT_TRUE(SameHandle(c.Dim(s_u_2, 1), c.Dim(out, 1)));
+
+  auto s_u1 = c.UnknownShapeOfRank(1);
+  auto s_u2 = c.UnknownShapeOfRank(1);
+  TF_EXPECT_OK(c.Merge(s_u1, s_u2, &out));
+  EXPECT_TRUE(SameHandle(s_u1, out));
 
   // Incompatible merges give errors and set out to nullptr.
   out = s_unknown;

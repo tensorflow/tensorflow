@@ -200,6 +200,39 @@ class EventMultiplexer(object):
     logging.info('Finished with EventMultiplexer.Reload()')
     return self
 
+  def PluginAssets(self, plugin_name):
+    """Get index of runs and assets for a given plugin.
+
+    Args:
+      plugin_name: Name of the plugin we are checking for.
+
+    Returns:
+      A dictionary that maps from run_name to a list of plugin
+        assets for that run.
+    """
+    with self._accumulators_mutex:
+      # To avoid nested locks, we construct a copy of the run-accumulator map
+      items = list(six.iteritems(self._accumulators))
+
+    return {run: accum.PluginAssets(plugin_name) for run, accum in items}
+
+  def RetrievePluginAsset(self, run, plugin_name, asset_name):
+    """Return the contents for a specific plugin asset from a run.
+
+    Args:
+      run: The string name of the run.
+      plugin_name: The string name of a plugin.
+      asset_name: The string name of an asset.
+
+    Returns:
+      The string contents of the plugin asset.
+
+    Raises:
+      KeyError: If the asset is not available.
+    """
+    accumulator = self._GetAccumulator(run)
+    return accumulator.RetrievePluginAsset(plugin_name, asset_name)
+
   def FirstEventTimestamp(self, run):
     """Return the timestamp of the first event of the given run.
 
@@ -253,6 +286,21 @@ class EventMultiplexer(object):
     """
     accumulator = self._GetAccumulator(run)
     return accumulator.HealthPills(node_name)
+
+  def GetOpsWithHealthPills(self, run):
+    """Determines which ops have at least 1 health pill event for a given run.
+
+    Args:
+      run: The name of the run.
+
+    Raises:
+      KeyError: If the run is not found, or the node name is not available for
+        the given run.
+
+    Returns:
+      The list of names of ops with health pill events.
+    """
+    return self._GetAccumulator(run).GetOpsWithHealthPills()
 
   def Graph(self, run):
     """Retrieve the graph associated with the provided run.

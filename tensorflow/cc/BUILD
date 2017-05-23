@@ -42,8 +42,8 @@ tf_cc_test(
         ":gradients",
         ":testutil",
         "//tensorflow/core:all_kernels",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -78,8 +78,8 @@ tf_cc_test(
         ":gradient_checker",
         ":testutil",
         "//tensorflow/core:all_kernels",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -91,6 +91,7 @@ cc_library(
     deps = [
         ":array_grad",
         ":math_grad",
+        ":nn_grad",
     ],
 )
 
@@ -122,7 +123,10 @@ cc_library_with_android_deps(
 
 cc_library_with_android_deps(
     name = "scope",
-    srcs = ["framework/scope.cc"],
+    srcs = [
+        "framework/scope.cc",
+        "framework/scope_internal.h",
+    ],
     hdrs = ["framework/scope.h"],
     android_deps = ["//tensorflow/core:android_tensorflow_lib"],
     common_deps = [
@@ -134,6 +138,15 @@ cc_library_with_android_deps(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+cc_library_with_android_deps(
+    name = "scope_internal",
+    hdrs = ["framework/scope_internal.h"],
+    common_deps = [
+        ":scope",
+    ],
+    deps = [],
 )
 
 tf_cc_test(
@@ -314,6 +327,7 @@ tf_gen_op_wrappers_cc(
     name = "cc_ops",
     op_lib_names = [
         "array_ops",
+        "audio_ops",
         "candidate_sampling_ops",
         "control_flow_ops",
         "data_flow_ops",
@@ -370,6 +384,16 @@ tf_gen_op_wrappers_cc(
     include_internal_ops = 1,
     op_lib_names = [
         "function_ops",
+    ],
+    pkg = "//tensorflow/core",
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_gen_op_wrappers_cc(
+    name = "functional_ops",
+    include_internal_ops = 1,
+    op_lib_names = [
+        "functional_ops",
     ],
     pkg = "//tensorflow/core",
     visibility = ["//tensorflow:internal"],

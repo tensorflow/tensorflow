@@ -541,8 +541,8 @@ class ComputationBuilder {
   // (float32 is specified as there is an implicit float32 -1.0f constant
   // exponent).
   //
-  // TODO(leary) axe F32 suffix, can be determined by reflecting on the shape of
-  // the operand.
+  // TODO(b/34468990) axe F32 suffix, can be determined by reflecting on the
+  // shape of the operand.
   ComputationDataHandle ReciprocalF32(const ComputationDataHandle& operand);
 
   // Enqueues a negate instruction onto the computation.
@@ -667,6 +667,14 @@ class ComputationBuilder {
   // to be used by a ComputationBuilder other than the parent ComputationBuilder
   // then Build() should be used instead.
   Computation BuildAndNoteError();
+
+  // Returns the first error that was encountered while building the
+  // computation. When an error is encountered, by default we return a vacuous
+  // ComputationDataHandle and inform the user of the error that occurred while
+  // building the computation when they make a final call to Build().
+  //
+  // See also set_die_immediately_on_error().
+  Status first_error() const { return first_error_; }
 
  private:
   using PopulateLiteral = std::function<void(Literal*)>;
@@ -839,7 +847,7 @@ template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR4FromArray4DWithLayout(
     const Array4D<NativeT>& values, const Layout& layout) {
   return ConstantOp([&values, &layout](Literal* literal) {
-    LiteralUtil::PopulateR4FromArray4D(values, layout, literal);
+    LiteralUtil::PopulateR4FromArray4DWithLayout(values, layout, literal);
   });
 }
 

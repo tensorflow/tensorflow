@@ -61,13 +61,34 @@ _handler = _logging.StreamHandler(_logging_target)
 _handler.setFormatter(_logging.Formatter(_logging.BASIC_FORMAT, None))
 _logger.addHandler(_handler)
 
-log = _logger.log
-debug = _logger.debug
-error = _logger.error
-fatal = _logger.fatal
-info = _logger.info
-warn = _logger.warn
-warning = _logger.warning
+
+def log(level, msg, *args, **kwargs):
+  _logger.log(level, msg, *args, **kwargs)
+
+
+def debug(msg, *args, **kwargs):
+  _logger.debug(msg, *args, **kwargs)
+
+
+def error(msg, *args, **kwargs):
+  _logger.error(msg, *args, **kwargs)
+
+
+def fatal(msg, *args, **kwargs):
+  _logger.fatal(msg, *args, **kwargs)
+
+
+def info(msg, *args, **kwargs):
+  _logger.info(msg, *args, **kwargs)
+
+
+def warn(msg, *args, **kwargs):
+  _logger.warn(msg, *args, **kwargs)
+
+
+def warning(msg, *args, **kwargs):
+  _logger.warning(msg, *args, **kwargs)
+
 
 _level_names = {
     FATAL: 'FATAL',
@@ -207,9 +228,9 @@ def get_verbosity():
   return _logger.getEffectiveLevel()
 
 
-def set_verbosity(verbosity):
+def set_verbosity(v):
   """Sets the threshold for what messages will be logged."""
-  _logger.setLevel(verbosity)
+  _logger.setLevel(v)
 
 
 def _get_thread_id():

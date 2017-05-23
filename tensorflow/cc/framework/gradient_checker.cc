@@ -40,8 +40,8 @@ Status ComputeTheoreticalJacobianTranspose(
     const std::vector<Tensor>& x_datas, const OutputList& ys,
     const std::vector<TensorShape>& y_shapes,
     std::vector<Tensor>& jacobian_ts) {
-  int y_num = y_shapes.size();
-  int x_num = x_shapes.size();
+  size_t y_num = y_shapes.size();
+  size_t x_num = x_shapes.size();
   // Call AddSymbolicGradients to get 'dxs' (we will feed 'dys').
   OutputList dys;
   for (const auto& y_shape : y_shapes) {
@@ -130,8 +130,8 @@ Status ComputeNumericJacobianTranspose(const Scope& scope, const OutputList& xs,
                                        const T delta,
                                        std::vector<Tensor>& x_datas,
                                        std::vector<Tensor>& jacobian_ts) {
-  int y_num = y_shapes.size();
-  int x_num = x_shapes.size();
+  size_t y_num = y_shapes.size();
+  size_t x_num = x_shapes.size();
 
   ClientSession session(scope);
   for (int x_idx = 0; x_idx < x_num; x_idx++) {
@@ -176,8 +176,8 @@ void InitJacobians(const OutputList& xs,
                    const std::vector<TensorShape>& x_shapes,
                    const std::vector<TensorShape>& y_shapes,
                    std::vector<Tensor>& jacobians) {
-  int y_num = y_shapes.size();
-  int x_num = x_shapes.size();
+  size_t y_num = y_shapes.size();
+  size_t x_num = x_shapes.size();
 
   jacobians.resize(y_num * x_num);
   for (int x_idx = 0; x_idx < x_num; x_idx++) {

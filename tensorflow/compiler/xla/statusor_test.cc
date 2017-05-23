@@ -20,10 +20,10 @@ limitations under the License.
 #include <memory>
 #include <type_traits>
 
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace xla {

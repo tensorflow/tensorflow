@@ -65,6 +65,16 @@ class PandasIoTest(test.TestCase):
       pandas_io.pandas_input_fn(
           x, y_noindex, batch_size=2, shuffle=False, num_epochs=1)
 
+  def testPandasInputFn_NonBoolShuffle(self):
+    if not HAS_PANDAS:
+      return
+    x, _ = self.makeTestDataFrame()
+    y_noindex = pd.Series(np.arange(-32, -28))
+    with self.assertRaisesRegexp(TypeError,
+                                 'shuffle must be explicitly set as boolean'):
+      # Default shuffle is None
+      pandas_io.pandas_input_fn(x, y_noindex)
+
   def testPandasInputFn_ProducesExpectedOutputs(self):
     if not HAS_PANDAS:
       return

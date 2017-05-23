@@ -44,7 +44,7 @@ class LBetaTest(test.TestCase):
           0.5, math_ops.exp(special_math_ops.lbeta(x_one_half)).eval())
       self.assertEqual([], special_math_ops.lbeta(x_one).get_shape())
 
-  def test_one_dimensional_arg_dynamic_alloc(self):
+  def test_one_dimensional_arg_dynamic(self):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
@@ -54,6 +54,19 @@ class LBetaTest(test.TestCase):
       self.assertAllClose(1, beta_ph.eval(feed_dict={ph: x_one}))
       self.assertAllClose(0.5, beta_ph.eval(feed_dict={ph: x_one_half}))
 
+  def test_four_dimensional_arg_with_partial_shape_dynamic(self):
+    x_ = np.ones((3, 2, 3, 4))
+    # Gamma(1) = 0! = 1
+    # Gamma(1 + 1 + 1 + 1) = Gamma(4) = 3! = 6
+    # ==> Beta([1, 1, 1, 1])
+    #     = Gamma(1) * Gamma(1) * Gamma(1) * Gamma(1) / Gamma(1 + 1 + 1 + 1)
+    #     = 1 / 6
+    expected_beta_x = 1 / 6 * np.ones((3, 2, 3))
+    with self.test_session(use_gpu=self._use_gpu):
+      x_ph = array_ops.placeholder(dtypes.float32, [3, 2, 3, None])
+      beta_ph = math_ops.exp(special_math_ops.lbeta(x_ph))
+      self.assertAllClose(expected_beta_x, beta_ph.eval(feed_dict={x_ph: x_}))
+
   def test_two_dimensional_arg(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
@@ -62,7 +75,7 @@ class LBetaTest(test.TestCase):
           [0.5, 0.5], math_ops.exp(special_math_ops.lbeta(x_one_half)).eval())
       self.assertEqual((2,), special_math_ops.lbeta(x_one_half).get_shape())
 
-  def test_two_dimensional_arg_dynamic_alloc(self):
+  def test_two_dimensional_arg_dynamic(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
     with self.test_session(use_gpu=self._use_gpu):
@@ -101,31 +114,37 @@ class LBetaTest(test.TestCase):
       self.assertAllClose(1, math_ops.exp(special_math_ops.lbeta(x_b)).eval())
       self.assertEqual((), special_math_ops.lbeta(x_a).get_shape())
 
-  def test_empty_rank2_or_greater_input_gives_empty_output(self):
+  def test_empty_rank1_returns_negative_infinity(self):
     with self.test_session(use_gpu=self._use_gpu):
-      self.assertAllEqual([], special_math_ops.lbeta([[]]).eval())
-      self.assertEqual((0,), special_math_ops.lbeta([[]]).get_shape())
-      self.assertAllEqual([[]], special_math_ops.lbeta([[[]]]).eval())
-      self.assertEqual((1, 0), special_math_ops.lbeta([[[]]]).get_shape())
+      x = constant_op.constant([], shape=[0])
+      lbeta_x = special_math_ops.lbeta(x)
+      expected_result = constant_op.constant(-np.inf, shape=())
 
-  def test_empty_rank2_or_greater_input_gives_empty_output_dynamic_alloc(self):
-    with self.test_session(use_gpu=self._use_gpu):
-      ph = array_ops.placeholder(dtypes.float32)
-      self.assertAllEqual(
-          [], special_math_ops.lbeta(ph).eval(feed_dict={ph: [[]]}))
-      self.assertAllEqual(
-          [[]], special_math_ops.lbeta(ph).eval(feed_dict={ph: [[[]]]}))
+      self.assertAllEqual(expected_result.eval(), lbeta_x.eval())
+      self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
 
-  def test_empty_rank1_input_raises_value_error(self):
+  def test_empty_rank2_with_zero_last_dim_returns_negative_infinity(self):
     with self.test_session(use_gpu=self._use_gpu):
-      with self.assertRaisesRegexp(ValueError, 'rank'):
-        special_math_ops.lbeta([])
+      event_size = 0
+      for batch_size in [0, 1, 2]:
+        x = constant_op.constant([], shape=[batch_size, event_size])
+        lbeta_x = special_math_ops.lbeta(x)
+        expected_result = constant_op.constant(-np.inf, shape=[batch_size])
 
-  def test_empty_rank1_dynamic_alloc_input_raises_op_error(self):
+        self.assertAllEqual(expected_result.eval(), lbeta_x.eval())
+        self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
+
+  def test_empty_rank2_with_zero_batch_dim_returns_empty(self):
     with self.test_session(use_gpu=self._use_gpu):
-      ph = array_ops.placeholder(dtypes.float32)
-      with self.assertRaisesOpError('rank'):
-        special_math_ops.lbeta(ph).eval(feed_dict={ph: []})
+      batch_size = 0
+      for event_size in [0, 1, 2]:
+        x = constant_op.constant([], shape=[batch_size, event_size])
+        lbeta_x = special_math_ops.lbeta(x)
+
+        expected_result = constant_op.constant([], shape=[batch_size])
+
+        self.assertAllEqual(expected_result.eval(), lbeta_x.eval())
+        self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
 
 
 class LBetaTestGpu(LBetaTest):

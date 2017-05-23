@@ -84,7 +84,7 @@ int64 SizeOf(const std::deque<PersistentTensor>& sq) {
   if (sq.empty()) {
     return 0;
   }
-  return sq.size() * sq.front().TotalBytes();
+  return sq.size() * sq.front().AllocatedBytes();
 }
 
 template <>
@@ -92,7 +92,7 @@ int64 SizeOf(const std::vector<PersistentTensor>& sq) {
   if (sq.empty()) {
     return 0;
   }
-  return sq.size() * sq.front().TotalBytes();
+  return sq.size() * sq.front().AllocatedBytes();
 }
 
 using TensorPair = std::pair<int64, PersistentTensor>;
@@ -102,7 +102,7 @@ int64 SizeOf(const std::priority_queue<TensorPair, U, V>& sq) {
   if (sq.empty()) {
     return 0;
   }
-  return sq.size() * (sizeof(TensorPair) + sq.top().second.TotalBytes());
+  return sq.size() * (sizeof(TensorPair) + sq.top().second.AllocatedBytes());
 }
 
 }  // namespace

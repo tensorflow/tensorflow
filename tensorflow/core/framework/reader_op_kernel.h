@@ -47,7 +47,28 @@ class ReaderOpKernel : public ResourceOpKernel<ReaderInterface> {
     factory_ = factory;
   }
 
+  void Compute(OpKernelContext* context) override {
+    if (!IsCancellable()) {
+      ResourceOpKernel<ReaderInterface>::Compute(context);
+    } else {
+      // Install cancellation
+      CancellationManager* cm = context->cancellation_manager();
+      CancellationToken token = cm->get_cancellation_token();
+      bool already_cancelled =
+          !cm->RegisterCallback(token, [this]() { this->Cancel(); });
+
+      if (!already_cancelled) {
+        ResourceOpKernel<ReaderInterface>::Compute(context);
+      } else {
+        context->SetStatus(errors::Cancelled("read operation was cancelled"));
+      }
+    }
+  }
+
  private:
+  virtual bool IsCancellable() const { return false; }
+  virtual void Cancel() {}
+
   Status CreateResource(ReaderInterface** reader)
       EXCLUSIVE_LOCKS_REQUIRED(mu_) override {
     *reader = factory_();

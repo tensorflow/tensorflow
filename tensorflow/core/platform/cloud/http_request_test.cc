@@ -25,11 +25,26 @@ namespace {
 
 const string kTestContent = "random original scratch content";
 
+class FakeEnv : public EnvWrapper {
+ public:
+  FakeEnv() : EnvWrapper(Env::Default()) {}
+
+  uint64 NowSeconds() override { return now_; }
+  uint64 now_ = 10000;
+};
+
 // A fake proxy that pretends to be libcurl.
 class FakeLibCurl : public LibCurl {
  public:
   FakeLibCurl(const string& response_content, uint64 response_code)
       : response_content_(response_content), response_code_(response_code) {}
+  FakeLibCurl(const string& response_content, uint64 response_code,
+              std::vector<std::tuple<uint64, curl_off_t>> progress_ticks,
+              FakeEnv* env)
+      : response_content_(response_content),
+        response_code_(response_code),
+        progress_ticks_(std::move(progress_ticks)),
+        env_(env) {}
   FakeLibCurl(const string& response_content, uint64 response_code,
               const std::vector<string>& response_headers)
       : response_content_(response_content),
@@ -86,6 +101,9 @@ class FakeLibCurl : public LibCurl {
       case CURLOPT_READDATA:
         read_data_ = reinterpret_cast<FILE*>(param);
         break;
+      case CURLOPT_XFERINFODATA:
+        progress_data_ = param;
+        break;
       default:
         break;
     }
@@ -112,6 +130,13 @@ class FakeLibCurl : public LibCurl {
     }
     return CURLE_OK;
   }
+  CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
+                            int (*param)(void* clientp, curl_off_t dltotal,
+                                         curl_off_t dlnow, curl_off_t ultotal,
+                                         curl_off_t ulnow)) override {
+    progress_callback_ = param;
+    return CURLE_OK;
+  }
   CURLcode curl_easy_perform(CURL* curl) override {
     if (read_data_) {
       char buffer[3];
@@ -133,6 +158,12 @@ class FakeLibCurl : public LibCurl {
     if (error_buffer_) {
       strncpy(error_buffer_, curl_easy_perform_error_message_.c_str(),
               curl_easy_perform_error_message_.size() + 1);
+    }
+    for (const auto& tick : progress_ticks_) {
+      env_->now_ = std::get<0>(tick);
+      if (progress_callback_(progress_data_, 0, std::get<1>(tick), 0, 0)) {
+        return CURLE_ABORTED_BY_CALLBACK;
+      }
     }
     return curl_easy_perform_result_;
   }
@@ -212,10 +243,17 @@ class FakeLibCurl : public LibCurl {
   FILE* read_data_ = nullptr;
   size_t (*read_callback_)(void* ptr, size_t size, size_t nmemb,
                            FILE* userdata) = &fread;
+  int (*progress_callback_)(void* clientp, curl_off_t dltotal, curl_off_t dlnow,
+                            curl_off_t ultotal, curl_off_t ulnow) = nullptr;
+  void* progress_data_ = nullptr;
   // Outcome of performing the request.
   string posted_content_;
   CURLcode curl_easy_perform_result_ = CURLE_OK;
   string curl_easy_perform_error_message_;
+  // A vector of <timestamp, progress in bytes> pairs that represent the
+  // progress of a transmission.
+  std::vector<std::tuple<uint64, curl_off_t>> progress_ticks_;
+  FakeEnv* env_ = nullptr;
 };
 
 TEST(HttpRequestTest, GetRequest) {
@@ -545,6 +583,45 @@ TEST(HttpRequestTest, ErrorReturnsNoResponse) {
   EXPECT_EQ(error::UNAVAILABLE, http_request.Send().code());
 
   EXPECT_EQ("", string(scratch.begin(), scratch.end()));
+}
+
+TEST(HttpRequestTest, ProgressIsOk) {
+  // Imitate a steady progress.
+  FakeEnv env;
+  FakeLibCurl libcurl(
+      "test", 200,
+      {
+          std::make_tuple(100, 0) /* timestamp 100, 0 bytes */,
+          std::make_tuple(110, 0) /* timestamp 110, 0 bytes */,
+          std::make_tuple(200, 100) /* timestamp 200, 100 bytes */
+      },
+      &env);
+  HttpRequest http_request(&libcurl, &env);
+  TF_EXPECT_OK(http_request.Init());
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  TF_EXPECT_OK(http_request.Send());
+}
+
+TEST(HttpRequestTest, ProgressIsStuck) {
+  // Imitate a transmission that got stuck for more than a minute.
+  FakeEnv env;
+  FakeLibCurl libcurl(
+      "test", 200,
+      {
+          std::make_tuple(100, 10) /* timestamp 100, 10 bytes */,
+          std::make_tuple(130, 10) /* timestamp 130, 10 bytes */,
+          std::make_tuple(170, 10) /* timestamp 170, 10 bytes */
+      },
+      &env);
+  HttpRequest http_request(&libcurl, &env);
+  TF_EXPECT_OK(http_request.Init());
+  TF_EXPECT_OK(http_request.SetUri("http://www.testuri.com"));
+  auto status = http_request.Send();
+  EXPECT_EQ(error::UNAVAILABLE, status.code());
+  EXPECT_EQ(
+      "Error executing an HTTP request (HTTP response code 200, "
+      "error code 42, error message '')",
+      status.error_message());
 }
 
 }  // namespace

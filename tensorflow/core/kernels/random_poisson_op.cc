@@ -291,33 +291,15 @@ class RandomPoissonOp : public OpKernel {
     const Tensor& shape_t = ctx->input(0);
     const Tensor& rate_t = ctx->input(1);
 
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsVector(shape_t.shape()) &&
-                    (shape_t.dtype() == DataType::DT_INT32 ||
-                     shape_t.dtype() == DataType::DT_INT64),
-                errors::InvalidArgument(
-                    "shape must be a vector of {int32,int64}, got shape: ",
-                    shape_t.DebugString()));
     TensorShape samples_shape;
-    if (shape_t.dtype() == DataType::DT_INT32) {
-      auto vec = shape_t.flat<int32>();
-      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(vec.data(), vec.size(),
-                                                      &samples_shape));
-    } else if (shape_t.dtype() == DataType::DT_INT64) {
-      auto vec = shape_t.flat<int64>();
-      OP_REQUIRES_OK(ctx, TensorShapeUtils::MakeShape(vec.data(), vec.size(),
-                                                      &samples_shape));
-    }
+    OP_REQUIRES_OK(ctx, MakeShape(shape_t, &samples_shape));
     const int64 num_samples = samples_shape.num_elements();
-    OP_REQUIRES(ctx, num_samples > 0,
-                errors::InvalidArgument(
-                    "Input shape should have non-zero element count, got: ",
-                    num_samples));
 
     samples_shape.AppendShape(rate_t.shape());
     // Allocate output samples.
     Tensor* samples_t = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, samples_shape, &samples_t));
+    if (num_samples == 0) return;
 
     const auto rate_flat = rate_t.flat<T>().data();
     const int64 num_rate = rate_t.NumElements();

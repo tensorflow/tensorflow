@@ -43,6 +43,18 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
+py_test(
+    name = "pip_smoke_test",
+    srcs = ["pip_smoke_test.py"],
+    data = [
+        "//tensorflow:all_opensource_files",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+)
+
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.
@@ -56,13 +68,17 @@ py_binary(
         ":included_headers",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/session_bundle:session_bundle_pip",
+        "//tensorflow/contrib/signal:signal_py",
         "//tensorflow/contrib/slim/python/slim/data:data_pip",
         "//tensorflow/python:util_example_parser_configuration",
         "//tensorflow/python/debug:debug_pip",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:tools_pip",
-        "//tensorflow/tensorboard",
         # These targets don't build on Windows yet. Exclude them for now.
+        # rules_closure currently doesn't build on Windows due to
+        # https://github.com/bazelbuild/rules_closure/pull/206
+        # Since tensorboard dependes on rules_closure, exclude tensorboard until it's fixed.
+        # "//tensorflow/tensorboard",
         # "//tensorflow/contrib/ndlstm",
         # "//tensorflow/contrib/slim",
         # "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
@@ -79,12 +95,15 @@ filegroup(
     name = "licenses",
     data = [
         "//third_party/eigen3:LICENSE",
+        "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
+        "@com_microsoft_typescript//:LICENSE.txt",
         "@curl//:COPYING",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
+        "@fft2d//:fft/readme.txt",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@grpc//:LICENSE",
@@ -94,10 +113,15 @@ filegroup(
         "@libxsmm_archive//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
+        "@org_html5lib//:LICENSE",
+        "@org_mozilla_bleach//:LICENSE",
+        "@org_nodejs//:LICENSE",
+        "@org_pocoo_werkzeug//:LICENSE",
+        "@org_pythonhosted_markdown//:LICENSE.md",
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
         "@six_archive//:LICENSE",
-        "@org_pocoo_werkzeug//:LICENSE",
+        "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
     ] + if_not_windows([
         "@nccl_archive//:LICENSE.txt",
@@ -118,10 +142,12 @@ sh_binary(
             ":simple_console",
             "//tensorflow:tensorflow_py",
             "//tensorflow/contrib/graph_editor:graph_editor_pip",
+            "//tensorflow/contrib/keras:keras",
             "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
             "//tensorflow/contrib/ndlstm:ndlstm",
             "//tensorflow/contrib/nn:nn_py",
             "//tensorflow/contrib/session_bundle:session_bundle_pip",
+            "//tensorflow/contrib/signal:signal_py",
             "//tensorflow/contrib/slim:slim",
             "//tensorflow/contrib/slim/python/slim/data:data_pip",
             "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
@@ -129,6 +155,7 @@ sh_binary(
             "//tensorflow/contrib/tensor_forest:init_py",
             "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
             "//tensorflow/examples/tutorials/mnist:package",
+            "//tensorflow/python:distributed_framework_test_lib",
             "//tensorflow/python:util_example_parser_configuration",
             "//tensorflow/python/debug:debug_pip",
             "//tensorflow/python/saved_model:saved_model",

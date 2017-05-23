@@ -32,7 +32,8 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_file_inspector as efi
-
+from tensorflow.tensorboard.plugins.projector import projector_plugin
+from tensorflow.tensorboard.plugins.text import text_plugin
 
 # TensorBoard flags
 
@@ -48,8 +49,8 @@ directories by putting a colon between the name and the path, as in
 tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2
 """)
 
-flags.DEFINE_string('host', '0.0.0.0', 'What host to listen to. Defaults to '
-                    'serving on 0.0.0.0, set to 127.0.0.1 (localhost) to'
+flags.DEFINE_string('host', '', 'What host to listen to. Defaults to '
+                    'serving on all interfaces, set to 127.0.0.1 (localhost) to'
                     'disable remote access (also quiets security warnings).')
 
 flags.DEFINE_integer('port', 6006, 'What port to serve TensorBoard on.')
@@ -88,8 +89,18 @@ flags.DEFINE_string(
 FLAGS = flags.FLAGS
 
 
-def create_tb_app():
-  """Read the flags, and create a TensorBoard WSGI application."""
+def create_tb_app(plugins):
+  """Read the flags, and create a TensorBoard WSGI application.
+
+  Args:
+    plugins: A list of plugins for TensorBoard to initialize.
+
+  Raises:
+    ValueError: if a logdir is not specified.
+
+  Returns:
+    A new TensorBoard WSGI application.
+  """
   if not FLAGS.logdir:
     raise ValueError('A logdir must be specified. Run `tensorboard --help` for '
                      'details and examples.')
@@ -98,19 +109,56 @@ def create_tb_app():
   return application.standard_tensorboard_wsgi(
       logdir=logdir,
       purge_orphaned_data=FLAGS.purge_orphaned_data,
-      reload_interval=FLAGS.reload_interval)
+      reload_interval=FLAGS.reload_interval,
+      plugins=plugins)
 
 
-def run_simple_server(tb_app):
-  """Start serving TensorBoard, and print some messages to console."""
+def make_simple_server(tb_app, host, port):
+  """Create an HTTP server for TensorBoard.
+
+  Args:
+    tb_app: The TensorBoard WSGI application to create a server for.
+    host: Indicates the interfaces to bind to ('::' or '0.0.0.0' for all
+        interfaces, '::1' or '127.0.0.1' for localhost). A blank value ('')
+        indicates protocol-agnostic all interfaces.
+    port: The port to bind to (0 indicates an unused port selected by the
+        operating system).
+  Returns:
+    A tuple of (server, url):
+      server: An HTTP server object configured to host TensorBoard.
+      url: A best guess at a URL where TensorBoard will be accessible once the
+        server has been started.
+  Raises:
+    socket.error: If a server could not be constructed with the host and port
+      specified. Also logs an error message.
+  """
   # Mute the werkzeug logging.
   base_logging.getLogger('werkzeug').setLevel(base_logging.WARNING)
 
   try:
-    server = serving.make_server(FLAGS.host, FLAGS.port, tb_app, threaded=True)
+    if host:
+      # The user gave us an explicit host
+      server = serving.make_server(host, port, tb_app, threaded=True)
+      if ':' in host and not host.startswith('['):
+        # Display IPv6 addresses as [::1]:80 rather than ::1:80
+        final_host = '[{}]'.format(host)
+      else:
+        final_host = host
+    else:
+      # We've promised to bind to all interfaces on this host. However, we're
+      # not sure whether that means IPv4 or IPv6 interfaces.
+      try:
+        # First try passing in a blank host (meaning all interfaces). This,
+        # unfortunately, defaults to IPv4 even if no IPv4 interface is available
+        # (yielding a socket.error).
+        server = serving.make_server(host, port, tb_app, threaded=True)
+      except socket.error:
+        # If a blank host didn't work, we explicitly request IPv6 interfaces.
+        server = serving.make_server('::', port, tb_app, threaded=True)
+      final_host = socket.gethostname()
     server.daemon_threads = True
-  except socket.error:
-    if FLAGS.port == 0:
+  except socket.error as socket_error:
+    if port == 0:
       msg = 'TensorBoard unable to find any open port'
     else:
       msg = (
@@ -118,11 +166,21 @@ def run_simple_server(tb_app):
           % FLAGS.port)
     logging.error(msg)
     print(msg)
-    exit(-1)
+    raise socket_error
 
-  port = server.socket.getsockname()[1]
-  msg = 'Starting TensorBoard %s at http://%s:%d' % (tb_app.tag, FLAGS.host,
-                                                     port)
+  final_port = server.socket.getsockname()[1]
+  tensorboard_url = 'http://%s:%d' % (final_host, final_port)
+  return server, tensorboard_url
+
+
+def run_simple_server(tb_app):
+  """Run a TensorBoard HTTP server, and print some messages to the console."""
+  try:
+    server, url = make_simple_server(tb_app, FLAGS.host, FLAGS.port)
+  except socket.error:
+    # An error message was already logged
+    exit(-1)
+  msg = 'Starting TensorBoard %s at %s' % (tb_app.tag, url)
   print(msg)
   logging.info(msg)
   print('(Press CTRL+C to quit)')
@@ -138,7 +196,11 @@ def main(unused_argv=None):
     efi.inspect(FLAGS.logdir, event_file, FLAGS.tag)
     return 0
   else:
-    tb = create_tb_app()
+    plugins = [
+        projector_plugin.ProjectorPlugin(),
+        text_plugin.TextPlugin(),
+    ]
+    tb = create_tb_app(plugins)
     run_simple_server(tb)
 
 if __name__ == '__main__':

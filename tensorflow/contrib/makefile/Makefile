@@ -281,6 +281,10 @@ ifeq ($(TARGET),ANDROID)
 		CXXFLAGS += -DUSE_HEXAGON_LIBS
 	endif
 
+	ifdef ENABLE_EXPERIMENTAL_HEXNN_OPS
+		CXXFLAGS += -DENABLE_EXPERIMENTAL_HEXNN_OPS
+	endif
+
 endif  # ANDROID
 # LINT.ThenChange(//tensorflow/contrib/android/cmake/CMakeLists.txt)
 
@@ -293,7 +297,7 @@ ifeq ($(TARGET),IOS)
 	IPHONESIMULATOR_SYSROOT := $(shell xcrun --sdk iphonesimulator \
 	--show-sdk-path)
 	IOS_SDK_VERSION := $(shell xcrun --sdk iphoneos --show-sdk-version)
-	MIN_SDK_VERSION := 8.2
+	MIN_SDK_VERSION := 8.0
 # Override IOS_ARCH with ARMV7, ARMV7S, ARM64, or I386.
 	IOS_ARCH := X86_64
 	ifeq ($(IOS_ARCH),ARMV7)
@@ -370,6 +374,7 @@ ifeq ($(TARGET),IOS)
 	ifeq ($(IOS_ARCH),I386)
 		CXXFLAGS += -mios-simulator-version-min=$(MIN_SDK_VERSION) \
 		-arch i386 \
+		-mno-sse \
 		-fembed-bitcode \
 		-D__thread= \
 		-DUSE_GEMM_FOR_CONV \
@@ -435,6 +440,8 @@ $(wildcard tensorflow/core/*.cc) \
 $(wildcard tensorflow/core/common_runtime/*.cc) \
 $(wildcard tensorflow/core/framework/*.cc) \
 $(wildcard tensorflow/core/graph/*.cc) \
+$(wildcard tensorflow/core/grappler/*.cc) \
+$(wildcard tensorflow/core/grappler/*/*.cc) \
 $(wildcard tensorflow/core/lib/*/*.cc) \
 $(wildcard tensorflow/core/platform/*.cc) \
 $(wildcard tensorflow/core/platform/*/*.cc) \
@@ -477,7 +484,9 @@ $(wildcard tensorflow/core/platform/stream_executor.*) \
 $(wildcard tensorflow/core/platform/windows/*) \
 $(wildcard tensorflow/core/user_ops/*.cu.cc) \
 $(wildcard tensorflow/core/common_runtime/gpu/*) \
-$(wildcard tensorflow/core/common_runtime/gpu_device_factory.*)
+$(wildcard tensorflow/core/common_runtime/gpu_device_factory.*) \
+$(wildcard tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.*) \
+$(wildcard tensorflow/core/grappler/clusters/single_machine.*)
 # Filter out all the excluded files.
 TF_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 # Add in any extra files that don't fit the patterns easily

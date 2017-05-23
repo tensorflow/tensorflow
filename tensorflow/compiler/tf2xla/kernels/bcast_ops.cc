@@ -81,7 +81,7 @@ class BCastGradArgsOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(BCastGradArgsOp);
 };
 
-REGISTER_XLA_OP("BroadcastGradientArgs", BCastGradArgsOp);
+REGISTER_XLA_OP(Name("BroadcastGradientArgs"), BCastGradArgsOp);
 
 }  // namespace
 }  // namespace tensorflow

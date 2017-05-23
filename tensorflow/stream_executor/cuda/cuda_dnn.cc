@@ -1202,7 +1202,8 @@ class CudnnRnnSequenceTensorDescriptor
     // Only the first one needs to be destroyed. All others are the same.
     cudnnStatus_t status =
         wrap::cudnnDestroyTensorDescriptor(parent_, handles_[0]);
-    CUDNN_RETURN_IF_FAIL(status, "Failed to destroy sequence tensor descriptor");
+    CUDNN_RETURN_IF_FAIL(status,
+                         "Failed to destroy sequence tensor descriptor");
   }
 
   const cudnnTensorDescriptor_t* handles() const {
@@ -3084,6 +3085,41 @@ bool CudnnSupport::DoActivate(Stream* stream,
 bool CudnnSupport::DoPoolForward(
     Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
     const dnn::BatchDescriptor& input_dimensions,
+    const DeviceMemory<double>& input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    DeviceMemory<double>* output_data) {
+  mutex_lock lock{dnn_handle_mutex_};
+  auto status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
+                                     AsCUDAStreamValue(stream));
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
+    return false;
+  }
+
+  // Alpha is the scaling factor for input.
+  double alpha = 1.0;
+  // Beta is the scaling factor for output.
+  double beta = 0.0;
+
+  ScopedTensorDescriptor src_desc{parent_, input_dimensions, CUDNN_DATA_DOUBLE};
+  ScopedTensorDescriptor dest_desc{parent_, output_dimensions,
+                                   CUDNN_DATA_DOUBLE};
+  ScopedPoolingDescriptor pooling_desc{parent_, pooling_dimensions};
+  status = wrap::cudnnPoolingForward(
+      parent_, ToHandle(dnn_handle_), pooling_desc.handle(), &alpha,
+      src_desc.handle(), input_data.opaque(), &beta, dest_desc.handle(),
+      output_data->opaque());
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to enqueue forward pooling on stream: "
+               << ToString(status);
+    return false;
+  }
+  return true;
+}
+
+bool CudnnSupport::DoPoolForward(
+    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
+    const dnn::BatchDescriptor& input_dimensions,
     const DeviceMemory<float>& input_data,
     const dnn::BatchDescriptor& output_dimensions,
     DeviceMemory<float>* output_data) {
@@ -3144,6 +3180,44 @@ bool CudnnSupport::DoPoolForward(
       output_data->opaque());
   if (status != CUDNN_STATUS_SUCCESS) {
     LOG(ERROR) << "failed to enqueue forward pooling on stream: "
+               << ToString(status);
+    return false;
+  }
+  return true;
+}
+
+bool CudnnSupport::DoPoolBackward(
+    Stream* stream, const dnn::PoolingDescriptor& pooling_dimensions,
+    const dnn::BatchDescriptor& input_dimensions,
+    const DeviceMemory<double>& input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    const DeviceMemory<double>& output_data,
+    const DeviceMemory<double>& input_diff_data,
+    DeviceMemory<double>* output_diff_data) {
+  mutex_lock lock{dnn_handle_mutex_};
+  auto status = wrap::cudnnSetStream(parent_, ToHandle(dnn_handle_),
+                                     AsCUDAStreamValue(stream));
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to set stream for cudnn handle: " << ToString(status);
+    return false;
+  }
+
+  // Alpha is the scaling factor for input.
+  double alpha = 1.0;
+  // Beta is the scaling factor for output.
+  double beta = 0.0;
+
+  ScopedTensorDescriptor src_desc{parent_, input_dimensions, CUDNN_DATA_DOUBLE};
+  ScopedTensorDescriptor dest_desc{parent_, output_dimensions,
+                                   CUDNN_DATA_DOUBLE};
+  ScopedPoolingDescriptor pooling_desc{parent_, pooling_dimensions};
+  status = wrap::cudnnPoolingBackward(
+      parent_, ToHandle(dnn_handle_), pooling_desc.handle(), &alpha,
+      dest_desc.handle(), output_data.opaque(), dest_desc.handle(),
+      input_diff_data.opaque(), src_desc.handle(), input_data.opaque(), &beta,
+      src_desc.handle(), output_diff_data->opaque());
+  if (status != CUDNN_STATUS_SUCCESS) {
+    LOG(ERROR) << "failed to enqueue backward pooling on stream: "
                << ToString(status);
     return false;
   }

@@ -19,8 +19,10 @@ from __future__ import print_function
 
 from tensorflow.contrib import framework as contrib_framework
 
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 
 from tensorflow.contrib.tensor_forest.client import eval_metrics
 from tensorflow.contrib.tensor_forest.python import tensor_forest
@@ -28,10 +30,11 @@ from tensorflow.contrib.tensor_forest.python import tensor_forest
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import monitored_session
 from tensorflow.python.training import session_run_hook
 
 
@@ -78,7 +81,7 @@ class TensorForestLossHook(session_run_hook.SessionRunHook):
     current_loss = run_values.results['current_loss']
     current_step = run_values.results['global_step']
     self.steps += 1
-    # Gaurd against the global step going backwards, which might happen
+    # Guard against the global step going backwards, which might happen
     # if we recover from something.
     if self.last_step == -1 or self.last_step > current_step:
       logging.info('TensorForestLossHook resetting last_step.')
@@ -96,14 +99,33 @@ class TensorForestLossHook(session_run_hook.SessionRunHook):
       run_context.request_stop()
 
 
+class EveryCheckpointPreSaveListener(
+    basic_session_run_hooks.CheckpointSaverListener):
+  """Runs a given op before each checkpoint save."""
+
+  def __init__(self, op):
+    """Initializes the object.
+
+    Args:
+      op: An op to run before each checkpoint save.
+    """
+    self._op = op
+
+  def before_save(self, session, global_step_value):
+    session.run(self._op)
+
+
 def get_model_fn(params,
                  graph_builder_class,
                  device_assigner,
                  weights_name=None,
+                 keys_name=None,
                  early_stopping_rounds=100,
                  num_trainers=1,
                  trainer_id=0,
-                 report_feature_importances=False):
+                 report_feature_importances=False,
+                 model_dir=None,
+                 local_eval=False):
   """Return a model function given a way to construct a graph builder."""
   def _model_fn(features, labels, mode):
     """Function that returns predictions, training loss, and training op."""
@@ -111,21 +133,56 @@ def get_model_fn(params,
     if weights_name and weights_name in features:
       weights = features.pop(weights_name)
 
-    graph_builder = graph_builder_class(params, device_assigner=device_assigner)
+    keys = None
+    if keys_name and keys_name in features:
+      keys = features.pop(keys_name)
+
+    # If we're doing eval, optionally ignore device_assigner.
+    # Also ignore device assigner if we're exporting (mode == INFER)
+    dev_assn = device_assigner
+    if (mode == model_fn_lib.ModeKeys.INFER or
+        (local_eval and mode == model_fn_lib.ModeKeys.EVAL)):
+      dev_assn = None
+
+    graph_builder = graph_builder_class(params,
+                                        device_assigner=dev_assn)
     inference = {}
+    output_alternatives = None
     if (mode == model_fn_lib.ModeKeys.EVAL or
         mode == model_fn_lib.ModeKeys.INFER):
       inference[eval_metrics.INFERENCE_PROB_NAME] = (
           graph_builder.inference_graph(features))
 
-      if not params.regression:
+      if params.regression:
+        predictions = {
+            None: inference[eval_metrics.INFERENCE_PROB_NAME]}
+        output_alternatives = {
+            None: (constants.ProblemType.LINEAR_REGRESSION, predictions)}
+      else:
         inference[eval_metrics.INFERENCE_PRED_NAME] = math_ops.argmax(
             inference[eval_metrics.INFERENCE_PROB_NAME], 1)
+
+        predictions = {
+            prediction_key.PredictionKey.PROBABILITIES:
+                inference[eval_metrics.INFERENCE_PROB_NAME],
+            prediction_key.PredictionKey.CLASSES:
+                inference[eval_metrics.INFERENCE_PRED_NAME]}
+        output_alternatives = {
+            None: (constants.ProblemType.CLASSIFICATION, predictions)}
+
+      if report_feature_importances:
+        inference[eval_metrics.FEATURE_IMPORTANCE_NAME] = (
+            graph_builder.feature_importances())
+
+      if keys is not None:
+        inference[keys_name] = keys
 
     # labels might be None if we're doing prediction (which brings up the
     # question of why we force everything to adhere to a single model_fn).
     loss_deps = []
     training_graph = None
+    training_hooks = []
+    scaffold = None
     if labels is not None and mode == model_fn_lib.ModeKeys.TRAIN:
       training_graph = control_flow_ops.group(
           graph_builder.training_graph(
@@ -134,6 +191,15 @@ def get_model_fn(params,
               trainer_id=trainer_id),
           state_ops.assign_add(contrib_framework.get_global_step(), 1))
       loss_deps.append(training_graph)
+      if hasattr(graph_builder, 'finalize_training'):
+        finalize_listener = EveryCheckpointPreSaveListener(
+            graph_builder.finalize_training())
+        scaffold = monitored_session.Scaffold()
+        training_hooks.append(
+            basic_session_run_hooks.CheckpointSaverHook(
+                model_dir, save_secs=600, save_steps=None,
+                scaffold=scaffold,
+                listeners=[finalize_listener]))
 
     training_loss = None
     if (mode == model_fn_lib.ModeKeys.EVAL or
@@ -141,15 +207,11 @@ def get_model_fn(params,
       with ops.control_dependencies(loss_deps):
         training_loss = graph_builder.training_loss(
             features, labels, name=LOSS_NAME)
-      if report_feature_importances and mode == model_fn_lib.ModeKeys.EVAL:
-        training_loss = logging_ops.Print(training_loss,
-                                          [graph_builder.feature_importances()],
-                                          summarize=1000)
+
     # Put weights back in
     if weights is not None:
       features[weights_name] = weights
 
-    training_hooks = []
     if early_stopping_rounds:
       training_hooks.append(TensorForestLossHook(early_stopping_rounds))
 
@@ -158,7 +220,10 @@ def get_model_fn(params,
         predictions=inference,
         loss=training_loss,
         train_op=training_graph,
-        training_hooks=training_hooks)
+        training_hooks=training_hooks,
+        scaffold=scaffold,
+        output_alternatives=output_alternatives)
+
   return _model_fn
 
 
@@ -196,11 +261,12 @@ class TensorForestEstimator(estimator.Estimator):
 
   def __init__(self, params, device_assigner=None, model_dir=None,
                graph_builder_class=tensor_forest.RandomForestGraphs,
-               config=None, weights_name=None,
+               config=None, weights_name=None, keys_name=None,
                feature_engineering_fn=None,
                early_stopping_rounds=100,
                num_trainers=1, trainer_id=0,
-               report_feature_importances=False):
+               report_feature_importances=False,
+               local_eval=False):
     """Initializes a TensorForestEstimator instance.
 
     Args:
@@ -219,6 +285,9 @@ class TensorForestEstimator(estimator.Estimator):
       weights_name: A string defining feature column name representing
         weights. Will be multiplied by the loss of the example. Used to
         downweight or boost examples during training.
+      keys_name: A string naming one of the features to strip out and
+        pass through into the inference/eval results dict.  Useful for
+        associating specific examples with their prediction.
       feature_engineering_fn: Feature engineering function. Takes features and
         labels which are the output of `input_fn` and returns features and
         labels which will be fed into the model.
@@ -230,6 +299,9 @@ class TensorForestEstimator(estimator.Estimator):
       trainer_id: Which trainer this instance is.
       report_feature_importances: If True, print out feature importances
         during evaluation.
+      local_eval: If True, don't use a device assigner for eval. This is to
+        support some common setups where eval is done on a single machine, even
+        though training might be distributed.
 
     Returns:
       A `TensorForestEstimator` instance.
@@ -240,10 +312,13 @@ class TensorForestEstimator(estimator.Estimator):
             graph_builder_class,
             device_assigner,
             weights_name=weights_name,
+            keys_name=keys_name,
             early_stopping_rounds=early_stopping_rounds,
             num_trainers=num_trainers,
             trainer_id=trainer_id,
-            report_feature_importances=report_feature_importances),
+            report_feature_importances=report_feature_importances,
+            model_dir=model_dir,
+            local_eval=local_eval),
         model_dir=model_dir,
         config=config,
         feature_engineering_fn=feature_engineering_fn)

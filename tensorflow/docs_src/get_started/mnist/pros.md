@@ -20,7 +20,9 @@ code, which is a basic implementation of a Tensorflow model.  The second part
 shows some ways to improve the accuracy.
 
 You can copy and paste each code snippet from this tutorial into a Python
-environment, or you can choose to just read through the code.
+environment to follow along, or you can download the fully implemented deep net
+from [mnist_deep.py](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/mnist_deep.py)
+.
 
 What we will accomplish in this tutorial:
 
@@ -63,12 +65,12 @@ programs is to first create a graph and then launch it in a session.
 Here we instead use the convenient `InteractiveSession` class, which makes
 TensorFlow more flexible about how you structure your code.  It allows you to
 interleave operations which build a
-@{$get_started#the_computational_graph$computation graph}
+@{$get_started/get_started#the_computational_graph$computation graph}
 with ones that run the graph.  This is particularly convenient when working in
 interactive contexts like IPython.  If you are not using an
 `InteractiveSession`, then you should build the entire computation graph before
 starting a session and
-@{$get_started#the_computational_graph$launching the graph}.
+@{$get_started/get_started#the_computational_graph$launching the graph}.
 
 ```python
 import tensorflow as tf
@@ -93,8 +95,8 @@ similar to that used in Theano or Torch.
 
 The role of the Python code is therefore to build this external computation
 graph, and to dictate which parts of the computation graph should be run. See
-the @{$get_started#the_computational_graph$Computation Graph}
-section of @{$get_started} for more detail.
+the @{$get_started/get_started#the_computational_graph$Computation Graph}
+section of @{$get_started/get_started} for more detail.
 
 ## Build a Softmax Regression Model
 
@@ -306,7 +308,7 @@ third dimensions corresponding to image width and height, and the final
 dimension corresponding to the number of color channels.
 
 ```python
-x_image = tf.reshape(x, [-1,28,28,1])
+x_image = tf.reshape(x, [-1, 28, 28, 1])
 ```
 
 We then convolve `x_image` with the weight tensor, add the
@@ -389,26 +391,34 @@ The differences are that:
 
 - We will add logging to every 100th iteration in the training process.
 
-Feel free to go ahead and run this code, but it does 20,000 training iterations
+We will also use tf.Session rather than tf.InteractiveSession. This better
+separates the process of creating the graph (model sepecification) and the
+process of evaluating the graph (model fitting). It generally makes for cleaner
+code. The tf.Session is created within a [`with` block](https://docs.python.org/3/whatsnew/2.6.html#pep-343-the-with-statement)
+so that it is automatically destroyed once the block is exited.
+
+Feel free to run this code. Be aware that it does 20,000 training iterations
 and may take a while (possibly up to half an hour), depending on your processor.
 
 ```python
 cross_entropy = tf.reduce_mean(
     tf.nn.softmax_cross_entropy_with_logits(labels=y_, logits=y_conv))
 train_step = tf.train.AdamOptimizer(1e-4).minimize(cross_entropy)
-correct_prediction = tf.equal(tf.argmax(y_conv,1), tf.argmax(y_,1))
+correct_prediction = tf.equal(tf.argmax(y_conv, 1), tf.argmax(y_, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
-sess.run(tf.global_variables_initializer())
-for i in range(20000):
-  batch = mnist.train.next_batch(50)
-  if i%100 == 0:
-    train_accuracy = accuracy.eval(feed_dict={
-        x:batch[0], y_: batch[1], keep_prob: 1.0})
-    print("step %d, training accuracy %g"%(i, train_accuracy))
-  train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
 
-print("test accuracy %g"%accuracy.eval(feed_dict={
-    x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
+with tf.Session() as sess:
+  sess.run(tf.global_variables_initializer())
+  for i in range(20000):
+    batch = mnist.train.next_batch(50)
+    if i % 100 == 0:
+      train_accuracy = accuracy.eval(feed_dict={
+          x: batch[0], y_: batch[1], keep_prob: 1.0})
+      print('step %d, training accuracy %g' % (i, train_accuracy))
+    train_step.run(feed_dict={x: batch[0], y_: batch[1], keep_prob: 0.5})
+
+  print('test accuracy %g' % accuracy.eval(feed_dict={
+      x: mnist.test.images, y_: mnist.test.labels, keep_prob: 1.0}))
 ```
 
 The final test set accuracy after running this code should be approximately 99.2%.

@@ -61,7 +61,7 @@ namespace {
 class ReduceTest : public ClientLibraryTestBase {
  protected:
   ReduceTest() {
-    // Implementation note: layed out z >> y >> x by default.
+    // Implementation note: laid out z >> y >> x by default.
     // clang-format off
     literal_2d_ = LiteralUtil::CreateR2<float>({
       // x0   x1   x2
@@ -211,9 +211,9 @@ XLA_TEST_F(ReduceTest, ReduceR1_0_F32_To_R0) { RunR1ToR0Test(0); }
 XLA_TEST_F(ReduceTest, ReduceR1_1_F32_To_R0) { RunR1ToR0Test(1); }
 XLA_TEST_F(ReduceTest, ReduceR1_2_F32_To_R0) { RunR1ToR0Test(2); }
 XLA_TEST_F(ReduceTest, ReduceR1_16_F32_To_R0) { RunR1ToR0Test(16); }
-XLA_TEST_F(ReduceTest, ReduceR1_240_F32_To_R0) { RunR1ToR0Test(240); }
 XLA_TEST_F(ReduceTest, ReduceR1_128_F32_To_R0) { RunR1ToR0Test(128); }
 XLA_TEST_F(ReduceTest, ReduceR1_129_F32_To_R0) { RunR1ToR0Test(129); }
+XLA_TEST_F(ReduceTest, ReduceR1_240_F32_To_R0) { RunR1ToR0Test(240); }
 XLA_TEST_F(ReduceTest, ReduceR1_256_F32_To_R0) { RunR1ToR0Test(256); }
 XLA_TEST_F(ReduceTest, ReduceR1_1024_F32_To_R0) { RunR1ToR0Test(1024); }
 XLA_TEST_F(ReduceTest, ReduceR1_2048_F32_To_R0) { RunR1ToR0Test(2048); }
@@ -221,6 +221,9 @@ XLA_TEST_F(ReduceTest, ReduceR1_16K_F32_To_R0) { RunR1ToR0Test(16 * 1024); }
 XLA_TEST_F(ReduceTest, ReduceR1_16KP1_F32_To_R0) {
   RunR1ToR0Test(16 * 1024 + 1);
 }
+XLA_TEST_F(ReduceTest, ReduceR1_64K_F32_To_R0) { RunR1ToR0Test(64 * 1024); }
+XLA_TEST_F(ReduceTest, ReduceR1_1M_F32_To_R0) { RunR1ToR0Test(1024 * 1024); }
+XLA_TEST_F(ReduceTest, ReduceR1_16M_F32_To_R0) { RunR1ToR0Test(4096 * 4096); }
 
 XLA_TEST_F(ReduceTest, ReduceR2_0x0_To_R0) { RunR2ToR0Test(0, 0); }
 XLA_TEST_F(ReduceTest, ReduceR2_0x2_To_R0) { RunR2ToR0Test(0, 2); }
@@ -315,6 +318,72 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
       column_sum += log(input_data(rowno, colno));
     }
     expected.push_back(column_sum);
+  }
+  ComputeAndCompareR1<float>(&builder, expected, {input_global_data.get()},
+                             ErrorSpec(0.01, 1e-4));
+}
+
+XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
+  const int64 rows = 111, cols = 50;
+
+  ComputationBuilder builder(client_, TestName());
+  Computation add_f32 = CreateScalarAddComputation(F32, &builder);
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, cols});
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto zero = builder.ConstantR0<float>(0.0);
+  auto log_ = builder.Log(input);
+  auto transpose = builder.Transpose(log_, {1, 0});
+  builder.Reduce(transpose, zero, add_f32, /*dimensions_to_reduce=*/{1});
+
+  Array2D<float> input_data(rows, cols);
+  input_data.FillRandom(3.14f, 0.04);
+  std::unique_ptr<Literal> input_literal =
+      LiteralUtil::CreateR2FromArray2D(input_data);
+  input_literal =
+      LiteralUtil::Relayout(*input_literal, LayoutUtil::MakeLayout({0, 1}));
+  std::unique_ptr<GlobalData> input_global_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+  std::vector<float> expected;
+  for (int64 colno = 0; colno < cols; ++colno) {
+    float column_sum = 0;
+    for (int64 rowno = 0; rowno < rows; ++rowno) {
+      column_sum += log(input_data(rowno, colno));
+    }
+    expected.push_back(column_sum);
+  }
+  ComputeAndCompareR1<float>(&builder, expected, {input_global_data.get()},
+                             ErrorSpec(0.01, 1e-4));
+}
+
+XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
+  const int64 rows = 111, cols = 50;
+
+  ComputationBuilder builder(client_, TestName());
+  Computation add_f32 = CreateScalarAddComputation(F32, &builder);
+  const Shape input_shape = ShapeUtil::MakeShape(F32, {rows, 2, cols / 2});
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto zero = builder.ConstantR0<float>(0.0);
+  auto log_ = builder.Log(input);
+  auto reshape = builder.Reshape(log_, {rows, cols});
+  builder.Reduce(reshape, zero, add_f32, /*dimensions_to_reduce=*/{0});
+
+  Array3D<float> input_data(rows, 2, cols / 2);
+  input_data.FillRandom(3.14f, 0.04);
+  std::unique_ptr<Literal> input_literal =
+      LiteralUtil::CreateR3FromArray3D(input_data);
+  std::unique_ptr<GlobalData> input_global_data =
+      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+  std::vector<float> expected;
+  for (int64 major = 0; major < 2; ++major) {
+    for (int64 colno = 0; colno < cols / 2; ++colno) {
+      float column_sum = 0;
+      for (int64 rowno = 0; rowno < rows; ++rowno) {
+        column_sum += log(input_data(rowno, major, colno));
+      }
+      expected.push_back(column_sum);
+    }
   }
   ComputeAndCompareR1<float>(&builder, expected, {input_global_data.get()},
                              ErrorSpec(0.01, 1e-4));

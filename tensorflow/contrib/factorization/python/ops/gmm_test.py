@@ -201,6 +201,27 @@ class GMMTest(test.TestCase):
   def test_compare_diag(self):
     self._compare_with_sklearn('diag')
 
+  def test_random_input_large(self):
+    # sklearn version.
+    iterations = 5  # that should be enough to know whether this diverges
+    np.random.seed(5)
+    num_classes = 20
+    x = np.array([[np.random.random() for _ in range(100)]
+                  for _ in range(num_classes)], dtype=np.float32)
+
+    # skflow version.
+    gmm = gmm_lib.GMM(num_classes,
+                      covariance_type='full',
+                      config=run_config.RunConfig(tf_random_seed=2))
+
+    def get_input_fn(x):
+      def input_fn():
+        return constant_op.constant(x.astype(np.float32)), None
+      return input_fn
+
+    gmm.fit(input_fn=get_input_fn(x), steps=iterations)
+    self.assertFalse(np.isnan(gmm.clusters()).any())
+
 
 if __name__ == '__main__':
   test.main()

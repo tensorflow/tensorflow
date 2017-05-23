@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -27,6 +25,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 _binomial_sample_note = """
@@ -40,6 +40,28 @@ can be broadcast with `self.probs` and `self.total_count`. `value` is only legal
 if it is less than or equal to `self.total_count` and its components are equal
 to integer values.
 """
+
+
+def _bdtr(k, n, p):
+  """The binomial cumulative distribution function.
+
+  Args:
+    k: floating point `Tensor`.
+    n: floating point `Tensor`.
+    p: floating point `Tensor`.
+
+  Returns:
+    `sum_{j=0}^k p^j (1 - p)^(n - j)`.
+  """
+  # Trick for getting safe backprop/gradients into n, k when
+  #   betainc(a = 0, ..) = nan
+  # Write:
+  #   where(unsafe, safe_output, betainc(where(unsafe, safe_input, input)))
+  ones = array_ops.ones_like(n - k)
+  k_eq_n = math_ops.equal(k, n)
+  safe_dn = array_ops.where(k_eq_n, ones, n - k)
+  dk = math_ops.betainc(a=safe_dn, b=k + 1, x=1 - p)
+  return array_ops.where(k_eq_n, ones, dk)
 
 
 class Binomial(distribution.Distribution):
@@ -201,6 +223,18 @@ class Binomial(distribution.Distribution):
   def _prob(self, counts):
     return math_ops.exp(self._log_prob(counts))
 
+  def _cdf(self, counts):
+    counts = self._maybe_assert_valid_sample(counts)
+    probs = self.probs
+    if not (counts.shape.is_fully_defined()
+            and self.probs.shape.is_fully_defined()
+            and counts.shape.is_compatible_with(self.probs.shape)):
+      # If both shapes are well defined and equal, we skip broadcasting.
+      probs += array_ops.zeros_like(counts)
+      counts += array_ops.zeros_like(self.probs)
+
+    return _bdtr(k=counts, n=self.total_count, p=probs)
+
   def _log_unnormalized_prob(self, counts):
     counts = self._maybe_assert_valid_sample(counts)
     return (counts * math_ops.log(self.probs) +
@@ -235,7 +269,7 @@ class Binomial(distribution.Distribution):
             message="total_count must be non-negative."),
         distribution_util.assert_integer_form(
             total_count,
-            message="total_count cannot contain fractional componentes."),
+            message="total_count cannot contain fractional components."),
     ], total_count)
 
   def _maybe_assert_valid_sample(self, counts, check_integer=True):

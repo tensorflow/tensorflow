@@ -24,6 +24,7 @@ from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn.estimators import dnn_linear_combined
@@ -32,6 +33,7 @@ from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
@@ -125,11 +127,20 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
         "input_from_feature_columns",
         values=tuple(six.itervalues(features)),
         partitioner=input_layer_partitioner) as input_layer_scope:
-      net = layers.input_from_feature_columns(
-          columns_to_tensors=features,
-          feature_columns=feature_columns,
-          weight_collections=[parent_scope],
-          scope=input_layer_scope)
+      if all([
+          isinstance(fc, feature_column._FeatureColumn)  # pylint: disable=protected-access
+          for fc in feature_columns
+      ]):
+        net = layers.input_from_feature_columns(
+            columns_to_tensors=features,
+            feature_columns=feature_columns,
+            weight_collections=[parent_scope],
+            scope=input_layer_scope)
+      else:
+        net = fc_core.input_layer(
+            features=features,
+            feature_columns=feature_columns,
+            weight_collections=[parent_scope])
 
     for layer_id, num_hidden_units in enumerate(hidden_units):
       with variable_scope.variable_scope(
@@ -216,7 +227,31 @@ class DNNClassifier(estimator.Estimator):
   def input_fn_eval: # returns x, y (where y represents label's class index).
     pass
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
+  def input_fn_predict: # returns x, None
+  # predict_classes returns class indices.
+  estimator.predict_classes(input_fn=input_fn_predict)
+  ```
+
+  If the user specifies `label_keys` in constructor, labels must be strings from
+  the `label_keys` vocabulary. Example:
+
+  ```python
+  label_keys = ['label0', 'label1', 'label2']
+  estimator = DNNClassifier(
+      feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      hidden_units=[1024, 512, 256],
+      label_keys=label_keys)
+
+  def input_fn_train: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.fit(input_fn=input_fn_train)
+
+  def input_fn_eval: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  def input_fn_predict: # returns x, None
+  # predict_classes returns one of label_keys.
+  estimator.predict_classes(input_fn=input_fn_predict)
   ```
 
   Input of `fit` and `evaluate` should have following features,
@@ -248,7 +283,8 @@ class DNNClassifier(estimator.Estimator):
                config=None,
                feature_engineering_fn=None,
                embedding_lr_multipliers=None,
-               input_layer_min_slice_size=None):
+               input_layer_min_slice_size=None,
+               label_keys=None):
     """Initializes a DNNClassifier instance.
 
     Args:
@@ -282,14 +318,15 @@ class DNNClassifier(estimator.Estimator):
         residual after centered bias.
       config: `RunConfig` object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        labels which are the output of `input_fn` and
-                        returns features and labels which will be fed
-                        into the model.
+        labels which are the output of `input_fn` and returns features and
+        labels which will be fed into the model.
       embedding_lr_multipliers: Optional. A dictionary from `EmbeddingColumn` to
-          a `float` multiplier. Multiplier will be used to multiply with
-          learning rate for the embedding variables.
+        a `float` multiplier. Multiplier will be used to multiply with learning
+        rate for the embedding variables.
       input_layer_min_slice_size: Optional. The min slice size of input layer
-          partitions. If not provided, will use the default of 64M.
+        partitions. If not provided, will use the default of 64M.
+      label_keys: Optional list of strings with size `[n_classes]` defining the
+        label vocabulary. Only supported for `n_classes` > 2.
 
     Returns:
       A `DNNClassifier` estimator.
@@ -307,7 +344,8 @@ class DNNClassifier(estimator.Estimator):
                 head_lib.multi_class_head(
                     n_classes,
                     weight_column_name=weight_column_name,
-                    enable_centered_bias=enable_centered_bias),
+                    enable_centered_bias=enable_centered_bias,
+                    label_keys=label_keys),
             "hidden_units": hidden_units,
             "feature_columns": self._feature_columns,
             "optimizer": optimizer,
@@ -495,7 +533,9 @@ class DNNRegressor(estimator.Estimator):
   def input_fn_eval: # returns x, y
     pass
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x)
+  def input_fn_predict: # returns x, None
+    pass
+  estimator.predict_scores(input_fn=input_fn_predict)
   ```
 
   Input of `fit` and `evaluate` should have following features,

@@ -48,13 +48,15 @@ class CholeskyOpTest(test.TestCase):
 
   def _verifyCholesky(self, x):
     # Verify that LL^T == x.
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       chol = linalg_ops.cholesky(x)
       verification = math_ops.matmul(chol, chol, adjoint_b=True)
       self._verifyCholeskyBase(sess, x, chol, verification)
 
   def testBasic(self):
-    self._verifyCholesky(np.array([[4., -1., 2.], [-1., 6., 0], [2., 0., 5.]]))
+    for dtype in (np.float32, np.float64):
+      self._verifyCholesky(
+          np.array([[4., -1., 2.], [-1., 6., 0], [2., 0., 5.]]).astype(dtype))
 
   def testBatch(self):
     simple_array = np.array([[[1., 0.], [0., 5.]]])  # shape (1, 2, 2)
@@ -84,11 +86,12 @@ class CholeskyOpTest(test.TestCase):
     with self.assertRaises(ValueError):
       linalg_ops.cholesky(tensor3)
 
-  def testNotInvertible(self):
+  def testNotInvertibleCPU(self):
     # The input should be invertible.
-    with self.test_session():
-      with self.assertRaisesOpError("LLT decomposition was not successful. The"
-                                    " input might not be valid."):
+    with self.test_session(use_gpu=False):
+      with self.assertRaisesOpError(
+          "Cholesky decomposition was not successful. The"
+          " input might not be valid."):
         # All rows of the matrix below add to zero
         self._verifyCholesky(
             np.array([[1., -1., 0.], [-1., 1., -1.], [0., -1., 1.]]))

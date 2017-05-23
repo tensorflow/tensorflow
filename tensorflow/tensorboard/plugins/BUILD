@@ -12,3 +12,9 @@ py_library(
     srcs = ["base_plugin.py"],
     srcs_version = "PY2AND3",
 )
+
+filegroup(
+    name = "all_files",
+    srcs = glob(["**"]),
+    visibility = ["//tensorflow:__pkg__"],
+)

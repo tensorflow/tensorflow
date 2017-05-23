@@ -159,7 +159,7 @@ class SparsemaxLossTest(test.TestCase):
     self.assertShapeEqual(q, tf_sparsemax_op)
 
   def _test_gradient_against_estimate(self, dtype, random, use_gpu):
-    """check sparsemax-loss Rop, aginst estimated-loss Rop"""
+    """check sparsemax-loss Rop, against estimated-loss Rop"""
     z = random.uniform(low=-3, high=3, size=(test_obs, 10)).astype(dtype)
     q = np.zeros((test_obs, 10)).astype(dtype)
     q[np.arange(0, test_obs), np.random.randint(0, 10, size=test_obs)] = 1
@@ -178,7 +178,7 @@ class SparsemaxLossTest(test.TestCase):
     self.assertLess(err, 1e-4)
 
   def _test_gradient_against_numpy(self, dtype, random, use_gpu):
-    """check sparsemax-loss Rop, aginst numpy Rop"""
+    """check sparsemax-loss Rop, against numpy Rop"""
     z = random.uniform(low=-3, high=3, size=(test_obs, 10))
     q = np.zeros((test_obs, 10))
     q[np.arange(0, test_obs), np.random.randint(0, 10, size=test_obs)] = 1

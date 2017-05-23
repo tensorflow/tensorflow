@@ -32,7 +32,7 @@ void SwitchOp::Compute(OpKernelContext* context) {
 
   bool pred = outputPorts.scalar<bool>()();
   int port = (pred) ? 1 : 0;
-  if (IsRefType(context->input_dtype(0))) {
+  if (context->input_is_ref(0)) {
     context->forward_ref_input_to_ref_output(0, port);
   } else {
     context->set_output(port, context->input(0));

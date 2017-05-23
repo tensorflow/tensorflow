@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/queue_runner.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -58,16 +59,16 @@ class QueueRunner : public RunnerInterface {
   /// Starts the queue runner with the given session.
   Status Start(Session* sess);
 
-  // Starts the queue runner with the given session and sets the run arguments
-  // for sess->Run. The mutex lock rm_mu is hold when metadata is being changed.
-  Status Start(Session* sess, RunMetadata* metadata, mutex* rm_mu,
-               const RunOptions* run_options = nullptr);
+  /// Starts the queue runner with the given session and sets the run arguments
+  /// for sess->Run. It also collects and stores the cost model.
+  Status StartAndCollectCostGraph(Session* sess,
+                                  const RunOptions* run_options = nullptr);
 
   /// Starts the queue runner with the given session, and wait for up to the
   /// specified time (in milliseconds) for the queues to start to fill up.
   Status Start(Session* sess, int wait_for_ms);
-  Status Start(Session* session, int wait_for_ms, RunMetadata* metadata,
-               mutex* rm_mu, const RunOptions* run_options = nullptr);
+  Status StartAndCollectCostGraph(Session* session, int wait_for_ms,
+                                  const RunOptions* run_options = nullptr);
 
   /// Requests to stop and runs the cancel op. It would be called in a separate
   /// thread when coordinator is set. If there is no coordinator it should be
@@ -81,8 +82,11 @@ class QueueRunner : public RunnerInterface {
   /// Returns the latest status.
   Status GetStatus();
 
+  // Returns the stored cost model.
+  Status ExportCostGraph(CostGraphDef* cost_graph) const override;
+
  private:
-  QueueRunner() : coord_(nullptr), stopped_(false), rm_mu_(nullptr) {}
+  QueueRunner() : coord_(nullptr), stopped_(false), cg_mu_(nullptr) {}
 
   // Initializes the instance with the QueueRunnerDef proto.
   Status Init(const QueueRunnerDef& queue_runner_def);
@@ -101,10 +105,9 @@ class QueueRunner : public RunnerInterface {
 
   bool IsRunning() const override { return !stopped_; }
 
-  void SetRunArguments(const RunOptions* run_options, RunMetadata* metadata,
-                       mutex* rm_mu);
+  void SetRunArgumentsAndCostGraph(const RunOptions* run_options);
 
-  Status RealRun(Session* sess, const string& op);
+  Status RealRun(Session* sess, const string& op, bool update_costs);
 
   string queue_name_;
   std::vector<string> enqueue_op_names_;
@@ -127,8 +130,8 @@ class QueueRunner : public RunnerInterface {
   mutex cb_mu_;
   std::vector<std::function<void(Status)>> callbacks_;
 
-  mutex* rm_mu_;
-  RunMetadata* run_metadata_ GUARDED_BY(rm_mu_);
+  mutable std::unique_ptr<mutex> cg_mu_;
+  std::unique_ptr<CostGraphDef> cost_graph_ GUARDED_BY(cg_mu_);
   RunOptions run_options_;
 };
 

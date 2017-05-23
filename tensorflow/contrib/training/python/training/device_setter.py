@@ -35,7 +35,7 @@ class GreedyLoadBalancingStrategy(object):
   ps ops (typically variables) are created, as it greedily places ops
   on the least-loaded ps at the point each op is processed.
 
-  One reasonable heuristic is the `variable_size_load_fn`, which
+  One reasonable heuristic is the `byte_size_load_fn`, which
   estimates load as the number of bytes that would be used to store and
   transmit the entire variable.  More advanced load functions
   could consider the difference in access patterns across ops, or trade

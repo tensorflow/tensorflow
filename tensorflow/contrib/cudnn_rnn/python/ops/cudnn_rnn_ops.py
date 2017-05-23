@@ -23,12 +23,12 @@ from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
-
 
 _cudnn_rnn_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_cudnn_rnn_ops.so"))
@@ -48,8 +48,8 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
   def __init__(self,
                params_to_canonical,
                canonical_to_params,
-               name="params_canonical",
-               *param_variables):
+               param_variables,
+               name="params_canonical"):
     """Creates a RNNParamsSaveable object.
 
        RNNParamsSaveable is saveable/restorable in a checkpoint file and is used
@@ -83,11 +83,11 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
           must return a scalar (e.g. in the case of cuDNN) or a tuple. This
           function could be _CudnnRNN.canonical_to_params() or a
           user-defined function.
-      name: the name of the RNNParamsSaveable object.
-      *param_variables: a list of Variables for parameters in a specific form.
+      param_variables: a list of Variables for parameters in a specific form.
           For cuDNN RNN ops, this is a single merged variable for both weights
           and biases; for other RNN ops, this might be multiple unmerged or
           partially merged variables respectively for weights and biases.
+      name: the name of the RNNParamsSaveable object.
     """
     # There is only a single merged parameter variable for cuDNN when saving.
     weights, biases = params_to_canonical(param_variables[0])
@@ -110,11 +110,11 @@ class RNNParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     if not isinstance(params, tuple):
       params = (params,)
     assign_ops = [
-        state_ops.assign(
-            variable, param, validate_shape=False)
+        state_ops.assign(variable, param, validate_shape=False)
         for variable, param in zip(self._variables, params)
     ]
     return control_flow_ops.group(*assign_ops)
+
 
 _cudnn_rnn_common_doc_string = """
   Cudnn RNN has an opaque parameter buffer that can be used for inference and
@@ -141,7 +141,7 @@ _cudnn_rnn_common_doc_string = """
     * Once a while, the user saves the parameter buffer into model checkpoints
         with Saver.save().
     * When restoring, the user creates a RNNParamsSaveable object and uses
-      Saver.restore() to restore the paramter buffer from the canonical format
+      Saver.restore() to restore the parameter buffer from the canonical format
       to a user-defined format, as well as to restore other savable objects
       in the checkpoint file.
 """
@@ -160,11 +160,10 @@ class _CudnnRNN(object):
                num_layers,
                num_units,
                input_size,
-               input_mode="auto_select",
+               input_mode="linear_input",
                direction="unidirectional",
                dropout=0.,
-               seed=0,
-               seed2=0):
+               seed=0):
     """Creates a CudnnRNN model from model spec.
 
     Args:
@@ -175,16 +174,18 @@ class _CudnnRNN(object):
       input_size: the size of the input, it could be different from the
           num_units.
       input_mode: indicate whether there is a linear projection between the
-          input and The actual computation before the first layer. It could be
-          'skip_input', 'linear_input' or 'auto_select'.
+          input and the actual computation before the first layer. It could be
+          'linear_input', 'skip_input' or 'auto_select'.
+          'linear_input' (default) always applies a linear projection of input
+          onto RNN hidden state. (standard RNN behavior).
           'skip_input' is only allowed when input_size == num_units;
           'auto_select' implies 'skip_input' when input_size == num_units;
           otherwise, it implies 'linear_input'.
       direction: the direction model that the model operates. Could be either
           'unidirectional' or 'bidirectional'
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
-      seed: the first part of a seed that is used to initialize dropout.
-      seed2: the second part of a seed that is used to initialize dropout.
+      seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
+          for behavior.
     """
     self._num_layers = num_layers
     self._num_units = num_units
@@ -193,8 +194,10 @@ class _CudnnRNN(object):
     self._input_mode = input_mode
     self._direction = direction
     self._dropout = dropout
-    self._seed = seed
-    self._seed2 = seed2
+    # get graph and op seed.
+    self._seed, self._seed2 = random_seed.get_seed(seed)
+    if self._seed is None and self._seed2 is None:
+      self._seed, self._seed2 = 0, 0
 
   def params_size(self):
     """Calculates the size of the opaque parameter buffer needed for this model.
@@ -208,6 +211,9 @@ class _CudnnRNN(object):
         input_size=self._input_size,
         T=dtypes.float32,
         S=dtypes.int32,
+        dropout=self._dropout,
+        seed=self._seed,
+        seed2=self._seed2,
         rnn_mode=self._rnn_mode,
         input_mode=self._input_mode,
         direction=self._direction)[0]
@@ -258,6 +264,9 @@ class _CudnnRNN(object):
         num_units=self._num_units,
         input_size=self._input_size,
         params=params,
+        dropout=self._dropout,
+        seed=self._seed,
+        seed2=self._seed2,
         num_params=self._num_layers * self._NUM_PARAMS_PER_LAYER,
         rnn_mode=self._rnn_mode,
         input_mode=self._input_mode,
@@ -280,6 +289,9 @@ class _CudnnRNN(object):
         input_size=self._input_size,
         weights=weights,
         biases=biases,
+        dropout=self._dropout,
+        seed=self._seed,
+        seed2=self._seed2,
         rnn_mode=self._rnn_mode,
         input_mode=self._input_mode,
         direction=self._direction)
@@ -299,8 +311,7 @@ class CudnnLSTM(_CudnnRNN):
                input_mode="auto_select",
                direction="unidirectional",
                dropout=0.,
-               seed=0,
-               seed2=0):
+               seed=0):
     """Creates a Cudnn LSTM model from model spec.
 
     Args:
@@ -317,8 +328,7 @@ class CudnnLSTM(_CudnnRNN):
       direction: the direction model that the model operates. Could be either
           'unidirectional' or 'bidirectional'
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
-      seed: the first part of a seed that is used to initialize dropout.
-      seed2: the second part of a seed that is used to initialize dropout.
+      seed: the seed used for initializing dropout.
     """
     super(CudnnLSTM, self).__init__(
         "lstm",
@@ -328,8 +338,7 @@ class CudnnLSTM(_CudnnRNN):
         input_mode=input_mode,
         direction=direction,
         dropout=dropout,
-        seed=seed,
-        seed2=seed2)
+        seed=seed)
 
   def __call__(self, input_data, input_h, input_c, params, is_training=True):
     """Runs the forward step for the Cudnn LSTM model.
@@ -346,11 +355,8 @@ class CudnnLSTM(_CudnnRNN):
       output_h: the final state for h.
       output_c: the final state for c.
     """
-    output, output_h, output_c = super(CudnnLSTM, self).__call__(input_data,
-                                                                 input_h,
-                                                                 input_c,
-                                                                 params,
-                                                                 is_training)
+    output, output_h, output_c = super(CudnnLSTM, self).__call__(
+        input_data, input_h, input_c, params, is_training=is_training)
     return (output, output_h, output_c)
 
 
@@ -365,8 +371,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
                input_mode="auto_select",
                direction="unidirectional",
                dropout=0.,
-               seed=0,
-               seed2=0):
+               seed=0):
     """Creates a Cudnn RNN model from model without hidden-state C.
 
     Args:
@@ -383,8 +388,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
       direction: the direction model that the model operates. Could be either
           'unidirectional' or 'bidirectional'
       dropout: whether to enable dropout. With it is 0, dropout is disabled.
-      seed: the first part of a seed that is used to initialize dropout.
-      seed2: the second part of a seed that is used to initialize dropout.
+      seed: the seed used for initializing dropout.
     """
     super(_CudnnRNNNoInputC, self).__init__(
         self._rnn_mode,
@@ -394,8 +398,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
         input_mode=input_mode,
         direction=direction,
         dropout=dropout,
-        seed=seed,
-        seed2=seed2)
+        seed=seed)
 
   def __call__(self, input_data, input_h, params, is_training=True):
     """Runs the forward step for the Cudnn LSTM model.
@@ -411,7 +414,7 @@ class _CudnnRNNNoInputC(_CudnnRNN):
       output_h: the final state for h.
     """
     output, output_h, _ = super(_CudnnRNNNoInputC, self).__call__(
-        input_data, input_h, None, params, is_training=True)
+        input_data, input_h, None, params, is_training=is_training)
     return (output, output_h)
 
 
@@ -459,6 +462,9 @@ def _cudnn_rnn_backward(op, *grad):
       output_h_backprop=grad[1],
       output_c_backprop=grad[2],
       reserve_space=op.outputs[3],
+      dropout=op.get_attr("dropout"),
+      seed=op.get_attr("seed"),
+      seed2=op.get_attr("seed2"),
       rnn_mode=op.get_attr("rnn_mode"),
       input_mode=op.get_attr("input_mode"),
       direction=op.get_attr("direction"))

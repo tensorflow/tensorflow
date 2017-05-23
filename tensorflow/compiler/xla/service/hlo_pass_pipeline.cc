@@ -26,6 +26,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
+using ::tensorflow::strings::StrAppend;
+
 namespace xla {
 
 namespace {
@@ -38,11 +40,27 @@ void DumpModule(const Compiler::HloDumper& dumper_, const HloModule& module,
 }  // namespace
 
 StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
+  run_called_ = true;
+
+  VLOG(1) << "Running HLO pass pipeline " << name();
+
   legacy_flags::HloPassPipelineFlags* flags =
       legacy_flags::GetHloPassPipelineFlags();
   std::vector<string> tmp =
       tensorflow::str_util::Split(flags->xla_disable_hlo_passes, ',');
   tensorflow::gtl::FlatSet<string> disabled_passes(tmp.begin(), tmp.end());
+  if (!disabled_passes.empty()) {
+    VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
+            << tensorflow::str_util::Join(disabled_passes, ", ");
+  }
+
+  auto run_invariant_checkers = [this, module]() -> Status {
+    for (auto& invariant_checker : invariant_checkers_) {
+      TF_ASSIGN_OR_RETURN(bool changed, invariant_checker->Run(module));
+      TF_RET_CHECK(!changed) << "invariant checkers must not change the graph";
+    }
+    return Status::OK();
+  };
 
   string prefix = name().ToString() + ": pipeline start";
   bool changed = false;
@@ -50,20 +68,26 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   for (auto& pass : passes_) {
     if (!disabled_passes.empty() &&
         disabled_passes.count(pass->name().ToString()) > 0) {
+      VLOG(1) << "  Skipping HLO pass " << pass->name()
+              << ", disabled by --xla_disable_hlo_passes";
       continue;
     }
 
+    VLOG(1) << "  HLO pass " << pass->name();
+
     // Emit label containing: "after foo-pass, before bar-pass".
     message.clear();
-    tensorflow::strings::StrAppend(&message, prefix, ", before ", pass->name());
+    StrAppend(&message, prefix, ", before ", pass->name());
     DumpModule(dumper_, *module, message);
 
+    TF_RETURN_IF_ERROR(run_invariant_checkers());
     TF_ASSIGN_OR_RETURN(bool changed_this_pass, pass->Run(module));
 
     changed |= changed_this_pass;
     prefix.clear();
-    tensorflow::strings::StrAppend(&prefix, name(), ": after ", pass->name());
+    StrAppend(&prefix, name(), ": after ", pass->name());
   }
+  TF_RETURN_IF_ERROR(run_invariant_checkers());
   DumpModule(dumper_, *module, prefix + ", pipeline end");
   return changed;
 }

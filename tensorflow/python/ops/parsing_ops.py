@@ -58,7 +58,7 @@ class SparseFeature(
         ["index_key", "value_key", "dtype", "size", "already_sorted"])):
   """Configuration for parsing a sparse input feature from an `Example`.
 
-  Note, preferrably use `VarLenFeature` (possibly in combination with a
+  Note, preferably use `VarLenFeature` (possibly in combination with a
   `SequenceExample`) in order to parse out `SparseTensor`s instead of
   `SparseFeature` due to its simplicity.
 
@@ -326,6 +326,24 @@ def _construct_sparse_tensors_for_sparse_features(features, tensor_dict):
   return tensor_dict
 
 
+def _prepend_none_dimension(features):
+  if features:
+    modified_features = dict(features)  # Create a copy to modify
+    for key, feature in features.items():
+      if isinstance(feature, FixedLenSequenceFeature):
+        if not feature.allow_missing:
+          raise ValueError("Unsupported: FixedLenSequenceFeature requires "
+                           "allow_missing to be True.")
+        modified_features[key] = FixedLenSequenceFeature(
+            [None] + list(feature.shape),
+            feature.dtype,
+            feature.allow_missing,
+            feature.default_value)
+    return modified_features
+  else:
+    return features
+
+
 def parse_example(serialized, features, name=None, example_names=None):
   # pylint: disable=line-too-long
   """Parses `Example` protos into a `dict` of tensors.
@@ -541,19 +559,7 @@ def parse_example(serialized, features, name=None, example_names=None):
   """
   if not features:
     raise ValueError("Missing: features was %s." % features)
-  if features:
-    modified_features = dict(features)  # Create a copy to modify
-    for key, feature in features.items():
-      if isinstance(feature, FixedLenSequenceFeature):
-        if not feature.allow_missing:
-          raise ValueError("Unsupported: FixedLenSequenceFeature requires "
-                           "allow_missing to be True.")
-        modified_features[key] = FixedLenSequenceFeature(
-            [None] + list(feature.shape),
-            feature.dtype,
-            feature.allow_missing,
-            feature.default_value)
-    features = modified_features
+  features = _prepend_none_dimension(features)
   (sparse_keys, sparse_types, dense_keys, dense_types, dense_defaults,
    dense_shapes) = _features_to_raw_params(
        features,
@@ -731,9 +737,11 @@ def parse_single_example(serialized, features, name=None, example_names=None):
   """
   if not features:
     raise ValueError("Missing features.")
+  features = _prepend_none_dimension(features)
   (sparse_keys, sparse_types, dense_keys, dense_types, dense_defaults,
    dense_shapes) = _features_to_raw_params(
-       features, [VarLenFeature, FixedLenFeature, SparseFeature])
+       features,
+       [VarLenFeature, FixedLenFeature, FixedLenSequenceFeature, SparseFeature])
   outputs = _parse_single_example_raw(
       serialized, example_names, sparse_keys, sparse_types, dense_keys,
       dense_types, dense_defaults, dense_shapes, name)
@@ -837,7 +845,7 @@ def parse_single_sequence_example(
   Parses a single serialized [`SequenceExample`](https://www.tensorflow.org/code/tensorflow/core/example/example.proto)
   proto given in `serialized`.
 
-  This op parses a serialize sequence example into a tuple of dictionaries
+  This op parses a serialized sequence example into a tuple of dictionaries
   mapping keys to `Tensor` and `SparseTensor` objects respectively.
   The first dictionary contains mappings for keys appearing in
   `context_features`, and the second dictionary contains mappings for keys

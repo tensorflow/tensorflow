@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -80,6 +81,17 @@ Computation CreateScalarLogicalOrComputation(ComputationBuilder* builder) {
   auto rhs = b->Parameter(1, scalar, "rhs");
   b->LogicalOr(lhs, rhs);
   return b->BuildAndNoteError();
+}
+
+StatusOr<ComputationDataHandle> Any(const ComputationDataHandle& predicates,
+                                    ComputationBuilder* builder) {
+  auto f = builder->ConstantR0<bool>(false);
+  Computation logical_or = CreateScalarLogicalOrComputation(builder);
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Shape> predicates_shape,
+                      builder->GetShape(predicates));
+  std::vector<int64> all_dimensions(ShapeUtil::Rank(*predicates_shape));
+  std::iota(all_dimensions.begin(), all_dimensions.end(), 0);
+  return builder->Reduce(predicates, f, logical_or, all_dimensions);
 }
 
 }  // namespace xla

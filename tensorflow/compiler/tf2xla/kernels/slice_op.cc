@@ -115,7 +115,7 @@ void SliceOp::SharedValidation(XlaOpKernelContext* ctx, bool* is_identity,
   }
 }
 
-REGISTER_XLA_OP("Slice", SliceOp);
+REGISTER_XLA_OP(Name("Slice"), SliceOp);
 
 }  // namespace
 }  // namespace tensorflow

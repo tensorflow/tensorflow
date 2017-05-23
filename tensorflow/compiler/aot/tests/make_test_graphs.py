@@ -25,6 +25,7 @@ from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -71,7 +72,7 @@ def tfadd_with_ckpt_saver(out_dir):
     saver.save(sess, ckpt_file)
     # Without the SaverDef, the restore op won't be named correctly.
     saver_file = '%s/test_graph_tfadd_with_ckpt_saver.saver' % out_dir
-    with open(saver_file, 'w') as f:
+    with open(saver_file, 'wb') as f:
       f.write(saver.as_saver_def().SerializeToString())
 
 
@@ -95,13 +96,24 @@ def tfmatmulandadd(_):
   math_ops.add(x, y, name='x_y_sum')
 
 
+def tffunction(_):
+
+  @function.Defun(dtypes.int32, dtypes.int32)
+  def test_func(a, b):
+    return a + b
+
+  x = constant_op.constant([1], name='x_const')
+  y = constant_op.constant([2], name='y_const')
+  test_func(x, y, name='func_call')  # pylint: disable=unexpected-keyword-arg
+
+
 def write_graph(build_graph, out_dir):
   """Build a graph using build_graph and write it out."""
   g = ops.Graph()
   with g.as_default():
     build_graph(out_dir)
     filename = '%s/test_graph_%s.pb' % (out_dir, build_graph.__name__)
-    with open(filename, 'w') as f:
+    with open(filename, 'wb') as f:
       f.write(g.as_graph_def().SerializeToString())
 
 
@@ -112,6 +124,7 @@ def main(_):
   write_graph(tfgather, FLAGS.out_dir)
   write_graph(tfmatmul, FLAGS.out_dir)
   write_graph(tfmatmulandadd, FLAGS.out_dir)
+  write_graph(tffunction, FLAGS.out_dir)
 
 
 if __name__ == '__main__':
@@ -121,7 +134,6 @@ if __name__ == '__main__':
       '--out_dir',
       type=str,
       default='',
-      help='Output directory for graphs, checkpoints and savers.'
-  )
+      help='Output directory for graphs, checkpoints and savers.')
   FLAGS, unparsed = parser.parse_known_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)

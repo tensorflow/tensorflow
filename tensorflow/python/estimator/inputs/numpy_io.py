@@ -46,7 +46,7 @@ def numpy_input_fn(x,
                    y=None,
                    batch_size=128,
                    num_epochs=1,
-                   shuffle=True,
+                   shuffle=None,
                    queue_capacity=1000,
                    num_threads=1):
   """Returns input function that would feed dict of numpy arrays into the model.
@@ -68,14 +68,16 @@ def numpy_input_fn(x,
 
   Args:
     x: dict of numpy array object.
-    y: numpy array object.
+    y: numpy array object. `None` if absent.
     batch_size: Integer, size of batches to return.
     num_epochs: Integer, number of epochs to iterate over data. If `None` will
       run forever.
     shuffle: Boolean, if True shuffles the queue. Avoid shuffle at prediction
       time.
     queue_capacity: Integer, size of queue to accumulate.
-    num_threads: Integer, number of threads used for reading and enqueueing.
+    num_threads: Integer, number of threads used for reading and enqueueing. In
+      order to have predicted and repeatable order of reading and enqueueing,
+      such as in prediction and evaluation mode, `num_threads` should be 1.
 
   Returns:
     Function, that has signature of ()->(dict of `features`, `target`)
@@ -83,29 +85,34 @@ def numpy_input_fn(x,
   Raises:
     ValueError: if the shape of `y` mismatches the shape of values in `x` (i.e.,
       values in `x` have same shape).
-    TypeError: `x` is not a dict.
+    TypeError: `x` is not a dict or `shuffle` is not bool.
   """
+
+  if not isinstance(shuffle, bool):
+    raise TypeError('shuffle must be explicitly set as boolean; '
+                    'got {}'.format(shuffle))
 
   def input_fn():
     """Numpy input function."""
     if not isinstance(x, dict):
       raise TypeError('x must be dict; got {}'.format(type(x).__name__))
 
-    unique_target_key = _get_unique_target_key(x)
-    if y is not None:
-      x[unique_target_key] = y
+    # Make a shadow copy and also ensure the order of iteration is consistent.
+    ordered_dict_x = collections.OrderedDict(
+        sorted(x.items(), key=lambda t: t[0]))
 
-    if len(set(v.shape[0] for v in x.values())) != 1:
-      shape_dict_of_x = {k: x[k].shape for k in x.keys()}
+    unique_target_key = _get_unique_target_key(ordered_dict_x)
+    if y is not None:
+      ordered_dict_x[unique_target_key] = y
+
+    if len(set(v.shape[0] for v in ordered_dict_x.values())) != 1:
+      shape_dict_of_x = {k: ordered_dict_x[k].shape
+                         for k in ordered_dict_x.keys()}
       shape_of_y = None if y is None else y.shape
       raise ValueError('Length of tensors in x and y is mismatched. All '
                        'elements in x and y must have the same length.\n'
                        'Shapes in x: {}\n'
                        'Shape for y: {}\n'.format(shape_dict_of_x, shape_of_y))
-
-    # Ensure the order of iteration is consistent.
-    ordered_dict_x = collections.OrderedDict(
-        sorted(x.items(), key=lambda t: t[0]))
 
     queue = feeding_functions._enqueue_data(  # pylint: disable=protected-access
         ordered_dict_x,

@@ -35,7 +35,6 @@ from tensorflow.python.ops import metrics_impl
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 
 
 def _safe_div(numerator, denominator, name):
@@ -73,7 +72,7 @@ def _create_local(name, shape, collections=None, validate_shape=True,
   # Make sure local variables are added to tf.GraphKeys.LOCAL_VARIABLES
   collections = list(collections or [])
   collections += [ops.GraphKeys.LOCAL_VARIABLES]
-  return variables.Variable(
+  return variable_scope.variable(
       initial_value=array_ops.zeros(shape, dtype=dtype),
       name=name,
       trainable=False,
@@ -1339,6 +1338,87 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
         name=name_scope)
 
 
+def sparse_recall_at_top_k(labels,
+                           top_k_predictions,
+                           class_id=None,
+                           weights=None,
+                           metrics_collections=None,
+                           updates_collections=None,
+                           name=None):
+  """Computes recall@k of top-k predictions with respect to sparse labels.
+
+  If `class_id` is specified, we calculate recall by considering only the
+      entries in the batch for which `class_id` is in the label, and computing
+      the fraction of them for which `class_id` is in the top-k `predictions`.
+  If `class_id` is not specified, we'll calculate recall as how often on
+      average a class among the labels of a batch entry is in the top-k
+      `predictions`.
+
+  `sparse_recall_at_top_k` creates two local variables, `true_positive_at_<k>`
+  and `false_negative_at_<k>`, that are used to compute the recall_at_k
+  frequency. This frequency is ultimately returned as `recall_at_<k>`: an
+  idempotent operation that simply divides `true_positive_at_<k>` by total
+  (`true_positive_at_<k>` + `false_negative_at_<k>`).
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `recall_at_<k>`. Set operations applied to `top_k` and `labels` calculate the
+  true positives and false negatives weighted by `weights`. Then `update_op`
+  increments `true_positive_at_<k>` and `false_negative_at_<k>` using these
+  values.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: `int64` `Tensor` or `SparseTensor` with shape
+      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+      target classes for the associated prediction. Commonly, N=1 and `labels`
+      has shape [batch_size, num_labels]. [D1, ... DN] must match
+      `top_k_predictions`. Values should be in range [0, num_classes), where
+      num_classes is the last dimension of `predictions`. Values outside this
+      range always count towards `false_negative_at_<k>`.
+    top_k_predictions: Integer `Tensor` with shape [D1, ... DN, k] where
+      N >= 1. Commonly, N=1 and top_k_predictions has shape [batch size, k].
+      The final dimension contains the indices of top-k labels. [D1, ... DN]
+      must match `labels`.
+    class_id: Integer class ID for which we want binary metrics. This should be
+      in range [0, num_classes), where num_classes is the last dimension of
+      `predictions`. If class_id is outside this range, the method returns NAN.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
+    metrics_collections: An optional list of collections that values should
+      be added to.
+    updates_collections: An optional list of collections that updates should
+      be added to.
+    name: Name of new update operation, and namespace for other dependent ops.
+
+  Returns:
+    recall: Scalar `float64` `Tensor` with the value of `true_positives` divided
+      by the sum of `true_positives` and `false_negatives`.
+    update_op: `Operation` that increments `true_positives` and
+      `false_negatives` variables appropriately, and whose value matches
+      `recall`.
+
+  Raises:
+    ValueError: If `weights` is not `None` and its shape doesn't match
+    `predictions`, or if either `metrics_collections` or `updates_collections`
+    are not a list or tuple.
+  """
+  default_name = _at_k_name('recall', class_id=class_id)
+  with ops.name_scope(name, default_name, (top_k_predictions, labels,
+                                           weights)) as name_scope:
+    return metrics_impl._sparse_recall_at_top_k(  # pylint: disable=protected-access
+        labels=labels,
+        predictions_idx=top_k_predictions,
+        class_id=class_id,
+        weights=weights,
+        metrics_collections=metrics_collections,
+        updates_collections=updates_collections,
+        name=name_scope)
+
+
 def streaming_sparse_average_precision_at_k(predictions,
                                             labels,
                                             k,
@@ -1879,11 +1959,11 @@ def streaming_pearson_correlation(predictions,
         math_ops.multiply(math_ops.sqrt(var_predictions),
                           math_ops.sqrt(var_labels)),
         'pearson_r')
-    with ops.control_dependencies(
-        [update_cov, update_var_predictions, update_var_labels]):
-      update_op = _safe_div(update_cov, math_ops.multiply(
-          math_ops.sqrt(update_var_predictions),
-          math_ops.sqrt(update_var_labels)), 'update_op')
+    update_op = _safe_div(
+        update_cov,
+        math_ops.multiply(math_ops.sqrt(update_var_predictions),
+                          math_ops.sqrt(update_var_labels)),
+        'update_op')
 
   if metrics_collections:
     ops.add_to_collections(metrics_collections, pearson_r)
@@ -2289,6 +2369,7 @@ def _remove_squeezable_dimensions(predictions, labels, weights):
 __all__ = [
     'aggregate_metric_map',
     'aggregate_metrics',
+    'sparse_recall_at_top_k',
     'streaming_accuracy',
     'streaming_auc',
     'streaming_false_negatives',
@@ -2311,7 +2392,9 @@ __all__ = [
     'streaming_root_mean_squared_error',
     'streaming_sensitivity_at_specificity',
     'streaming_sparse_average_precision_at_k',
+    'streaming_sparse_average_precision_at_top_k',
     'streaming_sparse_precision_at_k',
+    'streaming_sparse_precision_at_top_k',
     'streaming_sparse_recall_at_k',
     'streaming_specificity_at_sensitivity',
     'streaming_true_negatives',

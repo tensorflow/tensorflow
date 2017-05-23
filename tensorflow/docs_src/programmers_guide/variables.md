@@ -62,7 +62,7 @@ with tf.device("/job:ps/task:7"):
   v = tf.Variable(...)
 ```
 
-**N.B.** Operations that mutate a variable, such as
+**NOTE** Operations that mutate a variable, such as
 @{tf.Variable.assign} and the parameter
 update operations in a
 @{tf.train.Optimizer} *must* run on
@@ -143,6 +143,11 @@ The constructor adds `save` and `restore` ops to the graph for all, or a
 specified list, of the variables in the graph.  The saver object provides
 methods to run these ops, specifying paths for the checkpoint files to write to
 or read from.
+
+Note that to restore a model checkpoint without a graph one must first import
+the graph from the meta graph file (typical extension is `.meta`). This is
+done with @{tf.train.import_meta_graph}, which in turn returns a `Saver` from
+which one can than perform a `restore`.
 
 ### Checkpoint Files
 

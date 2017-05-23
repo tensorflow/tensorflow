@@ -394,7 +394,7 @@ class _FetchHandler(object):
   # TODO(touts): Make this class also take care of destructuring the feed
   # dict instead of doing it in the callers.
 
-  def __init__(self, graph, fetches, feeds):
+  def __init__(self, graph, fetches, feeds, feed_handles=None):
     """Creates a fetch handler.
 
     Args:
@@ -403,12 +403,15 @@ class _FetchHandler(object):
       fetches: An arbitrary fetch structure: singleton, list, tuple,
         namedtuple, or dict.
       feeds: A feed dict where keys are fully resolved tensor names.
+      feed_handles: A dict from feed names to TensorHandle objects used as
+        direct feeds.
     """
     with graph.as_default():
       self._fetch_mapper = _FetchMapper.for_fetch(fetches)
     self._fetches = []
     self._targets = []
     self._feeds = feeds
+    self._feed_handles = feed_handles or {}
     self._ops = []
     self._fetch_handles = {}
     for fetch in self._fetch_mapper.unique_fetches():
@@ -479,7 +482,12 @@ class _FetchHandler(object):
       else:
         # If the fetch was in the feeds, use the fed value, otherwise
         # use the returned value.
-        value = self._feeds.get(self._fetches[i])
+        if self._fetches[i] in self._feed_handles:
+          # A fetch had a corresponding direct TensorHandle feed. Call eval()
+          # to obtain the Tensor value from the TensorHandle.
+          value = self._feed_handles[self._fetches[i]].eval()
+        else:
+          value = self._feeds.get(self._fetches[i])
         if value is None:
           value = tensor_values[j]
           j += 1
@@ -577,11 +585,21 @@ class BaseSession(SessionInterface):
     except Exception:  # pylint: disable=broad-except
       pass
     if self._session is not None:
+      # We create `status` outside the `try` block because at shutdown
+      # `tf_session` may have been garbage collected, and the creation
+      # of a status object may fail. In that case, we prefer to ignore
+      # the failure and silently leak the session object, since the
+      # program is about to terminate.
+      status = None
       try:
         status = tf_session.TF_NewStatus()
         tf_session.TF_DeleteDeprecatedSession(self._session, status)
+      except AttributeError:
+        # 'NoneType' object has no attribute 'TF_NewStatus'
+        pass
       finally:
-        tf_session.TF_DeleteStatus(status)
+        if status is not None:
+          tf_session.TF_DeleteStatus(status)
       self._session = None
 
   @property
@@ -696,14 +714,14 @@ class BaseSession(SessionInterface):
        # v is the numpy array [10, 20]
        # 'fetches' can be a list.
        v = session.run([a, b])
-       # v a Python list with 2 numpy arrays: the numpy array [10, 20] and the
+       # v is a Python list with 2 numpy arrays: the 1-D array [10, 20] and the
        # 1-D array [1.0, 2.0]
        # 'fetches' can be arbitrary lists, tuples, namedtuple, dicts:
        MyData = collections.namedtuple('MyData', ['a', 'b'])
        v = session.run({'k1': MyData(a, b), 'k2': [b, a]})
        # v is a dict with
-       # v['k1'] is a MyData namedtuple with 'a' the numpy array [10, 20] and
-       # 'b' the numpy array [1.0, 2.0]
+       # v['k1'] is a MyData namedtuple with 'a' (the numpy array [10, 20]) and
+       # 'b' (the numpy array [1.0, 2.0])
        # v['k2'] is a list with the numpy array [1.0, 2.0] and the numpy array
        # [10, 20].
     ```
@@ -914,6 +932,7 @@ class BaseSession(SessionInterface):
     feed_map = {}
 
     # Validate and process feed_dict.
+    feed_handles = {}
     if feed_dict:
       feed_dict = nest.flatten_dict_items(feed_dict)
       for feed, feed_val in feed_dict.items():
@@ -941,8 +960,10 @@ class BaseSession(SessionInterface):
 
           is_tensor_handle_feed = isinstance(subfeed_val,
                                              session_ops.TensorHandle)
+          subfeed_name = compat.as_bytes(subfeed_t.name)
           if is_tensor_handle_feed:
             np_val = subfeed_val.to_numpy_array()
+            feed_handles[subfeed_name] = subfeed_val
           else:
             np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
@@ -954,12 +975,13 @@ class BaseSession(SessionInterface):
                 % (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
           if not self.graph.is_feedable(subfeed_t):
             raise ValueError('Tensor %s may not be fed.' % subfeed_t)
-          subfeed_name = compat.as_bytes(subfeed_t.name)
+
           feed_dict_string[subfeed_name] = np_val
           feed_map[subfeed_name] = (subfeed_t, subfeed_val)
 
     # Create a fetch handler to take care of the structure of fetches.
-    fetch_handler = _FetchHandler(self._graph, fetches, feed_dict_string)
+    fetch_handler = _FetchHandler(
+        self._graph, fetches, feed_dict_string, feed_handles=feed_handles)
 
     # Run request and get response.
     # We need to keep the movers alive for the following _do_run().
@@ -970,12 +992,99 @@ class BaseSession(SessionInterface):
     movers = self._update_with_movers(feed_dict_string, feed_map)
     final_fetches = fetch_handler.fetches()
     final_targets = fetch_handler.targets()
-    if final_fetches or final_targets:
+    # We only want to really perform the run if fetches or targets are provided,
+    # or if the call is a partial run that specifies feeds.
+    if final_fetches or final_targets or (handle and feed_dict_string):
       results = self._do_run(handle, final_targets, final_fetches,
                              feed_dict_string, options, run_metadata)
     else:
       results = []
     return fetch_handler.build_results(self, results)
+
+  def make_callable(self, fetches, feed_list=None):
+    """Returns a Python callable that runs a particular step.
+
+    The returned callable will take `len(feed_list)` arguments whose types
+    must be compatible feed values for the respective elements of `feed_list`.
+    For example, if element `i` of `feed_list` is a `tf.Tensor`, the `i`th
+    argument to the returned callable must be a numpy ndarray (or something
+    convertible to an ndarray) with matching element type and shape. See
+    @{tf.Session.run} for details of the allowable feed key and value types.
+
+    The returned callable will have the same return type as
+    `tf.Session.run(fetches, ...)`. For example, if `fetches` is a `tf.Tensor`,
+    the callable will return a numpy ndarray; if `fetches` is a `tf.Operation`,
+    it will return `None`.
+
+    Args:
+      fetches: A value or list of values to fetch. See @{tf.Session.run}
+        for details of the allowable fetch types.
+      feed_list: (Optional.) A list of `feed_dict` keys. See
+        @{tf.Session.run} for details of the allowable feed key types.
+
+    Returns:
+      A function that when called will execute the step defined by
+      `feed_list` and `fetches` in this session.
+
+    Raises:
+      TypeError: If `fetches` or `feed_list` cannot be interpreted
+        as arguments to @{tf.Session.run}.
+    """
+    if feed_list is not None:
+      if not isinstance(feed_list, (list, tuple)):
+        raise TypeError('`feed_list` must be a list or tuple.')
+      # Delegate any non-empty feed lists to the existing `run()` logic.
+      # TODO(mrry): Refactor the feed handling logic from
+      # `Session._run()` so that we can convert the feeds to a list of
+      # strings here.
+      def _generic_run(*feed_args):
+        feed_dict = {feed: feed_val
+                     for feed, feed_val in zip(feed_list, feed_args)}
+        return self.run(fetches, feed_dict=feed_dict)
+      return _generic_run
+
+    # Ensure any changes to the graph are reflected in the runtime.
+    # Note that we don't need to do this on subsequent calls to the
+    # returned object, because the arguments to `fetches` must already be
+    # in the graph.
+    self._extend_graph()
+
+    # Create a fetch handler to take care of the structure of fetches.
+    fetch_handler = _FetchHandler(self._graph, fetches, {})
+    fetch_list_as_strings = fetch_handler.fetches()
+    target_list_as_strings = fetch_handler.targets()
+
+    if isinstance(fetches, ops.Operation):
+      # Special case for fetching a single operation, because the
+      # function will have no return value.
+      assert not fetch_list_as_strings
+      assert len(target_list_as_strings) == 1
+      def _single_operation_run():
+        with errors.raise_exception_on_not_ok_status() as status:
+          tf_session.TF_Run(self._session, None, {}, [],
+                            target_list_as_strings, status, None)
+      return _single_operation_run
+    elif isinstance(fetches, ops.Tensor):
+      # Special case for fetching a single tensor, because the
+      # function can return the result of `TF_Run()` directly.
+      assert len(fetch_list_as_strings) == 1
+      assert not target_list_as_strings
+      def _single_tensor_run():
+        with errors.raise_exception_on_not_ok_status() as status:
+          results = tf_session.TF_Run(self._session, None, {},
+                                      fetch_list_as_strings, [], status, None)
+        return results[0]
+      return _single_tensor_run
+    else:
+      # In all other cases, we must use `fetch_handler` to build the
+      # results for us.
+      def _fetch_handler_run():
+        with errors.raise_exception_on_not_ok_status() as status:
+          results = tf_session.TF_Run(self._session, None, {},
+                                      fetch_list_as_strings,
+                                      target_list_as_strings, status, None)
+        return fetch_handler.build_results(self, results)
+      return _fetch_handler_run
 
   # Captures the name of a node in an error status.
   _NODEDEF_NAME_RE = re.compile(r'\[\[Node: ([^ ]*?) =')
@@ -1072,17 +1181,16 @@ class BaseSession(SessionInterface):
         tensors_to_delete = self._dead_handles
         self._dead_handles = []
     # Delete the dead tensors.
-    # TODO(yuanbyu): For now we use a sequence of runs to minimize the graph
-    # size and the overhead of graph construction/partitioning.
     if tensors_to_delete:
-      for tensor_handle in tensors_to_delete:
-        feeds = {}
-        fetches = []
+      feeds = {}
+      fetches = []
+      for deleter_key, tensor_handle in enumerate(tensors_to_delete):
         holder, deleter = session_ops._get_handle_deleter(self.graph,
+                                                          deleter_key,
                                                           tensor_handle)
         feeds[holder] = tensor_handle
         fetches.append(deleter)
-        self.run(fetches, feed_dict=feeds)
+      self.run(fetches, feed_dict=feeds)
 
   def _update_with_movers(self, feed_dict, feed_map):
     # If a tensor handle that is fed to a device incompatible placeholder,

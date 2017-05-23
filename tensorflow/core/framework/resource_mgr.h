@@ -202,15 +202,28 @@ class ResourceMgr {
 
 // Makes a resource handle with the specified type for a given container /
 // name.
+ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
+                                  const string& name,
+                                  const TypeIndex& type_index);
+
 template <typename T>
 ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
-                                  const string& name);
+                                  const string& name) {
+  return MakeResourceHandle(ctx, container, name, MakeTypeIndex<T>());
+}
+
+Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
+                                  const string& container, const string& name,
+                                  const TypeIndex& type_index);
+
 template <typename T>
 ResourceHandle MakePerStepResourceHandle(OpKernelContext* ctx,
                                          const string& name);
 
 // Returns a resource handle from a numbered op input.
 ResourceHandle HandleFromInput(OpKernelContext* ctx, int input);
+Status HandleFromInput(OpKernelContext* ctx, StringPiece input,
+                       ResourceHandle* handle);
 
 // Create a resource pointed by a given resource handle.
 template <typename T>
@@ -419,25 +432,6 @@ Status GetResourceFromContext(OpKernelContext* ctx, const string& input_name,
     shared_name = tensor.flat<string>()(1);
   }
   return ctx->resource_manager()->Lookup(container, shared_name, resource);
-}
-
-template <typename T>
-ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
-                                  const string& name) {
-  ResourceHandle result;
-  result.set_device(ctx->device()->attributes().name());
-  string actual_container;
-  if (!container.empty()) {
-    actual_container = container;
-  } else {
-    actual_container = ctx->resource_manager()->default_container();
-  }
-  result.set_container(actual_container);
-  result.set_name(name);
-  auto type_index = MakeTypeIndex<T>();
-  result.set_hash_code(type_index.hash_code());
-  result.set_maybe_type_name(type_index.name());
-  return result;
 }
 
 template <typename T>

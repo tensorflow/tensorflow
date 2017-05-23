@@ -107,7 +107,7 @@ Status ReadStringTensor(io::InputBuffer* buffered_file, size_t num_elements,
 }
 
 char* GetBackingBuffer(const Tensor& val) {
-  CHECK(DataTypeCanUseMemcpy(val.dtype()));
+  CHECK(DataTypeCanUseMemcpy(val.dtype())) << val.dtype();
   return const_cast<char*>(val.tensor_data().data());
 }
 
@@ -249,8 +249,10 @@ BundleWriter::BundleWriter(Env* env, StringPiece prefix)
                                      random::New64())),
       out_(nullptr),
       size_(0) {
-  status_ =
-      env_->CreateDir(io::Dirname(prefix_).ToString());  // Ignores errors.
+  status_ = env_->CreateDir(io::Dirname(prefix_).ToString());
+  if (!status_.ok() && !errors::IsAlreadyExists(status_)) {
+    return;
+  }
   const string filename = DataFilename(prefix_, 0, 1);
   std::unique_ptr<WritableFile> wrapper;
   status_ = env_->NewWritableFile(tmp_data_path_, &wrapper);
@@ -261,12 +263,10 @@ BundleWriter::BundleWriter(Env* env, StringPiece prefix)
   VLOG(1) << "Writing to file " << tmp_data_path_;
 }
 
-BundleWriter::~BundleWriter() { CHECK(out_ == nullptr); }
-
 Status BundleWriter::Add(StringPiece key, const Tensor& val) {
+  if (!status_.ok()) return status_;
   CHECK_NE(key, kHeaderEntryKey);
   const string key_string = key.ToString();
-  if (!status_.ok()) return status_;
   if (entries_.find(key_string) != entries_.end()) {
     status_ = errors::InvalidArgument("Adding duplicate key: ", key);
     return status_;
@@ -301,13 +301,13 @@ Status BundleWriter::AddSlice(StringPiece full_tensor_key,
                               const TensorShape& full_tensor_shape,
                               const TensorSlice& slice_spec,
                               const Tensor& slice_tensor) {
+  if (!status_.ok()) return status_;
+  CHECK_NE(full_tensor_key, kHeaderEntryKey);
+
   // If just a singleton full slice, use the regular Add() to be more efficient.
   if (IsFullSlice(slice_spec, full_tensor_shape)) {
     return Add(full_tensor_key, slice_tensor);
   }
-
-  CHECK_NE(full_tensor_key, kHeaderEntryKey);
-  if (!status_.ok()) return status_;
 
   // Inserts/updates the full tensor's metadata entry.
   //
@@ -433,7 +433,8 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
   // Process header.
   {
     iter->Seek(kHeaderEntryKey);
-    CHECK(iter->Valid());
+    CHECK(iter->Valid()) << "File: " << filename
+                         << ", iterator status: " << iter->status();
     BundleHeaderProto header;
     TF_CHECK_OK(ParseEntryProto(iter->key(), iter->value(), &header));
     CHECK_GE(header.num_shards(), 0);
@@ -515,7 +516,8 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   // Merges all metadata tables.
   // TODO(zhifengc): KeyValue sorter if it becomes too big.
   MergeState merge;
-  env->CreateDir(io::Dirname(merged_prefix).ToString()).IgnoreError();
+  Status status = env->CreateDir(io::Dirname(merged_prefix).ToString());
+  if (!status.ok() && !errors::IsAlreadyExists(status)) return status;
   for (int i = 0; i < prefixes.size(); ++i) {
     TF_RETURN_IF_ERROR(MergeOneBundle(env, prefixes[i], &merge));
   }
@@ -533,7 +535,6 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   std::unique_ptr<WritableFile> merged_metadata;
   TF_RETURN_IF_ERROR(
       env->NewWritableFile(MetaFilename(merged_prefix), &merged_metadata));
-  Status status;
   {
     table::TableBuilder builder(table::Options(), merged_metadata.get());
     // Header entry.
@@ -583,7 +584,8 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
 
   // Reads "num_shards_" from the first entry.
   iter_->Seek(kHeaderEntryKey);
-  CHECK(iter_->Valid());
+  CHECK(iter_->Valid()) << "File: " << filename
+                        << ", iterator status: " << iter_->status();
   BundleHeaderProto header;
   TF_CHECK_OK(ParseEntryProto(iter_->key(), iter_->value(), &header));
   num_shards_ = header.num_shards();
@@ -698,6 +700,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
 }
 
 Status BundleReader::Lookup(StringPiece key, Tensor* val) {
+  CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
 
@@ -710,8 +713,21 @@ Status BundleReader::Lookup(StringPiece key, Tensor* val) {
   }
 }
 
+Status BundleReader::LookupTensorSlices(StringPiece key,
+                                        std::vector<TensorSlice>* slices) {
+  slices->clear();
+  BundleEntryProto entry;
+  TF_RETURN_IF_ERROR(GetBundleEntryProto(key, &entry));
+  slices->reserve(entry.slices_size());
+  for (const auto& slice : entry.slices()) {
+    slices->emplace_back(slice);
+  }
+  return Status::OK();
+}
+
 Status BundleReader::LookupSlice(StringPiece full_tensor_key,
                                  const TensorSlice& slice_spec, Tensor* val) {
+  CHECK(val != nullptr);
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(GetBundleEntryProto(full_tensor_key, &entry));
   return GetSliceValue(full_tensor_key, entry, slice_spec, val);

@@ -1,58 +1,42 @@
 # Description:
 # TensorBoard, a dashboard for investigating TensorFlow
 
-package(
-    default_visibility = ["//tensorflow:internal"],
-    features = [
-        "-layering_check",
-        "-parse_headers",
-    ],
-)
+package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-
-filegroup(
-    name = "frontend",
-    srcs = [
-        "TAG",
-        "dist/bazel-html-imports.html",
-        "dist/index.html",
-        "dist/tf-tensorboard.html",
-        "//tensorflow/tensorboard/bower",
-        "//tensorflow/tensorboard/lib:all_files",
-    ],
-)
-
 py_binary(
     name = "tensorboard",
-    srcs = [
-        "__main__.py",
-        "tensorboard.py",
-    ],
-    data = [":frontend"],
+    srcs = ["tensorboard.py"],
+    data = [":assets"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:platform",
         "//tensorflow/tensorboard/backend:application",
         "//tensorflow/tensorboard/backend/event_processing:event_file_inspector",
+        "//tensorflow/tensorboard/plugins/projector:projector_plugin",
+        "//tensorflow/tensorboard/plugins/text:text_plugin",
         "@org_pocoo_werkzeug//:werkzeug",
+    ],
+)
+
+filegroup(
+    name = "assets",
+    srcs = [
+        "TAG",
+        "//tensorflow/tensorboard/components:index.html",
     ],
 )
 
 filegroup(
     name = "all_files",
     srcs = glob(
-        ["**/*"],
+        ["**"],
         exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "**/node_modules/**",
-            "**/typings/**",
+            "METADATA",
+            "OWNERS",
+            "tensorboard.google.bzl",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
+    tags = ["notsan"],
 )

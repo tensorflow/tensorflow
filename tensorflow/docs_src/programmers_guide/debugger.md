@@ -24,7 +24,7 @@ This code trains a simple NN for MNIST digit image recognition. Notice that the
 accuracy increases slightly after the first training step, but then gets stuck
 at a low (near-chance) level:
 
-![debug_mnist training fails](../images/tfdbg_screenshot_mnist_symptom.png)
+![debug_mnist training fails](https://www.tensorflow.org/images/tfdbg_screenshot_mnist_symptom.png)
 
 Scratching your head, you suspect that certain nodes in the training graph
 generated bad numeric values such as `inf`s and `nan`s. The computation-graph
@@ -89,7 +89,7 @@ The debug wrapper session will prompt you when it is about to execute the first
 `run()` call, with information regarding the fetched tensor and feed
 dictionaries displayed on the screen.
 
-![tfdbg run-start UI](../images/tfdbg_screenshot_run_start.png)
+![tfdbg run-start UI](https://www.tensorflow.org/images/tfdbg_screenshot_run_start.png)
 
 This is what we refer to as the *run-start UI*. If the screen size is
 too small to display the content of the message in its entirety, you can resize
@@ -108,7 +108,7 @@ intermediate tensors from the run. (These tensors can also be obtained by
 running the command `lt` after you executed `run`.) This is called the
 **run-end UI**:
 
-![tfdbg run-end UI: accuracy](../images/tfdbg_screenshot_run_end_accuracy.png)
+![tfdbg run-end UI: accuracy](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_accuracy.png)
 
 ### tfdbg CLI Frequently-Used Commands
 
@@ -130,6 +130,8 @@ Try the following commands at the `tfdbg>` prompt (referencing the code at
 | `lo -r hidden/Relu:0` | List the recipients of the output of the node `hidden/Relu`, recursively—i.e., the output recipient tree. |
 | `lt -n softmax.*` | List all dumped tensors whose names match the regular-expression pattern `softmax.*`. |
 | `lt -t MatMul` | List all dumped tensors whose node type is `MatMul`. |
+| `ls` | List all Python source files responsible for constructing the nodes (and tensors) in the current graph. |
+| `ls -n softmax.*` | List Python source files responsible for constructing the nodes whose names match the pattern `softmax.*`. |
 | `ps /path/to/source.py` | Print the Python source file source.py, with the lines annotated with the ops created at each of them, respectively. |
 | `ps -t /path/to/source.py` | Same as the command above, but perform annotation using dumped Tensors, instead of ops. |
 | `ps -b 30 /path/to/source.py` | Annotate source.py beginning at line 30. |
@@ -179,7 +181,7 @@ screen with a red-colored title line indicating **tfdbg** stopped immediately
 after a `run()` call generated intermediate tensors that passed the specified
 filter `has_inf_or_nan`:
 
-![tfdbg run-end UI: infs and nans](../images/tfdbg_screenshot_run_end_inf_nan.png)
+![tfdbg run-end UI: infs and nans](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_inf_nan.png)
 
 As the screen display indicates, the `has_inf_or_nan` filter is first passed
 during the fourth `run()` call: an [Adam optimizer](https://arxiv.org/abs/1412.6980)
@@ -218,7 +220,7 @@ item on the top or entering the equivalent command:
 tfdbg> ni cross_entropy/Log
 ```
 
-![tfdbg run-end UI: infs and nans](../images/tfdbg_screenshot_run_end_node_info.png)
+![tfdbg run-end UI: infs and nans](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_node_info.png)
 
 You can see that this node has the op type `Log`
 and that its input is the node `softmax/Softmax`. Run the following command to
@@ -246,18 +248,22 @@ tfdbg> ni -t cross_entropy/Log
 The `-t` flag is used by default, if you use the clickable "node_info" menu item
 at the top of the screen.
 
-From the traceback, you can see that the op is constructed at line 109 of
+From the traceback, you can see that the op is constructed around lines 105-106
+of
 [`debug_mnist.py`](https://www.tensorflow.org/code/tensorflow/python/debug/examples/debug_mnist.py):
 
 ```python
 diff = y_ * tf.log(y)
 ```
 
-TIP: tfdbg lets you view a Python source file with its lines annotated with
+***tfdbg** has a feature that makes it ease to trace Tensors and ops back to
+lines in Python source files. It can annotate lines of a Python file with
 the ops or Tensors created by them. To use this feature,
 simply click the underlined line numbers in the stack trace output of the
 `ni -t <op_name>` commands, or use the `ps` (or `print_source`) command such as:
-`ps /path/to/source.py`
+`ps /path/to/source.py`. See the screenshot below for an example of `ps` output:
+
+![tfdbg run-end UI: annotated Python source file](https://www.tensorflow.org/images/tfdbg_screenshot_run_end_annotated_source.png)
 
 Apply a value clipping on the input to @{tf.log}
 to resolve this problem:
@@ -349,6 +355,9 @@ for more details.
 
 *   Navigation through command history using the Up and Down arrow keys.
     Prefix-based navigation is also supported.
+*   Navigation through history of screen outputs using the `prev` and `next`
+    commands or by clicking the underlined `<--` and `-->` links near the top
+    of the screen.
 *   Tab completion of commands and some command arguments.
 *   Write screen output to file by using bash-style redirection. For example:
 
@@ -399,6 +408,58 @@ python -m tensorflow.python.debug.examples.debug_errors \
 python -m tensorflow.python.debug.examples.debug_errors \
     --error uninitialized_variable --debug
 ```
+
+**Q**: _How can I let my tfdbg-wrapped Sessions or Hooks run the debug mode
+only from the main thread?_
+
+**A**:
+This is a common use case, in which the `Session` object is used from multiple
+threads concurrently. Typically, the child threads take care of background tasks
+such as running enqueue operations. Oftentimes, you want to debug only the main
+thread (or less frequently, only one of the child threads). You can use the
+`thread_name_filter` keyword argument of `LocalCLIDebugWrapperSession` to
+achieve this type of thread-selective debugging. For example, if you would like
+to debug from only the main thread, you can do:
+
+```python
+sess = tf_debug.LocalCLIDebugWrapperSession(sess, thread_name_filter="MainThread$")
+```
+
+The above example relies on the fact that main threads in Python have the
+default name `MainThread`.
+
+**Q**: _The model I am debugging is very large. The data dumped by tfdbg
+fills up the free space of my disk. What can I do?_
+
+**A**:
+For large models, i.e., models with many intermediate tensors, large sizes in
+individual intermediate tensors and/or many iterations in any `tf.while_loop`s
+that the graph contains, this kind of disk space issue can happen.
+
+There are three possible workarounds or solutions:
+
+1. The constructors of `LocalCLIDebugWrapperSession` and `LocalCLIDebugHook`
+   provide a keyword argument, `dump_root`, with which you can specify the path
+   to which **tfdbg** dumps the debug data. For example:
+
+   ``` python
+   # For LocalCLIDebugWrapperSession
+   sess = tf_debug.LocalCLIDebugWrapperSession(dump_root="/with/lots/of/space")
+
+   # For LocalCLIDebugHook
+   hooks = [tf_debug.LocalCLIDebugHook(dump_root="/with/lots/of/space")]
+   ```
+   Make sure that the directory pointed to by dump_root is empty or nonexistent.
+   **tfdbg** cleans up the dump directories before exiting.
+2. Reduce the batch size used during the runs.
+3. Use the filtering options of **tfdbg**'s `run` command to watch only specific
+   nodes in the graph. For example:
+
+   ```
+   tfdbg> run --node_name_filter .*hidden.*
+   tfdbg> run --op_type_filter Variable.*
+   tfdbg> run --tensor_dtype_filter int.*
+   ```
 
 **Q**: _Why can't I select text in the tfdbg CLI?_
 

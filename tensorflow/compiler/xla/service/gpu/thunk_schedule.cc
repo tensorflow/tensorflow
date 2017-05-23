@@ -79,7 +79,7 @@ ThunkSchedule::ThunkSchedule(
 
 void ThunkSchedule::RemoveRedundantDependencyEdges() {
   std::unordered_map<const Thunk*, int> thunk_to_total_order;
-  for (auto i = 0; i < thunk_total_order_.size(); ++i) {
+  for (int i = 0; i < thunk_total_order_.size(); ++i) {
     InsertOrDie(&thunk_to_total_order, thunk_total_order_[i], i);
   }
 

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib import metrics
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
@@ -40,6 +41,13 @@ class RNNKeys(object):
   STATE_PREFIX = 'rnn_cell_state'
 
 
+class PredictionType(object):
+  """Enum-like values for the type of prediction that the model makes.
+  """
+  SINGLE_VALUE = 1
+  MULTIPLE_VALUE = 2
+
+
 _CELL_TYPES = {'basic_rnn': contrib_rnn.BasicRNNCell,
                'lstm': contrib_rnn.LSTMCell,
                'gru': contrib_rnn.GRUCell,}
@@ -49,8 +57,8 @@ def _get_single_cell(cell_type, num_units):
   """Constructs and return a single `RNNCell`.
 
   Args:
-    cell_type: Either a string identifying the `RNNCell` type, a subclass of
-      `RNNCell` or an instance of an `RNNCell`.
+    cell_type: Either a string identifying the `RNNCell` type or a subclass of
+      `RNNCell`.
     num_units: The number of units in the `RNNCell`.
   Returns:
     An initialized `RNNCell`.
@@ -58,17 +66,10 @@ def _get_single_cell(cell_type, num_units):
     ValueError: `cell_type` is an invalid `RNNCell` name.
     TypeError: `cell_type` is not a string or a subclass of `RNNCell`.
   """
-  if isinstance(cell_type, contrib_rnn.RNNCell):
-    return cell_type
-  if isinstance(cell_type, str):
-    cell_type = _CELL_TYPES.get(cell_type)
-    if cell_type is None:
-      raise ValueError('The supported cell types are {}; got {}'.format(
-          list(_CELL_TYPES.keys()), cell_type))
-  if not issubclass(cell_type, contrib_rnn.RNNCell):
-    raise TypeError(
-        'cell_type must be a subclass of RNNCell or one of {}.'.format(
-            list(_CELL_TYPES.keys())))
+  cell_type = _CELL_TYPES.get(cell_type, cell_type)
+  if not cell_type or not issubclass(cell_type, contrib_rnn.RNNCell):
+    raise ValueError('The supported cell types are {}; got {}'.format(
+        list(_CELL_TYPES.keys()), cell_type))
   return cell_type(num_units=num_units)
 
 
@@ -82,8 +83,8 @@ def construct_rnn_cell(num_units, cell_type='basic_rnn',
   Args:
     num_units: A single `int` or a list/tuple of `int`s. The size of the
       `RNNCell`s.
-    cell_type: A string identifying the `RNNCell` type, a subclass of
-      `RNNCell` or an instance of an `RNNCell`.
+    cell_type: A string identifying the `RNNCell` type or a subclass of
+      `RNNCell`.
     dropout_keep_probabilities: a list of dropout probabilities or `None`. If a
       list is given, it must have length `len(cell_type) + 1`.
 
@@ -118,17 +119,59 @@ def apply_dropout(cells, dropout_keep_probabilities, random_seed=None):
   """
   if len(dropout_keep_probabilities) != len(cells) + 1:
     raise ValueError(
-        'The number of dropout probabilites must be one greater than the '
+        'The number of dropout probabilities must be one greater than the '
         'number of cells. Got {} cells and {} dropout probabilities.'.format(
             len(cells), len(dropout_keep_probabilities)))
   wrapped_cells = [
-      contrib_rnn.DropoutWrapper(cell, prob, 1.0, random_seed)
+      contrib_rnn.DropoutWrapper(cell, prob, 1.0, seed=random_seed)
       for cell, prob in zip(cells[:-1], dropout_keep_probabilities[:-2])
   ]
   wrapped_cells.append(
       contrib_rnn.DropoutWrapper(cells[-1], dropout_keep_probabilities[-2],
                                  dropout_keep_probabilities[-1]))
   return wrapped_cells
+
+
+def get_eval_metric_ops(problem_type, prediction_type, sequence_length,
+                        prediction_dict, labels):
+  """Returns eval metric ops for given `problem_type` and `prediction_type`.
+
+  Args:
+    problem_type: `ProblemType.CLASSIFICATION` or
+      `ProblemType.LINEAR_REGRESSION`.
+    prediction_type: `PredictionType.SINGLE_VALUE` or
+      `PredictionType.MULTIPLE_VALUE`.
+    sequence_length: A `Tensor` with shape `[batch_size]` and dtype `int32`
+      containing the length of each sequence in the batch. If `None`, sequences
+      are assumed to be unpadded.
+    prediction_dict: A dict of prediction tensors.
+    labels: The label `Tensor`.
+
+  Returns:
+    A `dict` mapping strings to the result of calling the metric_fn.
+  """
+  eval_metric_ops = {}
+  if problem_type == constants.ProblemType.CLASSIFICATION:
+    # Multi value classification
+    if prediction_type == PredictionType.MULTIPLE_VALUE:
+      mask_predictions, mask_labels = mask_activations_and_labels(
+          prediction_dict[prediction_key.PredictionKey.CLASSES], labels,
+          sequence_length)
+      eval_metric_ops['accuracy'] = metrics.streaming_accuracy(
+          predictions=mask_predictions, labels=mask_labels)
+    # Single value classification
+    elif prediction_type == PredictionType.SINGLE_VALUE:
+      eval_metric_ops['accuracy'] = metrics.streaming_accuracy(
+          predictions=prediction_dict[prediction_key.PredictionKey.CLASSES],
+          labels=labels)
+  elif problem_type == constants.ProblemType.LINEAR_REGRESSION:
+    # Multi value regression
+    if prediction_type == PredictionType.MULTIPLE_VALUE:
+      pass
+    # Single value regression
+    elif prediction_type == PredictionType.SINGLE_VALUE:
+      pass
+  return eval_metric_ops
 
 
 def select_last_activations(activations, sequence_lengths):

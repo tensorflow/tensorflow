@@ -106,9 +106,7 @@ bool ComputationBuilder::MakeWindow(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     tensorflow::gtl::ArraySlice<int64> lhs_dilation,
     tensorflow::gtl::ArraySlice<int64> rhs_dilation, Window* window) {
-  const auto verify_size = [&](const tensorflow::gtl::ArraySlice<
-                                   int64>::size_type x,
-                               const char* x_name) {
+  const auto verify_size = [&](const size_t x, const char* x_name) {
     if (x == 0 || x == window_dimensions.size()) {
       return true;
     } else {
@@ -981,19 +979,23 @@ ComputationDataHandle ComputationBuilder::IsFinite(
 ComputationDataHandle ComputationBuilder::Transpose(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> permutation) {
-  if (!first_error_.ok()) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
   }
 
-  StatusOr<std::unique_ptr<Shape>> shape = GetShape(operand);
-  if (!shape.ok()) {
-    // Just early return with the existing error status.
-    first_error_ = shape.status();
-    return ComputationDataHandle();
+  OpRequest op_request;
+  *op_request.mutable_computation() = computation_.handle();
+  TransposeRequest* request = op_request.mutable_transpose_request();
+  *request->mutable_operand() = operand;
+  for (int64 dimension : permutation) {
+    request->add_dimensions(dimension);
   }
-  return Reshape(operand, permutation,
-                 Permute(InversePermutation(permutation),
-                         AsInt64Slice(shape.ValueOrDie()->dimensions())));
+  AddOpMetadata(&op_request);
+  OpResponse response;
+
+  VLOG(2) << "making transpose request";
+  Status s = client_->stub()->Op(&op_request, &response);
+  return ParseOpResponse(s, &response);
 }
 
 ComputationDataHandle ComputationBuilder::Rev(
@@ -1227,8 +1229,7 @@ StatusOr<bool> ComputationBuilder::IsConstant(
   VLOG(2) << "done with request";
 
   if (!s.ok()) {
-    NoteError(s);
-    return first_error_;
+    return s;
   }
   return response.is_constant();
 }
@@ -1253,8 +1254,7 @@ StatusOr<std::unique_ptr<GlobalData>> ComputationBuilder::ComputeConstant(
   VLOG(2) << "done with request";
 
   if (!s.ok()) {
-    NoteError(s);
-    return first_error_;
+    return s;
   }
 
   TF_RET_CHECK(response.output().handle() != 0);

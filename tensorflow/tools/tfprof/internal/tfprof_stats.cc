@@ -19,6 +19,8 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_timeline.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -56,37 +58,52 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
   printf("Preparing Views...\n");
   scope_view_ = std::unique_ptr<TFScope>(new TFScope(ckpt_reader_.get()));
   graph_view_ = std::unique_ptr<TFGraph>(new TFGraph(ckpt_reader_.get()));
+  code_view_ = std::unique_ptr<TFCode>(new TFCode());
+
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     scope_view_->AddNode(&it->second);
     graph_view_->AddNode(&it->second);
+    code_view_->AddNode(&it->second);
   }
   scope_view_->Build();
   graph_view_->Build();
+  code_view_->Build();
 }
 
-const TFProfNode& TFStats::PrintGraph(const string& cmd, const Options& opts) {
+const TFGraphNodeProto& TFStats::PrintGraph(const string& cmd,
+                                            const Options& opts) {
   if (cmd == kCmds[0]) {
     return scope_view_->Show(opts);
   } else if (cmd == kCmds[1]) {
     return graph_view_->Show(opts);
   } else {
     fprintf(stderr, "Unknown command: %s\n", cmd.c_str());
-    return empty_node_;
+    return empty_graph_node_;
   }
+}
+
+const TFCodeNodeProto& TFStats::PrintCode(const Options& opts) {
+  return code_view_->Show(opts);
 }
 
 void TFStats::ParseGraph() {
   for (const NodeDef& node : graph_->node()) {
     CHECK(nodes_map_.find(node.name()) == nodes_map_.end());
-    nodes_map_[node.name()] = TFNode(&node);
+    nodes_map_[node.name()] = TFGraphNode(&node);
   }
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     const NodeDef* node_def = it->second.node_def();
     for (string node_input : node_def->input()) {
+      int output_idx = 0;
       // input name format can be: "^node:src_output"
       auto prefix_pos = node_input.find(":");
       if (prefix_pos != node_input.npos) {
-        node_input.substr(0, prefix_pos);
+        std::vector<string> input_parts = str_util::Split(node_input, ":");
+        CHECK(input_parts.size() == 2)
+            << "Unknown NodeDef.input format: " << node_input;
+        node_input = input_parts[0];
+        CHECK(strings::safe_strto32(input_parts[1], &output_idx))
+            << "Failed to parse integer: " << output_idx;
       }
       if (node_input.substr(0, 1) == "^") {
         node_input = node_input.substr(1);
@@ -95,7 +112,7 @@ void TFStats::ParseGraph() {
       if (input_node == nodes_map_.end()) {
         continue;
       }
-      it->second.AddInput(&input_node->second);
+      it->second.AddInput(&input_node->second, output_idx);
     }
   }
 }
@@ -109,6 +126,9 @@ void TFStats::ParseOpLog() {
     }
     if (entry.float_ops()) {
       node->second.AddFloatOps(entry.float_ops());
+    }
+    if (entry.has_code_def()) {
+      node->second.AddCode(&entry.code_def());
     }
   }
 }

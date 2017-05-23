@@ -1,4 +1,3 @@
-
 # Getting Started With TensorFlow
 
 This guide gets you started programming in TensorFlow. Before using this guide,
@@ -50,7 +49,6 @@ The canonical import statement for TensorFlow programs is as follows:
 
 ```python
 import tensorflow as tf
-
 ```
 This gives Python access to all of TensorFlow's classes, methods, and symbols.
 Most of the documentation assumes you have already done this.
@@ -70,12 +68,15 @@ or more tensors as inputs and produces a tensor as an output. One type of node
 is a constant. Like all TensorFlow constants, it takes no inputs, and it outputs
 a value it stores internally. We can create two floating point Tensors `node1`
 and `node2` as follows:
+
 ```python
-node1 = tf.constant(3.0, tf.float32)
+node1 = tf.constant(3.0, dtype=tf.float32)
 node2 = tf.constant(4.0) # also tf.float32 implicitly
 print(node1, node2)
 ```
+
 The final print statement produces
+
 ```
 Tensor("Const:0", shape=(), dtype=float32) Tensor("Const_1:0", shape=(), dtype=float32)
 ```
@@ -94,7 +95,9 @@ running the computational graph in a session as follows:
 sess = tf.Session()
 print(sess.run([node1, node2]))
 ```
+
 we see the expected values of 3.0 and 4.0:
+
 ```
 [3.0, 4.0]
 ```
@@ -108,9 +111,11 @@ node3 = tf.add(node1, node2)
 print("node3: ", node3)
 print("sess.run(node3): ",sess.run(node3))
 ```
+
 The last two print statements produce
+
 ```
-node3:  Tensor("Add_2:0", shape=(), dtype=float32)
+node3:  Tensor("Add:0", shape=(), dtype=float32)
 sess.run(node3):  7.0
 ```
 
@@ -118,7 +123,7 @@ TensorFlow provides a utility called TensorBoard that can display a picture of
 the computational graph. Here is a screenshot showing how TensorBoard
 visualizes the graph:
 
-![TensorBoard screenshot](../images/getting_started_add.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_add.png)
 
 As it stands, this graph is not especially interesting because it always
 produces a constant result. A graph can be parameterized to accept external
@@ -141,13 +146,15 @@ print(sess.run(adder_node, {a: 3, b:4.5}))
 print(sess.run(adder_node, {a: [1,3], b: [2, 4]}))
 ```
 resulting in the output
+
 ```
 7.5
 [ 3.  7.]
 ```
+
 In TensorBoard, the graph looks like this:
 
-![TensorBoard screenshot](../images/getting_started_adder.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_adder.png)
 
 We can make the computational graph more complex by adding another operation.
 For example,
@@ -163,7 +170,7 @@ produces the output
 
 The preceding computational graph would look as follows in TensorBoard:
 
-![TensorBoard screenshot](../images/getting_started_triple.png)
+![TensorBoard screenshot](https://www.tensorflow.org/images/getting_started_triple.png)
 
 In machine learning we will typically want a model that can take arbitrary
 inputs, such as the one above.  To make the model trainable, we need to be able
@@ -173,8 +180,8 @@ initial value:
 
 
 ```python
-W = tf.Variable([.3], tf.float32)
-b = tf.Variable([-.3], tf.float32)
+W = tf.Variable([.3], dtype=tf.float32)
+b = tf.Variable([-.3], dtype=tf.float32)
 x = tf.placeholder(tf.float32)
 linear_model = W * x + b
 ```
@@ -294,8 +301,8 @@ import numpy as np
 import tensorflow as tf
 
 # Model parameters
-W = tf.Variable([.3], tf.float32)
-b = tf.Variable([-.3], tf.float32)
+W = tf.Variable([.3], dtype=tf.float32)
+b = tf.Variable([-.3], dtype=tf.float32)
 # Model input and output
 x = tf.placeholder(tf.float32)
 linear_model = W * x + b
@@ -316,7 +323,7 @@ for i in range(1000):
   sess.run(train, {x:x_train, y:y_train})
 
 # evaluate training accuracy
-curr_W, curr_b, curr_loss  = sess.run([W, b, loss], {x:x_train, y:y_train})
+curr_W, curr_b, curr_loss = sess.run([W, b, loss], {x:x_train, y:y_train})
 print("W: %s b: %s loss: %s"%(curr_W, curr_b, curr_loss))
 ```
 When run, it produces
@@ -324,8 +331,12 @@ When run, it produces
 W: [-0.9999969] b: [ 0.99999082] loss: 5.69997e-11
 ```
 
+Notice that the loss is a very small number (close to zero). If you run this
+program your loss will not be exactly the same, because the model is initialized
+with random values.
+
 This more complicated program can still be visualized in TensorBoard
-![TensorBoard final model visualization](../images/getting_started_final.png)
+![TensorBoard final model visualization](https://www.tensorflow.org/images/getting_started_final.png)
 
 ## `tf.contrib.learn`
 
@@ -361,25 +372,36 @@ features = [tf.contrib.layers.real_valued_column("x", dimension=1)]
 estimator = tf.contrib.learn.LinearRegressor(feature_columns=features)
 
 # TensorFlow provides many helper methods to read and set up data sets.
-# Here we use `numpy_input_fn`. We have to tell the function how many batches
+# Here we use two data sets: one for training and one for evaluation
+# We have to tell the function how many batches
 # of data (num_epochs) we want and how big each batch should be.
-x = np.array([1., 2., 3., 4.])
-y = np.array([0., -1., -2., -3.])
-input_fn = tf.contrib.learn.io.numpy_input_fn({"x":x}, y, batch_size=4,
+x_train = np.array([1., 2., 3., 4.])
+y_train = np.array([0., -1., -2., -3.])
+x_eval = np.array([2., 5., 8., 1.])
+y_eval = np.array([-1.01, -4.1, -7, 0.])
+input_fn = tf.contrib.learn.io.numpy_input_fn({"x":x_train}, y_train,
+                                              batch_size=4,
                                               num_epochs=1000)
+eval_input_fn = tf.contrib.learn.io.numpy_input_fn(
+    {"x":x_eval}, y_eval, batch_size=4, num_epochs=1000)
 
-# We can invoke 1000 training steps by invoking the `fit` method and passing the
+# We can invoke 1000 training steps by invoking the  method and passing the
 # training data set.
 estimator.fit(input_fn=input_fn, steps=1000)
 
-# Here we evaluate how well our model did. In a real example, we would want
-# to use a separate validation and testing data set to avoid overfitting.
-print(estimator.evaluate(input_fn=input_fn))
+# Here we evaluate how well our model did.
+train_loss = estimator.evaluate(input_fn=input_fn)
+eval_loss = estimator.evaluate(input_fn=eval_input_fn)
+print("train loss: %r"% train_loss)
+print("eval loss: %r"% eval_loss)
 ```
 When run, it produces
 ```
-    {'global_step': 1000, 'loss': 1.9650059e-11}
+    train loss: {'global_step': 1000, 'loss': 4.3049088e-08}
+    eval loss: {'global_step': 1000, 'loss': 0.0025487561}
 ```
+Notice how our eval data has a higher loss, but it is still close to zero.
+That means we are learning properly.
 
 ### A custom model
 
@@ -421,19 +443,25 @@ def model(features, labels, mode):
       train_op=train)
 
 estimator = tf.contrib.learn.Estimator(model_fn=model)
-# define our data set
-x = np.array([1., 2., 3., 4.])
-y = np.array([0., -1., -2., -3.])
-input_fn = tf.contrib.learn.io.numpy_input_fn({"x": x}, y, 4, num_epochs=1000)
+# define our data sets
+x_train = np.array([1., 2., 3., 4.])
+y_train = np.array([0., -1., -2., -3.])
+x_eval = np.array([2., 5., 8., 1.])
+y_eval = np.array([-1.01, -4.1, -7, 0.])
+input_fn = tf.contrib.learn.io.numpy_input_fn({"x": x_train}, y_train, 4, num_epochs=1000)
 
 # train
 estimator.fit(input_fn=input_fn, steps=1000)
-# evaluate our model
-print(estimator.evaluate(input_fn=input_fn, steps=10))
+# Here we evaluate how well our model did. 
+train_loss = estimator.evaluate(input_fn=input_fn)
+eval_loss = estimator.evaluate(input_fn=eval_input_fn)
+print("train loss: %r"% train_loss)
+print("eval loss: %r"% eval_loss)
 ```
 When run, it produces
-```python
-{'loss': 5.9819476e-11, 'global_step': 1000}
+```
+train loss: {'global_step': 1000, 'loss': 4.9380226e-11}
+eval loss: {'global_step': 1000, 'loss': 0.01010081}
 ```
 
 Notice how the contents of the custom `model()` function are very similar

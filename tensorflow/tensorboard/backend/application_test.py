@@ -27,6 +27,7 @@ import json
 import numbers
 import os
 import shutil
+import socket
 import tempfile
 import threading
 
@@ -44,8 +45,47 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.platform import test
 from tensorflow.python.summary.writer import writer as writer_lib
+from tensorflow.tensorboard import tensorboard
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
+
+
+class FakePlugin(base_plugin.TBPlugin):
+  """A plugin with no functionality."""
+
+  def __init__(self, plugin_name, is_active_value, routes_mapping):
+    """Constructs a fake plugin.
+
+    Args:
+      plugin_name: The name of this plugin.
+      is_active_value: Whether the plugin is active.
+      routes_mapping: A dictionary mapping from route (string URL path) to the
+        method called when a user issues a request to that route.
+    """
+    self.plugin_name = plugin_name
+    self._is_active_value = is_active_value
+    self._routes_mapping = routes_mapping
+
+  def get_plugin_apps(self, multiplexer, logdir):
+    """Returns a mapping from routes to handlers offered by this plugin.
+
+    Args:
+      multiplexer: The event multiplexer.
+      logdir: The path to the directory containing logs.
+
+    Returns:
+      A dictionary mapping from routes to handlers offered by this plugin.
+    """
+    return self._routes_mapping
+
+  def is_active(self):
+    """Returns whether this plugin is active.
+
+    Returns:
+      A boolean. Whether this plugin is active.
+    """
+    return self._is_active_value
 
 
 class TensorboardServerTest(test.TestCase):
@@ -59,11 +99,19 @@ class TensorboardServerTest(test.TestCase):
     multiplexer = event_multiplexer.EventMultiplexer(
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
-    plugins = {}
+    plugins = [
+        FakePlugin(plugin_name='foo', is_active_value=True, routes_mapping={}),
+        FakePlugin(plugin_name='bar', is_active_value=False, routes_mapping={})
+    ]
     app = application.TensorBoardWSGIApp(
         self.temp_dir, plugins, multiplexer, reload_interval=0)
-    self._server = serving.BaseWSGIServer('localhost', 0, app)
-    # 0 to pick an unused port.
+    try:
+      self._server = serving.BaseWSGIServer('localhost', 0, app)
+      # 0 to pick an unused port.
+    except IOError:
+      # BaseWSGIServer has a preference for IPv4. If that didn't work, try again
+      # with an explicit IPv6 address.
+      self._server = serving.BaseWSGIServer('::1', 0, app)
     self._server_thread = threading.Thread(target=self._server.serve_forever)
     self._server_thread.daemon = True
     self._server_thread.start()
@@ -106,15 +154,16 @@ class TensorboardServerTest(test.TestCase):
     response = self._get('/asdf')
     self.assertEqual(response.status, 404)
 
-  def testDirectoryTraversal(self):
-    """Attempt a directory traversal attack."""
-    response = self._get('/..' * 30 + '/etc/passwd')
-    self.assertEqual(response.status, 400)
-
   def testLogdir(self):
     """Test the format of the data/logdir endpoint."""
     parsed_object = self._getJson('/data/logdir')
     self.assertEqual(parsed_object, {'logdir': self.temp_dir})
+
+  def testPluginsListing(self):
+    """Test the format of the data/plugins_listing endpoint."""
+    parsed_object = self._getJson('/data/plugins_listing')
+    # Plugin foo is active. Plugin bar is not.
+    self.assertEqual(parsed_object, {'foo': True, 'bar': False})
 
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""
@@ -172,6 +221,19 @@ class TensorboardServerTest(test.TestCase):
       self.assertEqual(response.getheader('Expires'), '0', msg=path)
       response.read()
       connection.close()
+
+  def testScalars(self):
+    """Test the format of /data/scalars."""
+    data = self._getJson('/data/scalars?run=run1&tag=simple_values')
+    self.assertEqual(len(data), self._SCALAR_COUNT)
+
+  def testScalarsCsv(self):
+    """Test the csv format of /data/scalars."""
+    data = self._get(
+        '/data/scalars?run=run1&tag=simple_values&format=csv').read()
+    line_count = data.count('\n')
+    self.assertEqual(line_count,
+                     self._SCALAR_COUNT + 1)  # include 1 more line for header
 
   def testHistograms(self):
     """Test the format of /data/histograms."""
@@ -425,8 +487,108 @@ class TensorBoardAssetsTest(test.TestCase):
   def testTagFound(self):
     tag = application.get_tensorboard_tag()
     self.assertTrue(tag)
-    app = application.standard_tensorboard_wsgi('', True, 60)
+    app = application.standard_tensorboard_wsgi('', True, 60, [])
     self.assertEqual(app.tag, tag)
+
+
+class TensorBoardPluginsTest(test.TestCase):
+
+  def testPluginsAdded(self):
+
+    def foo_handler():
+      pass
+
+    def bar_handler():
+      pass
+
+    plugins = [
+        FakePlugin(
+            plugin_name='foo',
+            is_active_value=True,
+            routes_mapping={'/foo_route': foo_handler}),
+        FakePlugin(
+            plugin_name='bar',
+            is_active_value=True,
+            routes_mapping={'/bar_route': bar_handler}),
+    ]
+
+    # The application should have added routes for both plugins.
+    app = application.standard_tensorboard_wsgi('', True, 60, plugins)
+
+    # The routes are prefixed with /data/plugin/[plugin name].
+    self.assertDictContainsSubset({
+        '/data/plugin/foo/foo_route': foo_handler,
+        '/data/plugin/bar/bar_route': bar_handler,
+    }, app.data_applications)
+
+
+class TensorboardSimpleServerConstructionTest(test.TestCase):
+  """Tests that the default HTTP server is constructed without error.
+
+  Mostly useful for IPv4/IPv6 testing. This test should run with only IPv4, only
+  IPv6, and both IPv4 and IPv6 enabled.
+  """
+
+  class _StubApplication(object):
+    tag = ''
+
+  def testMakeServerBlankHost(self):
+    # Test that we can bind to all interfaces without throwing an error
+    server, url = tensorboard.make_simple_server(
+        self._StubApplication(),
+        host='',
+        port=0)  # Grab any available port
+    self.assertTrue(server)
+    self.assertTrue(url)
+
+  def testSpecifiedHost(self):
+    one_passed = False
+    try:
+      _, url = tensorboard.make_simple_server(
+          self._StubApplication(),
+          host='127.0.0.1',
+          port=0)
+      self.assertStartsWith(actual=url, expected_start='http://127.0.0.1:')
+      one_passed = True
+    except socket.error:
+      # IPv4 is not supported
+      pass
+    try:
+      _, url = tensorboard.make_simple_server(
+          self._StubApplication(),
+          host='::1',
+          port=0)
+      self.assertStartsWith(actual=url, expected_start='http://[::1]:')
+      one_passed = True
+    except socket.error:
+      # IPv6 is not supported
+      pass
+    self.assertTrue(one_passed)  # We expect either IPv4 or IPv6 to be supported
+
+
+class TensorBoardApplcationConstructionTest(test.TestCase):
+
+  def testExceptions(self):
+    logdir = '/fake/foo'
+    multiplexer = event_multiplexer.EventMultiplexer()
+
+    # Fails if there is an unnamed plugin
+    with self.assertRaises(ValueError):
+      # This plugin lacks a name.
+      plugins = [
+          FakePlugin(plugin_name=None, is_active_value=True, routes_mapping={})
+      ]
+      application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
+
+    # Fails if there are two plugins with same name
+    with self.assertRaises(ValueError):
+      plugins = [
+          FakePlugin(
+              plugin_name='foo', is_active_value=True, routes_mapping={}),
+          FakePlugin(
+              plugin_name='foo', is_active_value=True, routes_mapping={}),
+      ]
+      application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
 
 
 if __name__ == '__main__':

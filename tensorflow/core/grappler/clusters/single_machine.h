@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -32,6 +33,8 @@ class SingleMachine : public Cluster {
   ~SingleMachine() override;
 
   Status Provision() override;
+  Status Shutdown() override;
+
   Status Initialize(const GrapplerItem& item) override;
   Status Run(const GraphDef& item,
              const std::vector<std::pair<string, Tensor>>& feed,
@@ -41,27 +44,29 @@ class SingleMachine : public Cluster {
   Status RunWithTimeout(const std::vector<std::pair<string, Tensor>>& feed,
                         const std::vector<string>& fetch,
                         RunMetadata* run_metadata);
+  Status RunWithTimeout(const std::vector<std::pair<string, Tensor>>& feed,
+                        const std::vector<string>& fetch,
+                        RunMetadata* run_metadata, int64 timeout_s);
   Status ResetSession();
   Status CloseSession(bool use_timeout);
+  void MergeCosts(CostGraphDef* graph_costs, const CostGraphDef& init_costs,
+                  const CostGraphDef& queue_costs);
 
   const int num_gpus_;
   std::unique_ptr<Session> session_;
   std::vector<QueueRunnerDef> queue_runner_defs_;
-  const GraphDef* last_graph_ = nullptr;
+  string last_graph_id_;
+  mutex last_graph_mu_;
+  const GraphDef* last_graph_ GUARDED_BY(last_graph_mu_) = nullptr;
   std::vector<string> init_ops_;
+  int64 expected_init_time_s_;
   std::unique_ptr<Coordinator> coordinator_;
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
-  Status status_;
-  RunMetadata metadata_;
-
-  mutex mu_;
-  bool running_;
-  condition_variable done_running_;
+  RunMetadata init_metadata_;
 
   mutex close_mu_;
-  bool closing_;
-  condition_variable done_closing_;
+  bool closing_ GUARDED_BY(close_mu_);
 };
 
 }  // end namespace grappler

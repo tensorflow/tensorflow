@@ -135,7 +135,7 @@ class BatchMatMulOp : public XlaOpKernel {
   bool adj_y_;
 };
 
-REGISTER_XLA_OP("BatchMatMul", BatchMatMulOp);
+REGISTER_XLA_OP(Name("BatchMatMul"), BatchMatMulOp);
 
 }  // namespace
 }  // namespace tensorflow

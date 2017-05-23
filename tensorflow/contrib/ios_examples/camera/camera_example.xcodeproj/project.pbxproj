@@ -13,7 +13,6 @@
 		591D3ECF1CFF7FCE0059011C /* ImageIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 591D3ECE1CFF7FCE0059011C /* ImageIO.framework */; };
 		591D3ED21CFF85C30059011C /* ios_image_load.mm in Sources */ = {isa = PBXBuildFile; fileRef = 591D3ED11CFF85C30059011C /* ios_image_load.mm */; };
 		591D3ED51CFF85FD0059011C /* tensorflow_utils.mm in Sources */ = {isa = PBXBuildFile; fileRef = 591D3ED31CFF85FD0059011C /* tensorflow_utils.mm */; };
-		591D3EDA1CFFA83A0059011C /* grace_hopper.jpg in Resources */ = {isa = PBXBuildFile; fileRef = 591D3ED71CFFA83A0059011C /* grace_hopper.jpg */; };
 		591D3EDB1CFFA83A0059011C /* imagenet_comp_graph_label_strings.txt in Resources */ = {isa = PBXBuildFile; fileRef = 591D3ED81CFFA83A0059011C /* imagenet_comp_graph_label_strings.txt */; };
 		591D3EDC1CFFA83A0059011C /* tensorflow_inception_graph.pb in Resources */ = {isa = PBXBuildFile; fileRef = 591D3ED91CFFA83A0059011C /* tensorflow_inception_graph.pb */; };
 		591D3EDF1CFFAD230059011C /* libprotobuf-lite.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 591D3EDD1CFFAD230059011C /* libprotobuf-lite.a */; };
@@ -38,7 +37,6 @@
 		591D3ED11CFF85C30059011C /* ios_image_load.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = ios_image_load.mm; sourceTree = SOURCE_ROOT; };
 		591D3ED31CFF85FD0059011C /* tensorflow_utils.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; path = tensorflow_utils.mm; sourceTree = SOURCE_ROOT; };
 		591D3ED41CFF85FD0059011C /* tensorflow_utils.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = tensorflow_utils.h; sourceTree = SOURCE_ROOT; };
-		591D3ED71CFFA83A0059011C /* grace_hopper.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = grace_hopper.jpg; sourceTree = "<group>"; };
 		591D3ED81CFFA83A0059011C /* imagenet_comp_graph_label_strings.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = imagenet_comp_graph_label_strings.txt; sourceTree = "<group>"; };
 		591D3ED91CFFA83A0059011C /* tensorflow_inception_graph.pb */ = {isa = PBXFileReference; lastKnownFileType = file; path = tensorflow_inception_graph.pb; sourceTree = "<group>"; };
 		591D3EDD1CFFAD230059011C /* libprotobuf-lite.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; name = "libprotobuf-lite.a"; path = "../../makefile/gen/protobuf_ios/lib/libprotobuf-lite.a"; sourceTree = "<group>"; };
@@ -79,7 +77,6 @@
 		591D3ED61CFFA83A0059011C /* data */ = {
 			isa = PBXGroup;
 			children = (
-				591D3ED71CFFA83A0059011C /* grace_hopper.jpg */,
 				591D3ED81CFFA83A0059011C /* imagenet_comp_graph_label_strings.txt */,
 				591D3ED91CFFA83A0059011C /* tensorflow_inception_graph.pb */,
 			);
@@ -199,7 +196,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				591D3EDA1CFFA83A0059011C /* grace_hopper.jpg in Resources */,
 				591D3EDC1CFFA83A0059011C /* tensorflow_inception_graph.pb in Resources */,
 				592FF90D18EDD0DA00C164F8 /* MainStoryboard_iPhone.storyboard in Resources */,
 				591D3EDB1CFFA83A0059011C /* imagenet_comp_graph_label_strings.txt in Resources */,

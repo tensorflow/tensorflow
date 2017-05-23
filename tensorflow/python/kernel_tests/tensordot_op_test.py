@@ -84,9 +84,7 @@ class TensordotTest(test_lib.TestCase):
                                    b_ph: b,
                                    axes_ph: axes_value})
 
-  def test_no_partial_shape_inference(self):
-    # If one of the shapes is only partially defined, the output shape is
-    # unknown.
+  def test_partial_shape_inference(self):
     a = array_ops.placeholder(dtypes.float32)
     b = array_ops.placeholder(dtypes.float32)
     axes = ([1], [0])
@@ -95,13 +93,21 @@ class TensordotTest(test_lib.TestCase):
     a.set_shape([None, 2])
     b.set_shape([2, 3])
     output = math_ops.tensordot(a, b, axes)
-    self.assertEqual(output.get_shape().ndims, None)
+    output_shape = output.get_shape()
+    self.assertEqual(output_shape.ndims, 2)
+    output_shape = output_shape.as_list()
+    self.assertEqual(output_shape[0], None)
+    self.assertEqual(output_shape[1], 3)
     a = array_ops.placeholder(dtypes.float32)
     b = array_ops.placeholder(dtypes.float32)
     a.set_shape([2, 2])
     b.set_shape([2, None])
     output = math_ops.tensordot(a, b, axes)
-    self.assertEqual(output.get_shape().ndims, None)
+    output_shape = output.get_shape()
+    self.assertEqual(output_shape.ndims, 2)
+    output_shape = output_shape.as_list()
+    self.assertEqual(output_shape[0], 2)
+    self.assertEqual(output_shape[1], None)
 
 
 def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):

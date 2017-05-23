@@ -39,6 +39,30 @@ FETCHES_INFO_FILE_TAG = "fetches_info_"
 FEED_KEYS_INFO_FILE_TAG = "feed_keys_info_"
 
 
+class InconvertibleTensorProto(object):
+  """Represents a TensorProto that cannot be converted to np.ndarray."""
+
+  def __init__(self, tensor_proto, initialized=True):
+    """Constructor.
+
+    Args:
+      tensor_proto: the `TensorProto` object that cannot be represented as a
+        `np.ndarray` object.
+      initialized: (`bool`) whether the Tensor is initialized.
+    """
+    self._tensor_proto = tensor_proto
+    self._initialized = initialized
+
+  def __str__(self):
+    output = "" if self._initialized else "Uninitialized tensor:\n"
+    output += str(self._tensor_proto)
+    return output
+
+  @property
+  def initialized(self):
+    return self._initialized
+
+
 def load_tensor_from_event_file(event_file_path):
   """Load a tensor from an event file.
 
@@ -69,26 +93,27 @@ def load_tensor_from_event(event):
         summary.value[0] field.
 
   Returns:
-    The tensor value loaded from the event file, as a `numpy.ndarray`. For
-    uninitialized Tensors, returns `None`. For Tensors of data types that
-    cannot be converted to `numpy.ndarray` (e.g., `tf.resource`), return
-    `None`.
+    The tensor value loaded from the event file, as a `numpy.ndarray`, if
+    representation of the tensor value by a `numpy.ndarray` is possible.
+    For uninitialized Tensors, returns `None`. For Tensors of data types that
+    cannot be represented as `numpy.ndarray` (e.g., `tf.resource`), return
+    the `TensorProto` protobuf object without converting it to a
+    `numpy.ndarray`.
   """
 
-  if (event.summary.value[0].tensor.tensor_content or
-      event.summary.value[0].tensor.string_val):
+  tensor_proto = event.summary.value[0].tensor
+  if tensor_proto.tensor_content or tensor_proto.string_val:
     # Initialized tensor.
-    tensor_proto = event.summary.value[0].tensor
     if tensor_proto.dtype == types_pb2.DT_RESOURCE:
-      return None
+      tensor_value = InconvertibleTensorProto(tensor_proto)
     else:
       try:
         tensor_value = tensor_util.MakeNdarray(tensor_proto)
       except KeyError:
-        tensor_value = None
+        tensor_value = InconvertibleTensorProto(tensor_proto)
   else:
     # Uninitialized tensor or tensor of unconvertible data type.
-    tensor_value = None
+    tensor_value = InconvertibleTensorProto(tensor_proto, False)
 
   return tensor_value
 
@@ -199,7 +224,7 @@ def _get_tensor_watch_key(node_name, output_slot, debug_op):
   return "%s:%s" % (_get_tensor_name(node_name, output_slot), debug_op)
 
 
-def _is_copy_node(node_name):
+def is_copy_node(node_name):
   """Determine whether a node name is that of a debug Copy node.
 
   Such nodes are inserted by TensorFlow core upon request in
@@ -215,7 +240,7 @@ def _is_copy_node(node_name):
   return node_name.startswith("__copy_")
 
 
-def _is_debug_node(node_name):
+def is_debug_node(node_name):
   """Determine whether a node name is that of a debug node.
 
   Such nodes are inserted by TensorFlow core upon request in
@@ -230,7 +255,7 @@ def _is_debug_node(node_name):
   return node_name.startswith("__dbg_")
 
 
-def _parse_debug_node_name(node_name):
+def parse_debug_node_name(node_name):
   """Parse the name of a debug node.
 
   Args:
@@ -290,8 +315,10 @@ def has_inf_or_nan(datum, tensor):
 
   _ = datum  # Datum metadata is unused in this predicate.
 
-  if tensor is None:
+  if isinstance(tensor, InconvertibleTensorProto):
     # Uninitialized tensor doesn't have bad numerical values.
+    # Also return False for data types that cannot be represented as numpy
+    # arrays.
     return False
   elif (np.issubdtype(tensor.dtype, np.float) or
         np.issubdtype(tensor.dtype, np.complex) or
@@ -354,7 +381,15 @@ class DebugTensorDatum(object):
     # TODO(cais): Add hostname and pid to support dumps from distributed
     #             sessions.
 
-    self._timestamp = int(base.split("_")[-1])
+    self._extended_timestamp = base.split("_")[-1]
+    # It may include an index suffix at the end if file path collision happened
+    # due to identical timestamps.
+    if "-" in self._extended_timestamp:
+      self._timestamp = int(
+          self._extended_timestamp[:self._extended_timestamp.find("-")])
+    else:
+      self._timestamp = int(self._extended_timestamp)
+
     self._debug_op = base.split("_")[-2]
     self._output_slot = int(base.split("_")[-3])
 
@@ -400,6 +435,20 @@ class DebugTensorDatum(object):
     """
 
     return self._timestamp
+
+  @property
+  def extended_timestamp(self):
+    """Extended timestamp, possibly with an index suffix.
+
+    The index suffix, e.g., "-1", is for disambiguating multiple dumps of the
+    same tensor with the same timestamp, which can occur if the dumping events
+    are spaced by shorter than the temporal resolution of the timestamps.
+
+    Returns:
+      (`str`) The extended timestamp.
+    """
+
+    return self._extended_timestamp
 
   @property
   def debug_op(self):
@@ -470,6 +519,10 @@ class DebugTensorDatum(object):
     """
 
     return self._dump_size_bytes
+
+
+class WatchKeyDoesNotExistInDebugDumpDirError(ValueError):
+  pass
 
 
 class DebugDumpDir(object):
@@ -564,7 +617,7 @@ class DebugDumpDir(object):
             datum.debug_op)
 
     self._dump_tensor_data = sorted(
-        self._dump_tensor_data, key=lambda x: x.timestamp)
+        self._dump_tensor_data, key=lambda x: x.extended_timestamp)
 
     if self._dump_tensor_data:
       self._t0 = self._dump_tensor_data[0].timestamp
@@ -769,12 +822,12 @@ class DebugDumpDir(object):
       ValueError: If duplicate node names are encountered.
     """
 
-    if _is_debug_node(node.name):
+    if is_debug_node(node.name):
       # This is a debug node. Parse the node name and retrieve the
       # information about debug watches on tensors. But do not include
       # the node in the graph.
       (watched_node_name, watched_output_slot, _,
-       debug_op) = _parse_debug_node_name(node.name)
+       debug_op) = parse_debug_node_name(node.name)
 
       self._debug_watches[watched_node_name][watched_output_slot].add(
           debug_op)
@@ -798,7 +851,7 @@ class DebugDumpDir(object):
     self._node_op_types[node.name] = node.op
 
     for inp in node.input:
-      if _is_copy_node(inp) and node.op == "_Send":
+      if is_copy_node(inp) and (node.op == "_Send" or node.op == "_Retval"):
         self._copy_send_nodes.append(node.name)
 
       if inp.startswith("^"):
@@ -833,14 +886,14 @@ class DebugDumpDir(object):
       if node in self._copy_send_nodes:
         continue
 
-      if _is_copy_node(node):
+      if is_copy_node(node):
         copy_nodes.append(node)
 
       inputs = self._node_inputs[node]
 
       for i in xrange(len(inputs)):
         inp = inputs[i]
-        if _is_copy_node(inp):
+        if is_copy_node(inp):
           # Find the input to the Copy node, which should be the original
           # input to the node.
           orig_inp = self._node_inputs[inp][0]
@@ -856,7 +909,7 @@ class DebugDumpDir(object):
       ctrl_inputs = self._node_ctrl_inputs[node]
       debug_op_inputs = []
       for ctrl_inp in ctrl_inputs:
-        if _is_debug_node(ctrl_inp):
+        if is_debug_node(ctrl_inp):
           debug_op_inputs.append(ctrl_inp)
       for debug_op_inp in debug_op_inputs:
         ctrl_inputs.remove(debug_op_inp)
@@ -912,15 +965,24 @@ class DebugDumpDir(object):
       for inp in inputs:
         inp_node = get_node_name(inp)
         inp_output_slot = get_output_slot(inp)
+        # Inputs from Enter and NextIteration nodes are not validated because
+        # DebugNodeInserter::InsertNodes() in the debugger core skips creating
+        # control edges from debug ops watching these types of nodes.
         if (inp_node in self._debug_watches and
             inp_output_slot in self._debug_watches[inp_node] and
+            self._node_op_types.get(inp) not in ("Enter", "NextIteration") and
             (inp_node, inp_output_slot) not in pending_inputs[node]):
           pending_inputs[node].append((inp_node, inp_output_slot))
 
-    for datum in self._dump_tensor_data:
+    for i, datum in enumerate(self._dump_tensor_data):
       node = datum.node_name
       slot = datum.output_slot
-      if pending_inputs[node]:
+      # In some cases (e.g., system clocks with insufficient precision),
+      # the upstream and downstream tensors may have identical timestamps, the
+      # following check examines this possibility and avoids raising an error if
+      # that is the case.
+      if not self._satisfied_at_timestamp(
+          pending_inputs[node], datum.timestamp, start_i=i + 1):
         raise ValueError("Causality violated in timing relations of debug "
                          "dumps: %s (%d): "
                          "these input(s) are not satisfied: %s" %
@@ -937,6 +999,36 @@ class DebugDumpDir(object):
           else:
             del recipient_pending_inputs[
                 recipient_pending_inputs.index((node, slot))]
+
+  def _satisfied_at_timestamp(self, pending, timestamp, start_i=0):
+    """Determine whether pending inputs are satisfied at given timestamp.
+
+    Note: This method mutates the input argument "pending".
+
+    Args:
+      pending: A list of 2-tuple (node_name, output_slot): the dependencies to
+        check.
+      timestamp: (int) the timestamp in question.
+      start_i: (int) the index in self._dump_tensor_data to start searching for
+        the timestamp.
+
+    Returns:
+      (bool) Whether all the dependencies in pending are satisfied at the
+        timestamp. If pending is empty to begin with, return True.
+    """
+    if not pending:
+      return True
+
+    for datum in self._dump_tensor_data[start_i:]:
+      if datum.timestamp > timestamp:
+        break
+      if (datum.timestamp == timestamp and
+          (datum.node_name, datum.output_slot) in pending):
+        pending.remove((datum.node_name, datum.output_slot))
+        if not pending:
+          return True
+
+    return not pending
 
   def loaded_partition_graphs(self):
     """Test whether partition graphs have been loaded."""
@@ -1320,13 +1412,14 @@ class DebugDumpDir(object):
         may be dumped multiple times.
 
     Raises:
-      ValueError: If the tensor does not exist in the debug-dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor does not exist in
+        the debug-dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return [datum.file_path for datum in self._watch_key_to_datum[watch_key]]
 
@@ -1345,13 +1438,14 @@ class DebugDumpDir(object):
       List of tensors (`numpy.ndarray`) loaded from the debug-dump file(s).
 
     Raises:
-      ValueError: If the tensor does not exist in the debug-dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor does not exist in
+        the debug-dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return [datum.get_tensor() for datum in self._watch_key_to_datum[watch_key]]
 
@@ -1372,13 +1466,14 @@ class DebugDumpDir(object):
       (`list` of `int`) list of relative timestamps.
 
     Raises:
-      ValueError: If the tensor watch key does not exist in the debug dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor watch key does not
+        exist in the debug dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return self._watch_key_to_rel_time[watch_key]
 
@@ -1396,13 +1491,14 @@ class DebugDumpDir(object):
       (`list` of `int`): list of dump file sizes in bytes.
 
     Raises:
-      ValueError: If the tensor watch key does not exist in the debug dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor watch key does not
+        exist in the debug dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return self._watch_key_to_dump_size_bytes[watch_key]
 

@@ -50,20 +50,23 @@ void StatSummarizer::Validate(const Detail* detail,
       }
       const auto& stored = detail->outputs[slot];
       const auto& current = output.tensor_description();
-      bool do_shapes_match = true;
-      if (stored.shape().dim_size() != current.shape().dim_size()) {
-        do_shapes_match = false;
-      } else {
+
+      bool do_tensors_match =
+          (stored.dtype() == current.dtype()) &&
+          (stored.shape().dim_size() == current.shape().dim_size());
+
+      if (do_tensors_match) {
         for (int i = 0; i < stored.shape().dim_size(); ++i) {
           if (stored.shape().dim(i).size() != current.shape().dim(i).size()) {
-            do_shapes_match = false;
+            do_tensors_match = false;
+            break;
           }
         }
+      }
 
-        if ((stored.dtype() != current.dtype()) || !do_shapes_match) {
-          LOG(WARNING) << "Output tensor changed between runs for '"
-                       << ns.node_name();
-        }
+      if (!do_tensors_match) {
+        LOG(WARNING) << "Output tensor changed between runs for '"
+                     << ns.node_name();
       }
     }
   }
@@ -266,6 +269,31 @@ void StatSummarizer::OrderNodesByMetric(
   }
 }
 
+void StatSummarizer::ComputeStatsByType(
+    std::map<string, int64>* node_type_map_count,
+    std::map<string, int64>* node_type_map_time,
+    std::map<string, int64>* node_type_map_memory,
+    int64* accumulated_us) const {
+  int64 run_count = run_total_us_.count();
+
+  for (const auto& det : details_) {
+    const string node_name = det.first;
+    const Detail& detail = det.second;
+
+    int64 curr_time_val =
+        static_cast<int64>(detail.rel_end_us.sum() / run_count);
+    *accumulated_us += curr_time_val;
+
+    int64 curr_memory_val = detail.mem_used.newest();
+
+    const string& node_type = detail.type;
+
+    (*node_type_map_count)[node_type] += 1;
+    (*node_type_map_time)[node_type] += curr_time_val;
+    (*node_type_map_memory)[node_type] += curr_memory_val;
+  }
+}
+
 std::string StatSummarizer::GetStatsByNodeType() const {
   std::stringstream stream;
 
@@ -273,34 +301,15 @@ std::string StatSummarizer::GetStatsByNodeType() const {
             "=============================="
          << std::endl;
 
-  int64 accumulated_us = 0;
-  int64 accumulated_bytes = 0;
+  LOG(INFO) << "Number of nodes executed: " << details_.size();
+
   std::map<string, int64> node_type_map_count;
   std::map<string, int64> node_type_map_time;
   std::map<string, int64> node_type_map_memory;
+  int64 accumulated_us = 0;
 
-  int64 num_processed = 0;
-
-  LOG(INFO) << "Number of nodes executed: " << details_.size();
-  for (const auto& det : details_) {
-    const string node_name = det.first;
-    const Detail& detail = det.second;
-
-    int64 curr_time_val = detail.rel_end_us.avg();
-    accumulated_us += curr_time_val;
-
-    ++num_processed;
-    int64 curr_memory_val = detail.mem_used.newest();
-    accumulated_bytes += curr_memory_val;
-
-    const string& node_type = detail.type;
-
-    node_type_map_count[node_type] += 1;
-    node_type_map_time[node_type] += curr_time_val;
-    node_type_map_memory[node_type] += curr_memory_val;
-  }
-
-  LOG(INFO) << "Processed " << num_processed << " nodes";
+  ComputeStatsByType(&node_type_map_count, &node_type_map_time,
+                     &node_type_map_memory, &accumulated_us);
 
   // Sort them.
   std::priority_queue<std::pair<int64, std::pair<string, int64>>> timings;
@@ -318,7 +327,6 @@ std::string StatSummarizer::GetStatsByNodeType() const {
   InitField(stream, 10) << "[mem KB]";
   stream << std::endl;
 
-  float avg_total_time_ms = 0.0f;
   float cdf = 0.0f;
   while (!timings.empty()) {
     auto entry = timings.top();
@@ -330,7 +338,6 @@ std::string StatSummarizer::GetStatsByNodeType() const {
     const int64 node_type_total_us = entry.first;
     const float time_per_run_ms = node_type_total_us / 1000.0f;
 
-    avg_total_time_ms += time_per_run_ms;
     const float percentage =
         ((entry.first / static_cast<float>(accumulated_us)) * 100.0f);
     cdf += percentage;

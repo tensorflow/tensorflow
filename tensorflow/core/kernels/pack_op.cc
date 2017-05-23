@@ -135,6 +135,12 @@ TF_CALL_ALL_TYPES(REGISTER_PACK);
 TF_CALL_QUANTIZED_TYPES(REGISTER_PACK);
 TF_CALL_bfloat16(REGISTER_PACK);
 
+#if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION)
+// Primarily used for SavedModel support on mobile.
+REGISTER_PACK(string);
+#endif  // defined(IS_MOBILE_PLATFORM) &&
+        // !defined(SUPPORT_SELECTIVE_REGISTRATION)
+
 #undef REGISTER_PACK
 
 #if GOOGLE_CUDA

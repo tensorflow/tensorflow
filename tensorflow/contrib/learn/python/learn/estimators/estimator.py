@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import abc
 import copy
-import inspect
 import os
 import tempfile
 
@@ -41,6 +40,7 @@ from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import monitors as monitor_lib
 from tensorflow.contrib.learn.python.learn import trainable
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn as sklearn
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import metric_key
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.contrib.learn.python.learn.estimators import run_config
@@ -57,7 +57,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
@@ -69,6 +70,8 @@ from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver
 from tensorflow.python.training import summary_io
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 AS_ITERABLE_DATE = '2016-09-15'
@@ -86,7 +89,7 @@ SCIKIT_DECOUPLE_INSTRUCTIONS = (
 
 
 def _verify_input_args(x, y, input_fn, feed_fn, batch_size):
-  """Verifies validity of co-existance of input arguments."""
+  """Verifies validity of co-existence of input arguments."""
   if input_fn is None:
     if x is None:
       raise ValueError('Either x or input_fn must be provided.')
@@ -172,17 +175,27 @@ def infer_real_valued_columns_from_input(x):
   return infer_real_valued_columns_from_input_fn(input_fn)
 
 
-def _get_arguments(func):
-  """Returns list of arguments this function has."""
-  if hasattr(func, '__code__'):
-    # Regular function.
-    return inspect.getargspec(func).args
-  elif hasattr(func, '__call__'):
-    # Callable object.
-    return _get_arguments(func.__call__)
-  elif hasattr(func, 'func'):
-    # Partial function.
-    return _get_arguments(func.func)
+def _model_fn_args(fn):
+  """Get argument names for function-like object.
+
+  Args:
+    fn: Function, or function-like object (e.g., result of `functools.partial`).
+
+  Returns:
+    `tuple` of string argument names.
+
+  Raises:
+    ValueError: if partial function has positionally bound arguments
+  """
+  _, fn = tf_decorator.unwrap(fn)
+  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
+    # Handle functools.partial and similar objects.
+    return tuple([
+        arg for arg in tf_inspect.getargspec(fn.func).args[len(fn.args):]
+        if arg not in set(fn.keywords.keys())
+    ])
+  # Handle function.
+  return tuple(tf_inspect.getargspec(fn).args)
 
 
 def _get_replica_device_setter(config):
@@ -318,14 +331,21 @@ def _write_dict_to_summary(output_dir,
   for key in dictionary:
     if dictionary[key] is None:
       continue
+    if key == 'global_step':
+      continue
     value = summary_proto.value.add()
     value.tag = key
     if (isinstance(dictionary[key], np.float32) or
         isinstance(dictionary[key], float)):
       value.simple_value = float(dictionary[key])
+    elif (isinstance(dictionary[key], np.int64) or
+          isinstance(dictionary[key], np.int32) or
+          isinstance(dictionary[key], int)):
+      value.simple_value = int(dictionary[key])
     else:
-      logging.warn('Skipping summary for %s, must be a float or np.float32.',
-                   key)
+      logging.warn(
+          'Skipping summary for %s, must be a float, np.float32, np.int64, np.int32 or int.',
+          key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
 
@@ -338,7 +358,7 @@ class BaseEstimator(
   """
   __metaclass__ = abc.ABCMeta
 
-  # Note that for Google users, this is overriden with
+  # Note that for Google users, this is overridden with
   # learn_runner.EstimatorConfig.
   # TODO(wicke): Remove this once launcher takes over config functionality
   _Config = run_config.RunConfig  # pylint: disable=invalid-name
@@ -359,7 +379,11 @@ class BaseEstimator(
       logging.info('Using default config.')
     else:
       self._config = config
-    logging.info('Using config: %s', str(vars(self._config)))
+
+    if self._config.session_config is None:
+      self._session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+    else:
+      self._session_config = self._config.session_config
 
     # Model directory.
     if (model_dir is not None) and (self._config.model_dir is not None):
@@ -377,6 +401,9 @@ class BaseEstimator(
       self._model_dir = tempfile.mkdtemp()
       logging.warning('Using temporary folder as model directory: %s',
                       self._model_dir)
+    if self._config.model_dir is None:
+      self._config = self._config.replace(model_dir=self._model_dir)
+    logging.info('Using config: %s', str(vars(self._config)))
 
     # Set device function depending if there are replicas or not.
     self._device_fn = _get_replica_device_setter(self._config)
@@ -676,7 +703,7 @@ class BaseEstimator(
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
 
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
@@ -800,7 +827,8 @@ class BaseEstimator(
       features, labels = input_fn()
       self._check_inputs(features, labels)
 
-      eval_dict = self._get_eval_ops(features, labels, metrics).eval_metric_ops
+      model_fn_results = self._get_eval_ops(features, labels, metrics)
+      eval_dict = model_fn_results.eval_metric_ops
 
       update_op, eval_dict = self._extract_metric_update_ops(eval_dict)
 
@@ -821,10 +849,11 @@ class BaseEstimator(
       eval_results = evaluation.evaluate_once(
           checkpoint_path=checkpoint_path,
           master=self._config.evaluation_master,
+          scaffold=model_fn_results.scaffold,
           eval_ops=update_op,
           final_ops=eval_dict,
           hooks=hooks,
-          config=config_pb2.ConfigProto(allow_soft_placement=True))
+          config=self._session_config)
       current_global_step = eval_results[global_step_key]
 
       _write_dict_to_summary(eval_dir, eval_results, current_global_step)
@@ -858,7 +887,8 @@ class BaseEstimator(
       mon_sess = monitored_session.MonitoredSession(
           session_creator=monitored_session.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
-              config=config_pb2.ConfigProto(allow_soft_placement=True)))
+              scaffold=infer_ops.scaffold,
+              config=self._session_config))
       if not as_iterable:
         with mon_sess:
           if not mon_sess.should_stop():
@@ -943,7 +973,8 @@ class BaseEstimator(
             saver.Saver(
                 sharded=True,
                 max_to_keep=self._config.keep_checkpoint_max,
-                defer_build=True))
+                defer_build=True,
+                save_relative_paths=True))
 
       chief_hooks = []
       if (self._config.save_checkpoints_secs or
@@ -970,7 +1001,7 @@ class BaseEstimator(
           chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
-          config=config_pb2.ConfigProto(allow_soft_placement=True)
+          config=self._session_config
       ) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
@@ -1059,10 +1090,11 @@ class Estimator(BaseEstimator):
     super(Estimator, self).__init__(model_dir=model_dir, config=config)
     if model_fn is not None:
       # Check number of arguments of the given function matches requirements.
-      model_fn_args = _get_arguments(model_fn)
+      model_fn_args = _model_fn_args(model_fn)
       if params is not None and 'params' not in model_fn_args:
-        raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
-                         'arguments, but not None params (%s) are passed.' %
+        raise ValueError('Estimator\'s model_fn (%s) does not have a params '
+                         'argument, but params (%s) were passed to the '
+                         'Estimator\'s constructor.' %
                          (model_fn, params))
       if params is None and 'params' in model_fn_args:
         logging.warning('Estimator\'s model_fn (%s) includes params '
@@ -1089,7 +1121,7 @@ class Estimator(BaseEstimator):
       ValueError: if model_fn returns invalid objects.
     """
     features, labels = self._feature_engineering_fn(features, labels)
-    model_fn_args = _get_arguments(self._model_fn)
+    model_fn_args = _model_fn_args(self._model_fn)
     kwargs = {}
     if 'mode' in model_fn_args:
       kwargs['mode'] = mode
@@ -1104,7 +1136,7 @@ class Estimator(BaseEstimator):
     if isinstance(model_fn_results, model_fn_lib.ModelFnOps):
       return model_fn_results
 
-    # Here model_fn_ops should be a tuple with 3 elements.
+    # Here model_fn_results should be a tuple with 3 elements.
     if len(model_fn_results) != 3:
       raise ValueError('Unrecognized value returned by model_fn, '
                        'please return ModelFnOps.')
@@ -1117,7 +1149,7 @@ class Estimator(BaseEstimator):
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1133,7 +1165,7 @@ class Estimator(BaseEstimator):
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1172,7 +1204,7 @@ class Estimator(BaseEstimator):
   def _get_predict_ops(self, features):
     """Method that builds model graph and returns prediction ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1229,6 +1261,13 @@ class Estimator(BaseEstimator):
       input_alternatives, features = (
           saved_model_export_utils.get_input_alternatives(input_ops))
 
+      # TODO(b/34388557) This is a stopgap, pending recording model provenance.
+      # Record which features are expected at serving time.  It is assumed that
+      # these are the features that were used in training.
+      for feature_key in input_ops.features.keys():
+        ops.add_to_collection(
+            constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS, feature_key)
+
       # Call the model_fn and collect the output alternatives.
       model_fn_ops = self._call_model_fn(features, None,
                                          model_fn_lib.ModeKeys.INFER)
@@ -1251,17 +1290,17 @@ class Estimator(BaseEstimator):
       export_dir = saved_model_export_utils.get_timestamped_export_dir(
           export_dir_base)
 
+      if (model_fn_ops.scaffold is not None and
+          model_fn_ops.scaffold.saver is not None):
+        saver_for_restore = model_fn_ops.scaffold.saver
+      else:
+        saver_for_restore = saver.Saver(sharded=True)
       with tf_session.Session('') as session:
-        variables.initialize_local_variables()
-        data_flow_ops.tables_initializer()
-        saver_for_restore = saver.Saver(
-            variables.global_variables(),
-            sharded=True)
         saver_for_restore.restore(session, checkpoint_path)
-
         init_op = control_flow_ops.group(
             variables.local_variables_initializer(),
-            data_flow_ops.tables_initializer())
+            resources.initialize_resources(resources.shared_resources()),
+            lookup_ops.tables_initializer())
 
         # Perform the export
         builder = saved_model_builder.SavedModelBuilder(export_dir)

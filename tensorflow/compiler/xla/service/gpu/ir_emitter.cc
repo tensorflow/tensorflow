@@ -399,7 +399,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot,
   llvm::Type* accum_type = target_array.GetElementLlvmType();
   llvm::Value* accum_address = llvm_ir::EmitAllocaAtFunctionEntry(
       accum_type,       // The pointee type of the alloca instruction.
-      "accum_address",  // The name of the alloca instuction.
+      "accum_address",  // The name of the alloca instruction.
       &ir_builder_);
 
   // Initialize the accumulator in the preheader to zero.
@@ -513,7 +513,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce, HloInstruction* arg,
         llvm_ir::IrArray::Index input_index = reduced_dims_index;
         llvm_ir::IrArray::Index::const_iterator it = index.begin();
 
-        for (auto i = 0; i < input_index.size(); ++i) {
+        for (size_t i = 0; i < input_index.size(); ++i) {
           if (input_index[i] == nullptr) {
             input_index[i] = *it++;
           }
@@ -549,14 +549,12 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   return EmitTargetElementLoop(*fusion, fused_emitter.GetRootGenerator());
 }
 
-Status IrEmitter::HandleCall(
-    HloInstruction* call, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* computation) {
+Status IrEmitter::HandleCall(HloInstruction* call) {
   std::vector<llvm::Value*> operand_addresses;
-  for (HloInstruction* operand : operands) {
+  for (HloInstruction* operand : call->operands()) {
     operand_addresses.push_back(GetBasePointer(*operand));
   }
-  return EmitCallToNestedComputation(*computation, operand_addresses,
+  return EmitCallToNestedComputation(*call->to_apply(), operand_addresses,
                                      GetBasePointer(*call));
 }
 
@@ -614,7 +612,7 @@ llvm_ir::IrArray::Index IrEmitter::EmitOperandArrayLoopNest(
   llvm_ir::IrArray::Index index =
       loop_nest->AddLoopsForShapeOnDimensions(shape, dimensions, name_suffix);
   // Verify every dimension except the reduction dimension was set in the index.
-  for (auto dimension = 0; dimension < index.size(); ++dimension) {
+  for (size_t dimension = 0; dimension < index.size(); ++dimension) {
     if (dimension == reduction_dimension) {
       DCHECK_EQ(nullptr, index[dimension]);
     } else {

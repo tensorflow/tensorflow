@@ -38,17 +38,19 @@ class GraphTransferUtils {
                                    const string* const labels,
                                    const int element_count, const int top_n);
 
-  static RemoteFusedGraphExecuteInfo BuildRemoteFusedGraphExecuteInfo(
-      const GraphTransferInfo& graph_transfer_info);
-
   static GraphDef BuildFusedGraphDef(
       const IGraphTransferOpsDefinitions& ops_definitions,
       const string& remote_graph_execute_name,
       const std::vector<std::pair<string, Tensor>>& inputs,
-      const std::vector<string>& outputs, const GraphDef& def,
-      GraphTransferer* gt);
+      const std::vector<string>& outputs, GraphDef* original_def);
 
  private:
+  static RemoteFusedGraphExecuteInfo BuildRemoteFusedGraphExecuteInfo(
+      const GraphDef& graph_def,
+      const std::vector<std::pair<string, Tensor>>& inputs,
+      const std::vector<string>& outputs,
+      const RemoteFusedGraphExecuteUtils::TensorShapeMap& tensor_shape_map);
+
   TF_DISALLOW_COPY_AND_ASSIGN(GraphTransferUtils);
 };
 

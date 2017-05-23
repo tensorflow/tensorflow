@@ -58,7 +58,16 @@ class IndexUtil {
   //
   // Returns true iff the indices were successfully bumped; false if we've hit
   // the limit where it can no longer be bumped in-bounds.
-  static bool BumpIndices(const Shape& shape, std::vector<int64>* indices);
+  static bool BumpIndices(const Shape& shape,
+                          tensorflow::gtl::MutableArraySlice<int64> indices);
+
+  // Calculates the stride size (in number of elements, not byte size) of a
+  // given logical shape dimension (from 0 to rank-1). If available, padded
+  // dimensions are used.
+  // Example:
+  //  GetDimensionStride(F32[5,8,10,4]{3,2,1,0}, 1) ==
+  //    sizeof(dimension(3)) * sizeof(dimension(2)) == 4 * 10
+  static int64 GetDimensionStride(const Shape& shape, int64 dimension);
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(IndexUtil);

@@ -24,6 +24,7 @@ See the @{$python/summary} guide.
 @@histogram
 @@audio
 @@image
+@@text
 @@merge
 @@merge_all
 @@get_summary_description
@@ -56,7 +57,13 @@ from tensorflow.python.ops import gen_logging_ops as _gen_logging_ops
 # pylint: disable=unused-import
 from tensorflow.python.ops.summary_ops import tensor_summary
 # pylint: enable=unused-import
+
 from tensorflow.python.platform import tf_logging as _logging
+
+# exports text
+# pylint: disable=unused-import
+from tensorflow.python.summary.text_summary import text_summary as text
+# pylint: enable=unused-import
 
 # exports FileWriter, FileWriterCache
 # pylint: disable=unused-import
@@ -182,6 +189,11 @@ def image(name, tensor, max_outputs=3, collections=None):
 def histogram(name, values, collections=None):
   # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with a histogram.
+
+  Adding a histogram summary makes it possible to visualize your data's
+  distribution in TensorBoard. You can see a detailed explanation of the
+  TensorBoard histogram dashboard
+  [here](https://www.tensorflow.org/get_started/tensorboard_histograms).
 
   The generated
   [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)

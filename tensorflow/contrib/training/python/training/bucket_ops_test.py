@@ -309,10 +309,19 @@ class BucketTest(test.TestCase):
       self.assertAllEqual(
           np.arange(0, 128, 2), sorted(bucketed_values_all_elem0))
 
+  def testFailOnWrongBucketCapacities(self):
+    with self.assertRaisesRegexp(ValueError, r"must have exactly num_buckets"):
+      bucket_ops.bucket(  # 2 buckets and 3 capacities raises ValueError.
+          tensors=[self.scalar_int, self.unk_int64, self.vec3_str],
+          which_bucket=constant_op.constant(0), num_buckets=2,
+          batch_size=32, bucket_capacities=[3, 4, 5])
+
 
 class BucketBySequenceLengthTest(test.TestCase):
 
-  def _testBucketBySequenceLength(self, allow_small_batch):
+  def _testBucketBySequenceLength(self,
+                                  allow_small_batch,
+                                  bucket_capacities=None):
     ops.reset_default_graph()
 
     # All inputs must be identical lengths across tuple index.
@@ -345,6 +354,7 @@ class BucketBySequenceLengthTest(test.TestCase):
         tensors=[data_t, labels_t],
         batch_size=batch_size,
         bucket_boundaries=bucket_boundaries,
+        bucket_capacities=bucket_capacities,
         allow_smaller_final_batch=allow_small_batch,
         num_threads=10))
 
@@ -404,6 +414,16 @@ class BucketBySequenceLengthTest(test.TestCase):
 
   def testBucketBySequenceLengthAllow(self):
     self._testBucketBySequenceLength(allow_small_batch=True)
+
+  def testBucketBySequenceLengthBucketCapacities(self):
+    # Above bucket_boundaries = [3, 4, 5, 10] so we need 5 capacities.
+    with self.assertRaisesRegexp(ValueError, r"must have exactly num_buckets"):
+      self._testBucketBySequenceLength(allow_small_batch=False,
+                                       bucket_capacities=[32, 32, 32, 32])
+    # Test with different capacities.
+    capacities = [48, 40, 32, 24, 16]
+    self._testBucketBySequenceLength(allow_small_batch=True,
+                                     bucket_capacities=capacities)
 
 
 if __name__ == "__main__":

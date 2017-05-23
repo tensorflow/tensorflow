@@ -91,8 +91,8 @@ eight-bit computations:
 ```sh
 curl http://download.tensorflow.org/models/image/imagenet/inception-2015-12-05.tgz -o /tmp/inceptionv3.tgz
 tar xzf /tmp/inceptionv3.tgz -C /tmp/
-bazel build tensorflow/tools/quantization/tools:quantize_graph
-bazel-bin/tensorflow/tools/quantization/tools/quantize_graph \
+bazel build tensorflow/tools/quantization:quantize_graph
+bazel-bin/tensorflow/tools/quantization/quantize_graph \
   --input=/tmp/classify_image_graph_def.pb \
   --output_node_names="softmax" --output=/tmp/quantized_graph.pb \
   --mode=eightbit
@@ -143,13 +143,13 @@ conversion functions before and after to move the data between float and
 eight-bit. Below is an example of what they look like. First here's the original
 Relu operation, with float inputs and outputs:
 
-![Relu Diagram](https://www.tensorflow.org/../images/quantization0.png)
+![Relu Diagram](https://www.tensorflow.org/images/quantization0.png)
 
 Then, this is the equivalent converted subgraph, still with float inputs and
 outputs, but with internal conversions so the calculations are done in eight
 bit.
 
-![Converted Diagram](https://www.tensorflow.org/../images/quantization1.png)
+![Converted Diagram](https://www.tensorflow.org/images/quantization1.png)
 
 The min and max operations actually look at the values in the input float
 tensor, and then feeds them into the Dequantize operation that converts the
@@ -162,7 +162,7 @@ operations that all have float equivalents, then there will be a lot of adjacent
 Dequantize/Quantize ops. This stage spots that pattern, recognizes that they
 cancel each other out, and removes them, like this:
 
-![Stripping Diagram](https://www.tensorflow.org/../images/quantization2.png)
+![Stripping Diagram](https://www.tensorflow.org/images/quantization2.png)
 
 Applied on a large scale to models where all of the operations have quantized
 equivalents, this gives a graph where all of the tensor calculations are done in

@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.tensor_forest.hybrid.ops import gen_training_ops
 from tensorflow.contrib.tensor_forest.hybrid.python import hybrid_layer
 from tensorflow.contrib.tensor_forest.hybrid.python.ops import training_ops
 from tensorflow.python.framework import ops
@@ -53,11 +54,11 @@ class DecisionsToDataLayer(hybrid_layer.HybridLayer):
     super(DecisionsToDataLayer, self).__init__(
         params, layer_num, device_assigner, *args, **kwargs)
 
-    self.training_ops = training_ops.Load()
+    self._training_ops = training_ops.Load()
 
   def inference_graph(self, data):
     with ops.device(self.device_assigner):
-      routing_probabilities = self.training_ops.routing_function(
+      routing_probabilities = gen_training_ops.routing_function(
           data,
           self.tree_parameters,
           self.tree_thresholds,
@@ -94,12 +95,12 @@ class KFeatureDecisionsToDataLayer(hybrid_layer.HybridLayer):
     super(KFeatureDecisionsToDataLayer, self).__init__(
         params, layer_num, device_assigner, *args, **kwargs)
 
-    self.training_ops = training_ops.Load()
+    self._training_ops = training_ops.Load()
 
   # pylint: disable=unused-argument
   def inference_graph(self, data):
     with ops.device(self.device_assigner):
-      routing_probabilities = self.training_ops.k_feature_routing_function(
+      routing_probabilities = gen_training_ops.k_feature_routing_function(
           data,
           self.tree_parameters,
           self.tree_thresholds,
@@ -139,7 +140,7 @@ class HardDecisionsToDataLayer(DecisionsToDataLayer):
 
   def inference_graph(self, data):
     with ops.device(self.device_assigner):
-      path_probability, path = self.training_ops.hard_routing_function(
+      path_probability, path = gen_training_ops.hard_routing_function(
           data,
           self.tree_parameters,
           self.tree_thresholds,
@@ -147,7 +148,7 @@ class HardDecisionsToDataLayer(DecisionsToDataLayer):
           tree_depth=self.params.hybrid_tree_depth)
 
       output = array_ops.slice(
-          self.training_ops.unpack_path(path, path_probability),
+          gen_training_ops.unpack_path(path, path_probability),
           [0, self.params.num_nodes - self.params.num_leaves - 1],
           [-1, self.params.num_leaves])
 
@@ -175,7 +176,7 @@ class StochasticHardDecisionsToDataLayer(HardDecisionsToDataLayer):
   def soft_inference_graph(self, data):
     with ops.device(self.device_assigner):
       path_probability, path = (
-          self.training_ops.stochastic_hard_routing_function(
+          gen_training_ops.stochastic_hard_routing_function(
               data,
               self.tree_parameters,
               self.tree_thresholds,
@@ -183,7 +184,7 @@ class StochasticHardDecisionsToDataLayer(HardDecisionsToDataLayer):
               random_seed=self.params.base_random_seed))
 
       output = array_ops.slice(
-          self.training_ops.unpack_path(path, path_probability),
+          gen_training_ops.unpack_path(path, path_probability),
           [0, self.params.num_nodes - self.params.num_leaves - 1],
           [-1, self.params.num_leaves])
 
@@ -191,7 +192,7 @@ class StochasticHardDecisionsToDataLayer(HardDecisionsToDataLayer):
 
   def inference_graph(self, data):
     with ops.device(self.device_assigner):
-      path_probability, path = self.training_ops.hard_routing_function(
+      path_probability, path = gen_training_ops.hard_routing_function(
           data,
           self.tree_parameters,
           self.tree_thresholds,
@@ -199,7 +200,7 @@ class StochasticHardDecisionsToDataLayer(HardDecisionsToDataLayer):
           tree_depth=self.params.hybrid_tree_depth)
 
       output = array_ops.slice(
-          self.training_ops.unpack_path(path, path_probability),
+          gen_training_ops.unpack_path(path, path_probability),
           [0, self.params.num_nodes - self.params.num_leaves - 1],
           [-1, self.params.num_leaves])
 
@@ -226,7 +227,7 @@ class StochasticSoftDecisionsToDataLayer(StochasticHardDecisionsToDataLayer):
 
   def inference_graph(self, data):
     with ops.device(self.device_assigner):
-      routes = self.training_ops.routing_function(
+      routes = gen_training_ops.routing_function(
           data,
           self.tree_parameters,
           self.tree_thresholds,

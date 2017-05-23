@@ -298,6 +298,8 @@ invoke the following command:
 
 <pre>$ <b>bazel build --config=opt --config=cuda //tensorflow/tools/pip_package:build_pip_package</b> </pre>
 
+**NOTE on gcc 5 or later:** the binary pip packages available on the TensorFlow website are built with gcc 4, which uses the older ABI. To make your build compatible with the older ABI, you need to add `--cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"` to your `bazel build` command. ABI compatibility allows custom ops built against the TensorFlow pip package to continue to work against your built package.
+
 <b>Tip:</b> By default, building TensorFlow from sources consumes
 a lot of RAM.  If RAM is an issue on your system, you may limit RAM usage
 by specifying <code>--local_resources 2048,.5,1.0</code> while
@@ -317,15 +319,12 @@ $ <b>bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/tensorflow_pk
 Invoke `pip install` to install that pip package.
 The filename of the `.whl` file depends on your platform.
 For example, the following command will install the pip package
-for TensorFlow 1.0.1 on Linux:
+
+for TensorFlow 1.2.0rc0 on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.0.1-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.2.0rc0-py2-none-any.whl</b>
 </pre>
-
-**NOTE on gcc version 5:** the binary pip packages
-available on the TensorFlow website are built with gcc4 that uses the older ABI.
-To make the library compatible with the older abi you have to add `-cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`
 
 ## Validate your installation
 
@@ -343,10 +342,11 @@ Invoke python:
 Enter the following short program inside the python interactive shell:
 
 ```python
->>> import tensorflow as tf
->>> hello = tf.constant('Hello, TensorFlow!')
->>> sess = tf.Session()
->>> print(sess.run(hello))
+# Python
+import tensorflow as tf
+hello = tf.constant('Hello, TensorFlow!')
+sess = tf.Session()
+print(sess.run(hello))
 ```
 
 If the system outputs the following, then you are ready to begin writing
@@ -354,7 +354,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started$Getting Started with
+If you are new to TensorFlow, see @{$get_started/get_started$Getting Started with
 TensorFlow}.
 
 If the system outputs an error message instead of a greeting, see [Common
@@ -368,6 +368,7 @@ of one of the following guides:
 
   * @{$install_linux#CommonInstallationProblems$Installing TensorFlow on Linux}
   * @{$install_mac#CommonInstallationProblems$Installing TensorFlow on Mac OS}
+  * @{$install_windows#CommonInstallationProblems$Installing TensorFlow on Windows}
 
 Beyond the errors documented in those two guides, the following table
 notes additional errors specific to building TensorFlow.  Note that we
