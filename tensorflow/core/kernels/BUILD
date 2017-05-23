@@ -3583,6 +3583,7 @@ tf_kernel_library(
     name = "multinomial_op",
     prefix = "multinomial_op",
     deps = [
+        ":random_op",
         ":random_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
