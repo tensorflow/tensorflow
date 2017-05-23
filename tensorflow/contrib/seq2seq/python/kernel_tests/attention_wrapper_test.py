@@ -24,13 +24,13 @@ import functools
 
 import numpy as np
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.contrib.seq2seq.python.ops import attention_wrapper as wrapper
 from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import test
@@ -41,7 +41,7 @@ from tensorflow.python.util import nest
 
 # for testing
 AttentionWrapperState = wrapper.AttentionWrapperState  # pylint: disable=invalid-name
-LSTMStateTuple = core_rnn_cell.LSTMStateTuple  # pylint: disable=invalid-name
+LSTMStateTuple = rnn_cell.LSTMStateTuple  # pylint: disable=invalid-name
 BasicDecoderOutput = basic_decoder.BasicDecoderOutput  # pylint: disable=invalid-name
 float32 = np.float32
 int32 = np.int32
@@ -112,7 +112,7 @@ class AttentionWrapperTest(test.TestCase):
       with vs.variable_scope(
           'root',
           initializer=init_ops.random_normal_initializer(stddev=0.01, seed=3)):
-        cell = core_rnn_cell.LSTMCell(cell_depth)
+        cell = rnn_cell.LSTMCell(cell_depth)
         cell = wrapper.AttentionWrapper(
             cell,
             attention_mechanism,
@@ -133,7 +133,7 @@ class AttentionWrapperTest(test.TestCase):
       self.assertTrue(
           isinstance(final_state, wrapper.AttentionWrapperState))
       self.assertTrue(
-          isinstance(final_state.cell_state, core_rnn_cell.LSTMStateTuple))
+          isinstance(final_state.cell_state, rnn_cell.LSTMStateTuple))
 
       self.assertEqual((batch_size, None, attention_depth),
                        tuple(final_outputs.rnn_output.get_shape().as_list()))
