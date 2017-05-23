@@ -138,26 +138,13 @@ class FFTCPU : public FFTBase {
         auto input = ((Tensor)in).flat_inner_dims<complex64, FFTRank + 1>();
         auto output = out->flat_inner_dims<float, FFTRank + 1>();
 
-        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> startIndices;
         auto sizes = input.dimensions();
 
-        // Calculate the shape of full-fft temporary tensor
+        // Calculate the shape of full-fft temporary tensor.
         TensorShape fullShape;
         fullShape.AddDim(sizes[0]);
         for (auto i = 1; i <= FFTRank; i++) {
           fullShape.AddDim(fft_shape[i - 1]);
-        }
-
-        // Calculate the starting point and range of the source of
-        // negative frequency part
-        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> negStartIndices,
-            negTargetIndices;
-        auto negSizes = input.dimensions();
-
-        for (auto i = 1; i <= FFTRank; i++) {
-          negStartIndices[i] = 1;
-          negSizes[i] = fft_shape[i - 1] - sizes[i];
-          negTargetIndices[i] = sizes[i];
         }
 
         Tensor temp;
@@ -165,21 +152,40 @@ class FFTCPU : public FFTBase {
                                                fullShape, &temp));
         auto full_fft = temp.flat_inner_dims<complex64, FFTRank + 1>();
 
-        // Reconstruct the full fft by appending reversed and conjugated
-        // spectrum as the negative frequency part
-        Eigen::array<bool, FFTRank + 1> reversedAxis;
-        for (auto i = 1; i <= FFTRank; i++) {
-          reversedAxis[i] = true;
-        }
+        // Calculate the starting point and range of the source of
+        // negative frequency part.
+        auto negSizes = input.dimensions();
+        negSizes[FFTRank] = fft_shape[FFTRank - 1] - sizes[FFTRank];
+        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> negTargetIndices;
+        negTargetIndices[FFTRank] = sizes[FFTRank];
+
+        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> startIndices,
+            negStartIndices;
+        negStartIndices[FFTRank] = 1;
 
         full_fft.slice(startIndices, sizes) = input.slice(startIndices, sizes);
+
+        // First, conduct FFT on outer dimensions.
+        auto outerAxes = Eigen::ArrayXi::LinSpaced(FFTRank - 1, 1, FFTRank - 1);
+        full_fft = full_fft.template fft<Eigen::BothParts, Eigen::FFT_REVERSE>(
+            outerAxes);
+
+        // Reconstruct the full fft by appending reversed and conjugated
+        // spectrum as the negative frequency part.
+        Eigen::array<bool, FFTRank + 1> reversedAxis;
+        for (auto i = 0; i <= FFTRank; i++) {
+          reversedAxis[i] = i == FFTRank;
+        }
+
         full_fft.slice(negTargetIndices, negSizes) =
-            input.slice(negStartIndices, negSizes)
+            full_fft.slice(negStartIndices, negSizes)
                 .reverse(reversedAxis)
                 .conjugate();
 
+        auto innerAxis = Eigen::array<int, 1>{FFTRank};
         output.device(device) =
-            full_fft.template fft<Eigen::RealPart, Eigen::FFT_REVERSE>(axes);
+            full_fft.template fft<Eigen::RealPart, Eigen::FFT_REVERSE>(
+                innerAxis);
       }
     }
   }
