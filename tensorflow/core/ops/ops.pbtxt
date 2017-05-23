@@ -23514,6 +23514,80 @@ op {
   description: "The output locations corresponding to the implicitly zero elements in the sparse\ntensor will be zero (i.e., will not take up storage space), regardless of the\ncontents of the dense tensor (even if it\'s +/-INF and that INF*0 == NaN).\n\n*Limitation*: this Op only broadcasts the dense side to the sparse side, but not\nthe other direction."
 }
 op {
+  name: "SparseFillEmptyRows"
+  input_arg {
+    name: "indices"
+    description: "2-D tensor represents the indices of the sparse tensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    description: "1-D tensor represents the values of the sparse tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "dense_shape"
+    description: "1-D. tensor represents the shape of the sparse tensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "default_value"
+    description: "0-D. default value for missing rows.\noutput indices: 2-D."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    description: "1-D."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "empty_row_indicator"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "reverse_index_map"
+    description: "1-D."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "TODO(ebrevdo): fill in"
+}
+op {
+  name: "SparseFillEmptyRowsGrad"
+  input_arg {
+    name: "reverse_index_map"
+    description: "1-D."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "grad_values"
+    description: "1-D."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "d_grad"
+    description: "1-D."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "d_default_value"
+    description: "0-D."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "TODO(ebrevdo): fill in"
+}
+op {
   name: "SparseMatMul"
   input_arg {
     name: "a"
