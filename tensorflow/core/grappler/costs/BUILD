@@ -145,13 +145,24 @@ cc_library(
     hdrs = ["virtual_placer.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":utils",
         "//tensorflow/core:framework",
-        "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler/clusters:cluster",
+    ],
+)
+
+cc_test(
+    name = "virtual_placer_test",
+    srcs = ["virtual_placer_test.cc"],
+    deps = [
+        ":virtual_placer",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
     ],
 )
 
@@ -179,7 +190,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":robust_stats",
-        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
