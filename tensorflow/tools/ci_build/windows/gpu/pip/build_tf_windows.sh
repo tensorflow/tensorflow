@@ -42,9 +42,9 @@ source "tensorflow/tools/ci_build/windows/bazel/common_env.sh" \
 source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
   || { echo "Failed to source bazel_test_lib.sh" >&2; exit 1; }
 
-clean_output_base
-
 run_configure_for_gpu_build
+
+clean_output_base
 
 bazel build -c opt --config=win-cuda $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
 
@@ -67,4 +67,4 @@ passing_tests=$(bazel query "kind(py_test,  //${PY_TEST_DIR}/tensorflow/python/.
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
 # GPU tests are very flaky when running concurently, so set local_test_jobs=5
-bazel test -c opt --config=win-cuda $BUILD_OPTS -k $passing_tests --define=no_tensorflow_py_deps=true --test_output=errors --local_test_jobs=5
+bazel test -c opt --config=win-cuda $BUILD_OPTS -k $passing_tests --define=no_tensorflow_py_deps=true --test_output=errors --local_test_jobs=2
