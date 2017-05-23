@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -47,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -162,31 +160,9 @@ Service::CreateComputeConstantBackend() {
   return NotFound("CPU platform not found");
 }
 
-/* static */ void Service::DumpExecutedHlo(const HloModule& module,
-                                           const string& label,
-                                           const HloExecutionProfile* profile) {
-  VLOG(2) << "module name = " << module.name();
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  if (!flags->xla_generate_hlo_graph.empty() &&
-      RE2::PartialMatch(module.name(), flags->xla_generate_hlo_graph)) {
-    hlo_graph_dumper::DumpGraph(*module.entry_computation(), label,
-                                flags->xla_hlo_graph_addresses,
-                                flags->xla_hlo_graph_layout, profile);
-  }
-  if (!flags->xla_log_hlo_text.empty() &&
-      RE2::PartialMatch(module.name(), flags->xla_log_hlo_text)) {
-    LOG(INFO) << "HLO for module " << module.name();
-    LOG(INFO) << "Label: " << label;
-    XLA_LOG_LINES(2, module.ToString());
-  }
-  if (!flags->xla_dump_hlo_text_to.empty()) {
-    hlo_graph_dumper::DumpText(module, label, flags->xla_dump_hlo_text_to);
-  }
-}
-
 /* static */ Compiler::HloDumper Service::MakeHloDumper() {
   return [](const HloModule& module, const string& label) {
-    return DumpExecutedHlo(module, label, /*profile=*/nullptr);
+    return Executable::DumpExecutedHlo(module, label, /*profile=*/nullptr);
   };
 }
 
