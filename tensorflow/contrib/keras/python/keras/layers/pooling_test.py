@@ -87,7 +87,7 @@ class Pooling2DTest(test.TestCase):
             input_shape=(3, 5, 6, 4))
 
   def test_averagepooling_2d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.AveragePooling2D,
           kwargs={'strides': (2, 2),

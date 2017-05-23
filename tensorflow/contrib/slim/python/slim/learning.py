@@ -696,8 +696,9 @@ def train(train_op,
         else:
           should_stop_op = constant_op.constant(False)
         train_step_kwargs['should_stop'] = should_stop_op
-        train_step_kwargs['should_log'] = math_ops.equal(
-            math_ops.mod(global_step, log_every_n_steps), 0)
+        if log_every_n_steps > 0:
+          train_step_kwargs['should_log'] = math_ops.equal(
+              math_ops.mod(global_step, log_every_n_steps), 0)
         if is_chief and trace_every_n_steps is not None:
           train_step_kwargs['should_trace'] = math_ops.equal(
               math_ops.mod(global_step, trace_every_n_steps), 0)

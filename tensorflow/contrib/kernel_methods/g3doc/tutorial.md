@@ -1,12 +1,16 @@
-# Improving classification using explicit kernel methods
+# Improving Linear Models Using Explicit Kernel Methods
 
 In this tutorial, we demonstrate how combining (explicit) kernel methods with
 linear models can drastically increase the latters' quality of predictions
-without significantly increasing training and inference times. Currently,
-explicit kernel mappings are supported for dense features. Support for sparse
-features is in the works.
+without significantly increasing training and inference times. Unlike dual
+kernel methods, explicit (primal) kernel methods scale well with the size of the
+training dataset both in terms of training/inference times and in terms of
+memory requirements.
 
-We will use [tf.contrib.learn](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn) (TensorFlow's high-level Machine Learning API) Estimators for our ML models.
+Currently, explicit kernel mappings are supported for dense features. Support
+for sparse features is in the works.
+
+We will use [tf.contrib.learn](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn) (TensorFlow's high-level Machine Learning API) Estimators for our ML models. The
 tf.contrib.learn API reduces the boilerplate code one needs to write for
 configuring, training and evaluating models and will let us focus on the core
 ideas. If you are not familiar with this API, [tf.contrib.learn Quickstart](https://www.tensorflow.org/get_started/tflearn) is a good place to start. We
@@ -35,9 +39,10 @@ In order to feed data to a tf.contrib.learn Estimator, it is helpful to convert
 it to Tensors. For this, we will use an `input function` which adds Ops to the
 TensorFlow graph that, when executed, create mini-batches of Tensors to be used
 downstream. For more background on input functions, check
-[Building Input Functions with tf.contrib.learn](https://www.tensorflow.org/get_started/input_fn). In this example, we will use the `tf.train.shuffle_batch` Op which,
-besides converting numpy arrays to Tensors, allows us to specify the batch_size
-and whether to randomize the input every time the input_fn Ops are executed
+[Building Input Functions with tf.contrib.learn](https://www.tensorflow.org/get_started/input_fn).
+In this example, we will use the `tf.train.shuffle_batch` Op which, besides
+converting numpy arrays to Tensors, allows us to specify the batch_size and
+whether to randomize the input every time the input_fn Ops are executed
 (randomization typically expedites convergence during training). The full code
 for loading and preparing the data is shown in the snippet below. In this
 example, we use mini-batches of size 256 for training and the entire sample (5K
@@ -70,9 +75,10 @@ eval_input_fn = get_input_fn(data.validation, batch_size=5000)
 ```
 
 ## Training a simple linear model
-We can now train a linear model over the MNIST dataset. We will use the  [tf.contrib.learn.LinearClassifier](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/linear.py) estimator with 10 classes (representing the 10
-digits). The input features form a 784-dimensional (dense) vector which can be
-specified as follows:
+We can now train a linear model over the MNIST dataset. We will use the
+[tf.contrib.learn.LinearClassifier](https://www.tensorflow.org/code/tensorflow/contrib/learn/python/learn/estimators/linear.py) estimator with 10 classes (representing the 10 digits).
+The input features form a 784-dimensional (dense) vector which can be specified
+as follows:
 
 ```python
 image_column = tf.contrib.layers.real_valued_column('images', dimension=784)
@@ -99,7 +105,7 @@ eval_metrics = estimator.evaluate(input_fn=eval_input_fn, steps=1)
 print(eval_metrics)
 ```
 On eval data, the loss (i.e., the value of the objective function being
-minimized during training) lies between **0.25 and 0.30** (depending on the
+minimized during training) lies between **0.25** and **0.30** (depending on the
 parameters used) while the accuracy of the classifier is approximately **92.5%**
 (training is randomized so the exact loss and accuracy will vary). Also, the
 training time is around 25 seconds (this will also vary based on the machine you
@@ -109,11 +115,10 @@ In addition to experimenting with the (training) batch size and the number of
 training steps, there are a couple other parameters that can be tuned as well.
 For instance, you can change the optimization method used to minimize the loss
 by explicitly selecting another optimizer from the collection of
-[available optimizers]
-(https://www.tensorflow.org/code/tensorflow/python/training).
-As an example, the following code constructs a LinearClassifer estimator that
+[available optimizers](https://www.tensorflow.org/code/tensorflow/python/training).
+As an example, the following code constructs a LinearClassifier estimator that
 uses the Follow-The-Regularized-Leader (FTRL) optimization strategy with a
-specific learning rate and l2-regularization.
+specific learning rate and L2-regularization.
 
 
 ```python
@@ -135,15 +140,13 @@ input space to another feature space (of possibly higher dimension) where the
 (transformed) features are (almost) linearly separable and then apply a linear
 model on the mapped features. This is shown in the following figure:
 
-<div style="text-align:center">
-<img src="./kernel_mapping.png">
-</div>
+![image](./kernel_mapping.png)
 
 **Technical details overview:** In this example we will use **Random Fourier
-Features** (introduced in the ["Random Features for Large-Scale Kernel Machines"]
-(https://people.eecs.berkeley.edu/~brecht/papers/07.rah.rec.nips.pdf) paper by
+Features** (introduced in the
+["Random Features for Large-Scale Kernel Machines"](https://people.eecs.berkeley.edu/~brecht/papers/07.rah.rec.nips.pdf) paper by
 Rahimi and Recht) to map the input data. Random Fourier Features map a vector
-$$\mathbf{x} \in \mathbb{R}^d$$ to $$\mathbf{x'} \in \mathbb{R}^D$$ via the
+\\(\mathbf{x} \in \mathbb{R}^d\\) to \\(\mathbf{x'} \in \mathbb{R}^D\\) via the
 following mapping:
 
 $$
@@ -151,11 +154,11 @@ RFFM(\cdot): \mathbb{R}^d \to \mathbb{R}^D, \quad
 RFFM(\mathbf{x}) =  \cos(\mathbf{\Omega} \cdot \mathbf{x}+ \mathbf{b})
 $$
 
-where $$\mathbf{\Omega} \in \mathbb{R}^{D \times d}$$,
-$$\mathbf{x} \in \mathbb{R}^d,$$ $$\mathbf{b} \in \mathbb{R}^D$$ and cosine is
-applied elementwise.
+where \\(\mathbf{\Omega} \in \mathbb{R}^{D \times d}\\),
+\\(\mathbf{x} \in \mathbb{R}^d,\\) \\(\mathbf{b} \in \mathbb{R}^D\\) and the
+cosine is applied element-wise.
 
-In this example, the entries of $$\mathbf{\Omega}$$ and $$\mathbf{b}$$ are
+In this example, the entries of \\(\mathbf{\Omega}\\) and \\(\mathbf{b}\\) are
 sampled from distributions such that the mapping satisfies the following
 property:
 
@@ -175,7 +178,7 @@ for more details.
 pre-packaged `tf.contrib.learn` estimator that combines the power of explicit
 kernel mappings with linear models. Its API is very similar to that of the
 LinearClassifier with the additional ability to specify a list of explicit
-kernel mappings to be apply to each feature used by the classifier. The
+kernel mappings to be applied to each feature used by the classifier. The
 following code snippet demonstrates how to replace LinearClassifier with
 KernelLinearClassifier.
 
@@ -219,7 +222,7 @@ instruct the classifier to first map the initial 784-dimensional images to
 2000-dimensional vectors using random Fourier features and then learn a linear
 model on the transformed vectors. Note that, besides the output dimension, there
 is one more parameter (stddev) involved. This parameter is the standard
-deviation ($$\sigma$$) of the approximated RBF kernel and controls the
+deviation (\\(\sigma\\)) of the approximated RBF kernel and controls the
 similarity measure used in classification. This parameter is typically
 determined via hyperparameter tuning.
 
@@ -260,14 +263,17 @@ time respectively.
 ![image](./acc_vs_outdim.png)  ![image](./acc-vs-trn_time.png)
 
 
-## Explicit Kernel Mappings: summary and practical tips
+## Explicit kernel mappings: summary and practical tips
 * Explicit kernel mappings combine the predictive power of non-linear models
 with the scalability of linear models.
+* Unlike traditional dual kernel methods, they can scale to millions or hundreds
+of millions of samples.
 * Random Fourier Features can be particularly effective for datasets with dense
 features.
 * The parameters of the kernel mapping are often data-dependent. Model quality
 can be very sensitive to these parameters. Use hyperparameter tuning to find the
 optimal values.
 * If you have multiple numerical features, concatinate them into a single
-multi-dimensional one and apply the kernel mapping to the concatenated vector.
+multi-dimensional feature and apply the kernel mapping to the concatenated
+vector.
 

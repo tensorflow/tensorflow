@@ -111,8 +111,9 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
       backend_->eigen_intra_op_thread_pool_device());
 
   HloExecutionProfile hlo_execution_profile;
-  ServiceExecutableRunOptions service_run_options(run_options,
-                                                  backend_->StreamBorrower());
+  ServiceExecutableRunOptions service_run_options(
+      run_options, backend_->StreamBorrower(),
+      backend_->inter_op_thread_pool());
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase result,
       executable->ExecuteOnStream(&service_run_options, arguments,

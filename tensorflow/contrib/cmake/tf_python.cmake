@@ -265,6 +265,11 @@ add_python_module("tensorflow/contrib/cudnn_rnn/ops")
 add_python_module("tensorflow/contrib/cudnn_rnn/python")
 add_python_module("tensorflow/contrib/cudnn_rnn/python/kernel_tests")
 add_python_module("tensorflow/contrib/cudnn_rnn/python/ops")
+add_python_module("tensorflow/contrib/data")
+add_python_module("tensorflow/contrib/data/python")
+add_python_module("tensorflow/contrib/data/python/framework")
+add_python_module("tensorflow/contrib/data/python/kernel_tests")
+add_python_module("tensorflow/contrib/data/python/ops")
 add_python_module("tensorflow/contrib/deprecated")
 add_python_module("tensorflow/contrib/distributions")
 add_python_module("tensorflow/contrib/distributions/python")
@@ -592,6 +597,7 @@ GENERATE_PYTHON_OP_LIB("control_flow_ops"
   ADDITIONAL_LIBRARIES $<TARGET_OBJECTS:tf_no_op>)
 GENERATE_PYTHON_OP_LIB("ctc_ops")
 GENERATE_PYTHON_OP_LIB("data_flow_ops")
+GENERATE_PYTHON_OP_LIB("dataset_ops")
 GENERATE_PYTHON_OP_LIB("image_ops")
 GENERATE_PYTHON_OP_LIB("io_ops")
 GENERATE_PYTHON_OP_LIB("linalg_ops")
@@ -863,9 +869,9 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
 if(WIN32)
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow_internal.dll
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.dll
                                      ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow_internal.pyd
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow_internal.lib
+    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.lib
                                      ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/)
 else()
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD

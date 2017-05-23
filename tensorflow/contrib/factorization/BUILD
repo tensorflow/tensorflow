@@ -138,6 +138,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
     ],
     tags = [
+        "no_pip",  # b/38283730
         "notsan",  # Flaky: b/30756419
     ],
 )
@@ -213,6 +214,7 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
+    tags = ["manual"],
 )
 
 # Kernel tests

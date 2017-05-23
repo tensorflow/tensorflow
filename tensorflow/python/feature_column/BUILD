@@ -25,6 +25,16 @@ filegroup(
 )
 
 py_library(
+    name = "feature_column_py",
+    srcs = ["feature_column_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":feature_column",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "feature_column",
     srcs = ["feature_column.py"],
     srcs_version = "PY2AND3",
@@ -64,7 +74,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
-        ":feature_column",
+        ":feature_column_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",

@@ -1114,6 +1114,7 @@ cuda_py_test(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",
+        "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -1235,6 +1236,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = ["manual"],
 )
 
 cuda_py_test(
@@ -1564,6 +1566,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -1893,14 +1896,17 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:data_flow_ops_gen",
+        "//tensorflow/python:distributed_framework_test_lib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_grad",
+        "//tensorflow/python:training",
         "//tensorflow/python:tensor_array_grad",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variables",
     ],
+    flaky = 1,  # create_local_cluster sometimes times out.
 )
 
 cuda_py_test(
@@ -2008,6 +2014,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["manual"],
 )
 
 cuda_py_test(
@@ -2096,6 +2103,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = ["manual"],
 )
 
 cuda_py_test(
@@ -2368,7 +2376,10 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 50,
-    tags = ["notap"],  # b/30226163
+    tags = [
+        "manual",
+        "notap",  # b/30226163
+    ],
 )
 
 cuda_py_test(
@@ -2379,7 +2390,6 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:data_flow_grad",
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",

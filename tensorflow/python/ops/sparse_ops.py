@@ -556,7 +556,7 @@ def sparse_reshape(sp_input, shape, name=None):
       number of elements than `sp_input`.
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
-  shape = ops.convert_to_tensor(shape, dtype=dtypes.int64)
+  shape = math_ops.cast(shape, dtype=dtypes.int64)
 
   with ops.name_scope(name, "SparseReshape", [sp_input]) as name:
     reshaped_ind, reshaped_shape = gen_sparse_ops._sparse_reshape(
@@ -1766,7 +1766,7 @@ def sparse_transpose(sp_input, perm=None, name=None):
   Raises:
     TypeError: If `sp_input` is not a `SparseTensor`.
   """
-  with ops.op_scope([sp_input], name, "SparseTranspose") as name:
+  with ops.name_scope(name, "SparseTranspose", [sp_input]) as name:
     if perm is None:
       rank = array_ops.rank(sp_input)
       perm = (rank - 1) - math_ops.range(0, rank, 1)
