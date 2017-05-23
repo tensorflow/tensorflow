@@ -39,7 +39,7 @@ def mean_absolute_percentage_error(y_true, y_pred):
 
 
 def symmetric_mean_absolute_percentage_error(y_true, y_pred):
-  # Equivalent to MAE, but sometimes easier to interpret.
+  # Variation to MAPE, have advantage of putting equal penalty on both positive and negative erros
   diff = K.abs((y_true - y_pred) / K.clip((K.abs(y_true)+K.abs(y_pred)), K.epsilon(), None))
   return 200. * K.mean(diff, axis=-1)
 
