@@ -16,13 +16,9 @@ cc_library(
         "midl.h",
     ],
     copts = [
-        "-Wbad-function-cast",
-        "-Wno-unused-but-set-variable",
-        "-Wno-unused-parameter",
-        "-Wuninitialized",
+        "-w",
     ],
     linkopts = [
-        "-w",
         "-lpthread",
     ],
     visibility = ["//visibility:public"],
