@@ -875,8 +875,8 @@ class LMDBReaderTest(test.TestCase):
       queue.close().run()
       for i in range(10):
         k, v = sess.run([key, value])
-        self.assertEqual(k, str(i))
-        self.assertEqual(v, str(chr(ord('a') + i)))
+        self.assertAllEqual(compat.as_bytes(k), str(i))
+        self.assertAllEqual(v, str(chr(ord('a') + i)))
 
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
@@ -893,8 +893,8 @@ class LMDBReaderTest(test.TestCase):
       queue.close().run()
       for i in range(10):
         k, v = sess.run([key, value])
-        self.assertEqual(k, str(i))
-        self.assertEqual(v, str(chr(ord('a') + i)))
+        self.assertAllEqual(compat.as_bytes(k), str(i))
+        self.assertAllEqual(v, str(chr(ord('a') + i)))
 
       with self.assertRaisesOpError("is closed and has insufficient elements "
                                     "\\(requested 1, current size 0\\)"):
