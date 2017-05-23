@@ -29,9 +29,11 @@ import threading
 import numpy as np
 import six
 
+_portpicker_import_error = None
 try:
   import portpicker  # pylint: disable=g-import-not-at-top
-except ImportError as _portpicker_import_error:
+except ImportError as _error:
+  _portpicker_import_error = _error
   portpicker = None
 
 # pylint: disable=g-import-not-at-top
@@ -820,8 +822,8 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc"):
   Raises:
     ImportError: if portpicker module was not found at load time
   """
-  if not portpicker:
-    raise _portpicker_import_error
+  if _portpicker_import_error:
+    raise _portpicker_import_error  # pylint: disable=raising-bad-type
   worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
   ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
   cluster_dict = {
