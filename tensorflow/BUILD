@@ -37,6 +37,15 @@ config_setting(
 )
 
 config_setting(
+    name = "android_armeabi",
+    values = {
+        "cc_target_os": "android",
+        "cpu": "armeabi",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "android_arm",
     values = {
         "crosstool_top": "//external:android/crosstool",
