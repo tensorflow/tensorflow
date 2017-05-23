@@ -38,6 +38,12 @@ def mean_absolute_percentage_error(y_true, y_pred):
   return 100. * K.mean(diff, axis=-1)
 
 
+def symmetric_mean_absolute_percentage_error(y_true, y_pred):
+  # Equivalent to MAE, but sometimes easier to interpret.
+  diff = K.abs((y_true - y_pred) / K.clip((K.abs(y_true)+K.abs(y_pred)), K.epsilon(), None))
+  return 200. * K.mean(diff, axis=-1)
+
+
 def mean_squared_logarithmic_error(y_true, y_pred):
   first_log = K.log(K.clip(y_pred, K.epsilon(), None) + 1.)
   second_log = K.log(K.clip(y_true, K.epsilon(), None) + 1.)
@@ -85,6 +91,7 @@ def cosine_proximity(y_true, y_pred):
 mse = MSE = mean_squared_error
 mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
+smape = SMAPE = symmetric_mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
 kld = KLD = kullback_leibler_divergence
 cosine = cosine_proximity
