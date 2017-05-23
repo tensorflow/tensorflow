@@ -2326,7 +2326,7 @@ tf_cc_test_gpu(
 tf_cuda_only_cc_test(
     name = "util_cuda_kernel_helper_test",
     srcs = [
-        "util/cuda_kernel_helper_test.cu.cc"
+        "util/cuda_kernel_helper_test.cu.cc",
     ],
     deps = [
         ":test",
