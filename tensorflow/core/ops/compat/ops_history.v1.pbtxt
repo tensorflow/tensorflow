@@ -22830,7 +22830,7 @@ op {
     type_attr: "T"
   }
   output_arg {
-    name: "d_grad"
+    name: "d_values"
     type_attr: "T"
   }
   output_arg {

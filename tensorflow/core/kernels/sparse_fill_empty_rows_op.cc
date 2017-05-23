@@ -199,10 +199,10 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
     const int64 N = reverse_index_map_t->shape().dim_size(0);
     const int64 N_full = grad_values_t->shape().dim_size(0);
 
-    Tensor* d_grad_t;
-    OP_REQUIRES_OK(context, context->allocate_output("d_grad", TensorShape({N}),
-                                                     &d_grad_t));
-    auto d_grad = d_grad_t->vec<T>();
+    Tensor* d_values_t;
+    OP_REQUIRES_OK(context, context->allocate_output(
+                                "d_values", TensorShape({N}), &d_values_t));
+    auto d_values = d_values_t->vec<T>();
     Tensor* d_default_value_t;
     OP_REQUIRES_OK(context,
                    context->allocate_output("d_default_value", TensorShape({}),
@@ -220,7 +220,7 @@ class SparseFillEmptyRowsGradOp : public OpKernel {
       // Locate the index of the output of the forward prop associated
       // with this location in the input of the forward prop.  Copy
       // the gradient into it.  Mark it as visited.
-      d_grad(i) = grad_values(reverse_index_map(i));
+      d_values(i) = grad_values(reverse_index_map(i));
       visited(reverse_index_map(i)) = true;
     }
     for (int j = 0; j < N_full; ++j) {
