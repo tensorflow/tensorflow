@@ -20,13 +20,18 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import org.junit.Ignore;
-import org.junit.Test;
+import org.junit.Rule;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.junit.Test;
 
 /** Unit tests for {@link org.tensorflow.OperationBuilder}. */
 @RunWith(JUnit4.class)
 public class OperationBuilderTest {
+  @Rule
+  public ExpectedException expectedException = ExpectedException.none();
+
   // TODO(ashankar): Restore this test once the C API gracefully handles mixing graphs and
   // operations instead of segfaulting.
   @Test
@@ -46,32 +51,32 @@ public class OperationBuilderTest {
   }
 
   @Test
-  public void failOnUseAfterBuild() {
+  public void whenSetAttrOnBuiltObjectThenThrowExpectedException() {
+    expectedException.expect(IllegalStateException.class);
+    expectedException.expectMessage("Operation has already been built");
+
     try (Graph g = new Graph();
         Tensor t = Tensor.create(1)) {
-      OperationBuilder b =
+      final OperationBuilder b =
           g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
       b.build();
-      try {
-        b.setAttr("dtype", t.dataType());
-      } catch (IllegalStateException e) {
-        // expected exception.
-      }
+
+      b.setAttr("dtype", t.dataType());
     }
   }
 
   @Test
-  public void failOnUseAfterGraphClose() {
+  public void whenCallBuildOnClosedGraphThenThrowExpectedException() {
+    expectedException.expect(IllegalStateException.class);
+    expectedException.expectMessage("close() has been called on the Graph");
+
     OperationBuilder b = null;
     try (Graph g = new Graph();
         Tensor t = Tensor.create(1)) {
       b = g.opBuilder("Const", "Const").setAttr("dtype", t.dataType()).setAttr("value", t);
     }
-    try {
-      b.build();
-    } catch (IllegalStateException e) {
-      // expected exception.
-    }
+
+    b.build();
   }
 
   @Test

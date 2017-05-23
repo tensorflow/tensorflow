@@ -579,7 +579,7 @@ public final class Tensor implements AutoCloseable {
       throw new IllegalArgumentException(
           String.format(
               "cannot copy Tensor with DataType %s into an object of type %s",
-              dtype.toString(), o.getClass().getName()));
+              dtype.toString(), o.getClass().getSimpleName()));
     }
     long[] oShape = new long[numDimensions()];
     fillShape(o, 0, oShape);

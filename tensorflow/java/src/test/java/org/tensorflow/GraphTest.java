@@ -18,13 +18,17 @@ package org.tensorflow;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
-import org.junit.Test;
+import org.junit.Rule;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.junit.Test;
 
 /** Unit tests for {@link org.tensorflow.Graph}. */
 @RunWith(JUnit4.class)
 public class GraphTest {
+  @Rule
+  public ExpectedException expectedException = ExpectedException.none();
 
   @Test
   public void graphDefRoundTrip() {
@@ -71,30 +75,32 @@ public class GraphTest {
   }
 
   @Test
-  public void failImportOnInvalidGraphDefs() {
-    try (Graph g = new Graph()) {
-      try {
-        g.importGraphDef(null);
-      } catch (IllegalArgumentException e) {
-        // expected exception.
-      }
+  public void whenImportGraphDefWithNullDefThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("graphDef and prefix cannot be null");
 
-      try {
-        g.importGraphDef(new byte[] {1});
-      } catch (IllegalArgumentException e) {
-        // expected exception.
-      }
+    try (final Graph g = new Graph()) {
+      g.importGraphDef(null);
     }
   }
 
   @Test
-  public void failOnUseAfterClose() {
-    Graph g = new Graph();
-    g.close();
-    try {
-      g.toGraphDef();
-    } catch (IllegalStateException e) {
-      // expected exception.
+  public void whenImportGraphDefWithInvalidDefThenThrowExpectedException() {
+    expectedException.expect(IllegalArgumentException.class);
+    expectedException.expectMessage("Invalid GraphDef");
+
+    try (final Graph g = new Graph()) {
+      g.importGraphDef(new byte[] {1});
     }
+  }
+
+  @Test
+  public void whenToGraphDefOnClosedGraphThenThrowExpectedException() {
+    expectedException.expect(IllegalStateException.class);
+    expectedException.expectMessage("close() has been called on the Graph");
+
+    final Graph g = new Graph();
+    g.close();
+    g.toGraphDef();
   }
 }
