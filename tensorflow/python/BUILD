@@ -3656,3 +3656,20 @@ py_test(
         "//third_party/py/numpy",
     ],
 )
+
+cuda_py_test(
+    name = "layout_optimizer_test",
+    size = "medium",
+    srcs = [
+        "grappler/layout_optimizer_test.py",
+    ],
+    additional_deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":array_ops",
+        ":nn",
+        ":random_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
