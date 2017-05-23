@@ -32,7 +32,16 @@ namespace grappler {
 
 AnalyticalCostEstimator::AnalyticalCostEstimator(Cluster* cluster,
                                                  bool use_static_shapes)
-    : cluster_(cluster), use_static_shapes_(use_static_shapes) {}
+    : cluster_(cluster),
+      node_estimator_(new OpLevelCostEstimator()),
+      use_static_shapes_(use_static_shapes) {}
+
+AnalyticalCostEstimator::AnalyticalCostEstimator(
+    Cluster* cluster, OpLevelCostEstimator* node_estimator,
+    bool use_static_shapes)
+    : cluster_(cluster),
+      node_estimator_(node_estimator),
+      use_static_shapes_(use_static_shapes) {}
 
 Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
   item_ = item;
@@ -68,7 +77,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     auto& op_info = node_info.op_info;
     const string& op_name = node_info.name;
 
-    node_costs = node_estimator_.PredictCosts(op_info);
+    node_costs = node_estimator_->PredictCosts(op_info);
     if (node_costs.inaccurate) {
       inaccurate_nodes.push_back(op_name);
     }
