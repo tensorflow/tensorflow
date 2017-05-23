@@ -772,7 +772,7 @@ class CrossedColumnTest(test.TestCase):
       fc.crossed_column(['a', fc.numeric_column('c')], 10)
 
     with self.assertRaisesRegexp(
-        ValueError, '_HashedCategoricalColumn is not supported'):
+        ValueError, 'categorical_column_with_hash_bucket is not supported'):
       fc.crossed_column(
           ['a', fc.categorical_column_with_hash_bucket('c', 10)], 10)
 

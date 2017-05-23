@@ -1165,8 +1165,9 @@ def crossed_column(keys, hash_bucket_size, hash_key=None):
           'Given: {}'.format(key))
     if isinstance(key, _HashedCategoricalColumn):
       raise ValueError(
-          '_HashedCategoricalColumn is not supported. Instead, use the feature '
-          'name as a string. Given: {}'.format(key))
+          'categorical_column_with_hash_bucket is not supported for crossing. '
+          'Hashing before crossing will increase probability of collision. '
+          'Instead, use the feature name as a string. Given: {}'.format(key))
   return _CrossedColumn(
       keys=tuple(keys), hash_bucket_size=hash_bucket_size,
       hash_key=hash_key)
