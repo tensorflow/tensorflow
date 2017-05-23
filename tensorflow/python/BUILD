@@ -1709,14 +1709,23 @@ py_library(
 py_library(
     name = "rnn_cell",
     srcs = [
+        "ops/rnn_cell.py",
         "ops/rnn_cell_impl.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":clip_ops",
         ":framework_for_generated_wrappers",
+        ":init_ops",
         ":layers_base",
+        ":math_ops",
+        ":nn_ops",
+        ":partitioned_variables",
+        ":random_ops",
         ":util",
+        ":variable_scope",
+        ":variables",
     ],
 )
 
