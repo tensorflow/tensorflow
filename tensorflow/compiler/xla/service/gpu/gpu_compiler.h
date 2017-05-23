@@ -57,6 +57,14 @@ class GpuCompiler : public Compiler {
 
   int64 ShapeSizeBytes(const Shape& shape) const override;
 
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
+    // Capture just the pointer size, not the entire GpuCompiler object.
+    int64 pointer_size = pointer_size_;
+    return [pointer_size](const Shape& shape) {
+      return ShapeUtil::ByteSizeOf(shape, pointer_size);
+    };
+  }
+
  private:
   // The parent directory of libdevice IR libraries.
   const string libdevice_dir_;
@@ -67,7 +75,7 @@ class GpuCompiler : public Compiler {
   tensorflow::mutex mutex_;
   std::vector<std::unique_ptr<string>> generated_ptxes_ GUARDED_BY(mutex_);
 
-  // The size in bytes of a pointer. Used for computing ShapeSizeBytes.
+  // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
   int64 pointer_size_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);

@@ -447,10 +447,8 @@ ReturnT Service::ExecuteOnStreamWrapper(
   }
 
   if (profile_ptr != nullptr) {
-    HloCostAnalysis::ShapeSizeFunction shape_size =
-        [backend](const Shape& shape) {
-          return backend->compiler()->ShapeSizeBytes(shape);
-        };
+    const HloCostAnalysis::ShapeSizeFunction& shape_size =
+        executable->shape_size_function();
     std::unordered_set<const xla::HloComputation*> profiled_computations =
         profile_ptr->profiled_computations();
     // To ensure we have print the profiles in a stable order, iterate over the

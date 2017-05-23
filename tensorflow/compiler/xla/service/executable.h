@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
@@ -40,8 +41,10 @@ namespace xla {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
-  explicit Executable(std::unique_ptr<HloModule> hlo_module)
-      : hlo_module_(std::move(hlo_module)) {}
+  explicit Executable(std::unique_ptr<HloModule> hlo_module,
+                      HloCostAnalysis::ShapeSizeFunction shape_size_function)
+      : hlo_module_(std::move(hlo_module)),
+        shape_size_function_(std::move(shape_size_function)) {}
   virtual ~Executable() {}
 
   // Enqueues the compilation result on the provided stream, passing the given
@@ -131,6 +134,11 @@ class Executable {
   static Status DumpToDirectory(const string& directory_path, string filename,
                                 const SessionModule& session_module);
 
+  // Return a reference to a function that computes the size of a given Shape.
+  const HloCostAnalysis::ShapeSizeFunction& shape_size_function() const {
+    return shape_size_function_;
+  }
+
  protected:
   mutable tensorflow::mutex mutex_;
 
@@ -141,6 +149,11 @@ class Executable {
   // HloInstructions owned by the HloModule so we need to keep the HloModule
   // around.
   std::unique_ptr<HloModule> hlo_module_;
+
+  // Function to compute the size of a given Shape, in bytes.  This is
+  // provided to the Executable when it is constructed, and used to produce
+  // data for profiling the execution.
+  HloCostAnalysis::ShapeSizeFunction shape_size_function_;
 
   // SessionModule this was compiled from. Null if not dumping executions.
   std::unique_ptr<SessionModule> session_module_;

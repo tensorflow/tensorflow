@@ -671,6 +671,10 @@ int64 CpuCompiler::ShapeSizeBytes(const Shape& shape) const {
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
+HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
+  return CpuExecutable::ShapeSizeBytes;
+}
+
 }  // namespace cpu
 }  // namespace xla
 

@@ -128,6 +128,8 @@ class CpuCompiler : public Compiler {
 
   int64 ShapeSizeBytes(const Shape& shape) const override;
 
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
+
  private:
   // Initialize the LLVM target.
   static void InitializeLLVMTarget();

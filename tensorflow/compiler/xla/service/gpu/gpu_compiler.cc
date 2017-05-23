@@ -326,7 +326,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
   auto* gpu_executable =
       new GpuExecutable(*ptx, std::move(thunk_schedule), std::move(module),
-                        std::move(buffer_assignment));
+                        std::move(buffer_assignment), ShapeSizeBytesFunction());
   if (flags->xla_gpu_embed_ir) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
