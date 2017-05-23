@@ -333,7 +333,7 @@ class Estimator(object):
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
-      training.create_global_step(g)
+      self._create_and_assert_global_step(g)
       features = self._get_features_from_input_fn(input_fn)
       estimator_spec = self._call_model_fn(features, None,
                                            model_fn_lib.ModeKeys.PREDICT)
@@ -357,16 +357,18 @@ class Estimator(object):
               }
 
   def _assert_members_are_not_overridden(self):
+    allowed_overrides = set(['_create_global_step'])
     estimator_members = set([m for m in Estimator.__dict__.keys()
                              if not m.startswith('__')])
     subclass_members = set(self.__class__.__dict__.keys())
-    common_members = estimator_members & subclass_members
-    overriden_members = [m for m in common_members
-                         if Estimator.__dict__[m] != self.__class__.__dict__[m]]
-    if overriden_members:
+    common_members = estimator_members & subclass_members - allowed_overrides
+    overridden_members = [
+        m for m in common_members
+        if Estimator.__dict__[m] != self.__class__.__dict__[m]]
+    if overridden_members:
       raise ValueError(
           'Subclasses of Estimator cannot override members of Estimator. '
-          '{} does override {}'.format(self.__class__, overriden_members))
+          '{} does override {}'.format(self.__class__, overridden_members))
 
   def export_savedmodel(
       self, export_dir_base, serving_input_receiver_fn,
@@ -422,7 +424,7 @@ class Estimator(object):
       raise ValueError('serving_input_receiver_fn must be defined.')
 
     with ops.Graph().as_default() as g:
-      training.create_global_step(g)
+      self._create_and_assert_global_step(g)
       random_seed.set_random_seed(self._config.tf_random_seed)
       serving_input_receiver = serving_input_receiver_fn()
 
@@ -519,6 +521,34 @@ class Estimator(object):
                        'provided %s.' % (existing_keys, predict_keys))
     return predictions
 
+  def _create_global_step(self, graph):
+    """Creates the global step tensor in graph.
+
+    The global step tensor must be an integer type with name 'global_step' and
+    be added to the collection ${tf.GraphKeys.GLOBAL_STEP}.
+
+    Args:
+      graph: The graph in which to create the global step tensor.
+
+    Returns:
+      The global step `Tensor`.
+    """
+    return training.create_global_step(graph)
+
+  def _create_and_assert_global_step(self, graph):
+    """Creates and asserts properties of the global step.
+
+    Args:
+      graph: The graph in which to create the global step tensor.
+
+    Returns:
+      The global step `Tensor`.
+    """
+    step = self._create_global_step(graph)
+    assert step == training.get_global_step()
+    assert step.dtype.is_integer
+    return step
+
   def _call_model_fn(self, features, labels, mode):
     """Calls model function.
 
@@ -553,7 +583,7 @@ class Estimator(object):
     all_hooks = []
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step_tensor = training.create_global_step(g)
+      global_step_tensor = self._create_and_assert_global_step(g)
       with ops.device('/cpu:0'):
         features, labels = input_fn()
       estimator_spec = self._call_model_fn(features, labels,
@@ -632,7 +662,7 @@ class Estimator(object):
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
-      global_step_tensor = training.create_global_step(g)
+      global_step_tensor = self._create_and_assert_global_step(g)
       features, labels = input_fn()
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.EVAL)
