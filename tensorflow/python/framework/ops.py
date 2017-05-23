@@ -2789,7 +2789,7 @@ class Graph(object):
   @property
   def collections(self):
     """Returns the names of the collections known to this graph."""
-    return self._collections.keys()
+    return list(self._collections)
 
   def add_to_collection(self, name, value):
     """Stores `value` in the collection with the given `name`.
