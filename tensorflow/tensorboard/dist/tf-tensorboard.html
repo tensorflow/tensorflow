@@ -1779,7 +1779,7 @@ var TF;
       :host:first-of-type {
         margin-top: 20px;
       }
-      
+
       :host:last-of-type {
         margin-bottom: 20px;
       }
@@ -2208,7 +2208,7 @@ svg.plottable {
 
 <dom-module id="tf-panes-helper" assetpath="../tf-dashboard-common/">
   <template>
-    <content></content> 
+    <content></content>
     <tf-no-data-warning data-type="[[dataType]]" show-warning="[[dataNotFound]]"></tf-no-data-warning>
 
     <template is="dom-repeat" items="[[categories]]" as="category">
@@ -2224,7 +2224,7 @@ svg.plottable {
                 </div>
                 <div class="card-content">
                   <tf-chart-scaffold tag="[[item.tag]]" data-provider="[[dataProvider]]" visible-series="[[item.runs]]" on-ready="_instantiateTemplate">
-                    
+
                   </tf-chart-scaffold>
                 </div>
                 <div class="card-bottom-row">
@@ -6281,7 +6281,7 @@ var VZ;
               <paper-button id="relative">relative</paper-button>
               <paper-button id="wall_time">wall</paper-button>
             </tf-option-selector>
-          
+
        </div>
       </tf-sidebar-helper></div>
 
@@ -14741,7 +14741,7 @@ Polymer({
 <svg id="svg">
   <defs>
 
-    
+
     <path id="ref-arrowhead-path" d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"></path>
     <marker class="ref-arrowhead" id="ref-arrowhead-small" viewBox="0 0 10 10" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
       <use xlink:href="#ref-arrowhead-path"></use>
@@ -14756,7 +14756,7 @@ Polymer({
       <use xlink:href="#ref-arrowhead-path"></use>
     </marker>
 
-    
+
     <marker id="annotation-arrowhead" markerWidth="5" markerHeight="5" refX="5" refY="2.5" orient="auto">
       <path d="M 0,0 L 5,2.5 L 0,5 L 0,0"></path>
     </marker>
@@ -14769,23 +14769,23 @@ Polymer({
     <marker id="ref-annotation-arrowhead-faded" markerWidth="5" markerHeight="5" refX="0" refY="2.5" orient="auto">
       <path d="M 5,0 L 0,2.5 L 5,5 L 5,0"></path>
     </marker>
-    
+
     <ellipse id="op-node-stamp" rx="7.5" ry="3" stroke="inherit" fill="inherit"></ellipse>
-    
+
     <ellipse id="op-node-annotation-stamp" rx="5" ry="2" stroke="inherit" fill="inherit"></ellipse>
-    
+
     <g id="op-series-vertical-stamp">
       <use xlink:href="#op-node-stamp" x="8" y="9"></use>
       <use xlink:href="#op-node-stamp" x="8" y="6"></use>
       <use xlink:href="#op-node-stamp" x="8" y="3"></use>
     </g>
-    
+
     <g id="op-series-horizontal-stamp">
       <use xlink:href="#op-node-stamp" x="16" y="4"></use>
       <use xlink:href="#op-node-stamp" x="12" y="4"></use>
       <use xlink:href="#op-node-stamp" x="8" y="4"></use>
     </g>
-    
+
     <g id="op-series-annotation-stamp">
       <use xlink:href="#op-node-annotation-stamp" x="9" y="2"></use>
       <use xlink:href="#op-node-annotation-stamp" x="7" y="2"></use>
@@ -14794,10 +14794,10 @@ Polymer({
     <svg id="summary-icon" fill="#848484" height="12" viewBox="0 0 24 24" width="12">
       <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"></path>
     </svg>
-    
+
     <g id="linearGradients"></g>
 
-    
+
     <pattern id="rectHatch" patternTransform="rotate(45 0 0)" width="5" height="5" patternUnits="userSpaceOnUse">
       <line x1="0" y1="0" x2="0" y2="5" style="stroke-width: 1"></line>
     </pattern>
@@ -14805,7 +14805,7 @@ Polymer({
       <line x1="0" y1="0" x2="0" y2="2" style="stroke-width: 1"></line>
     </pattern>
 
-    
+
     <filter id="health-pill-shadow" x="-40%" y="-40%" width="180%" height="180%">
       <feGaussianBlur in="SourceAlpha" stdDeviation="0.8"></feGaussianBlur>
       <feOffset dx="0" dy="0" result="offsetblur"></feOffset>
@@ -14817,7 +14817,7 @@ Polymer({
       </feMerge>
     </filter>
   </defs>
-  
+
   <rect fill="white" width="10000" height="10000"></rect>
   <g id="root"></g>
 </svg>
@@ -17424,7 +17424,7 @@ table.tf-graph-controls td.input-element-table-data {
       </div>
     </template>
   </div>
-  
+
   <template is="dom-if" if="[[!_isGradientColoring(stats, colorBy)]]">
     <div class="legend-holder">
       <table>
@@ -17831,7 +17831,7 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     'node-toggle-expand': '_handleNodeToggleExpand',
   },
   observers: [
-    '_maybeFetchHealthPillsAtSpecificStep(allStepsModeEnabled, specificHealthPillStep)',
+    '_maybeFetchHealthPills(allStepsModeEnabled, specificHealthPillStep)',
     '_maybeInitializeDashboard(backend, _isAttached)',
   ],
   attached: function() {
@@ -17841,19 +17841,16 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     this.set('_isAttached', false);
   },
   reload: function() {
-    if (!this.debuggerDataEnabled ||
-        !this.healthPillsToggledOn ||
-        !this._renderHierarchy ||
-        this._datasetsEmpty(this._datasets)) {
-      // Do not load debugger data if the feature is disabled, if the user toggled off the feature,
-      // or if the graph itself has not loaded yet. We need the graph to load so that we know which
-      // nodes to request health pills for.
-      return;
-    }
-
-    // Request debugger data on graph reloads, but do not re-request the graph itself. The graph
-    // would not change across reloads.
-    this._requestHealthPills();
+    this._maybeFetchHealthPills();
+  },
+  _shouldRequestHealthPills: function() {
+    // Do not load debugger data if the feature is disabled, if the user toggled off the feature,
+    // or if the graph itself has not loaded yet. We need the graph to load so that we know which
+    // nodes to request health pills for.
+    return this.debuggerDataEnabled &&
+        this.healthPillsToggledOn &&
+        this._renderHierarchy &&
+        !this._datasetsEmpty(this._datasets);
   },
   _maybeInitializeDashboard: function(backend, isAttached) {
     if (this._initialized || !backend || !isAttached) {
@@ -17953,7 +17950,7 @@ TF.Dashboard.TfGraphDashboard = Polymer({
   },
   _handleNodeToggleExpand: function() {
     // Nodes were toggled. We may need to request health pills for more nodes.
-    this._requestHealthPills();
+    this._maybeFetchHealthPills();
   },
   _healthPillsToggledOnChanged: function(healthPillsToggledOn) {
     if (healthPillsToggledOn) {
@@ -17965,9 +17962,8 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     }
   },
   // Fetch health pills for a specific step if applicable.
-  _maybeFetchHealthPillsAtSpecificStep: function(allStepsModeEnabled, specificHealthPillStep) {
-    if (!this._renderHierarchy) {
-      // The graph is not ready yet.
+  _maybeFetchHealthPills: function() {
+    if (!this._shouldRequestHealthPills()) {
       return;
     }
 
@@ -18006,7 +18002,7 @@ TF.Dashboard.TfGraphDashboard = Polymer({
 </style>
 <dom-module id="tf-text-loader" assetpath="../tf-text-dashboard/">
 
-  
+
   <template>
     <style include="scrollbar-style"></style>
     <paper-material elevation="1" id="outer" class="container scrollbar">
@@ -18430,13 +18426,13 @@ paper-textarea {
       </paper-tooltip>
     </div>
     <div id="icon-container">
-      
+
       <paper-icon-button id="expand-more" icon="expand-less" on-tap="_expandMore"></paper-icon-button>
       <paper-icon-button id="expand-less" style="display: none" icon="expand-more" on-tap="_expandLess"></paper-icon-button>
     </div>
   </div>
   <iron-collapse id="panel">
-    
+
     <div id="state-section">
       <template is="dom-if" if="[[!savedStates.length]]">
         <p id="no-bookmarks">
@@ -18693,7 +18689,7 @@ paper-dropdown-menu paper-item {
 </style>
 <div class="title">DATA</div>
 <div class="container">
-  
+
   <template is="dom-if" if="[[_hasChoices(runNames)]]">
     <paper-dropdown-menu no-animations="" label="[[_getNumRunsLabel(runNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedRun}}">
@@ -18707,7 +18703,7 @@ paper-dropdown-menu paper-item {
   </template>
 
   <template is="dom-if" if="[[tensorNames]]">
-    
+
     <paper-dropdown-menu no-animations="" label="[[_getNumTensorsLabel(tensorNames)]] found">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedTensor}}">
         <template is="dom-repeat" items="[[tensorNames]]">
@@ -18721,7 +18717,7 @@ paper-dropdown-menu paper-item {
       </paper-listbox>
     </paper-dropdown-menu>
   </template>
-  
+
   <template is="dom-if" if="[[_hasChoices(labelOptions)]]">
     <paper-dropdown-menu no-animations="" label="Label by">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedLabelOption}}">
@@ -18734,7 +18730,7 @@ paper-dropdown-menu paper-item {
     </paper-dropdown-menu>
   </template>
 
-  
+
   <div hidden$="[[!_hasChoices(colorOptions)]]" class="colorby-container">
     <paper-dropdown-menu id="colorby" no-animations="" label="Color by">
       <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{selectedColorOptionName}}">
@@ -19367,7 +19363,7 @@ paper-dropdown-menu paper-item {
     </div>
   </div>
   <div class="container">
-    
+
     <div data-panel="tsne" class="ink-panel-content">
       <div class="slider">
         <label>Dimension</label>
@@ -19418,10 +19414,10 @@ paper-dropdown-menu paper-item {
         </a>
       </p>
     </div>
-    
+
     <div data-panel="pca" class="ink-panel-content">
       <div class="two-columns">
-        <div> 
+        <div>
           <paper-dropdown-menu class="pca-dropdown" vertical-align="bottom" no-animations="" label="X">
             <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaX}}">
               <paper-item disabled="" class="dropdown-item header">
@@ -19451,7 +19447,7 @@ paper-dropdown-menu paper-item {
             </paper-listbox>
           </paper-dropdown-menu>
         </div>
-        <div> 
+        <div>
           <paper-dropdown-menu class="pca-dropdown" vertical-align="bottom" no-animations="" label="Y">
             <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{pcaY}}">
               <paper-item disabled="" class="dropdown-item header">
@@ -19478,7 +19474,7 @@ paper-dropdown-menu paper-item {
         For fast results, the data was sampled to [[getPcaSampleSizeText()]] points and randomly projected down to [[getPcaSampledDimText()]] dimensions.
       </paper-tooltip>
     </div>
-    
+
     <div data-panel="custom" class="ink-panel-content">
       <paper-dropdown-menu style="width: 100%" no-animations="" label="Search by">
         <paper-listbox attr-for-selected="value" class="dropdown-content" selected="{{customSelectedSearchByMetadataOption}}">
@@ -19806,7 +19802,7 @@ paper-dropdown-menu paper-item {
 </div>
 <paper-toast id="toast" always-on-top=""></paper-toast>
 
-</template> 
+</template>
 </dom-module>
 <dom-module id="vz-projector-dashboard" assetpath="../vz-projector/">
 <template>
@@ -20167,7 +20163,7 @@ var TF;
       },
     });
   </script>
-  
+
   <script>(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 "use strict";
 var AnalyticsLogger = (function () {
