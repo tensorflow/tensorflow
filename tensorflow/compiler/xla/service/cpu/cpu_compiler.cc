@@ -341,10 +341,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(module.get(),
                             MakeUnique<DependencyHloOrdering>(module.get()),
-                            [this](const LogicalBuffer& buffer) {
-                              return ShapeSizeBytes(buffer.shape());
-                            },
-                            kMemoryAlignment));
+                            BufferSizeBytesFunction(), kMemoryAlignment));
 
     // If we are using the parallel CPU backend, we need to create map from
     // HloInstruction to the corresponding generated function name.
@@ -360,7 +357,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         // Copy the constant out of the ProtocolBuffer so that we can give it a
         // higher alignment.
         const void* data = LiteralUtil::InternalData(instruction->literal());
-        int64 size = ShapeSizeBytes(instruction->shape());
+        int64 size = CpuExecutable::ShapeSizeBytes(instruction->shape());
         auto iter = aligned_constants.emplace(
             instruction, MakeUnique<unsigned char[]>(size));
         CHECK_EQ(iter.second, true);
@@ -425,10 +422,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // and reduced memory usage (as compared to using DependencyHloOrdering).
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
-        CreateMemoryMinimizingSequence(*module,
-                                       [this](const LogicalBuffer& buffer) {
-                                         return ShapeSizeBytes(buffer.shape());
-                                       }));
+        CreateMemoryMinimizingSequence(*module, BufferSizeBytesFunction()));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
@@ -437,10 +431,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         BufferAssigner::Run(
             module.get(),
             MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
-            [this](const LogicalBuffer& buffer) {
-              return ShapeSizeBytes(buffer.shape());
-            },
-            kMemoryAlignment));
+            BufferSizeBytesFunction(), kMemoryAlignment));
 
     // Each computation is a single function.  Emit all embedded computations
     // before the entry computation. The order of computations returned from
@@ -586,10 +577,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
-        CreateMemoryMinimizingSequence(*module,
-                                       [this](const LogicalBuffer& buffer) {
-                                         return ShapeSizeBytes(buffer.shape());
-                                       }));
+        CreateMemoryMinimizingSequence(*module, BufferSizeBytesFunction()));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
@@ -597,10 +585,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(
             module, MakeUnique<SequentialHloOrdering>(module, module_sequence),
-            [this](const LogicalBuffer& buffer) {
-              return ShapeSizeBytes(buffer.shape());
-            },
-            kMemoryAlignment));
+            BufferSizeBytesFunction(), kMemoryAlignment));
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
                          /*hlo_to_profile_idx=*/nullptr);
@@ -661,14 +646,6 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
 
 se::Platform::Id CpuCompiler::PlatformId() const {
   return se::host::kHostPlatformId;
-}
-
-int64 CpuCompiler::ShapeSizeBytes(const Shape& shape) const {
-  // On the cpu, opaques are pointers.
-  if (ShapeUtil::IsOpaque(shape)) {
-    return sizeof(void*);
-  }
-  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
 HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {

@@ -506,6 +506,7 @@ cc_library(
         ":executable",
         ":hlo",
         ":hlo_module_config",
+        ":logical_buffer",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",

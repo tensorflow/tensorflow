@@ -55,8 +55,6 @@ class GpuCompiler : public Compiler {
 
   perftools::gputools::Platform::Id PlatformId() const override;
 
-  int64 ShapeSizeBytes(const Shape& shape) const override;
-
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
     // Capture just the pointer size, not the entire GpuCompiler object.
     int64 pointer_size = pointer_size_;

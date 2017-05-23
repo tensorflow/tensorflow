@@ -268,10 +268,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          [this](const LogicalBuffer& buffer) {
-                            return ShapeSizeBytes(buffer.shape());
-                          },
-                          kMemoryAlignment));
+                          BufferSizeBytesFunction(), kMemoryAlignment));
 
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
                                       &stream_exec->GetDeviceDescription(),
@@ -350,10 +347,6 @@ GpuCompiler::CompileAheadOfTime(
 
 se::Platform::Id GpuCompiler::PlatformId() const {
   return se::cuda::kCudaPlatformId;
-}
-
-int64 GpuCompiler::ShapeSizeBytes(const Shape& shape) const {
-  return ShapeUtil::ByteSizeOf(shape, pointer_size_);
 }
 
 }  // namespace gpu

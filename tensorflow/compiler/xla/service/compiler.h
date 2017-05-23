@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -148,12 +149,18 @@ class Compiler {
   static StatusOr<Compiler*> GetForPlatform(
       const perftools::gputools::Platform* platform);
 
-  // Returns the size in bytes of the top-level buffer of a shape.
-  virtual int64 ShapeSizeBytes(const Shape& shape) const = 0;
-
-  // Returns a function that computes the size in bytes of the top-level
-  // buffer of a shape.
+  // Returns a function that computes the size in bytes of the logical
+  // buffer that contains a shape.
   virtual HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const = 0;
+
+  // Returns a function that computes the size in bytes of a given
+  // logical buffer.
+  std::function<int64(const LogicalBuffer&)> BufferSizeBytesFunction() {
+    HloCostAnalysis::ShapeSizeFunction shape_size = ShapeSizeBytesFunction();
+    return [shape_size](const LogicalBuffer& buffer) {
+      return shape_size(buffer.shape());
+    };
+  }
 
  private:
   // Mutex that guards the platform-compiler map.
