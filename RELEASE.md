@@ -22,6 +22,7 @@
 * Support client-provided ClusterSpec's and propagate them to all workers to enable the creation of dynamic TensorFlow clusters.
 * TensorFlow C library now available for Windows.
 * We released a new open-source version of TensorBoard.
+* [`SavedModel CLI`](https://www.tensorflow.org/versions/master/programmers_guide/saved_model_cli) tool available to inspect and execute MetaGraph in SavedModel
 
 ## Breaking Changes to the API
 * `org.tensorflow.contrib.android.TensorFlowInferenceInterface` now throws exceptions where possible and has simplified method signatures.
@@ -73,7 +74,6 @@
 * Add `tf.summary.text` for outputting text to TensorBoard.
 * The "run" command of tfdbg's command-line interface now supports filtering of tensors by node name, op type and tensor dtype.
 * `tf.string_to_number` now supports int64 and float64 outputs.
-* `SavedModel CLI` tool available to inspect and execute MetaGraph in SavedModel
 
 ## Thanks to our Contributors
 
