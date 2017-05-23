@@ -107,6 +107,7 @@ filegroup(
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
+        "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
         "@png_archive//:LICENSE",
