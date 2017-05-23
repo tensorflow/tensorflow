@@ -895,12 +895,12 @@ class CollectionTest(test_util.TensorFlowTestCase):
 
   def test_get_collections(self):
     g = ops.Graph()
-    self.assertEqual(g.collections, [])
+    self.assertSequenceEqual(g.collections, [])
     g.add_to_collection("key", 12)
     g.add_to_collection("key", 15)
-    self.assertEqual(g.collections, ["key"])
+    self.assertSequenceEqual(g.collections, ["key"])
     g.add_to_collection("other", "foo")
-    self.assertEqual(sorted(g.collections), ["key", "other"])
+    self.assertSequenceEqual(sorted(g.collections), ["key", "other"])
 
   def test_add_to_collection(self):
     g = ops.Graph()
