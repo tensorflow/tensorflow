@@ -1129,4 +1129,64 @@ shared_name: The shared name for the `SparseTensorsMap` read by this op.
   of the Op that created the original `SparseTensorsMap` should be used.
 )doc");
 
+REGISTER_OP("SparseFillEmptyRows")
+    .Input("indices: int64")
+    .Input("values: T")
+    .Input("dense_shape: int64")
+    .Input("default_value: T")
+    .Output("output_indices: int64")
+    .Output("output_values: T")
+    .Output("empty_row_indicator: bool")
+    .Output("reverse_index_map: int64")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input_shape = c->input(2);
+      ShapeHandle output_indices =
+          c->Matrix(InferenceContext::kUnknownDim, c->NumElements(input_shape));
+      ShapeHandle output_values = c->Vector(InferenceContext::kUnknownDim);
+      ShapeHandle constant_input_shape;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &constant_input_shape));
+      ShapeHandle empty_row_indicator =
+          c->Vector(c->Dim(constant_input_shape, 0));
+      // TODO(ebrevdo): this should be indices.shape[0]
+      ShapeHandle reverse_index_map = c->Vector(InferenceContext::kUnknownDim);
+      c->set_output(0, output_indices);
+      c->set_output(1, output_values);
+      c->set_output(2, empty_row_indicator);
+      c->set_output(3, reverse_index_map);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+TODO(ebrevdo): fill in
+
+indices: 2-D tensor represents the indices of the sparse tensor.
+values: 1-D tensor represents the values of the sparse tensor.
+dense_shape: 1-D. tensor represents the shape of the sparse tensor.
+default_value: 0-D. default value for missing rows.
+output indices: 2-D.
+output_values: 1-D.
+reverse_index_map: 1-D.
+)doc");
+
+REGISTER_OP("SparseFillEmptyRowsGrad")
+    .Input("reverse_index_map: int64")
+    .Input("grad_values: T")
+    .Output("d_grad: T")
+    .Output("d_default_value: T")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      // TODO(ebrevdo): Check inputs are vectors
+      c->set_output(0, c->input(0));
+      c->set_output(1, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+TODO(ebrevdo): fill in
+
+reverse_index_map: 1-D.
+grad_values: 1-D.
+d_grad: 1-D.
+d_default_value: 0-D.
+)doc");
+
 }  // namespace tensorflow
