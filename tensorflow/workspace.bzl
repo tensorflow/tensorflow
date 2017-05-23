@@ -777,27 +777,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "com_palantir_plottable",
       # no @license header
       licenses = ["notice"],  # MIT
-      sha256_urls = {
-          "77510d7538dbd3b59f1c8a06f68131b38562e3be546364747618d5112723e818": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.css",
-              "https://raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.css",
-          ],
-          "cd46dc709b01cd361e8399f797760871a6a207bc832e08fcff385ced02ef2b43": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.d.ts",
-              "https://raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.d.ts",
-          ],
-          "32647b0fb4175fa875a71e6d56c761b88d975186ed6a8820e2c7854165a8988d": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.js",
-              "https://raw.githubusercontent.com/palantir/plottable/v1.16.1/plottable.js",
-          ],
-      },
-  )
-
-  # TODO: Delete previous rule and rename this one org_palantir_plottable
-  filegroup_external(
-      name = "com_palantir_plottable_v3",
-      # no @license header
-      licenses = ["notice"],  # MIT
       sha256_urls_extract = {
           # Plottable doesn't have a release tarball on GitHub. Using the
           # sources directly from git also requires running Node tooling
@@ -860,19 +839,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "org_d3js",
       # no @license header
       licenses = ["notice"],  # BSD-3-Clause
-      sha256_urls = {
-          "bc1e38838f5c5c8e040132d41efee6bfddbef728210bd566479dc1694af1d3f5": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/d3/d3/v3.5.15/d3.js",
-              "https://raw.githubusercontent.com/d3/d3/v3.5.15/d3.js",
-          ],
-      },
-  )
-
-  # TODO: Delete previous rule and rename this one org_d3js
-  filegroup_external(
-      name = "org_d3js_v4",
-      # no @license header
-      licenses = ["notice"],  # BSD-3-Clause
       sha256_urls_extract = {
           "b5fac5b296bc196e6aa7b59f9e33986fc44d23d59a0e211705187be9e35b943d": [
               "http://mirror.bazel.build/github.com/d3/d3/releases/download/v4.8.0/d3.zip",
@@ -883,7 +849,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       generated_rule_name = "all_files",
       extra_build_file_content = "\n".join([
           "filegroup(",
-          "    name = \"org_d3js_v4\",",
+          "    name = \"org_d3js\",",
           "    srcs = [\"d3.js\"],",
           ")",
       ]),
