@@ -16,7 +16,7 @@ limitations under the License.
 
 
 import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
-import * as Plottable from 'Plottable/plottable';  // from //third_party/javascript/plottable/v3
+import * as Plottable from 'Plottable/plottable';  // from //third_party/javascript/plottable
 import {Dataset} from 'Plottable/plottable';
 
 export interface Datum {

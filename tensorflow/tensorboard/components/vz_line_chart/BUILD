@@ -104,7 +104,7 @@ tensorboard_ts_library(
     runtime = "nodejs",
     deps = [
         "//third_party/javascript/node_modules/typescript:es2015.promise",
-        "//third_party/javascript/plottable/v3:bundle",
+        "//third_party/javascript/plottable:bundle",
         "//third_party/javascript/typings/chai",
         "//third_party/javascript/typings/d3_v4:bundle",
         "//third_party/javascript/typings/lodash",
