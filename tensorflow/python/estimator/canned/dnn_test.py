@@ -43,6 +43,7 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary as summary_lib
+from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import saver
@@ -102,7 +103,8 @@ class DNNRegressorEvaluateTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
-      shutil.rmtree(self._model_dir, ignore_errors=True)
+      writer_cache.FileWriterCache.clear()
+      shutil.rmtree(self._model_dir)
 
   def test_simple(self):
     # Create checkpoint: num_inputs=1, hidden_units=(2, 2), num_outputs=1.
