@@ -14550,6 +14550,95 @@ op {
   description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nout[i] = (in[i] - min_range) * range(T) / (max_range - min_range)\nif T == qint8, out[i] -= (range(T) + 1) / 2.0\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nAssume the input is type float and has a possible range of [0.0, 6.0] and the\noutput type is quint8 ([0, 255]). The min_range and max_range values should be\nspecified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each\nvalue of the input by 255/6 and cast to quint8.\n\nIf the output type was qint8 ([-128, 127]), the operation will additionally\nsubtract each value by 128 prior to casting, so that the range of values aligns\nwith the range of qint8.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = number_of_steps / range\nquantized = round(input * range_scale) - round(range_min * range_scale) +\n  numeric_limits<T>::min()\nquantized = max(quantized, numeric_limits<T>::min())\nquantized = min(quantized, numeric_limits<T>::max())\n```\n\nThe biggest difference between this and MIN_COMBINED is that the minimum range\nis rounded first, before it\'s subtracted from the rounded value. With\nMIN_COMBINED, a small bias is introduced where repeated iterations of quantizing\nand dequantizing will introduce a larger and larger error.\n\nOne thing to watch out for is that the operator may choose to adjust the\nrequested minimum and maximum values slightly during the quantization process,\nso you should always use the output ports as the range for further calculations.\nFor example, if the requested minimum and maximum values are close to equal,\nthey will be separated by a small epsilon value to prevent ill-formed quantized\nbuffers from being created. Otherwise, you can end up with buffers where all the\nquantized values map to the same float value, which causes problems for\noperations that have to perform further calculations on them."
 }
 op {
+  name: "QuantizedAdd"
+  input_arg {
+    name: "x"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_x"
+    description: "The float value that the lowest quantized `x` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_x"
+    description: "The float value that the highest quantized `x` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_y"
+    description: "The float value that the lowest quantized `y` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_y"
+    description: "The float value that the highest quantized `y` value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "z"
+    type_attr: "Toutput"
+  }
+  output_arg {
+    name: "min_z"
+    description: "The float value that the lowest quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_z"
+    description: "The float value that the highest quantized output value represents.\n\n*NOTE*: `QuantizedAdd` supports limited forms of broadcasting. More about\nbroadcasting [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Returns x + y element-wise, working on quantized buffers."
+  is_commutative: true
+}
+op {
   name: "QuantizedAvgPool"
   input_arg {
     name: "input"
