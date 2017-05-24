@@ -231,10 +231,10 @@ BroadcastTensor(const poplar::Tensor &in,
                         "Incompatible broadcast");
   }
 
-  poplar::Tensor r0 =
-          in.reshape(convert_array<std::vector<size_t>>(bcast.x_reshape()));
-
-  return TileTensor(bcast.x_bcast(), r0);
+  poplar::Tensor o = in;
+  o = in.reshape(convert_array<std::vector<size_t>>(bcast.x_reshape()));
+  o = TileTensor(bcast.x_bcast(), o);
+  return o.reshape(PoplarShapeFromXlaShape(out));
 }
 
 bool

@@ -382,52 +382,25 @@ CreateClampOp(poplar::Graph &graph,
   if (!PoplarShapeMatchesXLAShape(min, output_shape)) {
     TF_ASSIGN_OR_RETURN(min, BroadcastTensor(min, output_shape));
   }
-  min = min.flatten();
 
   poplar::Tensor arg;
   TF_ASSIGN_OR_RETURN(arg, FindInstructionInput(tensor_map, inst, 1, 0));
   if (!PoplarShapeMatchesXLAShape(arg, output_shape)) {
     TF_ASSIGN_OR_RETURN(arg, BroadcastTensor(arg, output_shape));
   }
-  arg = arg.flatten();
 
   poplar::Tensor max;
   TF_ASSIGN_OR_RETURN(max, FindInstructionInput(tensor_map, inst, 2, 0));
   if (!PoplarShapeMatchesXLAShape(max, output_shape)) {
     TF_ASSIGN_OR_RETURN(max, BroadcastTensor(max, output_shape));
   }
-  max = max.flatten();
 
-  // Allocate the output tensor
-  poplar::Tensor out;
-  TF_ASSIGN_OR_RETURN(out, AddTensor(graph, inst->name(), output_shape));
+  poplar::program::Sequence seq;
+  poplar::Tensor out = popstd::clamp(graph, arg, min, max, seq, inst->name());
+
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
-  out = out.flatten();
 
-  const std::string& poplar_data_type(graph.getTensorElementType(arg));
-
-  std::string vertex_name = templateVertex("Clamp", poplar_data_type);
-
-  auto cs = graph.addComputeSet(inst->ToString());
-  const auto &device_info = graph.getDevice().getDeviceInfo();
-
-  const unsigned long N = ShapeUtil::ElementsIn(output_shape);
-
-  unsigned long num_workers = device_info.getNumTiles() * device_info.numWorkerContexts;
-  num_workers = std::min(num_workers, N);
-
-  for (unsigned i = 0; i < num_workers; ++i) {
-    const auto begin = i * N / num_workers;
-    const auto end = (i + 1) * N / num_workers;
-    auto v = graph.addVertex(cs, vertex_name,
-                             {{a_conn, min.slice(begin, end)},
-                              {b_conn, arg.slice(begin, end)},
-                              {c_conn, max.slice(begin, end)},
-                              {out_conn, out.slice(begin, end)}});
-    graph.setTileMapping(v, i / device_info.numWorkerContexts);
-  }
-
-  return poplar::program::Execute(cs);
+  return seq;
 }
 
 }

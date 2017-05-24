@@ -36,32 +36,6 @@ BINARY_IN_PLACE(Add, a[i] + b[i])
 BINARY_IN_PLACE(Mul, a[i] * b[i])
 BINARY_IN_PLACE(Sub, a[i] - b[i])
 
-// Clamp
-template <typename T>
-class Clamp : public Vertex {
-public:
-  Input<Vector<T>> a;
-  Input<Vector<T>> b;
-  Input<Vector<T>> c;
-  Output<Vector<T>> out;
-
-  bool compute() {
-    for (unsigned i = 0; i < a.size(); ++i) {
-      T val = b[i];
-      if (val < a[i]) val = a[i];
-      if (val > c[i]) val = c[i];
-      out[i] = val;
-    }
-    return true;
-  }
-
-  int getCycleEstimate() const { return 1; }
-};
-
-template class Clamp<float>;
-template class Clamp<half>;
-template class Clamp<int>;
-
 // Random
 
 template<typename T>
