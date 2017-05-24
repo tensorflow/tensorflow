@@ -1072,6 +1072,7 @@ filegroup(
         ":framework/shape_inference_testutil.h",
         ":framework/tensor_testutil.cc",
         ":framework/tensor_testutil.h",
+        ":platform/test.cc",
         ":platform/test.h",
         ":util/reporter.cc",
         ":util/reporter.h",

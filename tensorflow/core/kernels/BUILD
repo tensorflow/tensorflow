@@ -4259,6 +4259,7 @@ filegroup(
         "quantize_down_and_shrink_range.cc",
         "quantize_op.cc",
         "quantized_activation_ops.cc",
+        "quantized_add_op.cc",
         "quantized_batch_norm_op.cc",
         "quantized_bias_add_op.cc",
         "quantized_concat_op.cc",
@@ -4365,6 +4366,7 @@ tf_kernel_library(
         "quantize_down_and_shrink_range.cc",
         "quantize_op.cc",
         "quantized_activation_ops.cc",
+        "quantized_add_op.cc",
         "quantized_batch_norm_op.cc",
         "quantized_bias_add_op.cc",
         "quantized_concat_op.cc",
@@ -4468,6 +4470,48 @@ tf_cc_test(
     ],
 )
 
+# Android-only test for quantization utilities.
+cc_binary(
+    name = "quantization_utils_test_android_only",
+    testonly = 1,
+    srcs = ["quantization_utils_test.cc"],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:android": [
+            "-lm",
+            "-llog",
+            "-pie",
+            "-std=c++11",
+        ],
+        "//conditions:default": [],
+    }),
+    linkstatic = 1,
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+    ] + select({
+        "//tensorflow:android": [
+            ":android_tensorflow_kernels",
+            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_test_lib",
+        ],
+        "//conditions:default": [
+            ":quantized_ops",
+            "//third_party/eigen3",
+            "//tensorflow/core:core_cpu_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:test",
+            "//tensorflow/cc:cc_ops",
+            "//tensorflow/cc:client_session",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:tensor_testutil",
+            "//tensorflow/core:test_main",
+        ],
+    }),
+)
+
 tf_cc_test(
     name = "quantized_activation_ops_test",
     srcs = ["quantized_activation_ops_test.cc"],
@@ -4476,6 +4520,72 @@ tf_cc_test(
         ":ops_util",
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+# Android-only test for quantized addition.
+cc_binary(
+    name = "quantized_add_op_test_android_only",
+    testonly = 1,
+    srcs = ["quantized_add_op_test.cc"],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:android": [
+            "-lm",
+            "-llog",
+            "-pie",
+            "-std=c++11",
+        ],
+        "//conditions:default": [],
+    }),
+    linkstatic = 1,
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+    ] + select({
+        "//tensorflow:android": [
+            ":android_tensorflow_kernels",
+            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_test_lib",
+        ],
+        "//conditions:default": [
+            ":ops_util",
+            ":quantized_ops",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:tensor_testutil",
+            "//tensorflow/core:tensorflow",
+            "//tensorflow/core:test",
+            "//tensorflow/core:test_main",
+        ],
+    }),
+)
+
+tf_cc_test(
+    name = "quantized_add_op_test",
+    size = "small",
+    srcs = ["quantized_add_op_test.cc"],
+    deps = [
+        ":math",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantized_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
@@ -4564,7 +4674,7 @@ tf_cc_test(
     ],
 )
 
-# Android-only test for quantized instance norm.
+# Android-only test for quantized multiply.
 cc_binary(
     name = "quantized_mul_op_test_android_only",
     testonly = 1,
@@ -4590,9 +4700,13 @@ cc_binary(
             "//tensorflow/core:android_tensorflow_test_lib",
         ],
         "//conditions:default": [
+            ":ops_util",
+            ":quantized_ops",
             "//tensorflow/core:framework",
             "//tensorflow/core:tensor_testutil",
             "//tensorflow/core:test_main",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:test",
         ],
     }),
 )
