@@ -336,9 +336,9 @@ class LuongAttention(_BaseAttentionMechanism):
 
 
 class BahdanauAttention(_BaseAttentionMechanism):
-  """Implements Bhadanau-style (additive) attention.
+  """Implements Bahdanau-style (additive) attention.
 
-  This attention has two forms.  The first is Bhandanau attention,
+  This attention has two forms.  The first is Bahdanau attention,
   as described in:
 
   Dzmitry Bahdanau, Kyunghyun Cho, Yoshua Bengio.
