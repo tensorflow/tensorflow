@@ -90,11 +90,6 @@ cuda_py_tests(
     name = "core_rnn_cell_test",
     size = "small",
     srcs = ["python/kernel_tests/core_rnn_cell_test.py"],
-    # Temporarily disable to sync and fix after rnn move conflicts.
-    tags = [
-        "manual",
-        "notap",
-    ],
     additional_deps = [
         ":rnn_py",
         "//third_party/py/numpy",
@@ -108,6 +103,11 @@ cuda_py_tests(
         "//tensorflow/python:rnn_cell",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+    ],
+    # Temporarily disable to sync and fix after rnn move conflicts.
+    tags = [
+        "manual",
+        "notap",
     ],
 )
 
