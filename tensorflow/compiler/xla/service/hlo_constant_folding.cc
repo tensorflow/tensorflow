@@ -183,9 +183,10 @@ Status ConstantFolderVisitor::HandleConvert(HloInstruction* convert,
                                             HloInstruction* operand) {
   if (operand->opcode() == HloOpcode::kConstant) {
     const Literal& src_literal = operand->literal();
-    std::unique_ptr<Literal> new_constant =
+    std::unique_ptr<Literal> new_constant;
+    TF_ASSIGN_OR_RETURN(new_constant,
         LiteralUtil::ConvertIfSrcTypeMatches(src_literal,
-                                             convert->shape().element_type());
+                                             convert->shape().element_type()));
     return ReplaceWithConstant(convert, std::move(new_constant));
   }
   return Status::OK();
