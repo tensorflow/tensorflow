@@ -1926,7 +1926,7 @@ tf_kernel_library(
     name = "lmdb_reader_op",
     prefix = "lmdb_reader_op",
     deps = IO_DEPS + [
-        "@lmdb//:lmdb",
+        "@lmdb",
     ],
 )
 

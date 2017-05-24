@@ -2888,6 +2888,7 @@ filegroup(
         #   9 : 'j'
         "lib/lmdb/testdata/data.mdb",
     ],
+    testonly = 1,
     visibility = ["//visibility:public"],
 )
 
