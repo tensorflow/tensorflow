@@ -424,6 +424,75 @@ class TensorboardServerTest(test.TestCase):
     return temp_dir
 
 
+class TensorboardServerPluginNameTest(test.TestCase):
+
+  def _test(self, name, should_be_okay):
+    temp_dir = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    self.addCleanup(shutil.rmtree, temp_dir)
+    multiplexer = event_multiplexer.EventMultiplexer(
+        size_guidance=application.DEFAULT_SIZE_GUIDANCE,
+        purge_orphaned_data=True)
+    plugins = [
+        FakePlugin(plugin_name='foo', is_active_value=True, routes_mapping={}),
+        FakePlugin(plugin_name=name, is_active_value=True, routes_mapping={}),
+        FakePlugin(plugin_name='bar', is_active_value=False, routes_mapping={})
+    ]
+    if should_be_okay:
+      application.TensorBoardWSGIApp(
+          temp_dir, plugins, multiplexer, reload_interval=0)
+    else:
+      with self.assertRaisesRegexp(ValueError, r'invalid name'):
+        application.TensorBoardWSGIApp(
+            temp_dir, plugins, multiplexer, reload_interval=0)
+
+  def testEmptyName(self):
+    self._test('', False)
+
+  def testNameWithSlashes(self):
+    self._test('scalars/data', False)
+
+  def testNameWithSpaces(self):
+    self._test('my favorite plugin', False)
+
+  def testSimpleName(self):
+    self._test('scalars', True)
+
+  def testComprehensiveName(self):
+    self._test('Scalar-Dashboard_3000.1', True)
+
+
+class TensorboardServerPluginRouteTest(test.TestCase):
+
+  def _test(self, route, should_be_okay):
+    temp_dir = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    self.addCleanup(shutil.rmtree, temp_dir)
+    multiplexer = event_multiplexer.EventMultiplexer(
+        size_guidance=application.DEFAULT_SIZE_GUIDANCE,
+        purge_orphaned_data=True)
+    plugins = [
+        FakePlugin(
+            plugin_name='foo',
+            is_active_value=True,
+            routes_mapping={route: lambda environ, start_response: None}),
+    ]
+    if should_be_okay:
+      application.TensorBoardWSGIApp(
+          temp_dir, plugins, multiplexer, reload_interval=0)
+    else:
+      with self.assertRaisesRegexp(ValueError, r'invalid route'):
+        application.TensorBoardWSGIApp(
+            temp_dir, plugins, multiplexer, reload_interval=0)
+
+  def testNormalRoute(self):
+    self._test('/runs', True)
+
+  def testEmptyRoute(self):
+    self._test('', False)
+
+  def testSlashlessRoute(self):
+    self._test('runaway', False)
+
+
 class TensorboardServerUsingMetagraphOnlyTest(TensorboardServerTest):
   # Tests new ability to use only the MetaGraphDef
   _only_use_meta_graph = True  # Server data contains only a MetaGraphDef
