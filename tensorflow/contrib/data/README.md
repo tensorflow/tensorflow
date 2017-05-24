@@ -456,12 +456,12 @@ batched into a fixed size.
 # to a fixed shape.
 def _parse_function(filename, label):
   image_string = tf.read_file(filename)
-  image_decoded = tf.image.decode_image(filename)
+  image_decoded = tf.image.decode_image(image_string)
   image_resized = tf.image.resize_images(image_decoded, [28, 28])
   return image_resized, label
 
-filenames = ["/var/data/image1.jpg", "/var/data/image2.jpg", ...]
-labels = [0, 37, 29, 1, ...]
+filenames = tf.constant(["/var/data/image1.jpg", "/var/data/image2.jpg", ...])
+labels = tf.constant([0, 37, 29, 1, ...])
 
 dataset = tf.contrib.data.Dataset.from_tensor_slices((filenames, labels))
 dataset = dataset.map(_parse_function)

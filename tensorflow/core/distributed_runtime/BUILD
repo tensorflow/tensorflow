@@ -29,6 +29,7 @@ filegroup(
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 # For platform specific build config
 load(
@@ -322,6 +323,7 @@ cc_library(
     name = "base_rendezvous_mgr",
     srcs = ["base_rendezvous_mgr.cc"],
     hdrs = ["base_rendezvous_mgr.h"],
+    copts = tf_copts(),
     deps = [
         ":rendezvous_mgr_interface",
         ":worker_cache",

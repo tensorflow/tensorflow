@@ -9,6 +9,8 @@ both on desktop machines and on Android.
 
 ### On Android:
 
+(0) Refer to https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android to edit the `WORKSPACE` to configure the android NDK/SDK.
+
 (1) build for your specific platform, e.g.:
 ```bash
 $bazel build -c opt \
