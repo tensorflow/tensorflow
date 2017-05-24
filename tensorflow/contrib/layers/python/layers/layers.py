@@ -1254,6 +1254,7 @@ def convolution3d_transpose(
     trainable=True,
     scope=None):
   """Adds a convolution3d_transpose with an optional batch normalization layer.
+  
   The function creates a variable called `weights`, representing the
   kernel, that is convolved with the input. If `batch_norm_params` is `None`, a
   second variable called 'biases' is added to the result of the operation.
