@@ -9,3 +9,9 @@ def mpi_hdr():
     else:
         hdrs = ["mpi.h",  "mpio.h", "mpicxx.h"]        #When using MVAPICH
     return hdrs
+
+def if_mpi(if_true, if_false = []):
+    return select({
+        "//tensorflow:with_mpi_support": if_true,
+        "//conditions:default": if_false
+    })

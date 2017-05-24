@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_MPI_MPI_RENDEZVOUS_MGR_H_
 #define TENSORFLOW_CONTRIB_MPI_MPI_RENDEZVOUS_MGR_H_
 
+#ifdef TENSORFLOW_USE_MPI
+
 #include <queue>
 #include <thread>
 #include <list>
@@ -254,4 +256,5 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
 };  // MPIRendezvousMgr
 }  // namespace tensorflow
 
+#endif  // TENSORFLOW_USE_MPI
 #endif  // TENSORFLOW_CONTRIB_MPI_MPI_RENDEZVOUS_MGR_H_

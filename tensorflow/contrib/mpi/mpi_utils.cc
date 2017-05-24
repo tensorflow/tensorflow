@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef TENSORFLOW_USE_MPI
+
 #include "tensorflow/contrib/mpi/mpi_utils.h"
 namespace tensorflow {
 
@@ -66,3 +68,5 @@ void MPIUtils::InitMPI() {
 }
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_USE_MPI

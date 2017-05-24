@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifdef TENSORFLOW_USE_MPI
+
 #include "tensorflow/contrib/mpi/mpi_rendezvous_mgr.h"
 
 #include <chrono>
@@ -310,3 +312,4 @@ void MPIRendezvousMgr::MPIBackgroundThread() {
 }
 
 }  // namespace tensorflow
+#endif  // TENSORFLOW_USE_MPI
