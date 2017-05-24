@@ -56,6 +56,13 @@ struct QuantizedOpInfo {
 // conversion process can transform them.
 const std::vector<QuantizedOpInfo>& GetQuantizedOpList() {
   static const std::vector<QuantizedOpInfo> op_list = {
+      {"Add",
+       {},
+       {{"T1", DT_QUINT8}, {"T2", DT_QUINT8}, {"Toutput", DT_QINT32}},
+       DT_QUINT8,
+       DT_QINT32,
+       {},
+       QuantizedOpInfo::CONTIGUOUS_MIN_MAX},
       {"AvgPool",
        {"ksize", "strides", "padding"},
        {{"T", DT_QUINT8}},

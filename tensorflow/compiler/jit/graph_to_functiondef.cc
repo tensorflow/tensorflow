@@ -120,9 +120,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
   std::unordered_map<string, string> return_values;
   NodeNameMapping node_names;
 
-  for (Node const* node : graph.nodes()) {
-    if (!node->IsOp()) continue;
-
+  for (Node const* node : graph.op_nodes()) {
     if (node->type_string() == kArgOp) {
       int index;
       DataType type;

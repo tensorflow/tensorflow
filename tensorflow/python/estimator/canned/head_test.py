@@ -316,7 +316,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_weighted_multi_example_predict(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, weight_column_name='label_weights')
+        n_classes, weight_feature_key='label_weights')
     self.assertEqual(n_classes, head.logits_dimension)
 
     # Create estimator spec.
@@ -411,7 +411,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_weighted_multi_example_eval(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, weight_column_name='label_weights')
+        n_classes, weight_feature_key='label_weights')
 
     # Create estimator spec.
     logits = np.array(((10, 0, 0), (0, 10, 0), (0, 0, 10),), dtype=np.float32)
@@ -536,7 +536,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_weighted_multi_example_train(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, weight_column_name='label_weights')
+        n_classes, weight_feature_key='label_weights')
 
     # Create estimator spec.
     logits = np.array(((10, 0, 0), (0, 10, 0), (0, 0, 10),), dtype=np.float32)

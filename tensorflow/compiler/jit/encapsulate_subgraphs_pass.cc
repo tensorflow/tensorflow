@@ -178,8 +178,7 @@ Status Encapsulator::SplitIntoSubgraphs() {
   std::unordered_map<Node*, Node*> node_images;
 
   // Copy all marked nodes to a subgraph. Do nothing for unmarked nodes.
-  for (Node* node : graph_in_->nodes()) {
-    if (node->IsSource() || node->IsSink()) continue;
+  for (Node* node : graph_in_->op_nodes()) {
     string func_id = GetFunctionNameAttr(node);
     if (func_id.empty()) continue;
 
@@ -445,8 +444,7 @@ Status Encapsulator::BuildOutputGraph(bool parallel_checking,
   std::unordered_map<const Node*, Node*> node_images;
 
   // Copy all unmarked nodes to the output graph.
-  for (Node* node : graph_in_->nodes()) {
-    if (node->IsSource() || node->IsSink()) continue;
+  for (Node* node : graph_in_->op_nodes()) {
     string func_id = GetFunctionNameAttr(node);
 
     // Don't copy nodes that going to be encapsulated, unless parallel checking
@@ -590,7 +588,7 @@ Status EncapsulateSubgraphsInFunctions(
 
 // Finds the types of the _Arg nodes, indexed by position.
 static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
-  for (Node* n : graph.nodes()) {
+  for (Node* n : graph.op_nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
@@ -607,7 +605,7 @@ static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
 // 'permutation' that maps old indices to new indices.
 static Status RenumberArguments(Graph* graph,
                                 const std::vector<int>& permutation) {
-  for (Node* n : graph->nodes()) {
+  for (Node* n : graph->op_nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));

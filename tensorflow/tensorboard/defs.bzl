@@ -49,6 +49,7 @@ def tensorboard_typescript_genrule(name, srcs, typings=[], **kwargs):
             # Do not follow triple slash references within typings.
             " --noResolve" +
             " --declaration" +
+            " --module es6" +
             " --outDir $(@D) " +
             " ".join(["$(locations %s)" % i for i in inputs]),
       tools = ["@com_microsoft_typescript//:tsc.sh"],

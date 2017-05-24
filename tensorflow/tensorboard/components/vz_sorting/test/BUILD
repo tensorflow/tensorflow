@@ -1,48 +1,46 @@
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_testonly = True,
+    default_visibility = ["//tensorflow:internal"],
+)
 
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_wct_test_suite")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
+load("//tensorflow/tensorboard:hacks.bzl", "tensorboard_typescript_bundle")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
 
 licenses(["notice"])  # Apache 2.0
 
+web_library(
+    name = "test",
+    srcs = [
+        "bundle.js",
+        "tests.html",
+    ],
+    path = "/vz-sorting/test",
+    deps = [
+        "//tensorflow/tensorboard/components/vz_sorting",
+        "@org_npmjs_registry_web_component_tester",
+    ],
+)
+
+tensorboard_typescript_genrule(
+    name = "ts",
+    srcs = ["bundle.ts"],
+    typings = [
+        "@org_definitelytyped//:mocha.d.ts",
+        "@org_definitelytyped//:chai.d.ts",
+        "//tensorflow/tensorboard/components/vz_sorting:bundle.d.ts",
+    ],
+)
+
+tensorboard_typescript_bundle(
+    name = "bundle",
+    out = "bundle.ts",
+    namespace_srcs = {"VZ.Sorting": ["sortingTests.ts"]},
+)
+
 filegroup(
     name = "all_files",
+    testonly = 0,
     srcs = glob(["**"]),
     tags = ["notsan"],
-)
-
-################################################################################
-# MARKED FOR DELETION
-
-tensorboard_wct_test_suite(
-    name = "legacy_test",
-    size = "medium",
-    srcs = [
-        "index.html",
-        ":legacy_ts",
-    ],
-    deps = [
-        "//tensorflow/tensorboard/components/vz_sorting:legacy",
-        "//third_party/javascript/polymer/v1/webcomponentsjs:lib",
-    ],
-)
-
-tensorboard_ts_library(
-    name = "legacy_ts",
-    testonly = 1,
-    srcs = ["sortingTests.ts"],
-    deps_mgmt = "off",
-    runtime = "nodejs",
-    deps = [
-        "//tensorflow/tensorboard/components/vz_sorting:legacy_ts",
-        "//third_party/javascript/node_modules/typescript:es2015.promise",
-        "//third_party/javascript/plottable/v1:typings",
-        "//third_party/javascript/typings/chai",
-        "//third_party/javascript/typings/d3",
-        "//third_party/javascript/typings/lodash",
-        "//third_party/javascript/typings/mocha",
-        "//third_party/javascript/typings/polymer:polymer_without_externs",
-        "//third_party/javascript/typings/sinon",
-        "//third_party/javascript/typings/webcomponents_js",
-    ],
 )

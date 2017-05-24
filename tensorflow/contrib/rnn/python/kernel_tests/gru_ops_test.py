@@ -22,7 +22,6 @@ import time
 
 import numpy as np
 
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.contrib.rnn.python.ops import gru_ops
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
@@ -33,6 +32,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -78,7 +78,7 @@ class GRUBlockCellTest(test.TestCase):
 
       # Output from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        output = core_rnn_cell_impl.GRUCell(cell_size)(x, h)
+        output = rnn_cell.GRUCell(cell_size)(x, h)
         sess.run([variables.global_variables_initializer()])
         basic_res = sess.run([output], {x: x_value, h: h_value})
 
@@ -128,7 +128,7 @@ class GRUBlockCellTest(test.TestCase):
 
       # Output from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        cell = core_rnn_cell_impl.GRUCell(cell_size)
+        cell = rnn_cell.GRUCell(cell_size)
         outputs_dynamic, state_dynamic = rnn.dynamic_rnn(
             cell,
             inputs=concat_x,
@@ -192,7 +192,7 @@ class GRUBlockCellTest(test.TestCase):
 
       # Gradients from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        output = core_rnn_cell_impl.GRUCell(cell_size)(x, h)
+        output = rnn_cell.GRUCell(cell_size)(x, h)
         sess.run([variables.global_variables_initializer()])
 
         all_variables = variables.global_variables()[4:8]
@@ -258,7 +258,7 @@ class GRUBlockCellTest(test.TestCase):
 
       # Gradients from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        cell = core_rnn_cell_impl.GRUCell(cell_size)
+        cell = rnn_cell.GRUCell(cell_size)
 
         outputs_dynamic, _ = rnn.dynamic_rnn(
             cell,
@@ -377,7 +377,7 @@ def training_gru_block_vs_gru_cell(batch_size,
 
       # Output from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        cell = core_rnn_cell_impl.GRUCell(cell_size)
+        cell = rnn_cell.GRUCell(cell_size)
 
         outputs_dynamic, _ = rnn.dynamic_rnn(
             cell,
@@ -448,7 +448,7 @@ def inference_gru_block_vs_gru_cell(batch_size,
 
       # Output from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        cell = core_rnn_cell_impl.GRUCell(cell_size)
+        cell = rnn_cell.GRUCell(cell_size)
         outputs_dynamic, _ = rnn.dynamic_rnn(
             cell,
             inputs=concat_x,
@@ -497,8 +497,8 @@ def single_bprop_step_gru_block_vs_gru_cell(batch_size,
 
       # Output from the basic GRU cell implementation.
       with vs.variable_scope("basic", initializer=initializer):
-        output = core_rnn_cell_impl.GRUCell(cell_size)(array_ops.identity(x),
-                                                       array_ops.identity(h))
+        output = rnn_cell.GRUCell(cell_size)(array_ops.identity(x),
+                                             array_ops.identity(h))
         sess.run([variables.global_variables_initializer()])
         grad_output_wrt_input = gradients_impl.gradients([output], h)
         basic_time_bprop = time_taken_by_op(grad_output_wrt_input, sess, iters)

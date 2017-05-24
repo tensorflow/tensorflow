@@ -236,6 +236,15 @@ class SaverTest(test.TestCase):
       self.assertEqual(b"k1", v2.keys().eval())
       self.assertEqual(30.0, v2.values().eval())
 
+  def testFilenameTensor(self):
+    v0 = variables.Variable(0, name="v0")
+    filename = b"somerandomfilename"
+    save = saver_module.Saver({"v0": v0}, filename=filename)
+    with self.test_session() as sess:
+      tensor = sess.graph.get_tensor_by_name(
+          save.saver_def.filename_tensor_name)
+      self.assertEqual(sess.run(tensor), filename)
+
   def testInvalidPath(self):
     v0 = variables.Variable(0, name="v0")
     for ver in (saver_pb2.SaverDef.V1, saver_pb2.SaverDef.V2):

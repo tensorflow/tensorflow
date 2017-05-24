@@ -36,10 +36,15 @@ namespace graph_transforms {
 namespace {
 
 void PrintNodeInfo(const NodeDef* node) {
-  TensorShape shape;
+  string shape_description = "None";
   if (node->attr().count("shape")) {
     TensorShapeProto shape_proto = node->attr().at("shape").shape();
-    shape = TensorShape(shape_proto);
+    Status shape_status = PartialTensorShape::IsValidShape(shape_proto);
+    if (shape_status.ok()) {
+      shape_description = PartialTensorShape(shape_proto).DebugString();
+    } else {
+      shape_description = shape_status.error_message();
+    }
   }
   DataType dtype = DT_INVALID;
   if (node->attr().count("dtype")) {
@@ -47,7 +52,7 @@ void PrintNodeInfo(const NodeDef* node) {
   }
   std::cout << "(name=" << node->name();
   std::cout << ", type=" << DataTypeString(dtype) << "(" << dtype << ")";
-  std::cout << ", shape=" << shape.DebugString() << ") ";
+  std::cout << ", shape=" << shape_description << ") ";
 }
 
 void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
@@ -68,10 +73,12 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
     }
     input_layer_types.push_back(DataTypeString(dtype));
     std::vector<int64> sizes;
-    TensorShape shape;
+    PartialTensorShape shape;
     if (node->attr().count("shape")) {
       TensorShapeProto shape_proto = node->attr().at("shape").shape();
-      shape = TensorShape(shape_proto);
+      if (PartialTensorShape::IsValid(shape_proto)) {
+        shape = PartialTensorShape(shape_proto);
+      }
     }
     for (int i = 0; i < shape.dims(); ++i) {
       sizes.push_back(shape.dim_size(i));
@@ -147,9 +154,11 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
   std::map<string, std::vector<const NodeDef*>> output_map;
   MapNodesToOutputs(graph, &output_map);
   std::vector<const NodeDef*> outputs;
+  std::unordered_set<string> unlikely_output_types = {"Const", "Assign", "NoOp",
+                                                      "Placeholder"};
   for (const NodeDef& node : graph.node()) {
-    if ((output_map.count(node.name()) == 0) && (node.op() != "Const") &&
-        (node.op() != "Assign") && (node.op() != "NoOp")) {
+    if ((output_map.count(node.name()) == 0) &&
+        (unlikely_output_types.count(node.op()) == 0)) {
       outputs.push_back(&node);
     }
   }
