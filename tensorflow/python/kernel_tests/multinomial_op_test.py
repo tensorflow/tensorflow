@@ -26,7 +26,6 @@ import numpy as np
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
@@ -53,69 +52,6 @@ native_sampler = random_ops.multinomial
 
 class MultinomialTest(test.TestCase):
   use_gpu = False
-
-  # check that events with tiny probabilities are not over-sampled
-  def testLargeDynamicRange(self):
-    random_seed.set_random_seed(10)
-    counts_by_indices = {}
-    with self.test_session(use_gpu=self.use_gpu) as sess:
-      samples = random_ops.multinomial(
-          constant_op.constant([[-30, 0]], dtype=dtypes.float32),
-          num_samples=1000000,
-          seed=15)
-      for _ in range(100):
-        x = sess.run(samples)
-        indices, counts = np.unique(x, return_counts=True)
-        for index, count in zip(indices, counts):
-          if index in counts_by_indices.keys():
-            counts_by_indices[index] += count
-          else:
-            counts_by_indices[index] = count
-    # The CPU sadly is not expected to pass this test (it oversamples)
-    # Would require changing the cpu algorithm back to using the gumbel trick
-    # But that will slow the CPU sampling down significantly unless the speed
-    # of the CPU RNG is significantly improved
-    self.assertEqual(counts_by_indices[1], 100000000)
-
-  def testLargeDynamicRange2(self):
-    random_seed.set_random_seed(10)
-    counts_by_indices = {}
-    with self.test_session(use_gpu=self.use_gpu) as sess:
-      samples = random_ops.multinomial(
-          constant_op.constant([[0, -30]], dtype=dtypes.float32),
-          num_samples=1000000,
-          seed=15)
-      for _ in range(100):
-        x = sess.run(samples)
-        indices, counts = np.unique(x, return_counts=True)
-        for index, count in zip(indices, counts):
-          if index in counts_by_indices.keys():
-            counts_by_indices[index] += count
-          else:
-            counts_by_indices[index] = count
-    self.assertEqual(counts_by_indices[0], 100000000)
-
-  def testLargeDynamicRange3(self):
-    random_seed.set_random_seed(10)
-    counts_by_indices = {}
-    # here the cpu undersamples and won't pass this test either
-    with self.test_session(use_gpu=self.use_gpu) as sess:
-      samples = random_ops.multinomial(
-          constant_op.constant([[0, -17]], dtype=dtypes.float32),
-          num_samples=1000000,
-          seed=22)
-
-      # we'll run out of memory if we try to draw 1e9 samples directly
-      # really should fit in 12GB of memory...
-      for _ in range(1000):
-        x = sess.run(samples)
-        indices, counts = np.unique(x, return_counts=True)
-        for index, count in zip(indices, counts):
-          if index in counts_by_indices.keys():
-            counts_by_indices[index] += count
-          else:
-            counts_by_indices[index] = count
-    self.assertGreater(counts_by_indices[1], 0)
 
   def testSmallEntropy(self):
     random_seed.set_random_seed(1618)

@@ -1432,7 +1432,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "multinomial_op_test",
-    size = "large",
+    size = "small",
     srcs = ["multinomial_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
