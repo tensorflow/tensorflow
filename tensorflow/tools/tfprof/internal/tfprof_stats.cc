@@ -51,7 +51,7 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
     for (const auto& v : ckpt_reader_->GetVariableToShapeMap()) {
       auto node = nodes_map_.find(v.first);
       if (node != nodes_map_.end()) {
-        node->second.AddOpType("_checkpoint_variables");
+        node->second->AddOpType("_checkpoint_variables");
       }
     }
   }
@@ -60,19 +60,22 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
   scope_view_ = std::unique_ptr<TFScope>(new TFScope(ckpt_reader_.get()));
   graph_view_ = std::unique_ptr<TFGraph>(new TFGraph(ckpt_reader_.get()));
   code_view_ = std::unique_ptr<TFCode>(new TFCode());
+  op_view_ = std::unique_ptr<TFOp>(new TFOp());
 
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
-    scope_view_->AddNode(&it->second);
-    graph_view_->AddNode(&it->second);
-    code_view_->AddNode(&it->second);
+    scope_view_->AddNode(it->second.get());
+    graph_view_->AddNode(it->second.get());
+    code_view_->AddNode(it->second.get());
+    op_view_->AddNode(it->second.get());
   }
   scope_view_->Build();
   graph_view_->Build();
   code_view_->Build();
+  op_view_->Build();
 }
 
-const TFGraphNodeProto& TFStats::PrintGraph(const string& cmd,
-                                            const Options& opts) {
+const TFGraphNodeProto& TFStats::ShowGraphNode(const string& cmd,
+                                               const Options& opts) {
   if (cmd == kCmds[0]) {
     return scope_view_->Show(opts);
   } else if (cmd == kCmds[1]) {
@@ -83,17 +86,26 @@ const TFGraphNodeProto& TFStats::PrintGraph(const string& cmd,
   }
 }
 
-const TFCodeNodeProto& TFStats::PrintCode(const Options& opts) {
-  return code_view_->Show(opts);
+const TFMultiGraphNodeProto& TFStats::ShowMultiGraphNode(const string& cmd,
+                                                         const Options& opts) {
+  if (cmd == kCmds[2]) {
+    return code_view_->Show(opts);
+  } else if (cmd == kCmds[3]) {
+    return op_view_->Show(opts);
+  } else {
+    fprintf(stderr, "Unknown command: %s\n", cmd.c_str());
+    return empty_multi_graph_node_;
+  }
 }
 
 void TFStats::ParseGraph() {
   for (const NodeDef& node : graph_->node()) {
     CHECK(nodes_map_.find(node.name()) == nodes_map_.end());
-    nodes_map_[node.name()] = TFGraphNode(&node);
+    nodes_map_[node.name()] =
+        std::unique_ptr<TFGraphNode>(new TFGraphNode(&node));
   }
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
-    const NodeDef* node_def = it->second.node_def();
+    const NodeDef* node_def = it->second->node_def();
     for (string node_input : node_def->input()) {
       int output_idx = 0;
       // input name format can be: "^node:src_output"
@@ -113,7 +125,7 @@ void TFStats::ParseGraph() {
       if (input_node == nodes_map_.end()) {
         continue;
       }
-      it->second.AddInput(&input_node->second, output_idx);
+      it->second->AddInput(input_node->second.get(), output_idx);
     }
   }
 }
@@ -123,13 +135,13 @@ void TFStats::ParseOpLog() {
     auto node = nodes_map_.find(entry.name());
     if (node == nodes_map_.end()) continue;
     for (const string& type : entry.types()) {
-      node->second.AddOpType(type);
+      node->second->AddOpType(type);
     }
     if (entry.float_ops()) {
-      node->second.AddFloatOps(entry.float_ops());
+      node->second->AddFloatOps(entry.float_ops());
     }
     if (entry.has_code_def()) {
-      node->second.AddCode(&entry.code_def());
+      node->second->AddCode(&entry.code_def());
     }
   }
 }
@@ -147,7 +159,7 @@ void TFStats::ParseRunMeta() {
       }
       auto node = nodes_map_.find(name);
       if (node != nodes_map_.end()) {
-        node->second.AddStepStat(dev_stat.device(), &node_stat);
+        node->second->AddStepStat(dev_stat.device(), &node_stat);
       }
     }
   }
