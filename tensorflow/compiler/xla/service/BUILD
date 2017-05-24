@@ -348,6 +348,7 @@ cc_library(
         ":device_memory_allocator",
         ":executable",
         ":execution_tracker",
+        ":gpu_transfer_manager",
         ":hlo",
         ":hlo_cost_analysis",
         ":hlo_execution_profile",
@@ -441,7 +442,7 @@ cc_library(
 cc_library(
     name = "gpu_plugin",
     deps = [
-        ":generic_transfer_manager",
+        ":gpu_transfer_manager",
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -967,6 +968,27 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/cpu:cpu_runtime",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+    alwayslink = True,  # Contains per-platform transfer manager registration
+)
+
+cc_library(
+    name = "gpu_transfer_manager",
+    srcs = ["gpu_transfer_manager.cc"],
+    hdrs = ["gpu_transfer_manager.h"],
+    deps = [
+        ":generic_transfer_manager",
+        ":transfer_manager",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service/gpu:infeed_manager",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],

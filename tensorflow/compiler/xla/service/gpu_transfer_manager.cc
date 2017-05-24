@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu_transfer_manager.h"
+#include "tensorflow/compiler/xla/service/gpu_transfer_manager.h"
 
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
-#include "tensorflow/compiler/xla/service/cpu/infeed_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -36,73 +35,68 @@ namespace se = ::perftools::gputools;
 
 namespace xla {
 
-namespace {
+// TODO(b/30467474) Once GPU infeed implementation settles, consider
+// folding back the cpu and gpu infeed implementations into a generic
+// one if possible.
+GpuTransferManager::GpuTransferManager()
+    : GenericTransferManager(se::cuda::kCudaPlatformId) {}
 
-class CpuInfeedBuffer : public cpu::runtime::InfeedBuffer {
- public:
-  explicit CpuInfeedBuffer(int32 length)
-      : length_(length),
-        buffer_(new char[length]),
-        device_memory_(buffer_, length_) {}
-  ~CpuInfeedBuffer() override { delete[] buffer_; }
-
-  int32 length() override { return length_; }
-  void* data() override { return buffer_; }
-  void Done() override { delete this; }
-
-  se::DeviceMemoryBase* device_memory() { return &device_memory_; }
-
- private:
-  int32 length_;
-  char* buffer_;
-  se::DeviceMemoryBase device_memory_;
-};
-
-}  // namespace
-
-CpuTransferManager::CpuTransferManager()
-    : GenericTransferManager(se::host::kHostPlatformId) {}
-
-Status CpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
+Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
                                                    const Literal& literal) {
   const Shape& shape = literal.shape();
-  VLOG(2) << "transferring literal shape to infeed: "
+  VLOG(2) << "Transferring literal shape to infeed: "
           << ShapeUtil::HumanString(shape);
 
-  // TODO(b/31381668) handle tuples.
+  // TODO(b/30467474) handle tuples.
   if (ShapeUtil::IsTuple(shape)) {
     return Unimplemented("Infeed with a tuple shape is not supported: %s",
                          ShapeUtil::HumanString(literal.shape()).c_str());
   }
-
-  cpu::runtime::InfeedManager* infeed_manager =
-      cpu::runtime::GetInfeedManager();
 
   int64 size = GetByteSizeRequirement(shape);
   if (size > std::numeric_limits<int32>::max()) {
     return Unimplemented("Infeed shape is too large: %s needs %lld bytes",
                          ShapeUtil::HumanString(literal.shape()).c_str(), size);
   }
-  int32 size_32 = static_cast<int32>(size);
-  CpuInfeedBuffer* queued_buffer = new CpuInfeedBuffer(size_32);
-  TF_RETURN_IF_ERROR(TransferBufferToDevice(
-      executor, /*size=*/size, /*source=*/LiteralUtil::InternalData(literal),
-      queued_buffer->device_memory()));
 
-  infeed_manager->EnqueueBuffer(queued_buffer);
+  if (size == 0) {
+    return Unimplemented("Infeed shape %s needs 0 bytes",
+                         ShapeUtil::HumanString(literal.shape()).c_str());
+  }
 
+  gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
+  se::Stream* stream = infeed_manager->GetStream(executor);
+  if (stream == nullptr) {
+    return InternalError("Failed to obtain a stream");
+  }
+
+  gpu::InfeedBuffer* buffer = new gpu::InfeedBuffer(executor, size);
+  stream->ThenMemcpy(buffer->device_memory(),
+                     LiteralUtil::InternalData(literal), size);
+
+  VLOG(2) << "Queued infeed data on stream " << stream;
+
+  if (!stream->BlockHostUntilDone()) {
+    buffer->Done();
+    return InternalError("Failed to complete data transfer on stream %p",
+                         stream);
+  }
+
+  infeed_manager->EnqueueBuffer(buffer);
+
+  VLOG(2) << "Infeed data transferred";
   return Status::OK();
 }
 
 }  // namespace xla
 
-static std::unique_ptr<xla::TransferManager> CreateCpuTransferManager() {
-  return xla::MakeUnique<xla::CpuTransferManager>();
+static std::unique_ptr<xla::TransferManager> CreateGpuTransferManager() {
+  return xla::MakeUnique<xla::GpuTransferManager>();
 }
 
 static bool InitModule() {
-  xla::TransferManager::RegisterTransferManager(se::host::kHostPlatformId,
-                                                &CreateCpuTransferManager);
+  xla::TransferManager::RegisterTransferManager(se::cuda::kCudaPlatformId,
+                                                &CreateGpuTransferManager);
   return true;
 }
 static bool module_initialized = InitModule();
