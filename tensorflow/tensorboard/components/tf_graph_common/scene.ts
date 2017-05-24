@@ -186,7 +186,7 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
   if (!node) {
     return false;
   }
-  let transform = d3.zoomTransform(node);
+
   // Check if the selected node is off-screen in either
   // X or Y dimension in either direction.
   let nodeBox = node.getBBox();
@@ -205,18 +205,22 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
   let svgRect = svg.getBoundingClientRect();
   if (isOutsideOfBounds(pointTL.x, pointBR.x, svgRect.width) ||
       isOutsideOfBounds(pointTL.y, pointBR.y, svgRect.height)) {
-    // Determine the amount to transform the graph in both X and Y
-    // dimensions in order to center the selected node. This takes into
-    // acount the position of the node, the size of the svg scene, the
-    // amount the scene has been scaled by through zooming, and any previous
-    // transform already performed by this logic.
+    // Determine the amount to translate the graph in both X and Y dimensions in
+    // order to center the selected node. This takes into account the position
+    // of the node, the size of the svg scene, the amount the scene has been
+    // scaled by through zooming, and any previous transforms already performed
+    // by this logic.
     let centerX = (pointTL.x + pointBR.x) / 2;
     let centerY = (pointTL.y + pointBR.y) / 2;
     let dx = ((svgRect.width / 2) - centerX);
     let dy = ((svgRect.height / 2) - centerY);
-    let zoomEvent = d3zoom.translate([transform.x + dx, transform.y + dy])
-        .event;
-    d3.select(zoomG).transition().duration(500).call(zoomEvent);
+
+    // We translate by this amount. We divide the X and Y translations by the
+    // scale to undo how translateBy scales the translations (in d3 v4).
+    const svgTransform = d3.zoomTransform(svg);
+    d3.select(svg).transition().duration(500).call(
+        d3zoom.translateBy, dx / svgTransform.k, dy / svgTransform.k);
+
     return true;
   }
   return false;
