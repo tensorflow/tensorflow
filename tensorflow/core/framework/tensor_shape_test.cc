@@ -548,6 +548,23 @@ TEST(TensorShapeTest, Overflow) {
   }
 }
 
+TEST(TensorShapeTest, UnknownRank) {
+  // NOTE(irving): Unfortunately, for historical reasons we have to allow an
+  // TensorShapeProto with unknown_rank() set to be parsed as a TensorShape.
+  // Would be nice to tighten this, but it's tricky given backwards
+  // compatibility requirements.
+  TensorShapeProto proto;
+  proto.set_unknown_rank(true);
+  EXPECT_TRUE(TensorShape::IsValid(proto));
+  TF_EXPECT_OK(TensorShape::IsValidShape(proto));
+  EXPECT_EQ(TensorShape(), TensorShape(proto));
+
+  proto.add_dim()->set_size(7);
+  EXPECT_TRUE(TensorShape::IsValid(proto));
+  TF_EXPECT_OK(TensorShape::IsValidShape(proto));
+  EXPECT_EQ(TensorShape({7}), TensorShape(proto));
+}
+
 TEST(TensorShapeUtilsTest, StartsWith) {
   EXPECT_TRUE(TensorShapeUtils::StartsWith(TensorShape({}), TensorShape({})));
   EXPECT_TRUE(

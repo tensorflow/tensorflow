@@ -77,6 +77,11 @@ _IMGHDR_TO_MIMETYPE = {
 }
 _DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
 
+# Slashes in a plugin name could throw the router for a loop. An empty
+# name would be confusing, too. To be safe, let's restrict the valid
+# names as follows.
+_VALID_PLUGIN_RE = re.compile(r'^[A-Za-z0-9_.-]+$')
+
 
 def _content_type_for_image(encoded_image_string):
   image_type = imghdr.what(None, encoded_image_string)
@@ -143,7 +148,11 @@ class TensorBoardWSGIApp(object):
 
     Raises:
       ValueError: If some plugin has no plugin_name
+      ValueError: If some plugin has an invalid plugin_name (plugin
+          names must only contain [A-Za-z0-9_.-])
       ValueError: If two plugins have the same plugin_name
+      ValueError: If some plugin handles a route that does not start
+          with a slash
     """
     self._logdir = logdir
     self._plugins = plugins
@@ -193,6 +202,9 @@ class TensorBoardWSGIApp(object):
     for plugin in self._plugins:
       if plugin.plugin_name is None:
         raise ValueError('Plugin %s has no plugin_name' % plugin)
+      if not _VALID_PLUGIN_RE.match(plugin.plugin_name):
+        raise ValueError('Plugin %s has invalid name %r' % (plugin,
+                                                            plugin.plugin_name))
       if plugin.plugin_name in plugin_names_encountered:
         raise ValueError('Duplicate plugins for name %s' % plugin.plugin_name)
       plugin_names_encountered.add(plugin.plugin_name)
@@ -204,6 +216,10 @@ class TensorBoardWSGIApp(object):
                         str(e))
         continue
       for route, app in plugin_apps.items():
+        if not route.startswith('/'):
+          raise ValueError('Plugin named %r handles invalid route %r: '
+                           'route does not start with a slash' %
+                           (plugin.plugin_name, route))
         path = DATA_PREFIX + PLUGIN_PREFIX + '/' + plugin.plugin_name + route
         self.data_applications[path] = app
 

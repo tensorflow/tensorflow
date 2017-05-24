@@ -488,12 +488,6 @@ string Graph::NewName(StringPiece prefix) {
   return strings::StrCat(prefix, "/_", name_counter_++);
 }
 
-gtl::iterator_range<NodeIter> Graph::nodes() const {
-  // Note that NodeId 0 is always valid since we don't let the source
-  // node be removed from the graph.
-  return gtl::make_range(NodeIter(this, 0), NodeIter(this, num_node_ids()));
-}
-
 bool Graph::IsValidNode(Node* node) const {
   if (node == nullptr) return false;
   const int id = node->id();

@@ -43,7 +43,7 @@ bool IsTranspose(const NodeDef& node) {
 bool IsVariable(const NodeDef& node) {
   const auto op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
-         op == "VarHandleOp";
+         op == "VarHandleOp" || op == "TemporaryVariable";
 }
 
 bool IsMerge(const NodeDef& node) {

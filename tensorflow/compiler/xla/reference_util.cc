@@ -672,13 +672,16 @@ ReferenceUtil::ReduceToRowArray2D(
                                            operand.n3(), operand.n4()};
   std::vector<int64> pad_low(4);
   std::vector<int64> pad_high(4);
+  std::vector<int64> pad_interior(4);
   std::vector<int64> output_bounds(4);
   for (int64 i = 0; i < 4; ++i) {
     pad_low[i] = padding.dimensions(i).edge_padding_low();
     pad_high[i] = padding.dimensions(i).edge_padding_high();
-    CHECK_EQ(padding.dimensions(i).interior_padding(), 0) << "not implemented";
+    CHECK_LE(0, padding.dimensions(i).interior_padding()) << "not implemented";
+    pad_interior[i] = padding.dimensions(i).interior_padding();
 
-    output_bounds[i] = pad_low[i] + input_bounds[i] + pad_high[i];
+    output_bounds[i] = pad_low[i] + input_bounds[i] + pad_high[i] +
+                       (input_bounds[i] - 1) * pad_interior[i];
   }
 
   Array4D<float> result(output_bounds[0], output_bounds[1], output_bounds[2],
@@ -691,9 +694,16 @@ ReferenceUtil::ReduceToRowArray2D(
         *value = pad;
         return;
       }
+      if (pad_interior[i] &&
+          (indices[i] - pad_low[i]) % (pad_interior[i] + 1)) {
+        *value = pad;
+        return;
+      }
     }
-    *value = operand(indices[0] - pad_low[0], indices[1] - pad_low[1],
-                     indices[2] - pad_low[2], indices[3] - pad_low[3]);
+    *value = operand((indices[0] - pad_low[0]) / (pad_interior[0] + 1),
+                     (indices[1] - pad_low[1]) / (pad_interior[1] + 1),
+                     (indices[2] - pad_low[2]) / (pad_interior[2] + 1),
+                     (indices[3] - pad_low[3]) / (pad_interior[3] + 1));
   });
   return result;
 }

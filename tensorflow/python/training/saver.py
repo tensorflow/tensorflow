@@ -656,7 +656,7 @@ class BaseSaverBuilder(object):
       restore_sequentially: A Bool, which if true, causes restore of different
         variables to happen sequentially within each device.
       filename: If known at graph construction time, filename used for variable
-        loading/saving.
+        loading/saving. If None, then the default name "model" will be used.
 
     Returns:
       A SaverDef proto.
@@ -674,7 +674,7 @@ class BaseSaverBuilder(object):
     with ops.name_scope(name, "save",
                         [saveable.op for saveable in saveables]) as name:
       # Add the Constant string tensor for the filename.
-      filename_tensor = constant_op.constant(filename)
+      filename_tensor = constant_op.constant(filename or "model")
 
       # Add the save ops.
       if sharded:
@@ -1033,7 +1033,8 @@ class Saver(object):
                allow_empty=False,
                write_version=saver_pb2.SaverDef.V2,
                pad_step_number=False,
-               save_relative_paths=False):
+               save_relative_paths=False,
+               filename=None):
     """Creates a `Saver`.
 
     The constructor adds ops to save and restore variables.
@@ -1109,6 +1110,8 @@ class Saver(object):
       save_relative_paths: If `True`, will write relative paths to the
         checkpoint state file. This is needed if the user wants to copy the
         checkpoint directory and reload from the copied directory.
+      filename: If known at graph construction time, filename used for variable
+        loading/saving.
 
     Raises:
       TypeError: If `var_list` is invalid.
@@ -1132,6 +1135,7 @@ class Saver(object):
     self._is_empty = None
     self._write_version = write_version
     self._pad_step_number = pad_step_number
+    self._filename = filename
     if not defer_build:
       self.build()
     if self.saver_def:
@@ -1164,7 +1168,8 @@ class Saver(object):
           max_to_keep=self._max_to_keep,
           keep_checkpoint_every_n_hours=self._keep_checkpoint_every_n_hours,
           name=self._name,
-          restore_sequentially=self._restore_sequentially)
+          restore_sequentially=self._restore_sequentially,
+          filename=self._filename)
     elif self.saver_def and self._name:
       # Since self._name is used as a name_scope by builder(), we are
       # overloading the use of this field to represent the "import_scope" as

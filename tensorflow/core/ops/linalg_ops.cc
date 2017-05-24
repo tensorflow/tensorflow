@@ -218,7 +218,7 @@ REGISTER_OP("MatrixInverse")
     .Input("input: T")
     .Output("output: T")
     .Attr("adjoint: bool = False")
-    .Attr("T: {double, float}")
+    .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(BatchUnchangedSquareShapeFn)
     .Doc(R"doc(
 Computes the inverse of one or more square invertible matrices or their

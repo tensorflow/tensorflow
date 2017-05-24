@@ -32,7 +32,7 @@ class OpLevelCostEstimator {
   OpLevelCostEstimator();
   virtual ~OpLevelCostEstimator() {}
 
-  Costs PredictCosts(const OpInfo& op_features) const;
+  virtual Costs PredictCosts(const OpInfo& op_features) const;
 
  protected:
   // Returns an estimate of device performance (in billions of operations
