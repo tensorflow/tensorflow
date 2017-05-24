@@ -28,14 +28,14 @@ def _python_configure_warning(msg):
   """Output warning message during auto configuration."""
   yellow = "\033[1;33m"
   no_color = "\033[0m"
-  print("\n%sPython Configuration Warning:%s %s\n" % (yellow, no_color, msg))
+  print("%sPython Configuration Warning:%s %s" % (yellow, no_color, msg))
 
 
 def _python_configure_fail(msg):
   """Output failure message when auto configuration fails."""
   red = "\033[0;31m"
   no_color = "\033[0m"
-  fail("\n%sPython Configuration Error:%s %s\n" % (red, no_color, msg))
+  fail("%sPython Configuration Error:%s %s\n" % (red, no_color, msg))
 
 
 def _get_env_var(repository_ctx, name, default = None, enable_warning = True):
@@ -235,9 +235,13 @@ def _create_local_python_repository(repository_ctx):
   # If local checks were requested, the python and numpy include will be auto
   # detected on the host config (using _PYTHON_BIN_PATH).
   if repository_ctx.attr.local_checks:
-    python_bin = _get_env_var(repository_ctx, _PYTHON_BIN_PATH)
+    # TODO(nlopezgi): The default argument here is a workaround until
+    #                 bazelbuild/bazel#3057 is resolved.
+    python_bin = _get_env_var(repository_ctx, _PYTHON_BIN_PATH,
+                              "/usr/bin/python")
     _check_python_bin(repository_ctx, python_bin)
-    python_lib = _get_env_var(repository_ctx, _PYTHON_LIB_PATH, _get_python_lib(repository_ctx, python_bin))
+    python_lib = _get_env_var(repository_ctx, _PYTHON_LIB_PATH,
+                              _get_python_lib(repository_ctx, python_bin))
     _check_python_lib(repository_ctx, python_lib)
     python_include = _get_python_include(repository_ctx, python_bin)
     numpy_include = _get_numpy_include(repository_ctx, python_bin) + '/numpy'
