@@ -1,26 +1,29 @@
 package(default_visibility = ["//tensorflow:internal"])
 
 load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("//tensorflow/tensorboard:hacks.bzl", "tensorboard_typescript_bundle")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
-
-# TODO(dandelion): Add webfiles support for the test code.
 
 web_library(
     name = "tf_globals",
     srcs = [
+        "bundle.js",
         "tf-globals.html",
-        ":ts",
     ],
     path = "/tf-globals",
 )
 
 tensorboard_typescript_genrule(
     name = "ts",
-    srcs = ["globals.ts"],
+    srcs = ["bundle.ts"],
+)
+
+tensorboard_typescript_bundle(
+    name = "bundle",
+    out = "bundle.ts",
+    namespace_srcs = {"TF.Globals": ["globals.ts"]},
 )
 
 filegroup(
@@ -31,6 +34,9 @@ filegroup(
 
 ################################################################################
 # MARKED FOR DELETION
+
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 tensorboard_webcomponent_library(
     name = "legacy",

@@ -331,6 +331,8 @@ SparseAdd
 SparseAddGrad
 SparseConcat
 SparseCross
+SparseFillEmptyRows
+SparseFillEmptyRowsGrad
 SparseSplit
 SparseSelectLastK
 SparseReorder

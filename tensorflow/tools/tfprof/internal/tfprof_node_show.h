@@ -69,6 +69,7 @@ class GraphNode : public ShowNode {
   explicit GraphNode(TFGraphNode* node) : ShowNode(node) {
     mutable_proto()->set_inputs(node->inputs().size());
     mutable_proto()->set_total_inputs(0);
+    trackable = Trackable();
   }
 
   void ReInit() {
@@ -95,6 +96,16 @@ class GraphNode : public ShowNode {
     show_children.clear();
   }
 
+  bool Trackable() {
+    if (!node->step_stats()) return false;
+    if (node->all_start_micros() == 0) return false;
+    if (node->canonical_device().empty() || node->host_device().empty()) {
+      return false;
+    }
+    return true;
+  }
+
+  bool trackable;
   std::vector<GraphNode*> children;
   std::vector<GraphNode*> show_children;
 };

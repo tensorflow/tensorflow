@@ -75,7 +75,7 @@ static void ExtractExtraProperties(
     std::vector<OpInfo::TensorProperties>* extra_inputs,
     protobuf::Map<string, AttrValue>* attr_map) {
   OpRegistry* op_registry = OpRegistry::Global();
-  const OpDef* op_def;
+  const OpDef* op_def = nullptr;
   auto s = op_registry->LookUpOpDef(node.op(), &op_def);
   if (!s.ok()) {
     op_def = nullptr;
@@ -108,27 +108,33 @@ static void ExtractExtraProperties(
       extra_inputs->push_back(input);
 
       // For filename input, the file size can also be useful.
-      if (op_def &&
+      if (op_def && i < op_def->input_arg_size() &&
           op_def->input_arg(i).name().find("filename") != std::string::npos) {
         Tensor tensor;
-        CHECK(tensor.FromProto(t));
+        if (!tensor.FromProto(t)) {
+          continue;
+        }
+        if (tensor.NumElements() != 1) {
+          continue;
+        }
         const string filename = tensor.scalar<string>()();
 
         Env* env = Env::Default();
         FileStatistics stat;
         Status s = env->Stat(filename, &stat);
-        if (s.ok()) {
-          AttrValue attr;
-          attr.set_i(stat.length);
-          string attr_key = strings::StrCat("input_", i, "_filesize");
-          (*attr_map)[attr_key] = attr;
+        if (!s.ok()) {
+          continue;
         }
+        AttrValue attr;
+        attr.set_i(stat.length);
+        string attr_key = strings::StrCat("input_", i, "_filesize");
+        (*attr_map)[attr_key] = attr;
       }
     }
 
     // When the input is a handle (e.g. look up table handle), the information
     // in the op itself is not sufficient to predict the op memory.
-    if (op_def &&
+    if (op_def && i < op_def->input_arg_size() &&
         op_def->input_arg(i).name().find("handle") != std::string::npos) {
       string new_key = strings::StrCat("parent_", i, "_op");
       AttrValue attr;

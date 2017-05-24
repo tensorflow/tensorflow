@@ -264,7 +264,7 @@ def _recall_at_threshold(labels, predictions, weights, threshold, name=None):
 
 # TODO(xiejw): Add class ids for eval metrics?
 def _multi_class_head_with_softmax_cross_entropy_loss(
-    n_classes, weight_column_name=None):
+    n_classes, weight_feature_key=None):
   """Creates a '_Head' for multi class classification.
 
   This head expects to be fed integer labels specifying the class index.
@@ -272,7 +272,7 @@ def _multi_class_head_with_softmax_cross_entropy_loss(
   Args:
     n_classes: Number of classes, must be greater than 2 (for 2 classes, use
       `_BinaryLogisticHeadWithSigmoidCrossEntropyLoss`).
-    weight_column_name: A string defining feature column name representing
+    weight_feature_key: A string defining feature column name representing
       weights. It is used to down weight or boost examples during training. It
       will be multiplied by the loss of the example.
 
@@ -283,17 +283,17 @@ def _multi_class_head_with_softmax_cross_entropy_loss(
     ValueError: if `n_classes`, `metric_class_ids` or `label_keys` is invalid.
   """
   return _MultiClassHeadWithSoftmaxCrossEntropyLoss(
-      n_classes, weight_column_name)
+      n_classes, weight_feature_key)
 
 
 class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   """See `_multi_class_head_with_softmax_cross_entropy_loss`."""
 
-  def __init__(self, n_classes, weight_column_name=None):
+  def __init__(self, n_classes, weight_feature_key=None):
     if (n_classes is None) or (n_classes <= 2):
       raise ValueError('n_classes must be > 2: %s.' % n_classes)
     self._n_classes = n_classes
-    self._weight_column_name = weight_column_name
+    self._weight_feature_key = weight_feature_key
 
   @property
   def logits_dimension(self):
@@ -373,8 +373,8 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
       # Restore the squeezed dim, so unweighted_loss matches the weights shape.
       unweighted_loss = array_ops.expand_dims(unweighted_loss, axis=(1,))
       weights = (
-          1. if (self._weight_column_name is None) else
-          features[self._weight_column_name])
+          1. if (self._weight_feature_key is None) else
+          features[self._weight_feature_key])
       weights = math_ops.to_float(weights, name='weights')
       training_loss = losses.compute_weighted_loss(
           unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)

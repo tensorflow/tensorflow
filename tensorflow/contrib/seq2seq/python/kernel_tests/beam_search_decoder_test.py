@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import attention_wrapper
 from tensorflow.contrib.seq2seq.python.ops import beam_search_decoder
 from tensorflow.contrib.seq2seq.python.ops import beam_search_ops
@@ -32,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.layers import core as layers_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -241,7 +241,7 @@ class BeamSearchDecoderTest(test.TestCase):
 
     with self.test_session() as sess:
       embedding = np.random.randn(vocab_size, embedding_dim).astype(np.float32)
-      cell = core_rnn_cell.LSTMCell(cell_depth)
+      cell = rnn_cell.LSTMCell(cell_depth)
       if has_attention:
         inputs = np.random.randn(batch_size, decoder_max_time,
                                  input_depth).astype(np.float32)

@@ -79,6 +79,7 @@ class TFGraph : public TFShow {
   void Account(const std::vector<GraphNode*>& roots, const Options& opts,
                std::map<string, int64>* visits);
 
+  MemoryTracker memory_tracker_;
   std::vector<GraphNode*> roots_;
   std::vector<std::unique_ptr<NodeDef>> node_defs_;
   std::map<string, std::unique_ptr<TFGraphNode>> parent_nodes_;

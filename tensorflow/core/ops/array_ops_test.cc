@@ -135,7 +135,7 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
 
   shape_proto->add_dim()->set_size(-1);
   rebuild_node_def();
-  INFER_ERROR("Shape [1,2,3,4,-1] has negative dimensions", op, "");
+  INFER_ERROR("Shape [1,2,3,4,?] is not fully defined", op, "");
 }
 
 TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {

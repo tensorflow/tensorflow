@@ -5,7 +5,7 @@
 * Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
 * Added libverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
 * Bring `tf.feature_column.*` into the API. Non-deprecated functionality from `tf.contrib.layers.*` is moved to `tf.feature_column.*` with cosmetic changes.
-* `RNNCell` objects now subclass `tf.layers._Layer`.  The strictness described
+* `RNNCell` objects now subclass `tf.layers.Layer`.  The strictness described
   in the TensorFlow 1.1 release is gone:  The first time an RNNCell is used,
   it caches its scope.  All future uses of the RNNCell will reuse variables from
   that same scope.  This is a breaking change from the behavior of RNNCells
@@ -18,6 +18,28 @@
   parameters, write: `MultiRNNCell([LSTMCell(...) for _ in range(5)])`.
   If at all unsure, first test your code with TF 1.1; ensure it raises no
   errors, and then upgrade to TF 1.2.
+* RNNCells' variable names have been renamed for consistency with Keras layers.
+  Specifically, the previous variable names "weights" and "biases" have
+  been changed to "kernel" and "bias", respectively.
+  This may cause backward incompatibility with regard to your old
+  checkpoints containing such RNN cells, in which case you can use the tool
+  [checkpoint_convert script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/rnn/python/tools/checkpoint_convert.py)
+  to convert the variable names in your old checkpoints.
+* Many of the RNN functions and classes that were in the `tf.nn` namespace
+  before the 1.0 release and which were moved to `tf.contrib.rnn` have now
+  been moved back to the core namespace.  This includes
+  `RNNCell`, `LSTMCell`, `GRUCell`, and a number of other cells.  These
+  now reside in `tf.nn.rnn_cell` (with aliases in `tf.contrib.rnn` for backwards
+  compatibility).  The original `tf.nn.rnn` function is now `tf.nn.static_rnn`,
+  and the bidirectional static and state saving static rnn functions are also
+  now back in the `tf.nn` namespace.
+
+  Notable exceptions are the `EmbeddingWrapper`, `InputProjectionWrapper` and
+  `OutputProjectionWrapper`,  which will slowly be moved to deprecation
+  in `tf.contrib.rnn`.  These are inefficient wrappers that should often
+  be replaced by calling `embedding_lookup` or `layers.dense` as pre- or post-
+  processing of the rnn.  For RNN decoding, this functionality has been replaced
+  with an alternative API in `tf.contrib.seq2seq`.
 * TensorForest Estimator now supports SavedModel export for serving.
 * Support client-provided ClusterSpec's and propagate them to all workers to enable the creation of dynamic TensorFlow clusters.
 * TensorFlow C library now available for Windows.
@@ -46,10 +68,6 @@
 * tensorflow/contrib/rnn undergoes RNN cell variable renaming for
   consistency with Keras layers. Specifically, the previous variable names
   "weights" and "biases" are changed to "kernel" and "bias", respectively.
-  This may cause backward incompatibility with regard to your old
-  checkpoints containing such RNN cells, in which case you can use the
-  [checkpoint_convert script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/rnn/python/tools/checkpoint_convert.py)
-  to convert the variable names in your old checkpoints.
 * Changed MIN_SDK version to 8.0 when building iOS libraries.
 * Fixed LIBXSMM integration.
 * Make decode_jpeg/decode_png/decode_gif handle all formats, since users frequently try to decode an image as the wrong type.

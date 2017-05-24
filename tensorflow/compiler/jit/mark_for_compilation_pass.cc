@@ -132,8 +132,7 @@ bool IsCompilableCall(const NodeDef& call_def,
     return false;
   }
 
-  for (Node* node : fbody->graph->nodes()) {
-    if (node->IsSource() || node->IsSink()) continue;
+  for (Node* node : fbody->graph->op_nodes()) {
     if (node->type_string() == "_Arg" || node->type_string() == "_Retval")
       continue;
     if (node->type_string() == "While") {
@@ -176,9 +175,7 @@ Status FindCompilationCandidates(
   std::unique_ptr<FunctionLibraryRuntime> lib_runtime(NewFunctionLibraryRuntime(
       nullptr, env, nullptr, TF_GRAPH_DEF_VERSION, flib_def, opts));
 
-  for (Node* node : graph.nodes()) {
-    if (node->IsSource() || node->IsSink()) continue;
-
+  for (Node* node : graph.op_nodes()) {
     DeviceType device_type("");
     TF_RETURN_IF_ERROR(
         DeviceTypeOfDevice(node->assigned_device_name(), &device_type));

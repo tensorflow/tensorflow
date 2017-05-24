@@ -85,7 +85,7 @@ const ShowNode* TFGraph::ShowInternal(const Options& opts, Timeline* timeline) {
   root = PrintGraph({root}, opts, 1, 0, 0, &visits)[0];
 
   if (timeline) {
-    timeline->GenerateGraphTimeline(root);
+    timeline->GenerateGraphTimeline(root, memory_tracker_);
   }
   return root;
 }
@@ -214,8 +214,14 @@ void TFGraph::Account(const std::vector<GraphNode*>& roots, const Options& opts,
     if (node->account) {
       node->AddSelfToTotalStats();
     }
+    if (node->trackable) {
+      memory_tracker_.TrackNode(node);
+    }
     // Aggregate its children stats.
     for (GraphNode* c : node->children) {
+      if (node->trackable && c->trackable) {
+        memory_tracker_.TrackNodeConnection(node, c);
+      }
       // A node can be visited from multiple parents. Only account once.
       // "visits==1" is when the node is visited through depth-first search.
       (*visits)[c->name()] += 1;

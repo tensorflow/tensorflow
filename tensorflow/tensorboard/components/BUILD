@@ -13,7 +13,7 @@ web_library(
     ],
     path = "/",
     deps = [
-        "//tensorflow/tensorboard/components/tf_tensorboard_d3v4",
+        "//tensorflow/tensorboard/components/tf_tensorboard",
         "@org_polymer_webcomponentsjs",
     ],
 )

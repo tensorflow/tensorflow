@@ -93,23 +93,6 @@ message TransferToServerResponse {
   GlobalDataHandle data = 1;
 }
 
-message TransferToServerInProcessRequest {
-  uint64 buffer = 1;
-  Shape shape = 2;
-}
-
-message TransferToServerInProcessResponse {
-  GlobalDataHandle data = 1;
-}
-
-message TransferToClientInProcessRequest {
-  GlobalDataHandle data = 1;
-  uint64 buffer = 2;
-}
-
-message TransferToClientInProcessResponse {
-}
-
 message TransferToInfeedRequest {
   Literal literal = 1;
   int64 replica_id = 2;

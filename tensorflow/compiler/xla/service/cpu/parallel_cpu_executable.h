@@ -81,6 +81,14 @@ class ParallelCpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
+  static int64 ShapeSizeBytes(const Shape& shape) {
+    // On the cpu, opaques are pointers.
+    if (ShapeUtil::IsOpaque(shape)) {
+      return sizeof(void*);
+    }
+    return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+  }
+
  private:
   // Allocate buffers required for execution and assign them to the elements of
   // "buffers". "buffers" should be sized to the number of buffers in buffer
