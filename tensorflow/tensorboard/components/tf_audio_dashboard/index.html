@@ -16,46 +16,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-<script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
-<link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
-<link rel="import" href="../../paper-styles/typography.html">
-<link rel="import" href="../tf-audio-dashboard.html">
-
-<title>Audio Dashboard Demo</title>
-<style>
-  #container {
-    height: 300px;
-    width: 100%;
-  }
-
-  html, body {
-    margin: 0;
-    padding: 0;
-    font-family: "RobotoDraft","Roboto",sans-serif;
-  }
-
-</style>
-<demo-snippet>
-  <template>
-    <dom-module id="audio-dash-demo">
-      <template>
-        <tf-audio-dashboard id="demo" backend="[[backend]]"></tf-audio-dashboard>
-      </template>
-      <script>
-        Polymer({
-          is: "audio-dash-demo",
-          properties: {
-            backend: {
-              type: Object,
-              value: function() {
-                var router = new TF.Backend.router("data", true);
-                return new TF.Backend.Backend(router);
-              },
-            },
-          },
-        });
-      </script>
-    </dom-module>
-    <audio-dash-demo id="container"></audio-dash-demo>
-  </template>
-</demo-snippet>
+<meta charset="utf-8">
+<title>tf-audio-dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="../webcomponentsjs/webcomponents-lite.js"></script>
+<link rel="import" href="../iron-component-page/iron-component-page.html">
+<body>
+<iron-component-page src="tf-audio-dashboard.html"></iron-component-page>

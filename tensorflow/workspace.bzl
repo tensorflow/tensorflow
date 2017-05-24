@@ -2599,7 +2599,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "http://mirror.bazel.build/registry.npmjs.org/sinon/-/sinon-1.17.4.tgz",
           "https://registry.npmjs.org/sinon/-/sinon-1.17.4.tgz",
       ],
-      strip_prefix = "package/lib",
+      strip_prefix = "package/pkg",
       path = "/sinonjs",
   )
 

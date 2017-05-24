@@ -334,6 +334,7 @@ filegroup(
         "//tensorflow/tensorboard/backend/event_processing:all_files",
         "//tensorflow/tensorboard/components:all_files",
         "//tensorflow/tensorboard/components/tf_audio_dashboard:all_files",
+        "//tensorflow/tensorboard/components/tf_audio_dashboard/test:all_files",
         "//tensorflow/tensorboard/components/tf_backend:all_files",
         "//tensorflow/tensorboard/components/tf_backend/test:all_files",
         "//tensorflow/tensorboard/components/tf_color_scale:all_files",
