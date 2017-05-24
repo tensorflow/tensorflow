@@ -23,11 +23,21 @@ bool IsConcat(const NodeDef& node) {
   return op == "Concat" || op == "ConcatV2";
 }
 
+bool IsConstant(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Const";
+}
+
 bool IsDequeueOp(const NodeDef& node) {
   static const std::set<std::string> dequeue_ops = {
       "QueueDequeueManyV2", "QueueDequeueMany", "QueueDequeueV2",
       "QueueDequeue"};
   return dequeue_ops.count(node.op()) > 0;
+}
+
+bool IsMerge(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "Merge";
 }
 
 bool IsPlaceholder(const NodeDef& node) {
@@ -44,11 +54,6 @@ bool IsVariable(const NodeDef& node) {
   const auto op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
          op == "VarHandleOp" || op == "TemporaryVariable";
-}
-
-bool IsMerge(const NodeDef& node) {
-  const auto op = node.op();
-  return op == "Merge";
 }
 
 }  // end namespace grappler
