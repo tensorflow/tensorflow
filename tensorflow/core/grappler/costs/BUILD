@@ -190,7 +190,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":robust_stats",
-        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
