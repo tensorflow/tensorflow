@@ -29,41 +29,13 @@ public:
   ParallelMapTester() : _is_ok(true) {}
 
   Status DefaultAction(HloInstruction* inst) override {
-    switch (inst->opcode()) {
-      case HloOpcode::kAbs:
-      case HloOpcode::kAdd:
-      case HloOpcode::kCeil:
-      case HloOpcode::kClamp:
-      case HloOpcode::kConstant:
-      case HloOpcode::kConvert:
-      case HloOpcode::kDivide:
-      case HloOpcode::kEq:
-      case HloOpcode::kExp:
-      case HloOpcode::kFloor:
-      case HloOpcode::kGe:
-      case HloOpcode::kGt:
-      case HloOpcode::kLe:
-      case HloOpcode::kLog:
-      case HloOpcode::kLogicalAnd:
-      case HloOpcode::kLogicalNot:
-      case HloOpcode::kLogicalOr:
-      case HloOpcode::kLt:
-      case HloOpcode::kMultiply:
-      case HloOpcode::kNe:
-      case HloOpcode::kNegate:
-      case HloOpcode::kParameter:
-      case HloOpcode::kPower:
-      case HloOpcode::kRemainder:
-      case HloOpcode::kSign:
-      case HloOpcode::kTanh:
-      case HloOpcode::kSelect:
-      case HloOpcode::kSubtract:
-      case HloOpcode::kMaximum:
-      case HloOpcode::kMinimum:
-        return Status::OK();
-      default:
-        _is_ok = false;
-        return Status::OK();
+    if (inst->IsElementwise()) {
+      return Status::OK();
+    } else if (inst->opcode() == HloOpcode::kParameter) {
+      return Status::OK();
+    } else {
+      _is_ok = false;
+      return Status::OK();
     }
   }
 
