@@ -160,7 +160,7 @@ TEST_F(TFProfStatsTest, TestFloatOps) {
   TFGraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
-      "0\ntotal_exec_micros: 96\ntotal_requested_bytes: "
+      "0\ntotal_exec_micros: 97\ntotal_requested_bytes: "
       "8656\ntotal_parameters: 370\nchildren {\n  name: \"conv2d/BiasAdd\"\n  "
       "exec_micros: 12\n  requested_bytes: 1440\n  total_exec_micros: 12\n  "
       "total_requested_bytes: 1440\n  total_parameters: 0\n  devices: "
@@ -207,7 +207,7 @@ TEST_F(TFProfStatsTest, TestShowTensorValue) {
   TFGraphNodeProto expected;
   CHECK(protobuf::TextFormat::ParseFromString(
       "name: \"_TFProfRoot\"\nexec_micros: 0\nrequested_bytes: "
-      "0\ntotal_exec_micros: 96\ntotal_requested_bytes: "
+      "0\ntotal_exec_micros: 97\ntotal_requested_bytes: "
       "8656\ntotal_parameters: 370\nfloat_ops: 0\ntotal_float_ops: 34360\n",
       &expected));
   EXPECT_EQ(expected.DebugString(), root.DebugString());

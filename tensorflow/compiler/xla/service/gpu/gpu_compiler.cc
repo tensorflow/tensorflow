@@ -157,8 +157,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
 tensorflow::Status PrepareHloModuleForIrEmitting(
-    const Compiler::HloDumper& dump_hlo, HloModule* hlo_module,
-    HloModuleConfig* module_config) {
+    const Compiler::HloDumper& dump_hlo, HloModule* hlo_module) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
@@ -168,7 +167,7 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   pipeline.AddInvariantChecker<HloVerifier>();
   pipeline.AddPass<PadInsertion>();
   pipeline.AddPass<GpuLayoutAssignment>(
-      module_config->mutable_entry_computation_layout());
+      hlo_module->mutable_config()->mutable_entry_computation_layout());
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
@@ -238,8 +237,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
   TF_RETURN_IF_ERROR(OptimizeHloModule(module.get(), dump_hlo,
                                        stream_exec->GetDeviceDescription()));
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(dump_hlo, module.get(),
-                                                   module->mutable_config()));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(dump_hlo, module.get()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -270,10 +268,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<BufferAssignment> buffer_assignment,
       BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
-                          [this](const LogicalBuffer& buffer) {
-                            return ShapeSizeBytes(buffer.shape());
-                          },
-                          kMemoryAlignment));
+                          BufferSizeBytesFunction(), kMemoryAlignment));
 
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
                                       &stream_exec->GetDeviceDescription(),
@@ -328,7 +323,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
 
   auto* gpu_executable =
       new GpuExecutable(*ptx, std::move(thunk_schedule), std::move(module),
-                        std::move(buffer_assignment));
+                        std::move(buffer_assignment), ShapeSizeBytesFunction());
   if (flags->xla_gpu_embed_ir) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
@@ -352,10 +347,6 @@ GpuCompiler::CompileAheadOfTime(
 
 se::Platform::Id GpuCompiler::PlatformId() const {
   return se::cuda::kCudaPlatformId;
-}
-
-int64 GpuCompiler::ShapeSizeBytes(const Shape& shape) const {
-  return ShapeUtil::ByteSizeOf(shape, pointer_size_);
 }
 
 }  // namespace gpu

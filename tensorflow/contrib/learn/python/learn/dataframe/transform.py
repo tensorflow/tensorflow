@@ -90,6 +90,10 @@ def _make_tuple_of_string(x):
 
 @deprecated("2017-06-15", "contrib/learn/dataframe/** is deprecated.")
 def parameter(func):
+  return _parameter(func)
+
+
+def _parameter(func):
   """Tag functions annotated with `@parameter` for later retrieval.
 
   Note that all `@parameter`s are automatically `@property`s as well.

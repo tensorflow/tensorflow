@@ -1709,14 +1709,23 @@ py_library(
 py_library(
     name = "rnn_cell",
     srcs = [
+        "ops/rnn_cell.py",
         "ops/rnn_cell_impl.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":clip_ops",
         ":framework_for_generated_wrappers",
+        ":init_ops",
         ":layers_base",
+        ":math_ops",
+        ":nn_ops",
+        ":partitioned_variables",
+        ":random_ops",
         ":util",
+        ":variable_scope",
+        ":variables",
     ],
 )
 
@@ -3645,5 +3654,22 @@ py_test(
         ":tf_optimizer",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "layout_optimizer_test",
+    size = "medium",
+    srcs = [
+        "grappler/layout_optimizer_test.py",
+    ],
+    additional_deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":array_ops",
+        ":nn",
+        ":random_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
     ],
 )

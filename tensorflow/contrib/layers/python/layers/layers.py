@@ -393,16 +393,18 @@ def batch_norm(inputs,
 
   Can be used as a normalizer function for conv2d and fully_connected.
 
-  Note: When is_training is True the moving_mean and moving_variance need to be
-  updated, by default the update_ops are placed in `tf.GraphKeys.UPDATE_OPS` so
-  they need to be added as a dependency to the `train_op`, example:
+  Note: when training, the moving_mean and moving_variance need to be updated.
+  By default the update ops are placed in `tf.GraphKeys.UPDATE_OPS`, so they
+  need to be added as a dependency to the `train_op`. For example:
 
+  ```python
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
       train_op = optimizer.minimize(loss)
+  ```
 
   One can set updates_collections=None to force the updates in place, but that
-  can have speed penalty, especially in distributed settings.
+  can have a speed penalty, especially in distributed settings.
 
   Args:
     inputs: A tensor with 2 or more dimensions, where the first dimension has
@@ -1493,18 +1495,39 @@ def layer_norm(inputs,
                variables_collections=None,
                outputs_collections=None,
                trainable=True,
+               begin_norm_axis=1,
+               begin_params_axis=-1,
                scope=None):
-  """Adds a Layer Normalization layer from https://arxiv.org/abs/1607.06450.
+  """Adds a Layer Normalization layer.
+
+  Based on the paper:
 
     "Layer Normalization"
 
     Jimmy Lei Ba, Jamie Ryan Kiros, Geoffrey E. Hinton
 
+    https://arxiv.org/abs/1607.06450.
+
   Can be used as a normalizer function for conv2d and fully_connected.
 
+  Given a tensor `inputs` of rank `R`, moments are calculated and normalization
+  is performed over axes `begin_norm_axis ... R - 1`.  Scaling and centering,
+  if requested, is performed over axes `begin_shift_axis .. R - 1`.
+
+  By default, `begin_norm_axis = 1` and `begin_params_axis = -1`,
+  meaning that normalization is performed over all but the first axis
+  (the `HWC` if `inputs` is `NHWC`), while the `beta` and `gamma` trainable
+  parameters are calculated for the rightmost axis (the `C` if `inputs` is
+  `NHWC`).  Scaling and recentering is performed via broadcast of the
+  `beta` and `gamma` parameters with the normalized tensor.
+
+  The shapes of `beta` and `gamma` are `inputs.shape[begin_params_axis:]`,
+  and this part of the inputs' shape must be fully defined.
+
   Args:
-    inputs: A tensor with 2 or more dimensions. The normalization
-            occurs over all but the first dimension.
+    inputs: A tensor having rank `R`. The normalization is performed over
+      axes `begin_norm_axis ... R - 1` and centering and scaling parameters
+      are calculated over `begin_params_axis ... R - 1`.
     center: If True, add offset of `beta` to normalized tensor. If False, `beta`
       is ignored.
     scale: If True, multiply by `gamma`. If False, `gamma` is
@@ -1518,27 +1541,43 @@ def layer_norm(inputs,
     outputs_collections: Collections to add the outputs.
     trainable: If `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    begin_norm_axis: The first normalization dimension: normalization will be
+      performed along dimensions `begin_norm_axis : rank(inputs)`
+    begin_params_axis: The first parameter (beta, gamma) dimension: scale
+      and centering parameters will have dimensions
+      `begin_params_axis : rank(inputs)` and will be broadcast with the
+      normalized inputs accordingly.
     scope: Optional scope for `variable_scope`.
 
   Returns:
-    A `Tensor` representing the output of the operation.
+    A `Tensor` representing the output of the operation, having the same
+    shape and dtype as `inputs`.
 
   Raises:
-    ValueError: If rank or last dimension of `inputs` is undefined.
+    ValueError: If the rank of `inputs` is not known at graph build time,
+      or if `inputs.shape[begin_params_axis:]` is not fully defined at
+      graph build time.
   """
   with variable_scope.variable_scope(scope, 'LayerNorm', [inputs],
                                      reuse=reuse) as sc:
     inputs = ops.convert_to_tensor(inputs)
-    inputs_shape = inputs.get_shape()
+    inputs_shape = inputs.shape
     inputs_rank = inputs_shape.ndims
     if inputs_rank is None:
       raise ValueError('Inputs %s has undefined rank.' % inputs.name)
     dtype = inputs.dtype.base_dtype
-    axis = list(range(1, inputs_rank))
-    params_shape = inputs_shape[-1:]
+    if begin_norm_axis < 0:
+      begin_norm_axis = inputs_rank + begin_norm_axis
+    if begin_params_axis >= inputs_rank or begin_norm_axis >= inputs_rank:
+      raise ValueError(
+          'begin_params_axis (%d) and begin_norm_axis (%d) '
+          'must be < rank(inputs) (%d)'
+          % (begin_params_axis, begin_norm_axis, inputs_rank))
+    params_shape = inputs_shape[begin_params_axis:]
     if not params_shape.is_fully_defined():
-      raise ValueError('Inputs %s has undefined last dimension %s.' % (
-          inputs.name, params_shape))
+      raise ValueError(
+          'Inputs %s: shape(inputs)[%s:] is not fully defined: %s' % (
+              inputs.name, begin_params_axis, inputs_shape))
     # Allocate parameters for the beta and gamma of the normalization.
     beta, gamma = None, None
     if center:
@@ -1562,11 +1601,13 @@ def layer_norm(inputs,
           collections=gamma_collections,
           trainable=trainable)
     # Calculate the moments on the last axis (layer activations).
-    mean, variance = nn.moments(inputs, axis, keep_dims=True)
+    norm_axes = list(range(begin_norm_axis, inputs_rank))
+    mean, variance = nn.moments(inputs, norm_axes, keep_dims=True)
     # Compute layer normalization using the batch_normalization function.
-    variance_epsilon = 1E-12
+    variance_epsilon = 1e-12
     outputs = nn.batch_normalization(
-        inputs, mean, variance, beta, gamma, variance_epsilon)
+        inputs, mean, variance, offset=beta, scale=gamma,
+        variance_epsilon=variance_epsilon)
     outputs.set_shape(inputs_shape)
     if activation_fn is not None:
       outputs = activation_fn(outputs)

@@ -51,8 +51,10 @@ cc_library(
     hdrs = ["tfprof_node.h"],
     deps = [
         ":tfprof_options",
+        ":tfprof_utils",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:regexp_internal",
     ],
 )
 

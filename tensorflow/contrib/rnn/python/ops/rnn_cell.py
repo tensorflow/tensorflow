@@ -23,8 +23,6 @@ import math
 
 from tensorflow.contrib.compiler import jit
 from tensorflow.contrib.layers.python.layers import layers
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
@@ -76,7 +74,7 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
   return shards
 
 
-class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
+class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
   The default non-peephole implementation is based on:
@@ -154,14 +152,12 @@ class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
     self._reuse = reuse
 
     if num_proj:
-      self._state_size = (
-          core_rnn_cell.LSTMStateTuple(num_units, num_proj)
-          if state_is_tuple else num_units + num_proj)
+      self._state_size = (rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
+                          if state_is_tuple else num_units + num_proj)
       self._output_size = num_proj
     else:
-      self._state_size = (
-          core_rnn_cell.LSTMStateTuple(num_units, num_units)
-          if state_is_tuple else 2 * num_units)
+      self._state_size = (rnn_cell_impl.LSTMStateTuple(num_units, num_units)
+                          if state_is_tuple else 2 * num_units)
       self._output_size = num_units
 
   @property
@@ -254,12 +250,12 @@ class CoupledInputForgetGateLSTMCell(core_rnn_cell.RNNCell):
         m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
         # pylint: enable=invalid-unary-operand-type
 
-    new_state = (core_rnn_cell.LSTMStateTuple(c, m) if self._state_is_tuple else
-                 array_ops.concat([c, m], 1))
+    new_state = (rnn_cell_impl.LSTMStateTuple(c, m)
+                 if self._state_is_tuple else array_ops.concat([c, m], 1))
     return m, new_state
 
 
-class TimeFreqLSTMCell(core_rnn_cell.RNNCell):
+class TimeFreqLSTMCell(rnn_cell_impl.RNNCell):
   """Time-Frequency Long short-term memory unit (LSTM) recurrent network cell.
 
   This implementation is based on:
@@ -427,7 +423,7 @@ class TimeFreqLSTMCell(core_rnn_cell.RNNCell):
     return freq_inputs
 
 
-class GridLSTMCell(core_rnn_cell.RNNCell):
+class GridLSTMCell(rnn_cell_impl.RNNCell):
   """Grid Long short-term memory unit (LSTM) recurrent network cell.
 
   The default is based on:
@@ -1020,11 +1016,11 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
 
 
 # pylint: disable=protected-access
-_linear = core_rnn_cell_impl._linear
+_linear = rnn_cell_impl._linear
 # pylint: enable=protected-access
 
 
-class AttentionCellWrapper(core_rnn_cell.RNNCell):
+class AttentionCellWrapper(rnn_cell_impl.RNNCell):
   """Basic attention cell wrapper.
 
   Implementation based on https://arxiv.org/abs/1409.0473.
@@ -1155,7 +1151,7 @@ class AttentionCellWrapper(core_rnn_cell.RNNCell):
       return new_attns, new_attn_states
 
 
-class HighwayWrapper(core_rnn_cell.RNNCell):
+class HighwayWrapper(rnn_cell_impl.RNNCell):
   """RNNCell wrapper that adds highway connection on cell input and output.
 
   Based on:
@@ -1238,7 +1234,7 @@ class HighwayWrapper(core_rnn_cell.RNNCell):
     return (res_outputs, new_state)
 
 
-class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
+class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
   """LSTM unit with layer normalization and recurrent dropout.
 
   This class adds layer normalization and recurrent dropout to a
@@ -1300,7 +1296,7 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
 
   @property
   def state_size(self):
-    return core_rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
+    return rnn_cell_impl.LSTMStateTuple(self._num_units, self._num_units)
 
   @property
   def output_size(self):
@@ -1350,11 +1346,11 @@ class LayerNormBasicLSTMCell(core_rnn_cell.RNNCell):
       new_c = self._norm(new_c, "state")
     new_h = self._activation(new_c) * math_ops.sigmoid(o)
 
-    new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
+    new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
     return new_h, new_state
 
 
-class NASCell(core_rnn_cell.RNNCell):
+class NASCell(rnn_cell_impl.RNNCell):
   """Neural Architecture Search (NAS) recurrent network cell.
 
   This implements the recurrent cell from the paper:
@@ -1388,10 +1384,10 @@ class NASCell(core_rnn_cell.RNNCell):
     self._reuse = reuse
 
     if num_proj is not None:
-      self._state_size = core_rnn_cell.LSTMStateTuple(num_units, num_proj)
+      self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
       self._output_size = num_proj
     else:
-      self._state_size = core_rnn_cell.LSTMStateTuple(num_units, num_units)
+      self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_units)
       self._output_size = num_units
 
   @property
@@ -1498,11 +1494,11 @@ class NASCell(core_rnn_cell.RNNCell):
           dtype)
       new_m = math_ops.matmul(new_m, concat_w_proj)
 
-    new_state = core_rnn_cell.LSTMStateTuple(new_c, new_m)
+    new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_m)
     return new_m, new_state
 
 
-class UGRNNCell(core_rnn_cell.RNNCell):
+class UGRNNCell(rnn_cell_impl.RNNCell):
   """Update Gate Recurrent Neural Network (UGRNN) cell.
 
   Compromise between a LSTM/GRU and a vanilla RNN.  There is only one
@@ -1589,7 +1585,7 @@ class UGRNNCell(core_rnn_cell.RNNCell):
     return new_output, new_state
 
 
-class IntersectionRNNCell(core_rnn_cell.RNNCell):
+class IntersectionRNNCell(rnn_cell_impl.RNNCell):
   """Intersection Recurrent Neural Network (+RNN) cell.
 
   Architecture with coupled recurrent gate as well as coupled depth
@@ -1712,7 +1708,7 @@ class IntersectionRNNCell(core_rnn_cell.RNNCell):
 _REGISTERED_OPS = None
 
 
-class CompiledWrapper(core_rnn_cell.RNNCell):
+class CompiledWrapper(rnn_cell_impl.RNNCell):
   """Wraps step execution in an XLA JIT scope."""
 
   def __init__(self, cell, compile_stateful=False):
@@ -1783,7 +1779,7 @@ def _random_exp_initializer(minval,
   return _initializer
 
 
-class PhasedLSTMCell(core_rnn_cell.RNNCell):
+class PhasedLSTMCell(rnn_cell_impl.RNNCell):
   """Phased LSTM recurrent network cell.
 
   https://arxiv.org/pdf/1610.09513v1.pdf
@@ -1831,7 +1827,7 @@ class PhasedLSTMCell(core_rnn_cell.RNNCell):
 
   @property
   def state_size(self):
-    return core_rnn_cell.LSTMStateTuple(self._num_units, self._num_units)
+    return rnn_cell_impl.LSTMStateTuple(self._num_units, self._num_units)
 
   @property
   def output_size(self):
@@ -1858,13 +1854,13 @@ class PhasedLSTMCell(core_rnn_cell.RNNCell):
          It stores the time.
          The second Tensor has shape [batch, features_size], and type float32.
          It stores the features.
-      state: core_rnn_cell.LSTMStateTuple, state from previous timestep.
+      state: rnn_cell_impl.LSTMStateTuple, state from previous timestep.
 
     Returns:
       A tuple containing:
       - A Tensor of float32, and shape [batch_size, num_units], representing the
         output of the cell.
-      - A core_rnn_cell.LSTMStateTuple, containing 2 Tensors of float32, shape
+      - A rnn_cell_impl.LSTMStateTuple, containing 2 Tensors of float32, shape
         [batch_size, num_units], representing the new state and the output.
     """
     (c_prev, h_prev) = state
@@ -1921,12 +1917,12 @@ class PhasedLSTMCell(core_rnn_cell.RNNCell):
     new_c = k * new_c + (1 - k) * c_prev
     new_h = k * new_h + (1 - k) * h_prev
 
-    new_state = core_rnn_cell.LSTMStateTuple(new_c, new_h)
+    new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
 
     return new_h, new_state
 
 
-class GLSTMCell(core_rnn_cell.RNNCell):
+class GLSTMCell(rnn_cell_impl.RNNCell):
   """Group LSTM cell (G-LSTM).
 
   The implementation is based on:
@@ -1982,10 +1978,10 @@ class GLSTMCell(core_rnn_cell.RNNCell):
                            int(self._num_units / self._number_of_groups)]
 
     if num_proj:
-      self._state_size = core_rnn_cell.LSTMStateTuple(num_units, num_proj)
+      self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
       self._output_size = num_proj
     else:
-      self._state_size = core_rnn_cell.LSTMStateTuple(num_units, num_units)
+      self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_units)
       self._output_size = num_units
 
   @property
@@ -2097,5 +2093,5 @@ class GLSTMCell(core_rnn_cell.RNNCell):
       with vs.variable_scope("projection"):
         m = _linear(m, self._num_proj, bias=False)
 
-    new_state = core_rnn_cell.LSTMStateTuple(c, m)
+    new_state = rnn_cell_impl.LSTMStateTuple(c, m)
     return m, new_state

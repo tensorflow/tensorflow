@@ -207,7 +207,29 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                   << ", skipping this input";
         return nullptr;
       }
-      TensorShape shape(node.attr().at("shape").shape());
+
+      // Replace all unknown dimensions in the placeholder's tensorshape proto
+      // with cfg.placeholder_unknown_output_shape_dim and create a tensorshape
+      // from it. We do this because in newer protos, the input placeholder
+      // shape is not empty if the shape is partially defined.
+      TensorShape shape;
+      std::vector<int32> dims;
+      for (const auto& dim_proto : node.attr().at("shape").shape().dim()) {
+        if (cfg.placeholder_unknown_output_shape_dim >= 0 &&
+            dim_proto.size() == -1) {
+          dims.push_back(cfg.placeholder_unknown_output_shape_dim);
+        } else {
+          dims.push_back(dim_proto.size());
+        }
+      }
+      Status make_shape_status =
+          TensorShapeUtils::MakeShape(dims.data(), dims.size(), &shape);
+      if (!make_shape_status.ok()) {
+        LOG(ERROR) << "Invalid shape for placeholder " << node.name() << ": "
+                   << make_shape_status << ", skipping this input";
+        return nullptr;
+      }
+
       // Some placeholder nodes have a mis-match between the node
       // attribute "shape" and a different node attribute "_output_shapes".
       // Specifically, a shape with shape.dims() == 0 could indicate either

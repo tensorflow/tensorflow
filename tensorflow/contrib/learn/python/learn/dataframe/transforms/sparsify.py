@@ -36,7 +36,7 @@ class Sparsify(transform.TensorFlowTransform):
     super(Sparsify, self).__init__()
     self._strip_value = strip_value
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def strip_value(self):
     return self._strip_value
 

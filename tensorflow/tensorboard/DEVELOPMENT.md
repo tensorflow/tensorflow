@@ -5,7 +5,7 @@
 Run the following to launch a demo of TensorBoard in raw sources mode:
 
 ```sh
-bazel run third_party/tensorflow/tensorboard/components/tf_tensorboard_d3v4:demo
+bazel run third_party/tensorflow/tensorboard/components/tf_tensorboard:demo
 ```
 
 Now you can navigate to <http://localhost:6006/demo/index.html> and play with

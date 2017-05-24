@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_timeline.h"
 
 namespace tensorflow {
@@ -138,11 +139,16 @@ void TFStats::ParseRunMeta() {
 
   for (const auto& dev_stat : run_meta_->step_stats().dev_stats()) {
     for (const auto& node_stat : dev_stat.node_stats()) {
-      auto node = nodes_map_.find(node_stat.node_name());
-      if (node == nodes_map_.end()) {
-        continue;
+      string name = node_stat.node_name();
+      // Sometimes the node_name is suffixed with unnecessary information.
+      auto split_pos = node_stat.node_name().find(":");
+      if (split_pos != node_stat.node_name().npos) {
+        name = node_stat.node_name().substr(0, split_pos);
       }
-      node->second.AddStepStat(dev_stat.device(), &node_stat);
+      auto node = nodes_map_.find(name);
+      if (node != nodes_map_.end()) {
+        node->second.AddStepStat(dev_stat.device(), &node_stat);
+      }
     }
   }
 }

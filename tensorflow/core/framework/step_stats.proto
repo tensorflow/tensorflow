@@ -15,10 +15,15 @@ import "tensorflow/core/framework/tensor_description.proto";
 
 message AllocatorMemoryUsed {
   string allocator_name = 1;
+  // These are per-node allocator memory stats.
   int64 total_bytes = 2;
   int64 peak_bytes = 3;
   // The bytes that are not deallocated.
   int64 live_bytes = 4;
+
+  // These are snapshots of the overall allocator memory stats.
+  // The number of live bytes currently allocated by the allocator.
+  int64 allocator_bytes_in_use = 5;
 }
 
 // Output sizes recorded for a single execution of a graph node.

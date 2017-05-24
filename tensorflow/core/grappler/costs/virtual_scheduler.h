@@ -21,6 +21,8 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 
 namespace tensorflow {
@@ -86,26 +88,74 @@ class FIFOManager : public ReadyNodeManager {
   std::list<const NodeDef*> nodes_;
 };
 
+// A wrapper struct to OpInfo proto.
+// TODO(dyoon): once we extend OpInfo or implement a better interface, and  then
+// delete this wrapper struct.
+struct NodeInfo {
+  OpInfo op_info;
+  string name;
+  string device_name;
+  std::vector<OpInfo::TensorProperties> outputs;
+};
+
 // The virtual scheduler emulates execution of nodes in a graph, considering
 // dependencies, device, etc.
 class VirtualScheduler {
  public:
-  VirtualScheduler(const GraphDef& graph,
-                   const std::vector<string>& fetch_nodes);
+  VirtualScheduler(const GrapplerItem* grappler_item,
+                   const bool use_static_shapes,
+                   const string& default_device_type, Cluster* cluster,
+                   VirtualPlacer* placer);
 
-  const NodeDef* GetCurrNode() const;
+  Status Init();
+
+  NodeInfo GetCurrNodeInfo() const;
   bool MarkCurrNodeExecuted(const Costs& node_costs);
 
   Costs Summary() const;
 
  private:
-  NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
+  const string kSend = "_Send";
+  const string kRecv = "_Recv";
+  const string kAttrInputSrc = "input_source_";
+  const string kAttrSrcDevice = "src_device_";
+  const string kAttrDstDevice = "dst_device_";
+  const string kChannelDevice = "Channel";
+  const string kDefaultDevice = "/CPU:0";
 
+  const NodeDef* GetCurrNode() const;
+  void MaybeUpdateInputProperties(
+      const NodeDef* node, std::vector<OpInfo::TensorProperties>* inputs) const;
+  NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
+  std::pair<const NodeDef*, const NodeDef*> TransferNode(
+      const NodeDef* from, const NodeDef* to, const string& input_name);
+  string DeviceName(const NodeDef* node) const;
+  string ChannelDeviceName(const NodeDef* from, const NodeDef* to) const;
+  Costs& FindOrCreateZero(const string& op_name,
+                          std::map<string, Costs>* op_cost);
+  bool IsSendOp(const NodeDef* node) const;
+  bool IsRecvOp(const NodeDef* node) const;
+
+  GraphProperties graph_properties_;
   Costs graph_costs_;                   // Graph cost.
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
   std::unique_ptr<ReadyNodeManager> ready_nodes_;
   std::unordered_map<const NodeDef*, NodeState> node_map_;
   std::unordered_map<string, DeviceState> device_;
+  // Pool of NodeDefs for SendRecv and Identity ops created.
+  std::vector<std::unique_ptr<NodeDef>> additional_nodes_;
+  // Cache of ops transferred to another device.
+  std::unordered_map<const NodeDef*, std::unordered_map<string, const NodeDef*>>
+      cached_ops_;
+  Cluster* cluster_;                   // Not owned.
+  const GrapplerItem* grappler_item_;  // Not owned.
+  bool use_static_shapes_;
+  bool initialized_;
+
+  // TODO(dyoon): Once VirtualCluster takes care of device names properly,
+  // move VirtualPlacer into the scheduler; also, delete default_device_type_.
+  const string default_device_type_;
+  VirtualPlacer* placer_;  // Not owned.
 };
 
 }  // namespace grappler

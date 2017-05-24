@@ -1189,6 +1189,10 @@ def sparse_reset_shape(sp_input, new_shape=None):
   return sparse_tensor.SparseTensor(in_indices, in_values, output_shape_tensor)
 
 
+# TODO(b/37517434): Delete this variable on 20170610.
+_SPARSE_FILL_EMPTY_ROWS_FAST_PATH = False
+
+
 def sparse_fill_empty_rows(sp_input, default_value, name=None):
   """Fills empty rows in the input 2-D `SparseTensor` with a default value.
 
@@ -1238,37 +1242,51 @@ def sparse_fill_empty_rows(sp_input, default_value, name=None):
   """
   sp_input = _convert_to_sparse_tensor(sp_input)
 
+  # TODO(b/37517434): Delete the slow path and only use the fast path
+  # on 20170610.
   with ops.name_scope(name, "SparseFillEmptyRows", [sp_input]):
     default_value = ops.convert_to_tensor(
         default_value, dtype=sp_input.values.dtype)
+    if _SPARSE_FILL_EMPTY_ROWS_FAST_PATH:
+      (output_indices, output_values, empty_row_indicator,
+       unused_reverse_index_map) = gen_sparse_ops._sparse_fill_empty_rows(
+           indices=sp_input.indices,
+           values=sp_input.values,
+           dense_shape=sp_input.dense_shape,
+           default_value=default_value)
+      return (sparse_tensor.SparseTensor(
+          indices=output_indices,
+          values=output_values,
+          dense_shape=sp_input.dense_shape), empty_row_indicator)
+    else:
+      num_rows = math_ops.cast(sp_input.dense_shape[0], dtypes.int32)
+      all_row_indices = math_ops.cast(math_ops.range(num_rows), dtypes.int64)
+      empty_row_indices, _ = array_ops.setdiff1d(all_row_indices,
+                                                 sp_input.indices[:, 0])
+      empty_row_indicator = sparse_to_dense(
+          empty_row_indices,
+          array_ops.expand_dims(sp_input.dense_shape[0], -1), True,
+          False)
 
-    num_rows = math_ops.cast(sp_input.dense_shape[0], dtypes.int32)
-    all_row_indices = math_ops.cast(math_ops.range(num_rows), dtypes.int64)
-    empty_row_indices, _ = array_ops.setdiff1d(all_row_indices,
-                                               sp_input.indices[:, 0])
-    empty_row_indicator = sparse_to_dense(
-        empty_row_indices,
-        array_ops.expand_dims(sp_input.dense_shape[0], -1), True,
-        False)
+      empty_row_indices_as_column = array_ops.reshape(
+          empty_row_indices, [-1, 1])
+      additional_indices = array_ops.concat([
+          empty_row_indices_as_column,
+          array_ops.zeros_like(empty_row_indices_as_column)
+      ], 1)
+      additional_values = array_ops.fill(
+          array_ops.shape(empty_row_indices), default_value)
 
-    empty_row_indices_as_column = array_ops.reshape(empty_row_indices, [-1, 1])
-    additional_indices = array_ops.concat([
-        empty_row_indices_as_column,
-        array_ops.zeros_like(empty_row_indices_as_column)
-    ], 1)
-    additional_values = array_ops.fill(
-        array_ops.shape(empty_row_indices), default_value)
+      all_indices_unordered = array_ops.concat(
+          [sp_input.indices, additional_indices], 0)
+      all_values_unordered = array_ops.concat(
+          [sp_input.values, additional_values], 0)
+      sp_unordered_output = sparse_tensor.SparseTensor(
+          all_indices_unordered,
+          all_values_unordered, sp_input.dense_shape)
+      sp_ordered_output = sparse_reorder(sp_unordered_output)
 
-    all_indices_unordered = array_ops.concat(
-        [sp_input.indices, additional_indices], 0)
-    all_values_unordered = array_ops.concat(
-        [sp_input.values, additional_values], 0)
-    sp_unordered_output = sparse_tensor.SparseTensor(
-        all_indices_unordered,
-        all_values_unordered, sp_input.dense_shape)
-    sp_ordered_output = sparse_reorder(sp_unordered_output)
-
-    return sp_ordered_output, empty_row_indicator
+      return sp_ordered_output, empty_row_indicator
 
 
 def serialize_sparse(sp_input, name=None):

@@ -725,7 +725,7 @@ py_test(
 
 sh_test(
     name = "examples_test",
-    size = "small",
+    size = "medium",
     srcs = ["examples/examples_test.sh"],
     data = [
         ":debug_errors",

@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 class Convolution1DTest(test.TestCase):
 
   def test_dilated_conv1d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.Conv1D,
           input_data=np.reshape(np.arange(4, dtype='float32'), (1, 4, 1)),
@@ -54,7 +54,7 @@ class Convolution1DTest(test.TestCase):
         if padding == 'same' and strides != 1:
           continue
 
-        with self.test_session():
+        with self.test_session(use_gpu=True):
           testing_utils.layer_test(
               keras.layers.Conv1D,
               kwargs={
@@ -76,7 +76,7 @@ class Convolution1DTest(test.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.Conv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -92,7 +92,7 @@ class Convolution1DTest(test.TestCase):
         'bias_constraint': 'max_norm',
         'strides': 1
     }
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.Conv1D(**kwargs)
       layer.build((None, 5, 2))
       self.assertEqual(len(layer.constraints), 2)
@@ -113,7 +113,7 @@ class Conv2DTest(test.TestCase):
         if padding == 'same' and strides != (1, 1):
           continue
 
-        with self.test_session():
+        with self.test_session(use_gpu=True):
           testing_utils.layer_test(
               keras.layers.Conv2D,
               kwargs={
@@ -136,7 +136,7 @@ class Conv2DTest(test.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.Conv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -152,7 +152,7 @@ class Conv2DTest(test.TestCase):
         'bias_constraint': 'max_norm',
         'strides': 1
     }
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.Conv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.constraints), 2)
@@ -166,7 +166,7 @@ class Conv2DTest(test.TestCase):
     num_col = 6
 
     # Test dilation
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.Conv2D,
           kwargs={
@@ -191,7 +191,7 @@ class Conv2DTransposeTest(test.TestCase):
         if padding == 'same' and strides != (1, 1):
           continue
 
-        with self.test_session():
+        with self.test_session(use_gpu=True):
           testing_utils.layer_test(
               keras.layers.Conv2DTranspose,
               kwargs={
@@ -214,7 +214,7 @@ class Conv2DTransposeTest(test.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.Conv2DTranspose(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -230,7 +230,7 @@ class Conv2DTransposeTest(test.TestCase):
         'bias_constraint': 'max_norm',
         'strides': 1
     }
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.Conv2DTranspose(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.constraints), 2)
@@ -251,7 +251,7 @@ class SeparableConv2DTest(test.TestCase):
           if padding == 'same' and strides != (1, 1):
             continue
 
-          with self.test_session():
+          with self.test_session(use_gpu=True):
             testing_utils.layer_test(
                 keras.layers.SeparableConv2D,
                 kwargs={
@@ -275,7 +275,7 @@ class SeparableConv2DTest(test.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.SeparableConv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.losses), 3)
@@ -291,7 +291,7 @@ class SeparableConv2DTest(test.TestCase):
         'depthwise_constraint': 'unit_norm',
         'strides': 1
     }
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.SeparableConv2D(**kwargs)
       layer.build((None, 5, 5, 2))
       self.assertEqual(len(layer.constraints), 2)
@@ -313,7 +313,7 @@ class Conv3DTest(test.TestCase):
         if padding == 'same' and strides != (1, 1, 1):
           continue
 
-        with self.test_session():
+        with self.test_session(use_gpu=True):
           testing_utils.layer_test(
               keras.layers.Convolution3D,
               kwargs={
@@ -336,7 +336,7 @@ class Conv3DTest(test.TestCase):
         'activity_regularizer': 'l2',
         'strides': 1
     }
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.Conv3D(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(len(layer.losses), 2)
@@ -353,7 +353,7 @@ class Conv3DTest(test.TestCase):
         'bias_constraint': 'max_norm',
         'strides': 1
     }
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.Conv3D(**kwargs)
       layer.build((None, 5, 5, 5, 2))
       self.assertEqual(len(layer.constraints), 2)
@@ -369,7 +369,7 @@ class ZeroPaddingTest(test.TestCase):
     inputs = np.ones(shape)
 
     # basic test
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.ZeroPadding1D,
           kwargs={'padding': 2},
@@ -380,7 +380,7 @@ class ZeroPaddingTest(test.TestCase):
           input_shape=inputs.shape)
 
     # correctness test
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.ZeroPadding1D(padding=2)
       layer.build(shape)
       output = layer(keras.backend.variable(inputs))
@@ -410,7 +410,7 @@ class ZeroPaddingTest(test.TestCase):
       inputs = np.ones((num_samples, stack_size, input_num_row, input_num_col))
 
       # basic test
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         testing_utils.layer_test(
             keras.layers.ZeroPadding2D,
             kwargs={'padding': (2, 2),
@@ -423,7 +423,7 @@ class ZeroPaddingTest(test.TestCase):
             input_shape=inputs.shape)
 
       # correctness test
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         layer = keras.layers.ZeroPadding2D(
             padding=(2, 2), data_format=data_format)
         layer.build(inputs.shape)
@@ -477,14 +477,14 @@ class ZeroPaddingTest(test.TestCase):
                       input_len_dim3, stack_size))
 
     # basic test
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.ZeroPadding3D,
           kwargs={'padding': (2, 2, 2)},
           input_shape=inputs.shape)
 
     # correctness test
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       layer = keras.layers.ZeroPadding3D(padding=(2, 2, 2))
       layer.build(inputs.shape)
       output = layer(keras.backend.variable(inputs))
@@ -499,7 +499,7 @@ class ZeroPaddingTest(test.TestCase):
 class UpSamplingTest(test.TestCase):
 
   def test_upsampling_1d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.UpSampling1D, kwargs={'size': 2}, input_shape=(3, 5, 4))
 
@@ -518,7 +518,7 @@ class UpSamplingTest(test.TestCase):
                                 stack_size)
 
       # basic test
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         testing_utils.layer_test(
             keras.layers.UpSampling2D,
             kwargs={'size': (2, 2),
@@ -565,7 +565,7 @@ class UpSamplingTest(test.TestCase):
                                 input_len_dim3, stack_size)
 
       # basic test
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         testing_utils.layer_test(
             keras.layers.UpSampling3D,
             kwargs={'size': (2, 2, 2),
@@ -611,7 +611,7 @@ class CroppingTest(test.TestCase):
     input_len_dim1 = 2
     inputs = np.random.rand(num_samples, time_length, input_len_dim1)
 
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.Cropping1D,
           kwargs={'cropping': (2, 2)},
@@ -632,14 +632,14 @@ class CroppingTest(test.TestCase):
         inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                 stack_size)
       # basic test
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         testing_utils.layer_test(
             keras.layers.Cropping2D,
             kwargs={'cropping': cropping,
                     'data_format': data_format},
             input_shape=inputs.shape)
       # correctness test
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         layer = keras.layers.Cropping2D(
             cropping=cropping, data_format=data_format)
         layer.build(inputs.shape)
@@ -662,7 +662,7 @@ class CroppingTest(test.TestCase):
         inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                 stack_size)
       # another correctness test (no cropping)
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         cropping = ((0, 0), (0, 0))
         layer = keras.layers.Cropping2D(
             cropping=cropping, data_format=data_format)
@@ -688,14 +688,14 @@ class CroppingTest(test.TestCase):
         inputs = np.random.rand(num_samples, input_len_dim1, input_len_dim2,
                                 input_len_dim3, stack_size)
       # basic test
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         testing_utils.layer_test(
             keras.layers.Cropping3D,
             kwargs={'cropping': cropping,
                     'data_format': data_format},
             input_shape=inputs.shape)
       # correctness test
-      with self.test_session():
+      with self.test_session(use_gpu=True):
         layer = keras.layers.Cropping3D(
             cropping=cropping, data_format=data_format)
         layer.build(inputs.shape)

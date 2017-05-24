@@ -1129,4 +1129,128 @@ shared_name: The shared name for the `SparseTensorsMap` read by this op.
   of the Op that created the original `SparseTensorsMap` should be used.
 )doc");
 
+REGISTER_OP("SparseFillEmptyRows")
+    .Input("indices: int64")
+    .Input("values: T")
+    .Input("dense_shape: int64")
+    .Input("default_value: T")
+    .Output("output_indices: int64")
+    .Output("output_values: T")
+    .Output("empty_row_indicator: bool")
+    .Output("reverse_index_map: int64")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle input_indices = c->input(0);
+      TF_RETURN_IF_ERROR(c->WithRank(input_indices, 2, &input_indices));
+      ShapeHandle input_values = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(input_values, 1, &input_values));
+      ShapeHandle input_shape = c->input(2);
+      TF_RETURN_IF_ERROR(c->WithRank(input_shape, 1, &input_shape));
+      ShapeHandle default_value = c->input(3);
+      TF_RETURN_IF_ERROR(c->WithRank(default_value, 0, &default_value));
+      DimensionHandle N = c->Dim(input_indices, 0);
+      TF_RETURN_IF_ERROR(c->Merge(N, c->Dim(input_values, 0), &N));
+      DimensionHandle unused_dim;
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(input_indices, 1),
+                                  c->Dim(input_shape, 0), &unused_dim));
+      ShapeHandle output_indices =
+          c->Matrix(InferenceContext::kUnknownDim, c->NumElements(input_shape));
+      ShapeHandle output_values = c->Vector(InferenceContext::kUnknownDim);
+      ShapeHandle constant_input_shape;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(2, &constant_input_shape));
+      ShapeHandle empty_row_indicator =
+          c->Vector(c->Dim(constant_input_shape, 0));
+      ShapeHandle reverse_index_map = c->Vector(N);
+      c->set_output(0, output_indices);
+      c->set_output(1, output_values);
+      c->set_output(2, empty_row_indicator);
+      c->set_output(3, reverse_index_map);
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Fills empty rows in the input 2-D `SparseTensor` with a default value.
+
+The input `SparseTensor` is represented via the tuple of inputs
+(`indices`, `values`, `dense_shape`).  The output `SparseTensor` has the
+same `dense_shape` but with indices `output_indices` and values
+`output_values`.
+
+This op inserts a single entry for every row that doesn't have any values.
+The index is created as `[row, 0, ..., 0]` and the inserted value
+is `default_value`.
+
+For example, suppose `sp_input` has shape `[5, 6]` and non-empty values:
+
+    [0, 1]: a
+    [0, 3]: b
+    [2, 0]: c
+    [3, 1]: d
+
+Rows 1 and 4 are empty, so the output will be of shape `[5, 6]` with values:
+
+    [0, 1]: a
+    [0, 3]: b
+    [1, 0]: default_value
+    [2, 0]: c
+    [3, 1]: d
+    [4, 0]: default_value
+
+The output `SparseTensor` will be in row-major order and will have the
+same shape as the input.
+
+This op also returns an indicator vector shaped `[dense_shape[0]]` such that
+
+    empty_row_indicator[i] = True iff row i was an empty row.
+
+And a reverse index map vector shaped `[indices.shape[0]]` that is used during
+backpropagation,
+
+    reverse_index_map[j] = out_j s.t. indices[j, :] == output_indices[out_j, :]
+
+
+indices: 2-D. the indices of the sparse tensor.
+values: 1-D. the values of the sparse tensor.
+dense_shape: 1-D. the shape of the sparse tensor.
+default_value: 0-D. default value to insert into location `[row, 0, ..., 0]`
+  for rows missing from the input sparse tensor.
+output indices: 2-D. the indices of the filled sparse tensor.
+output_values: 1-D. the values of the filled sparse tensor.
+empty_row_indicator: 1-D. whether the dense row was missing in the
+  input sparse tensor.
+reverse_index_map: 1-D. a map from the input indices to the output indices.
+)doc");
+
+REGISTER_OP("SparseFillEmptyRowsGrad")
+    .Input("reverse_index_map: int64")
+    .Input("grad_values: T")
+    .Output("d_values: T")
+    .Output("d_default_value: T")
+    .Attr("T: type")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle reverse_index_map = c->input(0);
+      TF_RETURN_IF_ERROR(c->WithRank(reverse_index_map, 1, &reverse_index_map));
+      ShapeHandle grad_values = c->input(1);
+      TF_RETURN_IF_ERROR(c->WithRank(grad_values, 1, &grad_values));
+      c->set_output(0, reverse_index_map);
+      c->set_output(1, c->Scalar());
+      return Status::OK();
+    })
+    .Doc(R"doc(
+The gradient of SparseFillEmptyRows.
+
+Takes vectors reverse_index_map, shaped `[N]`, and grad_values,
+shaped `[N_full]`, where `N_full >= N` and copies data into either
+`d_values` or `d_default_value`.  Here `d_values` is shaped `[N]` and
+`d_default_value` is a scalar.
+
+  d_values[j] = grad_values[reverse_index_map[j]]
+  d_default_value = sum_{k : 0 .. N_full - 1} (
+     grad_values[k] * 1{k not in reverse_index_map})
+
+reverse_index_map: 1-D.  The reverse index map from SparseFillEmptyRows.
+grad_values: 1-D.  The gradients from backprop.
+d_values: 1-D.  The backprop into values.
+d_default_value: 0-D.  The backprop into default_value.
+)doc");
+
 }  // namespace tensorflow

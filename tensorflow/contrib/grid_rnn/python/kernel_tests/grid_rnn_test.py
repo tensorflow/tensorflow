@@ -21,11 +21,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.grid_rnn.python.ops import grid_rnn_cell
-from tensorflow.contrib.rnn.python.ops import core_rnn
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import rnn
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -527,7 +527,7 @@ class GridRNNCellTest(test.TestCase):
               dtypes.float32, shape=(batch_size, input_size))
       ]
 
-      outputs, state = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+      outputs, state = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state[0].c.get_shape(), (batch_size, 2))
@@ -569,7 +569,7 @@ class GridRNNCellTest(test.TestCase):
           array_ops.placeholder(dtypes.float32, shape=(batch_size, input_size))
       ]
 
-      outputs, state = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+      outputs, state = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state[0].c.get_shape(), (batch_size, 2))
@@ -609,7 +609,7 @@ class GridRNNCellTest(test.TestCase):
           array_ops.placeholder(dtypes.float32, shape=(batch_size, input_size))
       ]
 
-      outputs, state = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+      outputs, state = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state[0].c.get_shape(), (batch_size, 2))
@@ -652,7 +652,7 @@ class GridRNNCellTest(test.TestCase):
               dtypes.float32, shape=(batch_size, input_size))
       ] + (max_length - 1) * [array_ops.zeros([batch_size, input_size])])
 
-      outputs, state = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+      outputs, state = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
 
     self.assertEqual(len(outputs), len(inputs))
     self.assertEqual(state[0].c.get_shape(), (batch_size, 2))
@@ -690,7 +690,7 @@ class GridRNNCellTest(test.TestCase):
           array_ops.placeholder(dtypes.float32, shape=(None, input_size))
       ]
 
-      outputs, state = core_rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
+      outputs, state = rnn.static_rnn(cell, inputs, dtype=dtypes.float32)
 
     self.assertEqual(len(outputs), len(inputs))
 
