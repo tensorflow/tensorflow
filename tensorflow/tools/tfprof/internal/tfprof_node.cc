@@ -58,8 +58,13 @@ void TFGraphNode::AddStepStat(const string& device,
     latest_end_rel_micros_ =
         std::max(latest_end_rel_micros_, op_end_rel_micros);
 
-    op_kernel_execs_[dev].push_back(
+    op_execs_[dev].push_back(
         std::make_pair(step_stat_->all_start_micros(), op_end_rel_micros));
+
+    if (dev.find("stream") != dev.npos && dev.find("stream:all") == dev.npos) {
+      gpu_kernel_execs_[dev].push_back(
+          std::make_pair(step_stat_->all_start_micros(), op_end_rel_micros));
+    }
   }
 
   if (dev == canonical_device_) {

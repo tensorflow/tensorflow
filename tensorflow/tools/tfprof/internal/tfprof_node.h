@@ -102,7 +102,15 @@ class TFGraphNode {
   int64 kernel_exec_micros() const {
     if (!step_stat_) return 0;
     int64 total = 0;
-    for (const auto& execs : op_kernel_execs_) {
+    for (const auto& execs : gpu_kernel_execs_) {
+      for (const auto& exec : execs.second) {
+        total += exec.second;
+      }
+    }
+    if (total > 0) return total;
+
+    // If there is no gpu kernel time, fall back to assume it runs on cpu.
+    for (const auto& execs : op_execs_) {
       for (const auto& exec : execs.second) {
         total += exec.second;
       }
@@ -112,9 +120,9 @@ class TFGraphNode {
 
   int64 all_start_micros() const { return all_start_micros_; }
   int64 latest_end_rel_micros() const { return latest_end_rel_micros_; }
-  const std::map<string, std::vector<std::pair<int64, int64>>>&
-  op_kernel_execs() const {
-    return op_kernel_execs_;
+  const std::map<string, std::vector<std::pair<int64, int64>>>& op_execs()
+      const {
+    return op_execs_;
   }
 
   int64 requested_bytes() const { return requested_bytes_; }
@@ -155,7 +163,8 @@ class TFGraphNode {
   int64 all_start_micros_;
   int64 latest_end_rel_micros_;
   // device -> vector of {op_start_micros, op_kernel_exec_micros} pairs.
-  std::map<string, std::vector<std::pair<int64, int64>>> op_kernel_execs_;
+  std::map<string, std::vector<std::pair<int64, int64>>> gpu_kernel_execs_;
+  std::map<string, std::vector<std::pair<int64, int64>>> op_execs_;
 
   // /j:#/t:#/r:#/device:#. A canonical device name without extra suffix.
   string canonical_device_;

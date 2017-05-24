@@ -273,7 +273,7 @@ std::vector<TimeNode*> Timeline::AddGraphNode(const GraphNode* gnode) {
   }
 
   const TFGraphNode* node = gnode->node;
-  for (const auto& kernel_execs : node->op_kernel_execs()) {
+  for (const auto& kernel_execs : node->op_execs()) {
     const string& device = kernel_execs.first;
     const std::vector<std::pair<int64, int64>>& execs = kernel_execs.second;
 
