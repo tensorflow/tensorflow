@@ -172,6 +172,7 @@ class StatSummarizer {
   void ComputeStatsByType(std::map<string, int64>* node_type_map_count,
                           std::map<string, int64>* node_type_map_time,
                           std::map<string, int64>* node_type_map_memory,
+                          std::map<string, int64>* node_type_map_times_called,
                           int64* accumulated_us) const;
 
   std::string GetStatsByNodeType() const;
@@ -201,6 +202,7 @@ class StatSummarizer {
     Stat<int64> rel_end_us;
     Stat<int64> mem_used;
     std::vector<TensorDescription> outputs;
+    int64 times_called;
   };
 
   void Validate(const Detail* detail, const NodeExecStats& ns) const;
