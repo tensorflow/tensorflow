@@ -187,6 +187,7 @@ Status HeapSimulator::RunComputation(
       bool shared = false;
       for (const LogicalBuffer* operand_buffer : operand_buffers_to_free) {
         if (buffer->instruction()->IsUserOf(operand_buffer->instruction()) &&
+            buffer->instruction()->opcode() != HloOpcode::kCopy &&
             CanShareOperandBufferWithUser(
                 operand_buffer->instruction(), operand_buffer->index(),
                 buffer->instruction(), buffer->index(), points_to_analysis)) {

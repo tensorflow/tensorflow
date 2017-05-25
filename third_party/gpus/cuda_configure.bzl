@@ -5,7 +5,7 @@
 
   * `TF_NEED_CUDA`: Whether to enable building with CUDA.
   * `GCC_HOST_COMPILER_PATH`: The GCC host compiler path
-  * `TF_CUDA_CLANG`: Wheter to use clang as a cuda compiler.
+  * `TF_CUDA_CLANG`: Whether to use clang as a cuda compiler.
   * `CLANG_CUDA_COMPILER_PATH`: The clang compiler path that will be used for
     both host and device code compilation if TF_CUDA_CLANG is 1.
   * `CUDA_TOOLKIT_PATH`: The path to the CUDA toolkit. Default is

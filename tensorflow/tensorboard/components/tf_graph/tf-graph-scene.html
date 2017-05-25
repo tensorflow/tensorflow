@@ -322,7 +322,7 @@ limitations under the License.
 /* --- Annotation --- */
 
 /* only applied for annotations that are not summary or constant.
-(.summary, .constant gets overriden below) */
+(.summary, .constant gets overridden below) */
 ::content .annotation > .annotation-node > * {
   stroke-width: 0.5;
   stroke-dasharray: 1, 1;
@@ -649,12 +649,12 @@ Polymer({
     },
     /** Keeps track of the starting coordinates of a graph zoom/pan */
     _zoomStartCoords: {
-      type: Array,
+      type: Object,
       value: null
     },
     /** Keeps track of the current coordinates of a graph zoom/pan */
-    _zoomCoords: {
-      type: Array,
+    _zoomTransform: {
+      type: Object,
       value: null
     },
     /** Maximum distance of a zoom event for it to be interpreted as a click */
@@ -787,8 +787,8 @@ Polymer({
     }.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
   ready: function() {
-    this._zoom = d3.behavior.zoom()
-      .on('zoomend', function() {
+    this._zoom = d3.zoom()
+      .on('end', function() {
         if (this._zoomStartCoords) {
           // Calculate the total distance dragged during the zoom event.
           // If it is sufficiently small, then fire an event indicating
@@ -797,8 +797,8 @@ Polymer({
           // is ignored (as this mouse click was part of a zooming, and should
           // not be used to indicate an actual click on the graph).
           var dragDistance = Math.sqrt(
-            Math.pow(this._zoomStartCoords[0] - this._zoomCoords[0], 2) +
-            Math.pow(this._zoomStartCoords[1] - this._zoomCoords[1], 2));
+            Math.pow(this._zoomStartCoords.x - this._zoomTransform.x, 2) +
+            Math.pow(this._zoomStartCoords.y - this._zoomTransform.y, 2));
           if (dragDistance < this._maxZoomDistanceForClick) {
             this._fireEnableClick();
           } else {
@@ -808,8 +808,8 @@ Polymer({
         this._zoomStartCoords = null;
       }.bind(this))
       .on('zoom', function() {
-        // Store the coordinates of the zoom event
-        this._zoomCoords = d3.event.translate;
+        // Store the coordinates of the zoom event.
+        this._zoomTransform = d3.event.transform;
 
         // If this is the first zoom event after a zoom-end, then
         // store the coordinates as the start coordinates as well,
@@ -818,15 +818,13 @@ Polymer({
         // event on mouse-down, even if there has been no dragging
         // done to translate the graph around.
         if (!this._zoomStartCoords) {
-          this._zoomStartCoords = this._zoomCoords.slice();
+          this._zoomStartCoords = this._zoomTransform;
           this.fire('disable-click');
         }
         this._zoomed = true;
-        d3.select(this.$.root).attr('transform',
-                    'translate(' + d3.event.translate + ')' +
-                    'scale(' + d3.event.scale + ')');
+        d3.select(this.$.root).attr('transform', d3.event.transform);
         // Notify the minimap.
-        this.minimap.zoom(d3.event.translate, d3.event.scale);
+        this.minimap.zoom(d3.event.transform);
       }.bind(this));
     d3.select(this.$.svg).call(this._zoom)
       .on('dblclick.zoom', null);
@@ -867,14 +865,14 @@ Polymer({
     var titleStyle = mainGraphTitleElement.style;
     var auxTitleStyle = this.getElementsByClassName('auxTitle')[0].style;
     var core = d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
-      tf.graph.scene.Class.Scene.CORE)[0][0];
+      tf.graph.scene.Class.Scene.CORE).node();
     // Only show labels if the graph is fully loaded.
     if (showLabels && core && this.progress && this.progress.value === 100) {
       var aux =
         d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
-          tf.graph.scene.Class.Scene.INEXTRACT)[0][0] ||
+          tf.graph.scene.Class.Scene.INEXTRACT).node() ||
         d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
-          tf.graph.scene.Class.Scene.OUTEXTRACT)[0][0];
+          tf.graph.scene.Class.Scene.OUTEXTRACT).node();
       var coreX = core.getCTM().e;
       var auxX = aux ? aux.getCTM().e : null;
       titleStyle.display = 'inline';

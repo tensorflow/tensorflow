@@ -128,7 +128,7 @@ class LiteralUtil {
 
   // Creates a new value that has the equivalent value as literal, but conforms
   // to new_layout; e.g. a literal matrix that was in {0, 1} minor-to-major
-  // dimension layout can be re-layed-out as {1, 0} minor-to-major dimension
+  // dimension layout can be re-laid-out as {1, 0} minor-to-major dimension
   // layout and the value in the cell at any given logical index (i0, i1) will
   // be the same.
   //
@@ -506,8 +506,8 @@ template <>
 LiteralUtil::GetArraySlice<double>(const Literal& literal);
 
 template <>
-/* static */ tensorflow::gtl::ArraySlice<half>
-LiteralUtil::GetArraySlice<half>(const Literal& literal);
+/* static */ tensorflow::gtl::ArraySlice<half> LiteralUtil::GetArraySlice<half>(
+    const Literal& literal);
 
 template <>
 /* static */ tensorflow::gtl::MutableArraySlice<bool>
@@ -893,9 +893,8 @@ template <typename NativeT>
 template <typename NativeT>
 /* static */ inline void LiteralUtil::PopulateR0(NativeT value,
                                                  Literal* literal) {
-  *literal->mutable_shape() =
-      ShapeUtil::MakeShape(
-              primitive_util::NativeToPrimitiveType<NativeT>(), {});
+  *literal->mutable_shape() = ShapeUtil::MakeShape(
+      primitive_util::NativeToPrimitiveType<NativeT>(), {});
   Resize<NativeT>(1, value, literal);
 }
 

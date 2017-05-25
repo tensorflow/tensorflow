@@ -424,7 +424,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
   // For nodes with the _output_shapes atttribute, override the shape.
   std::vector<TensorShapeProto> shape_attrs;
   const char* kAttrName = "_output_shapes";
-  if (!GetNodeAttr(node->def(), kAttrName, &shape_attrs).ok()) {
+  if (!GetNodeAttr(node->attrs(), kAttrName, &shape_attrs).ok()) {
     // No _output_shapes attribute, the AddNode call above was sufficient.
     return Status::OK();
   }
@@ -458,7 +458,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
       // functions that are not critical to correct execution but
       // would cause graphs to fail if imported after correcting.
       //
-      const string& op = node->def().op();
+      const string& op = node->type_string();
       const std::vector<string> whitelist = {
           // To be removed after 2017/03/08.
           "RandomShuffleQueue", "PaddingFIFOQueue", "FIFOQueue",
@@ -898,9 +898,7 @@ void CopyGraph(const Graph& src, Graph* dest) {
       node_map;  // "Node in src" -> "Node in *dest"
   node_map[src.source_node()] = dest->source_node();
   node_map[src.sink_node()] = dest->sink_node();
-  for (Node* n : src.nodes()) {
-    if (n->IsSource() || n->IsSink()) continue;
-    CHECK(n->IsOp());
+  for (Node* n : src.op_nodes()) {
     node_map[n] = dest->CopyNode(n);
   }
 

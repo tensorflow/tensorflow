@@ -29,7 +29,7 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.1.0'
+_VERSION = '1.2.0-rc0'
 
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
@@ -190,10 +190,7 @@ setup(
     package_data={
         'tensorflow': [
             EXTENSION_NAME,
-            'tensorboard/dist/bazel-html-imports.html',
-            'tensorboard/dist/index.html',
-            'tensorboard/dist/tf-tensorboard.html',
-            'tensorboard/lib/css/global.css',
+            'tensorboard/components/index.html',
             'tensorboard/TAG',
         ] + matches,
     },

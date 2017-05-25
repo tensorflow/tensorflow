@@ -129,7 +129,7 @@ contains vz-histogram-timeseries embedded inside tf-panes-helper's.
       behaviors: [
         TF.Dashboard.DashboardBehavior("histograms"),
         TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
-        TF.Backend.Behavior,
+        TF.Backend.BackendBehavior,
       ],
       properties: {
         backend: Object,

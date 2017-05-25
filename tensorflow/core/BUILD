@@ -109,6 +109,7 @@ load(
     "tf_additional_cloud_kernel_deps",
     "tf_lib_proto_parsing_deps",
     "tf_additional_verbs_lib_defines",
+    "tf_additional_mpi_lib_defines",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -740,6 +741,7 @@ cc_library(
         "//tensorflow/core/kernels:array_not_windows",
         "//tensorflow/core/kernels:math_not_windows",
         "//tensorflow/core/kernels:quantized_ops",
+        "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
     ]) + if_mkl([
         "//tensorflow/core/kernels:mkl_concat_op",
         "//tensorflow/core/kernels:mkl_conv_op",
@@ -1071,6 +1073,7 @@ filegroup(
         ":framework/shape_inference_testutil.h",
         ":framework/tensor_testutil.cc",
         ":framework/tensor_testutil.h",
+        ":platform/test.cc",
         ":platform/test.h",
         ":util/reporter.cc",
         ":util/reporter.h",
@@ -1307,8 +1310,9 @@ cc_library(
     ],
     copts = tf_copts(),
     defines = tf_additional_lib_defines() + [
-        "SNAPPY",
-    ] + tf_additional_verbs_lib_defines(),
+                  "SNAPPY",
+              ] + tf_additional_verbs_lib_defines() +
+              tf_additional_mpi_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": [
@@ -1411,6 +1415,11 @@ tf_cuda_library(
             "framework/**/*.cc",
             "util/**/*.h",
             "util/**/*.cc",
+        ] + [
+            "graph/edgeset.h",
+            "graph/edgeset.cc",
+            "graph/graph.h",
+            "graph/graph.cc",
         ],
         exclude = [
             "**/*test*",
@@ -1551,13 +1560,9 @@ tf_cuda_library(
         "graph/colors.cc",
         "graph/control_flow.cc",
         "graph/costmodel.cc",
-        "graph/edgeset.cc",
-        "graph/graph.cc",
         "graph/graph_constructor.cc",
         "graph/graph_def_builder.cc",
         "graph/graph_partition.cc",
-        "graph/mkl_layout_pass.cc",
-        "graph/mkl_tfconversion_pass.cc",
         "graph/node_builder.cc",
         "graph/optimizer_cse.cc",
         "graph/subgraph.cc",
@@ -1619,6 +1624,8 @@ tf_cuda_library(
         "common_runtime/threadpool_device.cc",
         "common_runtime/threadpool_device_factory.cc",
         "graph/gradients.cc",
+        "graph/mkl_layout_pass.cc",
+        "graph/mkl_tfconversion_pass.cc",
         "graph/quantize_training.cc",
         "public/session.h",
         "public/session_options.h",

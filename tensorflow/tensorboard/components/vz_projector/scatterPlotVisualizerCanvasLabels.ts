@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
 import {BoundingBox, CollisionGrid} from './label';
 import {CameraType, RenderContext} from './renderContext';
 import {ScatterPlotVisualizer} from './scatterPlotVisualizer';
@@ -73,7 +74,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
     }
 
     let opacityMap =
-        d3.scale.pow()
+        d3.scalePow()
             .exponent(Math.E)
             .domain([rc.farthestCameraSpacePointZ, rc.nearestCameraSpacePointZ])
             .range([0.1, 1]);

@@ -70,7 +70,7 @@ tf-audio-dashboard displays a dashboard that loads audio from a TensorFlow run.
       behaviors: [
         TF.Dashboard.DashboardBehavior("audio"),
         TF.Dashboard.ReloadBehavior("tf-audio-loader"),
-        TF.Backend.Behavior
+        TF.Backend.BackendBehavior
       ],
       attached: function() {
         this.async(function() {

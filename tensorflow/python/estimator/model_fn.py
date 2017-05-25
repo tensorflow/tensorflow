@@ -239,17 +239,39 @@ class EstimatorSpec(
 
     # Validate that all tensors and ops are from the default graph.
     default_graph = ops.get_default_graph()
-    for value in _prediction_values(predictions):
-      if value.graph is not default_graph:
-        raise ValueError('prediction values must be from the default graph.')
+
+    # We enumerate possible error causes here to aid in debugging.
+    error_message_template = (
+        '{0} with "{1}" must be from the default graph. '
+        'Possible causes of this error include: \n\n'
+        '1) {0} was created outside the context of the default graph.'
+        '\n\n'
+        '2) The object passed through to EstimatorSpec was not created '
+        'in the most recent call to "model_fn".')
+
+    if isinstance(predictions, dict):
+      for key, value in six.iteritems(predictions):
+        if value.graph is not default_graph:
+          raise ValueError(error_message_template.format(
+              'prediction values',
+              '{0}: {1}'.format(key, value.name)))
+    elif predictions is not None:
+      # 'predictions' must be a single Tensor.
+      if predictions.graph is not default_graph:
+        raise ValueError(error_message_template.format(
+            'prediction values', predictions.name))
+
     if loss is not None and loss.graph is not default_graph:
-      raise ValueError('loss must be from the default graph.')
+      raise ValueError(error_message_template.format('loss', loss.name))
     if train_op is not None and train_op.graph is not default_graph:
-      raise ValueError('train_op must be from the default graph.')
-    for value in nest.flatten(list(eval_metric_ops.values())):
-      if value.graph is not default_graph:
-        raise ValueError(
-            'eval_metric_ops values must be from the default graph.')
+      raise ValueError(error_message_template.format('train_op', train_op.name))
+    for key, value in list(six.iteritems(eval_metric_ops)):
+      values = nest.flatten(value)
+      for value in values:
+        if value.graph is not default_graph:
+          raise ValueError(error_message_template.format(
+              'eval_metric_ops',
+              '{0}: {1}'.format(key, value.name)))
 
     # Validate hooks.
     training_chief_hooks = tuple(training_chief_hooks or [])
@@ -288,12 +310,3 @@ def _check_is_tensor(x, tensor_name):
   if not isinstance(x, ops.Tensor):
     raise TypeError('{} must be Tensor, given: {}'.format(tensor_name, x))
   return x
-
-
-def _prediction_values(predictions):
-  """Returns the values of the given predictions dict or `Tensor`."""
-  if predictions is None:
-    return []
-  if isinstance(predictions, dict):
-    return list(six.itervalues(predictions))
-  return [predictions]

@@ -26,6 +26,7 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_d
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
 
 py_library(
     name = "python",
@@ -1709,14 +1710,23 @@ py_library(
 py_library(
     name = "rnn_cell",
     srcs = [
+        "ops/rnn_cell.py",
         "ops/rnn_cell_impl.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":clip_ops",
         ":framework_for_generated_wrappers",
+        ":init_ops",
         ":layers_base",
+        ":math_ops",
+        ":nn_ops",
+        ":partitioned_variables",
+        ":random_ops",
         ":util",
+        ":variable_scope",
+        ":variables",
     ],
 )
 
@@ -2676,7 +2686,8 @@ tf_py_wrap_cc(
         "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
-         tf_additional_verbs_deps()),
+         tf_additional_verbs_deps() +
+         tf_additional_mpi_deps()),
 )
 
 py_library(
@@ -3645,5 +3656,22 @@ py_test(
         ":tf_optimizer",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "layout_optimizer_test",
+    size = "medium",
+    srcs = [
+        "grappler/layout_optimizer_test.py",
+    ],
+    additional_deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":array_ops",
+        ":nn",
+        ":random_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
     ],
 )

@@ -113,6 +113,17 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
 
     _Estimator()
 
+  def test_override_allowed_method(self):
+    class _Estimator(estimator.Estimator):
+
+      def __init__(self):
+        super(_Estimator, self).__init__(model_fn=dummy_model_fn)
+
+      def _create_global_step(self, graph):
+        pass
+
+    _Estimator()
+
 
 class EstimatorConstructorTest(test.TestCase):
 
@@ -259,6 +270,7 @@ class EstimatorConstructorTest(test.TestCase):
   def test_if_model_fn_is_a_member_function_of_a_class(self):
 
     class ModelFnClass(object):
+
       def __init__(self):
         estimator.Estimator(model_fn=self.model_fn)
 

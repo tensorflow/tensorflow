@@ -422,6 +422,12 @@ int Main(int argc, char** argv) {
     CHECK(str_util::SplitAndParseAsInts(input_layer_shapes[n], ',', &sizes))
         << "Incorrect size string specified: " << input_layer_shapes[n];
     for (int i = 0; i < sizes.size(); ++i) {
+      int32 size = sizes[i];
+      if (size == -1) {
+        LOG(ERROR) << "Any unknown sizes in the shapes (-1's) must be replaced"
+                   << " with the size you want to benchmark with.";
+        return -1;
+      }
       input.shape.AddDim(sizes[i]);
     }
     input.name = input_layers[n];
@@ -531,10 +537,12 @@ int Main(int argc, char** argv) {
     std::map<string, int64> node_type_map_count;
     std::map<string, int64> node_type_map_time;
     std::map<string, int64> node_type_map_memory;
+    std::map<string, int64> node_type_map_times_called;
 
     int64 accumulated_us;
     stats->ComputeStatsByType(&node_type_map_count, &node_type_map_time,
-                              &node_type_map_memory, &accumulated_us);
+                              &node_type_map_memory,
+                              &node_type_map_times_called, &accumulated_us);
     for (const auto& time : node_type_map_time) {
       std::stringstream stream;
       stream << benchmark_name << "_" << time.first;

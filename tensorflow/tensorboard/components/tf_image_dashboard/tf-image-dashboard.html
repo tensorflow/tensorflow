@@ -121,7 +121,7 @@ tf-image-dashboard displays a dashboard that loads images from a TensorFlow run.
       behaviors: [
         TF.Dashboard.DashboardBehavior("images"),
         TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
-        TF.Backend.Behavior,
+        TF.Backend.BackendBehavior,
       ],
       attached: function() {
         this.async(function() {

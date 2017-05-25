@@ -30,7 +30,7 @@ export TMPDIR="C:/tmp"
 mkdir -p "$TMPDIR"
 
 # Set bash path
-export BAZEL_SH="C:/tools/msys64/usr/bin/bash"
+export BAZEL_SH=${BAZEL_SH:-"C:/tools/msys64/usr/bin/bash"}
 
 # Set Python path for ./configure
 export PYTHON_BIN_PATH="C:/Program Files/Anaconda3/python"

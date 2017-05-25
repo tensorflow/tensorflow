@@ -46,7 +46,7 @@ Status GetTableAttrs(OpKernelConstruction* context, string* project_id,
 
 }  // namespace
 
-// Note that overriden methods with names ending in "Locked" are called by
+// Note that overridden methods with names ending in "Locked" are called by
 // ReaderBase while a mutex is held.
 // See comments for ReaderBase.
 class BigQueryReader : public ReaderBase {

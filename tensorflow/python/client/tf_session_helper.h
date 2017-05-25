@@ -37,13 +37,23 @@ typedef tensorflow::gtl::InlinedVector<const char*, 8> NameVector;
 // A PyObjectVector is a vector of borrowed pointers to PyObjects.
 typedef tensorflow::gtl::InlinedVector<PyObject*, 8> PyObjectVector;
 
-// Safe containers for (an) owned PyObject(s). On destruction, the
-// reference count of the contained object will be decremented.
+// A TF_TensorVector is a vector of borrowed pointers to TF_Tensors.
+typedef gtl::InlinedVector<TF_Tensor*, 8> TF_TensorVector;
+
+// Safe container for an owned PyObject. On destruction, the reference count of
+// the contained object will be decremented.
 inline void Py_DECREF_wrapper(PyObject* o) { Py_DECREF(o); }
+// Note: can't use decltype(&Py_DECREF_wrapper) due to SWIG
 typedef void (*Py_DECREF_wrapper_type)(PyObject*);
 typedef std::unique_ptr<PyObject, Py_DECREF_wrapper_type> Safe_PyObjectPtr;
-typedef std::vector<Safe_PyObjectPtr> Safe_PyObjectVector;
 Safe_PyObjectPtr make_safe(PyObject* o);
+
+// Safe containers for an owned TF_Tensor. On destruction, the tensor will be
+// deleted by TF_DeleteTensor.
+// Note: can't use decltype(&TF_DeleteTensor) due to SWIG
+typedef void (*TF_DeleteTensor_type)(TF_Tensor*);
+typedef std::unique_ptr<TF_Tensor, TF_DeleteTensor_type> Safe_TF_TensorPtr;
+Safe_TF_TensorPtr make_safe(TF_Tensor* tensor);
 
 // Run the graph associated with the session starting with the
 // supplied inputs[].  Regardless of success or failure, inputs[] are

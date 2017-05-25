@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -47,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -162,31 +160,9 @@ Service::CreateComputeConstantBackend() {
   return NotFound("CPU platform not found");
 }
 
-/* static */ void Service::DumpExecutedHlo(const HloModule& module,
-                                           const string& label,
-                                           const HloExecutionProfile* profile) {
-  VLOG(2) << "module name = " << module.name();
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  if (!flags->xla_generate_hlo_graph.empty() &&
-      RE2::PartialMatch(module.name(), flags->xla_generate_hlo_graph)) {
-    hlo_graph_dumper::DumpGraph(*module.entry_computation(), label,
-                                flags->xla_hlo_graph_addresses,
-                                flags->xla_hlo_graph_layout, profile);
-  }
-  if (!flags->xla_log_hlo_text.empty() &&
-      RE2::PartialMatch(module.name(), flags->xla_log_hlo_text)) {
-    LOG(INFO) << "HLO for module " << module.name();
-    LOG(INFO) << "Label: " << label;
-    XLA_LOG_LINES(2, module.ToString());
-  }
-  if (!flags->xla_dump_hlo_text_to.empty()) {
-    hlo_graph_dumper::DumpText(module, label, flags->xla_dump_hlo_text_to);
-  }
-}
-
 /* static */ Compiler::HloDumper Service::MakeHloDumper() {
   return [](const HloModule& module, const string& label) {
-    return DumpExecutedHlo(module, label, /*profile=*/nullptr);
+    return Executable::DumpExecutedHlo(module, label, /*profile=*/nullptr);
   };
 }
 
@@ -385,20 +361,23 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     VLOG(1) << versioned_handle;
   }
 
+  CHECK_EQ(versioned_handles.size(), module_configs.size());
   std::vector<std::unique_ptr<HloModule>> modules;
-  for (const VersionedComputationHandle& versioned_handle : versioned_handles) {
+  for (int64 i = 0; i < versioned_handles.size(); ++i) {
+    const VersionedComputationHandle& versioned_handle = versioned_handles[i];
+    const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(auto module,
                         computation_tracker_.BuildHloModule(
-                            versioned_handle,
+                            versioned_handle, &config,
                             /*include_unreachable_instructions=*/true));
     modules.push_back(std::move(module));
   }
 
   Compiler::HloDumper hlo_dumper = MakeHloDumper();
-  TF_ASSIGN_OR_RETURN(std::vector<std::unique_ptr<Executable>> executables,
-                      backend->compiler()->Compile(
-                          std::move(modules), std::move(module_configs),
-                          hlo_dumper, std::move(executors)));
+  TF_ASSIGN_OR_RETURN(
+      std::vector<std::unique_ptr<Executable>> executables,
+      backend->compiler()->Compile(std::move(modules), hlo_dumper,
+                                   std::move(executors)));
 
   if (!other_directory_path.empty()) {
     for (size_t i = 0; i < versioned_handles.size(); ++i) {
@@ -441,7 +420,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
-      computation_tracker_.BuildHloModule(versioned_handle,
+      computation_tracker_.BuildHloModule(versioned_handle, module_config.get(),
                                           /*include_unreachable_instructions=*/
                                           !executable_for_compute_constant));
 
@@ -453,8 +432,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend->compiler()->Compile(std::move(module), std::move(module_config),
-                                   hlo_dumper, executor));
+      backend->compiler()->Compile(std::move(module), hlo_dumper, executor));
 
   if (!other_directory_path.empty()) {
     executable->set_session_module(std::move(session_module));
@@ -1037,70 +1015,6 @@ tensorflow::Status Service::ResetDevice(const ResetDeviceRequest* arg,
   return execute_backend_->ResetDevices();
 }
 
-tensorflow::Status Service::TransferToClientInProcess(
-    const TransferToClientInProcessRequest* arg,
-    TransferToClientInProcessResponse* result) {
-  TF_RETURN_IF_ERROR(CheckRunsInClientProcess("TransferToClientInProcess"));
-
-  TF_ASSIGN_OR_RETURN(const Allocation* allocation,
-                      allocation_tracker_.Resolve(arg->data()));
-
-  void* buffer = reinterpret_cast<void*>(arg->buffer());
-  int64 size = ShapeUtil::ByteSizeOf(allocation->shape());
-  TF_ASSIGN_OR_RETURN(
-      se::StreamExecutor * executor,
-      allocation->backend()->stream_executor(allocation->device_ordinal()));
-
-  return allocation->backend()->transfer_manager()->TransferBufferFromDevice(
-      executor, allocation->device_memory(), size, buffer);
-}
-
-tensorflow::Status Service::TransferToServerInProcess(
-    const TransferToServerInProcessRequest* arg,
-    TransferToServerInProcessResponse* result) {
-  TF_RETURN_IF_ERROR(CheckRunsInClientProcess("TransferToServerInProcess"));
-
-  const Shape& shape = arg->shape();
-
-  if (ShapeUtil::IsTuple(shape) && execute_backend_->Replicas().size() > 1) {
-    // TODO(b/32990684): Tuple transfers to host end up allocating further
-    // buffers - implement that correctly.
-    return Unimplemented(
-        "Tuple transfers to the device not supported with replication.");
-  }
-
-  if (!LayoutUtil::HasLayout(shape)) {
-    return InvalidArgument("shape must have layout");
-  }
-
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-
-  const void* buffer = reinterpret_cast<const void*>(arg->buffer());
-
-  // Allocate memory on the device, using the stream executor. The size of the
-  // allocation is obtained by examining the shape of the literal passed from
-  // the client. An allocation handle is returned in the response.
-  int64 allocation_size =
-      execute_backend_->transfer_manager()->GetByteSizeRequirement(shape);
-  se::StreamExecutor* stream_executor =
-      execute_backend_->default_stream_executor();
-
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase allocation,
-                      execute_backend_->memory_allocator()->Allocate(
-                          stream_executor->device_ordinal(), allocation_size));
-
-  *result->mutable_data() = allocation_tracker_.Register(
-      execute_backend_.get(), stream_executor->device_ordinal(), allocation,
-      shape, StrCat("TransferToServer literal of size ", allocation_size));
-
-  for (se::StreamExecutor* executor : execute_backend_->Replicas()) {
-    TF_RETURN_IF_ERROR(
-        execute_backend_->transfer_manager()->TransferBufferToDevice(
-            executor, allocation_size, buffer, &allocation));
-  }
-  return tensorflow::Status::OK();
-}
-
 tensorflow::Status Service::IsConstant(const IsConstantRequest* arg,
                                        IsConstantResponse* result) {
   TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
@@ -1224,14 +1138,14 @@ tensorflow::Status Service::GetComputationStats(
       user_computation->GetVersionedHandle();
 
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      computation_tracker_.BuildHloModule(versioned_handle));
+                      computation_tracker_.BuildHloModule(versioned_handle,
+                                                          /*config=*/nullptr));
 
   MakeHloDumper()(*module, "computation statistics subject");
 
   // Run HLO analysis to get the computation statistics.
-  HloCostAnalysis analysis([this](const Shape& shape) {
-    return execute_backend_->compiler()->ShapeSizeBytes(shape);
-  });
+  HloCostAnalysis analysis(
+      execute_backend_->compiler()->ShapeSizeBytesFunction());
 
   TF_RETURN_IF_ERROR(
       module->entry_computation()->root_instruction()->Accept(&analysis));

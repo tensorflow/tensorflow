@@ -71,6 +71,7 @@ class Node {
   int cost_id() const { return cost_id_; }
   const string& name() const { return props_->node_def_.name(); }
   const string& type_string() const { return props_->node_def_.op(); }
+
   // def() provides the NodeDef the user supplied, but the specifics
   // of this Node may have changed due to placement, optimization, etc.
   // In particular:
@@ -80,6 +81,7 @@ class Node {
   // * def().device() is the "user's requested device" and may not match
   //   the actual assigned device, see assigned_device_name() below;
   // * def().attr() is authoritative.
+  // TODO(irving): Replace with NodeInfo.
   const NodeDef& def() const { return props_->node_def_; }
   const OpDef& op_def() const { return *props_->op_def_; }
 
@@ -92,6 +94,10 @@ class Node {
   DataType output_type(int32 o) const { return props_->output_types_[o]; }
   const DataTypeVector& output_types() const { return props_->output_types_; }
 
+  // The device requested by the user.  For the actual assigned device,
+  // use assigned_device_name() below.
+  const string& requested_device() const { return def().device(); }
+
   // This gives the device the runtime has assigned this node to.  If
   // you want the device the user requested, use def().device() instead.
   // TODO(josh11b): Validate that the assigned_device, if not empty:
@@ -101,6 +107,14 @@ class Node {
   string assigned_device_name() const { return assigned_device_name_; }
   void set_assigned_device_name(const string& device_name) {
     assigned_device_name_ = device_name;
+  }
+
+  // Read only access to attributes
+  AttrSlice attrs() const { return AttrSlice(def()); }
+
+  // Inputs requested by the NodeDef.  For the actual inputs, use in_edges.
+  const protobuf::RepeatedPtrField<string>& requested_inputs() const {
+    return def().input();
   }
 
   // Get the neighboring nodes via edges either in or out of this node.
@@ -403,6 +417,12 @@ class Graph {
   // array's size.
   int num_nodes() const { return num_nodes_; }
 
+  // The number of live nodes in the graph, excluding the Source and Sink nodes.
+  int num_op_nodes() const {
+    DCHECK_GE(num_nodes_, 2);
+    return num_nodes_ - 2;
+  }
+
   // The number of live edges in the graph.
   //
   // Because edges can be removed from the graph, num_edges() is often
@@ -424,6 +444,9 @@ class Graph {
   // Access to the list of all nodes.  Example usage:
   //   for (Node* node : graph.nodes()) { ... }
   gtl::iterator_range<NodeIter> nodes() const;
+
+  // Access to the list of all nodes, excluding the Source and Sink nodes.
+  gtl::iterator_range<NodeIter> op_nodes() const;
 
   // Returns one more than the maximum id assigned to any node.
   int num_node_ids() const { return nodes_.size(); }
@@ -617,6 +640,30 @@ inline bool Edge::IsControlEdge() const {
   // Note that if either src_output_ or dst_input_ is kControlSlot,
   // so is the other one (AddEdge checks this).
   return src_output_ == Graph::kControlSlot;
+}
+
+inline gtl::iterator_range<NodeIter> Graph::nodes() const {
+  // Note that NodeId 0 is always valid since we don't let the source
+  // node be removed from the graph.
+  return gtl::make_range(NodeIter(this, 0), NodeIter(this, num_node_ids()));
+}
+
+inline gtl::iterator_range<NodeIter> Graph::op_nodes() const {
+  // Note that NodeId 0 is always valid since we don't let the source
+  // node be removed from the graph.
+  //
+  // The current implementation of Graph maintains the invariant that the
+  // first two nodes are the source and sink nodes, and all other nodes are op
+  // nodes. This method (op_nodes()) relies on this invariant.
+  NodeIter begin(this, 0);
+  NodeIter end(this, num_node_ids());
+  if (begin != end) {
+    ++begin;
+  }
+  if (begin != end) {
+    ++begin;
+  }
+  return gtl::make_range(begin, end);
 }
 
 }  // namespace tensorflow

@@ -998,7 +998,7 @@ There are a few things to know about the `ReplaceMatchingOpTypes` function:
     important nodes are listed in the `output_nodes` argument that's passed into
     each replacement function call. You can disable this checking by setting
     `allow_inconsistencies` to true in the options, but otherwise any
-    replacements that break the graph constraints will be cancelled. If you do
+    replacements that break the graph constraints will be canceled. If you do
     allow inconsistencies, it's your transform's responsibility to fix them up
     before you return your final result. Functions like `RenameNodeInputs` can
     be useful if you are doing wholesale node renaming for example.

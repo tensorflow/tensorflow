@@ -230,6 +230,7 @@ add_python_module("tensorflow/tensorboard/backend")
 add_python_module("tensorflow/tensorboard/backend/event_processing")
 add_python_module("tensorflow/tensorboard/plugins")
 add_python_module("tensorflow/tensorboard/plugins/projector")
+add_python_module("tensorflow/tensorboard/plugins/scalars")
 add_python_module("tensorflow/tensorboard/plugins/text")
 add_python_module("tensorflow/tensorboard/scripts")
 add_python_module("tensorflow/contrib")
@@ -512,13 +513,6 @@ add_python_module("tensorflow/contrib/training")
 add_python_module("tensorflow/contrib/training/python")
 add_python_module("tensorflow/contrib/training/python/training")
 add_python_module("tensorflow/contrib/util")
-
-
-# Additional directories with no Python sources.
-add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/dist")
-add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/lib/css")
 
 
 ########################################################
@@ -859,7 +853,6 @@ endif(WIN32)
 add_custom_target(tf_python_build_pip_package)
 add_dependencies(tf_python_build_pip_package
     pywrap_tensorflow_internal
-    tensorboard_copy_dependencies
     tf_python_copy_scripts_to_destination
     tf_python_touchup_modules
     tf_python_ops
@@ -886,24 +879,17 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
 
 # Copy resources for TensorBoard.
+file(DOWNLOAD http://mirror.bazel.build/tensorboard/index.html ${DOWNLOAD_LOCATION}/tensorboard/index.html
+  EXPECTED_HASH SHA256=60f185c68ff3f906000df9670bf9f46588056b197da7e7b10074411a0c048dae)
+add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
+  COMMAND ${CMAKE_COMMAND} -E make_directory
+  ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/components/)
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tensorboard/dist/bazel-html-imports.html
-                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/dist/)
-add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tensorboard/dist/index.html
-                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/dist/)
-add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tensorboard/dist/tf-tensorboard.html
-                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/dist/)
-add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tensorboard/lib/css/global.css
-                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/lib/css/)
+  COMMAND ${CMAKE_COMMAND} -E copy ${DOWNLOAD_LOCATION}/tensorboard/index.html
+  ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/components/)
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tensorboard/TAG
-                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/)
-add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_CURRENT_BINARY_DIR}/tensorboard_external
-                                             ${CMAKE_CURRENT_BINARY_DIR}/tf_python/external)
+  ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/)
 
 # Copy datasets for tf.contrib.learn.
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD

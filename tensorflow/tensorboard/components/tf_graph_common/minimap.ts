@@ -43,7 +43,7 @@ export class Minimap {
   /** The svg group used for panning and zooming the main svg. */
   private zoomG: SVGGElement;
   /** The zoom behavior of the main svg. */
-  private mainZoom: d3.behavior.Zoom<any>;
+  private mainZoom: d3.ZoomBehavior<any, any>;
   /** The maximum width and height for the minimap. */
   private maxWandH: number;
   /** The last translation vector used in the main svg. */
@@ -67,7 +67,7 @@ export class Minimap {
    * @param labelPadding Padding in pixels due to the main graph labels.
    */
   constructor(svg: SVGSVGElement, zoomG: SVGGElement,
-      mainZoom: d3.behavior.Zoom<any>, minimap: HTMLElement,
+      mainZoom: d3.ZoomBehavior<any, any>, minimap: HTMLElement,
       maxWandH: number, labelPadding: number) {
     this.svg = svg;
     this.labelPadding = labelPadding;
@@ -87,8 +87,8 @@ export class Minimap {
       this.updateViewpoint();
     };
     this.viewpointCoord = {x: 0, y: 0};
-    let drag = d3.behavior.drag().origin(Object).on('drag', dragmove);
-    $viewpoint.datum(this.viewpointCoord).call(drag);
+    let drag = d3.drag().subject(Object).on('drag', dragmove);
+    $viewpoint.datum(this.viewpointCoord as any).call(drag);
 
     // Make the minimap clickable.
     $minimapSvg.on('click', () => {
@@ -99,7 +99,7 @@ export class Minimap {
       // Update the coordinates of the viewpoint.
       let width = Number($viewpoint.attr('width'));
       let height = Number($viewpoint.attr('height'));
-      let clickCoords = d3.mouse($minimapSvg.node());
+      let clickCoords = d3.mouse($minimapSvg.node() as any);
       this.viewpointCoord.x = clickCoords[0] - width / 2;
       this.viewpointCoord.y = clickCoords[1] - height / 2;
       this.updateViewpoint();
@@ -129,8 +129,9 @@ export class Minimap {
     // new viewpoint.
     let mainX = - this.viewpointCoord.x * this.scaleMain / this.scaleMinimap;
     let mainY = - this.viewpointCoord.y * this.scaleMain / this.scaleMinimap;
-    let zoomEvent = this.mainZoom.translate([mainX, mainY]).event;
-    d3.select(this.zoomG).call(zoomEvent);
+    d3.select(this.svg).call(
+        this.mainZoom.transform,
+        d3.zoomIdentity.translate(mainX, mainY).scale(this.scaleMain));
   }
 
   /**
@@ -198,10 +199,9 @@ export class Minimap {
     // Temporarily assign an explicit width/height to the main svg, since
     // it doesn't have one (uses flex-box), but we need it for the canvas
     // to work.
-    $svg.attr({
-      width: sceneSize.width,
-      height: sceneSize.height,
-    });
+    $svg
+      .attr('width', sceneSize.width)
+      .attr('height', sceneSize.height);
 
     // Since the content inside the svg changed (e.g. a node was expanded),
     // the aspect ratio have also changed. Thus, we need to update the scale
@@ -241,10 +241,8 @@ export class Minimap {
     // assigned styles, explicit width and height and bring back the pan/zoom
     // transform.
     svgStyle.remove();
-    $svg.attr({
-      width: null,
-      height: null
-    });
+    $svg.attr('width', null).attr('height', null);
+
     $zoomG.attr('transform', zoomTransform);
     let image = new Image();
     image.onload = () => {
@@ -283,14 +281,17 @@ export class Minimap {
    * @param translate The translate vector, or none to use the last used one.
    * @param scale The scaling factor, or none to use the last used one.
    */
-  zoom(translate?: [number, number], scale?: number): void {
+  zoom(transform?: d3.ZoomTransform): void {
     if (this.scaleMinimap == null) {
       // Scene is not ready yet.
       return;
     }
     // Update the new translate and scale params, only if specified.
-    this.translate = translate || this.translate;
-    this.scaleMain = scale || this.scaleMain;
+    if (transform) {
+      this.translate = [transform.x, transform.y];
+      this.scaleMain = transform.k;
+    }
+
     // Update the location of the viewpoint rectangle.
     let svgRect = this.svg.getBoundingClientRect();
     let $viewpoint = d3.select(this.viewpoint);
@@ -300,12 +301,11 @@ export class Minimap {
         this.scaleMain;
     let viewpointWidth = svgRect.width * this.scaleMinimap / this.scaleMain;
     let viewpointHeight = svgRect.height * this.scaleMinimap / this.scaleMain;
-    $viewpoint.attr({
-      x: this.viewpointCoord.x,
-      y: this.viewpointCoord.y,
-      width: viewpointWidth,
-      height: viewpointHeight
-    });
+    $viewpoint
+      .attr('x', this.viewpointCoord.x)
+      .attr('y', this.viewpointCoord.y)
+      .attr('width', viewpointWidth)
+      .attr('height', viewpointHeight);
     // Show/hide the minimap depending on the viewpoint area as fraction of the
     // whole minimap.
     let mapWidth = this.minimapSize.width;

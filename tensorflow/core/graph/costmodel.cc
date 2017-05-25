@@ -217,19 +217,17 @@ Microseconds CostModel::TimeEstimate(const Node* node) const {
 }
 
 void CostModel::CheckInitialized(const Graph& graph) const {
-  for (const Node* n : graph.nodes()) {
-    if (n->IsOp()) {
-      CHECK(static_cast<size_t>(n->id()) < time_.size() &&
-            time_[n->id()] >= Microseconds(0))
-          << ": no time estimate for " << n->DebugString();
+  for (const Node* n : graph.op_nodes()) {
+    CHECK(static_cast<size_t>(n->id()) < time_.size() &&
+          time_[n->id()] >= Microseconds(0))
+        << ": no time estimate for " << n->DebugString();
 
-      CHECK(static_cast<size_t>(n->id()) < slot_bytes_.size())
-          << ": no size estimate for " << n->DebugString();
-      const auto& perslot = slot_bytes_[n->id()];
-      for (size_t i = 0; i < perslot.size(); i++) {
-        CHECK_GE(perslot[i], Bytes(0)) << ": no size estimate for output# " << i
-                                       << " of " << n->DebugString();
-      }
+    CHECK(static_cast<size_t>(n->id()) < slot_bytes_.size())
+        << ": no size estimate for " << n->DebugString();
+    const auto& perslot = slot_bytes_[n->id()];
+    for (size_t i = 0; i < perslot.size(); i++) {
+      CHECK_GE(perslot[i], Bytes(0)) << ": no size estimate for output# " << i
+                                     << " of " << n->DebugString();
     }
   }
 }

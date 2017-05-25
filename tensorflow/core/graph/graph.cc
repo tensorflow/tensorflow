@@ -78,7 +78,7 @@ string Node::DebugString() const {
   } else {
     strings::StrAppend(&ret, " op device:");
     strings::StrAppend(&ret, "{", assigned_device_name_, "}");
-    strings::StrAppend(&ret, " def:{", SummarizeNodeDef(def()), "}}");
+    strings::StrAppend(&ret, " def:{", SummarizeNode(*this), "}}");
   }
   return ret;
 }
@@ -474,7 +474,7 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
     for (size_t i = 0; i < inputs.size(); ++i) {
       const Edge* edge = inputs[i];
       if (edge == nullptr) {
-        node_def->add_input(node->def().input(i));
+        node_def->add_input(node->requested_inputs()[i]);
       } else {
         const Node* src = edge->src();
         if (!src->IsOp()) continue;
@@ -486,12 +486,6 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
 
 string Graph::NewName(StringPiece prefix) {
   return strings::StrCat(prefix, "/_", name_counter_++);
-}
-
-gtl::iterator_range<NodeIter> Graph::nodes() const {
-  // Note that NodeId 0 is always valid since we don't let the source
-  // node be removed from the graph.
-  return gtl::make_range(NodeIter(this, 0), NodeIter(this, num_node_ids()));
 }
 
 bool Graph::IsValidNode(Node* node) const {

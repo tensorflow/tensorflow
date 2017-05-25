@@ -65,7 +65,7 @@ class HloTestBase : public ::testing::Test {
   perftools::gputools::DeviceMemoryBase TransferToDevice(
       const Literal& literal);
 
-  // Transfers the array refered to by the given handle from the device and
+  // Transfers the array referred to by the given handle from the device and
   // returns as a Literal.
   std::unique_ptr<Literal> TransferFromDevice(
       const Shape& shape, perftools::gputools::DeviceMemoryBase device_base);

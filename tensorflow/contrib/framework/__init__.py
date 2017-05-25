@@ -90,5 +90,6 @@ from tensorflow.python.framework.ops import strip_name_scope
 
 from tensorflow.python.util.all_util import remove_undocumented
 
+_allowed_symbols = ['nest']
 
-remove_undocumented(__name__)
+remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

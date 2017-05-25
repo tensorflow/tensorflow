@@ -42,9 +42,9 @@ source "tensorflow/tools/ci_build/windows/bazel/common_env.sh" \
 source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
   || { echo "Failed to source bazel_test_lib.sh" >&2; exit 1; }
 
-clean_output_base
-
 run_configure_for_cpu_build
+
+clean_output_base
 
 bazel build -c opt $BUILD_OPTS tensorflow/tools/pip_package:build_pip_package || exit $?
 
