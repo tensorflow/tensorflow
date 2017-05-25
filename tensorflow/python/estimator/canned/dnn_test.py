@@ -46,6 +46,7 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary as summary_lib
+from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import optimizer
@@ -151,6 +152,7 @@ class DNNModelFnTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def _test_logits(
@@ -380,6 +382,7 @@ class DNNRegressorEvaluateTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_one_dim(self):
@@ -449,6 +452,7 @@ class DNNRegressorPredictTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_one_dim(self):
@@ -510,6 +514,7 @@ class DNNRegressorIntegrationTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_complete_flow(self):
@@ -718,6 +723,7 @@ class DNNRegressorTrainTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_from_scratch_with_default_optimizer(self):
@@ -876,6 +882,7 @@ class DNNClassifierTrainTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_from_scratch_with_default_optimizer_binary(self):
