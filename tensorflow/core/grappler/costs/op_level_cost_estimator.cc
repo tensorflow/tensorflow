@@ -29,6 +29,7 @@ constexpr char kSparseMatMul[] = "SparseMatMul";
 constexpr char kIdentity[] = "Identity";
 constexpr char kNoOp[] = "NoOp";
 constexpr char kReshape[] = "Reshape";
+constexpr char kRecv[] = "_Recv";
 
 OpLevelCostEstimator::OpLevelCostEstimator() {
   // Syntactic sugar to build and return a lambda that takes an OpInfo and
@@ -49,7 +50,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kReshape, wrap(&OpLevelCostEstimator::PredictNoOp)}};
+      {kReshape, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)}};
 }
 
 Costs OpLevelCostEstimator::PredictCosts(const OpInfo& op_features) const {

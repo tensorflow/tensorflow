@@ -121,9 +121,7 @@ class VirtualScheduler {
   const string kAttrSrcDevice = "src_device_";
   const string kAttrDstDevice = "dst_device_";
   const string kChannelDevice = "Channel";
-  const string kDefaultDevice = "/CPU:0";
 
-  const NodeDef* GetCurrNode() const;
   void MaybeUpdateInputProperties(
       const NodeDef* node, std::vector<OpInfo::TensorProperties>* inputs) const;
   NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
