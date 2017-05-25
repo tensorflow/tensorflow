@@ -18,10 +18,45 @@ limitations under the License.
 namespace tensorflow {
 REGISTER5(BinaryOp, CPU, "Div", functor::div, float, Eigen::half, double,
           complex64, complex128);
-REGISTER4(BinaryOp, CPU, "Div", functor::safe_div, uint8, int16, int32, int64);
+REGISTER5(BinaryOp, CPU, "Div", functor::safe_div, uint8, uint16, int16, int32,
+          int64);
+REGISTER5(BinaryOp, CPU, "TruncateDiv", functor::safe_div, uint8, uint16, int16,
+          int32, int64);
+REGISTER5(BinaryOp, CPU, "RealDiv", functor::div, float, Eigen::half, double,
+          complex64, complex128);
+#if TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNEL(TYPE)                                    \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("Div")                                 \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<TYPE>("T"),                 \
+                          BinaryOp<SYCLDevice, functor::div<TYPE>>);  \
+  REGISTER_KERNEL_BUILDER(                                            \
+                          Name("RealDiv")                             \
+                          .Device(DEVICE_SYCL)                        \
+                          .TypeConstraint<TYPE>("T"),                 \
+                          BinaryOp<SYCLDevice, functor::div<TYPE>>);
+REGISTER_SYCL_KERNEL(float)
+REGISTER_SYCL_KERNEL(double)
+#undef REGISTER_SYCL_KERNEL
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(Name("Div")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::safe_div<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 #if GOOGLE_CUDA
-REGISTER6(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8,
-          int16, int64);
+REGISTER9(BinaryOp, GPU, "Div", functor::div, float, Eigen::half, double, uint8,
+          uint16, int16, int64, complex64, complex128);
+REGISTER4(BinaryOp, GPU, "TruncateDiv", functor::div, uint8, uint16, int16,
+          int64);
+REGISTER5(BinaryOp, GPU, "RealDiv", functor::div, float, Eigen::half, double,
+          complex64, complex128);
 
 // A special GPU kernel for int32.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel

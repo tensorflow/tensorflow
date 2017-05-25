@@ -32,9 +32,8 @@ class SummaryAudioOp : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("max_outputs", &max_outputs_));
     OP_REQUIRES(context, max_outputs_ > 0,
                 errors::InvalidArgument("max_outputs must be > 0"));
-    OP_REQUIRES_OK(context, context->GetAttr("sample_rate", &sample_rate_));
-    OP_REQUIRES(context, sample_rate_ > 0.0f,
-                errors::InvalidArgument("sample_rate must be > 0"));
+    has_sample_rate_attr_ =
+        context->GetAttr("sample_rate", &sample_rate_attr_).ok();
   }
 
   void Compute(OpKernelContext* c) override {
@@ -46,6 +45,15 @@ class SummaryAudioOp : public OpKernel {
                 errors::InvalidArgument("Tensor must be 3-D or 2-D, got: ",
                                         tensor.shape().DebugString()));
     const string& base_tag = tag.scalar<string>()();
+
+    float sample_rate = sample_rate_attr_;
+    if (!has_sample_rate_attr_) {
+      const Tensor& sample_rate_tensor = c->input(2);
+      sample_rate = sample_rate_tensor.scalar<float>()();
+    }
+    OP_REQUIRES(c, sample_rate > 0.0f,
+                errors::InvalidArgument("sample_rate must be > 0"));
+
     const int batch_size = tensor.dim_size(0);
     const int64 length_frames = tensor.dim_size(1);
     const int64 num_channels =
@@ -62,7 +70,7 @@ class SummaryAudioOp : public OpKernel {
       }
 
       Summary::Audio* sa = v->mutable_audio();
-      sa->set_sample_rate(sample_rate_);
+      sa->set_sample_rate(sample_rate);
       sa->set_num_channels(num_channels);
       sa->set_length_frames(length_frames);
       sa->set_content_type("audio/wav");
@@ -72,7 +80,7 @@ class SummaryAudioOp : public OpKernel {
       auto channels_by_frames = typename TTypes<float>::ConstMatrix(
           &values(i, 0, 0),
           Eigen::DSizes<Eigen::DenseIndex, 2>(length_frames, num_channels));
-      size_t sample_rate_truncated = lrintf(sample_rate_);
+      size_t sample_rate_truncated = lrintf(sample_rate);
       if (sample_rate_truncated == 0) {
         sample_rate_truncated = 1;
       }
@@ -89,9 +97,15 @@ class SummaryAudioOp : public OpKernel {
 
  private:
   int max_outputs_;
-  float sample_rate_;
+  bool has_sample_rate_attr_;
+  float sample_rate_attr_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("AudioSummaryV2").Device(DEVICE_CPU),
+                        SummaryAudioOp);
+
+// Deprecated -- this op is registered with sample_rate as an attribute for
+// backwards compatibility.
 REGISTER_KERNEL_BUILDER(Name("AudioSummary").Device(DEVICE_CPU),
                         SummaryAudioOp);
 

@@ -86,17 +86,17 @@ class SummaryHistoOp : public OpKernel {
     // Build histogram of values in "values" tensor
     histogram::Histogram histo;
     for (int64 i = 0; i < flat.size(); i++) {
-      T v = flat(i);
-      if (Eigen::numext::isnan(v)) {
+      const double double_val = static_cast<double>(flat(i));
+      if (Eigen::numext::isnan(double_val)) {
         c->SetStatus(
             errors::InvalidArgument("Nan in summary histogram for: ", name()));
         break;
-      } else if (Eigen::numext::isinf(v)) {
+      } else if (Eigen::numext::isinf(double_val)) {
         c->SetStatus(errors::InvalidArgument(
             "Infinity in summary histogram for: ", name()));
         break;
       }
-      histo.Add(static_cast<double>(v));
+      histo.Add(double_val);
     }
 
     Summary s;
@@ -146,10 +146,12 @@ class SummaryMergeOp : public OpKernel {
         }
 
         for (int v = 0; v < summary_in.value_size(); v++) {
-          if (!tags.insert(summary_in.value(v).tag()).second) {
-            c->SetStatus(errors::InvalidArgument(
-                strings::StrCat("Duplicate tag ", summary_in.value(v).tag(),
-                                " found in summary inputs")));
+          const string& tag = summary_in.value(v).tag();
+          // The tag is unused by the TensorSummary op, so no need to check
+          // for duplicates.
+          if ((tag != "") && !tags.insert(tag).second) {
+            c->SetStatus(errors::InvalidArgument(strings::StrCat(
+                "Duplicate tag ", tag, " found in summary inputs")));
             return;
           }
           *s.add_value() = summary_in.value(v);

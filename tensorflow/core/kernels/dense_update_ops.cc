@@ -16,6 +16,7 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/dense_update_ops.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/assign_op.h"
@@ -24,6 +25,49 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+namespace functor {
+
+template <>
+struct DenseUpdate<Eigen::ThreadPoolDevice, string, ASSIGN> {
+  void operator()(const Eigen::ThreadPoolDevice& d,
+                  typename TTypes<string>::Flat params,
+                  typename TTypes<string>::ConstFlat update) {
+    if (params.dimension(0) == 1) {
+      params.data()->resize(update.data()->size());
+      auto work = [&params, &update](int64 start, int64 end) {
+        memmove(const_cast<char*>(params.data()->data()) + start,
+                update.data()->data() + start, end - start);
+      };
+      d.parallelFor(update.data()->size(),
+                    Eigen::TensorOpCost(.1,  // chosen to force large chunks
+                                        .1, 0),
+                    work);
+    } else {
+      auto work = [&params, &update](int64 start, int64 end) {
+        for (int i = start; i < end; ++i) {
+          params.data()[i].resize(update.data()[i].size());
+          memmove(const_cast<char*>(params.data()[i].data()),
+                  update.data()[i].data(), update.data()[i].size());
+        }
+      };
+      int64 estimated_string_size;
+      if (update.size() > 0) {
+        // first element of the tensor seems as good a guess as any of the sizes
+        // of the strings contained within...
+        estimated_string_size =
+            std::max(update.data()[0].size(), sizeof(string));
+      } else {
+        estimated_string_size = sizeof(string);
+      }
+      d.parallelFor(
+          params.dimension(0),
+          Eigen::TensorOpCost(estimated_string_size, estimated_string_size, 0),
+          work);
+    }
+  }
+};
+
+}  // namespace functor
 
 template <typename Device, typename T>
 class AssignOpT : public AssignOp {
@@ -91,6 +135,26 @@ typedef Eigen::GpuDevice GPUDevice;
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
+
+#if TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#define REGISTER_SYCL_KERNEL(type)                                     \
+  REGISTER_KERNEL_BUILDER(                                             \
+                          Name("Assign")                               \
+                          .Device(DEVICE_SYCL)                         \
+                          .TypeConstraint<type>("T"),                  \
+                          AssignOpT<SYCLDevice, type>);                \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("AssignAdd").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      DenseUpdateOp<SYCLDevice, type, DenseUpdateType::ADD>);          \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("AssignSub").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      DenseUpdateOp<SYCLDevice, type, DenseUpdateType::SUB>);
+
+REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
+#undef REGISTER_SYCL_KERNEL
+#endif
 
 #if GOOGLE_CUDA
 // Only register 'Assign' on GPU for the subset of types also supported by

@@ -27,7 +27,9 @@ class AuthProvider {
  public:
   virtual ~AuthProvider() {}
 
-  /// Returns the short-term authentication bearer token.
+  /// \brief Returns the short-term authentication bearer token.
+  ///
+  /// Safe for concurrent use by multiple threads.
   virtual Status GetToken(string* t) = 0;
 
   static Status GetToken(AuthProvider* provider, string* token) {

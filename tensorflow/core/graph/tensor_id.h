@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -33,7 +34,10 @@ struct TensorId : public std::pair<StringPiece, int> {
   // Inherit the set of constructors.
   using Base::pair;
 
-  string ToString() const { return strings::StrCat(first, ":", second); }
+  string ToString() const {
+    if (second == Graph::kControlSlot) return strings::StrCat("^", first);
+    return strings::StrCat(first, ":", second);
+  }
 
   struct Hasher {
    public:

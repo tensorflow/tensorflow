@@ -22,7 +22,7 @@ limitations under the License.
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/cloud/base64.h"
+#include "tensorflow/core/lib/strings/base64.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -30,7 +30,7 @@ namespace tensorflow {
 
 namespace {
 
-// The requested lifetime of a auth bearer token.
+// The requested lifetime of an auth bearer token.
 constexpr int kRequestedTokenLifetimeSec = 3600;
 
 // The crypto algorithm to be used with OAuth.
@@ -43,7 +43,8 @@ constexpr char kJwtType[] = "JWT";
 constexpr char kGrantType[] =
     "urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer";
 
-Status ReadJsonValue(Json::Value json, const string& name, Json::Value* value) {
+Status ReadJsonValue(const Json::Value& json, const string& name,
+                     Json::Value* value) {
   if (!value) {
     return errors::FailedPrecondition("'value' cannot be nullptr.");
   }
@@ -55,7 +56,8 @@ Status ReadJsonValue(Json::Value json, const string& name, Json::Value* value) {
   return Status::OK();
 }
 
-Status ReadJsonString(Json::Value json, const string& name, string* value) {
+Status ReadJsonString(const Json::Value& json, const string& name,
+                      string* value) {
   Json::Value json_value;
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isString()) {
@@ -66,7 +68,7 @@ Status ReadJsonString(Json::Value json, const string& name, string* value) {
   return Status::OK();
 }
 
-Status ReadJsonInt(Json::Value json, const string& name, int64* value) {
+Status ReadJsonInt(const Json::Value& json, const string& name, int64* value) {
   Json::Value json_value;
   TF_RETURN_IF_ERROR(ReadJsonValue(json, name, &json_value));
   if (!json_value.isIntegral()) {
@@ -208,16 +210,16 @@ Status OAuthClient::GetTokenFromServiceAccountJson(
 
   // Send the request to the Google OAuth 2.0 server to get the token.
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  std::unique_ptr<char[]> response_buffer(new char[kResponseBufferSize]);
-  StringPiece response;
+  std::vector<char> response_buffer;
   TF_RETURN_IF_ERROR(request->Init());
   TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
   TF_RETURN_IF_ERROR(
-      request->SetPostRequest(request_body.c_str(), request_body.size()));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(response_buffer.get(),
-                                              kResponseBufferSize, &response));
+      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
+  TF_RETURN_IF_ERROR(request->SetResultBuffer(&response_buffer));
   TF_RETURN_IF_ERROR(request->Send());
 
+  StringPiece response =
+      StringPiece(response_buffer.data(), response_buffer.size());
   TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
                                         expiration_timestamp_sec));
   return Status::OK();
@@ -242,16 +244,16 @@ Status OAuthClient::GetTokenFromRefreshTokenJson(
   const uint64 request_timestamp_sec = env_->NowSeconds();
 
   std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
-  std::unique_ptr<char[]> response_buffer(new char[kResponseBufferSize]);
-  StringPiece response;
+  std::vector<char> response_buffer;
   TF_RETURN_IF_ERROR(request->Init());
   TF_RETURN_IF_ERROR(request->SetUri(oauth_server_uri.ToString()));
   TF_RETURN_IF_ERROR(
-      request->SetPostRequest(request_body.c_str(), request_body.size()));
-  TF_RETURN_IF_ERROR(request->SetResultBuffer(response_buffer.get(),
-                                              kResponseBufferSize, &response));
+      request->SetPostFromBuffer(request_body.c_str(), request_body.size()));
+  TF_RETURN_IF_ERROR(request->SetResultBuffer(&response_buffer));
   TF_RETURN_IF_ERROR(request->Send());
 
+  StringPiece response =
+      StringPiece(response_buffer.data(), response_buffer.size());
   TF_RETURN_IF_ERROR(ParseOAuthResponse(response, request_timestamp_sec, token,
                                         expiration_timestamp_sec));
   return Status::OK();

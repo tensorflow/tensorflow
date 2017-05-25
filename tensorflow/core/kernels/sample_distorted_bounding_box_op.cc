@@ -24,6 +24,7 @@ limitations under the License.
 
 using tensorflow::random::SimplePhilox;
 
+namespace tensorflow {
 namespace {
 
 // A simple Rectangle class that supplies intersection.
@@ -190,7 +191,6 @@ bool GenerateRandomCrop(int original_width, int original_height,
 }
 }  // namespace
 
-namespace tensorflow {
 template <typename T>
 class SampleDistortedBoundingBoxOp : public OpKernel {
  public:
@@ -201,7 +201,7 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
     OP_REQUIRES_OK(
         context, context->GetAttr("min_object_covered", &min_object_covered_));
     OP_REQUIRES(
-        context, min_object_covered_ > 0,
+        context, min_object_covered_ >= 0,
         errors::InvalidArgument("Min object covered must be non-negative: ",
                                 min_object_covered_));
 

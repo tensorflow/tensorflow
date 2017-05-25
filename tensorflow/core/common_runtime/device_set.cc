@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 
@@ -52,28 +53,28 @@ Device* DeviceSet::FindDeviceByName(const string& name) const {
 
 // static
 int DeviceSet::DeviceTypeOrder(const DeviceType& d) {
-  if (StringPiece(d.type()) == DEVICE_CPU) {
-    return 3;
-  } else if (StringPiece(d.type()) == DEVICE_GPU) {
-    return 2;
-  } else {
-    return 1;
-  }
+  return DeviceFactory::DevicePriority(d.type());
 }
 
 static bool DeviceTypeComparator(const DeviceType& a, const DeviceType& b) {
-  // Order by "order number"; break ties lexicographically.
-  return std::make_pair(DeviceSet::DeviceTypeOrder(a), StringPiece(a.type())) <
-         std::make_pair(DeviceSet::DeviceTypeOrder(b), StringPiece(b.type()));
+  // First sort by prioritized device type (higher is preferred) and
+  // then by device name (lexicographically).
+  auto a_priority = DeviceSet::DeviceTypeOrder(a);
+  auto b_priority = DeviceSet::DeviceTypeOrder(b);
+  if (a_priority != b_priority) {
+    return a_priority > b_priority;
+  }
+
+  return StringPiece(a.type()) < StringPiece(b.type());
 }
 
 std::vector<DeviceType> DeviceSet::PrioritizedDeviceTypeList() const {
   std::vector<DeviceType> result;
   std::set<string> seen;
   for (Device* d : devices_) {
-    auto t = d->device_type();
+    const auto& t = d->device_type();
     if (seen.insert(t).second) {
-      result.emplace_back(DeviceType(t));
+      result.emplace_back(t);
     }
   }
   std::sort(result.begin(), result.end(), DeviceTypeComparator);

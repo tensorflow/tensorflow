@@ -18,13 +18,13 @@ limitations under the License.
 
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
-#define TF_MAJOR_VERSION 0
-#define TF_MINOR_VERSION 8
+#define TF_MAJOR_VERSION 1
+#define TF_MINOR_VERSION 2
 #define TF_PATCH_VERSION 0
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
 // "-beta", "-rc", "-rc.1")
-#define TF_VERSION_SUFFIX ""
+#define TF_VERSION_SUFFIX "-rc0"
 
 #define TF_STR_HELPER(x) #x
 #define TF_STR(x) TF_STR_HELPER(x)
@@ -64,9 +64,34 @@ limitations under the License.
 // 8. Replace RandomCrop from C++ with pure Python (5feb2016).
 // 9. Deprecate batch_norm_with_global_normalization (16feb2016).
 // 10. Deprecate conv3d_backprop_{filter,input} (10jun2016).
+// 11. Deprecate {batch}_self_adjoint_eig (3aug2016).
+// 12. Graph consumers understand the node_def field of FunctionDef (22aug2016).
+// 13. Deprecate multiple batch linear algebra ops (9sep2016).
+// 14. Deprecate batch_matrix_* ops. (10sep2016).
+// 15. Deprecate batch_fft_* ops. (14sep2016).
+// 16. Deprecate tensor_array (v1) ops in favor of v2 (10nov2016).
+// 17. Deprecate inv (11nov2016).
+// 17. Expose reverse_v2 (10nov2016)
+// 18. Add VariableV2 (30nov2016)
+// 19. Deprecated ops created by models moved out of core SkipGram, NegTrain.
+//     (08dec2016)
+// 20. Catch all version 1.0 changes to Python API generation. SplitV is now
+//     used for tf.split, ReverseV2 is now used by tf.reverse, ConcatV2 is
+//     now used by tf.concat. Graphs use flooring
+//     division and mod semantics. TensorArrayV3. (12dec2016)
+//     Also considered the version for when it is required for reduction
+//     ops' indices to be scalar or vector, and not higher rank.
+//     Some earlier graph def versions allowed this.
+// 21. Dropped FunctionDef.Node support, switched to node_def introduced
+//     in version 12. (11jan2017)
+// 22. Placeholder now can specify and enforce scalar and partial
+//     shapes, particularly when restoring a graph from GraphDef
+//     produced at version 22 or later.  (04/10/2016)
+// 23. Remove NonMaxSuppression in favor of NonMaxSuppressionV2.
+
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 10
+#define TF_GRAPH_DEF_VERSION 23
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //
@@ -81,5 +106,13 @@ limitations under the License.
 #define TF_CHECKPOINT_VERSION_MIN_PRODUCER 0
 #define TF_CHECKPOINT_VERSION_MIN_CONSUMER 0
 #define TF_CHECKPOINT_VERSION 1
+
+/// Version query functions (defined in generated version_info.cc)
+
+// Host compiler version (declared elsewhere to be __VERSION__)
+extern const char* tf_compiler_version();
+// The git commit designator when tensorflow was built
+// If no git repository, this will be "internal".
+extern const char* tf_git_version();
 
 #endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_

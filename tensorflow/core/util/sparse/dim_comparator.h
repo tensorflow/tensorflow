@@ -46,14 +46,14 @@ class DimComparator {
  public:
   typedef typename gtl::ArraySlice<int64> VarDimArray;
 
-  inline DimComparator(const TTypes<int64>::Matrix& ix,
-                       const VarDimArray& order, int dims)
-      : ix_(ix), order_(order), dims_(dims) {
+  DimComparator(const TTypes<int64>::Matrix& ix, const VarDimArray& order,
+                const TensorShape& shape)
+      : ix_(ix), order_(order), dims_(shape.dims()) {
     CHECK_GT(order.size(), size_t{0}) << "Must order using at least one index";
-    CHECK_LE(order.size(), dims_) << "Can only sort up to dims";
+    CHECK_LE(order.size(), shape.dims()) << "Can only sort up to dims";
     for (size_t d = 0; d < order.size(); ++d) {
       CHECK_GE(order[d], 0);
-      CHECK_LT(order[d], dims);
+      CHECK_LT(order[d], shape.dims());
     }
   }
 
@@ -84,9 +84,33 @@ class DimComparator {
     return 0;
   }
 
+ protected:
   const TTypes<int64>::Matrix ix_;
   const VarDimArray order_;
   const int dims_;
+  const std::vector<int64>* ix_order_;
+};
+
+template <int ORDER_DIM>
+class FixedDimComparator : DimComparator {
+ public:
+  FixedDimComparator(const TTypes<int64>::Matrix& ix, const VarDimArray& order,
+                     const TensorShape& shape)
+      : DimComparator(ix, order, shape) {
+    CHECK_EQ(order.size(), ORDER_DIM);
+  }
+  inline bool operator()(const int64 i, const int64 j) const {
+    bool value = false;
+    for (int di = 0; di < ORDER_DIM; ++di) {
+      const int64 d = order_[di];
+      if (ix_(i, d) < ix_(j, d)) {
+        value = true;
+        break;
+      }
+      if (ix_(i, d) > ix_(j, d)) break;
+    }
+    return value;
+  }
 };
 
 }  // namespace sparse

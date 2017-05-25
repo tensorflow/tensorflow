@@ -17,14 +17,17 @@ limitations under the License.
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_BASE_RENDEZVOUS_MGR_H_
 
 #include <string>
-#include <unordered_map>
 #include <unordered_set>
 
 #include "tensorflow/core/distributed_runtime/rendezvous_mgr_interface.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/control_flow.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -57,23 +60,27 @@ class BaseRecvTensorCall;
 class BaseRendezvousMgr : public RendezvousMgrInterface {
  public:
   explicit BaseRendezvousMgr(const WorkerEnv* worker_env);
+
   ~BaseRendezvousMgr() override;
 
   // Returns Rendezvous supporting send and recv among workers in the
   // "step_id".  The caller takes ownership of one reference on the
   // returned Rendezvous instance.
-  Rendezvous* Find(int64 step_id) override;
+  //
+  // Note: the caller must guarantee to eventually call Initialize on the
+  // returned RemoteRendezvous
+  RemoteRendezvous* Find(int64 step_id) override;
 
   // Finds the local rendezvous instance for the "step_id".  Runs
   // "done" when the tensor for "key" is produced or an error occurs.
   //
   // This method is used by the rpc handler of RecvTensor.
-  void RecvLocalAsync(int64 step_id, const string& key,
+  void RecvLocalAsync(int64 step_id, const Rendezvous::ParsedKey& parsed,
                       Rendezvous::DoneCallback done) override;
 
   // Synchronous wrapper for RecvLocalAsync.
-  Status RecvLocal(int64 step_id, const string& key, Tensor* val,
-                   bool* is_dead) override;
+  Status RecvLocal(int64 step_id, const Rendezvous::ParsedKey& parsed,
+                   Tensor* val, bool* is_dead) override;
 
   // Removes rendezvous for "step_id".
   //
@@ -90,7 +97,7 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
 
  private:
   // Maps step_id to rendezvous.
-  typedef std::unordered_map<int64, BaseRemoteRendezvous*> Table;
+  typedef gtl::FlatMap<int64, BaseRemoteRendezvous*> Table;
 
   // Not owned.
   const WorkerEnv* const worker_env_;
@@ -109,21 +116,24 @@ class BaseRendezvousMgr : public RendezvousMgrInterface {
 // Buffering of Tensor values is delegated to a "local" Rendezvous
 // obtained from NewLocalRendezvous().  This class just adds
 // functionality to coordinate with remote workers.
-class BaseRemoteRendezvous : public Rendezvous {
+class BaseRemoteRendezvous : public RemoteRendezvous {
  public:
   BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id,
                        bool tolerate_dup_recv);
 
+  // Upgrades the BaseRemoteRendezvous to full initialization.
+  Status Initialize(WorkerSession* session) override;
+
   // Forwards to local_, where the Tensor "val" will be buffered and
   // any waiting callback stored.
-  Status Send(const string& key, const Rendezvous::Args& args,
+  Status Send(const ParsedKey& key, const Rendezvous::Args& args,
               const Tensor& val, const bool is_dead) override;
 
   // This method is called only by the RecvOp.  It tests to see
   // whether the value will be produced by a local or remote device
   // and handles accordingly.  In the local case it forwards to
   // local_, in the remote case it initiates an RPC request.
-  void RecvAsync(const string& key, const Rendezvous::Args& args,
+  void RecvAsync(const ParsedKey& key, const Rendezvous::Args& args,
                  DoneCallback done) override;
 
   void StartAbort(const Status& status) override;
@@ -134,15 +144,14 @@ class BaseRemoteRendezvous : public Rendezvous {
   // network.  In either case it needs to retrieve a locally buffered
   // value from local_, and give it to its caller.
   //
-  // Runs "done" as soon as the tensor for "key" is available or an error
+  // Runs "done" as soon as the tensor for "parsed" is available or an error
   // is detected.
   //
-  // REQUIRES: "key" is one that will be Saved into the local rendezvous.
-  void RecvLocalAsync(const string& key, DoneCallback done);
+  // REQUIRES: "parsed" is one that will be Saved into the local rendezvous.
+  void RecvLocalAsync(const ParsedKey& parsed, DoneCallback done);
 
  protected:
-  virtual void RecvFromRemoteAsync(const string& key,
-                                   const Rendezvous::ParsedKey& parsed,
+  virtual void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
                                    const Rendezvous::Args& args,
                                    DoneCallback done) = 0;
 
@@ -157,28 +166,44 @@ class BaseRemoteRendezvous : public Rendezvous {
   // Removes "call" from active_ if "call" is in active_.
   void DeregisterCall(BaseRecvTensorCall* call);
 
+  WorkerSession* session();
+
+  bool is_initialized();
+
   ~BaseRemoteRendezvous() override;
 
   const WorkerEnv* const env_;  // Not owned.
   const int64 step_id_;
 
  private:
-  const bool tolerate_dup_recv_;
   Rendezvous* local_;  // Owns a Ref on this object.
 
   mutable mutex mu_;
 
   // Status given by StartAbort() if any.
   Status status_ GUARDED_BY(mu_);
+  WorkerSession* session_ GUARDED_BY(mu_);  // Not owned.
+
+  // Data structures to handle calls when partially initialized.
+  struct DeferredCall {
+    const ParsedKey parsed;
+    DoneCallback done;
+
+    DeferredCall(const ParsedKey& parsed, DoneCallback done);
+  };
+  std::vector<DeferredCall> deferred_calls_ GUARDED_BY(mu_);
 
   // Active outstanding RecvTensor calls.
-  std::unordered_set<BaseRecvTensorCall*> active_ GUARDED_BY(mu_);
+  gtl::FlatSet<BaseRecvTensorCall*> active_ GUARDED_BY(mu_);
 
-  // Parses "key" into "parsed". If "is_src" is true, checks that the
-  // rendezvous key's source is in this process. If "is_src" is false,
-  // checks that the rendezvous key's destination is in this process.
-  Status ParseKey(const string& key, bool is_src,
-                  Rendezvous::ParsedKey* parsed);
+  bool is_initialized_locked() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    return session_ != nullptr;
+  }
+
+  // If "is_src" is true, checks that the rendezvous key "parsed"'s
+  // source is in this process. If "is_src" is false, checks that the
+  // rendezvous key "parsed"'s destination is in this process.
+  Status ValidateDevices(const Rendezvous::ParsedKey& parsed, bool is_src);
 
   // Callback handling the case when a rendezvous has been
   // accomplished in local_ and the consumer is local to this process.
@@ -188,6 +213,9 @@ class BaseRemoteRendezvous : public Rendezvous {
                           const Rendezvous::Args& in_args,
                           const Rendezvous::Args& out_args, const Tensor& in,
                           Tensor* out, StatusCallback done);
+
+  // Must be called only if fully initialized.
+  void RecvLocalAsyncInternal(const ParsedKey& parsed, DoneCallback done);
 
   TF_DISALLOW_COPY_AND_ASSIGN(BaseRemoteRendezvous);
 };

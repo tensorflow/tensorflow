@@ -19,10 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn.ops import array_ops
+from tensorflow.contrib import rnn
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops as array_ops_
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
@@ -42,11 +42,11 @@ def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):
   Returns:
     Predictions and losses tensors.
   """
-  with ops.op_scope([decoding, labels], name, "sequence_classifier"):
+  with ops.name_scope(name, "sequence_classifier", [decoding, labels]):
     predictions, xent_list = [], []
     for i, pred in enumerate(decoding):
       xent_list.append(nn.softmax_cross_entropy_with_logits(
-          pred, labels[i],
+          labels=labels[i], logits=pred,
           name="sequence_loss/xent_raw{0}".format(i)))
       if sampling_decoding:
         predictions.append(nn.softmax(sampling_decoding[i]))
@@ -54,7 +54,7 @@ def sequence_classifier(decoding, labels, sampling_decoding=None, name=None):
         predictions.append(nn.softmax(pred))
     xent = math_ops.add_n(xent_list, name="sequence_loss/xent")
     loss = math_ops.reduce_sum(xent, name="sequence_loss")
-    return array_ops.expand_concat(1, predictions), loss
+    return array_ops.stack(predictions, axis=1), loss
 
 
 def seq2seq_inputs(x, y, input_length, output_length, sentinel=None, name=None):
@@ -73,14 +73,14 @@ def seq2seq_inputs(x, y, input_length, output_length, sentinel=None, name=None):
   Returns:
     Encoder input from x, and decoder inputs and outputs from y.
   """
-  with ops.op_scope([x, y], name, "seq2seq_inputs"):
-    in_x = array_ops.split_squeeze(1, input_length, x)
-    y = array_ops.split_squeeze(1, output_length, y)
+  with ops.name_scope(name, "seq2seq_inputs", [x, y]):
+    in_x = array_ops.unstack(x, axis=1)
+    y = array_ops.unstack(y, axis=1)
     if not sentinel:
       # Set to zeros of shape of y[0], using x for batch size.
-      sentinel_shape = array_ops_.pack(
-          [array_ops_.shape(x)[0], y[0].get_shape()[1]])
-      sentinel = array_ops_.zeros(sentinel_shape)
+      sentinel_shape = array_ops.stack(
+          [array_ops.shape(x)[0], y[0].get_shape()[1]])
+      sentinel = array_ops.zeros(sentinel_shape)
       sentinel.set_shape(y[0].get_shape())
     in_y = [sentinel] + y
     out_y = y + [sentinel]
@@ -103,14 +103,14 @@ def rnn_decoder(decoder_inputs, initial_state, cell, scope=None):
   with vs.variable_scope(scope or "dnn_decoder"):
     states, sampling_states = [initial_state], [initial_state]
     outputs, sampling_outputs = [], []
-    with ops.op_scope([decoder_inputs, initial_state], "training"):
+    with ops.name_scope("training", values=[decoder_inputs, initial_state]):
       for i, inp in enumerate(decoder_inputs):
         if i > 0:
           vs.get_variable_scope().reuse_variables()
         output, new_state = cell(inp, states[-1])
         outputs.append(output)
         states.append(new_state)
-    with ops.op_scope([initial_state], "sampling"):
+    with ops.name_scope("sampling", values=[initial_state]):
       for i, _ in enumerate(decoder_inputs):
         if i == 0:
           sampling_outputs.append(outputs[i])
@@ -140,9 +140,10 @@ def rnn_seq2seq(encoder_inputs,
     scope: Scope to use, if None new will be produced.
 
   Returns:
-    List of tensors for outputs and states for trianing and sampling sub-graphs.
+    List of tensors for outputs and states for training and sampling sub-graphs.
   """
   with vs.variable_scope(scope or "rnn_seq2seq"):
-    _, last_enc_state = nn.rnn(encoder_cell, encoder_inputs, dtype=dtype)
+    _, last_enc_state = rnn.static_rnn(
+        encoder_cell, encoder_inputs, dtype=dtype)
     return rnn_decoder(decoder_inputs, last_enc_state, decoder_cell or
                        encoder_cell)

@@ -53,14 +53,24 @@ class MemmappedFileSystem : public FileSystem {
  public:
   // Memmapped regions use this prefix to distinguish from
   // the filesystem.
-  static constexpr char kMemmappedPackagePrefix[] = "memmapped_package://";
-  // The default graphdef in the package.
+#if defined(COMPILER_MSVC)
+  static constexpr char* kMemmappedPackagePrefix =
+#else
+  static constexpr char kMemmappedPackagePrefix[] =
+#endif
+      "memmapped_package://";
+
+// The default graphdef in the package.
+#if defined(COMPILER_MSVC)
+  static constexpr char* kMemmappedPackageDefaultGraphDef =
+#else
   static constexpr char kMemmappedPackageDefaultGraphDef[] =
+#endif
       "memmapped_package://.";
 
   MemmappedFileSystem();
   ~MemmappedFileSystem() override = default;
-  bool FileExists(const string& fname) override;
+  Status FileExists(const string& fname) override;
   Status NewRandomAccessFile(
       const string& filename,
       std::unique_ptr<RandomAccessFile>* result) override;
@@ -78,8 +88,12 @@ class MemmappedFileSystem : public FileSystem {
   Status DeleteFile(const string& f) override;
   Status CreateDir(const string& d) override;
   Status DeleteDir(const string& d) override;
-  Status GetFileSize(const string& f, uint64* s) override;
   Status RenameFile(const string& s, const string& t) override;
+
+  // These functions are implemented.
+  Status GetFileSize(const string& f, uint64* s) override;
+  // Currently just returns size.
+  Status Stat(const string& fname, FileStatistics* stat) override;
 
   // Initializes filesystem from a file in memmapped format.
   Status InitializeFromFile(Env* env, const string& filename);

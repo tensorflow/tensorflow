@@ -42,7 +42,8 @@ class _BaseEstimator(object):
 
     Args:
       deep: boolean, optional
-        If True, will return the parameters for this estimator and
+
+        If `True`, will return the parameters for this estimator and
         contained subobjects that are estimators.
 
     Returns:
@@ -209,4 +210,3 @@ else:
   log_loss = None
   mean_squared_error = _mean_squared_error
   train_test_split = _train_test_split
-

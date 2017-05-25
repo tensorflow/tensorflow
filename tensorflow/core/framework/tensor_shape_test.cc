@@ -83,8 +83,8 @@ TEST(TensorShapeTest, InvalidShapeProto) {
   EXPECT_FALSE(TensorShape::IsValid(proto));
 
   proto.Clear();
-  proto.add_dim()->set_size(1LL << 20);
-  proto.add_dim()->set_size((1LL << 20) + 1);
+  proto.add_dim()->set_size(1LL << 35);
+  proto.add_dim()->set_size((1LL << 35) + 1);
   EXPECT_FALSE(TensorShape::IsValid(proto));
 }
 
@@ -514,6 +514,94 @@ TEST(TensorShapeTest, Randomized) {
       sold = TensorShapeOld(sizes);
     }
   }
+}
+
+TEST(TensorShapeTest, Large) {
+  // We used to cap shapes at 2**40 elements.  Ensure the
+  // bound is now higher.
+  int64 one = 1;
+  int64 max = std::numeric_limits<int64>::max();
+  EXPECT_EQ(TensorShape({max}).num_elements(), max);
+  EXPECT_EQ(TensorShape({1, max}).num_elements(), max);
+  EXPECT_EQ(TensorShape({max, 1}).num_elements(), max);
+  EXPECT_EQ(TensorShape({one << 62}).num_elements(), one << 62);
+  EXPECT_EQ(TensorShape({one << 20, one << 41}).num_elements(), one << 61);
+  EXPECT_EQ(TensorShape({1000, 1000, 1000, 1000, 1000, 1000}).num_elements(),
+            1e18);
+}
+
+TEST(TensorShapeTest, Overflow) {
+  int64 one = 1;
+  std::vector<std::vector<int64>> overflows = {
+      {1 << 30, 1 << 30, 1 << 30}, {1 << 5, (one << 60) + 1},
+  };
+  for (const auto& overflow : overflows) {
+    TensorShapeProto proto;
+    for (auto dim : overflow) {
+      proto.add_dim()->set_size(dim);
+    }
+    EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT,
+              TensorShape::IsValidShape(proto).code());
+    TensorShape shape;
+    EXPECT_EQ(tensorflow::error::INVALID_ARGUMENT,
+              TensorShapeUtils::MakeShape(overflow, &shape).code());
+  }
+}
+
+TEST(TensorShapeTest, UnknownRank) {
+  // NOTE(irving): Unfortunately, for historical reasons we have to allow an
+  // TensorShapeProto with unknown_rank() set to be parsed as a TensorShape.
+  // Would be nice to tighten this, but it's tricky given backwards
+  // compatibility requirements.
+  TensorShapeProto proto;
+  proto.set_unknown_rank(true);
+  EXPECT_TRUE(TensorShape::IsValid(proto));
+  TF_EXPECT_OK(TensorShape::IsValidShape(proto));
+  EXPECT_EQ(TensorShape(), TensorShape(proto));
+
+  proto.add_dim()->set_size(7);
+  EXPECT_TRUE(TensorShape::IsValid(proto));
+  TF_EXPECT_OK(TensorShape::IsValidShape(proto));
+  EXPECT_EQ(TensorShape({7}), TensorShape(proto));
+}
+
+TEST(TensorShapeUtilsTest, StartsWith) {
+  EXPECT_TRUE(TensorShapeUtils::StartsWith(TensorShape({}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2})));
+  EXPECT_TRUE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2, 3})));
+  EXPECT_TRUE(TensorShapeUtils::StartsWith(TensorShape({2, 3, 4}),
+                                           TensorShape({2, 3})));
+  EXPECT_FALSE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({3})));
+  EXPECT_FALSE(
+      TensorShapeUtils::StartsWith(TensorShape({2, 3}), TensorShape({2, 4})));
+  EXPECT_FALSE(TensorShapeUtils::StartsWith(TensorShape({2, 3}),
+                                            TensorShape({2, 3, 4})));
+  EXPECT_FALSE(TensorShapeUtils::StartsWith(TensorShape({2, 3, 4}),
+                                            TensorShape({3, 4})));
+}
+
+TEST(TensorShapeUtilsTest, EndsWith) {
+  EXPECT_TRUE(TensorShapeUtils::EndsWith(TensorShape({}), TensorShape({})));
+  EXPECT_TRUE(TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({3})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 3})));
+  EXPECT_TRUE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3, 4}), TensorShape({3, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3}), TensorShape({2, 3, 4})));
+  EXPECT_FALSE(
+      TensorShapeUtils::EndsWith(TensorShape({2, 3, 4}), TensorShape({2, 3})));
 }
 
 // A few different test cases for tensor sizes for benchmarks

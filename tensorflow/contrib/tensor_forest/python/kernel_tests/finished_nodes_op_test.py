@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import tensorflow  # pylint: disable=unused-import
 
-from tensorflow.contrib.tensor_forest.python.ops import training_ops
+from tensorflow.contrib.tensor_forest.python.ops import tensor_forest_ops
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -30,35 +30,156 @@ class FinishedNodesTest(test_util.TensorFlowTestCase):
   def setUp(self):
     self.leaves = [1, 3, 4]
     self.node_map = [-1, -1, -1, 0, 1, -1]
-    self.pcw_total_splits = [[6, 3, 3], [11, 4, 7], [0, 0, 0], [0, 0, 0],
+    self.split_sums = [
+        # Accumulator 0
+        [[3, 0, 3], [2, 1, 1], [3, 1, 2]],
+        # Accumulator 1
+        [[6, 3, 3], [6, 2, 4], [5, 0, 5]],
+        # Accumulator 2
+        [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+        # Accumulator 3
+        [[0, 0, 0], [0, 0, 0], [0, 0, 0]],
+        # Accumulator 4
+        [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    ]
+    self.split_squares = []
+    self.accumulator_sums = [[6, 3, 3], [11, 4, 7], [0, 0, 0], [0, 0, 0],
                              [0, 0, 0]]
-    self.ops = training_ops.Load()
+    self.accumulator_squares = []
+    self.birth_epochs = [0, 0, 0, 1, 1, 1]
+    self.current_epoch = [1]
 
   def testSimple(self):
     with self.test_session():
-      finished = self.ops.finished_nodes(self.leaves, self.node_map,
-                                         self.pcw_total_splits,
-                                         num_split_after_samples=10)
+      finished, stale = tensor_forest_ops.finished_nodes(
+          self.leaves,
+          self.node_map,
+          self.split_sums,
+          self.split_squares,
+          self.accumulator_sums,
+          self.accumulator_squares,
+          self.birth_epochs,
+          self.current_epoch,
+          regression=False,
+          num_split_after_samples=10,
+          min_split_samples=10)
 
       self.assertAllEqual([4], finished.eval())
+      self.assertAllEqual([], stale.eval())
+
+  def testLeavesCanBeNegativeOne(self):
+    with self.test_session():
+      finished, stale = tensor_forest_ops.finished_nodes(
+          [-1, -1, 1, -1, 3, -1, -1, 4, -1, -1, -1],
+          self.node_map,
+          self.split_sums,
+          self.split_squares,
+          self.accumulator_sums,
+          self.accumulator_squares,
+          self.birth_epochs,
+          self.current_epoch,
+          regression=False,
+          num_split_after_samples=10,
+          min_split_samples=10)
+
+      self.assertAllEqual([4], finished.eval())
+      self.assertAllEqual([], stale.eval())
 
   def testNoAccumulators(self):
     with self.test_session():
-      finished = self.ops.finished_nodes(self.leaves, [-1] * 6,
-                                         self.pcw_total_splits,
-                                         num_split_after_samples=10)
+      finished, stale = tensor_forest_ops.finished_nodes(
+          self.leaves, [-1] * 6,
+          self.split_sums,
+          self.split_squares,
+          self.accumulator_sums,
+          self.accumulator_squares,
+          self.birth_epochs,
+          self.current_epoch,
+          regression=False,
+          num_split_after_samples=10,
+          min_split_samples=10)
 
       self.assertAllEqual([], finished.eval())
+      self.assertAllEqual([], stale.eval())
 
   def testBadInput(self):
     with self.test_session():
       with self.assertRaisesOpError(
           'leaf_tensor should be one-dimensional'):
-        finished = self.ops.finished_nodes([self.leaves], self.node_map,
-                                           self.pcw_total_splits,
-                                           num_split_after_samples=10)
+        finished, stale = tensor_forest_ops.finished_nodes(
+            [self.leaves],
+            self.node_map,
+            self.split_sums,
+            self.split_squares,
+            self.accumulator_sums,
+            self.accumulator_squares,
+            self.birth_epochs,
+            self.current_epoch,
+            regression=False,
+            num_split_after_samples=10,
+            min_split_samples=10)
 
         self.assertAllEqual([], finished.eval())
+        self.assertAllEqual([], stale.eval())
+
+  def testEarlyDominatesHoeffding(self):
+    with self.test_session():
+      finished, stale = tensor_forest_ops.finished_nodes(
+          self.leaves,
+          self.node_map,
+          self.split_sums,
+          self.split_squares,
+          self.accumulator_sums,
+          self.accumulator_squares,
+          self.birth_epochs,
+          self.current_epoch,
+          dominate_method='hoeffding',
+          regression=False,
+          num_split_after_samples=10,
+          min_split_samples=5)
+
+      self.assertAllEqual([4], finished.eval())
+      self.assertAllEqual([], stale.eval())
+
+  def testEarlyDominatesBootstrap(self):
+    with self.test_session():
+      finished, stale = tensor_forest_ops.finished_nodes(
+          self.leaves,
+          self.node_map,
+          self.split_sums,
+          self.split_squares,
+          self.accumulator_sums,
+          self.accumulator_squares,
+          self.birth_epochs,
+          self.current_epoch,
+          dominate_method='bootstrap',
+          regression=False,
+          num_split_after_samples=10,
+          min_split_samples=5,
+          random_seed=1)
+
+      self.assertAllEqual([4], finished.eval())
+      self.assertAllEqual([], stale.eval())
+
+  def testEarlyDominatesChebyshev(self):
+    with self.test_session():
+      finished, stale = tensor_forest_ops.finished_nodes(
+          self.leaves,
+          self.node_map,
+          self.split_sums,
+          self.split_squares,
+          self.accumulator_sums,
+          self.accumulator_squares,
+          self.birth_epochs,
+          self.current_epoch,
+          dominate_method='chebyshev',
+          regression=False,
+          num_split_after_samples=10,
+          min_split_samples=5)
+
+      self.assertAllEqual([4], finished.eval())
+      self.assertAllEqual([], stale.eval())
+
 
 if __name__ == '__main__':
   googletest.main()

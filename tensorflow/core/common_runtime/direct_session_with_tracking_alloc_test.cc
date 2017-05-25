@@ -45,8 +45,6 @@ namespace tensorflow {
 namespace {
 
 TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
-  EnableCPUAllocatorFullStats(true);
-
   Graph graph(OpRegistry::Global());
 
   Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
@@ -71,7 +69,7 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
 
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;
-  options.config.mutable_graph_options()->set_build_cost_model(true);
+  options.config.mutable_graph_options()->set_build_cost_model(1);
   std::unique_ptr<Session> session(NewSession(options));
   TF_ASSERT_OK(session->Create(def));
   std::vector<std::pair<string, Tensor>> inputs;
@@ -93,12 +91,17 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
     const Graph* g = (it).first;
     const CostModel* cm = (it).second;
     for (Node* node : g->nodes()) {
-      if (node->name() == y->name()) {
+      if (node->name() == y->name() || node->name() == y_neg->name()) {
         EXPECT_LE(8, cm->MaxMemorySize(node, 0));
-        EXPECT_EQ(5, cm->AllocationId(node, 0));
-      } else if (node->name() == y_neg->name()) {
-        EXPECT_LE(8, cm->MaxMemorySize(node, 0));
-        EXPECT_EQ(7, cm->AllocationId(node, 0));
+        TensorShapeProto shape = cm->MaxMemoryShape(node, 0);
+        EXPECT_EQ(2, shape.dim_size());
+        EXPECT_EQ(2, shape.dim(0).size());
+        EXPECT_EQ(1, shape.dim(1).size());
+        if (node->name() == y->name()) {
+          EXPECT_EQ(3, cm->AllocationId(node, 0));
+        } else {
+          EXPECT_EQ(4, cm->AllocationId(node, 0));
+        }
       }
       EXPECT_LE(0, cm->MaxExecutionTime(node));
       EXPECT_GE(run_duration_micros, cm->MaxExecutionTime(node));
@@ -107,6 +110,181 @@ TEST(DirectSessionWithTrackingAllocTest, CostModelTest) {
   }
   // We should have 2 cost models since we have 2 cpu devices.
   ASSERT_EQ(2, graph_cnt);
+}
+
+TEST(DirectSessionWithTrackingAllocTest, CostModelWarmup) {
+  Graph g(OpRegistry::Global());
+  Tensor vx(DT_FLOAT, TensorShape({}));
+  vx.scalar<float>()() = 1.0;
+  Node* x = test::graph::Constant(&g, vx);
+
+  int warmup_steps = 10;
+  int measure_steps = 15;
+  SessionOptions options;
+  options.config.mutable_graph_options()->set_build_cost_model(1);
+  options.config.mutable_graph_options()->set_build_cost_model_after(
+      warmup_steps);
+  std::unique_ptr<Session> session(NewSession(options));
+
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+  TF_ASSERT_OK(session->Create(def));
+  std::vector<Tensor> outputs;
+
+  for (int i = 0; i < warmup_steps + measure_steps; i++) {
+    TF_EXPECT_OK(session->Run({}, {x->name() + ":0"}, {}, &outputs));
+  }
+
+  DirectSession* ds = static_cast<DirectSession*>(session.get());
+  CostModelManager::CostModelMap cost_models;
+  ds->ExportCostModels(&cost_models);
+  CHECK_EQ(cost_models.size(), 1);
+  const CostModel* cm = (*cost_models.begin()).second;
+  EXPECT_EQ(measure_steps, cm->GetUpdateTimes());
+}
+
+static void TestHWAccelerator(bool enableHWTrace) {
+  Graph graph(OpRegistry::Global());
+
+  Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
+  test::FillValues<float>(&a_tensor, {3, 2, -1, 0});
+  Node* a = test::graph::Constant(&graph, a_tensor);
+  a->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+
+  Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
+  test::FillValues<float>(&x_tensor, {1, 1});
+  Node* x = test::graph::Constant(&graph, x_tensor);
+  x->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+
+  // y = A * x
+  Node* y = test::graph::Matmul(&graph, a, x, false, false);
+  y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+
+  Node* y_neg = test::graph::Unary(&graph, "Neg", y);
+  y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+
+  GraphDef def;
+  test::graph::ToGraphDef(&graph, &def);
+
+  SessionOptions options;
+  (*options.config.mutable_device_count())["CPU"] = 1;
+  (*options.config.mutable_device_count())["GPU"] = 1;
+  options.config.set_allow_soft_placement(true);
+  options.config.mutable_graph_options()->set_build_cost_model(1);
+  std::unique_ptr<Session> session(NewSession(options));
+  TF_ASSERT_OK(session->Create(def));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y->name() + ":0"};
+  std::vector<string> target_nodes = {y_neg->name()};
+  std::vector<Tensor> outputs;
+  const int64 start_micros = Env::Default()->NowMicros();
+
+  RunOptions run_options;
+  if (enableHWTrace) {
+    run_options.set_trace_level(RunOptions::FULL_TRACE);
+  }
+  RunMetadata run_metadata;
+  Status s = session->Run(run_options, inputs, output_names, target_nodes,
+                          &outputs, &run_metadata);
+  const int64 run_duration_micros = Env::Default()->NowMicros() - start_micros;
+  TF_ASSERT_OK(s);
+
+  DirectSession* ds = static_cast<DirectSession*>(session.get());
+  int graph_cnt = 0;
+  CostModelManager::CostModelMap cost_models;
+  ds->ExportCostModels(&cost_models);
+  for (auto& it : cost_models) {
+    const Graph* g = (it).first;
+    const CostModel* cm = (it).second;
+    for (Node* node : g->nodes()) {
+      if (node->name() == y->name() || node->name() == y_neg->name()) {
+        EXPECT_LE(8, cm->MaxMemorySize(node, 0));
+        TensorShapeProto shape = cm->MaxMemoryShape(node, 0);
+        EXPECT_EQ(2, shape.dim_size());
+        EXPECT_EQ(2, shape.dim(0).size());
+        EXPECT_EQ(1, shape.dim(1).size());
+      }
+      EXPECT_LE(0, cm->MaxExecutionTime(node));
+      EXPECT_GE(run_duration_micros, cm->MaxExecutionTime(node));
+    }
+    graph_cnt++;
+  }
+  // We should have 2 cost models since we requested 1 cpu and 1 gpu. However
+  // since the placement is soft, we might end up placing everything on cpu.
+  ASSERT_GE(2, graph_cnt);
+  ASSERT_LE(1, graph_cnt);
+}
+
+TEST(DirectSessionWithTrackingAllocTest, CostModelForAccelerator) {
+  TestHWAccelerator(false);
+}
+
+TEST(DirectSessionWithTrackingAllocTest, CostModelWithHardwareStats) {
+  TestHWAccelerator(true);
+}
+
+TEST(DirectSessionWithTrackingAllocTest, CostGraph) {
+  Graph graph(OpRegistry::Global());
+
+  Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
+  test::FillValues<float>(&a_tensor, {3, 2, -1, 0});
+  Node* a = test::graph::Constant(&graph, a_tensor);
+  a->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+
+  Tensor x_tensor(DT_FLOAT, TensorShape({2, 1}));
+  test::FillValues<float>(&x_tensor, {1, 1});
+  Node* x = test::graph::Constant(&graph, x_tensor);
+  x->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
+
+  // y = A * x
+  Node* y = test::graph::Matmul(&graph, a, x, false, false);
+  y->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:0");
+
+  Node* y_neg = test::graph::Unary(&graph, "Neg", y);
+  y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/cpu:1");
+
+  GraphDef def;
+  test::graph::ToGraphDef(&graph, &def);
+
+  SessionOptions options;
+  (*options.config.mutable_device_count())["CPU"] = 2;
+  options.config.mutable_graph_options()->set_build_cost_model(1);
+  options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_opt_level(OptimizerOptions::L0);
+  std::unique_ptr<Session> session(NewSession(options));
+  TF_ASSERT_OK(session->Create(def));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  RunOptions run_options;
+  std::vector<string> output_names = {y->name() + ":0"};
+  std::vector<string> target_nodes = {y_neg->name()};
+  std::vector<Tensor> outputs;
+  RunMetadata run_metadata;
+  const int64 start_micros = Env::Default()->NowMicros();
+  Status s = session->Run(run_options, inputs, output_names, target_nodes,
+                          &outputs, &run_metadata);
+  const int64 run_duration_micros = Env::Default()->NowMicros() - start_micros;
+  TF_ASSERT_OK(s);
+
+  EXPECT_LE(2, run_metadata.cost_graph().node_size());
+  for (const auto& node : run_metadata.cost_graph().node()) {
+    if (node.name() == y->name() || node.name() == y_neg->name()) {
+      EXPECT_EQ(1, node.output_info_size());
+      EXPECT_LE(8, node.output_info(0).size());
+      const TensorShapeProto& shape = node.output_info(0).shape();
+      EXPECT_EQ(2, shape.dim_size());
+      EXPECT_EQ(2, shape.dim(0).size());
+      EXPECT_EQ(1, shape.dim(1).size());
+      const DataType& dtype = node.output_info(0).dtype();
+      EXPECT_EQ(DT_FLOAT, dtype);
+    }
+    EXPECT_LE(0, node.compute_cost());
+    EXPECT_GE(run_duration_micros, node.compute_cost());
+  }
 }
 
 }  // namespace

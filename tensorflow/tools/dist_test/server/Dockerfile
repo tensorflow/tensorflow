@@ -17,7 +17,7 @@
 #
 # To build the image, use ../build_server.sh
 
-FROM ubuntu:14.04
+FROM ubuntu:16.04
 
 MAINTAINER Shanqing Cai <cais@google.com>
 
@@ -34,9 +34,10 @@ RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
     python get-pip.py && \
     rm get-pip.py
 
-# Install TensorFlow CPU version from nightly build
-RUN pip --no-cache-dir install \
-    http://ci.tensorflow.org/view/Nightly/job/nightly-matrix-cpu/TF_BUILD_CONTAINER_TYPE=CPU,TF_BUILD_IS_OPT=OPT,TF_BUILD_IS_PIP=PIP,TF_BUILD_PYTHON_VERSION=PYTHON2,label=cpu-slave/lastSuccessfulBuild/artifact/pip_test/whl/tensorflow-0.8.0-cp27-none-linux_x86_64.whl
+# Install TensorFlow wheel
+COPY tensorflow-*.whl /
+RUN pip install /tensorflow-*.whl && \
+    rm -f /tensorflow-*.whl
 
 # Copy files, including the GRPC server binary at
 # server/grpc_tensorflow_server.py

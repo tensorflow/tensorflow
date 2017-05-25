@@ -22,7 +22,7 @@ from __future__ import print_function
 import collections
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -35,13 +35,24 @@ class TensorSignature(collections.namedtuple(
 
   Useful to check compatibility of tensors.
 
+  Example:
+
+  ```python
+  examples = tf.placeholder(...)
+  inputs = {'a': var_a, 'b': var_b}
+  signatures = tensor_signature.create_signatures(inputs)
+  result = tensor_signature.create_example_parser_from_signatures(
+      signatures, examples)
+  self.assertTrue(tensor_signature.tensors_compatible(result, signatures))
+  ```
+
   Attributes:
     dtype: `DType` object.
     shape: `TensorShape` object.
   """
 
   def __new__(cls, tensor):
-    if isinstance(tensor, ops.SparseTensor):
+    if isinstance(tensor, sparse_tensor.SparseTensor):
       return super(TensorSignature, cls).__new__(
           cls, dtype=tensor.values.dtype, shape=None, is_sparse=True)
     return super(TensorSignature, cls).__new__(
@@ -51,7 +62,11 @@ class TensorSignature(collections.namedtuple(
     """Returns True if signatures are compatible."""
 
     def _shape_is_compatible_0dim(this, other):
+      """Checks that shapes are compatible skipping dim 0."""
       other = tensor_shape.as_shape(other)
+      # If shapes are None (unknown) they may be compatible.
+      if this.dims is None or other.dims is None:
+        return True
       if this.ndims != other.ndims:
         return False
       for dim, (x_dim, y_dim) in enumerate(zip(this.dims, other.dims)):
@@ -97,6 +112,9 @@ def tensors_compatible(tensors, signatures):
     True if all tensors are compatible, False otherwise.
   """
   # Dict of Tensors as input.
+  if tensors is None:
+    return signatures is None
+
   if isinstance(tensors, dict):
     if not isinstance(signatures, dict):
       return False
@@ -108,7 +126,7 @@ def tensors_compatible(tensors, signatures):
     return True
 
   # Single tensor as input.
-  if isinstance(signatures, dict):
+  if signatures is None or isinstance(signatures, dict):
     return False
   return TensorSignature(tensors).is_compatible_with(signatures)
 
@@ -125,6 +143,8 @@ def create_signatures(tensors):
   if isinstance(tensors, dict):
     return {
         key: TensorSignature(tensors[key]) for key in tensors}
+  if tensors is None:
+    return None
   return TensorSignature(tensors)
 
 
@@ -132,11 +152,14 @@ def create_placeholders_from_signatures(signatures):
   """Creates placeholders from given signatures.
 
   Args:
-    signatures: Dict of `TensorSignature` objects or single `TensorSignature`.
+    signatures: Dict of `TensorSignature` objects or single `TensorSignature`,
+      or `None`.
 
   Returns:
-    Dict of `tf.placeholder` objects or single `tf.placeholder`.
+    Dict of `tf.placeholder` objects or single `tf.placeholder`, or `None`.
   """
+  if signatures is None:
+    return None
   if not isinstance(signatures, dict):
     return signatures.get_placeholder()
   return {

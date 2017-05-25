@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -27,7 +28,7 @@ class TestableSizeTrackingAllocator : public Allocator {
  public:
   string Name() override { return "test"; }
   void* AllocateRaw(size_t /*alignment*/, size_t num_bytes) override {
-    void* ptr = malloc(num_bytes);
+    void* ptr = port::Malloc(num_bytes);
     size_map_[ptr] = num_bytes;
     return ptr;
   }
@@ -35,7 +36,7 @@ class TestableSizeTrackingAllocator : public Allocator {
     const auto& iter = size_map_.find(ptr);
     EXPECT_NE(size_map_.end(), iter);
     size_map_.erase(iter);
-    free(ptr);
+    port::Free(ptr);
   }
   bool TracksAllocationSizes() override { return true; }
   size_t RequestedSize(void* ptr) override {
@@ -74,10 +75,11 @@ TEST(TrackingAllocatorTest, SimpleNoTracking) {
   ta->DeallocateRaw(p1);
   void* p2 = ta->AllocateRaw(4, 12);
 
-  std::pair<size_t, size_t> sizes = ta->GetSizesAndUnRef();
+  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizesAndUnRef();
 
-  EXPECT_EQ(16, sizes.first);
-  EXPECT_EQ(0, sizes.second);
+  EXPECT_EQ(16, std::get<0>(sizes));
+  EXPECT_EQ(0, std::get<1>(sizes));
+  EXPECT_EQ(0, std::get<2>(sizes));
 
   ta->DeallocateRaw(p2);
 
@@ -96,8 +98,9 @@ TEST(TrackingAllocatorTest, SimpleNoTracking) {
 
   sizes = ta->GetSizesAndUnRef();
 
-  EXPECT_LE(16, sizes.first);
-  EXPECT_LE(12, sizes.second);
+  EXPECT_LE(16, std::get<0>(sizes));
+  EXPECT_LE(12, std::get<1>(sizes));
+  EXPECT_LE(12, std::get<2>(sizes));
 
   ta->DeallocateRaw(p2);
 }
@@ -113,10 +116,11 @@ TEST(TrackingAllocatorTest, SimpleTracking) {
   ta->DeallocateRaw(p1);
   void* p2 = ta->AllocateRaw(4, 4);
 
-  std::pair<size_t, size_t> sizes = ta->GetSizesAndUnRef();
+  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizesAndUnRef();
 
-  EXPECT_EQ(16, sizes.first);
-  EXPECT_EQ(12, sizes.second);
+  EXPECT_EQ(16, std::get<0>(sizes));
+  EXPECT_EQ(12, std::get<1>(sizes));
+  EXPECT_EQ(4, std::get<2>(sizes));
 
   ta->DeallocateRaw(p2);
 }
@@ -131,10 +135,11 @@ TEST(TrackingAllocatorTest, OutOfMemory) {
   void* p1 = ta->AllocateRaw(4, 12);
   EXPECT_EQ(nullptr, p1);
 
-  std::pair<size_t, size_t> sizes = ta->GetSizesAndUnRef();
+  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizesAndUnRef();
 
-  EXPECT_EQ(0, sizes.first);
-  EXPECT_EQ(0, sizes.second);
+  EXPECT_EQ(0, std::get<0>(sizes));
+  EXPECT_EQ(0, std::get<1>(sizes));
+  EXPECT_EQ(0, std::get<2>(sizes));
 }
 
 TEST(TrackingAllocatorTest, FreeNullPtr) {
@@ -146,10 +151,11 @@ TEST(TrackingAllocatorTest, FreeNullPtr) {
 
   ta->DeallocateRaw(nullptr);
 
-  std::pair<size_t, size_t> sizes = ta->GetSizesAndUnRef();
+  std::tuple<size_t, size_t, size_t> sizes = ta->GetSizesAndUnRef();
 
-  EXPECT_EQ(0, sizes.first);
-  EXPECT_EQ(0, sizes.second);
+  EXPECT_EQ(0, std::get<0>(sizes));
+  EXPECT_EQ(0, std::get<1>(sizes));
+  EXPECT_EQ(0, std::get<2>(sizes));
 }
 
 }  // namespace tensorflow

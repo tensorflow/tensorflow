@@ -17,55 +17,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy
-import tensorflow as tf
+import numpy as np
+
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
 
-class TraceTest(tf.test.TestCase):
+class TraceTest(test.TestCase):
 
   def setUp(self):
-    x = numpy.random.seed(0)
+    x = np.random.seed(0)
 
-  def traceOp(self, x, dtype, expected_ans, use_gpu=False):
-    with self.test_session(use_gpu=use_gpu):
-      tf_ans = tf.trace(x.astype(dtype))
-      out = tf_ans.eval()
-    self.assertAllClose(out, expected_ans)
+  def compare(self, x):
+    np_ans = np.trace(x, axis1=-2, axis2=-1)
+    with self.test_session(use_gpu=True):
+      tf_ans = math_ops.trace(x).eval()
+    self.assertAllClose(tf_ans, np_ans)
 
-  def testEmptyTensor(self):
-    x = numpy.array([])
-    self.assertRaises(ValueError, self.traceOp, x, numpy.float32, 0)
-
-  def testRankOneTensor(self):
-    x = numpy.array([1,2,3])
-    self.assertRaises(ValueError, self.traceOp, x, numpy.float32, 0)
-
-  def testRankTwoIntTensor(self):
-    x = numpy.array(
-        [[1, 0, 0],
-         [0, 2, 0],
-         [0, 0, 3]])
-    expected_ans = 6
-    self.traceOp(x, numpy.int32, expected_ans)
-    self.traceOp(x, numpy.int64, expected_ans)
-
-  def testRankTwoFloatTensor(self):
-    x = numpy.array(
-        [[1.1, 0, 0],
-         [0, 2.2, 0],
-         [0, 0, 3.3]])
-    expected_ans = 6.6
-    self.traceOp(x, numpy.float32, expected_ans)
-    self.traceOp(x, numpy.float64, expected_ans)
-
-  def testRankThreeFloatTensor(self):
-    x = numpy.random.rand(2, 2, 2)
-    self.assertRaises(ValueError, self.traceOp, x, numpy.float32, 0)
-
-  def testRankFourFloatTensor(self):
-    x = numpy.random.rand(2, 2, 2, 2)
-    self.assertRaises(ValueError, self.traceOp, x, numpy.float32, 0)
+  def testTrace(self):
+    for dtype in [np.int32, np.float32, np.float64]:
+      for shape in [[2, 2], [2, 3], [3, 2], [2, 3, 2], [2, 2, 2, 3]]:
+        x = np.random.rand(np.prod(shape)).astype(dtype).reshape(shape)
+        self.compare(x)
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

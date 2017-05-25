@@ -1,0 +1,6 @@
+{
+  "run1": {
+    "graph": true,
+    "scalars": ["foo/sin"]
+  }
+}

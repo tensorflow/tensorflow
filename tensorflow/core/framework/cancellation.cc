@@ -26,7 +26,7 @@ CancellationManager::CancellationManager()
     : is_cancelling_(false), is_cancelled_(0), next_cancellation_token_(0) {}
 
 void CancellationManager::StartCancel() {
-  std::unordered_map<CancellationToken, CancelCallback> callbacks_to_run;
+  gtl::FlatMap<CancellationToken, CancelCallback> callbacks_to_run;
   {
     mutex_lock l(mu_);
     if (is_cancelled_.load(std::memory_order_relaxed) || is_cancelling_) {

@@ -115,13 +115,17 @@ class BatchNormGradOp : public OpKernel {
                                         out_backprop.shape().DebugString()));
 
     Tensor* dx = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, input.shape(), &dx));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0, 4}, 0, input.shape(), &dx));
     Tensor* dm = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(1, mean.shape(), &dm));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {1}, 1, mean.shape(), &dm));
     Tensor* dv = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(2, var.shape(), &dv));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {2}, 2, var.shape(), &dv));
     Tensor* db = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(3, mean.shape(), &db));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {3}, 3, mean.shape(), &db));
     Tensor* dg = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(4, gamma.shape(), &dg));
 

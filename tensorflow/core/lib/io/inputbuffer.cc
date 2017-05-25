@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace io {
@@ -27,9 +28,7 @@ InputBuffer::InputBuffer(RandomAccessFile* file, size_t buffer_bytes)
       pos_(buf_),
       limit_(buf_) {}
 
-InputBuffer::~InputBuffer() {
-  delete[] buf_;
-}
+InputBuffer::~InputBuffer() { delete[] buf_; }
 
 Status InputBuffer::FillBuffer() {
   StringPiece data;
@@ -45,25 +44,26 @@ Status InputBuffer::FillBuffer() {
 
 Status InputBuffer::ReadLine(string* result) {
   result->clear();
-  int i;
   Status s;
-  for (i = 0;; i++) {
-    if (pos_ == limit_) {
-      // Get more data into buffer
-      s = FillBuffer();
-      if (limit_ == buf_) {
-        break;
+  do {
+    size_t buf_remain = limit_ - pos_;
+    char* newline = static_cast<char*>(memchr(pos_, '\n', buf_remain));
+    if (newline != nullptr) {
+      size_t result_len = newline - pos_;
+      result->append(pos_, result_len);
+      pos_ = newline + 1;
+      if (!result->empty() && result->back() == '\r') {
+        result->resize(result->size() - 1);
       }
-    }
-    char c = *pos_++;
-    if (c == '\n') {
-      // We don't append the '\n' to *result
       return Status::OK();
     }
-    // We don't append '\r' to *result
-    if (c != '\r') {
-      *result += c;
-    }
+    if (buf_remain > 0) result->append(pos_, buf_remain);
+    // Get more data into buffer
+    s = FillBuffer();
+    DCHECK_EQ(pos_, buf_);
+  } while (limit_ != buf_);
+  if (!result->empty() && result->back() == '\r') {
+    result->resize(result->size() - 1);
   }
   if (errors::IsOutOfRange(s) && !result->empty()) {
     return Status::OK();
@@ -77,26 +77,56 @@ Status InputBuffer::ReadNBytes(int64 bytes_to_read, string* result) {
     return errors::InvalidArgument("Can't read a negative number of bytes: ",
                                    bytes_to_read);
   }
-  result->reserve(bytes_to_read);
-  Status s;
-  while (result->size() < static_cast<size_t>(bytes_to_read)) {
+  result->resize(bytes_to_read);
+  size_t bytes_read = 0;
+  Status status = ReadNBytes(bytes_to_read, &(*result)[0], &bytes_read);
+  if (bytes_read < bytes_to_read) result->resize(bytes_read);
+  return status;
+}
+
+Status InputBuffer::ReadNBytes(int64 bytes_to_read, char* result,
+                               size_t* bytes_read) {
+  if (bytes_to_read < 0) {
+    return errors::InvalidArgument("Can't read a negative number of bytes: ",
+                                   bytes_to_read);
+  }
+  Status status;
+  *bytes_read = 0;
+  while (*bytes_read < static_cast<size_t>(bytes_to_read)) {
     if (pos_ == limit_) {
-      // Get more data into buffer
-      s = FillBuffer();
+      // Get more data into buffer.
+      status = FillBuffer();
       if (limit_ == buf_) {
         break;
       }
     }
+    // Do not go over the buffer boundary.
     const int64 bytes_to_copy =
-        std::min<int64>(limit_ - pos_, bytes_to_read - result->size());
-    result->insert(result->size(), pos_, bytes_to_copy);
+        std::min<int64>(limit_ - pos_, bytes_to_read - *bytes_read);
+    // Copies buffered data into the destination.
+    memcpy(result + *bytes_read, pos_, bytes_to_copy);
     pos_ += bytes_to_copy;
+    *bytes_read += bytes_to_copy;
   }
-  if (errors::IsOutOfRange(s) &&
-      (result->size() == static_cast<size_t>(bytes_to_read))) {
+  if (errors::IsOutOfRange(status) &&
+      (*bytes_read == static_cast<size_t>(bytes_to_read))) {
     return Status::OK();
   }
-  return s;
+  return status;
+}
+
+Status InputBuffer::ReadVarint32Fallback(uint32* result) {
+  uint8 scratch = 0;
+  char* p = reinterpret_cast<char*>(&scratch);
+  size_t unused_bytes_read = 0;
+
+  *result = 0;
+  for (int shift = 0; shift <= 28; shift += 7) {
+    TF_RETURN_IF_ERROR(ReadNBytes(1, p, &unused_bytes_read));
+    *result |= (scratch & 127) << shift;
+    if (!(scratch & 128)) return Status::OK();
+  }
+  return errors::DataLoss("Stored data is too large to be a varint32.");
 }
 
 Status InputBuffer::SkipNBytes(int64 bytes_to_skip) {
@@ -123,6 +153,25 @@ Status InputBuffer::SkipNBytes(int64 bytes_to_skip) {
     return Status::OK();
   }
   return s;
+}
+
+Status InputBuffer::Seek(int64 position) {
+  if (position < 0) {
+    return errors::InvalidArgument("Seeking to a negative position: ",
+                                   position);
+  }
+  // Position of the buffer within file.
+  const int64 bufpos = file_pos_ - static_cast<int64>(limit_ - buf_);
+  if (position >= bufpos && position < file_pos_) {
+    // Seeks to somewhere inside the buffer.
+    pos_ = buf_ + (position - bufpos);
+    DCHECK(pos_ >= buf_ && pos_ < limit_);
+  } else {
+    // Seeks to somewhere outside.  Discards the buffered data.
+    pos_ = limit_ = buf_;
+    file_pos_ = position;
+  }
+  return Status::OK();
 }
 
 }  // namespace io

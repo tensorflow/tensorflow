@@ -73,7 +73,7 @@ class OpDefBuilderTest : public ::testing::Test {
     }
   }
 
-  void ExpectFailure(const OpDefBuilder& builder, string error) {
+  void ExpectFailure(const OpDefBuilder& builder, const string& error) {
     OpRegistrationData op_reg_data;
     Status status = builder.Finalize(&op_reg_data);
     EXPECT_FALSE(status.ok());
@@ -582,9 +582,9 @@ attr {
 }
 
 TEST_F(OpDefBuilderTest, SetShapeFn) {
-  auto fn = OpShapeInferenceFn([](shape_inference::InferenceContext* c) {
+  auto fn = [](shape_inference::InferenceContext* c) {
     return errors::Unknown("ShapeFn was called");
-  });
+  };
   OpShapeInferenceFn fn_out;
   ExpectSuccess(
       b().SetShapeFn(fn).Attr("dtype: type"),
@@ -595,11 +595,18 @@ TEST_F(OpDefBuilderTest, SetShapeFn) {
 }
 
 TEST_F(OpDefBuilderTest, SetShapeFnCalledTwiceFailure) {
-  auto fn = OpShapeInferenceFn([](shape_inference::InferenceContext* c) {
+  auto fn = [](shape_inference::InferenceContext* c) {
     return errors::Unknown("ShapeFn was called");
-  });
+  };
   ExpectFailure(b().SetShapeFn(fn).SetShapeFn(fn),
                 "SetShapeFn called twice for Op Test");
+}
+
+TEST_F(OpDefBuilderTest, ResourceIsStateful) {
+  OpRegistrationData op_reg_data;
+  TF_EXPECT_OK(b().Input("a: resource").Finalize(&op_reg_data));
+  const OpDef& op_def = op_reg_data.op_def;
+  EXPECT_TRUE(op_def.is_stateful());
 }
 
 }  // namespace

@@ -12,24 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Various high level TF models."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.learn.python.learn.ops import autoencoder_ops
-from tensorflow.contrib.learn.python.learn.ops import dnn_ops
-from tensorflow.contrib.learn.python.learn.ops import losses_ops
+import functools
+
 from tensorflow.contrib import rnn as contrib_rnn
+from tensorflow.contrib.learn.python.learn.ops import losses_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops as array_ops_
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import logging_ops
-from tensorflow.python.ops import nn
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.summary import summary
 
 
 def linear_regression_zero_init(x, y):
@@ -37,7 +35,7 @@ def linear_regression_zero_init(x, y):
 
   Args:
     x: tensor or placeholder for input features.
-    y: tensor or placeholder for target.
+    y: tensor or placeholder for labels.
 
   Returns:
     Predictions and loss tensors.
@@ -50,7 +48,7 @@ def logistic_regression_zero_init(x, y):
 
   Args:
     x: tensor or placeholder for input features.
-    y: tensor or placeholder for target.
+    y: tensor or placeholder for labels.
 
   Returns:
     Predictions and loss tensors.
@@ -63,7 +61,7 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
 
   Args:
     x: tensor or placeholder for input features.
-    y: tensor or placeholder for target.
+    y: tensor or placeholder for labels.
     init_mean: the mean value to use for initialization.
     init_stddev: the standard devation to use for initialization.
 
@@ -79,8 +77,10 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
     uniform_unit_scaling_initialzer will be used.
   """
   with vs.variable_scope('linear_regression'):
-    logging_ops.histogram_summary('linear_regression.x', x)
-    logging_ops.histogram_summary('linear_regression.y', y)
+    scope_name = vs.get_variable_scope().name
+    summary.histogram('%s.x' % scope_name, x)
+    summary.histogram('%s.y' % scope_name, y)
+    dtype = x.dtype.base_dtype
     y_shape = y.get_shape()
     if len(y_shape) == 1:
       output_shape = 1
@@ -88,17 +88,22 @@ def linear_regression(x, y, init_mean=None, init_stddev=1.0):
       output_shape = y_shape[1]
     # Set up the requested initialization.
     if init_mean is None:
-      weights = vs.get_variable('weights', [x.get_shape()[1], output_shape])
-      bias = vs.get_variable('bias', [output_shape])
+      weights = vs.get_variable(
+          'weights', [x.get_shape()[1], output_shape], dtype=dtype)
+      bias = vs.get_variable('bias', [output_shape], dtype=dtype)
     else:
-      weights = vs.get_variable('weights', [x.get_shape()[1], output_shape],
-                                initializer=init_ops.random_normal_initializer(
-                                    init_mean, init_stddev))
-      bias = vs.get_variable('bias', [output_shape],
-                             initializer=init_ops.random_normal_initializer(
-                                 init_mean, init_stddev))
-    logging_ops.histogram_summary('linear_regression.weights', weights)
-    logging_ops.histogram_summary('linear_regression.bias', bias)
+      weights = vs.get_variable(
+          'weights', [x.get_shape()[1], output_shape],
+          initializer=init_ops.random_normal_initializer(
+              init_mean, init_stddev, dtype=dtype),
+          dtype=dtype)
+      bias = vs.get_variable(
+          'bias', [output_shape],
+          initializer=init_ops.random_normal_initializer(
+              init_mean, init_stddev, dtype=dtype),
+          dtype=dtype)
+    summary.histogram('%s.weights' % scope_name, weights)
+    summary.histogram('%s.bias' % scope_name, bias)
     return losses_ops.mean_squared_error_regressor(x, y, weights, bias)
 
 
@@ -112,7 +117,7 @@ def logistic_regression(x,
   Args:
     x: tensor or placeholder for input features,
        shape should be [batch_size, n_features].
-    y: tensor or placeholder for target,
+    y: tensor or placeholder for labels (one-hot),
        shape should be [batch_size, n_classes].
     class_weight: tensor, [n_classes], where for each class
                   it has weight of the class. If not provided
@@ -133,25 +138,28 @@ def logistic_regression(x,
     uniform_unit_scaling_initialzer will be used.
   """
   with vs.variable_scope('logistic_regression'):
-    logging_ops.histogram_summary('%s.x' % vs.get_variable_scope().name, x)
-    logging_ops.histogram_summary('%s.y' % vs.get_variable_scope().name, y)
+    scope_name = vs.get_variable_scope().name
+    summary.histogram('%s.x' % scope_name, x)
+    summary.histogram('%s.y' % scope_name, y)
+    dtype = x.dtype.base_dtype
     # Set up the requested initialization.
     if init_mean is None:
-      weights = vs.get_variable('weights',
-                                [x.get_shape()[1], y.get_shape()[-1]])
-      bias = vs.get_variable('bias', [y.get_shape()[-1]])
+      weights = vs.get_variable(
+          'weights', [x.get_shape()[1], y.get_shape()[-1]], dtype=dtype)
+      bias = vs.get_variable('bias', [y.get_shape()[-1]], dtype=dtype)
     else:
-      weights = vs.get_variable('weights',
-                                [x.get_shape()[1], y.get_shape()[-1]],
-                                initializer=init_ops.random_normal_initializer(
-                                    init_mean, init_stddev))
-      bias = vs.get_variable('bias', [y.get_shape()[-1]],
-                             initializer=init_ops.random_normal_initializer(
-                                 init_mean, init_stddev))
-    logging_ops.histogram_summary('%s.weights' % vs.get_variable_scope().name,
-                                  weights)
-    logging_ops.histogram_summary('%s.bias' % vs.get_variable_scope().name,
-                                  bias)
+      weights = vs.get_variable(
+          'weights', [x.get_shape()[1], y.get_shape()[-1]],
+          initializer=init_ops.random_normal_initializer(
+              init_mean, init_stddev, dtype=dtype),
+          dtype=dtype)
+      bias = vs.get_variable(
+          'bias', [y.get_shape()[-1]],
+          initializer=init_ops.random_normal_initializer(
+              init_mean, init_stddev, dtype=dtype),
+          dtype=dtype)
+    summary.histogram('%s.weights' % scope_name, weights)
+    summary.histogram('%s.bias' % scope_name, bias)
     # If no class weight provided, try to retrieve one from pre-defined
     # tensor name in the graph.
     if not class_weight:
@@ -161,73 +169,12 @@ def logistic_regression(x,
       except KeyError:
         pass
 
-    return losses_ops.softmax_classifier(x,
-                                         y,
-                                         weights,
-                                         bias,
-                                         class_weight=class_weight)
+    return losses_ops.softmax_classifier(
+        x, y, weights, bias, class_weight=class_weight)
 
 
-def get_dnn_model(hidden_units, target_predictor_fn, dropout=None):
-  """Returns a function that creates a DNN TensorFlow subgraph.
-
-  Args:
-    hidden_units: List of values of hidden units for layers.
-    target_predictor_fn: Function that will predict target from input
-                         features. This can be logistic regression,
-                         linear regression or any other model,
-                         that takes x, y and returns predictions and loss
-                         tensors.
-    dropout: When not none, causes dropout regularization to be used,
-             with the specified probability of removing a given coordinate.
-
-  Returns:
-    A function that creates the subgraph.
-  """
-
-  def dnn_estimator(x, y):
-    """DNN estimator with target predictor function on top."""
-    layers = dnn_ops.dnn(x, hidden_units, dropout=dropout)
-    return target_predictor_fn(layers, y)
-
-  return dnn_estimator
-
-
-def get_autoencoder_model(hidden_units, target_predictor_fn,
-                          activation, add_noise=None, dropout=None):
-  """Returns a function that creates a Autoencoder TensorFlow subgraph.
-
-  Args:
-    hidden_units: List of values of hidden units for layers.
-    target_predictor_fn: Function that will predict target from input
-                         features. This can be logistic regression,
-                         linear regression or any other model,
-                         that takes x, y and returns predictions and loss
-                         tensors.
-    activation: activation function used to map inner latent layer onto
-                reconstruction layer.
-    add_noise: a function that adds noise to tensor_in,
-           e.g. def add_noise(x):
-                    return(x + np.random.normal(0, 0.1, (len(x), len(x[0]))))
-    dropout: When not none, causes dropout regularization to be used,
-             with the specified probability of removing a given coordinate.
-
-  Returns:
-      A function that creates the subgraph.
-  """
-  def dnn_autoencoder_estimator(x):
-    """Autoencoder estimator with target predictor function on top."""
-    encoder, decoder = autoencoder_ops.dnn_autoencoder(
-        x, hidden_units, activation,
-        add_noise=add_noise, dropout=dropout)
-    return encoder, decoder, target_predictor_fn(x, decoder)
-  return dnn_autoencoder_estimator
-
-
-## This will be in Tensorflow 0.7.
+## This will be in TensorFlow 0.7.
 ## TODO(ilblackdragon): Clean this up when it's released
-
-
 def _reverse_seq(input_seq, lengths):
   """Reverse a list of Tensors up to specified lengths.
 
@@ -302,9 +249,9 @@ def bidirectional_rnn(cell_fw,
     ValueError: If inputs is None or an empty list.
   """
 
-  if not isinstance(cell_fw, nn.rnn_cell.RNNCell):
+  if not isinstance(cell_fw, contrib_rnn.RNNCell):
     raise TypeError('cell_fw must be an instance of RNNCell')
-  if not isinstance(cell_bw, nn.rnn_cell.RNNCell):
+  if not isinstance(cell_bw, contrib_rnn.RNNCell):
     raise TypeError('cell_bw must be an instance of RNNCell')
   if not isinstance(inputs, list):
     raise TypeError('inputs must be a list')
@@ -314,21 +261,26 @@ def bidirectional_rnn(cell_fw,
   name = scope or 'BiRNN'
   # Forward direction
   with vs.variable_scope(name + '_FW'):
-    output_fw, state_fw = nn.rnn(cell_fw, inputs, initial_state_fw, dtype,
-                                 sequence_length)
+    output_fw, state_fw = contrib_rnn.static_rnn(cell_fw, inputs,
+                                                 initial_state_fw, dtype,
+                                                 sequence_length)
 
   # Backward direction
   with vs.variable_scope(name + '_BW'):
-    tmp, state_bw = nn.rnn(cell_bw, _reverse_seq(inputs, sequence_length),
-                           initial_state_bw, dtype, sequence_length)
+    tmp, state_bw = contrib_rnn.static_rnn(
+        cell_bw,
+        _reverse_seq(inputs, sequence_length), initial_state_bw, dtype,
+        sequence_length)
   output_bw = _reverse_seq(tmp, sequence_length)
   # Concat each of the forward/backward outputs
-  outputs = [array_ops_.concat(1, [fw, bw])
-             for fw, bw in zip(output_fw, output_bw)]
+  outputs = [
+      array_ops_.concat([fw, bw], 1) for fw, bw in zip(output_fw, output_bw)
+  ]
 
-  return outputs, array_ops_.concat(1, [state_fw, state_bw])
+  return outputs, array_ops_.concat([state_fw, state_bw], 1)
 
-# End of Tensorflow 0.7
+
+# End of TensorFlow 0.7
 
 
 def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
@@ -357,7 +309,8 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
     attn_length: integer, the size of attention vector attached to rnn cells.
     attn_size: integer, the size of an attention window attached to rnn cells.
     attn_vec_size: integer, the number of convolutional features calculated on
-      attention state and the size of the hidden layer built from base cell state.
+      attention state and the size of the hidden layer built from base cell
+      state.
 
   Returns:
     A function that creates the subgraph.
@@ -367,49 +320,76 @@ def get_rnn_model(rnn_size, cell_type, num_layers, input_op_fn, bidirectional,
     """RNN estimator with target predictor function on top."""
     x = input_op_fn(x)
     if cell_type == 'rnn':
-      cell_fn = nn.rnn_cell.BasicRNNCell
+      cell_fn = contrib_rnn.BasicRNNCell
     elif cell_type == 'gru':
-      cell_fn = nn.rnn_cell.GRUCell
+      cell_fn = contrib_rnn.GRUCell
     elif cell_type == 'lstm':
-      cell_fn = nn.rnn_cell.BasicLSTMCell
+      cell_fn = functools.partial(
+          contrib_rnn.BasicLSTMCell, state_is_tuple=False)
     else:
       raise ValueError('cell_type {} is not supported. '.format(cell_type))
-    # TODO: state_is_tuple=False is deprecated
+    # TODO(ipolosukhin): state_is_tuple=False is deprecated
     if bidirectional:
       # forward direction cell
-      fw_cell = cell_fn(rnn_size)
-      bw_cell = cell_fn(rnn_size)
+      fw_cell = lambda: cell_fn(rnn_size)
+      bw_cell = lambda: cell_fn(rnn_size)
       # attach attention cells if specified
       if attn_length is not None:
-        fw_cell = contrib_rnn.AttentionCellWrapper(
-          fw_cell, attn_length=attn_length, attn_size=attn_size,
-          attn_vec_size=attn_vec_size, state_is_tuple=False)
-        bw_cell = contrib_rnn.AttentionCellWrapper(
-          fw_cell, attn_length=attn_length, attn_size=attn_size,
-          attn_vec_size=attn_vec_size, state_is_tuple=False)
-      rnn_fw_cell = nn.rnn_cell.MultiRNNCell([fw_cell] * num_layers)
+        def attn_fw_cell():
+          return contrib_rnn.AttentionCellWrapper(
+              fw_cell(),
+              attn_length=attn_length,
+              attn_size=attn_size,
+              attn_vec_size=attn_vec_size,
+              state_is_tuple=False)
+
+        def attn_bw_cell():
+          return contrib_rnn.AttentionCellWrapper(
+              bw_cell(),
+              attn_length=attn_length,
+              attn_size=attn_size,
+              attn_vec_size=attn_vec_size,
+              state_is_tuple=False)
+      else:
+        attn_fw_cell = fw_cell
+        attn_bw_cell = bw_cell
+
+      rnn_fw_cell = contrib_rnn.MultiRNNCell(
+          [attn_fw_cell() for _ in range(num_layers)], state_is_tuple=False)
       # backward direction cell
-      rnn_bw_cell = nn.rnn_cell.MultiRNNCell([bw_cell] * num_layers)
+      rnn_bw_cell = contrib_rnn.MultiRNNCell(
+          [attn_bw_cell() for _ in range(num_layers)], state_is_tuple=False)
       # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-      _, encoding = bidirectional_rnn(rnn_fw_cell,
-                                      rnn_bw_cell,
-                                      x,
-                                      dtype=dtypes.float32,
-                                      sequence_length=sequence_length,
-                                      initial_state_fw=initial_state,
-                                      initial_state_bw=initial_state)
+      _, encoding = bidirectional_rnn(
+          rnn_fw_cell,
+          rnn_bw_cell,
+          x,
+          dtype=dtypes.float32,
+          sequence_length=sequence_length,
+          initial_state_fw=initial_state,
+          initial_state_bw=initial_state)
     else:
-      rnn_cell = cell_fn(rnn_size)
+      rnn_cell = lambda: cell_fn(rnn_size)
+
       if attn_length is not None:
-        rnn_cell = contrib_rnn.AttentionCellWrapper(
-            rnn_cell, attn_length=attn_length, attn_size=attn_size,
-            attn_vec_size=attn_vec_size, state_is_tuple=False)
-      cell = nn.rnn_cell.MultiRNNCell([rnn_cell] * num_layers)
-      _, encoding = nn.rnn(cell,
-                           x,
-                           dtype=dtypes.float32,
-                           sequence_length=sequence_length,
-                           initial_state=initial_state)
+        def attn_rnn_cell():
+          return contrib_rnn.AttentionCellWrapper(
+              rnn_cell(),
+              attn_length=attn_length,
+              attn_size=attn_size,
+              attn_vec_size=attn_vec_size,
+              state_is_tuple=False)
+      else:
+        attn_rnn_cell = rnn_cell
+
+      cell = contrib_rnn.MultiRNNCell(
+          [attn_rnn_cell() for _ in range(num_layers)], state_is_tuple=False)
+      _, encoding = contrib_rnn.static_rnn(
+          cell,
+          x,
+          dtype=dtypes.float32,
+          sequence_length=sequence_length,
+          initial_state=initial_state)
     return target_predictor_fn(encoding, y)
 
   return rnn_estimator

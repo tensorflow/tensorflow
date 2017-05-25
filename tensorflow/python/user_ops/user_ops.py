@@ -19,10 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.ops import gen_user_ops
-from tensorflow.python.ops.gen_user_ops import *
+from tensorflow.python.ops import gen_user_ops as _gen_user_ops
+
+# go/tf-wildcard-import
+from tensorflow.python.ops.gen_user_ops import *  # pylint: disable=wildcard-import
 
 
 def my_fact():
   """Example of overriding the generated code for an Op."""
-  return gen_user_ops._fact()
+  return _gen_user_ops._fact()  # pylint: disable=protected-access

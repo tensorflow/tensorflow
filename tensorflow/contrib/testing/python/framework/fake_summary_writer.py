@@ -1,4 +1,3 @@
-# pylint: disable=g-bad-file-header
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Fake summary writer for unit tests."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
 from tensorflow.core.framework import summary_pb2
-from tensorflow.python.training import summary_io
+from tensorflow.python.summary.writer import writer
+from tensorflow.python.summary.writer import writer_cache
 
 
 # TODO(ptucker): Replace with mock framework.
@@ -32,14 +32,16 @@ class FakeSummaryWriter(object):
   def install(cls):
     if cls._replaced_summary_writer:
       raise ValueError('FakeSummaryWriter already installed.')
-    cls._replaced_summary_writer = summary_io.SummaryWriter
-    summary_io.SummaryWriter = FakeSummaryWriter
+    cls._replaced_summary_writer = writer.FileWriter
+    writer.FileWriter = FakeSummaryWriter
+    writer_cache.FileWriter = FakeSummaryWriter
 
   @classmethod
   def uninstall(cls):
     if not cls._replaced_summary_writer:
       raise ValueError('FakeSummaryWriter not installed.')
-    summary_io.SummaryWriter = cls._replaced_summary_writer
+    writer.FileWriter = cls._replaced_summary_writer
+    writer_cache.FileWriter = cls._replaced_summary_writer
     cls._replaced_summary_writer = None
 
   def __init__(self, logdir, graph=None):
@@ -47,12 +49,21 @@ class FakeSummaryWriter(object):
     self._graph = graph
     self._summaries = {}
     self._added_graphs = []
+    self._added_meta_graphs = []
     self._added_session_logs = []
 
-  def assert_summaries(
-      self, test_case, expected_logdir=None, expected_graph=None,
-      expected_summaries=None, expected_added_graphs=None,
-      expected_session_logs=None):
+  @property
+  def summaries(self):
+    return self._summaries
+
+  def assert_summaries(self,
+                       test_case,
+                       expected_logdir=None,
+                       expected_graph=None,
+                       expected_summaries=None,
+                       expected_added_graphs=None,
+                       expected_added_meta_graphs=None,
+                       expected_session_logs=None):
     """Assert expected items have been added to summary writer."""
     if expected_logdir is not None:
       test_case.assertEqual(expected_logdir, self._logdir)
@@ -71,22 +82,25 @@ class FakeSummaryWriter(object):
           if 'global_step/sec' != v.tag:
             actual_simple_values[v.tag] = v.simple_value
       test_case.assertEqual(expected_summaries[step], actual_simple_values)
-    test_case.assertEqual(expected_added_graphs or [], self._added_graphs)
-    test_case.assertEqual(
-        expected_session_logs or [], self._added_session_logs)
+    if expected_added_graphs is not None:
+      test_case.assertEqual(expected_added_graphs, self._added_graphs)
+    if expected_added_meta_graphs is not None:
+      test_case.assertEqual(expected_added_meta_graphs, self._added_meta_graphs)
+    if expected_session_logs is not None:
+      test_case.assertEqual(expected_session_logs, self._added_session_logs)
 
-  def add_summary(self, summary, current_global_step):
+  def add_summary(self, summ, current_global_step):
     """Add summary."""
-    if isinstance(summary, bytes):
+    if isinstance(summ, bytes):
       summary_proto = summary_pb2.Summary()
-      summary_proto.ParseFromString(summary)
-      summary = summary_proto
+      summary_proto.ParseFromString(summ)
+      summ = summary_proto
     if current_global_step in self._summaries:
       step_summaries = self._summaries[current_global_step]
     else:
       step_summaries = []
       self._summaries[current_global_step] = step_summaries
-    step_summaries.append(summary)
+    step_summaries.append(summ)
 
   # NOTE: Ignore global_step since its value is non-deterministic.
   def add_graph(self, graph, global_step=None, graph_def=None):
@@ -97,6 +111,12 @@ class FakeSummaryWriter(object):
       raise ValueError('Unexpected graph_def %s.' % graph_def)
     self._added_graphs.append(graph)
 
+  def add_meta_graph(self, meta_graph_def, global_step=None):
+    """Add metagraph."""
+    if (global_step is not None) and (global_step < 0):
+      raise ValueError('Invalid global_step %s.' % global_step)
+    self._added_meta_graphs.append(meta_graph_def)
+
   # NOTE: Ignore global_step since its value is non-deterministic.
   def add_session_log(self, session_log, global_step=None):
     # pylint: disable=unused-argument
@@ -106,4 +126,7 @@ class FakeSummaryWriter(object):
     pass
 
   def reopen(self):
+    pass
+
+  def close(self):
     pass

@@ -16,6 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
 #define TENSORFLOW_PYTHON_LIB_IO_PY_RECORD_WRITER_H_
 
+#include <memory>
+
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -36,17 +39,18 @@ class PyRecordWriter {
   // TODO(vrv): make this take a shared proto to configure
   // the compression options.
   static PyRecordWriter* New(const string& filename,
-                             const string& compression_type_string);
+                             const string& compression_type_string,
+                             TF_Status* out_status);
   ~PyRecordWriter();
 
   bool WriteRecord(tensorflow::StringPiece record);
-  void Close();
+  void Close(TF_Status* out_status);
 
  private:
   PyRecordWriter();
 
-  WritableFile* file_;        // Owned
-  io::RecordWriter* writer_;  // Owned
+  std::unique_ptr<io::RecordWriter> writer_;
+  std::unique_ptr<WritableFile> file_;
   TF_DISALLOW_COPY_AND_ASSIGN(PyRecordWriter);
 };
 

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import transform
 from tensorflow.python.ops import sparse_ops
 
 
-class Densify(transform.Transform):
+class Densify(transform.TensorFlowTransform):
   """Transforms Sparse to Dense Tensor."""
 
   def __init__(self,
@@ -31,7 +31,7 @@ class Densify(transform.Transform):
     super(Densify, self).__init__()
     self._default_value = default_value
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def default_value(self):
     return self._default_value
 
@@ -47,12 +47,13 @@ class Densify(transform.Transform):
   def _output_names(self):
     return "output",
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     """Applies the transformation to the `transform_input`.
 
     Args:
-        input_tensors: a list of Tensors representing the input to
+      input_tensors: a list of Tensors representing the input to
         the Transform.
+      **kwargs: Additional keyword arguments, unused here.
 
     Returns:
         A namedtuple of Tensors representing the transformed output.
@@ -61,5 +62,4 @@ class Densify(transform.Transform):
 
      # pylint: disable=not-callable
     return self.return_type(sparse_ops.sparse_to_dense(
-        s.indices, s.shape, s.values, default_value=self.default_value))
-
+        s.indices, s.dense_shape, s.values, default_value=self.default_value))

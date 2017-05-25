@@ -49,13 +49,13 @@ class NodeBuilder {
   // ArraySlice.
   struct NodeOut {
     // For referencing an existing Node.
-    NodeOut(Node* n, int i = 0);
+    NodeOut(Node* n, int32 i = 0);
 
     // For referencing Nodes not in the graph being built. It is
     // useful when preparing a graph for ExtendSession or creating a
     // back edge to a node that hasn't been added to the graph yet,
     // but will be.
-    NodeOut(StringPiece name, int i, DataType t);
+    NodeOut(StringPiece name, int32 i, DataType t);
 
     // Default constructor for std::vector<NodeOut>.
     NodeOut();
@@ -67,7 +67,7 @@ class NodeBuilder {
     // * an out-of-range index was passed to the NodeOut constructor.
     bool error;
     string name;
-    int index;
+    int32 index;
     DataType dt;
   };
 
@@ -114,6 +114,10 @@ class NodeBuilder {
   // for all (non-back) inputs.  If created_node is not nullptr,
   // *created_node will be set to the new node (or nullptr on error).
   Status Finalize(Graph* graph, Node** created_node) const;
+
+  // Accessors for the values set in the constructor.
+  const string& node_name() const { return def_builder_.node_name(); }
+  const OpDef& op_def() const { return def_builder_.op_def(); }
 
  private:
   static DataType SafeGetOutput(Node* node, int i, bool* error) {

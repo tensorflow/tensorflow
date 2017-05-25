@@ -68,6 +68,9 @@ class GPUUtil {
 
   // Map a Tensor as a DeviceMemory object wrapping the given typed
   // buffer.
+  //
+  // NOTE: will be removed soon, see StreamExecutorUtil::AsDeviceMemory
+  // instead.
   template <typename T>
   static perftools::gputools::DeviceMemory<T> AsDeviceMemory(const Tensor& t) {
     T* ptr = reinterpret_cast<T*>(const_cast<void*>(DMAHelper::base(&t)));
@@ -97,6 +100,16 @@ class GPUUtil {
                                  AllocatorAttributes dst_alloc_attr,
                                  const Tensor* input, Tensor* output,
                                  StatusCallback done);
+
+  // Deep-copying of GPU tensor on the same device.
+  // 'src_gpu_tensor''s and 'dst_gpu_tensor''s backing memory must be on
+  // 'gpu_device' and 'dst_cpu_tensor' must be allocated to be of the same
+  // size as 'src_gpu_tensor'.
+  static void CopyGPUTensorToSameGPU(Device* gpu_device,
+                                     const DeviceContext* device_context,
+                                     const Tensor* src_gpu_tensor,
+                                     Tensor* dst_gpu_tensor,
+                                     StatusCallback done);
 };
 
 }  // namespace tensorflow

@@ -1,20 +1,24 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 option java_outer_classname = "CostGraphProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/types.proto";
+
 message CostGraphDef {
   message Node {
-    // The name of the node.
+    // The name of the node. Names are globally unique.
     string name = 1;
 
-    // The device of the node.
+    // The device of the node. Can be empty if the node is mapped to the
+    // default partition or partitioning hasn't been run yet.
     string device = 2;
 
-    // The id of the node.
+    // The id of the node. Node ids are only unique inside a partition.
     int32 id = 3;
 
     // Inputs of this node. They must be executed before this node can be
@@ -33,11 +37,29 @@ message CostGraphDef {
       // may itself be an alias. The algorithm will therefore need to follow
       // those pointers.
       int64 alias_input_port = 2;
+      TensorShapeProto shape = 3;
+      DataType dtype = 4;
     }
     repeated OutputInfo output_info = 5;
 
     // Temporary memory used by this node.
     int64 temporary_memory_size = 6;
+
+    int64 host_temp_memory_size = 10;
+    int64 device_temp_memory_size = 11;
+    int64 host_persistent_memory_size = 12;
+    int64 device_persistent_memory_size = 16;
+
+    // Estimate of the computational cost of this node, in microseconds.
+    int64 compute_cost = 9;
+
+    // Analytical estimate of the computational cost of this node, in
+    // microseconds.
+    int64 compute_time = 14;
+
+    // Analytical estimate of the memory access cost of this node, in
+    // microseconds.
+    int64 memory_time = 15;
 
     // If true, the output is permanent: it can't be discarded, because this
     // node is part of the "final output". Nodes may depend on final nodes.

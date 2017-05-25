@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import tensorflow as tf
+import os
 
+from tensorflow.examples.image_retraining import label_image
 from tensorflow.examples.image_retraining import retrain
 from tensorflow.python.framework import test_util
-from tensorflow.python.platform import googletest
 
 
 class ImageRetrainingTest(test_util.TensorFlowTestCase):
@@ -67,12 +67,13 @@ class ImageRetrainingTest(test_util.TensorFlowTestCase):
         self.assertIsNotNone(sess.graph.get_tensor_by_name('DistortJPGInput:0'))
         self.assertIsNotNone(sess.graph.get_tensor_by_name('DistortResult:0'))
 
-  def testAddFinalTrainingOps(self):
+  @tf.test.mock.patch.object(retrain, 'FLAGS', learning_rate=0.01)
+  def testAddFinalTrainingOps(self, flags_mock):
     with tf.Graph().as_default():
       with tf.Session() as sess:
-        bottleneck = tf.placeholder(tf.float32,
-                                    [1, retrain.BOTTLENECK_TENSOR_SIZE],
-                                    name=retrain.BOTTLENECK_TENSOR_NAME)
+        bottleneck = tf.placeholder(
+            tf.float32, [1, retrain.BOTTLENECK_TENSOR_SIZE],
+            name=retrain.BOTTLENECK_TENSOR_NAME.split(':')[0])
         retrain.add_final_training_ops(5, 'final', bottleneck)
         self.assertIsNotNone(sess.graph.get_tensor_by_name('final:0'))
 
@@ -81,6 +82,36 @@ class ImageRetrainingTest(test_util.TensorFlowTestCase):
       final = tf.placeholder(tf.float32, [1], name='final')
       gt = tf.placeholder(tf.float32, [1], name='gt')
       self.assertIsNotNone(retrain.add_evaluation_step(final, gt))
+
+  def testLabelImage(self):
+
+    image_filename = ('../label_image/data/grace_hopper.jpg')
+
+    # Load some default data
+    label_path = os.path.join(tf.resource_loader.get_data_files_path(),
+                              'data/labels.txt')
+    labels = label_image.load_labels(label_path)
+    self.assertEqual(len(labels), 3)
+
+    image_path = os.path.join(tf.resource_loader.get_data_files_path(),
+                              image_filename)
+
+    image = label_image.load_image(image_path)
+    self.assertEqual(len(image), 61306)
+
+    # Create trivial graph; note that the two nodes don't meet
+    with tf.Graph().as_default():
+      jpeg = tf.constant(image)
+      # Input node that doesn't lead anywhere.
+      tf.image.decode_jpeg(jpeg, name='DecodeJpeg')
+
+      # Output node, that always outputs a constant.
+      tf.constant([[10, 30, 5]], name='final')
+
+      # As label_image outputs via print, we assume that
+      # if it returns, everything is OK.
+      result = label_image.run_graph(image, labels, jpeg, 'final:0', 3)
+      self.assertEqual(result, 0)
 
 if __name__ == '__main__':
   tf.test.main()

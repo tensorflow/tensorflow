@@ -29,6 +29,13 @@ class TensorTestHelper {
   static void set_shape(Tensor* t, const TensorShape& s) { t->set_shape(s); }
 };
 
+// To make TestCopies do the right thing.
+inline bool operator==(const ResourceHandle& a, const ResourceHandle& b) {
+  return a.device() == b.device() && a.container() == b.container() &&
+         a.name() == b.name() && a.hash_code() == b.hash_code() &&
+         a.maybe_type_name() == b.maybe_type_name();
+}
+
 TEST(TensorTest, Default) {
   Tensor t;
   EXPECT_EQ(t.dtype(), DT_FLOAT);
@@ -124,6 +131,8 @@ void TestCopies(const Tensor& t) {
     LOG(INFO) << "Move assignment";
     Tensor t2 = t;
     Tensor t3 = std::move(t2);
+    Tensor* t4 = &t3;
+    *t4 = std::move(t3);
     test::ExpectTensorEqual<T>(t, t3);
     EXPECT_TRUE(t3.IsInitialized());
     EXPECT_FALSE(t2.IsInitialized());
@@ -139,6 +148,14 @@ TEST(Tensor_Float, Simple) {
     }
   }
   TestCopies<float>(t);
+}
+
+TEST(Tensor_ResourceHandle, Simple) {
+  Tensor t(DT_RESOURCE, TensorShape({}));
+  ResourceHandle tmp;
+  tmp.set_name("a");
+  t.flat<ResourceHandle>()(0) = tmp;
+  TestCopies<ResourceHandle>(t);
 }
 
 TEST(Tensor_UInt16, Simple) {
@@ -185,11 +202,19 @@ TEST(Tensor_QInt32, Simple) {
   TestCopies<qint32>(t);
 }
 
-TEST(Tensor_Float, Reshape) {
-  Tensor t(DT_FLOAT, TensorShape({2, 3, 4, 5}));
-  EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 3, 4, 5})));
+class TensorReshapeTest : public ::testing::Test {
+ protected:
+  Tensor t;
+  Tensor zero_t;
 
-  {
+  TensorReshapeTest()
+      : t(DT_FLOAT, TensorShape({2, 3, 4, 5})),
+        zero_t(DT_FLOAT, TensorShape({3, 0, 2, 0, 5})) {}
+
+  virtual void SetUp() {
+    EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 3, 4, 5})));
+    EXPECT_TRUE(zero_t.shape().IsSameSize(TensorShape({3, 0, 2, 0, 5})));
+
     auto tensor = t.tensor<float, 4>();
     EXPECT_EQ(2, tensor.dimension(0));
     EXPECT_EQ(3, tensor.dimension(1));
@@ -200,6 +225,10 @@ TEST(Tensor_Float, Reshape) {
     tensor(0, 0, 0, 0) = 0.01f;
     tensor(1, 2, 3, 4) = 0.02f;
   }
+};
+
+TEST_F(TensorReshapeTest, Reshape) {
+  LOG(INFO) << "shaped";
   {
     auto shaped = t.shaped<float, 1>({120});
     EXPECT_EQ(120, shaped.dimension(0));
@@ -231,6 +260,10 @@ TEST(Tensor_Float, Reshape) {
     EXPECT_EQ(shaped(0, 0, 0, 0), 0.01f);
     EXPECT_EQ(shaped(1, 2, 3, 4), 0.02f);
   }
+}
+
+TEST_F(TensorReshapeTest, Flat) {
+  LOG(INFO) << "flat";
   {
     auto flat = t.flat<float>();
     EXPECT_EQ(flat(0), 0.01f);
@@ -238,19 +271,16 @@ TEST(Tensor_Float, Reshape) {
     EXPECT_EQ(flat(0), 0.01f);
     EXPECT_EQ(flat(119), 0.02f);
   }
+}
+
+TEST_F(TensorReshapeTest, FlatInnerDims) {
+  LOG(INFO) << "flat_inner_dims";
   {
     auto flat_inner_dims = t.flat_inner_dims<float>();
     EXPECT_EQ(24, flat_inner_dims.dimension(0));
     EXPECT_EQ(5, flat_inner_dims.dimension(1));
     EXPECT_EQ(flat_inner_dims(0, 0), 0.01f);
     EXPECT_EQ(flat_inner_dims(23, 4), 0.02f);
-  }
-  {
-    auto flat_outer_dims = t.flat_outer_dims<float>();
-    EXPECT_EQ(2, flat_outer_dims.dimension(0));
-    EXPECT_EQ(60, flat_outer_dims.dimension(1));
-    EXPECT_EQ(flat_outer_dims(0, 0), 0.01f);
-    EXPECT_EQ(flat_outer_dims(1, 59), 0.02f);
   }
   {
     auto flat_inner_dims = t.flat_inner_dims<float, 3>();
@@ -261,14 +291,6 @@ TEST(Tensor_Float, Reshape) {
     EXPECT_EQ(flat_inner_dims(5, 3, 4), 0.02f);
   }
   {
-    auto flat_outer_dims = t.flat_outer_dims<float, 3>();
-    EXPECT_EQ(2, flat_outer_dims.dimension(0));
-    EXPECT_EQ(3, flat_outer_dims.dimension(1));
-    EXPECT_EQ(20, flat_outer_dims.dimension(2));
-    EXPECT_EQ(flat_outer_dims(0, 0, 0), 0.01f);
-    EXPECT_EQ(flat_outer_dims(1, 2, 19), 0.02f);
-  }
-  {
     auto flat_inner_dims = t.flat_inner_dims<float, 5>();
     EXPECT_EQ(1, flat_inner_dims.dimension(0));
     EXPECT_EQ(2, flat_inner_dims.dimension(1));
@@ -277,37 +299,6 @@ TEST(Tensor_Float, Reshape) {
     EXPECT_EQ(5, flat_inner_dims.dimension(4));
     EXPECT_EQ(flat_inner_dims(0, 0, 0, 0, 0), 0.01f);
     EXPECT_EQ(flat_inner_dims(0, 1, 2, 3, 4), 0.02f);
-  }
-  {
-    auto flat_outer_dims = t.flat_outer_dims<float, 5>();
-    EXPECT_EQ(2, flat_outer_dims.dimension(0));
-    EXPECT_EQ(3, flat_outer_dims.dimension(1));
-    EXPECT_EQ(4, flat_outer_dims.dimension(2));
-    EXPECT_EQ(5, flat_outer_dims.dimension(3));
-    EXPECT_EQ(1, flat_outer_dims.dimension(4));
-    EXPECT_EQ(flat_outer_dims(0, 0, 0, 0, 0), 0.01f);
-    EXPECT_EQ(flat_outer_dims(1, 2, 3, 4, 0), 0.02f);
-  }
-
-  Tensor zero_t(DT_FLOAT, TensorShape({3, 0, 2, 0, 5}));
-  {
-    auto flat_outer_dims = zero_t.flat_outer_dims<float>();
-    EXPECT_EQ(3, flat_outer_dims.dimension(0));
-    EXPECT_EQ(0, flat_outer_dims.dimension(1));
-  }
-  {
-    auto flat_outer_dims = zero_t.flat_outer_dims<float, 3>();
-    EXPECT_EQ(3, flat_outer_dims.dimension(0));
-    EXPECT_EQ(0, flat_outer_dims.dimension(1));
-    EXPECT_EQ(0, flat_outer_dims.dimension(2));
-  }
-  {
-    auto flat_outer_dims = zero_t.flat_outer_dims<float, 5>();
-    EXPECT_EQ(3, flat_outer_dims.dimension(0));
-    EXPECT_EQ(0, flat_outer_dims.dimension(1));
-    EXPECT_EQ(2, flat_outer_dims.dimension(2));
-    EXPECT_EQ(0, flat_outer_dims.dimension(3));
-    EXPECT_EQ(5, flat_outer_dims.dimension(4));
   }
   {
     auto flat_inner_dims = zero_t.flat_inner_dims<float>();
@@ -330,7 +321,191 @@ TEST(Tensor_Float, Reshape) {
   }
 }
 
+TEST_F(TensorReshapeTest, FlatOuterDims) {
+  LOG(INFO) << "flat_outer_dims";
+  {
+    auto flat_outer_dims = t.flat_outer_dims<float>();
+    EXPECT_EQ(2, flat_outer_dims.dimension(0));
+    EXPECT_EQ(60, flat_outer_dims.dimension(1));
+    EXPECT_EQ(flat_outer_dims(0, 0), 0.01f);
+    EXPECT_EQ(flat_outer_dims(1, 59), 0.02f);
+  }
+  {
+    auto flat_outer_dims = t.flat_outer_dims<float, 3>();
+    EXPECT_EQ(2, flat_outer_dims.dimension(0));
+    EXPECT_EQ(3, flat_outer_dims.dimension(1));
+    EXPECT_EQ(20, flat_outer_dims.dimension(2));
+    EXPECT_EQ(flat_outer_dims(0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_outer_dims(1, 2, 19), 0.02f);
+  }
+  {
+    auto flat_outer_dims = t.flat_outer_dims<float, 5>();
+    EXPECT_EQ(2, flat_outer_dims.dimension(0));
+    EXPECT_EQ(3, flat_outer_dims.dimension(1));
+    EXPECT_EQ(4, flat_outer_dims.dimension(2));
+    EXPECT_EQ(5, flat_outer_dims.dimension(3));
+    EXPECT_EQ(1, flat_outer_dims.dimension(4));
+    EXPECT_EQ(flat_outer_dims(0, 0, 0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_outer_dims(1, 2, 3, 4, 0), 0.02f);
+  }
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+  }
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float, 3>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+    EXPECT_EQ(0, flat_outer_dims.dimension(2));
+  }
+  {
+    auto flat_outer_dims = zero_t.flat_outer_dims<float, 5>();
+    EXPECT_EQ(3, flat_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_outer_dims.dimension(1));
+    EXPECT_EQ(2, flat_outer_dims.dimension(2));
+    EXPECT_EQ(0, flat_outer_dims.dimension(3));
+    EXPECT_EQ(5, flat_outer_dims.dimension(4));
+  }
+}
+
+TEST_F(TensorReshapeTest, FlatInnerOuterDims) {
+  LOG(INFO) << "flat_inner_outer_dims";
+  {
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 4>(0);
+    EXPECT_EQ(2, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(3, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(4, flat_inner_outer_dims.dimension(2));
+    EXPECT_EQ(5, flat_inner_outer_dims.dimension(3));
+    EXPECT_EQ(flat_inner_outer_dims(0, 0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_inner_outer_dims(1, 2, 3, 4), 0.02f);
+  }
+  {
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 6>(-2);
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(2, flat_inner_outer_dims.dimension(2));
+    EXPECT_EQ(3, flat_inner_outer_dims.dimension(3));
+    EXPECT_EQ(4, flat_inner_outer_dims.dimension(4));
+    EXPECT_EQ(5, flat_inner_outer_dims.dimension(5));
+    EXPECT_EQ(flat_inner_outer_dims(0, 0, 0, 0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_inner_outer_dims(0, 0, 1, 2, 3, 4), 0.02f);
+  }
+  {
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 6>(0);
+    EXPECT_EQ(2, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(3, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(4, flat_inner_outer_dims.dimension(2));
+    EXPECT_EQ(5, flat_inner_outer_dims.dimension(3));
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(4));
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(5));
+    EXPECT_EQ(flat_inner_outer_dims(0, 0, 0, 0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_inner_outer_dims(1, 2, 3, 4, 0, 0), 0.02f);
+  }
+  {
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 8>(-2);
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(2, flat_inner_outer_dims.dimension(2));
+    EXPECT_EQ(3, flat_inner_outer_dims.dimension(3));
+    EXPECT_EQ(4, flat_inner_outer_dims.dimension(4));
+    EXPECT_EQ(5, flat_inner_outer_dims.dimension(5));
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(6));
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(7));
+    EXPECT_EQ(flat_inner_outer_dims(0, 0, 0, 0, 0, 0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_inner_outer_dims(0, 0, 1, 2, 3, 4, 0, 0), 0.02f);
+  }
+  {
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 3>(1);
+    EXPECT_EQ(6, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(4, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(5, flat_inner_outer_dims.dimension(2));
+    EXPECT_EQ(flat_inner_outer_dims(0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_inner_outer_dims(5, 3, 4), 0.02f);
+  }
+  {
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 5>(1);
+    EXPECT_EQ(6, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(4, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(5, flat_inner_outer_dims.dimension(2));
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(3));
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(4));
+    EXPECT_EQ(flat_inner_outer_dims(0, 0, 0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_inner_outer_dims(5, 3, 4, 0, 0), 0.02f);
+  }
+  {
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 3>(0);
+    EXPECT_EQ(2, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(3, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(20, flat_inner_outer_dims.dimension(2));
+    EXPECT_EQ(flat_inner_outer_dims(0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_inner_outer_dims(1, 2, 19), 0.02f);
+  }
+  {
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 5>(-2);
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(1, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(2, flat_inner_outer_dims.dimension(2));
+    EXPECT_EQ(3, flat_inner_outer_dims.dimension(3));
+    EXPECT_EQ(20, flat_inner_outer_dims.dimension(4));
+    EXPECT_EQ(flat_inner_outer_dims(0, 0, 0, 0, 0), 0.01f);
+    EXPECT_EQ(flat_inner_outer_dims(0, 0, 1, 2, 19), 0.02f);
+  }
+  {
+    auto flat_inner_outer_dims = t.flat_inner_outer_dims<float, 2>(1);
+    EXPECT_EQ(6, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(20, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(flat_inner_outer_dims(0, 0), 0.01f);
+    EXPECT_EQ(flat_inner_outer_dims(5, 19), 0.02f);
+  }
+  {
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 2>(0);
+    EXPECT_EQ(3, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_inner_outer_dims.dimension(1));
+  }
+  {
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 3>(0);
+    EXPECT_EQ(3, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(0, flat_inner_outer_dims.dimension(2));
+  }
+  {
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 5>(0);
+    EXPECT_EQ(3, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(2, flat_inner_outer_dims.dimension(2));
+    EXPECT_EQ(0, flat_inner_outer_dims.dimension(3));
+    EXPECT_EQ(5, flat_inner_outer_dims.dimension(4));
+  }
+  {
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 2>(3);
+    EXPECT_EQ(0, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(5, flat_inner_outer_dims.dimension(1));
+  }
+  {
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 3>(2);
+    EXPECT_EQ(0, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(0, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(5, flat_inner_outer_dims.dimension(2));
+  }
+  {
+    auto flat_inner_outer_dims = zero_t.flat_inner_outer_dims<float, 3>(1);
+    EXPECT_EQ(0, flat_inner_outer_dims.dimension(0));
+    EXPECT_EQ(2, flat_inner_outer_dims.dimension(1));
+    EXPECT_EQ(0, flat_inner_outer_dims.dimension(2));
+  }
+}
+
 TEST(Tensor_Scalar, Basics) {
+  {
+    Tensor t(DT_BOOL, TensorShape({}));
+    EXPECT_EQ(1, t.NumElements());
+    auto Tt = t.scalar<bool>();
+    EXPECT_EQ(1, Tt.size());
+    EXPECT_EQ(0, Tt.rank());
+    t.scalar<bool>()() = true;
+    EXPECT_TRUE(Tt());
+  }
   {
     Tensor t(DT_FLOAT, TensorShape({}));
     EXPECT_EQ(1, t.NumElements());
@@ -703,7 +878,7 @@ TEST(Tensor, FailureToAllocate) {
 // On the alignment.
 //
 // As of 2015/8, tensorflow::Tensor allocates its buffer with 32-byte
-// alignment. Tensor::tensor/flat/vec/matrix methods requires the the
+// alignment. Tensor::tensor/flat/vec/matrix methods requires the
 // buffer satisfies Eigen::Aligned (e.g., 16-bytes aligned usually,
 // and 32-bytes for AVX). Tensor::Slice requires the caller to ensure
 // its result is aligned if the caller intends to use those methods.
@@ -772,7 +947,7 @@ TEST(Tensor, Slice_Basic) {
 
     // Take an unaligned slice.
     Tensor y = x.Slice(1, 13);
-#if EIGEN_ALIGN == 1
+#if EIGEN_MAX_ALIGN_BYTES > 0
     EXPECT_FALSE(y.IsAligned());
 #endif
     y.unaligned_flat<float>().setConstant(1.0);
@@ -784,7 +959,8 @@ TEST(Tensor, Slice_Basic) {
 
 namespace {
 template <typename T>
-Tensor MkTensor(DataType dt, TensorShape shape, std::vector<T> init_values) {
+Tensor MkTensor(DataType dt, const TensorShape& shape,
+                std::vector<T> init_values) {
   Tensor x(dt, shape);
   const int limit = x.NumElements();
   int vi = 0;
@@ -808,20 +984,24 @@ TEST(SummarizeValue, INT32) {
   Tensor x = MkTensor<int>(DT_INT32, TensorShape({5}), {1, 2, 3, 4, 0});
   EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
   x = MkTensor<int>(DT_INT32, TensorShape({2, 2}), {1, 2, 3, 4, 0});
-  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  EXPECT_EQ("[1 2][3 4]", x.SummarizeValue(16));
   x = MkTensor<int>(DT_INT32, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
-  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
-  EXPECT_EQ("1 2 3...", x.SummarizeValue(3));
+  EXPECT_EQ("[[[1]][[2]]][[[3]][[4]]]", x.SummarizeValue(16));
+  EXPECT_EQ("[[[1]][[2]]][[[3]]]...", x.SummarizeValue(3));
+  x = MkTensor<int>(DT_INT32, TensorShape({0}), {});
+  EXPECT_EQ("", x.SummarizeValue(16));
 }
 
 TEST(SummarizeValue, FLOAT) {
   Tensor x = MkTensor<float>(DT_FLOAT, TensorShape({5}), {1, 2, 3, 4, 0});
   EXPECT_EQ("1 2 3 4 0", x.SummarizeValue(16));
   x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2}), {1, 2, 3, 4, 0});
-  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
+  EXPECT_EQ("[1 2][3 4]", x.SummarizeValue(16));
   x = MkTensor<float>(DT_FLOAT, TensorShape({2, 2, 1, 1}), {1, 2, 3, 4, 0});
-  EXPECT_EQ("1 2 3 4", x.SummarizeValue(16));
-  EXPECT_EQ("1 2 3...", x.SummarizeValue(3));
+  EXPECT_EQ("[[[1]][[2]]][[[3]][[4]]]", x.SummarizeValue(16));
+  EXPECT_EQ("[[[1]][[2]]][[[3]]]...", x.SummarizeValue(3));
+  x = MkTensor<float>(DT_FLOAT, TensorShape({0}), {});
+  EXPECT_EQ("", x.SummarizeValue(16));
 }
 
 TEST(SummarizeValue, BOOL) {

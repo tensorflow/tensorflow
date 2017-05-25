@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CHANNEL_H_
 
+#include <map>
 #include <memory>
 #include <set>
 #include <string>
@@ -35,14 +36,17 @@ namespace tensorflow {
 class GrpcChannelSpec {
  public:
   struct HostPortsJob {
-    string job_id;
-    std::vector<string> host_ports;
-    int tasks_per_replica;
+    HostPortsJob(const string& job_id, const std::map<int, string>& host_ports)
+        : job_id(job_id), host_ports(host_ports) {}
+    const string job_id;
+    const std::map<int, string> host_ports;
   };
 
   Status AddHostPortsJob(const string& job_id,
-                         const std::vector<string>& host_ports,
-                         int tasks_per_replica);
+                         const std::vector<string>& host_ports);
+
+  Status AddHostPortsJob(const string& job_id,
+                         const std::map<int, string>& host_ports);
 
   const std::vector<HostPortsJob>& host_ports_jobs() const {
     return host_ports_jobs_;
@@ -61,7 +65,7 @@ class GrpcChannelCache {
   // was created to handle.  Worker names are in the format
   //  /job:<job identifier>/task:<task id>
   // e.g. /job:mnist/task:2
-  virtual void ListWorkers(std::vector<string>* workers) = 0;
+  virtual void ListWorkers(std::vector<string>* workers) const = 0;
 
   // If found, returns a gRPC channel that is connected to the remote
   // worker named by 'target'. 'target' is of the following
@@ -75,26 +79,17 @@ class GrpcChannelCache {
 
 typedef std::function<SharedGrpcChannelPtr(string)> ChannelCreationFunction;
 
-GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& p,
+GrpcChannelCache* NewGrpcChannelCache(const GrpcChannelSpec& channel_spec,
                                       ChannelCreationFunction channel_func);
 
 // Below here are internal-only functions.
 
-SharedGrpcChannelPtr NewHostPortGrpcChannel(const string& target);
+ChannelCreationFunction ConvertToChannelCreationFunction(
+    const std::function<Status(string, SharedGrpcChannelPtr*)>&
+        new_channel_func_ptr);
 
-// Returns a ChannelCache that uses a set of known host:port pairs. E.g., say,
-// job_id = 'mnist', 'host_ports' = {"h0:0", "h1:1", ..., "h11:11", "h12:12"},
-// tasks_per_replica = 8, /job:mnist/replica:1/task:3 is mapped to host:port
-// "h11:11" (11 = 8 * 1 + 3).
-//
-// The caller takes ownership of the returned object.
-GrpcChannelCache* NewHostPortsGrpcChannelCache(
-    const string& job_id, const std::vector<string>& host_ports,
-    int tasks_per_replica, ChannelCreationFunction channel_func);
-
-// Returns a ChannelCache that is the union of a number of other ChannelCaches.
-GrpcChannelCache* NewMultiGrpcChannelCache(
-    const std::vector<GrpcChannelCache*>& caches);
+Status NewHostPortGrpcChannel(const string& target,
+                              SharedGrpcChannelPtr* channel_pointer);
 
 }  // namespace tensorflow
 

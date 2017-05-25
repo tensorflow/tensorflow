@@ -24,6 +24,14 @@ namespace tensorflow {
 namespace functor {
 
 template <typename Device, typename T>
+struct SplitCustom {
+  void operator()(const Device& d, typename TTypes<T, 2>::Tensor output,
+                  typename TTypes<T, 2>::ConstTensor input,
+                  const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, 2>& slice_sizes);
+};
+
+template <typename Device, typename T>
 struct Split {
   void operator()(const Device& d, typename TTypes<T, 3>::Tensor output,
                   typename TTypes<T, 3>::ConstTensor input,
@@ -39,6 +47,17 @@ struct Split<Eigen::ThreadPoolDevice, T> {
                   const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
                   const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes);
 };
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct Split<Eigen::SyclDevice, T> {
+  void operator()(const Eigen::SyclDevice& d,
+                  typename TTypes<T, 3>::Tensor output,
+                  typename TTypes<T, 3>::ConstTensor input,
+                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
+                  const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes);
+};
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

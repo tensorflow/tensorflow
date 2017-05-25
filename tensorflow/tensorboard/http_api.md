@@ -28,18 +28,35 @@ from the `AudioSummary`, and the `images` from `ImageSummary`. The tag type
 boolean denoting if there is a graph definition associated with the run. The tag
 is provided to the summary op (usually as a constant).
 
+## `data/logdir`
+
+Returns a JSON object with a key "logdir" that maps to the `logdir` argument
+(string) with which Tensorboard started up. Example:
+`{logdir: '/foo/logdir/argument'}`
+
+The `logdir` argument is the path of the directory that contains events files.
+
+## `data/plugins_listing`
+
+Returns a dict mapping from plugin name to a boolean indicating whether the
+plugin is active. A plugin might be inactive, for instance, if it lacks relevant
+data. Every plugin has a key. This route helps the frontend avoid issuing
+requests to an inactive plugin - the routes of an inactive plugin do not work.
+
 ## `data/runs`
 
+> **NOTE:** TensorBoard is migrating away from this API. Over time, each tag
+> type will own a dedicated route, such as `data/plugin/scalars/tags`.
+
 Returns a dictionary mapping from `run name` (quoted string) to dictionaries
-mapping from all available tagTypes to a list of tags of that type available for
-the run. Think of this as a comprehensive index of all of the data available
-from the TensorBoard server. Here is an example:
+mapping from most available tagTypes (see "Migrations" below) to a list of tags
+of that type available for the run. Think of this as a comprehensive index of
+all of the data available from the TensorBoard server. Here is an example:
 
     {
       "train_run": {
         "histograms": ["foo_histogram", "bar_histogram"],
         "compressedHistograms": ["foo_histogram", "bar_histogram"],
-        "scalars": ["xent", "loss", "learning_rate"],
         "images": ["input"],
         "audio": ["input_audio"],
         "graph": true,
@@ -49,13 +66,12 @@ from the TensorBoard server. Here is an example:
       "eval": {
         "histograms": ["foo_histogram", "bar_histogram"],
         "compressedHistograms": ["foo_histogram", "bar_histogram"],
-        "scalars": ["precision", "recall"],
         "images": ["input"],
         "audio": ["input_audio"],
         "graph": false,
         "run_metadata": []
       }
-      }
+    }
 
 The `firstEventTimestamp` value is in seconds since the epoch.
 
@@ -63,7 +79,28 @@ Note that the same tag may be present for many runs. It is not guaranteed that
 they will have the same meaning across runs. It is also not guaranteed that they
 will have the same tag type across different runs.
 
-## '/data/scalars?run=foo&tag=bar'
+### Migrations
+
+Each of the following tag types `<t>` has been migrated to `/data/plugin/<t>/tags`,
+and will not appear in the output from this route:
+
+  - `scalars`
+
+## `/data/plugin/scalars/tags`
+
+Returns a dictionary mapping from `run_name` (quoted string) to arrays of
+`tag_name` (quoted string), where each array contains the names of all
+scalar tags present in the corresponding run. Here is an example:
+
+    {
+      "train_run": ["xent", "loss", "learning_rate"],
+      "eval": ["precision", "recall"]
+    }
+
+Note that runs without any scalar tags are included as keys with value the
+empty array.
+
+## `/data/plugin/scalars/scalars?run=foo&tag=bar`
 
 Returns an array of event_accumulator.SimpleValueEvents ([wall_time, step,
 value]) for the given run and tag. wall_time is seconds since epoch.
@@ -84,27 +121,6 @@ format:
     1443856985.705543,1448,0.7461960315704346
     1443857105.704628,3438,0.5427092909812927
     1443857225.705133,5417,0.5457325577735901
-
-## '/data/scalars?[sample_count=10]'
-
-Without any parameters, returns a dictionary mapping from run name to a
-dictionary mapping from tag name to a sampled list of scalars from that run and
-tag. The values are given in the same format as when the run and tag are
-specified. For example:
-
-    {
-      "train_run": {
-        "my_tag": [
-          [1443856985.705543, 1448, 0.7461960315704346],
-          [1443857105.704628, 3438, 0.5427092909812927],
-          [1443857225.705133, 5417, 0.5457325577735901]
-        ]
-      }
-    }
-
-The samples are distributed uniformly over the list of values. The sample_count
-parameter is optional and defaults to 10; it must be at least 2. The first and
-the last value will always be sampled.
 
 ## '/data/histograms?run=foo&tag=bar'
 
@@ -327,7 +343,7 @@ proto. For example:
 ## Notes
 
 All returned values, histograms, audio, and images are returned in the order
-they were written by Tensorflow (which should correspond to increasing
+they were written by TensorFlow (which should correspond to increasing
 `wall_time` order, but may not necessarily correspond to increasing step count
 if the process had to restart from a previous checkpoint).
 

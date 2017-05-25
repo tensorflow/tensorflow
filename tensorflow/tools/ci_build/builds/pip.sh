@@ -19,8 +19,7 @@
 # The PIP installation is done using the --user flag.
 #
 # Usage:
-#   pip.sh CONTAINER_TYPE [--mavx] [--mavx2]
-#                         [--test_tutorials] [--integration_tests]
+#   pip.sh CONTAINER_TYPE [--test_tutorials] [--integration_tests] [bazel flags]
 #
 # When executing the Python unit tests, the script obeys the shell
 # variables: TF_BUILD_BAZEL_CLEAN, TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES,
@@ -30,7 +29,7 @@
 # script to perform bazel clean prior to main build and test steps.
 #
 # TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES overrides the default extra pip packages
-# to be installed in virtualenv before test_installation.sh is called. Multiple
+# to be installed in virtualenv before run_pip_tests.sh is called. Multiple
 # pakcage names are separated with spaces.
 #
 # If NO_TEST_ON_INSTALL has any non-empty and non-0 value, the test-on-install
@@ -39,8 +38,10 @@
 # If NO_TEST_USER_OPS has any non-empty and non-0 value, the testing of user-
 # defined ops against the installation will be skipped.
 #
-# Use --mavx or --mavx2 to let bazel use --copt=-mavx or --copt=-mavx2 options
-# while building the pip package, respectively.
+# If NO_TEST_TFDBG_BINARIES has any non-empty and non-0 value, the testing of
+# TensorFlow Debugger (tfdbg) binaries and examples will be skipped.
+#
+# Any flags not listed in the usage above will be passed directly to Bazel.
 #
 # If the --test_tutorials flag is set, it will cause the script to run the
 # tutorial tests (see test_tutorials.sh) after the PIP
@@ -48,6 +49,18 @@
 # --integration_tests will cause the integration tests (integration_tests.sh)
 # to run.
 #
+
+# Helper function: Strip leading and trailing whitespaces
+str_strip () {
+  echo -e "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+# Fixed naming patterns for wheel (.whl) files given different python versions
+if [[ $(uname) == "Linux" ]]; then
+  declare -A WHL_TAGS
+  WHL_TAGS=(["2.7"]="cp27-none" ["3.4"]="cp34-cp34m" ["3.5"]="cp35-cp35m")
+fi
+
 
 INSTALL_EXTRA_PIP_PACKAGES=${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}
 
@@ -59,32 +72,38 @@ source "${SCRIPT_DIR}/builds_common.sh"
 
 # Get the command line arguments
 CONTAINER_TYPE=$( echo "$1" | tr '[:upper:]' '[:lower:]' )
+shift
 
-if [[ ! -z "${TF_BUILD_BAZEL_CLEAN}" ]] && \
+if [[ -n "${TF_BUILD_BAZEL_CLEAN}" ]] && \
    [[ "${TF_BUILD_BAZEL_CLEAN}" != "0" ]]; then
   echo "TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}: Performing 'bazel clean'"
   bazel clean
 fi
 
 DO_TEST_USER_OPS=1
-if [[ ! -z "${NO_TEST_USER_OPS}" ]] && \
+if [[ -n "${NO_TEST_USER_OPS}" ]] && \
    [[ "${NO_TEST_USER_OPS}" != "0" ]]; then
   echo "NO_TEST_USER_OPS=${NO_TEST_USER_OPS}: Will skip testing of user ops"
   DO_TEST_USER_OPS=0
 fi
 
+DO_TEST_TFDBG_BINARIES=1
+if [[ -n "${NO_TEST_TFDBG_BINARIES}" ]] && \
+   [[ "${NO_TEST_TFDBG_BINARIES}" != "0" ]]; then
+  echo "NO_TEST_TFDBG_BINARIES=${NO_TEST_TFDBG_BINARIES}: Will skip testing of tfdbg binaries"
+  DO_TEST_TFDBG_BINARIES=0
+fi
+
 DO_TEST_TUTORIALS=0
 DO_INTEGRATION_TESTS=0
-MAVX_FLAG=""
+BAZEL_FLAGS=""
 while true; do
   if [[ "${1}" == "--test_tutorials" ]]; then
     DO_TEST_TUTORIALS=1
   elif [[ "${1}" == "--integration_tests" ]]; then
     DO_INTEGRATION_TESTS=1
-  elif [[ "${1}" == "--mavx" ]]; then
-    MAVX_FLAG="--copt=-mavx"
-  elif [[ "${1}" == "--mavx2" ]]; then
-    MAVX_FLAG="--copt=-mavx2"
+  else
+    BAZEL_FLAGS="${BAZEL_FLAGS} ${1}"
   fi
 
   shift
@@ -93,25 +112,32 @@ while true; do
   fi
 done
 
-if [[ ! -z "${MAVX_FLAG}" ]]; then
-  echo "Using MAVX flag: ${MAVX_FLAG}"
-fi
+BAZEL_FLAGS=$(str_strip "${BAZEL_FLAGS}")
+
+echo "Using Bazel flags: ${BAZEL_FLAGS}"
 
 PIP_BUILD_TARGET="//tensorflow/tools/pip_package:build_pip_package"
 GPU_FLAG=""
-if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
-  bazel build -c opt ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
+if [[ ${CONTAINER_TYPE} == "cpu" ]] || \
+   [[ ${CONTAINER_TYPE} == "debian.jessie.cpu" ]]; then
+  bazel build ${BAZEL_FLAGS} ${PIP_BUILD_TARGET} || \
       die "Build failed."
 elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
-  bazel build -c opt --config=cuda ${MAVX_FLAG} ${PIP_BUILD_TARGET} || \
+  bazel build ${BAZEL_FLAGS} ${PIP_BUILD_TARGET} || \
       die "Build failed."
   GPU_FLAG="--gpu"
 else
   die "Unrecognized container type: \"${CONTAINER_TYPE}\""
 fi
 
+MAC_FLAG=""
+if [[ $(uname) == "Darwin" ]]; then
+  MAC_FLAG="--mac"
+fi
+
+
 # If still in a virtualenv, deactivate it first
-if [[ ! -z "$(which deactivate)" ]]; then
+if [[ -n "$(which deactivate)" ]]; then
   echo "It appears that we are already in a virtualenv. Deactivating..."
   deactivate || die "FAILED: Unable to deactivate from existing virtualenv"
 fi
@@ -128,6 +154,9 @@ fi
 # This info will be useful for determining the directory of the local pip
 # installation of Python
 PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -V 2>&1 | awk '{print $NF}' | cut -d. -f-2)
+if [[ -z "${PY_MAJOR_MINOR_VER}" ]]; then
+  die "ERROR: Unable to determine the major.minor version of Python"
+fi
 
 echo "Python binary path to be used in PIP install: ${PYTHON_BIN_PATH} "\
 "(Major.Minor version: ${PY_MAJOR_MINOR_VER})"
@@ -137,19 +166,74 @@ PIP_TEST_ROOT="pip_test"
 PIP_WHL_DIR="${PIP_TEST_ROOT}/whl"
 PIP_WHL_DIR=$(realpath ${PIP_WHL_DIR})  # Get absolute path
 rm -rf ${PIP_WHL_DIR} && mkdir -p ${PIP_WHL_DIR}
-bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} || \
+bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} || \
     die "build_pip_package FAILED"
 
-# Perform installation
 WHL_PATH=$(ls ${PIP_WHL_DIR}/tensorflow*.whl)
 if [[ $(echo ${WHL_PATH} | wc -w) -ne 1 ]]; then
   die "ERROR: Failed to find exactly one built TensorFlow .whl file in "\
 "directory: ${PIP_WHL_DIR}"
 fi
 
-echo "whl file path = ${WHL_PATH}"
+# Print the size of the PIP wheel file.
+echo
+echo "Size of the PIP wheel file built: $(ls -l ${WHL_PATH} | awk '{print $5}')"
+echo
 
-# Install, in user's local home folder
+# Rename the whl file properly so it will have the python
+# version tags and platform tags that won't cause pip install issues.
+if [[ $(uname) == "Linux" ]]; then
+  PY_TAGS=${WHL_TAGS[${PY_MAJOR_MINOR_VER}]}
+  PLATFORM_TAG=$(to_lower "$(uname)_$(uname -m)")
+# MAC has bash v3, which does not have associative array
+elif [[ $(uname) == "Darwin" ]]; then
+  if [[ ${PY_MAJOR_MINOR_VER} == "2.7" ]]; then
+    PY_TAGS="py2-none"
+  elif [[ ${PY_MAJOR_MINOR_VER} == "3.5" ]]; then
+    PY_TAGS="py3-none"
+  elif [[ ${PY_MAJOR_MINOR_VER} == "3.6" ]]; then
+    PY_TAGS="py3-none"
+  fi
+  PLATFORM_TAG="any"
+fi
+
+WHL_DIR=$(dirname "${WHL_PATH}")
+WHL_BASE_NAME=$(basename "${WHL_PATH}")
+
+if [[ -n "${PY_TAGS}" ]]; then
+  NEW_WHL_BASE_NAME=$(echo ${WHL_BASE_NAME} | cut -d \- -f 1)-\
+$(echo ${WHL_BASE_NAME} | cut -d \- -f 2)-${PY_TAGS}-${PLATFORM_TAG}.whl
+
+  if [[ ! -f "${WHL_DIR}/${NEW_WHL_BASE_NAME}" ]]; then
+    cp "${WHL_DIR}/${WHL_BASE_NAME}" "${WHL_DIR}/${NEW_WHL_BASE_NAME}" && \
+      echo "Copied wheel file: ${WHL_BASE_NAME} --> ${NEW_WHL_BASE_NAME}" || \
+      die "ERROR: Failed to copy wheel file to ${NEW_WHL_BASE_NAME}"
+  fi
+fi
+
+if [[ $(uname) == "Linux" ]]; then
+  AUDITED_WHL_NAME="${WHL_DIR}/$(echo ${WHL_BASE_NAME} | sed "s/linux/manylinux1/")"
+
+  # Repair the wheels for cpu manylinux1
+  if [[ ${CONTAINER_TYPE} == "cpu" ]]; then
+    echo "auditwheel repairing ${WHL_PATH}"
+    auditwheel repair -w ${WHL_DIR} ${WHL_PATH}
+
+    if [[ -f ${AUDITED_WHL_NAME} ]]; then
+      WHL_PATH=${AUDITED_WHL_NAME}
+      echo "Repaired manylinx1 wheel file at: ${WHL_PATH}"
+    else
+      die "ERROR: Cannot find repaired wheel."
+    fi
+  # Copy and rename for gpu manylinux as we do not want auditwheel to package in libcudart.so
+  elif [[ ${CONTAINER_TYPE} == "gpu" ]]; then
+    WHL_PATH=${AUDITED_WHL_NAME}
+    cp ${WHL_DIR}/${WHL_BASE_NAME} ${WHL_PATH}
+    echo "Copied manylinx1 wheel file at ${WHL_PATH}"
+  fi
+fi
+
+# Perform installation
 echo "Installing pip whl file: ${WHL_PATH}"
 
 # Create virtualenv directory for install test
@@ -179,6 +263,10 @@ source "${VENV_DIR}/bin/activate" || \
 
 # Install the pip file in virtual env (plus missing dependencies)
 
+# Upgrade pip so it supports tags such as cp27mu, manylinux1 etc.
+echo "Upgrade pip in virtualenv"
+pip install --upgrade pip==8.1.2
+
 # Force tensorflow reinstallation. Otherwise it may not get installed from
 # last build if it had the same version number as previous build.
 PIP_FLAGS="--upgrade --force-reinstall"
@@ -194,24 +282,38 @@ for PACKAGE in ${INSTALL_EXTRA_PIP_PACKAGES}; do
       die "pip install ${PACKAGE} FAILED"
 done
 
-# If NO_TEST_ON_INSTALL is set to any non-empty value, skip all Python
-# tests-on-install and exit right away
-if [[ ! -z "${NO_TEST_ON_INSTALL}" ]] &&
+if [[ -n "${NO_TEST_ON_INSTALL}" ]] &&
    [[ "${NO_TEST_ON_INSTALL}" != "0" ]]; then
   echo "NO_TEST_ON_INSTALL=${NO_TEST_ON_INSTALL}:"
   echo "  Skipping ALL Python unit tests on install"
-  exit 0
+else
+  # Call run_pip_tests.sh to perform test-on-install
+  "${SCRIPT_DIR}/run_pip_tests.sh" --virtualenv ${GPU_FLAG} ${MAC_FLAG} ||
+      die "PIP tests-on-install FAILED"
 fi
-
-# Call test_installation.sh to perform test-on-install
-
-"${SCRIPT_DIR}/test_installation.sh" --virtualenv ${GPU_FLAG} ||
-    die "PIP tests-on-install FAILED"
 
 # Test user ops
 if [[ "${DO_TEST_USER_OPS}" == "1" ]]; then
   "${SCRIPT_DIR}/test_user_ops.sh" --virtualenv ${GPU_FLAG} || \
       die "PIP user-op tests-on-install FAILED"
+fi
+
+# Test TensorFlow Debugger (tfdbg) examples.
+if [[ "${DO_TEST_TFDBG_BINARIES}" == "1" ]]; then
+  echo
+  echo "Testing TensorFlow Debugger (tfdbg) binaries"
+  echo
+
+  # cd to a temporary directory to avoid picking up Python files in the source
+  # tree.
+  TMP_DIR=$(mktemp -d)
+  pushd "${TMP_DIR}"
+
+  "${SCRIPT_DIR}/../../../python/debug/examples/examples_test.sh" \
+      --virtualenv || \
+      die "PIP tests-on-install of tfdbg binaries FAILED"
+
+  popd
 fi
 
 # Optional: Run the tutorial tests

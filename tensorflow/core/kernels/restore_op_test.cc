@@ -62,21 +62,23 @@ Tensor MakeInput(const TensorShape& shape,
 TEST_F(RestoreOpTest, RestoreSimple) {
   const string filename = io::JoinPath(testing::TmpDir(), "tensor_simple");
   const std::vector<string> tensor_names = {
-      "tensor_bool",  "tensor_int",    "tensor_float",  "tensor_double",
-      "tensor_qint8", "tensor_qint32", "tensor_uint8",  "tensor_int8",
-      "tensor_int16", "tensor_int64",  "tensor_string", "tensor_complex64"};
+      "tensor_bool",  "tensor_int",        "tensor_float",  "tensor_double",
+      "tensor_qint8", "tensor_qint32",     "tensor_uint8",  "tensor_int8",
+      "tensor_int16", "tensor_int64",      "tensor_string", "tensor_complex64",
+      "tensor_half",  "tensor_float_empty"};
 
   // We first need to write a tensor using the save_op
   {
     // Initialize an operation
     NodeDef save;
-    TF_ASSERT_OK(NodeDefBuilder("myop", "Save")
-                     .Input(FakeInput())
-                     .Input(FakeInput())
-                     .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE,
-                                       DT_QINT8, DT_QINT32, DT_UINT8, DT_INT8,
-                                       DT_INT16, DT_STRING, DT_COMPLEX64}))
-                     .Finalize(&save));
+    TF_ASSERT_OK(
+        NodeDefBuilder("myop", "Save")
+            .Input(FakeInput())
+            .Input(FakeInput())
+            .Input(FakeInput({DT_BOOL, DT_INT32, DT_FLOAT, DT_DOUBLE, DT_QINT8,
+                              DT_QINT32, DT_UINT8, DT_INT8, DT_INT16, DT_STRING,
+                              DT_COMPLEX64, DT_HALF}))
+            .Finalize(&save));
 
     std::unique_ptr<Device> device(
         DeviceFactory::NewDevice("CPU", {}, "/job:a/replica:0/task:0"));
@@ -156,7 +158,17 @@ TEST_F(RestoreOpTest, RestoreSimple) {
         TensorShape({2, 3}),
         [](int x) -> complex64 { return complex64(100 + x, 200 + x); });
     inputs.push_back({nullptr, &input_13});
-
+    // Input #14 is a 2-d half tensor
+    Tensor input_14 =
+        MakeInput<Eigen::half>(TensorShape({2, 4}), [](int x) -> Eigen::half {
+          return static_cast<Eigen::half>(x) / Eigen::half(5);
+        });
+    inputs.push_back({nullptr, &input_14});
+    // Input #15 is a 2-d empty float tensor
+    Tensor input_15 = MakeInput<float>(TensorShape({2, 0}), [](int x) -> float {
+      return static_cast<float>(x) / 10;
+    });
+    inputs.push_back({nullptr, &input_15});
     OpKernelContext::Params params;
     params.device = device.get();
     params.frame_iter = FrameAndIter(0, 0);
@@ -320,6 +332,28 @@ TEST_F(RestoreOpTest, RestoreSimple) {
     for (int i = 0; i < 6; ++i) {
       EXPECT_EQ(complex64(100 + i, 200 + i), output->flat<complex64>()(i));
     }
+  }
+  // The 2-d half tensor
+  {
+    MakeRestoreOp(DT_HALF);
+    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[12];
+    TF_ASSERT_OK(RunOpKernel());
+    Tensor* output = GetOutput(0);
+    TensorShape expected({2, 4});
+    EXPECT_TRUE(output->shape().IsSameSize(expected));
+    for (int i = 0; i < 8; ++i) {
+      EXPECT_EQ(static_cast<Eigen::half>(i) / Eigen::half(5),
+                output->flat<Eigen::half>()(i));
+    }
+  }
+  // The 2-d empty float tensor
+  {
+    MakeRestoreOp(DT_FLOAT);
+    (*mutable_input(1).tensor).scalar<string>()() = tensor_names[13];
+    TF_ASSERT_OK(RunOpKernel());
+    Tensor* output = GetOutput(0);
+    TensorShape expected({2, 0});
+    EXPECT_TRUE(output->shape().IsSameSize(expected));
   }
 }
 

@@ -1,0 +1,38 @@
+// Protocol messages for describing the configuration of the ExampleParserOp.
+
+syntax = "proto3";
+
+option cc_enable_arenas = true;
+option java_outer_classname = "ExampleParserConfigurationProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.example";
+package tensorflow;
+
+import "tensorflow/core/framework/tensor_shape.proto";
+import "tensorflow/core/framework/tensor.proto";
+import "tensorflow/core/framework/types.proto";
+
+message VarLenFeatureProto {
+  tensorflow.DataType dtype = 1;
+  string values_output_tensor_name = 2;
+  string indices_output_tensor_name = 3;
+  string shapes_output_tensor_name = 4;
+};
+
+message FixedLenFeatureProto {
+  tensorflow.DataType dtype = 1;
+  tensorflow.TensorShapeProto shape = 2;
+  tensorflow.TensorProto default_value = 3;
+  string values_output_tensor_name = 4;
+};
+
+message FeatureConfiguration {
+  oneof config {
+    FixedLenFeatureProto fixed_len_feature = 1;
+    VarLenFeatureProto var_len_feature = 2;
+  }
+};
+
+message ExampleParserConfiguration {
+  map<string, FeatureConfiguration> feature_map = 1;
+};

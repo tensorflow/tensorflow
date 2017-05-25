@@ -33,8 +33,8 @@ namespace tensorflow {
 // devices the given DeviceSet, respecting the following constraints:
 //
 // 1. Existing device assignments remain unchanged.
-// 2. Requested (partial or complete) device specifications in the
-//    are granted.
+// 2. Requested (partial or complete) device specifications given by device name
+//    for each node are granted.
 // 3. Nodes connected by edges of a reference type are colocated on
 //    the same device.
 // 4. Given nodes "A" and "B", if node "B" has a colocation group
@@ -82,7 +82,7 @@ class SimplePlacer {
   // Returns true if the device type of 'candidate_device_name' is
   // found in 'devices'.
   bool CanAssignToDevice(const string& candidate_device_name,
-                         const std::vector<Device*> devices) const;
+                         const std::vector<Device*>& devices) const;
 
   // Assigns 'node's devices to 'assigned_device', and logs the
   // placement if the SessionOptions entry in 'options_' requests it.

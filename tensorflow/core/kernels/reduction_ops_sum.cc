@@ -17,16 +17,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-#define REGISTER_CPU_KERNELS(type)                              \
-  REGISTER_KERNEL_BUILDER(                                      \
-      Name("Sum").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
+#define REGISTER_CPU_KERNELS(type)        \
+  REGISTER_KERNEL_BUILDER(                \
+      Name("Sum")                         \
+          .Device(DEVICE_CPU)             \
+          .TypeConstraint<type>("T")      \
+          .TypeConstraint<int32>("Tidx"), \
       ReductionOp<CPUDevice, type, Eigen::internal::SumReducer<type>>);
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
-// NOTE: We should have mean(complex64,int32), too. But that needs to
-// change Eigen::internal::MeanReducer to cast int to complex<float>.
-// We don't see immediate need of mean(complex64,int32) anyway.
-TF_CALL_complex64(REGISTER_CPU_KERNELS);
-TF_CALL_complex128(REGISTER_CPU_KERNELS);
+TF_CALL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
 #if GOOGLE_CUDA
@@ -36,13 +34,12 @@ TF_CALL_complex128(REGISTER_CPU_KERNELS);
       Name("Sum")                           \
           .Device(DEVICE_GPU)               \
           .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
           .HostMemory("reduction_indices"), \
       ReductionOp<GPUDevice, type, Eigen::internal::SumReducer<type>>);
-REGISTER_GPU_KERNELS(Eigen::half);
-REGISTER_GPU_KERNELS(float);
-REGISTER_GPU_KERNELS(double);
-REGISTER_GPU_KERNELS(complex64);
-REGISTER_GPU_KERNELS(complex128);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_complex64(REGISTER_GPU_KERNELS);
+TF_CALL_complex128(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 
 // A special GPU kernel for int32.
@@ -52,11 +49,38 @@ REGISTER_KERNEL_BUILDER(
     Name("Sum")
         .Device(DEVICE_GPU)
         .TypeConstraint<int32>("T")
+        .TypeConstraint<int32>("Tidx")
         .HostMemory("input")
         .HostMemory("output")
         .HostMemory("reduction_indices"),
     ReductionOp<CPUDevice, int32, Eigen::internal::SumReducer<int32>>);
 
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)         \
+  REGISTER_KERNEL_BUILDER(                  \
+      Name("Sum")                           \
+          .Device(DEVICE_SYCL)              \
+          .TypeConstraint<type>("T")        \
+          .TypeConstraint<int32>("Tidx")    \
+          .HostMemory("reduction_indices"), \
+      ReductionOp<SYCLDevice, type, Eigen::internal::SumReducer<type>>);
+REGISTER_SYCL_KERNELS(float);
+#undef REGISTER_SYCL_KERNELS
+
+// A special GPU kernel for int32.
+// TODO(b/25387198): Also enable int32 in device memory. This kernel
+// registration requires all int32 inputs and outputs to be in host memory.
+REGISTER_KERNEL_BUILDER(
+    Name("Sum")
+        .Device(DEVICE_SYCL)
+        .TypeConstraint<int32>("T")
+        .TypeConstraint<int32>("Tidx")
+        .HostMemory("input")
+        .HostMemory("output")
+        .HostMemory("reduction_indices"),
+    ReductionOp<CPUDevice, int32, Eigen::internal::SumReducer<int32>>);
+#endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

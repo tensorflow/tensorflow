@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_STREAM_EXECUTOR_PIMPL_H_
 
 #include <atomic>
+#include <memory>
 #include <set>
 #include <tuple>
 #include <vector>
@@ -71,8 +72,10 @@ class StreamExecutor {
  public:
   explicit StreamExecutor(PlatformKind kind,
                           const PluginConfig &plugin_config = PluginConfig());
-  StreamExecutor(const Platform *platform,
-                 internal::StreamExecutorInterface *implementation);
+
+  StreamExecutor(
+      const Platform *platform,
+      std::unique_ptr<internal::StreamExecutorInterface> implementation);
 
   ~StreamExecutor();
 
@@ -202,7 +205,7 @@ class StreamExecutor {
   // This should be done before deallocating the region with delete[]/free/etc.
   bool HostMemoryUnregister(void *location) SE_MUST_USE_RESULT;
 
-  // Synchronizes all activity occuring in the StreamExecutor's context (most
+  // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
   bool SynchronizeAllActivity() SE_MUST_USE_RESULT;
 
@@ -235,7 +238,7 @@ class StreamExecutor {
                                     DeviceMemoryBase *gpu_dst);
 
   // Alternative interface for memcpying from host to device that takes an
-  // array slice. Checks that the destination size can accomodate the host
+  // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <class T>
   port::Status SynchronousMemcpyH2D(port::ArraySlice<T> host_src,
@@ -250,7 +253,7 @@ class StreamExecutor {
                                     void *host_dst);
 
   // Alternative interface for memcpying from device to host that takes an
-  // array slice. Checks that the destination size can accomodate the host
+  // array slice. Checks that the destination size can accommodate the host
   // slice size.
   template <typename T>
   port::Status SynchronousMemcpyD2H(const DeviceMemory<T> &gpu_src,
@@ -350,6 +353,29 @@ class StreamExecutor {
   bool GetConvolveBackwardFilterAlgorithms(
       std::vector<dnn::AlgorithmType> *out_algorithms);
 
+  // Get the list of supported algorithms for BLAS gemm.
+  bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType> *out_algorithms);
+
+  // Create an RNN descriptor based on model shapes and configurations.
+  // The caller retains the ownership of the descriptor.
+  port::StatusOr<std::unique_ptr<dnn::RnnDescriptor>> createRnnDescriptor(
+      int num_layers, int hidden_size, int input_size,
+      dnn::RnnInputMode input_mode, dnn::RnnDirectionMode direction_mode,
+      dnn::RnnMode rnn_mode, dnn::DataType data_type, float dropout,
+      uint64 seed, ScratchAllocator *state_allocator);
+
+  // Create a RNN sequence descriptor that specifies either the input or output
+  // sequence. The caller retains the ownership of the returned descriptor.
+  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
+                                    int data_size, dnn::DataType data_type);
+
+  // Create an RNN state descriptor that specifies the input or hidden state.
+  // The caller retains the ownership of the returned descriptor.
+  port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
+  createRnnStateTensorDescriptor(int num_layer, int batch_size, int data_size,
+                                 dnn::DataType data_type);
+
   // Returns the device ordinal that this StreamExecutor was initialized with.
   // Meaningless before initialization.
   int device_ordinal() const { return device_ordinal_; }
@@ -372,7 +398,7 @@ class StreamExecutor {
   // implementation in StreamExecutorInterface::Launch().
   bool Launch(Stream *stream, const ThreadDim &thread_dims,
               const BlockDim &block_dims, const KernelBase &kernel,
-              const std::vector<KernelArg> &args);
+              const KernelArgsArrayBase &args);
 
   // Gets-or-creates (creates with memoization) a FftSupport datatype that can
   // be used to execute FFT routines on the current platform.
@@ -406,10 +432,6 @@ class StreamExecutor {
   // Returns false (and logs) in cases where the argument listener was not
   // previously registered.
   bool UnregisterTraceListener(TraceListener* listener);
-
-  // Converts a DeviceMemory object into a KernelArg object for passing to the
-  // device driver for kernel launch.
-  KernelArg DeviceMemoryToKernelArg(const DeviceMemoryBase &gpu_mem) const;
 
  private:
   template <typename BeginCallT, typename CompleteCallT,
@@ -654,6 +676,10 @@ inline port::StatusOr<DeviceMemory<T>> StreamExecutor::GetSymbol(
 }
 
 template <typename ElemT>
+ScopedDeviceMemory<ElemT>::ScopedDeviceMemory()
+    : wrapped_(DeviceMemoryBase()), parent_(nullptr) {}
+
+template <typename ElemT>
 ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(StreamExecutor *parent,
                                               DeviceMemoryBase value)
     : wrapped_(value), parent_(parent) {}
@@ -673,18 +699,26 @@ ScopedDeviceMemory<ElemT>::ScopedDeviceMemory(
 
 template <typename ElemT>
 ScopedDeviceMemory<ElemT>::~ScopedDeviceMemory() {
+  if (wrapped_ == nullptr) return;
+  DCHECK(parent_ != nullptr);
   parent_->Deallocate(&wrapped_);
 }
 
 template <typename ElemT>
 void ScopedDeviceMemory<ElemT>::Reset(DeviceMemory<ElemT> updated) {
-  parent_->Deallocate(&wrapped_);
+  if (wrapped_ != nullptr) {
+    DCHECK(parent_ != nullptr);
+    parent_->Deallocate(&wrapped_);
+  }
   wrapped_ = updated;
 }
 
 template <typename ElemT>
 void ScopedDeviceMemory<ElemT>::Reset(std::nullptr_t) {
-  parent_->Deallocate(&wrapped_);
+  if (wrapped_ != nullptr) {
+    DCHECK(parent_ != nullptr);
+    parent_->Deallocate(&wrapped_);
+  }
   wrapped_ = DeviceMemory<ElemT>{};
 }
 
@@ -738,9 +772,9 @@ inline Stream &Stream::ThenLaunch(ThreadDim thread_dims, BlockDim block_dims,
     // we pack the variadic parameters passed as ...args into the desired
     // tuple form and pass that packed form to the StreamExecutor::Launch()
     // implementation.
-    std::vector<KernelArg> kernel_args;
-    kernel_args.reserve(kernel.Arity());
+    KernelArgsArray<sizeof...(args)> kernel_args;
     kernel.PackParams(&kernel_args, args...);
+    DCHECK(parent_ != nullptr);
     bool ok =
         parent_->Launch(this, thread_dims, block_dims, kernel, kernel_args);
     if (!ok) {

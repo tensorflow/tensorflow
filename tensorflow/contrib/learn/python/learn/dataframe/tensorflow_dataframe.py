@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
 """TensorFlowDataFrame implements convenience functions using TensorFlow."""
 
 from __future__ import absolute_import
@@ -30,6 +31,7 @@ from tensorflow.contrib.learn.python.learn.dataframe.transforms import example_p
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import in_memory_source
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import reader_source
 from tensorflow.contrib.learn.python.learn.dataframe.transforms import sparsify
+from tensorflow.contrib.learn.python.learn.dataframe.transforms import split_mask
 from tensorflow.python.client import session as sess
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -82,7 +84,8 @@ class TensorFlowDataFrame(df.DataFrame):
           graph=None,
           session=None,
           start_queues=True,
-          initialize_variables=True):
+          initialize_variables=True,
+          **kwargs):
     """Builds and runs the columns of the `DataFrame` and yields batches.
 
     This is a generator that yields a dictionary mapping column names to
@@ -94,8 +97,9 @@ class TensorFlowDataFrame(df.DataFrame):
       graph: the `Graph` in which the `DataFrame` should be built.
       session: the `Session` in which to run the columns of the `DataFrame`.
       start_queues: if true, queues will be started before running and halted
-        after producting `n` batches.
+        after producing `n` batches.
       initialize_variables: if true, variables will be initialized.
+      **kwargs: Additional keyword arguments e.g. `num_epochs`.
 
     Yields:
       A dictionary, mapping column names to the values resulting from running
@@ -106,14 +110,14 @@ class TensorFlowDataFrame(df.DataFrame):
     with graph.as_default():
       if session is None:
         session = sess.Session()
-      self_built = self.build()
+      self_built = self.build(**kwargs)
       keys = list(self_built.keys())
       cols = list(self_built.values())
       if initialize_variables:
         if variables.local_variables():
-          session.run(variables.initialize_local_variables())
-        if variables.all_variables():
-          session.run(variables.initialize_all_variables())
+          session.run(variables.local_variables_initializer())
+        if variables.global_variables():
+          session.run(variables.global_variables_initializer())
       if start_queues:
         coord = coordinator.Coordinator()
         threads = qr.start_queue_runners(sess=session, coord=coord)
@@ -129,7 +133,127 @@ class TensorFlowDataFrame(df.DataFrame):
         coord.request_stop()
         coord.join(threads)
 
-  def run_once(self):
+  def select_rows(self, boolean_series):
+    """Returns a `DataFrame` with only the rows indicated by `boolean_series`.
+
+    Note that batches may no longer have consistent size after calling
+    `select_rows`, so the new `DataFrame` may need to be rebatched.
+    For example:
+    '''
+    filtered_df = df.select_rows(df["country"] == "jp").batch(64)
+    '''
+
+    Args:
+      boolean_series: a `Series` that evaluates to a boolean `Tensor`.
+
+    Returns:
+      A new `DataFrame` with the same columns as `self`, but selecting only the
+      rows where `boolean_series` evaluated to `True`.
+    """
+    result = type(self)()
+    for key, col in self._columns.items():
+      try:
+        result[key] = col.select_rows(boolean_series)
+      except AttributeError as e:
+        raise NotImplementedError((
+            "The select_rows method is not implemented for Series type {}. "
+            "Original error: {}").format(type(col), e))
+    return result
+
+  def split(self, index_series, proportion, batch_size=None):
+    """Deterministically split a `DataFrame` into two `DataFrame`s.
+
+    Note this split is only as deterministic as the underlying hash function;
+    see `tf.string_to_hash_bucket_fast`.  The hash function is deterministic
+    for a given binary, but may change occasionally.  The only way to achieve
+    an absolute guarantee that the split `DataFrame`s do not change across runs
+    is to materialize them.
+
+    Note too that the allocation of a row to one partition or the
+    other is evaluated independently for each row, so the exact number of rows
+    in each partition is binomially distributed.
+
+    Args:
+      index_series: a `Series` of unique strings, whose hash will determine the
+        partitioning; or the name in this `DataFrame` of such a `Series`.
+        (This `Series` must contain strings because TensorFlow provides hash
+        ops only for strings, and there are no number-to-string converter ops.)
+      proportion: The proportion of the rows to select for the 'left'
+        partition; the remaining (1 - proportion) rows form the 'right'
+        partition.
+      batch_size: the batch size to use when rebatching the left and right
+        `DataFrame`s.  If None (default), the `DataFrame`s are not rebatched;
+        thus their batches will have variable sizes, according to which rows
+        are selected from each batch of the original `DataFrame`.
+
+    Returns:
+      Two `DataFrame`s containing the partitioned rows.
+    """
+    if isinstance(index_series, str):
+      index_series = self[index_series]
+    left_mask, = split_mask.SplitMask(proportion)(index_series)
+    right_mask = ~left_mask
+    left_rows = self.select_rows(left_mask)
+    right_rows = self.select_rows(right_mask)
+
+    if batch_size:
+      left_rows = left_rows.batch(batch_size=batch_size, shuffle=False)
+      right_rows = right_rows.batch(batch_size=batch_size, shuffle=False)
+
+    return left_rows, right_rows
+
+  def split_fast(self, index_series, proportion, batch_size,
+                 base_batch_size=1000):
+    """Deterministically split a `DataFrame` into two `DataFrame`s.
+
+    Note this split is only as deterministic as the underlying hash function;
+    see `tf.string_to_hash_bucket_fast`.  The hash function is deterministic
+    for a given binary, but may change occasionally.  The only way to achieve
+    an absolute guarantee that the split `DataFrame`s do not change across runs
+    is to materialize them.
+
+    Note too that the allocation of a row to one partition or the
+    other is evaluated independently for each row, so the exact number of rows
+    in each partition is binomially distributed.
+
+    Args:
+      index_series: a `Series` of unique strings, whose hash will determine the
+        partitioning; or the name in this `DataFrame` of such a `Series`.
+        (This `Series` must contain strings because TensorFlow provides hash
+        ops only for strings, and there are no number-to-string converter ops.)
+      proportion: The proportion of the rows to select for the 'left'
+        partition; the remaining (1 - proportion) rows form the 'right'
+        partition.
+      batch_size: the batch size to use when rebatching the left and right
+        `DataFrame`s.  If None (default), the `DataFrame`s are not rebatched;
+        thus their batches will have variable sizes, according to which rows
+        are selected from each batch of the original `DataFrame`.
+      base_batch_size: the batch size to use for materialized data, prior to the
+        split.
+
+    Returns:
+      Two `DataFrame`s containing the partitioned rows.
+    """
+    if isinstance(index_series, str):
+      index_series = self[index_series]
+    left_mask, = split_mask.SplitMask(proportion)(index_series)
+    right_mask = ~left_mask
+    self["left_mask__"] = left_mask
+    self["right_mask__"] = right_mask
+    # TODO(soergel): instead of base_batch_size can we just do one big batch?
+    # avoid computing the hashes twice
+    m = self.materialize_to_memory(batch_size=base_batch_size)
+    left_rows_df = m.select_rows(m["left_mask__"])
+    right_rows_df = m.select_rows(m["right_mask__"])
+    del left_rows_df[["left_mask__", "right_mask__"]]
+    del right_rows_df[["left_mask__", "right_mask__"]]
+
+    # avoid recomputing the split repeatedly
+    left_rows_df = left_rows_df.materialize_to_memory(batch_size=batch_size)
+    right_rows_df = right_rows_df.materialize_to_memory(batch_size=batch_size)
+    return left_rows_df, right_rows_df
+
+  def run_one_batch(self):
     """Creates a new 'Graph` and `Session` and runs a single batch.
 
     Returns:
@@ -137,6 +261,46 @@ class TensorFlowDataFrame(df.DataFrame):
       batch of the `DataFrame`.
     """
     return list(self.run(num_batches=1))[0]
+
+  def run_one_epoch(self):
+    """Creates a new 'Graph` and `Session` and runs a single epoch.
+
+    Naturally this makes sense only for DataFrames that fit in memory.
+
+    Returns:
+      A dictionary mapping column names to numpy arrays that contain a single
+      epoch of the `DataFrame`.
+    """
+    # batches is a list of dicts of numpy arrays
+    batches = [b for b in self.run(num_epochs=1)]
+
+    # first invert that to make a dict of lists of numpy arrays
+    pivoted_batches = {}
+    for k in batches[0].keys():
+      pivoted_batches[k] = []
+    for b in batches:
+      for k, v in b.items():
+        pivoted_batches[k].append(v)
+
+    # then concat the arrays in each column
+    result = {k: np.concatenate(column_batches)
+              for k, column_batches in pivoted_batches.items()}
+    return result
+
+  def materialize_to_memory(self, batch_size):
+    unordered_dict_of_arrays = self.run_one_epoch()
+
+    # there may already be an 'index' column, in which case from_ordereddict)
+    # below will complain because it wants to generate a new one.
+    # for now, just remove it.
+    # TODO(soergel): preserve index history, potentially many levels deep
+    del unordered_dict_of_arrays["index"]
+
+    # the order of the columns in this dict is arbitrary; we just need it to
+    # remain consistent.
+    ordered_dict_of_arrays = collections.OrderedDict(unordered_dict_of_arrays)
+    return TensorFlowDataFrame.from_ordereddict(ordered_dict_of_arrays,
+                                                batch_size=batch_size)
 
   def batch(self,
             batch_size,
@@ -180,10 +344,10 @@ class TensorFlowDataFrame(df.DataFrame):
 
   @classmethod
   def _from_csv_base(cls, filepatterns, get_default_values, has_header,
-                     column_names, num_epochs, num_threads, enqueue_size,
+                     column_names, num_threads, enqueue_size,
                      batch_size, queue_capacity, min_after_dequeue, shuffle,
                      seed):
-    """Create a `DataFrame` from `tensorflow.Example`s.
+    """Create a `DataFrame` from CSV files.
 
     If `has_header` is false, then `column_names` must be specified. If
     `has_header` is true and `column_names` are specified, then `column_names`
@@ -195,9 +359,6 @@ class TensorFlowDataFrame(df.DataFrame):
         each column, given the column names.
       has_header: whether or not the CSV files have headers.
       column_names: a list of names for the columns in the CSV files.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -209,7 +370,7 @@ class TensorFlowDataFrame(df.DataFrame):
 
     Returns:
       A `DataFrame` that has columns corresponding to `features` and is filled
-      with `Example`s from `filepatterns`.
+      with examples from `filepatterns`.
 
     Raises:
       ValueError: no files match `filepatterns`.
@@ -237,7 +398,6 @@ class TensorFlowDataFrame(df.DataFrame):
         reader_kwargs=reader_kwargs,
         enqueue_size=enqueue_size,
         batch_size=batch_size,
-        num_epochs=num_epochs,
         queue_capacity=queue_capacity,
         shuffle=shuffle,
         min_after_dequeue=min_after_dequeue,
@@ -259,7 +419,6 @@ class TensorFlowDataFrame(df.DataFrame):
                default_values,
                has_header=True,
                column_names=None,
-               num_epochs=None,
                num_threads=1,
                enqueue_size=None,
                batch_size=32,
@@ -267,7 +426,7 @@ class TensorFlowDataFrame(df.DataFrame):
                min_after_dequeue=None,
                shuffle=True,
                seed=None):
-    """Create a `DataFrame` from `tensorflow.Example`s.
+    """Create a `DataFrame` from CSV files.
 
     If `has_header` is false, then `column_names` must be specified. If
     `has_header` is true and `column_names` are specified, then `column_names`
@@ -278,9 +437,6 @@ class TensorFlowDataFrame(df.DataFrame):
       default_values: a list of default values for each column.
       has_header: whether or not the CSV files have headers.
       column_names: a list of names for the columns in the CSV files.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -292,7 +448,7 @@ class TensorFlowDataFrame(df.DataFrame):
 
     Returns:
       A `DataFrame` that has columns corresponding to `features` and is filled
-      with `Example`s from `filepatterns`.
+      with examples from `filepatterns`.
 
     Raises:
       ValueError: no files match `filepatterns`.
@@ -304,7 +460,7 @@ class TensorFlowDataFrame(df.DataFrame):
       return default_values
 
     return cls._from_csv_base(filepatterns, get_default_values, has_header,
-                              column_names, num_epochs, num_threads,
+                              column_names, num_threads,
                               enqueue_size, batch_size, queue_capacity,
                               min_after_dequeue, shuffle, seed)
 
@@ -314,7 +470,6 @@ class TensorFlowDataFrame(df.DataFrame):
                                  feature_spec,
                                  has_header=True,
                                  column_names=None,
-                                 num_epochs=None,
                                  num_threads=1,
                                  enqueue_size=None,
                                  batch_size=32,
@@ -322,7 +477,7 @@ class TensorFlowDataFrame(df.DataFrame):
                                  min_after_dequeue=None,
                                  shuffle=True,
                                  seed=None):
-    """Create a `DataFrame` from `tensorflow.Example`s.
+    """Create a `DataFrame` from CSV files, given a feature_spec.
 
     If `has_header` is false, then `column_names` must be specified. If
     `has_header` is true and `column_names` are specified, then `column_names`
@@ -334,9 +489,6 @@ class TensorFlowDataFrame(df.DataFrame):
           `VarLenFeature`.
       has_header: whether or not the CSV files have headers.
       column_names: a list of names for the columns in the CSV files.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -348,7 +500,7 @@ class TensorFlowDataFrame(df.DataFrame):
 
     Returns:
       A `DataFrame` that has columns corresponding to `features` and is filled
-      with `Example`s from `filepatterns`.
+      with examples from `filepatterns`.
 
     Raises:
       ValueError: no files match `filepatterns`.
@@ -359,7 +511,7 @@ class TensorFlowDataFrame(df.DataFrame):
       return [_get_default_value(feature_spec[name]) for name in column_names]
 
     dataframe = cls._from_csv_base(filepatterns, get_default_values, has_header,
-                                   column_names, num_epochs, num_threads,
+                                   column_names, num_threads,
                                    enqueue_size, batch_size, queue_capacity,
                                    min_after_dequeue, shuffle, seed)
 
@@ -377,7 +529,6 @@ class TensorFlowDataFrame(df.DataFrame):
                     filepatterns,
                     features,
                     reader_cls=io_ops.TFRecordReader,
-                    num_epochs=None,
                     num_threads=1,
                     enqueue_size=None,
                     batch_size=32,
@@ -393,9 +544,6 @@ class TensorFlowDataFrame(df.DataFrame):
         `FixedLenFeature`.
       reader_cls: a subclass of `tensorflow.ReaderBase` that will be used to
         read the `Example`s.
-      num_epochs: the number of times that the reader should loop through all
-        the file names. If set to `None`, then the reader will continue
-        indefinitely.
       num_threads: the number of readers that will work in parallel.
       enqueue_size: block size for each read operation.
       batch_size: desired batch size.
@@ -426,7 +574,6 @@ class TensorFlowDataFrame(df.DataFrame):
         filenames,
         enqueue_size=enqueue_size,
         batch_size=batch_size,
-        num_epochs=num_epochs,
         queue_capacity=queue_capacity,
         shuffle=shuffle,
         min_after_dequeue=min_after_dequeue,
@@ -520,6 +667,56 @@ class TensorFlowDataFrame(df.DataFrame):
     """
     numpy_source = in_memory_source.NumpySource(
         numpy_array,
+        num_threads=num_threads,
+        enqueue_size=enqueue_size,
+        batch_size=batch_size,
+        queue_capacity=queue_capacity,
+        shuffle=shuffle,
+        min_after_dequeue=min_after_dequeue,
+        seed=seed,
+        data_name=data_name)
+    dataframe = cls()
+    dataframe.assign(**(numpy_source()._asdict()))
+    return dataframe
+
+  @classmethod
+  def from_ordereddict(cls,
+                       ordered_dict_of_arrays,
+                       num_threads=None,
+                       enqueue_size=None,
+                       batch_size=None,
+                       queue_capacity=None,
+                       min_after_dequeue=None,
+                       shuffle=True,
+                       seed=None,
+                       data_name="numpy_data"):
+    """Creates a `tf.learn.DataFrame` from an `OrderedDict` of `numpy.ndarray`.
+
+    The returned `DataFrame` contains a column for each key of the dict plus an
+    extra 'index' column. The 'index' column contains the row number. Each of
+    the other columns contains a row from the corresponding array.
+
+    Args:
+      ordered_dict_of_arrays: `OrderedDict` of `numpy.ndarray` that serves as a
+          data source.
+      num_threads: the number of threads to use for enqueueing.
+      enqueue_size: the number of rows to enqueue per step.
+      batch_size: desired batch size.
+      queue_capacity: capacity of the queue that will store parsed `Example`s
+      min_after_dequeue: minimum number of elements that can be left by a
+        dequeue operation. Only used if `shuffle` is true.
+      shuffle: whether records should be shuffled. Defaults to true.
+      seed: passed to random shuffle operations. Only used if `shuffle` is true.
+      data_name: a scope name identifying the data.
+
+    Returns:
+      A `tf.learn.DataFrame` that contains batches drawn from the given arrays.
+
+    Raises:
+      ValueError: `ordered_dict_of_arrays` contains the reserved name 'index'.
+    """
+    numpy_source = in_memory_source.OrderedDictNumpySource(
+        ordered_dict_of_arrays,
         num_threads=num_threads,
         enqueue_size=enqueue_size,
         batch_size=batch_size,

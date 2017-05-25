@@ -1,5 +1,4 @@
 /* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
-
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -21,12 +20,88 @@ limitations under the License.
 #include <stdlib.h>
 #include <algorithm>
 #include <cmath>
+#include <locale>
+#include <unordered_map>
 
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+namespace {
+
+template <typename T>
+T locale_independent_strtonum(const char* str, const char** endptr) {
+  static const std::unordered_map<string, T> special_nums = {
+      {"inf", std::numeric_limits<T>::infinity()},
+      {"+inf", std::numeric_limits<T>::infinity()},
+      {"-inf", -std::numeric_limits<T>::infinity()},
+      {"infinity", std::numeric_limits<T>::infinity()},
+      {"+infinity", std::numeric_limits<T>::infinity()},
+      {"-infinity", -std::numeric_limits<T>::infinity()},
+      {"nan", std::numeric_limits<T>::quiet_NaN()},
+      {"+nan", std::numeric_limits<T>::quiet_NaN()},
+      {"-nan", -std::numeric_limits<T>::quiet_NaN()},
+  };
+  std::stringstream s(str);
+
+  // Check if str is one of the special numbers.
+  string special_num_str;
+  s >> special_num_str;
+
+  for (int i = 0; i < special_num_str.length(); ++i) {
+    special_num_str[i] =
+        std::tolower(special_num_str[i], std::locale::classic());
+  }
+
+  auto entry = special_nums.find(special_num_str);
+  if (entry != special_nums.end()) {
+    *endptr = str + (s.eof() ? static_cast<std::iostream::pos_type>(strlen(str))
+                             : s.tellg());
+    return entry->second;
+  } else {
+    // Perhaps it's a hex number
+    if (special_num_str.compare(0, 2, "0x") == 0 ||
+        special_num_str.compare(0, 3, "-0x") == 0) {
+      return strtol(str, const_cast<char**>(endptr), 16);
+    }
+  }
+  // Reset the stream
+  s.str(str);
+  s.clear();
+  // Use the "C" locale
+  s.imbue(std::locale::classic());
+
+  T result;
+  s >> result;
+
+  // Set to result to what strto{f,d} functions would have returned. If the
+  // number was outside the range, the stringstream sets the fail flag, but
+  // returns the +/-max() value, whereas strto{f,d} functions return +/-INF.
+  if (s.fail()) {
+    if (result == std::numeric_limits<T>::max()) {
+      result = std::numeric_limits<T>::infinity();
+      s.clear(s.rdstate() & ~std::ios::failbit);
+    } else if (result == -std::numeric_limits<T>::max()) {
+      result = -std::numeric_limits<T>::infinity();
+      s.clear(s.rdstate() & ~std::ios::failbit);
+    }
+  }
+
+  if (endptr) {
+    *endptr =
+        str +
+        (s.fail() ? static_cast<std::iostream::pos_type>(0)
+                  : (s.eof() ? static_cast<std::iostream::pos_type>(strlen(str))
+                             : s.tellg()));
+  }
+  return result;
+}
+
+}  // namespace
+
 namespace strings {
 
 char* FastInt32ToBufferLeft(int32 i, char* buffer) {
@@ -90,7 +165,8 @@ char* DoubleToBuffer(double value, char* buffer) {
     // larger than the precision we asked for.
     DCHECK(snprintf_result > 0 && snprintf_result < kFastToBufferSize);
 
-    full_precision_needed = strtod(buffer, NULL) != value;
+    full_precision_needed =
+        locale_independent_strtonum<double>(buffer, NULL) != value;
   }
 
   if (full_precision_needed) {
@@ -201,7 +277,7 @@ bool safe_strto32(StringPiece str, int32* value) {
 
   if (!str.empty()) return false;
 
-  *value = result * sign;
+  *value = static_cast<int32>(result * sign);
   return true;
 }
 
@@ -221,13 +297,13 @@ bool safe_strtou32(StringPiece str, uint32* value) {
   SkipSpaces(&str);
   if (!str.empty()) return false;
 
-  *value = result;
+  *value = static_cast<uint32>(result);
   return true;
 }
 
 bool safe_strtof(const char* str, float* value) {
-  char* endptr;
-  *value = strtof(str, &endptr);
+  const char* endptr;
+  *value = locale_independent_strtonum<float>(str, &endptr);
   while (isspace(*endptr)) ++endptr;
   // Ignore range errors from strtod/strtof.
   // The values it returns on underflow and
@@ -237,8 +313,8 @@ bool safe_strtof(const char* str, float* value) {
 }
 
 bool safe_strtod(const char* str, double* value) {
-  char* endptr;
-  *value = strtod(str, &endptr);
+  const char* endptr;
+  *value = locale_independent_strtonum<double>(str, &endptr);
   while (isspace(*endptr)) ++endptr;
   // Ignore range errors from strtod/strtof.
   // The values it returns on underflow and
@@ -321,6 +397,30 @@ bool HexStringToUint64(const StringPiece& s, uint64* result) {
   return true;
 }
 
+string HumanReadableNum(int64 value) {
+  string s;
+  if (value < 0) {
+    s += "-";
+    value = -value;
+  }
+  if (value < 1000) {
+    Appendf(&s, "%lld", value);
+  } else if (value >= static_cast<int64>(1e15)) {
+    // Number bigger than 1E15; use that notation.
+    Appendf(&s, "%0.3G", static_cast<double>(value));
+  } else {
+    static const char units[] = "kMBT";
+    const char* unit = units;
+    while (value >= static_cast<int64>(1000000)) {
+      value /= static_cast<int64>(1000);
+      ++unit;
+      CHECK(unit < units + TF_ARRAYSIZE(units));
+    }
+    Appendf(&s, "%.2f%c", value / 1000.0, *unit);
+  }
+  return s;
+}
+
 string HumanReadableNumBytes(int64 num_bytes) {
   if (num_bytes == kint64min) {
     // Special case for number with not representable negation.
@@ -354,6 +454,59 @@ string HumanReadableNumBytes(int64 num_bytes) {
   snprintf(buf, sizeof(buf), ((*unit == 'K') ? "%s%.1f%ciB" : "%s%.2f%ciB"),
            neg_str, num_bytes / 1024.0, *unit);
   return string(buf);
+}
+
+string HumanReadableElapsedTime(double seconds) {
+  string human_readable;
+
+  if (seconds < 0) {
+    human_readable = "-";
+    seconds = -seconds;
+  }
+
+  // Start with us and keep going up to years.
+  // The comparisons must account for rounding to prevent the format breaking
+  // the tested condition and returning, e.g., "1e+03 us" instead of "1 ms".
+  const double microseconds = seconds * 1.0e6;
+  if (microseconds < 999.5) {
+    strings::Appendf(&human_readable, "%0.3g us", microseconds);
+    return human_readable;
+  }
+  double milliseconds = seconds * 1e3;
+  if (milliseconds >= .995 && milliseconds < 1) {
+    // Round half to even in Appendf would convert this to 0.999 ms.
+    milliseconds = 1.0;
+  }
+  if (milliseconds < 999.5) {
+    strings::Appendf(&human_readable, "%0.3g ms", milliseconds);
+    return human_readable;
+  }
+  if (seconds < 60.0) {
+    strings::Appendf(&human_readable, "%0.3g s", seconds);
+    return human_readable;
+  }
+  seconds /= 60.0;
+  if (seconds < 60.0) {
+    strings::Appendf(&human_readable, "%0.3g min", seconds);
+    return human_readable;
+  }
+  seconds /= 60.0;
+  if (seconds < 24.0) {
+    strings::Appendf(&human_readable, "%0.3g h", seconds);
+    return human_readable;
+  }
+  seconds /= 24.0;
+  if (seconds < 30.0) {
+    strings::Appendf(&human_readable, "%0.3g days", seconds);
+    return human_readable;
+  }
+  if (seconds < 365.2425) {
+    strings::Appendf(&human_readable, "%0.3g months", seconds / 30.436875);
+    return human_readable;
+  }
+  seconds /= 365.2425;
+  strings::Appendf(&human_readable, "%0.3g years", seconds);
+  return human_readable;
 }
 
 }  // namespace strings

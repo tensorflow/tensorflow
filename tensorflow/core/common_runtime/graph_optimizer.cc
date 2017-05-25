@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
 
 namespace tensorflow {
@@ -31,21 +33,16 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
 
 GraphOptimizer::~GraphOptimizer() {}
 
-void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Device* device,
-                              Graph** graph) {
-  Graph* g = *graph;
-  for (const Node* n : g->nodes()) {
-    if (n->IsControlFlow()) {
-      VLOG(2) << "Skip optimization if there is any control flow ops";
-    }
-  }
-
+void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
+                              Device* device, std::unique_ptr<Graph>* graph) {
+  Graph* g = graph->get();
   DumpGraph("Initial", g);
+
   bool changed = true;
   const int kMaxRounds = 10;
   for (int rounds = 0; rounds < kMaxRounds; ++rounds) {
     changed = false;
-    if (opts_.do_function_inlining() && RemoveListArrayConverter(g)) {
+    if (RemoveListArrayConverter(g)) {
       DumpGraph("RemoveListArrayConverter", g);
       changed = true;
     }
@@ -60,7 +57,10 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Device* device,
 
     if (opts_.do_constant_folding()) {
       ConstantFoldingOptions cf_opts;
-      if (DoConstantFolding(cf_opts, device, g)) {
+      bool was_mutated;
+      ConstantFold(cf_opts, runtime, env, device, g, &was_mutated)
+          .IgnoreError();
+      if (was_mutated) {
         RemoveDeadNodes(g);
         DumpGraph("ConstFolding", g);
         changed = true;
@@ -83,11 +83,13 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Device* device,
     if (!changed) break;
   }
 
-  Graph* copy = new Graph(g->op_registry());
-  CopyGraph(*g, copy);
-  delete g;
-  *graph = copy;
-  DumpGraph("ReCopy", *graph);
+  // Note that we use the Graph constructor that copies the input
+  // FunctionLibraryDefinition, since the original lib def will go out of scope.
+  std::unique_ptr<Graph> copy(new Graph(g->flib_def()));
+  CopyGraph(*g, copy.get());
+  graph->swap(copy);
+
+  DumpGraph("ReCopy", graph->get());
 }
 
 }  // end namespace tensorflow

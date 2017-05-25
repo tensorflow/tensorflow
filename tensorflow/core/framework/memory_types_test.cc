@@ -35,14 +35,18 @@ REGISTER_OP("HostMemoryTest")
     .Input("a: float")
     .Input("b: T")
     .Input("c: N * string")
+    .Input("d: Tlist")
     .Output("o: N * T")
+    .Output("p: Tlist")
     .Attr("T: type")
-    .Attr("N: int");
+    .Attr("N: int")
+    .Attr("Tlist: list(type)");
 REGISTER_KERNEL_BUILDER(Name("HostMemoryTest").Device(DEVICE_CPU), DummyKernel);
 REGISTER_KERNEL_BUILDER(Name("HostMemoryTest")
                             .Device(DEVICE_GPU)
                             .HostMemory("a")
                             .HostMemory("c")
+                            .HostMemory("d")
                             .HostMemory("o"),
                         DummyKernel);
 
@@ -52,20 +56,29 @@ TEST(MemoryTypesForNode, Simple) {
                    .Input(FakeInput())
                    .Input(FakeInput(DT_BOOL))
                    .Input(FakeInput(3))
+                   .Input(FakeInput({DT_INT32, DT_FLOAT, DT_INT32}))
                    .Finalize(&node_def));
   MemoryTypeVector input, output;
 
   TF_EXPECT_OK(MemoryTypesForNode(OpRegistry::Global(), DEVICE_CPU, node_def,
                                   &input, &output));
-  EXPECT_EQ(MemoryTypeVector(5, DEVICE_MEMORY), input);
-  EXPECT_EQ(MemoryTypeVector(3, DEVICE_MEMORY), output);
+  EXPECT_EQ(MemoryTypeVector({DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY,
+                              DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY,
+                              DEVICE_MEMORY, DEVICE_MEMORY}),
+            input);
+  EXPECT_EQ(MemoryTypeVector({DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY,
+                              DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY}),
+            output);
 
   TF_EXPECT_OK(MemoryTypesForNode(OpRegistry::Global(), DEVICE_GPU, node_def,
                                   &input, &output));
-  EXPECT_EQ(MemoryTypeVector({HOST_MEMORY, DEVICE_MEMORY, HOST_MEMORY,
-                              HOST_MEMORY, HOST_MEMORY}),
-            input);
-  EXPECT_EQ(MemoryTypeVector(3, HOST_MEMORY), output);
+  EXPECT_EQ(
+      MemoryTypeVector({HOST_MEMORY, DEVICE_MEMORY, HOST_MEMORY, HOST_MEMORY,
+                        HOST_MEMORY, HOST_MEMORY, HOST_MEMORY, HOST_MEMORY}),
+      input);
+  EXPECT_EQ(MemoryTypeVector({HOST_MEMORY, HOST_MEMORY, HOST_MEMORY,
+                              DEVICE_MEMORY, DEVICE_MEMORY, DEVICE_MEMORY}),
+            output);
 }
 
 }  // namespace tensorflow

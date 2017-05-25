@@ -1,0 +1,97 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../iron-collapse/iron-collapse.html">
+<link rel="import" href="../paper-icon-button/paper-icon-button.html">
+
+<dom-module id="vz-projector-metadata-card">
+<template>
+<style>
+#metadata-card {
+  background-color: rgba(255,255,255,0.9);
+  box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.14),
+      0 1px 5px 0 rgba(0, 0, 0, 0.12), 0 3px 1px -2px rgba(0, 0, 0, 0.2);
+  width: 280px;
+}
+
+#header {
+  background: #e9e9e9;
+}
+
+#icon-container {
+  position: absolute;
+  right: 0;
+  top: 4px;
+}
+
+#metadata-label {
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 24px;
+  padding: 12px 12px 8px;
+  width: 230px;
+}
+
+#metadata-table {
+  display: table;
+  padding: 8px 12px 4px;
+}
+
+.metadata-row {
+  display: table-row;
+}
+
+.metadata-key {
+  font-weight: bold;
+}
+
+.metadata-key, .metadata-value {
+  display: table-cell;
+  font-size: 12px;
+  padding: 3px 3px;
+}
+</style>
+
+<template is="dom-if" if="[[hasMetadata]]">
+  <div id="metadata-card">
+    <div id="icon-container">
+      <paper-icon-button id="expand-more"
+          style="display: none"
+          icon="expand-more"
+          on-tap="_expandMore"></paper-icon-button>
+      <paper-icon-button id="expand-less"
+          on-tap="_expandLess"
+          icon="expand-less"></paper-icon-button>
+    </div>
+    <div id="header">
+      <div id="metadata-label">[[label]]</div>
+    </div>
+    <iron-collapse id="metadata-container" opened>
+      <div id="metadata-table">
+        <template is="dom-repeat" items="[[metadata]]">
+          <div class="metadata-row">
+            <div class="metadata-key">[[item.key]]</div>
+            <div class="metadata-value">[[item.value]]</div>
+          </div>
+        </template>
+      </div>
+    </iron-collapse>
+  </div>
+</template>
+</template>
+</dom-module>

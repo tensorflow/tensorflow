@@ -19,13 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 # pylint: disable=wildcard-import
+from tensorflow.contrib.learn.python.learn import basic_session_run_hooks
 from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn import estimators
 from tensorflow.contrib.learn.python.learn import graph_actions
-from tensorflow.contrib.learn.python.learn import io
+from tensorflow.contrib.learn.python.learn import learn_io as io
 from tensorflow.contrib.learn.python.learn import models
 from tensorflow.contrib.learn.python.learn import monitors
 from tensorflow.contrib.learn.python.learn import ops
@@ -33,12 +32,17 @@ from tensorflow.contrib.learn.python.learn import preprocessing
 from tensorflow.contrib.learn.python.learn import utils
 from tensorflow.contrib.learn.python.learn.dataframe import *
 from tensorflow.contrib.learn.python.learn.estimators import *
+from tensorflow.contrib.learn.python.learn.evaluable import Evaluable
 from tensorflow.contrib.learn.python.learn.experiment import Experiment
+from tensorflow.contrib.learn.python.learn.export_strategy import ExportStrategy
 from tensorflow.contrib.learn.python.learn.graph_actions import evaluate
 from tensorflow.contrib.learn.python.learn.graph_actions import infer
-from tensorflow.contrib.learn.python.learn.graph_actions import NanLossDuringTrainingError
 from tensorflow.contrib.learn.python.learn.graph_actions import run_feeds
 from tensorflow.contrib.learn.python.learn.graph_actions import run_n
 from tensorflow.contrib.learn.python.learn.graph_actions import train
-from tensorflow.contrib.learn.python.learn.io import *
+from tensorflow.contrib.learn.python.learn.learn_io import *
+from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
+from tensorflow.contrib.learn.python.learn.monitors import NanLossDuringTrainingError
+from tensorflow.contrib.learn.python.learn.trainable import Trainable
+from tensorflow.contrib.learn.python.learn.utils import *
 # pylint: enable=wildcard-import

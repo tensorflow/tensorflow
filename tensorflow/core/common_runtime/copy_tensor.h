@@ -42,7 +42,7 @@ class CopyTensor {
   // the type of devices and memory in use, the copy may be performed
   // synchronously or asynchronously.  'done' will be invoked only
   // after the copy is actually complete.
-  static void ViaDMA(const string& edge_name, DeviceContext* send_dev_context,
+  static void ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                      DeviceContext* recv_dev_context, Device* src, Device* dst,
                      const AllocatorAttributes src_alloc_attr,
                      const AllocatorAttributes dst_alloc_attr,

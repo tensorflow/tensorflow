@@ -13,12 +13,21 @@
 # limitations under the License.
 # ==============================================================================
 """Functional tests for depthwise convolutional operations."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import nn_ops
+import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
+from tensorflow.python.platform import test
 
 
 def ConfigsToTest():
@@ -29,17 +38,17 @@ def ConfigsToTest():
     convolution parameters.
   """
   input_sizes = [[4, 5, 5, 48], [4, 8, 8, 84], [4, 17, 17, 48], [4, 35, 35, 2],
-                 [4, 147, 147, 2], [3, 299, 299, 3]]
+                 [4, 147, 147, 2], [3, 299, 299, 3], [5, 183, 183, 1]]
   filter_sizes = [[1, 1, 48, 2], [1, 3, 84, 1], [3, 1, 48, 4], [5, 5, 2, 1],
-                  [3, 3, 2, 8], [2, 2, 3, 8]]
+                  [3, 3, 2, 8], [2, 2, 3, 8], [5, 5, 1, 2]]
   out_sizes = [[4, 5, 5, 96], [4, 8, 8, 84], [4, 17, 17, 192], [4, 35, 35, 2],
-               [4, 49, 49, 16], [3, 150, 150, 24]]
-  strides = [1, 1, 1, 1, 3, 2]
+               [4, 49, 49, 16], [3, 150, 150, 24], [5, 92, 92, 2]]
+  strides = [1, 1, 1, 1, 3, 2, 2]
   # pylint: disable=invalid-name
   VALID = "VALID"
   SAME = "SAME"
   # pylint: enable=invalid-name
-  paddings = [SAME, SAME, SAME, SAME, VALID, SAME, SAME]
+  paddings = [SAME, SAME, SAME, SAME, VALID, SAME, SAME, SAME]
   for i, f, o, s, p in zip(input_sizes, filter_sizes, out_sizes, strides,
                            paddings):
     yield i, f, o, s, p
@@ -72,12 +81,20 @@ def CheckGradConfigsToTest():
     yield i, f, o, s, p
 
 
-class DepthwiseConv2DTest(tf.test.TestCase):
+class DepthwiseConv2DTest(test.TestCase):
 
-  # This is testing against the output of the implementation using the
-  # combination of conv_2d and slicing ops.
-  def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, stride, padding,
-                    use_gpu):
+  # This is testing that depthwise_conv2d and depthwise_conv2d_native
+  # produce the same results.  It also tests that NCHW and NWHC
+  # formats agree, by comparing the depthwise_conv2d_native with
+  # 'NCHW' format (with transposition) matches the 'NHWC' format using
+  # the higher level interface.
+  def _VerifyValues(self,
+                    tensor_in_sizes,
+                    filter_in_sizes,
+                    stride,
+                    padding,
+                    use_gpu,
+                    data_format="NHWC"):
     """Verifies the output values of the convolution function.
 
     Args:
@@ -88,6 +105,7 @@ class DepthwiseConv2DTest(tf.test.TestCase):
       stride: Stride.
       padding: Padding type.
       use_gpu: Whether to use GPU.
+      data_format: The data_format of the input.  "NHWC" or "NCHW".
     """
     total_size_1 = 1
     total_size_2 = 1
@@ -95,50 +113,74 @@ class DepthwiseConv2DTest(tf.test.TestCase):
       total_size_1 *= s
     for s in filter_in_sizes:
       total_size_2 *= s
-    # Initializes the input tensor with array containing incrementing
-    # numbers from 1.
+    # Initializes the input and filter tensor with numbers incrementing from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
     with self.test_session(use_gpu=use_gpu) as sess:
-      t1 = tf.constant(x1, shape=tensor_in_sizes)
+      t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t1.set_shape(tensor_in_sizes)
-      t2 = tf.constant(x2, shape=filter_in_sizes)
-      conv_native = tf.nn.depthwise_conv2d_native(
-          t1,
+      t2 = constant_op.constant(x2, shape=filter_in_sizes)
+
+      native_t1 = t1
+      strides = [1, stride, stride, 1]
+      if data_format == "NCHW":
+        # Transpose from NWHC input to NCHW
+        # Ex. [4, 5, 5, 48] to [4, 48, 5, 5]
+        native_t1 = array_ops.transpose(t1, [0, 3, 1, 2])
+        strides = [1, 1, stride, stride]
+
+      conv_native = nn_ops.depthwise_conv2d_native(
+          native_t1,
           t2,
-          strides=[1, stride, stride, 1],
+          strides=strides,
+          data_format=data_format,
           padding=padding)
 
-      conv_gold = tf.nn.depthwise_conv2d(t1,
-                                         t2,
-                                         strides=[1, stride, stride, 1],
-                                         padding=padding)
-      native_result = sess.run(conv_native)
-      gold_result = sess.run(conv_gold)
+      if data_format == "NCHW":
+        # Transpose back from NCHW to NHWC
+        conv_native = array_ops.transpose(conv_native, [0, 2, 3, 1])
 
-    print("diff matrix:",
-          np.amax(np.ravel(native_result) - np.ravel(gold_result)))
-    self.assertArrayNear(np.ravel(native_result), np.ravel(gold_result), 1e-5)
+      conv_interface = nn_impl.depthwise_conv2d(
+          t1, t2, strides=[1, stride, stride, 1], padding=padding)
+
+      native_result = sess.run(conv_native)
+      interface_result = sess.run(conv_interface)
+
+    print("depthwise conv_2d: ", tensor_in_sizes, "*", filter_in_sizes,
+          ", stride:", stride, ", padding: ", padding, ", max diff: ",
+          np.amax(np.absolute(native_result - interface_result)))
+    self.assertArrayNear(
+        np.ravel(native_result), np.ravel(interface_result), 1e-5)
     self.assertShapeEqual(native_result, conv_native)
-    self.assertShapeEqual(native_result, conv_gold)
+    self.assertShapeEqual(native_result, conv_interface)
 
   def testDepthwiseConv2D(self):
     for index, (input_size, filter_size, _, stride,
                 padding) in enumerate(ConfigsToTest()):
       print("Processing ", index, "th config.")
       if index == 2:
-        self._VerifyValues(input_size,
-                           filter_size,
-                           stride,
-                           padding,
-                           use_gpu=True)
-      self._VerifyValues(input_size,
-                         filter_size,
-                         stride,
-                         padding,
-                         use_gpu=False)
+        self._VerifyValues(
+            input_size, filter_size, stride, padding, use_gpu=True)
+      self._VerifyValues(
+          input_size, filter_size, stride, padding, use_gpu=False)
+
+  def testDepthwiseConv2DFormat(self):
+    if not test.is_gpu_available():
+      return
+
+    for index, (input_size, filter_size, _, stride,
+                padding) in enumerate(ConfigsToTest()):
+      print("Processing ", index, "th config.")
+      self._VerifyValues(
+          input_size,
+          filter_size,
+          stride,
+          padding,
+          use_gpu=True,
+          data_format="NCHW")
 
 # This is testing against hand calculated results.
+
   def _VerifyHandValues(self, tensor_in_sizes, filter_in_sizes, stride, padding,
                         expected, use_gpu):
     """Verifies the output values of the depthwise convolution function.
@@ -164,13 +206,11 @@ class DepthwiseConv2DTest(tf.test.TestCase):
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
     with self.test_session(use_gpu=use_gpu) as sess:
-      t1 = tf.constant(x1, shape=tensor_in_sizes)
+      t1 = constant_op.constant(x1, shape=tensor_in_sizes)
       t1.set_shape(tensor_in_sizes)
-      t2 = tf.constant(x2, shape=filter_in_sizes)
-      conv = tf.nn.depthwise_conv2d_native(t1,
-                                           t2,
-                                           strides=[1, stride, stride, 1],
-                                           padding=padding)
+      t2 = constant_op.constant(x2, shape=filter_in_sizes)
+      conv = nn_ops.depthwise_conv2d_native(
+          t1, t2, strides=[1, stride, stride, 1], padding=padding)
       value = sess.run(conv)
     print("value = ", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
@@ -226,28 +266,37 @@ class DepthwiseConv2DTest(tf.test.TestCase):
     # (position 1, 0: in_depth 1, output_depth 3 -- using filter #1)
     #  4.0 * 4.0 + 10.0 * 12.0 + 6.0 * 8.0 + 12.0 * 16.0 = 376
     expected_output = [196, 216, 272, 296, 252, 280, 344, 376]
-    self._VerifyHandValues(tensor_in_sizes=[1, 2, 3, 2],
-                           filter_in_sizes=[2, 2, 2, 2],
-                           stride=1,
-                           padding="VALID",
-                           expected=expected_output,
-                           use_gpu=False)
+    self._VerifyHandValues(
+        tensor_in_sizes=[1, 2, 3, 2],
+        filter_in_sizes=[2, 2, 2, 2],
+        stride=1,
+        padding="VALID",
+        expected=expected_output,
+        use_gpu=False)
 
-    self._VerifyHandValues(tensor_in_sizes=[1, 2, 3, 2],
-                           filter_in_sizes=[2, 2, 2, 2],
-                           stride=1,
-                           padding="VALID",
-                           expected=expected_output,
-                           use_gpu=True)
+    self._VerifyHandValues(
+        tensor_in_sizes=[1, 2, 3, 2],
+        filter_in_sizes=[2, 2, 2, 2],
+        stride=1,
+        padding="VALID",
+        expected=expected_output,
+        use_gpu=True)
 
   # Gradient checkers.This tests depthwise gradient computations for both
   # BackpropFilter and BackpropInput by comparing gradients computed by the
   # depthwise gradient ops with the gradients computed numerically (details can
   # be found in the compute_gradient_error().
   # Note this check is very expensive so the input should not be too big.
-  def _ConstructAndTestGradient(self, input_shape, filter_shape, output_shape,
-                                stride, padding, data_type, test_input,
-                                use_gpu):
+  def _ConstructAndTestGradient(self,
+                                input_shape,
+                                filter_shape,
+                                output_shape,
+                                stride,
+                                padding,
+                                data_type,
+                                test_input,
+                                use_gpu,
+                                data_format="NHWC"):
     input_size = 1
     for x in input_shape:
       input_size *= x
@@ -257,32 +306,48 @@ class DepthwiseConv2DTest(tf.test.TestCase):
     input_data = [x * 1.0 / input_size for x in range(0, input_size)]
     filter_data = [x * 1.0 / filter_size for x in range(0, filter_size)]
     with self.test_session(use_gpu=use_gpu):
-      if data_type == tf.float32:
+      if data_type == dtypes.float32:
         tolerance = 0.002
       else:
-        self.assertEqual(data_type, tf.float64)
+        self.assertEqual(data_type, dtypes.float64)
         tolerance = 1e-8
 
-      input_tensor = tf.constant(input_data,
-                                 shape=input_shape,
-                                 dtype=data_type,
-                                 name="input")
-      filter_tensor = tf.constant(filter_data,
-                                  shape=filter_shape,
-                                  dtype=data_type,
-                                  name="filter")
-      depthwise_conv2d = tf.nn.depthwise_conv2d_native(input_tensor,
-                                                       filter_tensor,
-                                                       [1, stride, stride, 1],
-                                                       padding,
-                                                       name="depthwise_conv2d")
+      input_tensor = constant_op.constant(
+          input_data, shape=input_shape, dtype=data_type, name="input")
+      filter_tensor = constant_op.constant(
+          filter_data, shape=filter_shape, dtype=data_type, name="filter")
+
+      native_input = input_tensor
+      strides = [1, stride, stride, 1]
+      if data_format == "NCHW":
+        # Transpose from NWHC input to NCHW
+        # Ex. [4, 5, 5, 48] to [4, 48, 5, 5]
+        native_input = array_ops.transpose(input_tensor, [0, 3, 1, 2])
+        input_shape = [
+            input_shape[0], input_shape[3], input_shape[1], input_shape[2]
+        ]
+        output_shape = [
+            output_shape[0], output_shape[3], output_shape[1], output_shape[2]
+        ]
+        strides = [1, 1, stride, stride]
+
+      depthwise_conv2d = nn_ops.depthwise_conv2d_native(
+          native_input,
+          filter_tensor,
+          strides,
+          padding,
+          data_format=data_format,
+          name="depthwise_conv2d")
+
       self.assertEqual(output_shape, depthwise_conv2d.get_shape())
       if test_input:
-        err = tf.test.compute_gradient_error(input_tensor, input_shape,
-                                             depthwise_conv2d, output_shape)
+        err = gradient_checker.compute_gradient_error(
+            native_input, input_shape, depthwise_conv2d, output_shape)
       else:
-        err = tf.test.compute_gradient_error(filter_tensor, filter_shape,
-                                             depthwise_conv2d, output_shape)
+        err = gradient_checker.compute_gradient_error(filter_tensor,
+                                                      filter_shape,
+                                                      depthwise_conv2d,
+                                                      output_shape)
       print("depthwise conv_2d gradient error = ", err)
       self.assertLess(err, tolerance)
 
@@ -291,28 +356,66 @@ class DepthwiseConv2DTest(tf.test.TestCase):
                 padding) in enumerate(CheckGradConfigsToTest()):
       print("Processing ", index, "th config.")
       for use_gpu in [True, False]:
-        self._ConstructAndTestGradient(input_size,
-                                       filter_size,
-                                       output_size,
-                                       stride,
-                                       padding,
-                                       tf.float32,
-                                       test_input=True,
-                                       use_gpu=use_gpu)
+        self._ConstructAndTestGradient(
+            input_size,
+            filter_size,
+            output_size,
+            stride,
+            padding,
+            dtypes.float32,
+            test_input=True,
+            use_gpu=use_gpu)
+
+  def testDepthwiseConv2DInputGradFormat(self):
+    if not test.is_gpu_available():
+      return
+
+    for index, (input_size, filter_size, output_size, stride,
+                padding) in enumerate(CheckGradConfigsToTest()):
+      print("Processing ", index, "th config.")
+      self._ConstructAndTestGradient(
+          input_size,
+          filter_size,
+          output_size,
+          stride,
+          padding,
+          dtypes.float32,
+          test_input=True,
+          use_gpu=True,
+          data_format="NCHW")
 
   def testDepthwiseConv2DFilterGrad(self):
     for index, (input_size, filter_size, output_size, stride,
                 padding) in enumerate(CheckGradConfigsToTest()):
       print("Processing ", index, "th config.")
       for use_gpu in [True, False]:
-        self._ConstructAndTestGradient(input_size,
-                                       filter_size,
-                                       output_size,
-                                       stride,
-                                       padding,
-                                       tf.float32,
-                                       test_input=False,
-                                       use_gpu=use_gpu)
+        self._ConstructAndTestGradient(
+            input_size,
+            filter_size,
+            output_size,
+            stride,
+            padding,
+            dtypes.float32,
+            test_input=False,
+            use_gpu=use_gpu)
+
+  def testDepthwiseConv2DFilterGradFormat(self):
+    if not test.is_gpu_available():
+      return
+
+    for index, (input_size, filter_size, output_size, stride,
+                padding) in enumerate(CheckGradConfigsToTest()):
+      print("Processing ", index, "th config.")
+      self._ConstructAndTestGradient(
+          input_size,
+          filter_size,
+          output_size,
+          stride,
+          padding,
+          dtypes.float32,
+          test_input=False,
+          use_gpu=True,
+          data_format="NCHW")
 
   def _CompareBackpropInputFloat(self, input_sizes, filter_sizes, output_sizes,
                                  stride, padding):
@@ -321,15 +424,11 @@ class DepthwiseConv2DTest(tf.test.TestCase):
 
     def _GetVal(use_gpu):
       with self.test_session(use_gpu=use_gpu):
-        t0 = tf.constant(input_sizes, shape=[len(input_sizes)])
-        t1 = tf.constant(x1, shape=filter_sizes)
-        t2 = tf.constant(x2, shape=output_sizes)
-        backprop = tf.nn.depthwise_conv2d_native_backprop_input(
-            t0,
-            t1,
-            t2,
-            strides=[1, stride, stride, 1],
-            padding=padding)
+        t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
+        t1 = constant_op.constant(x1, shape=filter_sizes)
+        t2 = constant_op.constant(x2, shape=output_sizes)
+        backprop = nn_ops.depthwise_conv2d_native_backprop_input(
+            t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
         ret = backprop.eval()
         self.assertShapeEqual(ret, backprop)
         return ret
@@ -345,15 +444,11 @@ class DepthwiseConv2DTest(tf.test.TestCase):
 
     def _GetVal(use_gpu):
       with self.test_session(use_gpu=use_gpu):
-        t0 = tf.constant(input_sizes, shape=[len(input_sizes)])
-        t1 = tf.constant(x1, shape=filter_sizes)
-        t2 = tf.constant(x2, shape=output_sizes)
-        backprop = tf.nn.depthwise_conv2d_native_backprop_input(
-            t0,
-            t1,
-            t2,
-            strides=[1, stride, stride, 1],
-            padding=padding)
+        t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
+        t1 = constant_op.constant(x1, shape=filter_sizes)
+        t2 = constant_op.constant(x2, shape=output_sizes)
+        backprop = nn_ops.depthwise_conv2d_native_backprop_input(
+            t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
         ret = backprop.eval()
         self.assertShapeEqual(ret, backprop)
         return ret
@@ -378,15 +473,11 @@ class DepthwiseConv2DTest(tf.test.TestCase):
 
     def _GetVal(use_gpu):
       with self.test_session(use_gpu=use_gpu):
-        t0 = tf.constant(x0, shape=input_sizes)
-        t1 = tf.constant(filter_sizes, shape=[len(filter_sizes)])
-        t2 = tf.constant(x2, shape=output_sizes)
-        backprop = tf.nn.depthwise_conv2d_native_backprop_filter(
-            t0,
-            t1,
-            t2,
-            strides=[1, stride, stride, 1],
-            padding=padding)
+        t0 = constant_op.constant(x0, shape=input_sizes)
+        t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
+        t2 = constant_op.constant(x2, shape=output_sizes)
+        backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
+            t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
         ret = backprop.eval()
         self.assertShapeEqual(ret, backprop)
         return ret
@@ -402,15 +493,11 @@ class DepthwiseConv2DTest(tf.test.TestCase):
 
     def _GetVal(use_gpu):
       with self.test_session(use_gpu=use_gpu):
-        t0 = tf.constant(x0, shape=input_sizes)
-        t1 = tf.constant(filter_sizes, shape=[len(filter_sizes)])
-        t2 = tf.constant(x2, shape=output_sizes)
-        backprop = tf.nn.depthwise_conv2d_native_backprop_filter(
-            t0,
-            t1,
-            t2,
-            strides=[1, stride, stride, 1],
-            padding=padding)
+        t0 = constant_op.constant(x0, shape=input_sizes)
+        t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
+        t2 = constant_op.constant(x2, shape=output_sizes)
+        backprop = nn_ops.depthwise_conv2d_native_backprop_filter(
+            t0, t1, t2, strides=[1, stride, stride, 1], padding=padding)
         ret = backprop.eval()
         self.assertShapeEqual(ret, backprop)
         return ret
@@ -430,4 +517,4 @@ class DepthwiseConv2DTest(tf.test.TestCase):
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

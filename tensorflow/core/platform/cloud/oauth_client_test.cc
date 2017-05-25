@@ -20,8 +20,8 @@ limitations under the License.
 #include <openssl/pem.h>
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/base64.h"
 #include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/platform/cloud/base64.h"
 #include "tensorflow/core/platform/cloud/http_request_fake.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"

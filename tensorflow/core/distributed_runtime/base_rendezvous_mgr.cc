@@ -35,7 +35,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-BaseRendezvousMgr::BaseRendezvousMgr(const WorkerEnv* env) : worker_env_(env) {}
+BaseRendezvousMgr::BaseRendezvousMgr(const WorkerEnv* worker_env)
+    : worker_env_(worker_env) {}
 
 BaseRendezvousMgr::~BaseRendezvousMgr() {
   for (auto& p : table_) {
@@ -45,7 +46,7 @@ BaseRendezvousMgr::~BaseRendezvousMgr() {
   }
 }
 
-Rendezvous* BaseRendezvousMgr::Find(int64 step_id) {
+RemoteRendezvous* BaseRendezvousMgr::Find(int64 step_id) {
   return FindOrCreate(step_id);
 }
 
@@ -60,23 +61,29 @@ BaseRemoteRendezvous* BaseRendezvousMgr::FindOrCreate(int64 step_id) {
   return iter->second;
 }
 
-void BaseRendezvousMgr::RecvLocalAsync(int64 step_id, const string& key,
+void BaseRendezvousMgr::RecvLocalAsync(int64 step_id,
+                                       const Rendezvous::ParsedKey& parsed,
                                        Rendezvous::DoneCallback done) {
   BaseRemoteRendezvous* rendez = FindOrCreate(step_id);
-  rendez->RecvLocalAsync(
-      key, [rendez, done](const Status& s, const Rendezvous::Args& send_args,
-                          const Rendezvous::Args& recv_args, const Tensor& v,
-                          bool dead) {
+  using namespace std::placeholders;
+  Rendezvous::DoneCallback done_cb = std::bind(
+      [rendez](Rendezvous::DoneCallback done,
+               // Begin unbound arguments.
+               const Status& s, const Rendezvous::Args& send_args,
+               const Rendezvous::Args& recv_args, const Tensor& v, bool dead) {
         rendez->Unref();
         done(s, send_args, recv_args, v, dead);
-      });
+      },
+      std::move(done), _1, _2, _3, _4, _5);
+  rendez->RecvLocalAsync(parsed, std::move(done_cb));
 }
 
-Status BaseRendezvousMgr::RecvLocal(int64 step_id, const string& key,
+Status BaseRendezvousMgr::RecvLocal(int64 step_id,
+                                    const Rendezvous::ParsedKey& parsed,
                                     Tensor* val, bool* is_dead) {
   Status ret;
   Notification n;
-  RecvLocalAsync(step_id, key,
+  RecvLocalAsync(step_id, parsed,
                  [val, is_dead, &ret, &n](const Status& s,
                                           const Rendezvous::Args& send_args,
                                           const Rendezvous::Args& recv_args,
@@ -124,8 +131,8 @@ BaseRemoteRendezvous::BaseRemoteRendezvous(const WorkerEnv* env, int64 step_id,
                                            bool tolerate_dup_recv)
     : env_(env),
       step_id_(step_id),
-      tolerate_dup_recv_(tolerate_dup_recv),
-      local_(NewLocalRendezvous(tolerate_dup_recv)) {}
+      local_(NewLocalRendezvous(tolerate_dup_recv)),
+      session_(nullptr) {}
 
 BaseRemoteRendezvous::~BaseRemoteRendezvous() {
   CHECK(active_.empty());
@@ -135,43 +142,84 @@ BaseRemoteRendezvous::~BaseRemoteRendezvous() {
 // Returns true if "device_name" is a valid full name of local device
 // of the "worker".  This helper is purely based on the worker name
 // and device name and does no lookups in the worker->device_mgr.
-static bool IsLocalDevice(const WorkerEnv& worker,
+static bool IsLocalDevice(const string& worker_name,
                           const StringPiece device_name) {
-  return device_name.starts_with(worker.worker_name);
+  return device_name.starts_with(worker_name);
 }
 
-Status BaseRemoteRendezvous::Send(const string& key,
+Status BaseRemoteRendezvous::Initialize(WorkerSession* session) {
+  CHECK_NE(session, nullptr) << "session must not be null!";
+  std::vector<DeferredCall> deferred_calls;
+  {
+    mutex_lock l(mu_);
+    if (session_ != nullptr) {
+      if (session_->worker_name == session->worker_name) {
+        LOG(INFO) << "Skipping rendezvous re-initialization.";
+        return Status::OK();
+      }
+      Status s = errors::Internal(
+          "Double init! Worker names would have changed from: ",
+          session_->worker_name, " -> ", session->worker_name);
+      LOG(WARNING) << s;
+      return s;
+    }
+    session_ = session;
+    std::swap(deferred_calls, deferred_calls_);
+  }
+  for (DeferredCall& call : deferred_calls) {
+    RecvLocalAsyncInternal(call.parsed, std::move(call.done));
+  }
+  return Status::OK();
+}
+
+WorkerSession* BaseRemoteRendezvous::session() {
+  mutex_lock l(mu_);
+  return session_;
+}
+
+bool BaseRemoteRendezvous::is_initialized() {
+  mutex_lock l(mu_);
+  return is_initialized_locked();
+}
+
+Status BaseRemoteRendezvous::Send(const Rendezvous::ParsedKey& parsed,
                                   const Rendezvous::Args& args,
                                   const Tensor& val, const bool is_dead) {
-  VLOG(1) << "BaseRemoteRendezvous Send " << this << " " << key;
+  VLOG(1) << "BaseRemoteRendezvous Send " << this << " " << parsed.FullKey();
   {
     mutex_lock l(mu_);
     if (!status_.ok()) return status_;
-  }
-  Rendezvous::ParsedKey parsed;
-  TF_RETURN_IF_ERROR(Rendezvous::ParseKey(key, &parsed));
-  if (!IsLocalDevice(*env_, parsed.src_device)) {
-    return errors::InvalidArgument("Invalid rendezvous key (src): ", key, " @ ",
-                                   env_->worker_name);
+    DCHECK(is_initialized_locked());
+    if (!IsLocalDevice(session_->worker_name, parsed.src_device)) {
+      return errors::InvalidArgument(
+          "Invalid rendezvous key (src): ", parsed.FullKey(), " @ ",
+          session_->worker_name);
+    }
   }
   // Buffers "val" and "device_context" in local_.
-  return local_->Send(key, args, val, is_dead);
+  return local_->Send(parsed, args, val, is_dead);
 }
 
-Status BaseRemoteRendezvous::ParseKey(const string& key, bool is_src,
-                                      Rendezvous::ParsedKey* parsed) {
+Status BaseRemoteRendezvous::ValidateDevices(const ParsedKey& parsed,
+                                             bool is_src) {
+  // Cache session pointer to avoid repeatedly taking & releasing the lock
+  // (e.g. calling session())
+  WorkerSession* sess = nullptr;
   {
     mutex_lock l(mu_);
     if (!status_.ok()) return status_;
+    if (!is_initialized_locked()) {
+      return errors::Internal("ValidateDevices called before initialization.");
+    }
+    sess = session_;
   }
-  TF_RETURN_IF_ERROR(Rendezvous::ParseKey(key, parsed));
-  if (is_src && !IsLocalDevice(*env_, parsed->src_device)) {
-    return errors::InvalidArgument("Invalid rendezvous key (src): ", key, " @ ",
-                                   env_->worker_name);
+  if (is_src && !IsLocalDevice(sess->worker_name, parsed.src_device)) {
+    return errors::InvalidArgument("Invalid rendezvous key (src): ",
+                                   parsed.FullKey(), " @ ", sess->worker_name);
   }
-  if (!is_src && !IsLocalDevice(*env_, parsed->dst_device)) {
-    return errors::InvalidArgument("Invalid rendezvous key (dst): ", key, " @ ",
-                                   env_->worker_name);
+  if (!is_src && !IsLocalDevice(sess->worker_name, parsed.dst_device)) {
+    return errors::InvalidArgument("Invalid rendezvous key (dst): ",
+                                   parsed.FullKey(), " @ ", sess->worker_name);
   }
   return Status::OK();
 }
@@ -233,13 +281,12 @@ bool BaseRemoteRendezvous::IsSameWorker(DeviceNameUtils::ParsedName src,
   return DeviceNameUtils::IsSameAddressSpace(src, dst);
 }
 
-void BaseRemoteRendezvous::RecvAsync(const string& key,
+void BaseRemoteRendezvous::RecvAsync(const ParsedKey& parsed,
                                      const Rendezvous::Args& recv_args,
                                      DoneCallback done) {
-  VLOG(1) << "RemoteRendezvous Recv " << this << " " << key;
-
-  Rendezvous::ParsedKey parsed;
-  Status s = ParseKey(key, false /*!is_src*/, &parsed);
+  VLOG(1) << "RemoteRendezvous Recv " << this << " " << parsed.FullKey();
+  CHECK(is_initialized()) << "RecvAsync called when uninitialized.";
+  Status s = ValidateDevices(parsed, false /*!is_src*/);
   if (!s.ok()) {
     done(s, Args(), recv_args, Tensor(), false);
     return;
@@ -249,11 +296,10 @@ void BaseRemoteRendezvous::RecvAsync(const string& key,
   if (IsSameWorker(parsed.src, parsed.dst)) {
     // Recv the tensor from local_.
     local_->RecvAsync(
-        key, recv_args, [this, parsed, done](const Status& status,
-                                             const Rendezvous::Args& send_args,
-                                             const Rendezvous::Args& recv_args,
-                                             const Tensor& in, bool is_dead) {
-          Status s = status;
+        parsed, recv_args,
+        [this, parsed, done](
+            const Status& status, const Rendezvous::Args& send_args,
+            const Rendezvous::Args& recv_args, const Tensor& in, bool is_dead) {
           Tensor* out = new Tensor;
           StatusCallback final_callback = [done, send_args, recv_args, out,
                                            is_dead](const Status& s) {
@@ -261,28 +307,47 @@ void BaseRemoteRendezvous::RecvAsync(const string& key,
             delete out;
           };
 
-          if (s.ok()) {
+          if (status.ok()) {
             SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
-                               final_callback);
+                               std::move(final_callback));
           } else {
-            final_callback(s);
+            final_callback(status);
           }
         });
     return;
   } else {
-    RecvFromRemoteAsync(key, parsed, recv_args, done);
+    RecvFromRemoteAsync(parsed, recv_args, std::move(done));
   }
 }
 
-void BaseRemoteRendezvous::RecvLocalAsync(const string& key,
+void BaseRemoteRendezvous::RecvLocalAsync(const ParsedKey& parsed,
                                           DoneCallback done) {
-  Rendezvous::ParsedKey parsed;
-  Status s = ParseKey(key, true /* is_src */, &parsed);
+  {
+    mutex_lock l(mu_);
+    if (!is_initialized_locked()) {
+      // RecvLocalAsync can be called (due to an incoming RecvTensor RPC from a
+      // remote worker) before the RunStep (or PartialRunStep) RPC from the
+      // master arrives. RecvLocalAsync thus buffers the arguments until after
+      // the RemoteRendezvous is Initialize()'d, when it completes the
+      // rendezvous logic. At some point after Initialize() is called, a Tensor
+      // is produced locally that will then be sent in response to the incoming
+      // RPC.
+      DeferredCall call(parsed, std::move(done));
+      deferred_calls_.push_back(call);
+      return;
+    }
+  }
+  RecvLocalAsyncInternal(parsed, std::move(done));
+}
+
+void BaseRemoteRendezvous::RecvLocalAsyncInternal(const ParsedKey& parsed,
+                                                  DoneCallback done) {
+  Status s = ValidateDevices(parsed, true /* is_src */);
   if (!s.ok()) {
     done(s, Args(), Args(), Tensor(), false);
     return;
   }
-  local_->RecvAsync(key, Args(), done);
+  local_->RecvAsync(parsed, Args(), std::move(done));
 }
 
 void BaseRemoteRendezvous::StartAbort(const Status& s) {
@@ -314,5 +379,9 @@ void BaseRemoteRendezvous::DeregisterCall(BaseRecvTensorCall* call) {
   mutex_lock l(mu_);
   active_.erase(call);
 }
+
+BaseRemoteRendezvous::DeferredCall::DeferredCall(const ParsedKey& parsed,
+                                                 DoneCallback done)
+    : parsed(parsed), done(std::move(done)) {}
 
 }  // end namespace tensorflow

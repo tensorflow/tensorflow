@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Basic word2vec example."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -31,6 +32,7 @@ import tensorflow as tf
 # Step 1: Download the data.
 url = 'http://mattmahoney.net/dc/'
 
+
 def maybe_download(filename, expected_bytes):
   """Download a file if not present, and make sure it's the right size."""
   if not os.path.exists(filename):
@@ -49,20 +51,22 @@ filename = maybe_download('text8.zip', 31344016)
 
 # Read the data into a list of strings.
 def read_data(filename):
-  """Extract the first file enclosed in a zip file as a list of words"""
+  """Extract the first file enclosed in a zip file as a list of words."""
   with zipfile.ZipFile(filename) as f:
     data = tf.compat.as_str(f.read(f.namelist()[0])).split()
   return data
 
-words = read_data(filename)
-print('Data size', len(words))
+vocabulary = read_data(filename)
+print('Data size', len(vocabulary))
 
 # Step 2: Build the dictionary and replace rare words with UNK token.
 vocabulary_size = 50000
 
-def build_dataset(words):
+
+def build_dataset(words, n_words):
+  """Process raw inputs into a dataset."""
   count = [['UNK', -1]]
-  count.extend(collections.Counter(words).most_common(vocabulary_size - 1))
+  count.extend(collections.Counter(words).most_common(n_words - 1))
   dictionary = dict()
   for word, _ in count:
     dictionary[word] = len(dictionary)
@@ -76,11 +80,12 @@ def build_dataset(words):
       unk_count += 1
     data.append(index)
   count[0][1] = unk_count
-  reverse_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
-  return data, count, dictionary, reverse_dictionary
+  reversed_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
+  return data, count, dictionary, reversed_dictionary
 
-data, count, dictionary, reverse_dictionary = build_dataset(words)
-del words  # Hint to reduce memory.
+data, count, dictionary, reverse_dictionary = build_dataset(vocabulary,
+                                                            vocabulary_size)
+del vocabulary  # Hint to reduce memory.
 print('Most common words (+UNK)', count[:5])
 print('Sample data', data[:10], [reverse_dictionary[i] for i in data[:10]])
 
@@ -94,14 +99,14 @@ def generate_batch(batch_size, num_skips, skip_window):
   assert num_skips <= 2 * skip_window
   batch = np.ndarray(shape=(batch_size), dtype=np.int32)
   labels = np.ndarray(shape=(batch_size, 1), dtype=np.int32)
-  span = 2 * skip_window + 1 # [ skip_window target skip_window ]
+  span = 2 * skip_window + 1  # [ skip_window target skip_window ]
   buffer = collections.deque(maxlen=span)
   for _ in range(span):
     buffer.append(data[data_index])
     data_index = (data_index + 1) % len(data)
   for i in range(batch_size // num_skips):
     target = skip_window  # target label at the center of the buffer
-    targets_to_avoid = [ skip_window ]
+    targets_to_avoid = [skip_window]
     for j in range(num_skips):
       while target in targets_to_avoid:
         target = random.randint(0, span - 1)
@@ -110,12 +115,14 @@ def generate_batch(batch_size, num_skips, skip_window):
       labels[i * num_skips + j, 0] = buffer[target]
     buffer.append(data[data_index])
     data_index = (data_index + 1) % len(data)
+  # Backtrack a little bit to avoid skipping words in the end of a batch
+  data_index = (data_index + len(data) - span) % len(data)
   return batch, labels
 
 batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
 for i in range(8):
   print(batch[i], reverse_dictionary[batch[i]],
-      '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
+        '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
 
 # Step 4: Build and train a skip-gram model.
 
@@ -158,8 +165,12 @@ with graph.as_default():
   # tf.nce_loss automatically draws a new sample of the negative labels each
   # time we evaluate the loss.
   loss = tf.reduce_mean(
-      tf.nn.nce_loss(nce_weights, nce_biases, embed, train_labels,
-                     num_sampled, vocabulary_size))
+      tf.nn.nce_loss(weights=nce_weights,
+                     biases=nce_biases,
+                     labels=train_labels,
+                     inputs=embed,
+                     num_sampled=num_sampled,
+                     num_classes=vocabulary_size))
 
   # Construct the SGD optimizer using a learning rate of 1.0.
   optimizer = tf.train.GradientDescentOptimizer(1.0).minimize(loss)
@@ -173,7 +184,7 @@ with graph.as_default():
       valid_embeddings, normalized_embeddings, transpose_b=True)
 
   # Add variable initializer.
-  init = tf.initialize_all_variables()
+  init = tf.global_variables_initializer()
 
 # Step 5: Begin training.
 num_steps = 100001
@@ -181,13 +192,13 @@ num_steps = 100001
 with tf.Session(graph=graph) as session:
   # We must initialize all variables before we use them.
   init.run()
-  print("Initialized")
+  print('Initialized')
 
   average_loss = 0
   for step in xrange(num_steps):
     batch_inputs, batch_labels = generate_batch(
         batch_size, num_skips, skip_window)
-    feed_dict = {train_inputs : batch_inputs, train_labels : batch_labels}
+    feed_dict = {train_inputs: batch_inputs, train_labels: batch_labels}
 
     # We perform one update step by evaluating the optimizer op (including it
     # in the list of returned values for session.run()
@@ -198,7 +209,7 @@ with tf.Session(graph=graph) as session:
       if step > 0:
         average_loss /= 2000
       # The average loss is an estimate of the loss over the last 2000 batches.
-      print("Average loss at step ", step, ": ", average_loss)
+      print('Average loss at step ', step, ': ', average_loss)
       average_loss = 0
 
     # Note that this is expensive (~20% slowdown if computed every 500 steps)
@@ -206,22 +217,23 @@ with tf.Session(graph=graph) as session:
       sim = similarity.eval()
       for i in xrange(valid_size):
         valid_word = reverse_dictionary[valid_examples[i]]
-        top_k = 8 # number of nearest neighbors
-        nearest = (-sim[i, :]).argsort()[1:top_k+1]
-        log_str = "Nearest to %s:" % valid_word
+        top_k = 8  # number of nearest neighbors
+        nearest = (-sim[i, :]).argsort()[1:top_k + 1]
+        log_str = 'Nearest to %s:' % valid_word
         for k in xrange(top_k):
           close_word = reverse_dictionary[nearest[k]]
-          log_str = "%s %s," % (log_str, close_word)
+          log_str = '%s %s,' % (log_str, close_word)
         print(log_str)
   final_embeddings = normalized_embeddings.eval()
 
 # Step 6: Visualize the embeddings.
 
+
 def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
-  assert low_dim_embs.shape[0] >= len(labels), "More labels than embeddings"
-  plt.figure(figsize=(18, 18))  #in inches
+  assert low_dim_embs.shape[0] >= len(labels), 'More labels than embeddings'
+  plt.figure(figsize=(18, 18))  # in inches
   for i, label in enumerate(labels):
-    x, y = low_dim_embs[i,:]
+    x, y = low_dim_embs[i, :]
     plt.scatter(x, y)
     plt.annotate(label,
                  xy=(x, y),
@@ -233,14 +245,15 @@ def plot_with_labels(low_dim_embs, labels, filename='tsne.png'):
   plt.savefig(filename)
 
 try:
+  # pylint: disable=g-import-not-at-top
   from sklearn.manifold import TSNE
   import matplotlib.pyplot as plt
 
   tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000)
   plot_only = 500
-  low_dim_embs = tsne.fit_transform(final_embeddings[:plot_only,:])
+  low_dim_embs = tsne.fit_transform(final_embeddings[:plot_only, :])
   labels = [reverse_dictionary[i] for i in xrange(plot_only)]
   plot_with_labels(low_dim_embs, labels)
 
 except ImportError:
-  print("Please install sklearn and matplotlib to visualize embeddings.")
+  print('Please install sklearn, matplotlib, and scipy to show embeddings.')

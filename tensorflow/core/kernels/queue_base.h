@@ -143,7 +143,7 @@ class QueueBase : public QueueInterface {
   const DataTypeVector component_dtypes_;
   const std::vector<TensorShape> component_shapes_;
   const string name_;
-  mutex mu_;
+  mutable mutex mu_;
   bool closed_ GUARDED_BY(mu_);
 
   struct Attempt;

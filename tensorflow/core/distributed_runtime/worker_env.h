@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_ENV_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_WORKER_ENV_H_
 
+#include <vector>
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -24,11 +25,11 @@ namespace thread {
 class ThreadPool;
 }  // namespace thread
 
+class Device;
 class DeviceMgr;
 class Env;
-class GraphMgr;
 class RendezvousMgrInterface;
-class WorkerCacheInterface;
+class SessionMgr;
 
 // The worker environment class, which holds a bag of pointers to
 // per-worker singletons.
@@ -37,18 +38,17 @@ class WorkerCacheInterface;
 struct WorkerEnv {
   Env* env = nullptr;
 
-  // The name of the worker. E.g., /job:mnist/replica:1/task:0.
-  string worker_name;
+  // session_mgr encapsulates state for each session.
+  SessionMgr* session_mgr = nullptr;
 
-  // Object from which WorkerInterface instances can be obtained.
-  WorkerCacheInterface* worker_cache = nullptr;
+  // The local devices of this worker. Devices are owned by the device_mgr.
+  //
+  // REQUIRES: !local_devices.empty().
+  std::vector<Device*> local_devices;
 
   // device_mgr manages local devices (cpu and gpu). The WorkerService
   // is the network interface for managed devices.
   DeviceMgr* device_mgr = nullptr;
-
-  // graph_mgr keeps track of registered graphs of this worker.
-  GraphMgr* graph_mgr = nullptr;
 
   // A set of rendezvous keyed by step ids.
   RendezvousMgrInterface* rendezvous_mgr = nullptr;

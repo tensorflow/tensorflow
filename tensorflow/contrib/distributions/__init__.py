@@ -14,63 +14,133 @@
 # ==============================================================================
 """Classes representing statistical distributions and ops for working with them.
 
-## Classes for statistical distributions.
-
-Classes that represent batches of statistical distributions.  Each class is
-initialized with parameters that define the distributions.
-
-### Base classes
-
-@@BaseDistribution
-@@ContinuousDistribution
-@@DiscreteDistribution
-
-### Univariate (scalar) distributions
-
-@@Categorical
-@@Chi2
-@@Exponential
-@@Gamma
-@@Normal
-@@StudentT
-@@Uniform
-
-### Multivariate distributions
-
-@@MultivariateNormal
-@@DirichletMultinomial
-
-## Posterior inference with conjugate priors.
-
-Functions that transform conjugate prior/likelihood pairs to distributions
-representing the posterior or posterior predictive.
-
-### Normal likelihood with conjugate prior.
-
-@@normal_conjugates_known_sigma_posterior
-@@normal_congugates_known_sigma_predictive
-
-## Kullback Leibler Divergence
-
-@@kl
-@@RegisterKL
-
+See the @{$python/contrib.distributions} guide.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import,line-too-long
+# pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
-from tensorflow.contrib.distributions.python.ops.categorical import *
+from tensorflow.contrib.distributions.python.ops import bijectors
+from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
-from tensorflow.contrib.distributions.python.ops.dirichlet_multinomial import *
-from tensorflow.contrib.distributions.python.ops.distribution import *
-from tensorflow.contrib.distributions.python.ops.exponential import *
-from tensorflow.contrib.distributions.python.ops.gamma import *
-from tensorflow.contrib.distributions.python.ops.kullback_leibler import *
-from tensorflow.contrib.distributions.python.ops.mvn import *
-from tensorflow.contrib.distributions.python.ops.normal import *
+from tensorflow.contrib.distributions.python.ops.conditional_distribution import *
+from tensorflow.contrib.distributions.python.ops.conditional_transformed_distribution import *
+from tensorflow.contrib.distributions.python.ops.deterministic import *
+from tensorflow.contrib.distributions.python.ops.distribution_util import matrix_diag_transform
+from tensorflow.contrib.distributions.python.ops.distribution_util import softplus_inverse
+from tensorflow.contrib.distributions.python.ops.geometric import *
+from tensorflow.contrib.distributions.python.ops.inverse_gamma import *
+from tensorflow.contrib.distributions.python.ops.logistic import *
+from tensorflow.contrib.distributions.python.ops.mixture import *
+from tensorflow.contrib.distributions.python.ops.mvn_diag import *
+from tensorflow.contrib.distributions.python.ops.mvn_diag_plus_low_rank import *
+from tensorflow.contrib.distributions.python.ops.mvn_full_covariance import *
+from tensorflow.contrib.distributions.python.ops.mvn_tril import *
+from tensorflow.contrib.distributions.python.ops.negative_binomial import *
 from tensorflow.contrib.distributions.python.ops.normal_conjugate_posteriors import *
-from tensorflow.contrib.distributions.python.ops.student_t import *
-from tensorflow.contrib.distributions.python.ops.uniform import *
+from tensorflow.contrib.distributions.python.ops.onehot_categorical import *
+from tensorflow.contrib.distributions.python.ops.poisson import *
+from tensorflow.contrib.distributions.python.ops.quantized_distribution import *
+from tensorflow.contrib.distributions.python.ops.relaxed_bernoulli import *
+from tensorflow.contrib.distributions.python.ops.relaxed_onehot_categorical import *
+from tensorflow.contrib.distributions.python.ops.sample_stats import *
+from tensorflow.contrib.distributions.python.ops.vector_laplace_diag import *
+from tensorflow.contrib.distributions.python.ops.wishart import *
+from tensorflow.python.ops.distributions.bernoulli import *
+from tensorflow.python.ops.distributions.beta import *
+from tensorflow.python.ops.distributions.categorical import *
+from tensorflow.python.ops.distributions.dirichlet import *
+from tensorflow.python.ops.distributions.dirichlet_multinomial import *
+from tensorflow.python.ops.distributions.distribution import *
+from tensorflow.python.ops.distributions.exponential import *
+from tensorflow.python.ops.distributions.gamma import *
+from tensorflow.python.ops.distributions.kullback_leibler import *
+from tensorflow.python.ops.distributions.laplace import *
+from tensorflow.python.ops.distributions.multinomial import *
+from tensorflow.python.ops.distributions.normal import *
+from tensorflow.python.ops.distributions.student_t import *
+from tensorflow.python.ops.distributions.transformed_distribution import *
+from tensorflow.python.ops.distributions.uniform import *
+
+# pylint: enable=unused-import,wildcard-import,line-too-long,g-importing-member
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = [
+    'bijectors',
+    'ConditionalDistribution',
+    'ConditionalTransformedDistribution',
+    'FULLY_REPARAMETERIZED',
+    'NOT_REPARAMETERIZED',
+    'Affine',
+    'AffineLinearOperator',
+    'Bijector',
+    'Chain',
+    'CholeskyOuterProduct',
+    'Exp',
+    'Identity',
+    'Inline',
+    'Invert',
+    'PowerTransform',
+    'SigmoidCentered',
+    'SoftmaxCentered',
+    'Softplus',
+    'ReparameterizationType',
+    'Distribution',
+    'Binomial',
+    'Bernoulli',
+    'BernoulliWithSigmoidProbs',
+    'Beta',
+    'BetaWithSoftplusConcentration',
+    'Categorical',
+    'Chi2',
+    'Chi2WithAbsDf',
+    'Deterministic',
+    'VectorDeterministic',
+    'Exponential',
+    'ExponentialWithSoftplusRate',
+    'Gamma',
+    'GammaWithSoftplusConcentrationRate',
+    'Geometric',
+    'InverseGamma',
+    'InverseGammaWithSoftplusConcentrationRate',
+    'Laplace',
+    'LaplaceWithSoftplusScale',
+    'Logistic',
+    'NegativeBinomial',
+    'Normal',
+    'NormalWithSoftplusScale',
+    'Poisson',
+    'StudentT',
+    'StudentTWithAbsDfSoftplusScale',
+    'Uniform',
+    'MultivariateNormalDiag',
+    'MultivariateNormalFullCovariance',
+    'MultivariateNormalTriL',
+    'MultivariateNormalDiagPlusLowRank',
+    'MultivariateNormalDiagWithSoftplusScale',
+    'Dirichlet',
+    'DirichletMultinomial',
+    'Multinomial',
+    'VectorLaplaceDiag',
+    'WishartCholesky',
+    'WishartFull',
+    'TransformedDistribution',
+    'QuantizedDistribution',
+    'Mixture',
+    'ExpRelaxedOneHotCategorical',
+    'OneHotCategorical',
+    'RelaxedBernoulli',
+    'RelaxedOneHotCategorical',
+    'kl_divergence',
+    'RegisterKL',
+    'matrix_diag_transform',
+    'normal_conjugates_known_scale_posterior',
+    'normal_conjugates_known_scale_predictive',
+    'softplus_inverse',
+    'percentile'
+]
+
+remove_undocumented(__name__, _allowed_symbols)

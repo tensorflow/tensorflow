@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
- Copyright 2014 The Android Open Source Project
+ Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
  Licensed under the Apache License, Version 2.0 (the "License");
  you may not use this file except in compliance with the License.
@@ -33,9 +33,27 @@
         android:icon="@drawable/ic_launcher"
         android:theme="@style/MaterialTheme">
 
-        <activity android:name="org.tensorflow.demo.CameraActivity"
+        <activity android:name="org.tensorflow.demo.ClassifierActivity"
                   android:screenOrientation="portrait"
-                  android:label="@string/app_name">
+                  android:label="@string/activity_name_classification">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name="org.tensorflow.demo.DetectorActivity"
+                  android:screenOrientation="portrait"
+                  android:label="@string/activity_name_detection">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity android:name="org.tensorflow.demo.StylizeActivity"
+                  android:screenOrientation="portrait"
+                  android:label="@string/activity_name_stylize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

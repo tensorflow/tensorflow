@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ from tensorflow.contrib.learn.python.learn.dataframe import transform
 from tensorflow.python.training import input as input_ops
 
 
-class AbstractBatchTransform(transform.Transform):
+class AbstractBatchTransform(transform.TensorFlowTransform):
   """Abstract parent class for batching Transforms."""
 
   def __init__(self,
@@ -38,15 +38,15 @@ class AbstractBatchTransform(transform.Transform):
     self._queue_capacity = (self.batch_size * 10 if queue_capacity is None
                             else queue_capacity)
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def batch_size(self):
     return self._batch_size
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def num_threads(self):
     return self._num_threads
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def queue_capacity(self):
     return self._queue_capacity
 
@@ -72,7 +72,7 @@ class Batch(AbstractBatchTransform):
   def name(self):
     return "Batch"
 
-  def _apply_transform(self, transform_input):
+  def _apply_transform(self, transform_input, **kwargs):
     batched = input_ops.batch(transform_input,
                               batch_size=self.batch_size,
                               num_threads=self.num_threads,
@@ -113,15 +113,15 @@ class ShuffleBatch(AbstractBatchTransform):
                                   else min_after_dequeue)
     self._seed = seed
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def min_after_dequeue(self):
     return self._min_after_dequeue
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def seed(self):
     return self._seed
 
-  def _apply_transform(self, transform_input):
+  def _apply_transform(self, transform_input, **kwargs):
     batched = input_ops.shuffle_batch(transform_input,
                                       batch_size=self.batch_size,
                                       capacity=self.queue_capacity,

@@ -39,6 +39,89 @@ typedef Eigen::GpuDevice GPUDevice;
 template <class Distribution, bool VariableSamplesPerOutput>
 struct FillPhiloxRandomKernel;
 
+template <typename T, int ElementCount>
+class SampleCopier {
+ public:
+  inline __device__ void operator()(
+      T* buf, const tensorflow::random::Array<T, ElementCount>& array) const {
+#pragma unroll
+    for (int i = 0; i < ElementCount; i++) {
+      buf[i] = array[i];
+    }
+  }
+};
+
+template <>
+class SampleCopier<float, 4> {
+ public:
+  // Copies the elements from the array to buf. buf must be 128-bit aligned,
+  // which is true for tensor data, and all offsets that are a multiple of the
+  // vector size (because the vectors are 128 bits long).
+  inline __device__ void operator()(
+      float* buf, const tensorflow::random::Array<float, 4>& array) const {
+    // NOTE(ringwalt): It's not safe to cast &array[0] to a float4, because they
+    // have 32-bit alignment vs 128-bit alignment. There seems to be no
+    // performance loss when assigning each element to a vector.
+    float4 vec;
+    vec.x = array[0];
+    vec.y = array[1];
+    vec.z = array[2];
+    vec.w = array[3];
+    float4* buf_vector = reinterpret_cast<float4*>(buf);
+    *buf_vector = vec;
+  }
+};
+
+template <>
+class SampleCopier<int32, 4> {
+ public:
+  // Copies the elements from the array to buf. buf must be 128-bit aligned,
+  // which is true for tensor data, and all offsets that are a multiple of the
+  // vector size (because the vectors are 128 bits long).
+  inline __device__ void operator()(
+      int32* buf, const tensorflow::random::Array<int32, 4>& array) const {
+    int4 vec;
+    vec.x = array[0];
+    vec.y = array[1];
+    vec.z = array[2];
+    vec.w = array[3];
+    int4* buf_vector = reinterpret_cast<int4*>(buf);
+    *buf_vector = vec;
+  }
+};
+
+template <>
+class SampleCopier<double, 2> {
+ public:
+  // Copies the elements from the array to buf. buf must be 128-bit aligned,
+  // which is true for tensor data, and all offsets that are a multiple of the
+  // vector size (because the vectors are 128 bits long).
+  inline __device__ void operator()(
+      double* buf, const tensorflow::random::Array<double, 2>& array) const {
+    double2 vec;
+    vec.x = array[0];
+    vec.y = array[1];
+    double2* buf_vector = reinterpret_cast<double2*>(buf);
+    *buf_vector = vec;
+  }
+};
+
+template <>
+class SampleCopier<int64, 2> {
+ public:
+  // Copies the elements from the array to buf. buf must be 128-bit aligned,
+  // which is true for tensor data, and all offsets that are a multiple of the
+  // vector size (because the vectors are 128 bits long).
+  inline __device__ void operator()(
+      int64* buf, const tensorflow::random::Array<int64, 2>& array) const {
+    longlong2 vec;
+    vec.x = array[0];
+    vec.y = array[1];
+    longlong2* buf_vector = reinterpret_cast<longlong2*>(buf);
+    *buf_vector = vec;
+  }
+};
+
 // A cuda kernel to fill the data with random numbers from the specified
 // distribution. Each output takes a fixed number of samples.
 template <class Distribution>
@@ -53,19 +136,22 @@ struct FillPhiloxRandomKernel<Distribution, false> {
     int32 offset = thread_id * kGroupSize;
     gen.Skip(thread_id);
 
-    while (offset < size) {
-      typename Distribution::ResultType samples = dist(&gen);
-
-      for (int i = 0; i < kGroupSize; ++i) {
-        if (offset >= size) {
-          return;
-        }
-        data[offset] = samples[i];
-        ++offset;
-      }
+    const SampleCopier<T, kGroupSize> copier;
+    while (offset + kGroupSize <= size) {
+      const typename Distribution::ResultType samples = dist(&gen);
+      copier(&data[offset], samples);
 
       offset += (total_thread_count - 1) * kGroupSize;
       gen.Skip(total_thread_count - 1);
+    }
+
+    typename Distribution::ResultType samples = dist(&gen);
+    for (int i = 0; i < kGroupSize; ++i) {
+      if (offset >= size) {
+        return;
+      }
+      data[offset] = samples[i];
+      ++offset;
     }
   }
 };
@@ -127,91 +213,18 @@ __global__ void __launch_bounds__(1024)
 
 // Partial specialization for GPU
 template <class Distribution>
-struct FillPhiloxRandom<GPUDevice, Distribution> {
-  typedef typename Distribution::ResultElementType T;
-  typedef GPUDevice Device;
-  void operator()(OpKernelContext*, const Device& d, random::PhiloxRandom gen,
-                  T* data, int64 size, Distribution dist) {
-    const int32 block_size = d.maxCudaThreadsPerBlock();
-    const int32 num_blocks =
-        (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
-        block_size;
+void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
+    OpKernelContext*, const GPUDevice& d, random::PhiloxRandom gen,
+    typename Distribution::ResultElementType* data, int64 size,
+    Distribution dist) {
+  const int32 block_size = d.maxCudaThreadsPerBlock();
+  const int32 num_blocks =
+      (d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor()) /
+      block_size;
 
-    FillPhiloxRandomKernelLaunch<
-        Distribution><<<num_blocks, block_size, 0, d.stream()>>>(gen, data,
-                                                                 size, dist);
-  }
-};
-
-// Kernel for Multinomial op.  Data is interpreted to have the following shapes:
-//   scores: [B, S, C];  maxima: [B, S];  output: [B, S].
-__global__ void MultinomialKernel(int32 nthreads, const int32 num_classes,
-                                  const int32 num_samples, const float* scores,
-                                  const float* maxima, int64* output) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    const int maxima_idx = index / num_classes;
-    if (ldg(maxima + maxima_idx) == ldg(scores + index)) {
-      CudaAtomicMax(reinterpret_cast<uint64*>(output + maxima_idx),
-                    static_cast<uint64>(index % num_classes));
-    }
-  }
-}
-
-template <typename T>
-struct MultinomialFunctor<GPUDevice, T> {
-  void operator()(OpKernelContext* ctx, const GPUDevice& d,
-                  typename TTypes<T>::ConstMatrix logits,
-                  typename TTypes<float>::Flat noises,
-                  typename TTypes<float>::Flat scores,
-                  typename TTypes<float>::Flat maxima, int batch_size,
-                  int num_classes, int num_samples,
-                  const random::PhiloxRandom& gen,
-                  typename TTypes<int64>::Matrix output) {
-    // Uniform, [0, 1).
-    typedef random::UniformDistribution<random::PhiloxRandom, float> Dist;
-    functor::FillPhiloxRandom<GPUDevice, Dist>()(ctx, d, gen, noises.data(),
-                                                 noises.size(), Dist());
-
-#if defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::IndexList<Eigen::type2index<2>> kTwo;
-    Eigen::IndexList<int, int, int> bsc;
-    bsc.set(0, batch_size);
-    bsc.set(1, num_samples);
-    bsc.set(2, num_classes);
-
-    Eigen::IndexList<int, Eigen::type2index<1>, int> boc;
-    boc.set(0, batch_size);
-    boc.set(2, num_classes);
-
-    Eigen::IndexList<Eigen::type2index<1>, int, Eigen::type2index<1>> oso;
-    oso.set(1, num_samples);
-#else
-    Eigen::array<int, 1> kTwo{2};
-    Eigen::array<int, 3> bsc{batch_size, num_samples, num_classes};
-    Eigen::array<int, 3> boc{batch_size, 1, num_classes};
-    Eigen::array<int, 3> oso{1, num_samples, 1};
-#endif
-
-    // Calculates "scores = logits - log(-log(noises))"; B*C*S elements.
-    // NOTE: we don't store back to "noises" because having it appear on both
-    // sides is potentially unsafe (e.g. Eigen may use ldg() to load RHS data).
-    To32Bit(scores).device(d) =
-        To32Bit(logits).reshape(boc).broadcast(oso).template cast<float>() -
-        ((-(To32Bit(noises).log())).log());
-
-    // Max-reduce along classes for each (batch, sample).
-    To32Bit(maxima).device(d) = To32Bit(scores).reshape(bsc).maximum(kTwo);
-
-    // Necessary for atomicMax() inside the kernel.
-    output.device(d) = output.constant(0LL);
-
-    const int32 work_items = batch_size * num_samples * num_classes;
-    CudaLaunchConfig config = GetCudaLaunchConfig(work_items, d);
-    MultinomialKernel<<<config.block_count, config.thread_per_block, 0,
-                        d.stream()>>>(config.virtual_thread_count, num_classes,
-                                      num_samples, scores.data(), maxima.data(),
-                                      output.data());
-  }
+  FillPhiloxRandomKernelLaunch<
+      Distribution><<<num_blocks, block_size, 0, d.stream()>>>(gen, data, size,
+                                                               dist);
 };
 
 // Explicit instantiation of the GPU distributions functors
@@ -242,12 +255,6 @@ template struct FillPhiloxRandom<
 template struct FillPhiloxRandom<
     GPUDevice, random::TruncatedNormalDistribution<
                    random::SingleSampleAdapter<random::PhiloxRandom>, double> >;
-
-template struct MultinomialFunctor<GPUDevice, Eigen::half>;
-template struct MultinomialFunctor<GPUDevice, float>;
-template struct MultinomialFunctor<GPUDevice, double>;
-template struct MultinomialFunctor<GPUDevice, int32>;
-template struct MultinomialFunctor<GPUDevice, int64>;
 // clang-format on
 
 }  // namespace functor

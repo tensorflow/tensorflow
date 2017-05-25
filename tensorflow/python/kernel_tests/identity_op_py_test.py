@@ -12,54 +12,61 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Tests for IdentityOp."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
 
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
-class IdentityOpTest(tf.test.TestCase):
+class IdentityOpTest(test.TestCase):
 
   def testInt32_6(self):
     with self.test_session():
-      value = tf.identity([1, 2, 3, 4, 5, 6]).eval()
+      value = array_ops.identity([1, 2, 3, 4, 5, 6]).eval()
     self.assertAllEqual(np.array([1, 2, 3, 4, 5, 6]), value)
 
   def testInt32_2_3(self):
     with self.test_session():
-      inp = tf.constant([10, 20, 30, 40, 50, 60], shape=[2, 3])
-      value = tf.identity(inp).eval()
+      inp = constant_op.constant([10, 20, 30, 40, 50, 60], shape=[2, 3])
+      value = array_ops.identity(inp).eval()
     self.assertAllEqual(np.array([[10, 20, 30], [40, 50, 60]]), value)
 
   def testString(self):
     source = [b"A", b"b", b"C", b"d", b"E", b"f"]
     with self.test_session():
-      value = tf.identity(source).eval()
+      value = array_ops.identity(source).eval()
     self.assertAllEqual(source, value)
 
   def testIdentityShape(self):
     with self.test_session():
       shape = [2, 3]
       array_2x3 = [[1, 2, 3], [6, 5, 4]]
-      tensor = tf.constant(array_2x3)
+      tensor = constant_op.constant(array_2x3)
       self.assertEquals(shape, tensor.get_shape())
-      self.assertEquals(shape, tf.identity(tensor).get_shape())
-      self.assertEquals(shape, tf.identity(array_2x3).get_shape())
-      self.assertEquals(shape, tf.identity(np.array(array_2x3)).get_shape())
+      self.assertEquals(shape, array_ops.identity(tensor).get_shape())
+      self.assertEquals(shape, array_ops.identity(array_2x3).get_shape())
+      self.assertEquals(shape,
+                        array_ops.identity(np.array(array_2x3)).get_shape())
 
   def testRefIdentityShape(self):
     with self.test_session():
       shape = [2, 3]
-      tensor = tf.Variable(tf.constant([[1, 2, 3], [6, 5, 4]], dtype=tf.int32))
+      tensor = variables.Variable(
+          constant_op.constant(
+              [[1, 2, 3], [6, 5, 4]], dtype=dtypes.int32))
       self.assertEquals(shape, tensor.get_shape())
       self.assertEquals(shape, gen_array_ops._ref_identity(tensor).get_shape())
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

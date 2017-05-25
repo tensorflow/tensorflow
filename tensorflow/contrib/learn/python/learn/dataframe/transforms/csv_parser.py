@@ -23,7 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import parsing_ops
 
 
-class CSVParser(transform.Transform):
+class CSVParser(transform.TensorFlowTransform):
   """A Transform that parses lines from a CSV file."""
 
   def __init__(self, column_names, default_values):
@@ -50,15 +50,15 @@ class CSVParser(transform.Transform):
   def _output_names(self):
     return self.column_names
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def column_names(self):
     return self._column_names
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def default_values(self):
     return self._default_values
 
-  def _apply_transform(self, input_tensors):
+  def _apply_transform(self, input_tensors, **kwargs):
     default_consts = [constant_op.constant(d, shape=[1])
                       for d in self._default_values]
     parsed_values = parsing_ops.decode_csv(input_tensors[0],
