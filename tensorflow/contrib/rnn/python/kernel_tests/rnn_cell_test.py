@@ -897,6 +897,7 @@ class RNNCellTest(test.TestCase):
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(1.0/2.0)):
         x = array_ops.zeros([batch_size, 2, 1])
+        #print(x.get_shape()[1:])
         cell = rnn_cell.Conv1DLSTMCell(input_shape=shape, kernel_shape=filter_size, output_channels=num_features)
         hidden = cell.zero_state(batch_size, dtypes.float32)
         output, state = cell(x, hidden)

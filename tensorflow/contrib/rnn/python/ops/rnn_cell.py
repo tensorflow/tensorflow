@@ -28,6 +28,7 @@ from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
@@ -1983,17 +1984,23 @@ class ConvLSTMCell(core_rnn_cell.RNNCell):
     return self._input_shape[:-1] + [self._output_channels]
 
   def zero_state(self, batch_size, dtype):
-    shape = self._input_shape[:-1] + [self._total_output_channels]
-    zero_cell = array_ops.zeros([batch_size] + shape, dtype=dtype)
-    zero_hidden = array_ops.zeros([batch_size] + shape, dtype=dtype)
+    shape = ([batch_size]
+            + self._input_shape[:-1]
+            + [self._total_output_channels])
+    zero_cell = array_ops.zeros(shape, dtype=dtype)
+    zero_hidden = array_ops.zeros(shape, dtype=dtype)
     zero_state = core_rnn_cell.LSTMStateTuple(zero_cell, zero_hidden)
     return zero_state
 
   def call(self, inputs, state, scope=None):
     cell, hidden = state
-    new_hidden = _conv([inputs, hidden], self._kernel_shape, 4*self._output_channels, self._use_bias)
-    gates = array_ops.split(value=new_hidden, num_or_size_splits=4,
-                     axis=self._conv_ndims+1)
+    new_hidden = _conv([inputs, hidden],
+                       self._kernel_shape,
+                       4*self._output_channels,
+                       self._use_bias)
+    gates = array_ops.split(value=new_hidden,
+                            num_or_size_splits=4,
+                            axis=self._conv_ndims+1)
 
     input_gate, new_input, forget_gate, output_gate = gates
     new_cell = math_ops.sigmoid(forget_gate + self._forget_bias) * cell
@@ -2026,10 +2033,16 @@ class Conv3DLSTMCell(ConvLSTMCell):
     """Construct Conv3DLSTM. See `snt.ConvLSTM` for more details."""
     super(Conv3DLSTMCell, self).__init__(conv_ndims=3, **kwargs)
 
-def _conv(args, filter_size, num_features, bias, bias_start=0.0, scope=None):
+def _conv(args, 
+          filter_size,
+          num_features,
+          bias,
+          bias_start=0.0,
+          scope=None):
   """convolution:
   Args:
-    args: a Tensor or a list of Tensors of dimension 3D, 4D or 5D, batch x n, Tensors.
+    args: a Tensor or a list of Tensors of dimension 3D, 4D or 5D, 
+    batch x n, Tensors.
     filter_size: int tuple of filter height and width.
     num_features: int, number of features.
     bias_start: starting value to initialize the bias; 0 by default.
@@ -2068,11 +2081,19 @@ def _conv(args, filter_size, num_features, bias, bias_start=0.0, scope=None):
   # Now the computation.
   with vs.variable_scope(scope or "Conv_%sD" % str(shape_length-2)):
     matrix = vs.get_variable(
-        "Matrix", filter_size + [total_arg_size_depth, num_features], dtype=dtype)
+        "Matrix", 
+        filter_size + [total_arg_size_depth, num_features],
+        dtype=dtype)
     if len(args) == 1:
-      res = conv_op(args[0], matrix, strides, padding='SAME')
+      res = conv_op(args[0],
+                    matrix,
+                    strides,
+                    padding='SAME')
     else:
-      res = conv_op(array_ops.concat(axis=shape_length-1, values=args), matrix, strides, padding='SAME')
+      res = conv_op(array_ops.concat(axis=shape_length-1, values=args),
+                    matrix,
+                    strides,
+                    padding='SAME')
     if not bias:
       return res
     bias_term = vs.get_variable(
