@@ -284,5 +284,6 @@ def target_llvm_triple():
       "//tensorflow:android_arm64": "aarch64-none-android",
       "//tensorflow:android_x86": "i686-none-android",
       "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
+      "//tensorflow:darwin": "x86_64-none-darwin",
       "//conditions:default": "x86_64-pc-linux",
   })
