@@ -38,7 +38,7 @@ export let TAB = '__tab__';
 /**
  * The name of the property for users to set on a Polymer component
  * in order for its stored properties to be stored in the URI unambiguously.
- * (No need to set this if you want mutliple instances of the component to
+ * (No need to set this if you want multiple instances of the component to
  * share URI state)
  *
  * Example:
