@@ -62,6 +62,45 @@ TEST_F(ReshapeMoverTest, ReshapesWithDifferentInputShapesNotMoved) {
               op::Add(op::Reshape(param0), op::Reshape(param1)));
 }
 
+// For a graph that looks like:
+//
+// +- reshape0 - rng0
+// |
+// +- const1
+// |
+// add
+//
+// where rng0 has a different shape than reshape0.
+//
+// Verifies that the reshape is not moved, since rng0 is trivially reshapable
+// and therefore there is no nontrivial reshapes to move.
+TEST_F(ReshapeMoverTest, 1ConstantAnd1ReshapesOnRngNotMoved) {
+  HloComputation::Builder builder(TestName());
+  auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
+  auto rng0 = builder.AddInstruction(
+      HloInstruction::CreateRng(ShapeUtil::MakeShape(F32, {1, 8, 1, 7, 1}),
+                                RandomDistribution::RNG_UNIFORM, {}));
+  auto reshape0 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, rng0));
+
+  auto const1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateFromShape(root_shape)));
+
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      root_shape, HloOpcode::kAdd, reshape0, const1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Add(op::Reshape(rng0), const1));
+
+  EXPECT_FALSE(ReshapeMover().Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Add(op::Reshape(rng0), const1));
+}
+
 TEST_F(ReshapeMoverTest, ScalarReshapesNotMoved) {
   HloComputation::Builder builder(TestName());
   auto root_shape = ShapeUtil::MakeShape(F32, {});
@@ -181,13 +220,8 @@ TEST_F(ReshapeMoverTest, 1ConstantAnd2ReshapesMoved) {
 // |
 // add
 //
-// Verifies that the reshape0 *does not* unnecessarily sink below add:
-//
-// +- reshape0 - param0
-// |
-// +- param1
-// |
-// add
+// Verifies that the reshape0 does not sink below add, because param1 is not
+// trivially reshapable nor is a Reshape/Transpose.
 TEST_F(ReshapeMoverTest, 1ParameterAnd1ReshapeNotMoved) {
   HloComputation::Builder builder(TestName());
   auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
@@ -215,11 +249,11 @@ TEST_F(ReshapeMoverTest, 1ParameterAnd1ReshapeNotMoved) {
 
 // For a graph that looks like:
 //
+// +- pred
+// |
 // +- reshape0 - const0
 // |
 // +- reshape1 - const1
-// |
-// +- param1
 // |
 // select
 //
@@ -278,7 +312,7 @@ TEST_F(ReshapeMoverTest, 2TrivialConstantReshapeNotMoved) {
 // reshape2
 //
 // (note that reshape1 here is trivial).
-TEST_F(ReshapeMoverTest, 1NonTrivialReshapeNotMoved) {
+TEST_F(ReshapeMoverTest, 1NonTrivialReshapeMoved) {
   HloComputation::Builder builder(TestName());
   auto root_shape = ShapeUtil::MakeShape(F32, {2, 3});
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
