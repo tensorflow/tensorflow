@@ -97,34 +97,15 @@ func TestMultipleGeneratedOps(t *testing.T) {
 
 func TestScopeWithGraph(t *testing.T) {
 	s1 := NewScope()
-
-	var hello interface{} = "hello"
-	tensor1, _ := tf.NewTensor(hello)
-	s1.AddOperation(tf.OpSpec{
-		Type: "Const",
-		Name: hello.(string),
-		Attrs: map[string]interface{}{
-			"dtype": tensor1.DataType(),
-			"value": tensor1,
-		},
-	})
+	Const(s1, "hello")
 	graph, err := s1.Finalize()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	s2 := NewScopeWithGraph(graph)
-	var world interface{} = "world"
-	tensor2, _ := tf.NewTensor(world)
-	s2.AddOperation(tf.OpSpec{
-		Type: "Const",
-		Name: world.(string),
-		Attrs: map[string]interface{}{
-			"dtype": tensor2.DataType(),
-			"value": tensor2,
-		},
-	})
-	if _, err := s2.Finalize(); err != nil {
+	Const(s2.SubScope("addition"), "world")
+	if err := s2.Err(); err != nil {
 		t.Fatal(err)
 	}
 }
