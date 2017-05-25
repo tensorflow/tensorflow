@@ -99,8 +99,6 @@ struct Backend::EigenThreadPoolWrapper {
   std::unique_ptr<Backend> backend(
       new Backend(replica_count, platform, compiler, stream_executors,
                   transfer_manager, options.intra_op_parallelism_threads()));
-  TF_RETURN_IF_ERROR(backend->PoolStreams(kInitialStreamsToPool,
-                                          backend->default_stream_executor()));
   return std::move(backend);
 }
 
@@ -111,15 +109,6 @@ Backend::CreateDefaultBackend() {
   BackendOptions backend_options;
   backend_options.set_platform(platform);
   return CreateBackend(backend_options);
-}
-
-tensorflow::Status Backend::PoolStreams(int n, se::StreamExecutor* executor) {
-  std::vector<StreamPtr> primed;
-  for (int i = 0; i < n; ++i) {
-    TF_ASSIGN_OR_RETURN(auto stream, BorrowStream(executor));
-    primed.emplace_back(std::move(stream));
-  }
-  return tensorflow::Status::OK();
 }
 
 StatusOr<Backend::StreamPtr> Backend::BorrowStream(int device_ordinal) {

@@ -48,8 +48,6 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/legacy_flags:llvm_util_flags",
-        "//tensorflow/compiler/xla/service:buffer_assignment",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/core:lib",
         "@llvm//:core",
         "@llvm//:support",
@@ -80,6 +78,7 @@ cc_library(
     deps = [
         ":ir_array",
         ":llvm_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/core:lib",

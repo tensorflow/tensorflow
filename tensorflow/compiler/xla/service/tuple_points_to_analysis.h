@@ -117,27 +117,21 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
 // value.
 class BufferAlias {
  public:
-  BufferAlias(const LogicalBuffer& buffer, HloInstruction* instruction,
-              const ShapeIndex& index)
-      : buffer_(&buffer), instruction_(instruction), index_(index) {}
-
-  // Return the logical buffer aliased at the instruction and index.
-  const LogicalBuffer& buffer() const { return *buffer_; }
+  BufferAlias(HloInstruction* instruction, const ShapeIndex& index)
+      : instruction_(instruction), index_(index) {}
 
   // Return the instruction/index of the subshape.
   HloInstruction* instruction() const { return instruction_; }
   const ShapeIndex& index() const { return index_; }
 
   bool operator==(const BufferAlias& other) const {
-    return buffer_ == other.buffer_ && instruction_ == other.instruction_ &&
-           index_ == other.index_;
+    return instruction_ == other.instruction_ && index_ == other.index_;
   }
   bool operator!=(const BufferAlias& other) const { return !(*this == other); }
 
   string ToString() const;
 
  private:
-  const LogicalBuffer* buffer_;
   HloInstruction* instruction_;
   const ShapeIndex index_;
 };

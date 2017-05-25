@@ -269,3 +269,18 @@ def _SparseSparseMaximumGrad(unused_op, unused_grad):
 def _SparseSparseMinimumGrad(unused_op, unused_grad):
   raise NotImplementedError("Gradient for SparseSparseMinimum is currently not"
                             " implemented yet.")
+
+
+@ops.RegisterGradient("SparseFillEmptyRows")
+def _SparseFillEmptyRowsGrad(op, unused_grad_output_indices, output_grad_values,
+                             unused_grad_empty_row_indicator,
+                             unused_grad_reverse_index_map):
+  """Gradients for SparseFillEmptyRows."""
+  reverse_index_map = op.outputs[3]
+
+  # pylint: disable=protected-access
+  d_values, d_default_value = gen_sparse_ops._sparse_fill_empty_rows_grad(
+      reverse_index_map=reverse_index_map, grad_values=output_grad_values)
+
+  # d_indices, d_values, d_dense_shape, d_default_value.
+  return [None, d_values, None, d_default_value]

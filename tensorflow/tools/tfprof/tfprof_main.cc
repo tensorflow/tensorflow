@@ -184,10 +184,14 @@ int main(int argc, char** argv) {
 
   std::unique_ptr<tensorflow::RunMetadata> run_meta(
       new tensorflow::RunMetadata());
-  if (!ReadBinaryProto(tensorflow::Env::Default(), FLAGS_run_meta_path,
-                       run_meta.get())
-           .ok()) {
-    run_meta.release();
+  if (!FLAGS_run_meta_path.empty()) {
+    s = ReadBinaryProto(tensorflow::Env::Default(), FLAGS_run_meta_path,
+                        run_meta.get());
+    if (!s.ok()) {
+      fprintf(stderr, "Failed to read run_meta_path: %s\n",
+              s.ToString().c_str());
+      return 1;
+    }
   }
 
   std::unique_ptr<tensorflow::tfprof::OpLog> op_log(

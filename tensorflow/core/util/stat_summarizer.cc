@@ -44,9 +44,8 @@ void StatSummarizer::Validate(const Detail* detail,
     for (const auto& output : ns.output()) {
       const int32 slot = output.slot();
       if ((slot < 0) || (slot >= ns.output_size())) {
-        LOG(ERROR) << "Bad output slot '" << slot << "' for '" << ns.node_name()
-                   << "'";
-        return;
+        // This is not a hard error for Switch ops, so just pass.
+        continue;
       }
       const auto& stored = detail->outputs[slot];
       const auto& current = output.tensor_description();
@@ -143,12 +142,13 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
         for (const auto& output : ns.output()) {
           const int32 slot = output.slot();
           if ((slot < 0) || (slot >= ns.output_size())) {
-            LOG(ERROR) << "Bad output slot '" << slot << "' for '"
-                       << ns.node_name() << "'";
+            // This is not a hard error for Switch ops, so just pass.
             continue;
           }
           detail->outputs[slot] = output.tensor_description();
         }
+
+        detail->times_called = 0;
       }
 
       int64 curr_node_mem = 0;
@@ -158,6 +158,8 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       }
       detail->mem_used.UpdateStat(curr_node_mem);
       mem_total += curr_node_mem;
+
+      ++detail->times_called;
 
       Validate(detail, ns);
     }
@@ -200,6 +202,7 @@ std::string StatSummarizer::HeaderString(const string& title) const {
   InitField(stream, 8) << "[%]";
   InitField(stream, 8) << "[cdf%]";
   InitField(stream, 10) << "[mem KB]";
+  InitField(stream, 9) << "[times called]";
   stream << "\t"
          << "[Name]";
   return stream.str();
@@ -213,6 +216,7 @@ std::string StatSummarizer::ColumnString(const Detail& detail,
   const double avg_time_ms = detail.rel_end_us.avg() / 1000.0;
   const double percentage = detail.rel_end_us.sum() * 100.0 / stat.sum();
   const double cdf_percentage = (cumulative_stat_on_node * 100.0f) / stat.sum();
+  const int64 times_called = detail.times_called / num_runs();
 
   std::stringstream stream;
   InitField(stream, 24) << detail.type;
@@ -222,6 +226,7 @@ std::string StatSummarizer::ColumnString(const Detail& detail,
   InitField(stream, 7) << percentage << "%";
   InitField(stream, 7) << cdf_percentage << "%";
   InitField(stream, 10) << detail.mem_used.newest() / 1000.0;
+  InitField(stream, 9) << times_called;
   stream << "\t" << detail.name;
 
   return stream.str();
@@ -273,6 +278,7 @@ void StatSummarizer::ComputeStatsByType(
     std::map<string, int64>* node_type_map_count,
     std::map<string, int64>* node_type_map_time,
     std::map<string, int64>* node_type_map_memory,
+    std::map<string, int64>* node_type_map_times_called,
     int64* accumulated_us) const {
   int64 run_count = run_total_us_.count();
 
@@ -291,6 +297,7 @@ void StatSummarizer::ComputeStatsByType(
     (*node_type_map_count)[node_type] += 1;
     (*node_type_map_time)[node_type] += curr_time_val;
     (*node_type_map_memory)[node_type] += curr_memory_val;
+    (*node_type_map_times_called)[node_type] += detail.times_called / run_count;
   }
 }
 
@@ -306,10 +313,12 @@ std::string StatSummarizer::GetStatsByNodeType() const {
   std::map<string, int64> node_type_map_count;
   std::map<string, int64> node_type_map_time;
   std::map<string, int64> node_type_map_memory;
+  std::map<string, int64> node_type_map_times_called;
   int64 accumulated_us = 0;
 
   ComputeStatsByType(&node_type_map_count, &node_type_map_time,
-                     &node_type_map_memory, &accumulated_us);
+                     &node_type_map_memory, &node_type_map_times_called,
+                     &accumulated_us);
 
   // Sort them.
   std::priority_queue<std::pair<int64, std::pair<string, int64>>> timings;
@@ -325,6 +334,7 @@ std::string StatSummarizer::GetStatsByNodeType() const {
   InitField(stream, 11) << "[avg %]";
   InitField(stream, 11) << "[cdf %]";
   InitField(stream, 10) << "[mem KB]";
+  InitField(stream, 10) << "[times called]";
   stream << std::endl;
 
   float cdf = 0.0f;
@@ -348,6 +358,7 @@ std::string StatSummarizer::GetStatsByNodeType() const {
     InitField(stream, 10) << percentage << "%";
     InitField(stream, 10) << cdf << "%";
     InitField(stream, 10) << memory;
+    InitField(stream, 9) << node_type_map_times_called[node_type];
     stream << std::endl;
   }
   stream << std::endl;

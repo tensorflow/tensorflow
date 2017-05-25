@@ -74,9 +74,6 @@ class Backend {
  public:
   using StreamPtr = Pool<perftools::gputools::Stream>::SmartPtr;
 
-  // The number of streams we create for the pool at initialization time.
-  static constexpr int kInitialStreamsToPool = 8;
-
   // Creates a new backend for the given platform with the given number of
   // replicas.
   static StatusOr<std::unique_ptr<Backend>> CreateBackend(
@@ -132,11 +129,6 @@ class Backend {
     CHECK(!stream_executors_.empty());
     return stream_executors_[0];
   }
-
-  // Primes the internal pool of streams for BorrowStream with n initialized
-  // stream instances.
-  tensorflow::Status PoolStreams(int n,
-                                 perftools::gputools::StreamExecutor* executor);
 
   // Borrows a stream for use by the caller, either by grabbing it from an
   // internal pool, or by constructing/initializating it, and returns the result

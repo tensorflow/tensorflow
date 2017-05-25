@@ -32,7 +32,79 @@ limitations under the License.
 namespace xla {
 namespace {
 
-using BroadcastSimpleTest = ClientLibraryTestBase;
+class BroadcastSimpleTest : public ClientLibraryTestBase {
+ public:
+  ComputationDataHandle BuildBinOp(HloOpcode op,
+                                   const ComputationDataHandle& lhs,
+                                   const ComputationDataHandle& rhs,
+                                   ComputationBuilder* builder) {
+    switch (op) {
+      case HloOpcode::kMinimum: {
+        return builder->Min(lhs, rhs);
+      }
+      case HloOpcode::kMaximum: {
+        return builder->Max(lhs, rhs);
+      }
+      case HloOpcode::kMultiply: {
+        return builder->Mul(lhs, rhs);
+      }
+      default: {
+        // Default to Add
+        return builder->Add(lhs, rhs);
+      }
+    }
+  }
+
+  std::unique_ptr<GlobalData> MakeR3Data(
+      tensorflow::gtl::ArraySlice<int64> bounds,
+      tensorflow::gtl::ArraySlice<int64> minor_to_major, Shape* r3_shape,
+      Array3D<float>* r3_array, float start, float end, int seed) {
+    *r3_shape = ShapeUtil::MakeShapeWithLayout(F32, bounds, minor_to_major);
+    r3_array->FillRandom(start, end, seed);
+    auto r3_data =
+        LiteralUtil::Relayout(*LiteralUtil::CreateR3FromArray3D(*r3_array),
+                              LayoutUtil::MakeLayout(minor_to_major));
+    std::unique_ptr<GlobalData> r3_global_data =
+        client_->TransferToServer(*r3_data).ConsumeValueOrDie();
+    return r3_global_data;
+  }
+
+  std::unique_ptr<GlobalData> MakeR2Data(
+      tensorflow::gtl::ArraySlice<int64> bounds,
+      tensorflow::gtl::ArraySlice<int64> minor_to_major, Shape* r2_shape,
+      Array2D<float>* r2_array, float start, float end, int seed) {
+    *r2_shape = ShapeUtil::MakeShapeWithLayout(F32, bounds, minor_to_major);
+    r2_array->FillRandom(start, end, seed);
+    auto r2_data =
+        LiteralUtil::Relayout(*LiteralUtil::CreateR2FromArray2D(*r2_array),
+                              LayoutUtil::MakeLayout(minor_to_major));
+    std::unique_ptr<GlobalData> r2_global_data =
+        client_->TransferToServer(*r2_data).ConsumeValueOrDie();
+    return r2_global_data;
+  }
+
+  float ApplyOpToFloats(HloOpcode op, float lhs, float rhs) {
+    switch (op) {
+      case HloOpcode::kMinimum: {
+        return std::min(lhs, rhs);
+      }
+      case HloOpcode::kMaximum: {
+        return std::max(lhs, rhs);
+      }
+      case HloOpcode::kMultiply: {
+        return lhs * rhs;
+      }
+      case HloOpcode::kAdd: {
+        return lhs + rhs;
+      }
+      default: {
+        // Default to Add
+        CHECK(false);
+      }
+    }
+  }
+};
+
 using ::testing::HasSubstr;
 
 XLA_TEST_F(BroadcastSimpleTest, ScalarNoOpBroadcast) {
@@ -179,53 +251,24 @@ class BroadcastR3ImplicitTest
 XLA_TEST_P(BroadcastR3ImplicitTest, Doit) {
   const R3ImplicitBroadcastSpec& spec = GetParam();
   ComputationBuilder builder(client_, TestName());
-  const Shape r3_shape = ShapeUtil::MakeShapeWithLayout(
-      F32, spec.output_bounds, spec.minor2major_layout);
+
+  Shape r3_shape, r3_implicit_shape;
   Array3D<float> r3_array(spec.output_bounds[0], spec.output_bounds[1],
                           spec.output_bounds[2]);
-  r3_array.FillRandom(1.0, 2.5, 56789);
-  auto r3_input =
-      LiteralUtil::Relayout(*LiteralUtil::CreateR3FromArray3D(r3_array),
-                            LayoutUtil::MakeLayout(spec.minor2major_layout));
-  std::unique_ptr<GlobalData> r3_global_data =
-      client_->TransferToServer(*r3_input).ConsumeValueOrDie();
-
-  const Shape r3_implicit_shape = ShapeUtil::MakeShapeWithLayout(
-      F32, spec.input_bounds, spec.minor2major_layout);
   Array3D<float> r3_implicit_array(spec.input_bounds[0], spec.input_bounds[1],
                                    spec.input_bounds[2]);
-  r3_implicit_array.FillRandom(1.0, 0.2, 56789);
-  auto r3_implicit_input = LiteralUtil::Relayout(
-      *LiteralUtil::CreateR3FromArray3D(r3_implicit_array),
-      LayoutUtil::MakeLayout(spec.minor2major_layout));
+
+  std::unique_ptr<GlobalData> r3_global_data =
+      MakeR3Data(spec.output_bounds, spec.minor2major_layout, &r3_shape,
+                 &r3_array, 1.0, 2.5, 56789);
   std::unique_ptr<GlobalData> r3_implicit_global_data =
-      client_->TransferToServer(*r3_implicit_input).ConsumeValueOrDie();
+      MakeR3Data(spec.input_bounds, spec.minor2major_layout, &r3_implicit_shape,
+                 &r3_implicit_array, 1.0, 0.2, 56789);
 
   auto r3_implicit_parameter = builder.Parameter(0, r3_implicit_shape, "input");
   auto r3_parameter = builder.Parameter(1, r3_shape, "input");
-  ComputationDataHandle op;
-  switch (spec.op) {
-    case HloOpcode::kMinimum: {
-      auto tmp_op = builder.Min(r3_implicit_parameter, r3_parameter);
-      op.Swap(&tmp_op);
-      break;
-    }
-    case HloOpcode::kMaximum: {
-      auto tmp_op = builder.Max(r3_implicit_parameter, r3_parameter);
-      op.Swap(&tmp_op);
-      break;
-    }
-    case HloOpcode::kMultiply: {
-      auto tmp_op = builder.Mul(r3_implicit_parameter, r3_parameter);
-      op.Swap(&tmp_op);
-      break;
-    }
-    default: {
-      // Default to Add
-      auto tmp_op = builder.Add(r3_implicit_parameter, r3_parameter);
-      op.Swap(&tmp_op);
-    }
-  }
+  ComputationDataHandle op =
+      BuildBinOp(spec.op, r3_implicit_parameter, r3_parameter, &builder);
 
   Array3D<float> expected_array(spec.output_bounds[0], spec.output_bounds[1],
                                 spec.output_bounds[2]);
@@ -234,25 +277,7 @@ XLA_TEST_P(BroadcastR3ImplicitTest, Doit) {
                                           indices[1] % spec.input_bounds[1],
                                           indices[2] % spec.input_bounds[2]);
     float r3 = r3_array(indices[0], indices[1], indices[2]);
-    switch (spec.op) {
-      case HloOpcode::kMinimum: {
-        *value = std::min(r3_implicit, r3);
-        break;
-      }
-      case HloOpcode::kMaximum: {
-        *value = std::max(r3_implicit, r3);
-        break;
-      }
-      case HloOpcode::kMultiply: {
-        *value = r3_implicit * r3;
-        break;
-      }
-      default: {
-        // Default to Add
-        *value = r3_implicit + r3;
-        break;
-      }
-    }
+    *value = ApplyOpToFloats(spec.op, r3_implicit, r3);
   });
 
   int n1 = expected_array.n1();
@@ -376,6 +401,155 @@ XLA_TEST_F(BroadcastSimpleTest, Add3DTo3DDegenerate_0_1_2) {
 
   ComputeAndCompareLiteral(&b, *expected, {}, ErrorSpec(0.0001));
 }
+
+struct R2ImplicitBroadcastSpec {
+  std::array<int64, 2> output_bounds;
+  std::array<int64, 2> minor2major_layout;
+  std::array<int64, 2> input_bounds1;
+  std::array<int64, 2> input_bounds2;
+  HloOpcode op1;
+  HloOpcode op2;
+} kR2ImplicitBroadcastTestCases[] = {
+    {{{2, 3}}, {{1, 0}}, {{2, 1}}, {{2, 1}}, HloOpcode::kAdd, HloOpcode::kAdd},
+    {{{2, 3}}, {{1, 0}}, {{2, 1}}, {{1, 3}}, HloOpcode::kAdd, HloOpcode::kAdd},
+    {{{2, 3}},
+     {{1, 0}},
+     {{2, 1}},
+     {{1, 1}},
+     HloOpcode::kAdd,
+     HloOpcode::kMinimum},
+    {{{2, 3}},
+     {{1, 0}},
+     {{1, 3}},
+     {{1, 1}},
+     HloOpcode::kAdd,
+     HloOpcode::kMinimum},
+    {{{2, 3}},
+     {{1, 0}},
+     {{1, 1}},
+     {{1, 1}},
+     HloOpcode::kAdd,
+     HloOpcode::kMinimum},
+    {{{2, 3}}, {{0, 1}}, {{2, 1}}, {{2, 1}}, HloOpcode::kAdd, HloOpcode::kAdd},
+    {{{150, 150}},
+     {{1, 0}},
+     {{150, 1}},
+     {{150, 1}},
+     HloOpcode::kAdd,
+     HloOpcode::kAdd},
+    {{{150, 150}},
+     {{1, 0}},
+     {{150, 1}},
+     {{1, 150}},
+     HloOpcode::kAdd,
+     HloOpcode::kAdd},
+    {{{150, 150}},
+     {{1, 0}},
+     {{150, 1}},
+     {{1, 1}},
+     HloOpcode::kAdd,
+     HloOpcode::kAdd},
+    {{{50, 150}},
+     {{1, 0}},
+     {{50, 1}},
+     {{50, 1}},
+     HloOpcode::kAdd,
+     HloOpcode::kAdd},
+    {{{50, 150}},
+     {{1, 0}},
+     {{50, 1}},
+     {{1, 150}},
+     HloOpcode::kAdd,
+     HloOpcode::kAdd},
+    {{{50, 150}},
+     {{1, 0}},
+     {{50, 1}},
+     {{1, 1}},
+     HloOpcode::kAdd,
+     HloOpcode::kAdd},
+    {{{150, 50}},
+     {{1, 0}},
+     {{150, 1}},
+     {{150, 1}},
+     HloOpcode::kAdd,
+     HloOpcode::kAdd},
+    {{{150, 50}},
+     {{1, 0}},
+     {{150, 1}},
+     {{1, 50}},
+     HloOpcode::kAdd,
+     HloOpcode::kAdd},
+    {{{150, 50}},
+     {{1, 0}},
+     {{150, 1}},
+     {{1, 1}},
+     HloOpcode::kAdd,
+     HloOpcode::kAdd}};
+
+class BroadcastR2ImplicitTest
+    : public BroadcastSimpleTest,
+      public ::testing::WithParamInterface<R2ImplicitBroadcastSpec> {};
+
+// Test r2 op1 r2_implicit_1 op2 r2_implicit_2
+// where R2 is a rank-2 operand, and r2_implicit_2 are two
+// rank-2 operands with degenerate dimensions:
+XLA_TEST_P(BroadcastR2ImplicitTest, Doit) {
+  const R2ImplicitBroadcastSpec& spec = GetParam();
+
+  ComputationBuilder builder(client_, TestName());
+
+  // Operands with degenerate dimensions require implicit broadcasting:
+  Shape r2_shape, r2_implicit_shape1, r2_implicit_shape2;
+  Array2D<float> r2_array(spec.output_bounds[0], spec.output_bounds[1]);
+  Array2D<float> r2_implicit_array1(spec.input_bounds1[0],
+                                    spec.input_bounds1[1]);
+  Array2D<float> r2_implicit_array2(spec.input_bounds2[0],
+                                    spec.input_bounds2[1]);
+
+  std::unique_ptr<GlobalData> r2_global_data =
+      MakeR2Data(spec.output_bounds, spec.minor2major_layout, &r2_shape,
+                 &r2_array, 1.0, 2.5, 56789);
+  std::unique_ptr<GlobalData> r2_implicit_global_data1 =
+      MakeR2Data(spec.input_bounds1, spec.minor2major_layout,
+                 &r2_implicit_shape1, &r2_implicit_array1, 1.0, 0.2, 56789);
+  std::unique_ptr<GlobalData> r2_implicit_global_data2 =
+      MakeR2Data(spec.input_bounds2, spec.minor2major_layout,
+                 &r2_implicit_shape2, &r2_implicit_array2, 0.8, 0.4, 56789);
+
+  auto r2_implicit_parameter1 =
+      builder.Parameter(0, r2_implicit_shape1, "input0");
+  auto r2_parameter = builder.Parameter(1, r2_shape, "input1");
+  auto r2_implicit_parameter2 =
+      builder.Parameter(2, r2_implicit_shape2, "input2");
+
+  ComputationDataHandle op1 =
+      BuildBinOp(spec.op1, r2_implicit_parameter1, r2_parameter, &builder);
+  ComputationDataHandle op2 =
+      BuildBinOp(spec.op2, op1, r2_implicit_parameter2, &builder);
+
+  Array2D<float> expected_array(spec.output_bounds[0], spec.output_bounds[1]);
+
+  expected_array.Each([&](int64 i, int64 j, float* v) {
+    float v1 = r2_implicit_array1(i % spec.input_bounds1[0],
+                                  j % spec.input_bounds1[1]);
+    float v2 = r2_array(i, j);
+    float v3 = r2_implicit_array2(i % spec.input_bounds2[0],
+                                  j % spec.input_bounds2[1]);
+    float tmp = ApplyOpToFloats(spec.op1, v1, v2);
+    *v = ApplyOpToFloats(spec.op2, tmp, v3);
+  });
+
+  auto expected = LiteralUtil::CreateR2FromArray2D(expected_array);
+  ComputeAndCompareLiteral(
+      &builder, *expected,
+      {r2_implicit_global_data1.get(), r2_global_data.get(),
+       r2_implicit_global_data2.get()},
+      ErrorSpec(1e-6, 1e-6));
+}
+
+INSTANTIATE_TEST_CASE_P(BroadcastR2ImplicitTestInstances,
+                        BroadcastR2ImplicitTest,
+                        ::testing::ValuesIn(kR2ImplicitBroadcastTestCases));
 
 XLA_TEST_F(BroadcastSimpleTest, Add2DTo2DDegenerate_0) {
   ComputationBuilder b(client_, TestName());

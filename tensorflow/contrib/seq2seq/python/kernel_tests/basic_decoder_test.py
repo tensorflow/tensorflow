@@ -21,13 +21,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import core as layers_core
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 # pylint: enable=g-import-not-at-top
@@ -46,7 +46,7 @@ class BasicDecoderTest(test.TestCase):
     with self.test_session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
-      cell = core_rnn_cell.LSTMCell(cell_depth)
+      cell = rnn_cell.LSTMCell(cell_depth)
       helper = helper_py.TrainingHelper(
           inputs, sequence_length, time_major=False)
       if use_output_layer:
@@ -77,8 +77,8 @@ class BasicDecoderTest(test.TestCase):
            constant_op.constant(0), first_inputs, first_state)
       batch_size_t = my_decoder.batch_size
 
-      self.assertTrue(isinstance(first_state, core_rnn_cell.LSTMStateTuple))
-      self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(first_state, rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(step_state, rnn_cell.LSTMStateTuple))
       self.assertTrue(
           isinstance(step_outputs, basic_decoder.BasicDecoderOutput))
       self.assertEqual((batch_size, expected_output_depth),
@@ -130,7 +130,7 @@ class BasicDecoderTest(test.TestCase):
     with self.test_session(use_gpu=True) as sess:
       embeddings = np.random.randn(vocabulary_size,
                                    input_depth).astype(np.float32)
-      cell = core_rnn_cell.LSTMCell(vocabulary_size)
+      cell = rnn_cell.LSTMCell(vocabulary_size)
       helper = helper_py.GreedyEmbeddingHelper(embeddings, start_tokens,
                                                end_token)
       my_decoder = basic_decoder.BasicDecoder(
@@ -154,8 +154,8 @@ class BasicDecoderTest(test.TestCase):
            constant_op.constant(0), first_inputs, first_state)
       batch_size_t = my_decoder.batch_size
 
-      self.assertTrue(isinstance(first_state, core_rnn_cell.LSTMStateTuple))
-      self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(first_state, rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(step_state, rnn_cell.LSTMStateTuple))
       self.assertTrue(
           isinstance(step_outputs, basic_decoder.BasicDecoderOutput))
       self.assertEqual((batch_size, cell_depth), step_outputs[0].get_shape())
@@ -202,7 +202,7 @@ class BasicDecoderTest(test.TestCase):
       embeddings = np.random.randn(
           vocabulary_size, input_depth).astype(np.float32)
       half = constant_op.constant(0.5)
-      cell = core_rnn_cell.LSTMCell(vocabulary_size)
+      cell = rnn_cell.LSTMCell(vocabulary_size)
       helper = helper_py.ScheduledEmbeddingTrainingHelper(
           inputs=inputs,
           sequence_length=sequence_length,
@@ -230,8 +230,8 @@ class BasicDecoderTest(test.TestCase):
            constant_op.constant(0), first_inputs, first_state)
       batch_size_t = my_decoder.batch_size
 
-      self.assertTrue(isinstance(first_state, core_rnn_cell.LSTMStateTuple))
-      self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(first_state, rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(step_state, rnn_cell.LSTMStateTuple))
       self.assertTrue(
           isinstance(step_outputs, basic_decoder.BasicDecoderOutput))
       self.assertEqual((batch_size, vocabulary_size),
@@ -293,7 +293,7 @@ class BasicDecoderTest(test.TestCase):
     with self.test_session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
-      cell = core_rnn_cell.LSTMCell(cell_depth)
+      cell = rnn_cell.LSTMCell(cell_depth)
       sampling_probability = constant_op.constant(sampling_probability)
 
       next_input_layer = None
@@ -335,8 +335,8 @@ class BasicDecoderTest(test.TestCase):
 
       batch_size_t = my_decoder.batch_size
 
-      self.assertTrue(isinstance(first_state, core_rnn_cell.LSTMStateTuple))
-      self.assertTrue(isinstance(step_state, core_rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(first_state, rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(step_state, rnn_cell.LSTMStateTuple))
       self.assertTrue(
           isinstance(step_outputs, basic_decoder.BasicDecoderOutput))
       self.assertEqual((batch_size, cell_depth), step_outputs[0].get_shape())

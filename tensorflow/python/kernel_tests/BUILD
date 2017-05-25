@@ -1249,6 +1249,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = ["manual"],
 )
 
 cuda_py_test(
@@ -2027,6 +2028,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["manual"],
 )
 
 cuda_py_test(
@@ -2130,6 +2132,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = ["manual"],
 )
 
 cuda_py_test(
@@ -2288,6 +2291,7 @@ cuda_py_test(
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
     ],
+    shard_count = 5,
 )
 
 cuda_py_test(
@@ -2416,7 +2420,10 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 50,
-    tags = ["notap"],  # b/30226163
+    tags = [
+        "manual",
+        "notap",  # b/30226163
+    ],
 )
 
 cuda_py_test(
