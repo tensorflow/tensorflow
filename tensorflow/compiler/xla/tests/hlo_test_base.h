@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -52,15 +51,6 @@ class HloTestBase : public ::testing::Test {
           arguments,
       Shape* result_shape);
 
-  // Variation of Execute which takes a custom module_config instead of creating
-  // a default one.
-  StatusOr<perftools::gputools::DeviceMemoryBase> Execute(
-      std::unique_ptr<HloModule> module,
-      std::unique_ptr<HloModuleConfig> module_config,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      Shape* result_shape);
-
   // Transfers the given literal to the device and returns the data handle.
   perftools::gputools::DeviceMemoryBase TransferToDevice(
       const Literal& literal);
@@ -73,14 +63,6 @@ class HloTestBase : public ::testing::Test {
   // Executes the given module and return the result as a Literal.
   std::unique_ptr<Literal> ExecuteAndTransfer(
       std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments);
-
-  // Variation of ExecuteAndTransfer which takes a custom module_config instead
-  // of creating a default one.
-  std::unique_ptr<Literal> ExecuteAndTransfer(
-      std::unique_ptr<HloModule> module,
-      std::unique_ptr<HloModuleConfig> module_config,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments);
 
