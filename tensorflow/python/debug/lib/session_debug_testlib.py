@@ -53,7 +53,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
 
-class _RNNCellForTest(rnn_cell_impl._RNNCell):  # pylint: disable=protected-access
+class _RNNCellForTest(rnn_cell_impl.RNNCell):  # pylint: disable=protected-access
   """RNN cell for testing."""
 
   def __init__(self, input_output_size, state_size):

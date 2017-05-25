@@ -145,6 +145,9 @@ void RecordYielder::MainLoop() {
     {
       mutex_lock l(mu_);
       epoch_end_ = true;
+      if (BufEnough()) {
+        buf_enough_.notify_all();
+      }
       while (!BufEmpty()) {
         buf_empty_.wait(l);
       }

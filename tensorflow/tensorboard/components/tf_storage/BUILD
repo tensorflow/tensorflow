@@ -1,37 +1,48 @@
 package(default_visibility = ["//tensorflow:internal"])
 
 load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("//tensorflow/tensorboard:hacks.bzl", "tensorboard_typescript_bundle")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
-
-# TODO(dandelion): Add webfiles support for the test code.
 
 web_library(
     name = "tf_storage",
     srcs = [
+        "bundle.js",
         "tf-storage.html",
-        ":ts",
     ],
     path = "/tf-storage",
     deps = [
         "//tensorflow/tensorboard/components/tf_globals",
         "//tensorflow/tensorboard/components/tf_imports:lodash",
-        "@org_polymer",
     ],
 )
 
 tensorboard_typescript_genrule(
     name = "ts",
-    srcs = [
-        "storage.ts",
-    ],
+    srcs = ["bundle.ts"],
     typings = [
         "@org_definitelytyped//:lodash.d.ts",
-        "//tensorflow/tensorboard/components/tf_globals:ts_typings",
+        "@org_definitelytyped//:polymer.d.ts",
+        "@org_definitelytyped//:webcomponents.js.d.ts",
+        "//tensorflow/tensorboard/components/tf_globals:bundle.d.ts",
+        "//tensorflow/tensorboard/components/tf_imports:d3.d.ts",
     ],
+)
+
+tensorboard_typescript_bundle(
+    name = "bundle",
+    out = "bundle.ts",
+    namespace_srcs = {"TF.URIStorage": [
+        "storage.ts",
+    ]},
+    namespace_symbol_aliases = {"TF.URIStorage": {
+        "TABS": "TF.Globals.TABS",
+        "USE_HASH": "TF.Globals.USE_HASH",
+        "getFakeHash": "TF.Globals.getFakeHash",
+        "setFakeHash": "TF.Globals.setFakeHash",
+    }},
 )
 
 filegroup(
@@ -42,6 +53,8 @@ filegroup(
 
 ################################################################################
 # MARKED FOR DELETION
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 tensorboard_webcomponent_library(
     name = "legacy",
@@ -49,7 +62,6 @@ tensorboard_webcomponent_library(
         "tf-storage.html",
         ":legacy_ts",
     ],
-    visibility = ["//visibility:public"],
     destdir = "tf-storage",
     deps = [
         "//tensorflow/tensorboard/components/tf_globals:legacy",
@@ -65,14 +77,6 @@ tensorboard_ts_library(
     runtime = "nodejs",
     deps = [
         "//tensorflow/tensorboard/components/tf_globals:legacy_ts",
-        "//third_party/javascript/node_modules/typescript:es2015.promise",
-        "//third_party/javascript/plottable/v1:typings",
-        "//third_party/javascript/typings/chai",
-        "//third_party/javascript/typings/d3",
         "//third_party/javascript/typings/lodash",
-        "//third_party/javascript/typings/mocha",
-        "//third_party/javascript/typings/polymer:polymer_without_externs",
-        "//third_party/javascript/typings/sinon",
-        "//third_party/javascript/typings/webcomponents_js",
     ],
 )

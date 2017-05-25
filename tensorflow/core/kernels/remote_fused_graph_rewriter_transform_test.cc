@@ -38,6 +38,10 @@ Status FuseRemoteGraph(const GraphDef& input_graph_def,
                        const TransformFuncContext& context,
                        GraphDef* output_graph_def);
 
+Status PlaceRemoteGraphArguments(const GraphDef& input_graph_def,
+                                 const TransformFuncContext& context,
+                                 GraphDef* output_graph_def);
+
 namespace {
 
 constexpr const char* const REMOTE_FUSED_GRAPH_EXECUTOR_NAME =
@@ -50,11 +54,28 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
   void SetUp() final {
     TF_ASSERT_OK(RemoteFusedGraphExecuteOpTestUtils::BuildMultipleAddGraph(
         &input_graph_def_));
+    RemoteFusedGraphExecuteUtils::ExecutorBuildRegistrar
+        k_hexagon_remote_fused_graph_executor_build(
+            REMOTE_FUSED_GRAPH_EXECUTOR_NAME,
+            [](std::unique_ptr<IRemoteFusedGraphExecutor>* executor) -> Status {
+              return Status::OK();
+            });
   }
 
   void TearDown() final {}
 
-  Status Fuse() {
+  Status Fuse() { return FuseInternal(/*only_place_args=*/false); }
+
+  Status PlaceFuseArgs() { return FuseInternal(/*only_place_args*/ true); }
+
+  Status FuseWithPlacedArgs() {
+    const std::vector<std::pair<string, Tensor>> input_tensors{
+        {"A", {DT_FLOAT, {1, 1, 1, 1}}}};
+    return RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
+        input_graph_def_with_fuse_args_, input_tensors, &output_graph_def_);
+  }
+
+  Status FuseInternal(bool only_place_args) {
     TransformFuncContext context;
     context.input_names = inputs_;
     context.output_names = outputs_;
@@ -95,7 +116,12 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
              TRANSFORM_ARG_REMOTE_FUSED_GRAPH_NODE_NAME,
          {REMOTE_FUSED_GRAPH_NODE_NAME}}));
 
-    return FuseRemoteGraph(input_graph_def_, context, &output_graph_def_);
+    if (only_place_args) {
+      return PlaceRemoteGraphArguments(input_graph_def_, context,
+                                       &input_graph_def_with_fuse_args_);
+    } else {
+      return FuseRemoteGraph(input_graph_def_, context, &output_graph_def_);
+    }
   }
 
   void SetInputShapeType() {
@@ -131,6 +157,7 @@ class FuseRemoteGraphMultipleAddOpsRewriterTest : public ::testing::Test {
   GraphDef input_graph_def_;
   string input_types_;
   string input_shapes_;
+  GraphDef input_graph_def_with_fuse_args_;
   GraphDef output_graph_def_;
   string fused_node_names_str_;
   string border_inputs_str_;
@@ -198,6 +225,37 @@ TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest,
   border_inputs_str_ = "A,B,C,D,E";
   border_outputs_str_ = "K";
   TF_ASSERT_OK(Fuse());
+  CheckGraph(7, 1);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest, PlaceAndFuse_HIJ) {
+  fused_node_names_str_ = "H,I,J";
+  TF_ASSERT_OK(PlaceFuseArgs());
+  TF_ASSERT_OK(FuseWithPlacedArgs());
+  CheckGraph(9, 1);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest, PlaceAndFuse_ABCDEFGHIJK) {
+  fused_node_names_str_ = "A,B,C,D,E,F,G,H,I,J,K";
+  TF_ASSERT_OK(PlaceFuseArgs());
+  TF_ASSERT_OK(FuseWithPlacedArgs());
+  CheckGraph(3, 1);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest, PlaceAndFuse_FCG_J) {
+  border_inputs_str_ = "F:0,C:0,G";
+  border_outputs_str_ = "J:0";
+  TF_ASSERT_OK(PlaceFuseArgs());
+  TF_ASSERT_OK(FuseWithPlacedArgs());
+  CheckGraph(9, 1);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsRewriterTest, PlaceAndFuse_ABCDE_K) {
+  SetInputShapeType();
+  border_inputs_str_ = "A,B,C,D,E";
+  border_outputs_str_ = "K";
+  TF_ASSERT_OK(PlaceFuseArgs());
+  TF_ASSERT_OK(FuseWithPlacedArgs());
   CheckGraph(7, 1);
 }
 

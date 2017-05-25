@@ -22,6 +22,7 @@
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/lib/random/distribution_sampler.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
@@ -56,6 +57,16 @@ T Sum(Tensor counts) {
       counts.unaligned_flat<T>().sum();
   return count_sum(0);
 }
+
+// Get the two best scores and their indices among max splits.
+void GetTwoBest(int max, const std::function<float(int)>& score_fn,
+                float* best_score, int* best_index, float* second_best_score,
+                int* second_best_index);
+
+// If the Gini Impurity is g, this returns n^2 (g - 1).  This is an int
+// rather than a float, and so can be more easily checked for ties.
+int BootstrapGini(int n, int s, const random::DistributionSampler& ds,
+                  random::SimplePhilox* rand);
 
 // Get the DataColumnTypes number for the given feature.
 DataColumnTypes FindDenseFeatureSpec(
