@@ -382,6 +382,7 @@ class DNNRegressorEvaluateTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_one_dim(self):
@@ -881,6 +882,7 @@ class DNNClassifierTrainTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_from_scratch_with_default_optimizer_binary(self):
