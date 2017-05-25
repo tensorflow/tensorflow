@@ -12,11 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Classes for converting parsed doc content into markdown pages."""
+"""A module for converting parsed doc content into markdown pages.
+
+The adjacent `parser` module creates `PageInfo` objects, containing all data
+necessary to document an element of the TensorFlow API.
+
+This module contains one public function, which handels the conversion of these
+`PageInfo` objects into a markdown string:
+
+    md_page = build_md_page(page_info)
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import itertools
 
 
 def build_md_page(page_info):
@@ -46,7 +57,9 @@ def build_md_page(page_info):
 
 def _build_function_page(page_info):
   """Given a FunctionPageInfo object Return the page as an md string."""
-  parts = ['# %s\n\n' % page_info.full_name]
+  parts = [_Metadata(page_info.full_name).build_html()]
+
+  parts.append('# %s\n\n' % page_info.full_name)
 
   if page_info.aliases:
     parts.extend('### `%s`\n' % name
@@ -70,7 +83,17 @@ def _build_function_page(page_info):
 
 def _build_class_page(page_info):
   """Given a ClassPageInfo object Return the page as an md string."""
-  parts = ['# {page_info.full_name}\n\n'.format(page_info=page_info)]
+  meta_data = _Metadata(page_info.full_name)
+  for item in itertools.chain(
+      page_info.classes,
+      page_info.properties,
+      page_info.methods,
+      page_info.other_members):
+    meta_data.append(item)
+
+  parts = [meta_data.build_html()]
+
+  parts.append('# {page_info.full_name}\n\n'.format(page_info=page_info))
 
   if page_info.aliases:
     parts.extend('### `class %s`\n' % name for name in page_info.aliases)
@@ -150,8 +173,17 @@ def _build_class_page(page_info):
 
 def _build_module_page(page_info):
   """Given a ClassPageInfo object Return the page as an md string."""
+  meta_data = _Metadata(page_info.full_name)
 
-  parts = ['# Module: {full_name}\n\n'.format(full_name=page_info.full_name)]
+  # Objects with their own pages are not added to the matadata list for the
+  # module, as the only thing on the module page is a link to the object's page.
+  for item in page_info.other_members:
+    meta_data.append(item)
+
+  parts = [meta_data.build_html()]
+
+  parts.append(
+      '# Module: {full_name}\n\n'.format(full_name=page_info.full_name))
 
   if page_info.aliases:
     parts.extend('### Module `%s`\n' % name for name in page_info.aliases)
@@ -261,3 +293,41 @@ def _build_function_details(function_details):
     parts.append(''.join(sub))
 
   return '\n'.join(parts)
+
+
+class _Metadata(object):
+  """A class for building a page's Metadata block.
+
+  Attributes:
+    name: The name of the page being described by the Metadata block.
+  """
+
+  def __init__(self, name):
+    """Creata a Metadata builder.
+
+    Args:
+      name: The name of the page being described by the Metadata block.
+    """
+    self.name = name
+    self._content = []
+
+  def append(self, item):
+    """Add an item from the page to the Metadata block.
+
+    Args:
+      item: The parsed page section to add.
+    """
+    self._content.append(item.short_name)
+
+  def build_html(self):
+    """Return the Metadata block as an Html string."""
+    schema = 'http://developers.google.com/ReferenceObject'
+    parts = ['<div itemscope itemtype="%s">' % schema]
+
+    parts.append('<meta itemprop="name" content="%s" />' % self.name)
+    for item in self._content:
+      parts.append('<meta itemprop="property" content="%s"/>' % item)
+
+    parts.extend(['</div>', '', ''])
+
+    return '\n'.join(parts)
