@@ -48,6 +48,32 @@ java_test(
 )
 
 java_test(
+    name = "NameScopeTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/NameScopeTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.NameScopeTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "ScopeTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/ScopeTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.ScopeTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
     name = "OperationBuilderTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/OperationBuilderTest.java"],
