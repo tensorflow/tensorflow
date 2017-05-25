@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections
 import math
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -500,7 +499,7 @@ def hardmax(logits, name=None):
         math_ops.argmax(logits, -1), depth, dtype=logits.dtype)
 
 
-class AttentionWrapper(core_rnn_cell.RNNCell):
+class AttentionWrapper(rnn_cell_impl.RNNCell):
   """Wraps another `RNNCell` with attention.
   """
 

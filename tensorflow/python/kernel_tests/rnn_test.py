@@ -42,7 +42,7 @@ import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-class Plus1RNNCell(rnn_cell_impl._RNNCell):
+class Plus1RNNCell(rnn_cell_impl.RNNCell):
   """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
 
   @property
@@ -55,6 +55,24 @@ class Plus1RNNCell(rnn_cell_impl._RNNCell):
 
   def __call__(self, input_, state, scope=None):
     return (input_ + 1, state + 1)
+
+
+class ScalarStateRNNCell(rnn_cell_impl.RNNCell):
+  """RNN Cell generating (output, new_state) = (input + 1, state + 1)."""
+
+  @property
+  def output_size(self):
+    return 1
+
+  @property
+  def state_size(self):
+    return tensor_shape.TensorShape([])
+
+  def zero_state(self, batch_size, dtype):
+    return array_ops.zeros([], dtype=dtypes.int32)
+
+  def __call__(self, input_, state, scope=None):
+    return (input_, state + 1)
 
 
 class RNNTest(test.TestCase):
