@@ -19,12 +19,12 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/scatter_op.h"
+#include "tensorflow/core/kernels/scatter_functor.h"
 
 namespace tensorflow {
 namespace functor {
 
-// TOOD(zongheng): this should be a general functor that powers SparseAdd and
+// TODO(zongheng): this should be a general functor that powers SparseAdd and
 // ScatterNd ops.  It should be moved to its own head file, once the other ops
 // are implemented.
 template <typename Device, typename T, typename Index, int NDIMS,

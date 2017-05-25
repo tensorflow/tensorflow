@@ -80,21 +80,19 @@ bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
   }
 }
 
-// Converts a C++ string vector to a Python string list.
+// Converts a C++ string vector to a a list of Python bytes objects.
 %typemap(out) std::vector<string> {
   const int size = $1.size();
   auto temp_string_list = tensorflow::make_safe(PyList_New(size));
   if (!temp_string_list) {
     SWIG_fail;
   }
-  tensorflow::Safe_PyObjectVector converted;
+  std::vector<tensorflow::Safe_PyObjectPtr> converted;
   converted.reserve(size);
   for (const string& op : $1) {
-%#if PY_MAJOR_VERSION >= 3
-    PyObject* py_str = PyUnicode_FromStringAndSize(op.data(), op.size());
-%#else
-    PyObject* py_str = PyString_FromStringAndSize(op.data(), op.size());
-%#endif
+    // Always treat strings as bytes, consistent with the typemap
+    // for string.
+    PyObject* py_str = PyBytes_FromStringAndSize(op.data(), op.size());
     if (!py_str) {
       SWIG_fail;
     }
@@ -105,4 +103,3 @@ bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
   }
   $result = temp_string_list.release();
 }
-

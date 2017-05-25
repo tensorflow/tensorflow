@@ -16,8 +16,8 @@ limitations under the License.
 // See docs in ../ops/io_ops.cc.
 
 #include <memory>
+#include "tensorflow/core/framework/reader_base.h"
 #include "tensorflow/core/framework/reader_op_kernel.h"
-#include "tensorflow/core/kernels/reader_base.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -35,11 +35,9 @@ class TextLineReader : public ReaderBase {
 
   Status OnWorkStartedLocked() override {
     line_number_ = 0;
-    RandomAccessFile* file = nullptr;
-    TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file));
-    file_.reset(file);
+    TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(current_work(), &file_));
 
-    input_buffer_.reset(new io::InputBuffer(file, kBufferSize));
+    input_buffer_.reset(new io::InputBuffer(file_.get(), kBufferSize));
     for (; line_number_ < skip_header_lines_; ++line_number_) {
       string line_contents;
       Status status = input_buffer_->ReadLine(&line_contents);
@@ -112,6 +110,8 @@ class TextLineReaderOp : public ReaderOpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("TextLineReader").Device(DEVICE_CPU),
+                        TextLineReaderOp);
+REGISTER_KERNEL_BUILDER(Name("TextLineReaderV2").Device(DEVICE_CPU),
                         TextLineReaderOp);
 
 }  // namespace tensorflow

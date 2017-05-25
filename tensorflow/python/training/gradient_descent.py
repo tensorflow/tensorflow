@@ -20,14 +20,13 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
 
 
 class GradientDescentOptimizer(optimizer.Optimizer):
   """Optimizer that implements the gradient descent algorithm.
-
-  @@__init__
   """
 
   def __init__(self, learning_rate, use_locking=False, name="GradientDescent"):
@@ -50,7 +49,17 @@ class GradientDescentOptimizer(optimizer.Optimizer):
         grad,
         use_locking=self._use_locking).op
 
-  def _apply_sparse(self, grad, var):
+  def _resource_apply_dense(self, grad, handle):
+    return training_ops.resource_apply_gradient_descent(
+        handle.handle, math_ops.cast(self._learning_rate_tensor,
+                                     grad.dtype.base_dtype),
+        grad, use_locking=self._use_locking)
+
+  def _resource_apply_sparse_duplicate_indices(self, grad, handle, indices):
+    return resource_variable_ops.resource_scatter_add(
+        handle.handle, indices, -grad * self._learning_rate)
+
+  def _apply_sparse_duplicate_indices(self, grad, var):
     delta = ops.IndexedSlices(
         grad.values *
         math_ops.cast(self._learning_rate_tensor, var.dtype.base_dtype),

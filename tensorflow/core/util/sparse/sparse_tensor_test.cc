@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace sparse {
@@ -65,17 +67,26 @@ TEST(SparseTensorTest, DimComparatorSorts) {
 
   // new order should be: {0, 4, 3, 2, 1}
   std::vector<int64> order{0, 1, 2};
-  DimComparator sorter(map, order, NDIM);
+  TensorShape shape;
+  for (int i = 0; i < NDIM; ++i) shape.AddDim(N);
+  DimComparator sorter(map, order, shape);
   std::sort(sorting.begin(), sorting.end(), sorter);
+  EXPECT_EQ(sorting, std::vector<int64>({0, 4, 3, 2, 1}));
 
+  FixedDimComparator<3> sorter_fixed(map, order, shape);
+  std::sort(sorting.begin(), sorting.end(), sorter_fixed);
   EXPECT_EQ(sorting, std::vector<int64>({0, 4, 3, 2, 1}));
 
   // new order should be: {0, 3, 2, 1, 4}
   std::vector<int64> order1{2, 0, 1};
-  DimComparator sorter1(map, order1, NDIM);
+  DimComparator sorter1(map, order1, shape);
   for (std::size_t n = 0; n < N; ++n) sorting[n] = n;
   std::sort(sorting.begin(), sorting.end(), sorter1);
+  EXPECT_EQ(sorting, std::vector<int64>({0, 3, 2, 1, 4}));
 
+  FixedDimComparator<3> sorter1_fixed(map, order1, shape);
+  for (std::size_t n = 0; n < N; ++n) sorting[n] = n;
+  std::sort(sorting.begin(), sorting.end(), sorter1_fixed);
   EXPECT_EQ(sorting, std::vector<int64>({0, 3, 2, 1, 4}));
 }
 
@@ -304,18 +315,16 @@ TEST(SparseTensorTest, SparseTensorCheckBoundaries) {
   Status st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
   // Error message references index 4 because of the call to Reorder.
-  EXPECT_EQ(
-      "indices[4] = [11,0,0] is out of bounds: need 0 <= index < [10,10,10]",
-      st_indices_valid.error_message());
+  EXPECT_EQ("[11,0,0] is out of bounds: need 0 <= index < [10,10,10]",
+            st_indices_valid.error_message().substr(13));
 
   ix_t(0, 0) = -1;
   ix.matrix<int64>() = ix_t;
   st.Reorder<string>(order);
   st_indices_valid = st.IndicesValid();
   EXPECT_FALSE(st_indices_valid.ok());
-  EXPECT_EQ(
-      "indices[0] = [-1,0,0] is out of bounds: need 0 <= index < [10,10,10]",
-      st_indices_valid.error_message());
+  EXPECT_EQ("[-1,0,0] is out of bounds: need 0 <= index < [10,10,10]",
+            st_indices_valid.error_message().substr(13));
 
   ix_t(0, 0) = 0;
   ix.matrix<int64>() = ix_t;
@@ -601,6 +610,117 @@ TEST(SparseTensorTest, Split) {
   EXPECT_EQ(st_list[1].indices().matrix<int64>()(0, 0), 1);
   EXPECT_EQ(st_list[1].indices().matrix<int64>()(0, 1), 0);
 }
+
+TEST(SparseTensorTest, Dim0SparseTensorToDenseTensor) {
+  Tensor ix(DT_INT64, TensorShape({1, 0}));
+  Tensor vals(DT_INT32, TensorShape({1}));
+  vals.scalar<int32>()() = 5;
+
+  TensorShape shape({});
+  SparseTensor st(ix, vals, shape);
+
+  Tensor dense(DT_INT32, TensorShape({}));
+  st.ToDense<int32>(&dense);
+
+  EXPECT_EQ(dense.scalar<int32>()(), 5);
+}
+
+static void BM_SparseReorderFloat(int iters, int N32, int NDIM32) {
+  random::PhiloxRandom philox(301, 17);
+  random::SimplePhilox rnd(&philox);
+  const int64 NDIM = static_cast<int64>(NDIM32);
+  const int64 N = static_cast<int64>(N32);
+  Tensor ix(DT_INT64, TensorShape({N, NDIM}));
+  Tensor vals(DT_FLOAT, TensorShape({N}));
+  TensorShape shape;
+  std::vector<int64> order;
+  for (int d = 0; d < NDIM32; ++d) {
+    shape.AddDim(1000);
+    order.push_back(d);
+  }
+  std::vector<int64> reorder;
+  reorder.push_back(1);
+  reorder.push_back(0);
+  for (int d = 2; d < NDIM32; ++d) {
+    reorder.push_back(d);
+  }
+  auto ix_t = ix.matrix<int64>();
+  testing::UseRealTime();
+
+  while (--iters) {
+    testing::StopTiming();
+    for (int64 i = 0; i < N; ++i) {
+      for (int d = 0; d < NDIM32; ++d) {
+        ix_t(i, d) = rnd.Rand64() % 1000;
+      }
+    }
+    SparseTensor st(ix, vals, shape, order);
+
+    testing::StartTiming();
+    st.Reorder<float>(reorder);
+  }
+}
+
+static void BM_SparseReorderString(int iters, int N32, int NDIM32) {
+  random::PhiloxRandom philox(301, 17);
+  random::SimplePhilox rnd(&philox);
+  const int64 NDIM = static_cast<int64>(NDIM32);
+  const int64 N = static_cast<int64>(N32);
+  Tensor ix(DT_INT64, TensorShape({N, NDIM}));
+  Tensor vals(DT_STRING, TensorShape({N}));
+  TensorShape shape;
+  std::vector<int64> order;
+  auto ix_t = ix.matrix<int64>();
+  auto vals_t = vals.vec<string>();
+  for (int i = 0; i < N32; ++i) {
+    int len = rnd.Rand32() % 1000;
+    vals_t(i).resize(len);
+  }
+  for (int d = 0; d < NDIM32; ++d) {
+    shape.AddDim(1000);
+    order.push_back(d);
+  }
+  std::vector<int64> reorder;
+  reorder.push_back(1);
+  reorder.push_back(0);
+  for (int d = 2; d < NDIM32; ++d) {
+    reorder.push_back(d);
+  }
+  testing::UseRealTime();
+
+  while (--iters) {
+    testing::StopTiming();
+    for (int64 i = 0; i < N; ++i) {
+      for (int d = 0; d < NDIM32; ++d) {
+        ix_t(i, d) = rnd.Rand64() % 1000;
+      }
+    }
+    SparseTensor st(ix, vals, shape, order);
+
+    testing::StartTiming();
+    st.Reorder<string>(reorder);
+  }
+}
+
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(10, 2);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(100, 2);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(1000, 2);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(10000, 2);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(100000, 2);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(10, 3);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(100, 3);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(1000, 3);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(10000, 3);
+BENCHMARK(BM_SparseReorderFloat)->ArgPair(100000, 3);
+
+BENCHMARK(BM_SparseReorderString)->ArgPair(10, 2);
+BENCHMARK(BM_SparseReorderString)->ArgPair(100, 2);
+BENCHMARK(BM_SparseReorderString)->ArgPair(1000, 2);
+BENCHMARK(BM_SparseReorderString)->ArgPair(10000, 2);
+BENCHMARK(BM_SparseReorderString)->ArgPair(10, 3);
+BENCHMARK(BM_SparseReorderString)->ArgPair(100, 3);
+BENCHMARK(BM_SparseReorderString)->ArgPair(1000, 3);
+BENCHMARK(BM_SparseReorderString)->ArgPair(10000, 3);
 
 }  // namespace
 }  // namespace sparse

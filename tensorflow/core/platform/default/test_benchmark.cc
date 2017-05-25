@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/util/reporter.h"
 
 namespace tensorflow {
@@ -114,6 +113,10 @@ Benchmark* Benchmark::RangePair(int lo1, int hi1, int lo2, int hi2) {
 void Benchmark::Run(const char* pattern) {
   if (!all_benchmarks) return;
 
+  // Converts "all" into the wildcard '.*'.  Currently pattern isn't
+  // specified by clients, but we keep this here to match the internal
+  // Google implementation, should we ever enable user-specified
+  // pattern specification.
   if (StringPiece(pattern) == "all") {
     pattern = ".*";
   }
@@ -131,9 +134,11 @@ void Benchmark::Run(const char* pattern) {
           strings::StrAppend(&name, "/", arg.second);
         }
       }
-      if (RE2::PartialMatch(name, pattern)) {
-        width = std::max<int>(width, name.size());
-      }
+
+      // TODO(vrv): Check against 'pattern' using a regex before
+      // computing the width, if we start allowing clients to pass in
+      // a custom pattern.
+      width = std::max<int>(width, name.size());
     }
   }
 
@@ -149,9 +154,10 @@ void Benchmark::Run(const char* pattern) {
           strings::StrAppend(&name, "/", arg.second);
         }
       }
-      if (!RE2::PartialMatch(name, pattern)) {
-        continue;
-      }
+
+      // TODO(vrv): Match 'name' against 'pattern' using a regex
+      // before continuing, if we start allowing clients to pass in a
+      // custom pattern.
 
       int iters;
       double seconds;

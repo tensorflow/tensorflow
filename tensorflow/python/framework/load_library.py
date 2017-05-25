@@ -23,18 +23,11 @@ import imp
 import sys
 import threading
 
-from six.moves.builtins import bytes  # pylint: disable=redefined-builtin
-
 from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.python import pywrap_tensorflow as py_tf
-from tensorflow.python.framework import errors
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import compat
-
-
-# Thread safe dict to memoize the library filename to module mapping
-_OP_LIBRARY_MAP = {}
-_OP_LIBRARY_MAP_LOCK = threading.Lock()
 
 
 def load_op_library(library_filename):
@@ -44,7 +37,7 @@ def load_op_library(library_filename):
   loading a library. The rules for determining the exact location of the
   library are platform-specific and are not documented here. When the
   library is loaded, ops and kernels registered in the library via the
-  REGISTER_* macros are made available in the TensorFlow process. Note
+  `REGISTER_*` macros are made available in the TensorFlow process. Note
   that ops with the same name as an existing op are rejected and not
   registered with the process.
 
@@ -66,13 +59,9 @@ def load_op_library(library_filename):
     error_code = py_tf.TF_GetCode(status)
     if error_code != 0:
       error_msg = compat.as_text(py_tf.TF_Message(status))
-      with _OP_LIBRARY_MAP_LOCK:
-        if (error_code == error_codes_pb2.ALREADY_EXISTS and
-            'has already been loaded' in error_msg and
-            library_filename in _OP_LIBRARY_MAP):
-          return _OP_LIBRARY_MAP[library_filename]
       # pylint: disable=protected-access
-      raise errors._make_specific_exception(None, None, error_msg, error_code)
+      raise errors_impl._make_specific_exception(
+          None, None, error_msg, error_code)
       # pylint: enable=protected-access
   finally:
     py_tf.TF_DeleteStatus(status)
@@ -82,8 +71,14 @@ def load_op_library(library_filename):
   op_list.ParseFromString(compat.as_bytes(op_list_str))
   wrappers = py_tf.GetPythonWrappers(op_list_str)
 
+  # Delete the library handle to release any memory held in C
+  # that are no longer needed.
+  py_tf.TF_DeleteLibraryHandle(lib_handle)
+
   # Get a unique name for the module.
   module_name = hashlib.md5(wrappers).hexdigest()
+  if module_name in sys.modules:
+    return sys.modules[module_name]
   module = imp.new_module(module_name)
   # pylint: disable=exec-used
   exec(wrappers, module.__dict__)
@@ -92,14 +87,7 @@ def load_op_library(library_filename):
   # OpDefs of the list of ops defined in the library.
   module.OP_LIST = op_list
   sys.modules[module_name] = module
-  # Memoize the filename to module mapping.
-  with _OP_LIBRARY_MAP_LOCK:
-    _OP_LIBRARY_MAP[library_filename] = module
   return module
-
-
-_FILE_SYSTEM_LIBRARY_MAP = {}
-_FILE_SYSTEM_LIBRARY_MAP_LOCK = threading.Lock()
 
 
 def load_file_system_library(library_filename):
@@ -125,16 +113,9 @@ def load_file_system_library(library_filename):
     error_code = py_tf.TF_GetCode(status)
     if error_code != 0:
       error_msg = compat.as_text(py_tf.TF_Message(status))
-      with _FILE_SYSTEM_LIBRARY_MAP_LOCK:
-        if (error_code == error_codes_pb2.ALREADY_EXISTS and
-            'has already been loaded' in error_msg and
-            library_filename in _FILE_SYSTEM_LIBRARY_MAP):
-          return
       # pylint: disable=protected-access
-      raise errors._make_specific_exception(None, None, error_msg, error_code)
+      raise errors_impl._make_specific_exception(
+          None, None, error_msg, error_code)
       # pylint: enable=protected-access
   finally:
     py_tf.TF_DeleteStatus(status)
-
-  with _FILE_SYSTEM_LIBRARY_MAP_LOCK:
-    _FILE_SYSTEM_LIBRARY_MAP[library_filename] = lib_handle

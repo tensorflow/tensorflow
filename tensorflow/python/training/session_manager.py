@@ -17,16 +17,31 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import threading
 import time
 import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_mod
+
+
+def _maybe_name(obj):
+  """Returns object name if it has one, or a message otherwise.
+
+  This is useful for names that apper in error messages.
+  Args:
+    obj: Object to get the name of.
+  Returns:
+    name, "None", or a "no name" message.
+  """
+  if obj is None:
+    return "None"
+  elif hasattr(obj, "name"):
+    return obj.name
+  else:
+    return "<no name for %s>" % type(obj)
 
 
 class SessionManager(object):
@@ -72,23 +87,29 @@ class SessionManager(object):
   `wait_for_session()` waits for a model to be initialized by other processes.
 
   """
-  # Protects _TENSORFLOW_LAUNCHED
-  _launch_lock = threading.Lock()
 
-  # True if we have already launched the tensorflow in-process server.
-  _TENSORFLOW_LAUNCHED = False
-
-  def __init__(self, local_init_op=None, ready_op=None,
-               graph=None, recovery_wait_secs=30):
+  def __init__(self,
+               local_init_op=None,
+               ready_op=None,
+               ready_for_local_init_op=None,
+               graph=None,
+               recovery_wait_secs=30):
     """Creates a SessionManager.
 
     The `local_init_op` is an `Operation` that is run always after a new session
     was created. If `None`, this step is skipped.
 
     The `ready_op` is an `Operation` used to check if the model is ready.  The
-    model is considered ready if that operation returns an empty string tensor.
-    If the operation returns non empty string tensor, the elements are
-    concatenated and used to indicate to the user why the model is not ready.
+    model is considered ready if that operation returns an empty 1D string
+    tensor. If the operation returns a non empty 1D string tensor, the elements
+    are concatenated and used to indicate to the user why the model is not
+    ready.
+
+    The `ready_for_local_init_op` is an `Operation` used to check if the model
+    is ready to run local_init_op.  The model is considered ready if that
+    operation returns an empty 1D string tensor. If the operation returns a non
+    empty 1D string tensor, the elements are concatenated and used to indicate
+    to the user why the model is not ready.
 
     If `ready_op` is `None`, the model is not checked for readiness.
 
@@ -100,21 +121,101 @@ class SessionManager(object):
       local_init_op: An `Operation` run immediately after session creation.
          Usually used to initialize tables and local variables.
       ready_op: An `Operation` to check if the model is initialized.
+      ready_for_local_init_op: An `Operation` to check if the model is ready
+         to run local_init_op.
       graph: The `Graph` that the model will use.
       recovery_wait_secs: Seconds between checks for the model to be ready.
+
+    Raises:
+      ValueError: If ready_for_local_init_op is not None but local_init_op is
+        None
     """
     # Sets default values of arguments.
     if graph is None:
       graph = ops.get_default_graph()
     self._local_init_op = local_init_op
     self._ready_op = ready_op
+    self._ready_for_local_init_op = ready_for_local_init_op
     self._graph = graph
     self._recovery_wait_secs = recovery_wait_secs
     self._target = None
+    if ready_for_local_init_op is not None and local_init_op is None:
+      raise ValueError("If you pass a ready_for_local_init_op "
+                       "you must also pass a local_init_op "
+                       ", ready_for_local_init_op [%s]" %
+                       ready_for_local_init_op)
 
-  def prepare_session(self, master, init_op=None, saver=None,
-                      checkpoint_dir=None, wait_for_checkpoint=False,
-                      max_wait_secs=7200, config=None, init_feed_dict=None,
+  def _restore_checkpoint(self,
+                          master,
+                          saver=None,
+                          checkpoint_dir=None,
+                          checkpoint_filename_with_path=None,
+                          wait_for_checkpoint=False,
+                          max_wait_secs=7200,
+                          config=None):
+    """Creates a `Session`, and tries to restore a checkpoint.
+
+
+    Args:
+      master: `String` representation of the TensorFlow master to use.
+      saver: A `Saver` object used to restore a model.
+      checkpoint_dir: Path to the checkpoint files. The latest checkpoint in the
+        dir will be used to restore.
+      checkpoint_filename_with_path: Full file name path to the checkpoint file.
+      wait_for_checkpoint: Whether to wait for checkpoint to become available.
+      max_wait_secs: Maximum time to wait for checkpoints to become available.
+      config: Optional `ConfigProto` proto used to configure the session.
+
+    Returns:
+      A pair (sess, is_restored) where 'is_restored' is `True` if
+      the session could be restored, `False` otherwise.
+
+    Raises:
+      ValueError: If both checkpoint_dir and checkpoint_filename_with_path are
+        set.
+    """
+    self._target = master
+    sess = session.Session(self._target, graph=self._graph, config=config)
+
+    if checkpoint_dir and checkpoint_filename_with_path:
+      raise ValueError("Can not provide both checkpoint_dir and "
+                       "checkpoint_filename_with_path.")
+    # If either saver or checkpoint_* is not specified, cannot restore. Just
+    # return.
+    if not saver or not (checkpoint_dir or checkpoint_filename_with_path):
+      return sess, False
+
+    if checkpoint_filename_with_path:
+      saver.restore(sess, checkpoint_filename_with_path)
+      return sess, True
+
+    # Waits up until max_wait_secs for checkpoint to become available.
+    wait_time = 0
+    ckpt = saver_mod.get_checkpoint_state(checkpoint_dir)
+    while not ckpt or not ckpt.model_checkpoint_path:
+      if wait_for_checkpoint and wait_time < max_wait_secs:
+        logging.info("Waiting for checkpoint to be available.")
+        time.sleep(self._recovery_wait_secs)
+        wait_time += self._recovery_wait_secs
+        ckpt = saver_mod.get_checkpoint_state(checkpoint_dir)
+      else:
+        return sess, False
+
+    # Loads the checkpoint.
+    saver.restore(sess, ckpt.model_checkpoint_path)
+    saver.recover_last_checkpoints(ckpt.all_model_checkpoint_paths)
+    return sess, True
+
+  def prepare_session(self,
+                      master,
+                      init_op=None,
+                      saver=None,
+                      checkpoint_dir=None,
+                      checkpoint_filename_with_path=None,
+                      wait_for_checkpoint=False,
+                      max_wait_secs=7200,
+                      config=None,
+                      init_feed_dict=None,
                       init_fn=None):
     """Creates a `Session`. Makes sure the model is ready to be used.
 
@@ -127,27 +228,20 @@ class SessionManager(object):
 
     If the model cannot be recovered successfully then it is initialized by
     either running the provided `init_op`, or calling the provided `init_fn`.
-    It is an error if the model cannot be recovered and neither an `init_op`
-    or an `init_fn` are passed.
+    The local_init_op is also run after init_op and init_fn, regardless of
+    whether the model was recovered successfully, but only if
+    ready_for_local_init_op passes.
 
-    This is a convenient function for the following, with a few error checks
-    added:
-
-    ```python
-    sess, initialized = self.recover_session(master)
-    if not initialized:
-      if init_op:
-        sess.run(init_op, feed_dict=init_feed_dict)
-      if init_fn;
-        init_fn(sess)
-    return sess
-    ```
+    It is an error if the model cannot be recovered and no `init_op`
+    or `init_fn` or `local_init_op` are passed.
 
     Args:
       master: `String` representation of the TensorFlow master to use.
       init_op: Optional `Operation` used to initialize the model.
       saver: A `Saver` object used to restore a model.
-      checkpoint_dir: Path to the checkpoint files.
+      checkpoint_dir: Path to the checkpoint files. The latest checkpoint in the
+        dir will be used to restore.
+      checkpoint_filename_with_path: Full file name path to the checkpoint file.
       wait_for_checkpoint: Whether to wait for checkpoint to become available.
       max_wait_secs: Maximum time to wait for checkpoints to become available.
       config: Optional `ConfigProto` proto used to configure the session.
@@ -163,28 +257,52 @@ class SessionManager(object):
 
     Raises:
       RuntimeError: If the model cannot be initialized or recovered.
+
+    Raises:
+      ValueError: If both checkpoint_dir and checkpoint_filename_with_path are
+        set.
     """
-    sess, initialized = self.recover_session(
-        master, saver, checkpoint_dir=checkpoint_dir,
+
+    sess, is_loaded_from_checkpoint = self._restore_checkpoint(
+        master,
+        saver,
+        checkpoint_dir=checkpoint_dir,
+        checkpoint_filename_with_path=checkpoint_filename_with_path,
         wait_for_checkpoint=wait_for_checkpoint,
-        max_wait_secs=max_wait_secs, config=config)
-    if not initialized:
-      if not init_op and not init_fn:
+        max_wait_secs=max_wait_secs,
+        config=config)
+    if not is_loaded_from_checkpoint:
+      if init_op is None and not init_fn and self._local_init_op is None:
         raise RuntimeError("Model is not initialized and no init_op or "
-                           "init_fn was given")
-      if init_op:
+                           "init_fn or local_init_op was given")
+      if init_op is not None:
         sess.run(init_op, feed_dict=init_feed_dict)
       if init_fn:
         init_fn(sess)
-      not_ready = self._model_not_ready(sess)
-      if not_ready:
-        raise RuntimeError("Init operations did not make model ready.  "
-                           "Init op: %s, init fn: %s, error: %s"
-                           % (init_op.name, init_fn, not_ready))
+
+    local_init_success, msg = self._try_run_local_init_op(sess)
+    if not local_init_success:
+      raise RuntimeError(
+          "Init operations did not make model ready for local_init.  "
+          "Init op: %s, init fn: %s, error: %s" % (_maybe_name(init_op),
+                                                   init_fn,
+                                                   msg))
+
+    is_ready, msg = self._model_ready(sess)
+    if not is_ready:
+      raise RuntimeError(
+          "Init operations did not make model ready.  "
+          "Init op: %s, init fn: %s, local_init_op: %s, error: %s" %
+          (_maybe_name(init_op), init_fn, self._local_init_op, msg))
     return sess
 
-  def recover_session(self, master, saver=None, checkpoint_dir=None,
-                      wait_for_checkpoint=False, max_wait_secs=7200,
+  def recover_session(self,
+                      master,
+                      saver=None,
+                      checkpoint_dir=None,
+                      checkpoint_filename_with_path=None,
+                      wait_for_checkpoint=False,
+                      max_wait_secs=7200,
                       config=None):
     """Creates a `Session`, recovering if possible.
 
@@ -194,55 +312,53 @@ class SessionManager(object):
     Args:
       master: `String` representation of the TensorFlow master to use.
       saver: A `Saver` object used to restore a model.
-      checkpoint_dir: Path to the checkpoint files.
+      checkpoint_dir: Path to the checkpoint files. The latest checkpoint in the
+        dir will be used to restore.
+      checkpoint_filename_with_path: Full file name path to the checkpoint file.
       wait_for_checkpoint: Whether to wait for checkpoint to become available.
       max_wait_secs: Maximum time to wait for checkpoints to become available.
       config: Optional `ConfigProto` proto used to configure the session.
 
     Returns:
       A pair (sess, initialized) where 'initialized' is `True` if
-      the session could be recovered, `False` otherwise.
+      the session could be recovered and initialized, `False` otherwise.
+
+    Raises:
+      ValueError: If both checkpoint_dir and checkpoint_filename_with_path are
+        set.
     """
-    self._target = master
-    sess = session.Session(self._target, graph=self._graph, config=config)
-    if self._local_init_op:
-      sess.run([self._local_init_op])
 
-    # If either saver or checkpoint_dir is not specified, cannot restore. Just
-    # return.
-    if not saver or not checkpoint_dir:
-      not_ready = self._model_not_ready(sess)
-      return sess, not_ready is None
+    sess, is_loaded_from_checkpoint = self._restore_checkpoint(
+        master,
+        saver,
+        checkpoint_dir=checkpoint_dir,
+        checkpoint_filename_with_path=checkpoint_filename_with_path,
+        wait_for_checkpoint=wait_for_checkpoint,
+        max_wait_secs=max_wait_secs,
+        config=config)
 
-    # Waits up until max_wait_secs for checkpoint to become available.
-    wait_time = 0
-    ckpt = saver_mod.get_checkpoint_state(checkpoint_dir)
-    while not ckpt or not ckpt.model_checkpoint_path:
-      if wait_for_checkpoint and wait_time < max_wait_secs:
-        logging.info("Waiting for checkpoint to be available.")
-        time.sleep(self._recovery_wait_secs)
-        wait_time += self._recovery_wait_secs
-        ckpt = saver_mod.get_checkpoint_state(checkpoint_dir)
-      else:
-        return sess, False
+    # Always try to run local_init_op
+    local_init_success, msg = self._try_run_local_init_op(sess)
 
-    # Loads the checkpoint and verifies that it makes the model ready.
-    saver.restore(sess, ckpt.model_checkpoint_path)
-    last_checkpoints = []
-    for fname in ckpt.all_model_checkpoint_paths:
-      fnames = gfile.Glob(fname)
-      if fnames:
-        mtime = gfile.Stat(fnames[0]).mtime
-        last_checkpoints.append((fname, mtime))
-    saver.set_last_checkpoints_with_time(last_checkpoints)
-    not_ready = self._model_not_ready(sess)
-    if not_ready:
-      logging.info("Restoring model from %s did not make model ready: %s",
-                   ckpt.model_checkpoint_path, not_ready)
+    if not is_loaded_from_checkpoint:
+      # Do not need to run checks for readiness
       return sess, False
-    else:
-      logging.info("Restored model from %s", ckpt.model_checkpoint_path)
-      return sess, True
+
+    restoring_file = checkpoint_dir or checkpoint_filename_with_path
+    if not local_init_success:
+      logging.info(
+          "Restoring model from %s did not make model ready for local init:"
+          " %s", restoring_file, msg)
+      return sess, False
+
+    is_ready, msg = self._model_ready(sess)
+    if not is_ready:
+      logging.info("Restoring model from %s did not make model ready: %s",
+                   restoring_file, msg)
+      return sess, False
+
+    logging.info("Restored model from %s", restoring_file)
+    return sess, is_loaded_from_checkpoint
 
   def wait_for_session(self, master, config=None, max_wait_secs=float("Inf")):
     """Creates a new `Session` and waits for model to be ready.
@@ -278,11 +394,15 @@ class SessionManager(object):
 
     while True:
       sess = session.Session(self._target, graph=self._graph, config=config)
-      if self._local_init_op:
-        sess.run([self._local_init_op])
-      not_ready = self._model_not_ready(sess)
-      if not not_ready:
-        return sess
+      not_ready_msg = None
+      not_ready_local_msg = None
+      local_init_success, not_ready_local_msg = self._try_run_local_init_op(
+          sess)
+      if local_init_success:
+        # Successful if local_init_op is None, or ready_for_local_init_op passes
+        is_ready, not_ready_msg = self._model_ready(sess)
+        if is_ready:
+          return sess
 
       self._safe_close(sess)
 
@@ -294,7 +414,9 @@ class SessionManager(object):
             None, None,
             "Session was not ready after waiting %d secs." % (max_wait_secs,))
 
-      logging.info("Waiting for model to be ready: %s", not_ready)
+      logging.info("Waiting for model to be ready.  "
+                   "Ready_for_local_init_op:  %s, ready: %s",
+                   not_ready_local_msg, not_ready_msg)
       time.sleep(self._recovery_wait_secs)
 
   def _safe_close(self, sess):
@@ -315,39 +437,93 @@ class SessionManager(object):
       pass
     # pylint: enable=broad-except
 
-  def _model_not_ready(self, sess):
+  def _model_ready(self, sess):
     """Checks if the model is ready or not.
 
     Args:
       sess: A `Session`.
 
     Returns:
-      `None` if the model is ready, a `String` with the reason why it is not
-      ready otherwise.
+      A tuple (is_ready, msg), where is_ready is True if ready and False
+      otherwise, and msg is `None` if the model is ready, a `String` with the
+      reason why it is not ready otherwise.
     """
-    if self._ready_op is None:
-      return None
-    else:
-      try:
-        ready_value = sess.run(self._ready_op)
-        # The model is considered ready if ready_op returns an empty 1-D tensor.
-        # Also compare to `None` and dtype being int32 for backward
-        # compatibility.
-        if (ready_value is None or ready_value.dtype == np.int32 or
-            ready_value.size == 0):
-          return None
-        else:
-          # TODO(sherrym): If a custom ready_op returns other types of tensor,
-          # or strings other than variable names, this message could be
-          # confusing.
-          non_initialized_varnames = ", ".join(
-              [i.decode("utf-8") for i in ready_value])
-          return "Variables not initialized: " + non_initialized_varnames
-      except errors.FailedPreconditionError as e:
-        if "uninitialized" not in str(e):
-          logging.warning("Model not ready raised: %s", str(e))
-          raise  e
-        return str(e)
+    return _ready(self._ready_op, sess, "Model not ready")
+
+  def _model_ready_for_local_init(self, sess):
+    """Checks if the model is ready to run local_init_op.
+
+    Args:
+      sess: A `Session`.
+
+    Returns:
+      A tuple (is_ready, msg), where is_ready is True if ready to run
+      local_init_op and False otherwise, and msg is `None` if the model is
+      ready to run local_init_op, a `String` with the reason why it is not ready
+      otherwise.
+    """
+    return _ready(self._ready_for_local_init_op, sess,
+                  "Model not ready for local init")
+
+  def _try_run_local_init_op(self, sess):
+    """Tries to run _local_init_op, if not None, and is ready for local init.
+
+    Args:
+      sess: A `Session`.
+
+    Returns:
+      A tuple (is_successful, msg), where is_successful is True if
+      _local_init_op is None, or we ran _local_init_op, and False otherwise;
+      and msg is a `String` with the reason why the model was not ready to run
+      local init.
+    """
+    if self._local_init_op is not None:
+      is_ready_for_local_init, msg = self._model_ready_for_local_init(sess)
+      if is_ready_for_local_init:
+        sess.run(self._local_init_op)
+        return True, None
+      else:
+        return False, msg
+    return True, None
+
+
+def _ready(op, sess, msg):
+  """Checks if the model is ready or not, as determined by op.
+
+  Args:
+    op: An op, either _ready_op or _ready_for_local_init_op, which defines the
+      readiness of the model.
+    sess: A `Session`.
+    msg: A message to log to warning if not ready
+
+  Returns:
+    A tuple (is_ready, msg), where is_ready is True if ready and False
+    otherwise, and msg is `None` if the model is ready, a `String` with the
+    reason why it is not ready otherwise.
+  """
+  if op is None:
+    return True, None
+  else:
+    try:
+      ready_value = sess.run(op)
+      # The model is considered ready if ready_op returns an empty 1-D tensor.
+      # Also compare to `None` and dtype being int32 for backward
+      # compatibility.
+      if (ready_value is None or ready_value.dtype == np.int32 or
+          ready_value.size == 0):
+        return True, None
+      else:
+        # TODO(sherrym): If a custom ready_op returns other types of tensor,
+        # or strings other than variable names, this message could be
+        # confusing.
+        non_initialized_varnames = ", ".join(
+            [i.decode("utf-8") for i in ready_value])
+        return False, "Variables not initialized: " + non_initialized_varnames
+    except errors.FailedPreconditionError as e:
+      if "uninitialized" not in str(e):
+        logging.warning("%s : error [%s]", msg, str(e))
+        raise e
+      return False, str(e)
 
 
 class _CountDownTimer(object):

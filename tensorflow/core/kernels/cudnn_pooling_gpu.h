@@ -42,7 +42,8 @@ class DnnPooling3dOp {
                       const std::array<int64, 3>& size,
                       const std::array<int64, 3>& stride,
                       const std::array<int64, 3>& padding,
-                      const Tensor& tensor_in, Tensor* output);
+                      TensorFormat data_format, const Tensor& tensor_in,
+                      Tensor* output);
 };
 
 // Computes the gradient of (avg/max)pooling on GPU.
@@ -56,7 +57,7 @@ class DnnPooling3dGradOp {
                       const std::array<int64, 3>& stride,
                       const std::array<int64, 3>& padding,
                       const std::array<int64, 3>& output_size,
-                      const Tensor& out_backprop,
+                      TensorFormat data_format, const Tensor& out_backprop,
                       const TensorShape& tensor_in_shape,
                       const Tensor* tensor_in, const Tensor* tensor_out,
                       Tensor* input_backprop);

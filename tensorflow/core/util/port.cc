@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/core/util/port.h"
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cuda/include/cuda.h"
+#include "cuda/include/cuda.h"
 #endif
 
 namespace tensorflow {

@@ -21,24 +21,23 @@ from __future__ import print_function
 import functools
 import re
 
-import numpy as np
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import standard_ops
+from tensorflow.python.summary import summary
 
-__all__ = ['assert_summary_tag_unique', 'is_summary_tag_unique',
-           'summarize_tensor', 'summarize_activation', 'summarize_tensors',
-           'summarize_collection', 'summarize_variables', 'summarize_weights',
-           'summarize_biases', 'summarize_activations',]
+__all__ = [
+    'summarize_tensor',
+    'summarize_activation',
+    'summarize_tensors',
+    'summarize_collection',
+    'summarize_variables',
+    'summarize_weights',
+    'summarize_biases',
+    'summarize_activations',
+]
 
 # TODO(wicke): add more unit tests for summarization functions.
-
-
-def assert_summary_tag_unique(tag):
-  if not is_summary_tag_unique(tag):
-    raise ValueError('Conflict with summary tag: %s already exists' % tag)
 
 
 def _add_scalar_summary(tensor, tag=None):
@@ -55,9 +54,8 @@ def _add_scalar_summary(tensor, tag=None):
     ValueError: If the tag is already in use or the rank is not 0.
   """
   tensor.get_shape().assert_has_rank(0)
-  tag = tag or tensor.op.name
-  assert_summary_tag_unique(tag)
-  return standard_ops.scalar_summary(tag, tensor, name='%s_summary' % tag)
+  tag = tag or '%s_summary' % tensor.op.name
+  return summary.scalar(tag, tensor)
 
 
 def _add_histogram_summary(tensor, tag=None):
@@ -73,25 +71,8 @@ def _add_histogram_summary(tensor, tag=None):
   Raises:
     ValueError: If the tag is already in use.
   """
-  tag = tag or tensor.op.name
-  assert_summary_tag_unique(tag)
-  return standard_ops.histogram_summary(tag, tensor, name='%s_summary' % tag)
-
-
-def is_summary_tag_unique(tag):
-  """Checks if a summary tag is unique.
-
-  Args:
-    tag: The tag to use
-
-  Returns:
-    True if the summary tag is unique.
-  """
-  existing_tags = [tensor_util.constant_value(summary.op.inputs[0])
-                   for summary in ops.get_collection(ops.GraphKeys.SUMMARIES)]
-  existing_tags = [name.tolist() if isinstance(name, np.ndarray) else name
-                   for name in existing_tags]
-  return tag.encode() not in existing_tags
+  tag = tag or '%s_summary' % tensor.op.name
+  return summary.histogram(tag, tensor)
 
 
 def summarize_activation(op):
@@ -108,13 +89,17 @@ def summarize_activation(op):
   if op.op.type in ('Relu', 'Softplus', 'Relu6'):
     # Using inputs to avoid floating point equality and/or epsilons.
     _add_scalar_summary(
-        standard_ops.reduce_mean(standard_ops.to_float(standard_ops.less(
-            op.op.inputs[0], standard_ops.cast(0.0, op.op.inputs[0].dtype)))),
+        standard_ops.reduce_mean(
+            standard_ops.to_float(
+                standard_ops.less(op.op.inputs[
+                    0], standard_ops.cast(0.0, op.op.inputs[0].dtype)))),
         '%s/zeros' % op.op.name)
   if op.op.type == 'Relu6':
     _add_scalar_summary(
-        standard_ops.reduce_mean(standard_ops.to_float(standard_ops.greater(
-            op.op.inputs[0], standard_ops.cast(6.0, op.op.inputs[0].dtype)))),
+        standard_ops.reduce_mean(
+            standard_ops.to_float(
+                standard_ops.greater(op.op.inputs[
+                    0], standard_ops.cast(6.0, op.op.inputs[0].dtype)))),
         '%s/sixes' % op.op.name)
   return _add_histogram_summary(op, '%s/activation' % op.op.name)
 
@@ -152,7 +137,8 @@ def summarize_tensors(tensors, summarizer=summarize_tensor):
   return [summarizer(tensor) for tensor in tensors]
 
 
-def summarize_collection(collection, name_filter=None,
+def summarize_collection(collection,
+                         name_filter=None,
                          summarizer=summarize_tensor):
   """Summarize a graph collection of tensors, possibly filtered by name."""
   tensors = []
@@ -164,15 +150,12 @@ def summarize_collection(collection, name_filter=None,
 
 # Utility functions for commonly used collections
 summarize_variables = functools.partial(summarize_collection,
-                                        ops.GraphKeys.VARIABLES)
-
+                                        ops.GraphKeys.GLOBAL_VARIABLES)
 
 summarize_weights = functools.partial(summarize_collection,
                                       ops.GraphKeys.WEIGHTS)
 
-
-summarize_biases = functools.partial(summarize_collection,
-                                     ops.GraphKeys.BIASES)
+summarize_biases = functools.partial(summarize_collection, ops.GraphKeys.BIASES)
 
 
 def summarize_activations(name_filter=None, summarizer=summarize_activation):

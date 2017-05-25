@@ -27,9 +27,9 @@ namespace tensorflow {
 //
 //   #include "tensorflow/core/public/version.h"
 //
-//   TF_RETURN_ERROR(CheckVersions(versions, TF_GRAPH_DEF_VERSION,
-//                                 TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
-//                                 "GraphDef", "graph"));
+//   TF_RETURN_IF_ERROR(CheckVersions(versions, TF_GRAPH_DEF_VERSION,
+//                                    TF_GRAPH_DEF_VERSION_MIN_PRODUCER,
+//                                    "GraphDef", "graph"));
 Status CheckVersions(const VersionDef& versions, int consumer, int min_producer,
                      const char* upper_name, const char* lower_name);
 

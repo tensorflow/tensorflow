@@ -1,0 +1,300 @@
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-graph-loader/tf-graph-loader.html">
+<link rel="import" href="../tf-graph-board/tf-graph-board.html">
+<link rel="import" href="../tf-graph-controls/tf-graph-controls.html">
+<link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
+<link rel="import" href="../tf-backend/tf-backend.html">
+
+<!--
+tf-graph-dashboard displays a graph from a TensorFlow run.
+
+It has simple behavior: Creates a url-generator and run-generator
+to talk to the backend, and then passes the runsWithGraph (list of runs with
+associated graphs) along with the url generator into tf-graph-board for display.
+
+If there are multiple runs with graphs, the first run's graph is shown
+by default. The user can select a different run from a dropdown menu.
+-->
+<dom-module id="tf-graph-dashboard">
+<template>
+<tf-no-data-warning
+  data-type="graph"
+  show-warning="[[_datasetsEmpty(_datasets)]]"
+></tf-no-data-warning>
+<template is="dom-if" if="[[!_datasetsEmpty(_datasets)]]">
+<tf-dashboard-layout>
+<div class="sidebar">
+  <tf-graph-controls id="controls"
+        devices-for-stats="{{_devicesForStats}}"
+        color-by-params="[[_colorByParams]]"
+        stats="[[_stats]]"
+        color-by="{{_colorBy}}"
+        datasets="[[_datasets]]"
+        render-hierarchy="[[_renderHierarchy]]"
+        selected-dataset="{{_selectedDataset}}"
+        selected-file="{{_selectedFile}}"
+        selected-metadata-tag="{{_selectedMetadataTag}}"
+        health-pills-feature-enabled="[[debuggerDataEnabled]]"
+        health-pills-toggled-on="{{healthPillsToggledOn}}"
+  ></tf-graph-controls>
+  <tf-graph-loader id="loader"
+        datasets="[[_datasets]]"
+        selected-dataset="[[_selectedDataset]]"
+        selected-metadata-tag="[[_selectedMetadataTag]]"
+        selected-file="[[_selectedFile]]"
+        out-graph-hierarchy="{{_graphHierarchy}}"
+        out-graph="{{_graph}}"
+        out-stats="{{_stats}}"
+        progress="{{_progress}}"
+out-hierarchy-params="{{_hierarchyParams}}"
+  ></tf-graph-loader>
+</div>
+<div class="center">
+    <tf-graph-board id="graphboard"
+        devices-for-stats="[[_devicesForStats]]"
+        color-by="[[_colorBy]]"
+        color-by-params="{{_colorByParams}}"
+        graph-hierarchy="[[_graphHierarchy]]"
+        graph="[[_graph]]"
+        hierarchy-params="[[_hierarchyParams]]"
+        progress="[[_progress]]"
+        debugger-data-enabled="[[debuggerDataEnabled]]"
+        are-health-pills-loading="[[_areHealthPillsLoading]]"
+        node-names-to-health-pills="[[_nodeNamesToHealthPills]]"
+        all-steps-mode-enabled="{{allStepsModeEnabled}}"
+        specific-health-pill-step="{{specificHealthPillStep}}"
+        health-pill-step-index="[[_healthPillStepIndex]]"
+        render-hierarchy="{{_renderHierarchy}}"
+        stats="[[_stats]]"
+    ></tf-graph-board>
+</div>
+</tf-dashboard-layout>
+</template>
+<style>
+
+:host /deep/ {
+  font-family: 'Roboto', sans-serif;
+}
+
+.center {
+  position: relative;
+  height: 100%;
+}
+
+</style>
+</template>
+</dom-module>
+
+<script>
+"use strict";
+
+(function() {
+TF.Dashboard.TfGraphDashboard = Polymer({
+  is: 'tf-graph-dashboard',
+  factoryImpl: function(backend, debuggerDataEnabled) {
+    this.backend = backend;
+    this.debuggerDataEnabled = debuggerDataEnabled;
+  },
+  behaviors: [
+    TF.Dashboard.DashboardBehavior("graphs"),
+    TF.Dashboard.ReloadBehavior("tf-graph-dashboard"),
+    TF.Backend.Behavior,
+  ],
+  properties: {
+    _datasets: Object,
+    _renderHierarchy: {type: Object, observer: '_renderHierarchyChanged'},
+    backend: Object,
+    debuggerDataEnabled: Boolean,
+    allStepsModeEnabled: Boolean,
+    specificHealthPillStep: {type: Number, value: 0},
+    healthPillsToggledOn: {type: Boolean, value: true, observer: '_healthPillsToggledOnChanged'},
+    _isAttached: Boolean,
+    // Whether this dashboard is initialized. This dashboard should only be initialized once.
+    _initialized: Boolean,
+    // Whether health pills are currently being loaded, in which case we may want to say show a
+    // spinner.
+    _areHealthPillsLoading: Boolean,
+    // Maps the names of nodes to an array of health pills (HealthPillDatums).
+    _nodeNamesToHealthPills: {
+      type: Object,
+      value: {},
+    },
+    _healthPillStepIndex: Number,
+    // A strictly increasing ID. Each request for health pills has a unique ID. This helps us
+    // identify stale requests.
+    _healthPillRequestId: {type: Number, value: 1},
+    // The setTimeout ID for the pending request for health pills at a specific step.
+    _healthPillStepRequestTimerId: Number,
+    // The request for health pills at a specific step (as opposed to all sampled health pills) may
+    // involve slow disk reads. Hence, we throttle to 1 of those requests every this many ms.
+    _healthPillStepRequestTimerDelay: {
+      type: Number,
+      value: 500,
+      readOnly: true,
+    },
+    runs: Array,
+  },
+  listeners: {
+    'node-toggle-expand': '_handleNodeToggleExpand',
+  },
+  observers: [
+    '_maybeFetchHealthPills(allStepsModeEnabled, specificHealthPillStep)',
+    '_maybeInitializeDashboard(backend, _isAttached)',
+  ],
+  attached: function() {
+    this.set('_isAttached', true);
+  },
+  detached: function() {
+    this.set('_isAttached', false);
+  },
+  reload: function() {
+    this._maybeFetchHealthPills();
+  },
+  _shouldRequestHealthPills: function() {
+    // Do not load debugger data if the feature is disabled, if the user toggled off the feature,
+    // or if the graph itself has not loaded yet. We need the graph to load so that we know which
+    // nodes to request health pills for.
+    return this.debuggerDataEnabled &&
+        this.healthPillsToggledOn &&
+        this._renderHierarchy &&
+        !this._datasetsEmpty(this._datasets);
+  },
+  _maybeInitializeDashboard: function(backend, isAttached) {
+    if (this._initialized || !backend || !isAttached) {
+      // Either this dashboard is already initialized ... or we are not yet ready to initialize.
+      return;
+    }
+    if (typeof ga !== 'undefined' && ga != null) {
+      ga('send', {hitType: 'pageview', page: '/v/graph'});
+    }
+    // Set this to true so we only initialize once.
+    this._initialized = true;
+    Promise.all([backend.graphRuns(), backend.runMetadataRuns()])
+      .then(function(result) {
+        var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);
+        var runToMetadata = result[1];
+        var datasets = _.map(runsWithGraph, function(runName) {
+          return {
+            name: runName,
+            path: backend.router.graph(
+                runName, tf.graph.LIMIT_ATTR_SIZE, tf.graph.LARGE_ATTRS_KEY),
+            runMetadata: runToMetadata[runName] ? _.map(
+              runToMetadata[runName].sort(VZ.Sorting.compareTagNames), function(tag) {
+                return {
+                  tag: tag,
+                  path: backend.router.runMetadata(tag, runName)
+                };
+              }, this) : []
+          };
+        }, this);
+        this.set('_datasets', datasets);
+      }.bind(this));
+  },
+  _requestHealthPills: function() {
+    this.set('_areHealthPillsLoading', true);
+    const requestId = ++this._healthPillRequestId;
+
+    if (this._healthPillStepRequestTimerId !== null) {
+      // A request for health pills is already scheduled to be initiated. Clear it, and schedule a
+      // new request.
+      window.clearTimeout(this._healthPillStepRequestTimerId);
+      this._healthPillStepRequestTimerId = null;
+    }
+
+    if (this.allStepsModeEnabled) {
+      // This path may be slow. Schedule network requests to start some time later. If another
+      // request is scheduled in the mean time, drop this current request.
+      this._healthPillStepRequestTimerId = setTimeout(function() {
+        this._healthPillStepRequestTimerId = null;
+        this._initiateNetworkRequestForHealthPills(requestId);
+      }.bind(this), this._healthPillStepRequestTimerDelay);
+    } else {
+      // The user is fetching sampled steps. This path is fast, so no need to throttle. Directly
+      // fetch the health pills across the network.
+      this._initiateNetworkRequestForHealthPills(requestId);
+    }
+  },
+  // Initiates the network request for health pills. Do not directly call this method - network
+  // requests may be throttled. Instead, call _requestHealthPills, which uses this method.
+  _initiateNetworkRequestForHealthPills: function(requestId) {
+    if (this._healthPillRequestId !== requestId) {
+      // This possibly scheduled request was outdated before it was even sent across the network. Do
+      // not bother initiating it.
+      return;
+    }
+
+    const specificStep = this.allStepsModeEnabled ? this.specificHealthPillStep : undefined;
+    this.backend.healthPills(this._renderHierarchy.getNamesOfRenderedOps(), specificStep).then(
+        function(result) {
+      if (!this.healthPillsToggledOn) {
+        // The user has opted to hide health pills via the toggle button.
+        return;
+      }
+
+      if (requestId !== this._healthPillRequestId) {
+        // This response is no longer relevant.
+        return;
+      }
+
+      // Set the index for which step to show for the health pills. By default, show the last step.
+      // A precondition we assume (that Tensorboard's reservoir sampling guarantees) is that all
+      // node names should be mapped to the same number of steps.
+      for (let nodeName in result) {
+        this.set('_healthPillStepIndex', result[nodeName].length - 1);
+        break;
+      }
+
+      this.set('_nodeNamesToHealthPills', result);
+      this.set('_areHealthPillsLoading', false);
+      this.set('_healthPillStepRequestTimerId', null);
+    }.bind(this));
+  },
+  _datasetsEmpty: function(datasets) {
+    return !datasets || !datasets.length;
+  },
+  _renderHierarchyChanged: function(renderHierarchy) {
+    // Reload any data on the graph when the render hierarchy (which determines which nodes are
+    // rendered) changes.
+    this.reload();
+  },
+  _handleNodeToggleExpand: function() {
+    // Nodes were toggled. We may need to request health pills for more nodes.
+    this._maybeFetchHealthPills();
+  },
+  _healthPillsToggledOnChanged: function(healthPillsToggledOn) {
+    if (healthPillsToggledOn) {
+      // Load health pills.
+      this.reload();
+    } else {
+      // Remove all health pills by setting an empty mapping.
+      this.set('_nodeNamesToHealthPills', {});
+    }
+  },
+  // Fetch health pills for a specific step if applicable.
+  _maybeFetchHealthPills: function() {
+    if (!this._shouldRequestHealthPills()) {
+      return;
+    }
+
+    this._requestHealthPills();
+  },
+});
+})();
+</script>

@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,12 +22,12 @@ from tensorflow.contrib.learn.python.learn.dataframe import transform
 from tensorflow.contrib.learn.python.learn.dataframe.queues import feeding_functions
 
 
-class BaseInMemorySource(transform.Transform):
+class BaseInMemorySource(transform.TensorFlowTransform):
   """Abstract parent class for NumpySource and PandasSource."""
 
   def __init__(self,
                data,
-               num_threads=1,
+               num_threads=None,
                enqueue_size=None,
                batch_size=None,
                queue_capacity=None,
@@ -49,39 +49,39 @@ class BaseInMemorySource(transform.Transform):
     self._seed = seed
     self._data_name = data_name
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def data(self):
     return self._data
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def num_threads(self):
     return self._num_threads
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def enqueue_size(self):
     return self._enqueue_size
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def batch_size(self):
     return self._batch_size
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def queue_capacity(self):
     return self._queue_capacity
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def shuffle(self):
     return self._shuffle
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def min_after_dequeue(self):
     return self._min_after_dequeue
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def seed(self):
     return self._seed
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def data_name(self):
     return self._data_name
 
@@ -89,14 +89,16 @@ class BaseInMemorySource(transform.Transform):
   def input_valency(self):
     return 0
 
-  def _apply_transform(self, transform_input):
+  def _apply_transform(self, transform_input, **kwargs):
     queue = feeding_functions.enqueue_data(self.data,
                                            self.queue_capacity,
                                            self.shuffle,
                                            self.min_after_dequeue,
+                                           num_threads=self.num_threads,
                                            seed=self.seed,
                                            name=self.data_name,
-                                           enqueue_size=self.enqueue_size)
+                                           enqueue_size=self.enqueue_size,
+                                           num_epochs=kwargs.get("num_epochs"))
 
     dequeued = queue.dequeue_many(self.batch_size)
 
@@ -119,6 +121,36 @@ class NumpySource(BaseInMemorySource):
   @property
   def _output_names(self):
     return ("index", "value")
+
+
+class OrderedDictNumpySource(BaseInMemorySource):
+  """A zero-input Transform that produces Series from a dict of numpy arrays."""
+
+  def __init__(self,
+               ordered_dict_of_arrays,
+               num_threads=None,
+               enqueue_size=None,
+               batch_size=None,
+               queue_capacity=None,
+               shuffle=False,
+               min_after_dequeue=None,
+               seed=None,
+               data_name="pandas_data"):
+    if "index" in ordered_dict_of_arrays.keys():
+      raise ValueError("Column name `index` is reserved.")
+    super(OrderedDictNumpySource, self).__init__(ordered_dict_of_arrays,
+                                                 num_threads, enqueue_size,
+                                                 batch_size, queue_capacity,
+                                                 shuffle, min_after_dequeue,
+                                                 seed, data_name)
+
+  @property
+  def name(self):
+    return "OrderedDictNumpySource"
+
+  @property
+  def _output_names(self):
+    return tuple(["index"] + list(self._data.keys()))
 
 
 class PandasSource(BaseInMemorySource):

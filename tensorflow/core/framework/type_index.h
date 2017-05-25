@@ -17,10 +17,12 @@ limitations under the License.
 #define TENSORFLOW_FRAMEWORK_TYPE_INDEX_H_
 
 #include <string>
-#ifdef __GXX_RTTI
+#if defined(__GXX_RTTI) || defined(_CPPRTTI)
 #include <typeindex>
 #include <typeinfo>
 #endif  // __GXX_RTTI
+
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -28,7 +30,7 @@ namespace tensorflow {
 // binary sizes. The following #ifdef section provides a non-RTTI
 // replacement for std::type_index (with a minimal set of functions needed by
 // the TensorFlow framework, and more can be added if necessary).
-#ifndef __GXX_RTTI
+#if !defined(__GXX_RTTI) && !defined(_CPPRTTI)
 
 // A thin TypeIndex class that mimics std::type_index but does not use RTTI. As
 // a result, it does not provide the actual name of the type, and only returns a

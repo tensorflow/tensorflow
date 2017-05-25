@@ -41,12 +41,15 @@ namespace tensorflow {
 class BaseGPUDevice : public LocalDevice {
  public:
   BaseGPUDevice(const SessionOptions& options, const string& name,
-                Bytes memory_limit, BusAdjacency bus_adjacency, int gpu_id,
+                Bytes memory_limit, const DeviceLocality& locality, int gpu_id,
                 const string& physical_device_desc, Allocator* gpu_allocator,
                 Allocator* cpu_allocator, bool sync_every_op,
                 int32 max_streams);
 
   ~BaseGPUDevice() override;
+
+  // Initialize the device and return the status of initialization.
+  Status Init(const SessionOptions& options);
 
   // GPU devices require the Op Compute method to save a reference to
   // any temporary tensors that are allocated until the Op execution
@@ -77,6 +80,14 @@ class BaseGPUDevice : public LocalDevice {
   void ReinitializeGpuDevice(OpKernelContext* context, PerOpGpuDevice* device,
                              DeviceContext* dc, Allocator* allocator) override;
 
+  // Returns the id of this device within the native driver system; e.g., for
+  // CUDA this is the ordinal of the GPU within the system.
+  int gpu_id() const { return gpu_id_; }
+
+  // The executor that provides control for the device; e.g., for CUDA this
+  // corresponds to the cuda context.
+  gpu::StreamExecutor* executor() const { return executor_; }
+
  protected:
   Allocator* gpu_allocator_;  // not owned
   Allocator* cpu_allocator_;  // not owned
@@ -97,29 +108,42 @@ class BaseGPUDevice : public LocalDevice {
   mutex trace_mu_;
   int gpu_id_ = -1;
   const bool sync_every_op_ = false;
+  const int32 max_streams_;
   std::unique_ptr<EventMgr> em_;
 
   void ReinitializeDevice(OpKernelContext* context, PerOpGpuDevice* device,
                           int stream_id, Allocator* allocator);
+
+  void ComputeHelper(OpKernel* op_kernel, OpKernelContext* context);
 };
 
 class BaseGPUDeviceFactory : public DeviceFactory {
  public:
-  void CreateDevices(const SessionOptions& options, const string& name_prefix,
-                     std::vector<Device*>* devices) override;
+  Status CreateDevices(const SessionOptions& options, const string& name_prefix,
+                       std::vector<Device*>* devices) override;
 
  private:
-  LocalDevice* CreateGPUDevice(const SessionOptions& options,
-                               const string& name, int gpu_id);
+  Status CreateGPUDevice(const SessionOptions& options, const string& name,
+                         int gpu_id, BaseGPUDevice** out_device);
 
-  virtual LocalDevice* CreateGPUDevice(const SessionOptions& options,
-                                       const string& name, Bytes memory_limit,
-                                       BusAdjacency bus_adjacency, int gpu_id,
-                                       const string& physical_device_desc,
-                                       Allocator* gpu_allocator,
-                                       Allocator* cpu_allocator) = 0;
+  virtual BaseGPUDevice* CreateGPUDevice(const SessionOptions& options,
+                                         const string& name, Bytes memory_limit,
+                                         const DeviceLocality& locality,
+                                         int gpu_id,
+                                         const string& physical_device_desc,
+                                         Allocator* gpu_allocator,
+                                         Allocator* cpu_allocator) = 0;
 
-  void GetValidDeviceIds(std::vector<int>* ids);
+  // Returns into 'ids' the list of valid GPU ids, in the order that
+  // they should map to logical gpu ids "/gpu:0", "/gpu:1", etc, based
+  // upon 'visible_device_list', a comma-separated list of 'visible
+  // gpu ids'.
+  Status GetValidDeviceIds(const string& visible_device_list,
+                           std::vector<int>* ids);
+
+  // visible_gpu_initialized_[gpu_id] is true if visible GPU gpu_id
+  // has been initialized by the process.
+  std::unordered_map<int, bool> visible_gpu_initialized_;
 };
 
 }  // namespace tensorflow

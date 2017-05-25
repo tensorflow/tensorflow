@@ -18,13 +18,13 @@ limitations under the License.
 %{
 
 #include "tensorflow/python/client/tf_session_helper.h"
+#include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/public/version.h"
 
 %}
 
 // Required to use PyArray_* functions.
-%include "tensorflow/python/platform/numpy.i"
 %init %{
 tensorflow::ImportNumpy();
 %}
@@ -35,26 +35,17 @@ tensorflow::ImportNumpy();
 %constant int GRAPH_DEF_VERSION_MIN_CONSUMER = TF_GRAPH_DEF_VERSION_MIN_CONSUMER;
 %constant int GRAPH_DEF_VERSION_MIN_PRODUCER = TF_GRAPH_DEF_VERSION_MIN_PRODUCER;
 
+// Git version information
+%constant const char* __git_version__ = tf_git_version();
+
+// Compiler
+%constant const char* __compiler_version__ = tf_compiler_version();
+
 // Release the Python GIL for the duration of most methods.
 %exception {
   Py_BEGIN_ALLOW_THREADS;
   $action
   Py_END_ALLOW_THREADS;
-}
-
-// Proto input arguments to C API functions are passed as a (const
-// void*, size_t) pair. In Python, typemap these to a single string
-// argument.  This typemap does *not* make a copy of the input.
-%typemap(in) (const void* proto, size_t proto_len) {
-  char* c_string;
-  Py_ssize_t py_size;
-  // PyBytes_AsStringAndSize() does not copy but simply interprets the input
-  if (PyBytes_AsStringAndSize($input, &c_string, &py_size) == -1) {
-    // Python has raised an error (likely TypeError or UnicodeEncodeError).
-    SWIG_fail;
-  }
-  $1 = static_cast<void*>(c_string);
-  $2 = static_cast<size_t>(py_size);
 }
 
 // The target input to TF_SetTarget() is passed as a null-terminated
@@ -67,66 +58,19 @@ tensorflow::ImportNumpy();
   }
 }
 
+// Constants used by TensorHandle (get_session_handle).
+%constant const char* TENSOR_HANDLE_KEY = tensorflow::SessionState::kTensorHandleResourceTypeName;
+
 ////////////////////////////////////////////////////////////////////////////////
 // BEGIN TYPEMAPS FOR tensorflow::TF_Run_wrapper()
 ////////////////////////////////////////////////////////////////////////////////
-
-// The wrapper takes a vector of pairs of feed names and feed
-// values. In Python this is represented as dictionary mapping strings
-// to numpy arrays.
-%typemap(in) const tensorflow::FeedVector& inputs (
-    tensorflow::FeedVector temp,
-    tensorflow::Safe_PyObjectPtr temp_string_list(tensorflow::make_safe(nullptr)),
-    tensorflow::Safe_PyObjectPtr temp_array_list(tensorflow::make_safe(nullptr))) {
-  if (!PyDict_Check($input)) {
-    SWIG_fail;
-  }
-
-  temp_string_list = tensorflow::make_safe(PyList_New(0));
-  if (!temp_string_list) {
-    SWIG_fail;
-  }
-  temp_array_list = tensorflow::make_safe(PyList_New(0));
-  if (!temp_array_list) {
-    SWIG_fail;
-  }
-
-  PyObject* key;
-  PyObject* value;
-  Py_ssize_t pos = 0;
-  while (PyDict_Next($input, &pos, &key, &value)) {
-    char* key_string = PyBytes_AsString(key);
-    if (!key_string) {
-      SWIG_fail;
-    }
-
-    // The ndarray must be stored as contiguous bytes in C (row-major) order.
-    PyObject* array_object = PyArray_FromAny(
-        value, nullptr, 0, 0, NPY_ARRAY_CARRAY, nullptr);
-    if (!array_object) {
-      SWIG_fail;
-    }
-    PyArrayObject* array = reinterpret_cast<PyArrayObject*>(array_object);
-
-    // Keep a reference to the key and the array, in case the incoming dict is
-    // modified, and/or to avoid leaking references on failure.
-    if (PyList_Append(temp_string_list.get(), key) == -1) {
-      SWIG_fail;
-    }
-    if (PyList_Append(temp_array_list.get(), array_object) == -1) {
-      SWIG_fail;
-    }
-
-    temp.push_back(std::make_pair(key_string, array));
-  }
-  $1 = &temp;
-}
 
 // The wrapper also takes a list of fetch and target names.  In Python this is
 // represented as a list of strings.
 %typemap(in) const tensorflow::NameVector& (
     tensorflow::NameVector temp,
-    tensorflow::Safe_PyObjectPtr temp_string_list(tensorflow::make_safe(nullptr))) {
+    tensorflow::Safe_PyObjectPtr temp_string_list(
+        tensorflow::make_safe(static_cast<PyObject*>(nullptr)))) {
   if (!PyList_Check($input)) {
     SWIG_fail;
   }
@@ -173,7 +117,7 @@ tensorflow::ImportNumpy();
 
 // Build a Python list of outputs and return it.
 %typemap(argout) tensorflow::PyObjectVector* out_values {
-  tensorflow::Safe_PyObjectVector out_values_safe;
+  std::vector<tensorflow::Safe_PyObjectPtr> out_values_safe;
   for (size_t i = 0; i < $1->size(); ++i) {
     out_values_safe.emplace_back(tensorflow::make_safe($1->at(i)));
   }
@@ -213,45 +157,63 @@ tensorflow::ImportNumpy();
       reinterpret_cast<const char*>($1.data), $1.length);
 }
 
-// Include the functions from tensor_c_api.h, except TF_Run.
-%ignoreall
-%unignore TF_Code;
-%unignore TF_Status;
-%unignore TF_Buffer;
-%unignore TF_NewBuffer;
-%unignore TF_NewBufferFromString;
-%unignore TF_DeleteBuffer;
-%unignore TF_GetBuffer;
-%unignore TF_NewStatus;
-%unignore TF_DeleteStatus;
-%unignore TF_GetCode;
-%unignore TF_Message;
-%unignore TF_SessionOptions;
+%inline %{
+// Helper function to convert a Python list of Tensors to a C++ vector of
+// TF_Outputs.
+//
+// Caller should have already checked that `py_tensor_list` is a list (this
+// isn't done in this function to allow for function-specific error messages)
+void PyTensorListToVector(PyObject* py_tensor_list,
+                          std::vector<TF_Output>* vec) {
+  size_t size = PyList_Size(py_tensor_list);
+  for (int i = 0; i < size; ++i) {
+    PyObject* item = PyList_GetItem(py_tensor_list, i);
+    TF_Output* input_ptr;
+    SWIG_ConvertPtr(item, reinterpret_cast<void**>(&input_ptr),
+                    SWIGTYPE_p_TF_Output, 0);
+    vec->push_back(*input_ptr);
+  }
+}
+%}
+
+// Converts input Python list of wrapped TF_Outputs into a single array
+%typemap(in) (const TF_Output* inputs, int num_inputs)
+    (std::vector<TF_Output> inputs) {
+  if (!PyList_Check($input)) {
+    SWIG_exception_fail(
+        SWIG_TypeError, "$symname: expected Python list of wrapped TF_Outputs");
+  }
+  PyTensorListToVector($input, &inputs);
+  $1 = inputs.data();
+  $2 = inputs.size();
+}
+
+// TODO(skyewm): SWIG emits a warning for the const char* in TF_WhileParams,
+// skip for now
+%ignore TF_WhileParams;
+%ignore TF_NewWhile;
+%ignore TF_FinishWhile;
+%ignore TF_AbortWhile;
+
+// These are defined below, avoid duplicate definitions
+%ignore TF_Run;
+%ignore TF_PRun;
+%ignore TF_PRunSetup;
+
 %rename("_TF_SetTarget") TF_SetTarget;
 %rename("_TF_SetConfig") TF_SetConfig;
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
-%unignore TF_DeleteSessionOptions;
-%unignore TF_NewSession;
-%unignore TF_CloseSession;
-%unignore TF_DeleteSession;
-%unignore TF_ExtendGraph;
-%unignore TF_NewLibrary;
-%unignore TF_LoadLibrary;
-%unignore TF_GetOpList;
-%include "tensorflow/core/public/tensor_c_api.h"
-%ignoreall
 
+%include "tensorflow/c/c_api.h"
+
+%ignoreall
 %insert("python") %{
   def TF_NewSessionOptions(target=None, config=None):
+    # NOTE: target and config are validated in the session constructor.
     opts = _TF_NewSessionOptions()
     if target is not None:
-      from tensorflow.python.util import compat
-      _TF_SetTarget(opts, compat.as_bytes(target))
+      _TF_SetTarget(opts, target)
     if config is not None:
-      from tensorflow.core.protobuf import config_pb2
-      if not isinstance(config, config_pb2.ConfigProto):
-        raise TypeError("Expected config_pb2.ConfigProto, "
-                        "but got %s" % type(config))
       from tensorflow.python.framework import errors
       with errors.raise_exception_on_not_ok_status() as status:
         config_str = config.SerializeToString()
@@ -289,6 +251,18 @@ tensorflow::ImportNumpy();
 %rename(TF_PRun) tensorflow::TF_PRun_wrapper;
 %unignore tensorflow;
 %unignore TF_PRun;
+
+%unignore tensorflow::TF_Reset_wrapper;
+%insert("python") %{
+def TF_Reset(target, containers=None, config=None):
+  from tensorflow.python.framework import errors
+  opts = TF_NewSessionOptions(target=target, config=config)
+  try:
+    with errors.raise_exception_on_not_ok_status() as status:
+      TF_Reset_wrapper(opts, containers, status)
+  finally:
+    TF_DeleteSessionOptions(opts)
+%}
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

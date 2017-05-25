@@ -51,16 +51,19 @@ static Graph* Multinomial(int batch_size, int num_classes, int num_samples) {
   BM_MultinomialDev(cpu, B, C, S); \
   BM_MultinomialDev(gpu, B, C, S);
 
+// NOTE(zongheng): some more expensive cases are commented out; left here since
+// they could still be useful in covering realistic cases.
+
 BM_MultinomialBCS(1, 10000, 4);
 BM_MultinomialBCS(1, 10000, 128);
 BM_MultinomialBCS(1, 10000, 10000);
 BM_MultinomialBCS(1, 100000, 4);
-BM_MultinomialBCS(1, 100000, 128);
+// BM_MultinomialBCS(1, 100000, 128);
 
 BM_MultinomialBCS(32, 10000, 4);
 BM_MultinomialBCS(32, 10000, 128);
 BM_MultinomialBCS(32, 100000, 4);
-BM_MultinomialBCS(32, 100000, 128);
+// BM_MultinomialBCS(32, 100000, 128);
 
 BM_MultinomialBCS(128, 100000, 1);
 // BM_MultinomialBCS(128, 100000, 128);

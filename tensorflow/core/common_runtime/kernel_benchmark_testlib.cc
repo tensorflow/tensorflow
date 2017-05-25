@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_segment.h"
@@ -26,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
@@ -39,7 +40,6 @@ namespace test {
 
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init) {
-
   SessionOptions default_options;
   if (!options) {
     options = &default_options;
@@ -47,6 +47,9 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   testing::StopTiming();
   string t = str_util::Uppercase(device);
+  // Allow NewDevice to allocate a new threadpool with different number of
+  // threads for each new benchmark.
+  LocalDevice::set_use_global_threadpool(false);
   device_ =
       DeviceFactory::NewDevice(t, *options, "/job:localhost/replica:0/task:0");
   CHECK(device_) << "Could not create a " << device << " device";
@@ -100,13 +103,13 @@ void Benchmark::Run(int iters) { RunWithArgs({}, {}, iters); }
 
 string GetRendezvousKey(const Node* node) {
   string send_device;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "send_device", &send_device));
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "send_device", &send_device));
   string recv_device;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "recv_device", &recv_device));
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "recv_device", &recv_device));
   string tensor_name;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "tensor_name", &tensor_name));
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "tensor_name", &tensor_name));
   uint64 send_device_incarnation;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "send_device_incarnation",
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "send_device_incarnation",
                           reinterpret_cast<int64*>(&send_device_incarnation)));
   return Rendezvous::CreateKey(send_device, send_device_incarnation,
                                recv_device, tensor_name, FrameAndIter(0, 0));
@@ -136,25 +139,35 @@ void Benchmark::RunWithArgs(
   args.runner = [this](std::function<void()> closure) {
     pool_->Schedule(closure);
   };
-  for (int i = 0; i < 3; ++i) {
+  static const int kWarmupRuns = 3;
+  for (int i = 0; i < kWarmupRuns; ++i) {
     for (const auto& p : in) {
-      rendez_->Send(p.first, Rendezvous::Args(), p.second, false);
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
+      TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
     }
     TF_CHECK_OK(exec_->Run(args));
     for (const string& key : out) {
-      rendez_->Recv(key, Rendezvous::Args(), &unused, &is_dead);
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
+      TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
     }
   }
   TF_CHECK_OK(device_->Sync());
+  VLOG(3) << kWarmupRuns << " warmup runs done.";
 
   testing::StartTiming();
   while (iters-- > 0) {
     for (const auto& p : in) {
-      rendez_->Send(p.first, Rendezvous::Args(), p.second, false);
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
+      TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
     }
     TF_CHECK_OK(exec_->Run(args));
     for (const string& key : out) {
-      rendez_->Recv(key, Rendezvous::Args(), &unused, &is_dead);
+      Rendezvous::ParsedKey parsed;
+      TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
+      TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
     }
   }
 

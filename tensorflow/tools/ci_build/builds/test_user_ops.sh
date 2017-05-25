@@ -123,7 +123,7 @@ if [[ ${IS_GPU} == "0" ]]; then
   EXPECTED_OUTPUT="[42, 0, 0]"
 
   # Locate the op kernel C++ file
-  OP_KERNEL_CC="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/zero_out_op_kernel_1.cc"
+  OP_KERNEL_CC="${SCRIPT_DIR}/user_ops/zero_out_op_kernel_1.cc"
   OP_KERNEL_CC=$(realpath "${OP_KERNEL_CC}")
 
   if [[ ! -f "${OP_KERNEL_CC}" ]]; then
@@ -162,13 +162,13 @@ else
   "${NVCC_BIN}" --version
   echo ""
 
-  OP_KERNEL_CU="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/cuda_op_kernel.cu.cc"
+  OP_KERNEL_CU="${SCRIPT_DIR}/user_ops/cuda_op_kernel.cu.cc"
   OP_KERNEL_CU=$(realpath "${OP_KERNEL_CU}")
   if [[ ! -f "${OP_KERNEL_CU}" ]]; then
     die "ERROR: Unable to find user-op kernel CUDA file at: ${OP_KERNEL_CU}"
   fi
 
-  OP_KERNEL_CC="${SCRIPT_DIR}/../../../g3doc/how_tos/adding_an_op/cuda_op_kernel.cc"
+  OP_KERNEL_CC="${SCRIPT_DIR}/user_ops/cuda_op_kernel.cc"
   OP_KERNEL_CC=$(realpath "${OP_KERNEL_CC}")
   if [[ ! -f "${OP_KERNEL_CC}" ]]; then
     die "ERROR: Unable to find user-op kernel C++ file at: ${OP_KERNEL_CC}"
@@ -184,11 +184,23 @@ else
       -I "${TF_INC}" -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC || \
       die "nvcc compilation of ${OP_KERNEL_CC} FAILED"
 
+  CUDA_LIB_DIR="/usr/local/cuda/lib64"
+  if [[ ! -d "${CUDA_LIB_DIR}" ]]; then
+    CUDA_LIB_DIR="/usr/local/cuda/lib"
+  fi
+  if [[ ! -d "${CUDA_LIB_DIR}" ]]; then
+    die "ERROR: Failed to find CUDA library directory at either of "
+"/usr/local/cuda/lib and /usr/local/cuda/lib64"
+  fi
+
+  echo "Found CUDA library diretory at: ${CUDA_LIB_DIR}"
+  echo ""
+
   # USER_OP_SO=$(basename $(echo "${OP_KERNEL_CC}" | sed -e 's/\.cc/\.so/'))
   USER_OP_SO="add_one.so"
   "${GPP_BIN}" -std=c++11 ${EXTRA_GPP_FLAGS} \
       -shared -o "${USER_OP_SO}" "${OP_KERNEL_CC}" \
-      "${OP_KERNEL_O}" -I "${TF_INC}" -L "/usr/local/cuda/lib64" \
+      "${OP_KERNEL_O}" -I "${TF_INC}" -L "${CUDA_LIB_DIR}" \
       -fPIC -lcudart || \
       die "g++ compilation of ${OP_KERNEL_CC}" FAILED
 fi

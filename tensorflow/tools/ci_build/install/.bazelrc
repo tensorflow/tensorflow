@@ -12,4 +12,4 @@ test --spawn_strategy=standalone
 common --color=yes
 
 # Configure tests - increase timeout, print errors and timeout warnings
-test --verbose_failures --test_timeout=3600 --test_output=errors --test_verbose_timeout_warnings
+test --verbose_failures --test_output=errors --test_verbose_timeout_warnings

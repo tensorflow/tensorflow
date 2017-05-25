@@ -19,6 +19,7 @@ limitations under the License.
 #include <functional>
 
 #include "tensorflow/core/distributed_runtime/call_options.h"
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -29,19 +30,19 @@ namespace tensorflow {
 // Status callback.
 typedef std::function<void(const Status&)> StatusCallback;
 
-// Allocator callback for out-of-band transfers.
-class TensorShape;
-typedef std::function<void*(size_t, const DataType&, const TensorShape&)>
-    TensorBufAllocator;
+// Custom decoder for a response to RecvTensorAsync.
+class TensorResponse;
 
 // Interface for talking with the TensorFlow Worker service.
 class WorkerInterface {
  public:
-  virtual ~WorkerInterface() {}
-
   virtual void GetStatusAsync(const GetStatusRequest* request,
                               GetStatusResponse* response,
                               StatusCallback done) = 0;
+
+  virtual void CreateWorkerSessionAsync(
+      const CreateWorkerSessionRequest* request,
+      CreateWorkerSessionResponse* response, StatusCallback done) = 0;
 
   virtual void RegisterGraphAsync(const RegisterGraphRequest* request,
                                   RegisterGraphResponse* response,
@@ -51,9 +52,42 @@ class WorkerInterface {
                                     DeregisterGraphResponse* response,
                                     StatusCallback done) = 0;
 
-  virtual void RunGraphAsync(CallOptions* opts, const RunGraphRequest* request,
-                             RunGraphResponse* response,
+  virtual void RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
+                             MutableRunGraphResponseWrapper* repsonse,
                              StatusCallback done) = 0;
+
+  virtual void RunGraphAsync(CallOptions* opts, const RunGraphRequest* request,
+                             RunGraphResponse* response, StatusCallback done) {
+    // TODO(mrry): Convert this to std::bind/std::move if the overhead
+    // of std::function copying becomes too much.
+    RunGraphRequestWrapper* wrapped_request = new ProtoRunGraphRequest(request);
+    MutableRunGraphResponseWrapper* wrapped_response =
+        new NonOwnedProtoRunGraphResponse(response);
+    RunGraphAsync(opts, wrapped_request, wrapped_response,
+                  [wrapped_request, wrapped_response, done](const Status& s) {
+                    done(s);
+                    delete wrapped_request;
+                    delete wrapped_response;
+                  });
+  }
+
+  // Returns a request object for use in calls to
+  // `RunGraphAsync()`. Ownership is transferred to the caller.
+  //
+  // The message returned from this method must only be used in a
+  // `RunGraph()` call on the same `WorkerInterface` instance.
+  virtual MutableRunGraphRequestWrapper* CreateRunGraphRequest() {
+    return new MutableProtoRunGraphRequest;
+  }
+
+  // Returns a response object for use in calls to
+  // `RunGraphAsync()`. Ownership is transferred to the caller.
+  //
+  // The message returned from this method must only be used in a
+  // `RunGraph()` call on the same `WorkerInterface` instance.
+  virtual MutableRunGraphResponseWrapper* CreateRunGraphResponse() {
+    return new OwnedProtoRunGraphResponse;
+  }
 
   virtual void CleanupGraphAsync(const CleanupGraphRequest* request,
                                  CleanupGraphResponse* response,
@@ -65,8 +99,7 @@ class WorkerInterface {
 
   virtual void RecvTensorAsync(CallOptions* opts,
                                const RecvTensorRequest* request,
-                               RecvTensorResponse* response,
-                               TensorBufAllocator allocator,
+                               TensorResponse* response,
                                StatusCallback done) = 0;
 
   virtual void LoggingAsync(const LoggingRequest* request,
@@ -78,6 +111,11 @@ class WorkerInterface {
   Status GetStatus(const GetStatusRequest* request,
                    GetStatusResponse* response) {
     return CallAndWait(&ME::GetStatusAsync, request, response);
+  }
+
+  Status CreateWorkerSession(const CreateWorkerSessionRequest* request,
+                             CreateWorkerSessionResponse* response) {
+    return CallAndWait(&ME::CreateWorkerSessionAsync, request, response);
   }
 
   Status RegisterGraph(const RegisterGraphRequest* request,
@@ -106,6 +144,20 @@ class WorkerInterface {
 
   Status Tracing(const TracingRequest* request, TracingResponse* response) {
     return CallAndWait(&ME::TracingAsync, request, response);
+  }
+
+ protected:
+  // Instances of WorkerInterface must be deleted by a call to
+  // WorkerCacheInterface::ReleaseWorker().
+  virtual ~WorkerInterface() {}
+  friend class WorkerCacheInterface;
+
+  // NOTE: This should only be called by implementations of this
+  // interface whose CreateRunGraphResponse() method returns a
+  // proto-based wrappers for the RunGraphResponse message.
+  RunGraphResponse* get_proto_from_wrapper(
+      MutableRunGraphResponseWrapper* wrapper) {
+    return wrapper->get_proto();
   }
 
  private:

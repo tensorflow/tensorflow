@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
@@ -181,10 +182,13 @@ class OpsTestBase : public ::testing::Test {
     params_.get()->frame_iter = FrameAndIter(0, 0);
     params_.get()->inputs = &inputs_;
     params_.get()->op_kernel = kernel_.get();
+    step_container_.reset(new ScopedStepContainer(0, [](const string&) {}));
+    params_->step_container = step_container_.get();
     std::vector<AllocatorAttributes> attrs;
     test::SetOutputAttrs(params_.get(), &attrs);
     checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_wrapper;
     params_.get()->slice_reader_cache = &slice_reader_cache_wrapper;
+    params_.get()->resource_manager = device_.get()->resource_manager();
 
     context_.reset(new OpKernelContext(params_.get()));
     device_->Compute(kernel_.get(), context_.get());
@@ -222,6 +226,7 @@ class OpsTestBase : public ::testing::Test {
   std::unique_ptr<Device> device_;
 
   std::unique_ptr<OpKernel> kernel_;
+  std::unique_ptr<ScopedStepContainer> step_container_;
   NodeDef node_def_;
   DataTypeVector input_types_;
   DeviceType device_type_;

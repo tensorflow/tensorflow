@@ -23,8 +23,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-void DFS(const Graph& g, std::function<void(Node*)> enter,
-         std::function<void(Node*)> leave) {
+void DFS(const Graph& g, const std::function<void(Node*)>& enter,
+         const std::function<void(Node*)>& leave) {
   // Stack of work to do.
   struct Work {
     Node* node;
@@ -61,15 +61,23 @@ void DFS(const Graph& g, std::function<void(Node*)> enter,
   }
 }
 
-void ReverseDFS(const Graph& g, std::function<void(Node*)> enter,
-                std::function<void(Node*)> leave) {
+void ReverseDFS(const Graph& g, const std::function<void(Node*)>& enter,
+                const std::function<void(Node*)>& leave) {
+  ReverseDFSFrom(g, {g.sink_node()}, enter, leave);
+}
+
+void ReverseDFSFrom(const Graph& g, gtl::ArraySlice<Node*> start,
+                    const std::function<void(Node*)>& enter,
+                    const std::function<void(Node*)>& leave) {
   // Stack of work to do.
   struct Work {
     Node* node;
     bool leave;  // Are we entering or leaving n?
   };
-  std::vector<Work> stack;
-  stack.push_back(Work{g.sink_node(), false});
+  std::vector<Work> stack(start.size());
+  for (int i = 0; i < start.size(); ++i) {
+    stack[i] = Work{start[i], false};
+  }
 
   std::vector<bool> visited(g.num_node_ids(), false);
   while (!stack.empty()) {
@@ -132,6 +140,7 @@ bool PruneForReverseReachability(Graph* g,
 
   // Make a pass over the graph to remove nodes not in "visited"
   std::vector<Node*> all_nodes;
+  all_nodes.reserve(g->num_nodes());
   for (Node* n : g->nodes()) {
     all_nodes.push_back(n);
   }

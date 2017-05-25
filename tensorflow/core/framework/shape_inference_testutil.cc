@@ -14,40 +14,49 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 
-#include <unordered_map>
-
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
+namespace shape_inference {
 
-using shape_inference::Dimension;
-using shape_inference::Shape;
 using errors::Unknown;
 
-Status InferShapes(const string& op_name, const string& ins,
-                   const string& expected_outs) {
+Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
+                                           const string& ins,
+                                           const string& expected_outs) {
   const OpRegistrationData* op_reg_data;
-  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(op_name, &op_reg_data));
-  const int num_outputs = op_reg_data->op_def.output_arg_size();
+  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
 
   std::vector<string> ins_v = str_util::Split(ins, ';');
-  shape_inference::InferenceContext c(ins_v, num_outputs);
-  TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(&c));
+  std::unique_ptr<const NodeDef> new_node_def;
 
-  std::unordered_map<const Dimension*, std::pair<int, int>>
-      dim_to_input_and_dim_idx;
-  std::unordered_map<const Shape*, int> shape_to_input_idx;
-  for (int i = 0; i < c.num_inputs(); ++i) {
-    auto in = c.input(i);
-    shape_to_input_idx[in] = i;
-    for (int j = 0; j < c.Rank(in); ++j) {
-      dim_to_input_and_dim_idx[c.Dim(in, j)] = std::make_pair(i, j);
-    }
+  InferenceContext::ShapeManager manager;
+  std::vector<ShapeHandle> in_shapes;
+  for (const string& spec : ins_v) {
+    ShapeHandle shape;
+    TF_RETURN_IF_ERROR(MakeShapeFromString(&manager, spec, &shape));
+    in_shapes.push_back(shape);
   }
+
+  shape_inference::InferenceContext c(op.graph_def_version, &op.node_def,
+                                      op_reg_data->op_def, in_shapes,
+                                      op.input_tensors, {}, {}, {});
+  TF_RETURN_IF_ERROR(c.construction_status());
+  if (op_reg_data->shape_inference_fn == nullptr) {
+    return errors::InvalidArgument(
+        "No shape inference function exists for op '", op.name,
+        "', did you forget to define it?");
+  }
+
+  TF_RETURN_IF_ERROR(c.Run(op_reg_data->shape_inference_fn));
+
+  const int num_outputs = c.num_outputs();
+
   if (expected_outs == "e") {
     return Unknown("Shape inference should have returned error");
   }
@@ -55,40 +64,61 @@ Status InferShapes(const string& op_name, const string& ins,
   // Verify the output shape.
   std::vector<string> expected_outs_v = str_util::Split(expected_outs, ';');
   if (num_outputs != expected_outs_v.size()) {
-    return Unknown("Wrong number of expected outputs (", expected_outs_v.size(),
-                   " vs ", num_outputs, ")");
+    return Unknown("The expected output string lists the wrong number of ",
+                   "outputs. It lists ", expected_outs_v.size(),
+                   " but should list ", num_outputs);
   }
   for (int i = 0; i < num_outputs; ++i) {
-    string err_prefix = strings::StrCat("Output ", i);
     StringPiece expected(expected_outs_v[i]);
-    const shape_inference::Shape* out = c.output(i);
-    const int in_index = gtl::FindWithDefault(shape_to_input_idx, out, -1);
+    shape_inference::ShapeHandle out = c.output(i);
+
+    string err_prefix = strings::StrCat("Output ", i);
+    string err_suffix =
+        strings::StrCat(". Output shape was ", c.DebugString(out));
+
+    int in_index = -1;
+    for (int i = 0; i < c.num_inputs(); ++i) {
+      if (c.input(i).SameHandle(out)) {
+        in_index = i;
+      }
+    }
+
     if (expected.starts_with("in")) {
       if (in_index == -1) {
-        return Unknown(err_prefix, " did not match any input shape");
+        return Unknown(err_prefix,
+                       " should have matched an input shape by "
+                       "handle, but matched no input shape. This means the ",
+                       "shape function was expected to pass an input "
+                       "ShapeHandle through for this output, but did not",
+                       err_suffix);
       }
       auto v = str_util::Split(expected, '|');
       if (std::find(v.begin(), v.end(), strings::StrCat("in", in_index)) ==
           v.end()) {
-        return Unknown(err_prefix, " matched input ", in_index,
-                       " and should have matched one of (", expected, ")");
+        return Unknown(
+            err_prefix, " matched input ", in_index,
+            " by handle, but should have matched one of (", expected,
+            ") instead. This means the shape function passed the ShapeHandle ",
+            "for input ", in_index,
+            " to the output, but should have passed a different input ",
+            "ShapeHandle through", err_suffix);
       }
       continue;
     }
     if (in_index != -1) {
       return Unknown(err_prefix, " matched input ", in_index,
-                     " and should have not matched an input shape");
+                     " by ShapeHandle, but was expected to not match an input ",
+                     "shape by handle", err_suffix);
     }
     if (expected == "?") {
       if (c.RankKnown(out)) {
-        return Unknown(err_prefix, " expected to be unknown but was ",
-                       c.DebugString(out));
+        return Unknown(err_prefix, " expected to be unknown", err_suffix);
       }
       continue;
     }
 
     // Verify the dimensions.
-    CHECK(expected.starts_with("[") && expected.ends_with("]"));
+    CHECK(expected.starts_with("[") && expected.ends_with("]")) << expected;
     expected.remove_prefix(1);
     expected.remove_suffix(1);
 
@@ -96,53 +126,81 @@ Status InferShapes(const string& op_name, const string& ins,
     auto expected_dims = str_util::Split(expected, ',');
     if (!c.RankKnown(out)) {
       return Unknown(err_prefix, " expected rank ", expected_dims.size(),
-                     " but was ?");
+                     " but was ?", err_suffix);
     }
     if (c.Rank(out) != expected_dims.size()) {
       return Unknown(err_prefix, " expected rank ", expected_dims.size(),
-                     " but was ", c.Rank(out));
+                     " but was ", c.Rank(out), err_suffix);
     }
     for (int j = 0; j < expected_dims.size(); ++j) {
       err_prefix = strings::StrCat("Output dim ", i, ",", j);
       StringPiece expected_dim(expected_dims[j]);
-      const Dimension* out_dim = c.Dim(out, j);
-      std::pair<int, int> in_dim_idx = gtl::FindWithDefault(
-          dim_to_input_and_dim_idx, out_dim, std::make_pair(-1, -1));
+      DimensionHandle out_dim = c.Dim(out, j);
+
+      std::pair<int, int> in_dim_idx(-1, -1);
+      for (int i = 0; i < c.num_inputs(); ++i) {
+        auto in = c.input(i);
+        for (int j = 0; j < c.Rank(in); ++j) {
+          if (c.Dim(in, j).SameHandle(out_dim)) {
+            in_dim_idx = std::make_pair(i, j);
+          }
+        }
+      }
+
       if (expected_dim == "?") {
         if (in_dim_idx.first != -1) {
           return Unknown(err_prefix,
-                         " expected to be unknown but matched input d",
-                         in_dim_idx.first, "_", in_dim_idx.second);
+                         " expected to be an unknown but matched input d",
+                         in_dim_idx.first, "_", in_dim_idx.second,
+                         ". The shape function passed through ",
+                         "a DimensionHandle from an input instead of making ",
+                         "a new unknown dimension", err_suffix);
         } else if (c.ValueKnown(out_dim)) {
           return Unknown(err_prefix, " expected to be unknown but was ",
-                         c.Value(out_dim));
+                         c.Value(out_dim), err_suffix);
         }
       } else if (expected_dim.starts_with("d")) {
         // Compare the dimension values.
         auto v = str_util::Split(expected_dim, '|');
         if (in_dim_idx.first == -1) {
-          return Unknown(err_prefix, " did not match any input dim");
+          return Unknown(
+              err_prefix, " was expected to match the dimension of an input, ",
+              "but did not match any input dimension. The shape ",
+              "function was expected to pass through a ",
+              "DimensionHandle for an input, but did not", err_suffix);
         }
         if (std::find(v.begin(), v.end(),
                       strings::StrCat("d", in_dim_idx.first, "_",
                                       in_dim_idx.second)) == v.end()) {
           return Unknown(err_prefix, " matched input d", in_dim_idx.first, "_",
-                         in_dim_idx.second, " and should have matched one of ",
-                         expected_dim);
+                         in_dim_idx.second,
+                         ", but should have matched one of (", expected_dim,
+                         "). The shape function passed through "
+                         "the DimensionHandle for an input, but ",
+                         "was expected to pass a different one", err_suffix);
         }
       } else {
         // Parse it as a value.
         int64 value = -1;
         if (!strings::safe_strto64(expected_dim, &value)) {
-          return Unknown(err_prefix, " expected dim failed to parse as int64");
+          return Unknown(err_prefix, ": the expected dimension value '",
+                         expected_dim, "' failed to parse as int64",
+                         err_suffix);
         }
         if (in_dim_idx.first != -1) {
-          return Unknown(err_prefix, " expected to be ", value,
-                         " but matched input d", in_dim_idx.first, "_",
-                         in_dim_idx.second);
+          return Unknown(  //
+              err_prefix, " expected to be ", value, " but matched input d",
+              in_dim_idx.first, "_", in_dim_idx.second,
+              ". The shape function was not expected to pass a DimensionHandle "
+              "from the input to the output, but did. Note that even if the "
+              "passed through output has the same dimension value as the "
+              "expected value, this is considered a failure for the test; "
+              "switch to using d#_# syntax if passing through the "
+              "DimensionHandle should be the expected behavior",
+              err_suffix);
         } else if (value != c.Value(out_dim)) {
           return Unknown(err_prefix, " expected to be ", value, " but was ",
-                         c.DebugString(out_dim));
+                         c.DebugString(out_dim), err_suffix);
         }
       }
     }
@@ -150,4 +208,49 @@ Status InferShapes(const string& op_name, const string& ins,
   return Status::OK();
 }
 
+// static
+Status ShapeInferenceTestutil::MakeShapeFromString(
+    InferenceContext::ShapeManager* manager, const string& spec,
+    ShapeHandle* output) {
+  if (spec == "?") {
+    *output = manager->UnknownShape();
+    return Status::OK();
+  }
+
+  std::vector<DimensionHandle> dims;
+  strings::Scanner scanner(spec);
+  scanner.OneLiteral("[");
+  while (scanner.Peek() != ']') {
+    if (scanner.Peek() == '?') {
+      scanner.OneLiteral("?");
+      dims.push_back(manager->MakeDim(InferenceContext::kUnknownDim));
+    } else {
+      scanner.RestartCapture().Many(strings::Scanner::DIGIT);
+      StringPiece match;
+      int64 dim_size = 0;
+
+      if (!scanner.GetResult(nullptr, &match) ||
+          !strings::safe_strto64(match, &dim_size)) {
+        return errors::InvalidArgument("Could not parse number in ", spec);
+      }
+
+      dims.push_back(manager->MakeDim(dim_size));
+    }
+
+    if (scanner.Peek() == ',') {
+      scanner.OneLiteral(",");
+    } else if (scanner.Peek() != ']') {
+      return errors::InvalidArgument(
+          "Invalid input spec (] not found in dim shape): ", spec);
+    }
+  }
+  if (!scanner.OneLiteral("]").Eos().GetResult()) {
+    return errors::InvalidArgument("Malformed shape spec: did not end in ']'.");
+  }
+  *output = manager->MakeShape(dims);
+
+  return Status::OK();
+}
+
+}  // namespace shape_inference
 }  // namespace tensorflow

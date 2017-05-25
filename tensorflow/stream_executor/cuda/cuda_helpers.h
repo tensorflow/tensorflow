@@ -24,8 +24,8 @@ limitations under the License.
 #include <stddef.h>
 #include <complex>
 
-#include "third_party/gpus/cuda/include/cuComplex.h"
-#include "third_party/gpus/cuda/include/cuda.h"
+#include "cuda/include/cuComplex.h"
+#include "cuda/include/cuda.h"
 
 namespace perftools {
 namespace gputools {

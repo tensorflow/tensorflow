@@ -31,6 +31,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
 #define TENSORFLOW_LIB_GTL_INLINED_VECTOR_H_
 
+#include <cstddef>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -42,8 +43,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
-#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/types.h"
 
 #include <initializer_list>  // NOLINT(build/include_order)
@@ -60,7 +62,7 @@ class InlinedVector {
   typedef T& reference;
   typedef const T& const_reference;
   typedef size_t size_type;
-  typedef ssize_t difference_type;
+  typedef std::ptrdiff_t difference_type;
   typedef pointer iterator;
   typedef const_pointer const_iterator;
 
@@ -187,20 +189,28 @@ class InlinedVector {
     return at(0);
   }
 
+  // Append a T constructed with args to the vector.
+  // Increases size() by one.
+  // Amortized complexity: O(1)
+  // Worst-case complexity: O(size())
+  template <typename... Args>
+  void emplace_back(Args&&... args) {
+    size_t s = size();
+    DCHECK_LE(s, capacity());
+    if (s < capacity()) {
+      new (data() + s) T(std::forward<Args>(args)...);
+      set_size_internal(s + 1);
+    } else {
+      EmplaceBackSlow(std::forward<Args>(args)...);
+    }
+  }
+
   // Append t to the vector.
   // Increases size() by one.
   // Amortized complexity: O(1)
   // Worst-case complexity: O(size())
-  inline void push_back(const value_type& t) {
-    size_t s = size();
-    DCHECK_LE(s, capacity());
-    if (s < capacity()) {
-      new (data() + s) T(t);
-      set_size_internal(s + 1);
-    } else {
-      PushBackSlow(t);
-    }
-  }
+  void push_back(const value_type& t) { emplace_back(t); }
+  void push_back(value_type&& t) { emplace_back(std::move(t)); }
 
   inline void pop_back() {
     DCHECK(!empty());
@@ -344,20 +354,30 @@ class InlinedVector {
     size_t n = size();
     Destroy(base, n);
     if (!is_inline()) {
-      free(base);
+      port::Free(base);
     }
   }
 
-  void PushBackSlow(const T& t) {
+  template <typename... Args>
+  void EmplaceBackSlow(Args&&... args) {
     const size_t s = size();
     DCHECK_EQ(s, capacity());
-    Grow<Move, Fill>(s + 1, &t);
+    Grow<Move, Construct>(s + 1, std::forward<Args>(args)...);
     set_size_internal(s + 1);
   }
 
+  // Movers for Grow
   // Does nothing.
-  static void Nop(const T* src, size_t n, T* dst) {}
+  static void Nop(T* src, size_t n, T* dst) {}
 
+  // Moves srcs[0,n-1] contents to dst[0,n-1].
+  static void Move(T* src, size_t n, T* dst) {
+    for (size_t i = 0; i < n; i++) {
+      new (dst + i) T(std::move(*(src + i)));
+    }
+  }
+
+  // Initializers for Resize.
   // Initializes dst[0,n-1] with empty constructor.
   static void ValueInit(const T*, size_t n, T* dst) {
     for (size_t i = 0; i < n; i++) {
@@ -372,13 +392,6 @@ class InlinedVector {
     }
   }
 
-  // Moves srcs[0,n-1] contents to dst[0,n-1].
-  static void Move(const T* src, size_t n, T* dst) {
-    for (size_t i = 0; i < n; i++) {
-      new (dst + i) T(std::move(*(src + i)));
-    }
-  }
-
   void Destroy(T* src, int n) {
     if (!std::is_trivially_destructible<T>::value) {
       for (int i = 0; i < n; i++) {
@@ -387,14 +400,28 @@ class InlinedVector {
     }
   }
 
+  // Initialization methods for Grow.
+  // 1) Leave uninitialized memory.
+  struct Uninitialized {
+    void operator()(T*) const {}
+  };
+  // 2) Construct a T with args at not-yet-initialized memory pointed by dst.
+  struct Construct {
+    template<class... Args>
+    void operator()(T* dst, Args&&... args) const {
+      new (dst) T(std::forward<Args>(args)...);
+    }
+  };
+
   // Grow so that capacity >= n.  Uses Mover to move existing elements
-  // to new buffer.  If elem is not-null, stores it at slot numbered
-  // size() before destroying the old buffer by calling Initializer.
-  // We pass the Initializer and Mover as template arguments so that
-  // this code compiles even if T does not support copying.
-  template <void(Mover)(const T*, size_t, T*),
-            void(Initializer)(const T*, size_t, T*) = Nop>
-  void Grow(size_t n, const T* elem = nullptr) {
+  // to new buffer, and possibly initialize the new element according
+  // to InitType.
+  // We pass the InitType and Mover as template arguments so that
+  // this code compiles even if T does not support copying or default
+  // construction.
+  template <void(Mover)(T*, size_t, T*), class InitType = Uninitialized,
+            class... Args>
+  void Grow(size_t n, Args&&... args) {
     size_t s = size();
     DCHECK_LE(s, capacity());
 
@@ -408,18 +435,15 @@ class InlinedVector {
     }
 
     T* src = data();
-    T* dst = static_cast<T*>(malloc(target * sizeof(T)));
+    T* dst = static_cast<T*>(port::Malloc(target * sizeof(T)));
 
     // Need to copy elem before discarding src since it might alias src.
-    if (elem) {
-      Initializer(elem, 1, dst + s);
-    }
-
+    InitType{}(dst + s, std::forward<Args>(args)...);
     Mover(src, s, dst);
     DiscardStorage();
 
     u_.data[kSize - 1] = kSentinel;
-    u_.data[kSize - 2] = target_lg;
+    u_.data[kSize - 2] = static_cast<unsigned char>(target_lg);
     set_size_internal(s);
     DCHECK_EQ(capacity(), target);
     set_outofline_pointer(dst);

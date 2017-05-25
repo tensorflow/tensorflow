@@ -18,10 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/io/inputbuffer.h"
 #if !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
-#include "tensorflow/core/lib/io/zlib_inputbuffer.h"
+#include "tensorflow/core/lib/io/zlib_inputstream.h"
 #endif  // IS_SLIM_BUILD
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -36,6 +36,9 @@ class RecordReaderOptions {
  public:
   enum CompressionType { NONE = 0, ZLIB_COMPRESSION = 1 };
   CompressionType compression_type = NONE;
+
+  static RecordReaderOptions CreateRecordReaderOptions(
+      const string& compression_type);
 
 #if !defined(IS_SLIM_BUILD)
   // Options specific to zlib compression.
@@ -64,7 +67,8 @@ class RecordReader {
   RandomAccessFile* src_;
   RecordReaderOptions options_;
 #if !defined(IS_SLIM_BUILD)
-  std::unique_ptr<ZlibInputBuffer> zlib_input_buffer_;
+  std::unique_ptr<RandomAccessInputStream> random_input_stream_;
+  std::unique_ptr<ZlibInputStream> zlib_input_stream_;
 #endif  // IS_SLIM_BUILD
 
   TF_DISALLOW_COPY_AND_ASSIGN(RecordReader);

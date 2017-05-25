@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package tensorflow;
-// option cc_enable_arenas = true;
+option cc_enable_arenas = true;
 
 // Protocol buffer representing the checkpoint state.
 //

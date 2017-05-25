@@ -1,4 +1,4 @@
-# Tensorflow Model Benchmark Tool
+# TensorFlow Model Benchmark Tool
 
 ## Description
 
@@ -8,6 +8,8 @@ both on desktop machines and on Android.
 ## To build/install/run
 
 ### On Android:
+
+(0) Refer to https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android to edit the `WORKSPACE` to configure the android NDK/SDK.
 
 (1) build for your specific platform, e.g.:
 ```bash
@@ -39,7 +41,7 @@ $adb shell "/data/local/tmp/benchmark_model \
 ### On desktop:
 (1) build the binary
 ```bash
-$bazel build -c opt tensorflow/tools/benchmark:benchmark_model
+$bazel build --config opt tensorflow/tools/benchmark:benchmark_model
 ```
 
 (2) Run on your compute graph, similar to the Android case but without the need of adb shell.

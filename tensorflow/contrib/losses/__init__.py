@@ -13,13 +13,35 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Ops for building neural network losses."""
+"""Ops for building neural network losses.
+
+See @{$python/contrib.losses}.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# pylint: disable=unused-import,wildcard-import
+# pylint: disable=wildcard-import
 from tensorflow.contrib.losses.python.losses import *
+# pylint: enable=wildcard-import
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = [
+    'absolute_difference',
+    'add_loss',
+    'hinge_loss',
+    'compute_weighted_loss',
+    'cosine_distance',
+    'get_losses',
+    'get_regularization_losses',
+    'get_total_loss',
+    'log_loss',
+    'mean_pairwise_squared_error',
+    'mean_squared_error',
+    'sigmoid_cross_entropy',
+    'softmax_cross_entropy',
+    'sparse_softmax_cross_entropy',
+]
+remove_undocumented(__name__, _allowed_symbols)

@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #define EIGEN_USE_THREADS
+
+#include "tensorflow/core/kernels/lookup_table_init_op.h"
 
 #include <algorithm>
 #include <memory>
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/initializable_lookup_table.h"
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -80,7 +80,7 @@ class KeyValueTensorIterator
 
   Status status() const override { return status_; }
 
-  int64 total_size() const {
+  int64 total_size() const override {
     return keys_ == nullptr ? -1 : keys_->NumElements();
   }
 
@@ -95,11 +95,10 @@ class KeyValueTensorIterator
 
 Status GetNumLinesInTextFile(Env* env, const string& vocab_file,
                              int64* num_lines) {
-  RandomAccessFile* file;
+  std::unique_ptr<RandomAccessFile> file;
   TF_RETURN_IF_ERROR(env->NewRandomAccessFile(vocab_file, &file));
-  std::unique_ptr<RandomAccessFile> deleter(file);
 
-  io::InputBuffer input_buffer(file, kInputBufferSize);
+  io::InputBuffer input_buffer(file.get(), kInputBufferSize);
   string line;
   Status s = input_buffer.ReadLine(&line);
   int64 next_id = 0;
@@ -152,10 +151,8 @@ class TextFileLineIterator
     key_index_ = key_index;
     value_index_ = value_index;
 
-    RandomAccessFile* file;
-    status_ = env->NewRandomAccessFile(filename_, &file);
+    status_ = env->NewRandomAccessFile(filename_, &file_);
     if (!status_.ok()) return status_;
-    file_.reset(file);
 
     input_buffer_.reset(new io::InputBuffer(file_.get(), kInputBufferSize));
     valid_ = true;
@@ -180,7 +177,7 @@ class TextFileLineIterator
       return;
     }
     if (next_id_ >= vocab_size_) {
-      LOG(WARNING) << "Truncated " << filename_ << " before it's end at "
+      LOG(WARNING) << "Truncated " << filename_ << " before its end at "
                    << vocab_size_ << " records.";
       LOG(WARNING) << "next_id_  : " << next_id_;
       status_ = errors::OutOfRange("Finished reading ", vocab_size_,
@@ -208,12 +205,12 @@ class TextFileLineIterator
         return;
       }
     }
-    status_ = SetValue(line, tokens, key_index_, key_.dtype(), &key_);
+    status_ = SetValue(line, tokens, key_index_, &key_);
     if (!status_.ok()) {
       valid_ = false;
       return;
     }
-    status_ = SetValue(line, tokens, value_index_, value_.dtype(), &value_);
+    status_ = SetValue(line, tokens, value_index_, &value_);
     if (!status_.ok()) {
       valid_ = false;
       return;
@@ -250,17 +247,14 @@ class TextFileLineIterator
   // Set the corresponding value from line or tokens based on 'index' into the
   // tensor 't'. The value is transformed to the given data type 'dtype'.
   Status SetValue(const string& line, const std::vector<string>& tokens,
-                  int64 index, DataType dtype, Tensor* tensor) {
+                  int64 index, Tensor* tensor) {
     if (index == kLineNumber) {
       tensor->flat<int64>()(0) = next_id_;
       return Status::OK();
     }
-    if (index == kWholeLine) {
-      tensor->flat<string>()(0) = line;
-      return Status::OK();
-    }
-    const string& token = tokens[index];
-    switch (tensor->dtype()) {
+    const string& token = (index == kWholeLine) ? line : tokens[index];
+    const DataType& dtype = tensor->dtype();
+    switch (dtype) {
       case DT_INT32: {
         int32 value;
         if (!strings::safe_strto32(token.c_str(), &value)) {
@@ -288,6 +282,15 @@ class TextFileLineIterator
         }
         tensor->flat<float>()(0) = value;
       } break;
+      case DT_DOUBLE: {
+        double value;
+        if (!strings::safe_strtod(token.c_str(), &value)) {
+          valid_ = false;
+          return errors::InvalidArgument("Field ", token, " in line ", next_id_,
+                                         " is not a valid double.");
+        }
+        tensor->flat<double>()(0) = value;
+      } break;
       case DT_STRING:
         tensor->flat<string>()(0) = token;
         break;
@@ -301,6 +304,8 @@ class TextFileLineIterator
   TF_DISALLOW_COPY_AND_ASSIGN(TextFileLineIterator);
 };
 
+}  // namespace
+
 // Helper function to initialize an InitializableLookupTable from a text file.
 Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
                                    char delimiter, int32 key_index,
@@ -311,26 +316,28 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
         "Key index for line number requires table key dtype of int64, got ",
         table->key_dtype());
   }
-  if (key_index == kWholeLine && table->key_dtype() != DT_STRING) {
+  const DataType& key_dtype = table->key_dtype();
+  const DataType& value_dtype = table->value_dtype();
+  if (key_index == kWholeLine && !DataTypeIsInteger(key_dtype) &&
+      key_dtype != DT_STRING) {
     return errors::InvalidArgument(
-        "Key index for whole line requires table key dtype of string, got ",
+        "Key index for whole line requires string or integer table key, got ",
         table->key_dtype());
   }
-  if (value_index == kLineNumber && table->value_dtype() != DT_INT64) {
+  if (value_index == kLineNumber && value_dtype != DT_INT64) {
     return errors::InvalidArgument(
         "Value index for line number requires table value dtype of int64, got ",
         table->value_dtype());
   }
-  if (value_index == kWholeLine && table->value_dtype() != DT_STRING) {
+  if (value_index == kWholeLine && value_dtype != DT_STRING) {
     return errors::InvalidArgument(
         "Value index for whole line requires table value dtype of string, got ",
         table->value_dtype());
   }
 
   TextFileLineIterator iter;
-  TF_RETURN_IF_ERROR(iter.Init(filename, vocab_size, delimiter,
-                               table->key_dtype(), key_index,
-                               table->value_dtype(), value_index, env));
+  TF_RETURN_IF_ERROR(iter.Init(filename, vocab_size, delimiter, key_dtype,
+                               key_index, value_dtype, value_index, env));
   // For initialization from files, ignore if the table is already
   // initialized. The table shared name should contain the filename to
   // avoid trying to initialize the same table from the same file at the same
@@ -344,7 +351,6 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
   return s;
 }
 
-}  // namespace
 }  // namespace lookup
 
 // Kernel to initialize a look table given a key and value tensors.
@@ -361,20 +367,23 @@ class InitializeTableOp : public OpKernel {
                    GetInitializableLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {DT_STRING_REF, table->key_dtype(),
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
     DataTypeVector expected_outputs = {};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
 
     const Tensor& keys = ctx->input(1);
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(keys.shape()),
-                errors::InvalidArgument("Keys must be a vector, but received ",
-                                        keys.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsVector(keys.shape()),
+        errors::InvalidArgument("Keys must be a vector, but received shape",
+                                keys.shape().DebugString()));
 
     const Tensor& values = ctx->input(2);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsVector(values.shape()),
-        errors::InvalidArgument("Values must be a vector, but received ",
+        errors::InvalidArgument("Values must be a vector, but received shape",
                                 values.shape().DebugString()));
 
     OP_REQUIRES(ctx, keys.NumElements() == values.NumElements(),
@@ -383,7 +392,16 @@ class InitializeTableOp : public OpKernel {
                     keys.NumElements(), " vs ", values.NumElements()));
 
     lookup::KeyValueTensorIterator iter(&keys, &values);
+
+    int memory_used_before = 0;
+    if (ctx->track_allocations()) {
+      memory_used_before = table->MemoryUsed();
+    }
     OP_REQUIRES_OK(ctx, table->Initialize(iter));
+    if (ctx->track_allocations()) {
+      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
+                                                    memory_used_before);
+    }
   }
 
  private:
@@ -391,6 +409,8 @@ class InitializeTableOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("InitializeTable").Device(DEVICE_CPU),
+                        InitializeTableOp);
+REGISTER_KERNEL_BUILDER(Name("InitializeTableV2").Device(DEVICE_CPU),
                         InitializeTableOp);
 
 // Kernel to initialize a lookup table from a text file.
@@ -417,23 +437,33 @@ class InitializeTableFromTextFileOp : public OpKernel {
                    GetInitializableLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {DT_STRING_REF, DT_STRING};
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, DT_STRING};
     DataTypeVector expected_outputs = {};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
 
     const Tensor& vocab_filename_tensor = ctx->input(1);
     OP_REQUIRES(
         ctx, TensorShapeUtils::IsScalar(vocab_filename_tensor.shape()),
-        errors::InvalidArgument("filename should be a single string, but got",
+        errors::InvalidArgument("filename should be a single string, but got ",
                                 vocab_filename_tensor.shape().DebugString()));
 
     string vocab_filename = vocab_filename_tensor.scalar<string>()();
     OP_REQUIRES(ctx, !vocab_filename.empty(),
                 errors::InvalidArgument("filename cannot be empty."));
 
+    int64 memory_used_before = 0;
+    if (ctx->track_allocations()) {
+      memory_used_before = table->MemoryUsed();
+    }
     OP_REQUIRES_OK(ctx, lookup::InitializeTableFromTextFile(
                             vocab_filename, vocab_size_, delimiter_, key_index_,
                             value_index_, ctx->env(), table));
+    if (ctx->track_allocations()) {
+      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
+                                                    memory_used_before);
+    }
   }
 
  private:
@@ -448,5 +478,8 @@ class InitializeTableFromTextFileOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("InitializeTableFromTextFile").Device(DEVICE_CPU),
                         InitializeTableFromTextFileOp);
+REGISTER_KERNEL_BUILDER(
+    Name("InitializeTableFromTextFileV2").Device(DEVICE_CPU),
+    InitializeTableFromTextFileOp);
 
 }  // namespace tensorflow

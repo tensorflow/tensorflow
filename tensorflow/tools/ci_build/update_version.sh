@@ -61,6 +61,9 @@ fi
 MAJOR=$(echo "${NEW_VER}" | cut -d \. -f 1)
 MINOR=$(echo "${NEW_VER}" | cut -d \. -f 2)
 PATCH=$(echo "${NEW_VER}" | cut -d \. -f 3)
+PATCH_NUM=$(echo "$PATCH" | cut -d \- -f 1)
+PIP_PATCH="${PATCH//-}"
+SUFFIX=$(echo $NEW_VER | sed "s/${MAJOR}.${MINOR}.${PATCH%-*}//g")
 
 # Update tensorflow/core/public/version.h
 VERSION_H="${TF_SRC_DIR}/core/public/version.h"
@@ -70,13 +73,17 @@ OLD_MAJOR=$(cat ${VERSION_H} | grep -E "^#define TF_MAJOR_VERSION [0-9]+" | \
 cut -d ' ' -f 3)
 OLD_MINOR=$(cat ${VERSION_H} | grep -E "^#define TF_MINOR_VERSION [0-9]+" | \
 cut -d ' ' -f 3)
-OLD_PATCH=$(cat ${VERSION_H} | grep -E "^#define TF_PATCH_VERSION [[:alnum:]]+" | \
+OLD_PATCH_NUM=$(cat ${VERSION_H} | grep -E "^#define TF_PATCH_VERSION [[:alnum:]-]+" | \
 cut -d ' ' -f 3)
+OLD_EXTENSION=$(cat ${VERSION_H} | grep -E "^#define TF_VERSION_SUFFIX \"[[:alnum:]-]+\"" | \
+cut -d ' ' -f 3)
+OLD_PATCH="$OLD_PATCH_NUM${OLD_EXTENSION//\"}"
+OLD_PIP_PATCH="${OLD_PATCH//-}"
 
 sed -i -e "s/^#define TF_MAJOR_VERSION ${OLD_MAJOR}/#define TF_MAJOR_VERSION ${MAJOR}/g" ${VERSION_H}
 sed -i -e "s/^#define TF_MINOR_VERSION ${OLD_MINOR}/#define TF_MINOR_VERSION ${MINOR}/g" ${VERSION_H}
-sed -i -e "s/^#define TF_PATCH_VERSION ${OLD_PATCH}/#define TF_PATCH_VERSION ${PATCH}/g" "${VERSION_H}"
-
+sed -i -e "s/^#define TF_PATCH_VERSION ${OLD_PATCH}/#define TF_PATCH_VERSION ${PATCH_NUM}/g" "${VERSION_H}"
+sed -i -e "s/^#define TF_VERSION_SUFFIX \".*\"/#define TF_VERSION_SUFFIX \"${SUFFIX}\"/g" "${VERSION_H}"
 
 # Update setup.py
 SETUP_PY="${TF_SRC_DIR}/tools/pip_package/setup.py"
@@ -85,52 +92,32 @@ check_existence file "${SETUP_PY}"
 sed -i -e "s/^\_VERSION = [\'\"].*[\'\"]/\_VERSION = \'${MAJOR}.${MINOR}.${PATCH}\'/g" "${SETUP_PY}"
 
 
-# Update Dockerfiles in tensorflow/tools/docker/
-TOOLS_DOCKER_DIR="${TF_SRC_DIR}/tools/docker"
-check_existence dir "${TOOLS_DOCKER_DIR}"
-
-# Determine the files that need to be modified
-DOCKERFILES=$(grep -lrE "^ENV TENSORFLOW_VERSION .+" ${TOOLS_DOCKER_DIR})
-for DOCKERF in ${DOCKERFILES}; do
-  sed -i -r -e "s/^ENV TENSORFLOW_VERSION .+/ENV TENSORFLOW_VERSION ${MAJOR}.${MINOR}.${PATCH}/g" "${DOCKERF}"
-done
-
-
-# Update os_setup.md
-OS_SETUP="${TF_SRC_DIR}/g3doc/get_started/os_setup.md"
-check_existence file "${OS_SETUP}"
-
-sed -i -r -e "s/(.*pip[0-9]* install .*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
-
-sed -i -r -e "s/(.*\(e\.g\..*[^0-9])([0-9]+\.[0-9]+\.[[:alnum:]]+)(-gpu.*)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${OS_SETUP}"
-
-
 # Update README.md
 README_MD="./README.md"
 check_existence file "${README_MD}"
 
-sed -i -r -e "s/${OLD_MAJOR}\.${OLD_MINOR}\.${OLD_PATCH}/${MAJOR}.${MINOR}.${PATCH}/g" "${README_MD}"
+sed -i -r -e "s/${OLD_MAJOR}\.${OLD_MINOR}\.([[:alnum:]]+)-/${MAJOR}.${MINOR}.${PIP_PATCH}-/g" "${README_MD}"
 
-# Update tensorflow/tools/dist_test/Dockerfile
-DIST_TEST_DOCKER_FILE="${TF_SRC_DIR}/tools/dist_test/Dockerfile"
-check_existence file "${DIST_TEST_DOCKER_FILE}"
+# Update the install md files
+NEW_PIP_TAG=$MAJOR.$MINOR.$PIP_PATCH
+OLD_PIP_TAG=$OLD_MAJOR.$OLD_MINOR.$OLD_PIP_PATCH
 
-sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${DIST_TEST_DOCKER_FILE}"
+for file in ${TF_SRC_DIR}/docs_src/install/install_{linux,mac,windows,sources}.md
+do
+  sed -i "s/tensorflow-${OLD_PIP_TAG}/tensorflow-${NEW_PIP_TAG}/g" $file
+  sed -i "s/tensorflow_gpu-${OLD_PIP_TAG}/tensorflow_gpu-${NEW_PIP_TAG}/g" $file
+  sed -i "s/TensorFlow ${OLD_PIP_TAG}/TensorFlow ${NEW_PIP_TAG}/g" $file
+done
 
-# Update tensorflow/tools/dist_test/server/Dockerfile
-SERVER_DOCKER_FILE="${TF_SRC_DIR}/tools/dist_test/server/Dockerfile"
+NEW_TAG=$MAJOR.$MINOR.$PATCH
+OLD_TAG=$OLD_MAJOR.$OLD_MINOR.$OLD_PATCH
 
-check_existence file "${SERVER_DOCKER_FILE}"
-
-sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${SERVER_DOCKER_FILE}"
-
-# Update tensorflow/tools/dist_test/server/Dockerfile.test
-TEST_SERVER_DOCKER_FILE="${TF_SRC_DIR}/tools/dist_test/server/Dockerfile.test"
-
-check_existence file "${TEST_SERVER_DOCKER_FILE}"
-
-sed -i -r -e "s/(.*tensorflow-)([0-9]+\.[0-9]+\.[[:alnum:]]+)(-.*\.whl)/\1${MAJOR}.${MINOR}.${PATCH}\3/g" "${TEST_SERVER_DOCKER_FILE}"
-
+for file in ${TF_SRC_DIR}/docs_src/install/install_{java,go,c}.md
+do
+  sed -i "s/x86_64-${OLD_TAG}/x86_64-${NEW_TAG}/g" $file
+  sed -i "s/libtensorflow-${OLD_TAG}.jar/libtensorflow-${NEW_TAG}.jar/g" $file
+  sed -i "s/<version>${OLD_TAG}<\/version>/<version>${NEW_TAG}<\/version>/g" $file
+done
 
 # Updates to be made if there are major / minor version changes
 MAJOR_MINOR_CHANGE=0
@@ -166,20 +153,24 @@ echo "Patch: ${OLD_PATCH} -> ${PATCH}"
 echo ""
 
 # Look for potentially lingering old version strings in TensorFlow source files
-OLD_VER="${OLD_MAJOR}\.${OLD_MINOR}\.${OLD_PATCH}"
-LINGER_STRS=$(grep -rnoH "${OLD_VER}" "${TF_SRC_DIR}")
+declare -a OLD_PATCHES=(${OLD_PATCH} $(echo "${OLD_PATCH//-}"))
+for i in "${OLD_PATCHES[@]}"
+do
+  OLD_VER="${OLD_MAJOR}\.${OLD_MINOR}\.$i"
+  LINGER_STRS=$(grep -rnoH "${OLD_VER}" "${TF_SRC_DIR}")
 
-if [[ ! -z "${LINGER_STRS}" ]]; then
-  echo "WARNING: Below are potentially instances of lingering old version "\
-"string (${OLD_VER}) in source directory \"${TF_SRC_DIR}/\" that are not "\
-"updated by this script. Please check them manually!"
-  for LINGER_STR in ${LINGER_STRS}; do
-    echo "${LINGER_STR}"
-  done
-else
-  echo "No lingering old version strings found in source directory "\
-"\"${TF_SRC_DIR}/\". Good."
-fi
+  if [[ ! -z "${LINGER_STRS}" ]]; then
+    echo "WARNING: Below are potentially instances of lingering old version "\
+  "string (${OLD_VER}) in source directory \"${TF_SRC_DIR}/\" that are not "\
+  "updated by this script. Please check them manually!"
+    for LINGER_STR in ${LINGER_STRS}; do
+      echo "${LINGER_STR}"
+    done
+  else
+    echo "No lingering old version strings \"${OLD_VER}\" found in source directory "\
+  "\"${TF_SRC_DIR}/\". Good."
+  fi
+done
 
 if [[ ${MAJOR_MINOR_CHANGE} == "1" ]]; then
   LINGER_R_STRS=$(grep -rnoH "${OLD_R_MAJOR_MINOR}" "${TF_SRC_DIR}")

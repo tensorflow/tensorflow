@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -37,7 +36,7 @@ class RemoteDeviceTest : public ::testing::Test {
  protected:
   string remote_name_;
   std::unique_ptr<WorkerCacheInterface> worker_cache_;
-  std::unique_ptr<WorkerInterface> wi_;
+  WorkerInterface* wi_;
   std::vector<Device*> devices_;
   std::unique_ptr<test::TestCluster> cluster_;
 
@@ -46,16 +45,17 @@ class RemoteDeviceTest : public ::testing::Test {
     (*options.config.mutable_device_count())["CPU"] = 2;
     TF_CHECK_OK(test::TestCluster::MakeTestCluster(options, 1, &cluster_));
     const string& hostport = cluster_->targets()[0];
-    string host;
-    int port;
-    CHECK(RE2::FullMatch(hostport, "(.+):(\\d+)", &host, &port));
     GrpcChannelSpec spec;
-    spec.AddHostPortsJob("localhost", {hostport}, 1);
+    TF_CHECK_OK(spec.AddHostPortsJob("localhost", {hostport}));
+    ChannelCreationFunction channel_func =
+        ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
     worker_cache_.reset(
-        NewGrpcWorkerCache(NewGrpcChannelCache(spec, NewHostPortGrpcChannel)));
-    remote_name_ = strings::StrCat("/job:", host, "/replica:0/task:0");
-    wi_.reset(worker_cache_->CreateWorker(remote_name_));
+        NewGrpcWorkerCache(NewGrpcChannelCache(spec, channel_func)));
+    remote_name_ = "/job:localhost/replica:0/task:0";
+    wi_ = worker_cache_->CreateWorker(remote_name_);
   }
+
+  ~RemoteDeviceTest() { worker_cache_->ReleaseWorker(remote_name_, wi_); }
 
   void SetUp() override {
     Notification n;

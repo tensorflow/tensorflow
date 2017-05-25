@@ -60,7 +60,7 @@ Status AllowedTypeValue(DataType dt, const OpDef::AttrDef& attr) {
 
 Status AllowedStringValue(const string& str, const OpDef::AttrDef& attr) {
   const AttrValue& allowed_values(attr.allowed_values());
-  for (auto allowed : allowed_values.list().s()) {
+  for (const auto& allowed : allowed_values.list().s()) {
     if (str == allowed) {
       return Status::OK();
     }
@@ -471,6 +471,13 @@ void AddComma(string* s, bool* add_comma) {
   }
 }
 
+// Will add the `name` from arg if name is true.
+void AddName(string* s, bool name, const OpDef::ArgDef& arg) {
+  if (name) {
+    strings::StrAppend(s, arg.name(), ":");
+  }
+}
+
 // Compute a signature for either inputs or outputs that will be the
 // same for both the old and new OpDef if they are compatible.  We
 // assume that new_attrs is a superset of old_attrs, and that any attr
@@ -484,7 +491,8 @@ void AddComma(string* s, bool* add_comma) {
 // old_attrs, or substituting the default value from new_attrs.
 string ComputeArgSignature(
     const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
-    const AttrMap& old_attrs, const AttrMap& new_attrs) {
+    const AttrMap& old_attrs, const AttrMap& new_attrs, std::vector<bool>* ref,
+    bool names) {
   string s;
   bool add_comma = false;
   for (const OpDef::ArgDef& arg : args) {
@@ -494,8 +502,9 @@ string ComputeArgSignature(
       if (old_attr) {
         // Both old and new have the list(type) attr, so can use it directly.
         AddComma(&s, &add_comma);
+        AddName(&s, names, arg);
         strings::StrAppend(&s, arg.type_list_attr());
-        if (arg.is_ref()) strings::StrAppend(&s, " ref");
+        ref->push_back(arg.is_ref());
       } else {
         // Missing the list(type) attr in the old, so use the default
         // value for the attr from new instead.
@@ -505,22 +514,23 @@ string ComputeArgSignature(
         if (type_list.empty()) continue;
         for (int i = 0; i < type_list.size(); ++i) {
           AddComma(&s, &add_comma);
+          AddName(&s, names, arg);
           strings::StrAppend(
               &s, DataTypeString(static_cast<DataType>(type_list.Get(i))));
-          if (arg.is_ref()) strings::StrAppend(&s, " ref");
+          ref->push_back(arg.is_ref());
         }
       }
     } else {
       int num = 1;  // How many input/outputs does this represent?
+      string type;  // What is the type of this arg?
+      AddName(&type, names, arg);
       if (!arg.number_attr().empty()) {
         // N * type case.
         const OpDef::AttrDef* old_attr =
             gtl::FindPtrOrNull(old_attrs, arg.number_attr());
         if (old_attr) {
           // Both old and new have the number attr, so can use it directly.
-          AddComma(&s, &add_comma);
-          strings::StrAppend(&s, arg.number_attr(), " * ");
-          add_comma = false;  // Don't add another comma before the type.
+          strings::StrAppend(&type, arg.number_attr(), " * ");
         } else {
           // Missing the number attr in the old, so use the default
           // value for the attr from new instead.
@@ -530,30 +540,30 @@ string ComputeArgSignature(
         }
       }
 
-      string type;  // What is the type of this arg?
       if (arg.type() != DT_INVALID) {
         // int32, float, etc. case
-        type = DataTypeString(arg.type());
+        strings::StrAppend(&type, DataTypeString(arg.type()));
       } else {
         const OpDef::AttrDef* old_attr =
             gtl::FindPtrOrNull(old_attrs, arg.type_attr());
         if (old_attr) {
           // Both old and new have the type attr, so can use it directly.
-          type = arg.type_attr();
+          strings::StrAppend(&type, arg.type_attr());
         } else {
           // Missing the type attr in the old, so use the default
           // value for the attr from new instead.
           const OpDef::AttrDef* new_attr =
               gtl::FindPtrOrNull(new_attrs, arg.type_attr());
-          type = DataTypeString(new_attr->default_value().type());
+          strings::StrAppend(&type,
+                             DataTypeString(new_attr->default_value().type()));
         }
       }
-      if (arg.is_ref()) strings::StrAppend(&type, " ref");
 
       // Record `num` * `type` in the signature.
       for (int i = 0; i < num; ++i) {
         AddComma(&s, &add_comma);
         strings::StrAppend(&s, type);
+        ref->push_back(arg.is_ref());
       }
     }
   }
@@ -598,19 +608,36 @@ Status OpDefCompatible(const OpDef& old_op, const OpDef& new_op) {
              new_attr.name(), "' added without default");
   }
 
-  const string old_in_sig =
-      ComputeArgSignature(old_op.input_arg(), old_attrs, new_attrs);
-  const string new_in_sig =
-      ComputeArgSignature(new_op.input_arg(), old_attrs, new_attrs);
+  std::vector<bool> old_in_ref, new_in_ref, old_out_ref, new_out_ref;
+  const string old_in_sig = ComputeArgSignature(
+      old_op.input_arg(), old_attrs, new_attrs, &old_in_ref, false /* names */);
+  const string new_in_sig = ComputeArgSignature(
+      new_op.input_arg(), old_attrs, new_attrs, &new_in_ref, false /* names */);
   VALIDATE(old_in_sig == new_in_sig, "Input signature mismatch '", old_in_sig,
            "' vs. '", new_in_sig, "'");
+  VALIDATE(old_in_ref.size() == new_in_ref.size(),  // Should not happen
+           "Unexpected change in input ref lists.");
+  for (int i = 0; i < old_in_ref.size(); ++i) {
+    // Allowed to remove "ref" from an input (or leave it unchanged).
+    VALIDATE(old_in_ref[i] || !new_in_ref[i], "Input ", i,
+             " changed from non-ref to ref");
+  }
 
   const string old_out_sig =
-      ComputeArgSignature(old_op.output_arg(), old_attrs, new_attrs);
+      ComputeArgSignature(old_op.output_arg(), old_attrs, new_attrs,
+                          &old_out_ref, true /* names */);
   const string new_out_sig =
-      ComputeArgSignature(new_op.output_arg(), old_attrs, new_attrs);
+      ComputeArgSignature(new_op.output_arg(), old_attrs, new_attrs,
+                          &new_out_ref, true /* names */);
   VALIDATE(old_out_sig == new_out_sig, "Output signature mismatch '",
            old_out_sig, "' vs. '", new_out_sig, "'");
+  VALIDATE(old_out_ref.size() == new_out_ref.size(),  // Should not happen
+           "Unexpected change in output ref lists");
+  for (int i = 0; i < old_out_ref.size(); ++i) {
+    // Allowed to add "ref" to an output (or leave it unchanged).
+    VALIDATE(!old_out_ref[i] || new_out_ref[i], "Output ", i,
+             " changed from ref to non-ref");
+  }
 
   return Status::OK();
 }

@@ -23,107 +23,60 @@ import collections
 import os.path
 import re
 import time
+import uuid
 
 import numpy as np
 import six
 
-from google.protobuf.any_pb2 import Any
 from google.protobuf import text_format
 
-from tensorflow.core.framework import graph_pb2
-from tensorflow.core.framework import op_def_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
-from tensorflow.python.framework import graph_util
-from tensorflow.python.framework import importer
-from tensorflow.python.framework import op_def_registry
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
 
 
-def ops_used_by_graph_def(graph_def):
-  """Collect the list of ops used by a graph.
-
-  Does not validate that the ops are all registered.
-
-  Args:
-    graph_def: A `GraphDef` proto, as from `graph.as_graph_def()`.
-
-  Returns:
-    A list of strings, each naming an op used by the graph.
-  """
-  # Map function names to definitions
-  name_to_function = {}
-  for fun in graph_def.library.function:
-    name_to_function[fun.signature.name] = fun
-
-  # Collect the list of op names.  Since functions can reference functions, we
-  # need a recursive traversal.
-  used_ops = set()  # Includes both primitive ops and functions
-  functions_to_process = []  # A subset of used_ops
-  def mark_op_as_used(op):
-    if op not in used_ops and op in name_to_function:
-      functions_to_process.append(name_to_function[op])
-    used_ops.add(op)
-  for node in graph_def.node:
-    mark_op_as_used(node.op)
-  while functions_to_process:
-    fun = functions_to_process.pop()
-    for node in fun.node:
-      mark_op_as_used(node.op)
-
-  return [op for op in used_ops if op not in name_to_function]
+# Op names which identify variable reads which should be saved.
+_VARIABLE_OPS = set(["Variable",
+                     "VariableV2",
+                     "AutoReloadVariable",
+                     "VarHandleOp",
+                     "ReadVariableOp"])
 
 
-def stripped_op_list_for_graph(graph_def):
-  """Collect the stripped OpDefs for ops used by a graph.
+def _set_cpu0(device_string):
+  """Creates a new device string based on `device_string` but using /CPU:0.
 
-  This function computes the `stripped_op_list` field of `MetaGraphDef` and
-  similar protos.  The result can be communicated from the producer to the
-  consumer, which can then use the C++ function
-  `RemoveNewDefaultAttrsFromGraphDef` to improve forwards compatibility.
+  If the device is already on /CPU:0, this is a no-op.
 
   Args:
-    graph_def: A `GraphDef` proto, as from `graph.as_graph_def()`.
+    device_string: A device string.
 
   Returns:
-    An `OpList` of ops used by the graph.
-
-  Raises:
-    ValueError: If an unregistered op is used.
+    A device string.
   """
-  # This is the Python equivalent of StrippedOpListForGraph in C++.
-  # Unfortunately, since the Python op registry can differ from that in C++, we
-  # can't remove the duplication using swig (at least naively).
-  # TODO(irving): Support taking graphs directly.
-
-  used_ops = ops_used_by_graph_def(graph_def)
-
-  # Verify that all used ops are registered.
-  registered_ops = op_def_registry.get_registered_ops()
-  # These internal ops used by functions are not registered, so we need to
-  # whitelist them.  # TODO(irving): Do something better here.
-  op_whitelist = ("_Arg", "_Retval", "_ListToArray", "_ArrayToList")
-  for op in used_ops:
-    if op not in registered_ops and op not in op_whitelist:
-      raise ValueError("Op %s is used by the graph, but is not registered" % op)
-
-  # Build the stripped op list in sorted order
-  return op_def_pb2.OpList(op=[registered_ops[op] for op in sorted(used_ops)
-                               if op in registered_ops])
+  parsed_device = pydev.DeviceSpec.from_string(device_string)
+  parsed_device.device_type = "CPU"
+  parsed_device.device_index = 0
+  return parsed_device.to_string()
 
 
 class BaseSaverBuilder(object):
@@ -132,58 +85,169 @@ class BaseSaverBuilder(object):
   Can be extended to create different Ops.
   """
 
-  class VarToSave(object):
-    """Class used to describe variable slices that need to be saved."""
+  class SaveSpec(object):
+    """Class used to describe tensor slices that need to be saved."""
 
-    def __init__(self, var, slice_spec, name):
-      self.var = var
+    def __init__(self, tensor, slice_spec, name):
+      """Creates a `SaveSpec` object.
+
+      Args:
+        tensor: the tensor to save.
+        slice_spec: the slice to be saved. See `Variable.SaveSliceInfo`.
+        name: the name to save the tensor under.
+      """
+      self.tensor = tensor
       self.slice_spec = slice_spec
       self.name = name
 
-  def __init__(self):
-    pass
+  class SaveableObject(object):
+    """Base class for saving and restoring saveable objects."""
 
-  def save_op(self, filename_tensor, vars_to_save):
-    """Create an Op to save 'vars_to_save'.
+    def __init__(self, op, specs, name):
+      """Creates a `SaveableObject` object.
+
+      Args:
+        op: the "producer" object that this class wraps; it produces a list of
+          tensors to save.  E.g., a "Variable" object saving its backing tensor.
+        specs: a list of SaveSpec, each element of which describes one tensor to
+          save under this object.
+        name: the name to save the object under.
+      """
+      self.op = op
+      self.specs = specs
+      self.name = name
+      # The device of this saveable. All tensors must be on the same device.
+      self.device = specs[0].tensor.device
+
+    def restore(self, restored_tensors, restored_shapes):
+      """Restores this object from 'restored_tensors'.
+
+      Args:
+        restored_tensors: the tensors that were loaded from a checkpoint
+        restored_shapes: the shapes this object should conform to after
+          restore, or None.
+
+      Returns:
+        An operation that restores the state of the object.
+
+      Raises:
+        ValueError: If the object cannot be restored using the provided
+          parameters.
+      """
+      # pylint: disable=unused-argument
+      raise ValueError("Calling an abstract method.")
+
+  class VariableSaveable(SaveableObject):
+    """SaveableObject implementation that handles Variables."""
+
+    def __init__(self, var, slice_spec, name):
+      spec = BaseSaverBuilder.SaveSpec(var, slice_spec, name)
+      super(BaseSaverBuilder.VariableSaveable, self).__init__(var, [spec], name)
+
+    def restore(self, restored_tensors, restored_shapes):
+      restored_tensor = restored_tensors[0]
+      if restored_shapes is not None:
+        restored_tensor = array_ops.reshape(restored_tensor, restored_shapes[0])
+      return state_ops.assign(
+          self.op,
+          restored_tensor,
+          validate_shape=restored_shapes is None and
+          self.op.get_shape().is_fully_defined())
+
+  class ResourceVariableSaveable(SaveableObject):
+    """SaveableObject implementation that handles ResourceVariables."""
+
+    def __init__(self, var, slice_spec, name):
+      if isinstance(var, ops.Tensor):
+        self.handle_op = var.op.inputs[0]
+      elif isinstance(var, resource_variable_ops.ResourceVariable):
+        self.handle_op = var.handle
+      else:
+        raise ValueError(
+            "Saveable is neither a resource variable nor a read operation."
+            " Got: %s" % repr(var))
+      spec = BaseSaverBuilder.SaveSpec(var, slice_spec, name)
+      super(BaseSaverBuilder.ResourceVariableSaveable, self).__init__(
+          var, [spec], name)
+
+    def restore(self, restored_tensors, restored_shapes):
+      restored_tensor = restored_tensors[0]
+      if restored_shapes is not None:
+        restored_tensor = array_ops.reshape(restored_tensor, restored_shapes[0])
+      return resource_variable_ops.assign_variable_op(
+          self.handle_op, restored_tensor)
+
+  def __init__(self, write_version=saver_pb2.SaverDef.V2):
+    self._write_version = write_version
+
+  def save_op(self, filename_tensor, saveables):
+    """Create an Op to save 'saveables'.
 
     This is intended to be overridden by subclasses that want to generate
     different Ops.
 
     Args:
       filename_tensor: String Tensor.
-      vars_to_save: A list of BaseSaverBuilder.VarToSave objects.
+      saveables: A list of BaseSaverBuilder.SaveableObject objects.
 
     Returns:
       An Operation that save the variables.
+
+    Raises:
+      RuntimeError: (implementation detail) if "self._write_version" is an
+        unexpected value.
     """
     # pylint: disable=protected-access
-    return io_ops._save(
-        filename=filename_tensor,
-        tensor_names=[vs.name for vs in vars_to_save],
-        tensors=[vs.var for vs in vars_to_save],
-        tensor_slices=[vs.slice_spec for vs in vars_to_save])
+    tensor_names = []
+    tensors = []
+    tensor_slices = []
+    for saveable in saveables:
+      for spec in saveable.specs:
+        tensor_names.append(spec.name)
+        tensors.append(spec.tensor)
+        tensor_slices.append(spec.slice_spec)
+    if self._write_version == saver_pb2.SaverDef.V1:
+      return io_ops._save(
+          filename=filename_tensor,
+          tensor_names=tensor_names,
+          tensors=tensors,
+          tensor_slices=tensor_slices)
+    elif self._write_version == saver_pb2.SaverDef.V2:
+      # "filename_tensor" is interpreted *NOT AS A FILENAME*, but as a prefix
+      # of a V2 checkpoint: e.g. "/fs/train/ckpt-<step>/tmp/worker<i>-<step>".
+      return io_ops.save_v2(filename_tensor, tensor_names, tensor_slices,
+                            tensors)
+    else:
+      raise RuntimeError("Unexpected write_version: " + self._write_version)
 
-  def restore_op(self, filename_tensor, var_to_save, preferred_shard):
-    """Create an Op to read the variable 'var_to_save'.
+  # pylint: disable=unused-argument
+  def restore_op(self, filename_tensor, saveable, preferred_shard):
+    """Create ops to restore 'saveable'.
 
     This is intended to be overridden by subclasses that want to generate
     different Ops.
 
     Args:
       filename_tensor: String Tensor.
-      var_to_save: A BaseSaverBuilder.VarToSave object.
+      saveable: A BaseSaverBuilder.SaveableObject object.
       preferred_shard: Int.  Shard to open first when loading a sharded file.
 
     Returns:
-      A Tensor resulting from reading 'var_to_save' from 'filename'.
+      A list of Tensors resulting from reading 'saveable' from
+        'filename'.
     """
     # pylint: disable=protected-access
-    return io_ops._restore_slice(
-        filename_tensor,
-        var_to_save.name,
-        var_to_save.slice_spec,
-        var_to_save.var.dtype,
-        preferred_shard=preferred_shard)
+    tensors = []
+    for spec in saveable.specs:
+      tensors.append(
+          io_ops.restore_v2(
+              filename_tensor,
+              [spec.name],
+              [spec.slice_spec],
+              [spec.tensor.dtype])[0])
+
+    return tensors
+  # pylint: enable=unused-argument
 
   def sharded_filename(self, filename_tensor, shard, num_shards):
     """Append sharding information to a filename.
@@ -199,38 +263,111 @@ class BaseSaverBuilder(object):
     # pylint: disable=protected-access
     return gen_io_ops._sharded_filename(filename_tensor, shard, num_shards)
 
-  def _AddSaveOps(self, filename_tensor, vars_to_save):
+  def _AddSaveOps(self, filename_tensor, saveables):
     """Add ops to save variables that are on the same shard.
 
     Args:
       filename_tensor: String Tensor.
-      vars_to_save: A list of _VarToSave objects.
+      saveables: A list of SaveableObject objects.
 
     Returns:
       A tensor with the filename used to save.
     """
-    save = self.save_op(filename_tensor, vars_to_save)
+    save = self.save_op(filename_tensor, saveables)
     return control_flow_ops.with_dependencies([save], filename_tensor)
+
+  def _AddShardedSaveOpsForV2(self, checkpoint_prefix, per_device):
+    """Add ops to save the params per shard, for the V2 format.
+
+    Note that the sharded save procedure for the V2 format is different from
+    V1: there is a special "merge" step that merges the small metadata produced
+    from each device.
+
+    Args:
+      checkpoint_prefix: scalar String Tensor.  Interpreted *NOT AS A
+        FILENAME*, but as a prefix of a V2 checkpoint;
+      per_device: A list of (device, BaseSaverBuilder.VarToSave) pairs, as
+        returned by _GroupByDevices().
+
+    Returns:
+      An op to save the variables, which, when evaluated, returns the prefix
+        "<user-fed prefix>" only and does not include the sharded spec suffix.
+    """
+    # IMPLEMENTATION DETAILS: most clients should skip.
+    #
+    # Suffix for any well-formed "checkpoint_prefix", when sharded.
+    # Transformations:
+    # * Users pass in "save_path" in save() and restore().  Say "myckpt".
+    # * checkpoint_prefix gets fed <save_path><_SHARDED_SUFFIX>.
+    #
+    # Example:
+    #   During runtime, a temporary directory is first created, which contains
+    #   files
+    #
+    #     <train dir>/myckpt_temp/
+    #        part-?????-of-?????{.index, .data-00000-of-00001}
+    #
+    #   Before .save() finishes, they will be (hopefully, atomically) renamed to
+    #
+    #     <train dir>/
+    #        myckpt{.index, .data-?????-of-?????}
+    #
+    # Users only need to interact with the user-specified prefix, which is
+    # "<train dir>/myckpt" in this case.  Save() and Restore() work with the
+    # prefix directly, instead of any physical pathname.  (On failure and
+    # subsequent restore, an outdated and orphaned temporary directory can be
+    # safely removed.)
+    _SHARDED_SUFFIX = "_temp_%s/part" % uuid.uuid4().hex
+    tmp_checkpoint_prefix = string_ops.string_join(
+        [checkpoint_prefix, _SHARDED_SUFFIX])
+
+    num_shards = len(per_device)
+    sharded_saves = []
+    sharded_prefixes = []
+    num_shards_tensor = constant_op.constant(num_shards, name="num_shards")
+    last_device = None
+    for shard, (device, saveables) in enumerate(per_device):
+      last_device = device
+      with ops.device(device):
+        sharded_filename = self.sharded_filename(tmp_checkpoint_prefix, shard,
+                                                 num_shards_tensor)
+        sharded_prefixes.append(sharded_filename)
+        sharded_saves.append(self._AddSaveOps(sharded_filename, saveables))
+
+    with ops.control_dependencies([x.op for x in sharded_saves]):
+      # Co-locates the merge step with the last device.
+      with ops.device(last_device):
+        # V2 format write path consists of a metadata merge step.  Once merged,
+        # attempts to delete the temporary directory, "<user-fed prefix>_temp".
+        merge_step = gen_io_ops.merge_v2_checkpoints(
+            sharded_prefixes, checkpoint_prefix, delete_old_dirs=True)
+        with ops.control_dependencies([merge_step]):
+          # Returns the prefix "<user-fed prefix>" only.  DOES NOT include the
+          # sharded spec suffix.
+          return array_ops.identity(checkpoint_prefix)
 
   def _AddShardedSaveOps(self, filename_tensor, per_device):
     """Add ops to save the params per shard.
 
     Args:
-      filename_tensor: String Tensor.
-      per_device: A list of (device, BaseSaverBuilder.VarToSave) pairs, as
+      filename_tensor: a scalar String Tensor.
+      per_device: A list of (device, BaseSaverBuilder.SaveableObject) pairs, as
         returned by _GroupByDevices().
 
     Returns:
       An op to save the variables.
     """
+    if self._write_version == saver_pb2.SaverDef.V2:
+      return self._AddShardedSaveOpsForV2(filename_tensor, per_device)
+
     num_shards = len(per_device)
     sharded_saves = []
     num_shards_tensor = constant_op.constant(num_shards, name="num_shards")
-    for shard, (device, vars_to_save) in enumerate(per_device):
+    for shard, (device, saveables) in enumerate(per_device):
       with ops.device(device):
-        sharded_filename = self.sharded_filename(
-            filename_tensor, shard, num_shards_tensor)
-        sharded_saves.append(self._AddSaveOps(sharded_filename, vars_to_save))
+        sharded_filename = self.sharded_filename(filename_tensor, shard,
+                                                 num_shards_tensor)
+        sharded_saves.append(self._AddSaveOps(sharded_filename, saveables))
     # Return the sharded name for the save path.
     with ops.control_dependencies([x.op for x in sharded_saves]):
       # pylint: disable=protected-access
@@ -238,16 +375,16 @@ class BaseSaverBuilder(object):
 
   def _AddRestoreOps(self,
                      filename_tensor,
-                     vars_to_save,
+                     saveables,
                      restore_sequentially,
                      reshape,
                      preferred_shard=-1,
                      name="restore_all"):
-    """Add operations to restore vars_to_save.
+    """Add operations to restore saveables.
 
     Args:
       filename_tensor: Tensor for the path of the file to load.
-      vars_to_save: A list of _VarToSave objects.
+      saveables: A list of SaveableObject objects.
       restore_sequentially: True if we want to restore variables sequentially
         within a shard.
       reshape: True if we want to reshape loaded tensors to the shape of
@@ -259,37 +396,38 @@ class BaseSaverBuilder(object):
       An Operation that restores the variables.
     """
     assign_ops = []
-    for vs in vars_to_save:
-      v = vs.var
+    for saveable in saveables:
       restore_control_inputs = assign_ops[-1:] if restore_sequentially else []
       # Load and optionally reshape on the CPU, as string tensors are not
       # available on the GPU.
       # TODO(touts): Re-enable restore on GPU when we can support annotating
       # string tensors as "HostMemory" inputs.
-      with ops.device(graph_util.set_cpu0(v.device) if v.device else None):
+      with ops.device(_set_cpu0(saveable.device) if saveable.device else None):
         with ops.control_dependencies(restore_control_inputs):
-          values = self.restore_op(filename_tensor, vs, preferred_shard)
-        if reshape:
-          shape = v.get_shape()
-          if not shape.is_fully_defined():
-            shape = array_ops.shape(v)
-          values = array_ops.reshape(values, shape)
+          tensors = self.restore_op(filename_tensor, saveable, preferred_shard)
+          shapes = None
+          if reshape:
+            # Compute the shapes, let the restore op decide if and how to do
+            # the reshape.
+            shapes = []
+            for spec in saveable.specs:
+              v = spec.tensor
+              shape = v.get_shape()
+              if not shape.is_fully_defined():
+                shape = array_ops.shape(v)
+              shapes.append(shape)
+          assign_ops.append(saveable.restore(tensors, shapes))
 
-      validate_shape = not reshape and v.get_shape().is_fully_defined()
-      assign_ops.append(state_ops.assign(v,
-                                         values,
-                                         validate_shape=validate_shape))
-
-    # Create a Noop that has control dependencies from all the updates.
+      # Create a Noop that has control dependencies from all the updates.
     return control_flow_ops.group(*assign_ops, name=name)
 
   def _AddShardedRestoreOps(self, filename_tensor, per_device,
                             restore_sequentially, reshape):
-    """Add Ops to save variables from multiple devices.
+    """Add Ops to restore variables from multiple devices.
 
     Args:
       filename_tensor: Tensor for the path of the file to load.
-      per_device: A list of (device, _VarToSave) pairs, as
+      per_device: A list of (device, SaveableObject) pairs, as
         returned by _GroupByDevices().
       restore_sequentially: True if we want to restore variables sequentially
         within a shard.
@@ -300,116 +438,139 @@ class BaseSaverBuilder(object):
       An Operation that restores the variables.
     """
     sharded_restores = []
-    for shard, (device, vars_to_save) in enumerate(per_device):
+    for shard, (device, saveables) in enumerate(per_device):
       with ops.device(device):
-        sharded_restores.append(self._AddRestoreOps(
-            filename_tensor,
-            vars_to_save,
-            restore_sequentially,
-            reshape,
-            preferred_shard=shard,
-            name="restore_shard"))
+        sharded_restores.append(
+            self._AddRestoreOps(
+                filename_tensor,
+                saveables,
+                restore_sequentially,
+                reshape,
+                preferred_shard=shard,
+                name="restore_shard"))
     return control_flow_ops.group(*sharded_restores, name="restore_all")
 
-  def _IsVariable(self, v):
-    return isinstance(v, ops.Tensor) and (
-        v.op.type == "Variable" or v.op.type == "AutoReloadVariable")
+  @staticmethod
+  def _IsVariable(v):
+    return isinstance(v, ops.Tensor) and v.op.type in _VARIABLE_OPS
 
-  def _GroupByDevices(self, vars_to_save):
+  def _GroupByDevices(self, saveables):
     """Group Variable tensor slices per device.
 
     TODO(touts): Make sure that all the devices found are on different
     job/replica/task/cpu|gpu.  It would be bad if 2 were on the same device.
-    It can happen if the devices as unspecified.
+    It can happen if the devices are unspecified.
 
     Args:
-      vars_to_save: A list of BaseSaverBuilder.VarToSave objects.
+      saveables: A list of BaseSaverBuilder.SaveableObject objects.
 
     Returns:
-      A list of tuples: (device_name, BaseSaverBuilder.VarToSave) tuples.
+      A list of tuples: (device_name, BaseSaverBuilder.SaveableObject) tuples.
       The list is sorted by ascending device_name.
+
+    Raises:
+      ValueError: If the tensors of a saveable are on different devices.
     """
     per_device = collections.defaultdict(lambda: [])
-    for var_to_save in vars_to_save:
-      canonical_device = pydev.canonical_name(var_to_save.var.device)
-      per_device[canonical_device].append(var_to_save)
+    for saveable in saveables:
+      canonical_device = set(
+          pydev.canonical_name(spec.tensor.device) for spec in saveable.specs)
+      if len(canonical_device) != 1:
+        raise ValueError("All tensors of a saveable object must be "
+                         "on the same device: %s" % saveable.name)
+      per_device[canonical_device.pop()].append(saveable)
     return sorted(per_device.items(), key=lambda t: t[0])
 
-  def _VarListToDict(self, var_list):
-    """Create a dictionary of names to variable lists.
+  @staticmethod
+  def OpListToDict(op_list):
+    """Create a dictionary of names to operation lists.
 
     Args:
-      var_list: A list, tuple, or set of Variables.
+      op_list: A list, tuple, or set of Variables or SaveableObjects.
 
     Returns:
-      A dictionary of variable names to the variables that must be saved under
+      A dictionary of names to the operations that must be saved under
       that name.  Variables with save_slice_info are grouped together under the
       same key in no particular order.
 
     Raises:
-      TypeError: If the type of var_list or its elements is not supported.
-      ValueError: If at least two variables share the same name.
+      TypeError: If the type of op_list or its elements is not supported.
+      ValueError: If at least two saveables share the same name.
     """
-    if not isinstance(var_list, (list, tuple, set)):
+    if not isinstance(op_list, (list, tuple, set)):
       raise TypeError("Variables to save should be passed in a dict or a "
-                      "list: %s" % var_list)
-    var_list = set(var_list)
-    names_to_variables = {}
-    for var in var_list:
-      # pylint: disable=protected-access
-      if isinstance(var, variables.Variable) and var._save_slice_info:
+                      "list: %s" % op_list)
+    op_list = set(op_list)
+    names_to_saveables = {}
+    # pylint: disable=protected-access
+    for var in op_list:
+      if isinstance(var, BaseSaverBuilder.SaveableObject):
+        names_to_saveables[var.name] = var
+      elif isinstance(var, variables.PartitionedVariable):
+        if var.name in names_to_saveables:
+          raise ValueError("At least two variables have the same name: %s" %
+                           var.name)
+        names_to_saveables[var.name] = var
+      elif isinstance(var, variables.Variable) and var._save_slice_info:
         name = var._save_slice_info.full_name
-        if name in names_to_variables:
-          if not isinstance(names_to_variables[name], list):
+        if name in names_to_saveables:
+          if not isinstance(names_to_saveables[name], list):
             raise ValueError("Mixing slices and non-slices with the same name: "
                              "%s" % name)
-          names_to_variables[name].append(var)
+          names_to_saveables[name].append(var)
         else:
-          names_to_variables[name] = [var]
+          names_to_saveables[name] = [var]
       else:
-        var = ops.convert_to_tensor(var, as_ref=True)
-        if not self._IsVariable(var):
+        var = ops.internal_convert_to_tensor(var, as_ref=True)
+        if not BaseSaverBuilder._IsVariable(var):
           raise TypeError("Variable to save is not a Variable: %s" % var)
-        name = var.op.name
-        if name in names_to_variables:
+        if var.op.type == "ReadVariableOp":
+          name = var.op.inputs[0].op.name
+        else:
+          name = var.op.name
+        if name in names_to_saveables:
           raise ValueError("At least two variables have the same name: %s" %
                            name)
-        names_to_variables[name] = var
+        names_to_saveables[name] = var
       # pylint: enable=protected-access
-    return names_to_variables
+    return names_to_saveables
 
-  def _ValidateAndSliceInputs(self, names_to_variables):
+  def _ValidateAndSliceInputs(self, names_to_saveables):
     """Returns the variables and names that will be used for a Saver.
 
     Args:
-      names_to_variables: A dict (k, v) where k is the name of a variable and v
-         is a Variable to save or a BaseSaverBuilder.Saver.
+      names_to_saveables: A dict (k, v) where k is the name of an operation and
+         v is an operation to save or a BaseSaverBuilder.Saver.
 
     Returns:
-      A list of BaseSaverBuilder.VarToSave objects.
+      A list of BaseSaverBuilder.SaveableObject objects.
 
     Raises:
       TypeError: If any of the keys are not strings or any of the
-        values are not one of Tensor or Variable.
-      ValueError: If the same variable is given in more than one value
+        values are not one of Tensor or Variable or a checkpointable operation.
+      ValueError: If the same operation is given in more than one value
         (this also applies to slices of SlicedVariables).
     """
-    if not isinstance(names_to_variables, dict):
-      names_to_variables = self._VarListToDict(names_to_variables)
+    if not isinstance(names_to_saveables, dict):
+      names_to_saveables = BaseSaverBuilder.OpListToDict(names_to_saveables)
 
-    vars_to_save = []
-    seen_variables = set()
-    for name in sorted(names_to_variables.keys()):
+    saveables = []
+    seen_ops = set()
+    for name in sorted(names_to_saveables.keys()):
       if not isinstance(name, six.string_types):
-        raise TypeError("names_to_variables must be a dict mapping string "
-                        "names to variable Tensors. Name is not a string: %s" %
-                        name)
-      v = names_to_variables[name]
-      if isinstance(v, (list, tuple)):
+        raise TypeError(
+            "names_to_saveables must be a dict mapping string names to "
+            "checkpointable operations. Name is not a string: %s" % name)
+      op = names_to_saveables[name]
+      if isinstance(op, BaseSaverBuilder.SaveableObject):
+        self._AddSaveable(saveables, seen_ops, op)
+      elif isinstance(op, (list, tuple, variables.PartitionedVariable)):
+        if isinstance(op, variables.PartitionedVariable):
+          op = list(op)
         # A set of slices.
         slice_name = None
         # pylint: disable=protected-access
-        for variable in v:
+        for variable in op:
           if not isinstance(variable, variables.Variable):
             raise ValueError("Slices must all be Variables: %s" % variable)
           if not variable._save_slice_info:
@@ -418,55 +579,64 @@ class BaseSaverBuilder(object):
             slice_name = variable._save_slice_info.full_name
           elif slice_name != variable._save_slice_info.full_name:
             raise ValueError(
-                "Slices must all be from the same tensor: %s != %s"
-                % (slice_name, variable._save_slice_info.full_name))
-          self._AddVarToSave(vars_to_save, seen_variables,
-                             variable, variable._save_slice_info.spec, name)
+                "Slices must all be from the same tensor: %s != %s" %
+                (slice_name, variable._save_slice_info.full_name))
+          if variable.op.type in ["Variable", "VariableV2",
+                                  "AutoReloadVariable"]:
+            saveable = BaseSaverBuilder.VariableSaveable(
+                variable, variable._save_slice_info.spec, name)
+          else:
+            saveable = BaseSaverBuilder.ResourceVariableSaveable(
+                variable, variable._save_slice_info.spec, name)
+          self._AddSaveable(saveables, seen_ops, saveable)
         # pylint: enable=protected-access
       else:
         # A variable or tensor.
-        variable = ops.convert_to_tensor(v, as_ref=True)
-        if not self._IsVariable(variable):
-          raise TypeError("names_to_variables must be a dict mapping string "
+        variable = ops.internal_convert_to_tensor(op, as_ref=True)
+        if not BaseSaverBuilder._IsVariable(variable):
+          raise TypeError("names_to_saveables must be a dict mapping string "
                           "names to Tensors/Variables. Not a variable: %s" %
                           variable)
-        self._AddVarToSave(vars_to_save, seen_variables, variable, "", name)
-    return vars_to_save
+        if variable.op.type in ["Variable", "VariableV2", "AutoReloadVariable"]:
+          saveable = BaseSaverBuilder.VariableSaveable(variable, "", name)
+        else:
+          saveable = BaseSaverBuilder.ResourceVariableSaveable(
+              variable, "", name)
+        self._AddSaveable(saveables, seen_ops, saveable)
+    return saveables
 
-  def _AddVarToSave(self, vars_to_save, seen_variables, variable, slice_spec,
-                    name):
-    """Create a VarToSave and add it  to the vars_to_save list.
+  def _AddSaveable(self, saveables, seen_ops, saveable):
+    """Adds the saveable to the saveables list.
 
     Args:
-      vars_to_save: List to append the new VarToSave to.
-      seen_variables: Set of variables already processed.  Used to check
-        that each variable is only saved once.
-      variable: Variable to save.
-      slice_spec: String.  Slice spec for the variable.
-      name: Name to use to save the variable.
+      saveables: List to append the SaveableObject to.
+      seen_ops: Set of the ops of the saveables already processed.  Used to
+        check that each saveable is only saved once.
+      saveable: The saveable.
 
     Raises:
-      ValueError: If the variable has already been processed.
+      ValueError: If the saveable has already been processed.
     """
-    if variable in seen_variables:
-      raise ValueError("The same variable will be restored with two names: %s",
-                       variable)
-    vars_to_save.append(BaseSaverBuilder.VarToSave(variable, slice_spec, name))
-    seen_variables.add(variable)
+    if saveable.op in seen_ops:
+      raise ValueError("The same saveable will be restored with two names: %s" %
+                       saveable.name)
+    saveables.append(saveable)
+    seen_ops.add(saveable.op)
 
   def build(self,
-            names_to_variables,
+            names_to_saveables,
             reshape=False,
             sharded=False,
             max_to_keep=5,
             keep_checkpoint_every_n_hours=10000.0,
             name=None,
-            restore_sequentially=False):
+            restore_sequentially=False,
+            filename="model"):
     """Adds save/restore nodes to the graph and creates a SaverDef proto.
 
     Args:
-      names_to_variables: A dictionary mapping name to a Variable.
-        Each name will be associated with the
+      names_to_saveables: A dictionary mapping name to a Variable or
+        SaveableObject. Each name will be associated with the
         corresponding variable in the checkpoint.
       reshape: If True, allow restoring parameters from a checkpoint
         that where the parameters have a different shape.  This is
@@ -485,44 +655,85 @@ class BaseSaverBuilder(object):
       name: String.  Optional name to use as a prefix when adding operations.
       restore_sequentially: A Bool, which if true, causes restore of different
         variables to happen sequentially within each device.
+      filename: If known at graph construction time, filename used for variable
+        loading/saving. If None, then the default name "model" will be used.
 
     Returns:
       A SaverDef proto.
 
     Raises:
-      TypeError: If 'names_to_variables' is not a dictionary mapping string
+      TypeError: If 'names_to_saveables' is not a dictionary mapping string
         keys to variable Tensors.
-      ValueError: If any of the keys or values in 'names_to_variables' is not
+      ValueError: If any of the keys or values in 'names_to_saveables' is not
         unique.
     """
-    vars_to_save = self._ValidateAndSliceInputs(names_to_variables)
+    saveables = self._ValidateAndSliceInputs(names_to_saveables)
     if max_to_keep is None:
       max_to_keep = 0
 
-    with ops.op_scope([vs.var for vs in vars_to_save], name, "save") as name:
+    with ops.name_scope(name, "save",
+                        [saveable.op for saveable in saveables]) as name:
       # Add the Constant string tensor for the filename.
-      filename_tensor = constant_op.constant("model")
+      filename_tensor = constant_op.constant(filename or "model")
 
       # Add the save ops.
       if sharded:
-        per_device = self._GroupByDevices(vars_to_save)
+        per_device = self._GroupByDevices(saveables)
         save_tensor = self._AddShardedSaveOps(filename_tensor, per_device)
-        restore_op = self._AddShardedRestoreOps(
-            filename_tensor, per_device, restore_sequentially, reshape)
+        restore_op = self._AddShardedRestoreOps(filename_tensor, per_device,
+                                                restore_sequentially, reshape)
       else:
-        save_tensor = self._AddSaveOps(filename_tensor, vars_to_save)
-        restore_op = self._AddRestoreOps(
-            filename_tensor, vars_to_save, restore_sequentially, reshape)
+        save_tensor = self._AddSaveOps(filename_tensor, saveables)
+        restore_op = self._AddRestoreOps(filename_tensor, saveables,
+                                         restore_sequentially, reshape)
 
-    assert restore_op.name.endswith("restore_all"), restore_op.name
+    # In the following use case, it's possible to have restore_ops be called
+    # something else:
+    # - Build inference graph and export a meta_graph.
+    # - Import the inference meta_graph
+    # - Extend the inference graph to a train graph.
+    # - Export a new meta_graph.
+    # Now the second restore_op will be called "restore_all_1".
+    # As such, comment out the assert for now until we know whether supporting
+    # such usage model makes sense.
+    #
+    # assert restore_op.name.endswith("restore_all"), restore_op.name
 
     return saver_pb2.SaverDef(
         filename_tensor_name=filename_tensor.name,
         save_tensor_name=save_tensor.name,
         restore_op_name=restore_op.name,
         max_to_keep=max_to_keep,
+        sharded=sharded,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
-        sharded=sharded)
+        version=self._write_version)
+
+
+def _get_saver_or_default():
+  """Returns the saver from SAVERS collection, or creates a default one.
+
+  This method is used by other members of the training module, such as
+  `Scaffold`, or `CheckpointSaverHook`.
+
+  Returns:
+    `Saver`.
+
+  Raises:
+    RuntimeError: If the SAVERS collection already has more than one items.
+  """
+  collection_key = ops.GraphKeys.SAVERS
+  savers = ops.get_collection(collection_key)
+  if savers:
+    if len(savers) > 1:
+      raise RuntimeError(
+          "More than one item in collection {}. "
+          "Please indicate which one to use by passing it to the constructor.".
+          format(collection_key))
+    return savers[0]
+  saver = Saver(sharded=True, allow_empty=True)
+  if saver is not None:
+    ops.add_to_collection(collection_key, saver)
+  return saver
 
 
 def _GetCheckpointFilename(save_dir, latest_filename):
@@ -605,21 +816,76 @@ def update_checkpoint_state(save_dir,
       'checkpoint'.
 
   Raises:
-    RuntimeError: If the save paths conflict.
+    RuntimeError: If any of the model checkpoint paths conflict with the file
+      containing CheckpointSate.
+  """
+  _update_checkpoint_state(
+      save_dir=save_dir,
+      model_checkpoint_path=model_checkpoint_path,
+      all_model_checkpoint_paths=all_model_checkpoint_paths,
+      latest_filename=latest_filename,
+      save_relative_paths=False)
+
+
+def _update_checkpoint_state(save_dir,
+                             model_checkpoint_path,
+                             all_model_checkpoint_paths=None,
+                             latest_filename=None,
+                             save_relative_paths=False):
+  """Updates the content of the 'checkpoint' file.
+
+  This updates the checkpoint file containing a CheckpointState
+  proto.
+
+  Args:
+    save_dir: Directory where the model was saved.
+    model_checkpoint_path: The checkpoint file.
+    all_model_checkpoint_paths: List of strings.  Paths to all not-yet-deleted
+      checkpoints, sorted from oldest to newest.  If this is a non-empty list,
+      the last element must be equal to model_checkpoint_path.  These paths
+      are also saved in the CheckpointState proto.
+    latest_filename: Optional name of the checkpoint file.  Default to
+      'checkpoint'.
+    save_relative_paths: If `True`, will write relative paths to the checkpoint
+      state file.
+
+  Raises:
+    RuntimeError: If any of the model checkpoint paths conflict with the file
+      containing CheckpointSate.
   """
   # Writes the "checkpoint" file for the coordinator for later restoration.
   coord_checkpoint_filename = _GetCheckpointFilename(save_dir, latest_filename)
-  ckpt = generate_checkpoint_state_proto(
-      save_dir,
-      model_checkpoint_path,
-      all_model_checkpoint_paths=all_model_checkpoint_paths)
+  if save_relative_paths:
+    if os.path.isabs(model_checkpoint_path):
+      rel_model_checkpoint_path = os.path.relpath(
+          model_checkpoint_path, save_dir)
+    else:
+      rel_model_checkpoint_path = model_checkpoint_path
+    rel_all_model_checkpoint_paths = []
+    for p in all_model_checkpoint_paths:
+      if os.path.isabs(p):
+        rel_all_model_checkpoint_paths.append(os.path.relpath(p, save_dir))
+      else:
+        rel_all_model_checkpoint_paths.append(p)
+    ckpt = generate_checkpoint_state_proto(
+        save_dir,
+        rel_model_checkpoint_path,
+        all_model_checkpoint_paths=rel_all_model_checkpoint_paths)
+  else:
+    ckpt = generate_checkpoint_state_proto(
+        save_dir,
+        model_checkpoint_path,
+        all_model_checkpoint_paths=all_model_checkpoint_paths)
 
   if coord_checkpoint_filename == ckpt.model_checkpoint_path:
     raise RuntimeError("Save path '%s' conflicts with path used for "
                        "checkpoint state.  Please use a different save path." %
                        model_checkpoint_path)
-  pywrap_tensorflow.write_string_to_file(
-      coord_checkpoint_filename, text_format.MessageToString(ckpt))
+
+  # Preventing potential read/write race condition by *atomically* writing to a
+  # file.
+  file_io.atomic_write_string_to_file(coord_checkpoint_filename,
+                                      text_format.MessageToString(ckpt))
 
 
 def get_checkpoint_state(checkpoint_dir, latest_filename=None):
@@ -636,34 +902,41 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   Returns:
     A CheckpointState if the state was available, None
     otherwise.
+
+  Raises:
+    ValueError: if the checkpoint read doesn't have model_checkpoint_path set.
   """
   ckpt = None
-  coord_checkpoint_filename = _GetCheckpointFilename(
-      checkpoint_dir, latest_filename)
+  coord_checkpoint_filename = _GetCheckpointFilename(checkpoint_dir,
+                                                     latest_filename)
   f = None
   try:
     # Check that the file exists before opening it to avoid
     # many lines of errors from colossus in the logs.
-    if pywrap_tensorflow.file_exists(coord_checkpoint_filename):
-      file_content = pywrap_tensorflow.read_file_to_string(
-          coord_checkpoint_filename).decode("utf-8")
+    if file_io.file_exists(coord_checkpoint_filename):
+      file_content = file_io.read_file_to_string(
+          coord_checkpoint_filename)
       ckpt = CheckpointState()
       text_format.Merge(file_content, ckpt)
+      if not ckpt.model_checkpoint_path:
+        raise ValueError("Invalid checkpoint state loaded from %s",
+                         checkpoint_dir)
       # For relative model_checkpoint_path and all_model_checkpoint_paths,
       # prepend checkpoint_dir.
-      if not os.path.isabs(checkpoint_dir):
-        if not os.path.isabs(ckpt.model_checkpoint_path):
-          ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
-                                                    ckpt.model_checkpoint_path)
-        for i in range(len(ckpt.all_model_checkpoint_paths)):
-          p = ckpt.all_model_checkpoint_paths[i]
-          if not os.path.isabs(p):
-            ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
-  except IOError:
+      if not os.path.isabs(ckpt.model_checkpoint_path):
+        ckpt.model_checkpoint_path = os.path.join(checkpoint_dir,
+                                                  ckpt.model_checkpoint_path)
+      for i in range(len(ckpt.all_model_checkpoint_paths)):
+        p = ckpt.all_model_checkpoint_paths[i]
+        if not os.path.isabs(p):
+          ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
+  except errors.OpError as e:
     # It's ok if the file cannot be read
+    logging.warning("%s: %s", type(e).__name__, e)
+    logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
     return None
   except text_format.ParseError as e:
-    logging.warning(str(e))
+    logging.warning("%s: %s", type(e).__name__, e)
     logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
     return None
   finally:
@@ -675,7 +948,7 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
 class Saver(object):
   """Saves and restores variables.
 
-  See [Variables](../../how_tos/variables/index.md)
+  See @{$variables$Variables}
   for an overview of variables, saving and restoring.
 
   The `Saver` class adds ops to save and restore variables to and from
@@ -744,16 +1017,6 @@ class Saver(object):
 
   If you create several savers, you can specify a different filename for the
   protocol buffer file in the call to `save()`.
-
-  @@__init__
-  @@save
-  @@restore
-
-  Other utility methods.
-
-  @@last_checkpoints
-  @@set_last_checkpoints
-  @@as_saver_def
   """
 
   def __init__(self,
@@ -765,7 +1028,13 @@ class Saver(object):
                name=None,
                restore_sequentially=False,
                saver_def=None,
-               builder=None):
+               builder=None,
+               defer_build=False,
+               allow_empty=False,
+               write_version=saver_pb2.SaverDef.V2,
+               pad_step_number=False,
+               save_relative_paths=False,
+               filename=None):
     """Creates a `Saver`.
 
     The constructor adds ops to save and restore variables.
@@ -803,8 +1072,9 @@ class Saver(object):
     checkpoints per device.
 
     Args:
-      var_list: A list of `Variable` objects or a dictionary mapping names to
-        variables.  If `None`, defaults to the list of all variables.
+      var_list: A list of `Variable`/`SaveableObject`, or a dictionary mapping
+        names to `SaveableObject`s. If `None`, defaults to the list of all
+        saveable objects.
       reshape: If `True`, allows restoring parameters from a checkpoint
         where the variables have a different shape.
       sharded: If `True`, shard the checkpoints, one per device.
@@ -823,41 +1093,110 @@ class Saver(object):
         `as_saver_def()` call of the `Saver` that was created for that `Graph`.
       builder: Optional `SaverBuilder` to use if a `saver_def` was not provided.
         Defaults to `BaseSaverBuilder()`.
+      defer_build: If `True`, defer adding the save and restore ops to the
+        `build()` call. In that case `build()` should be called before
+        finalizing the graph or using the saver.
+      allow_empty: If `False` (default) raise an error if there are no
+        variables in the graph. Otherwise, construct the saver anyway and make
+        it a no-op.
+      write_version: controls what format to use when saving checkpoints.  It
+        also affects certain filepath matching logic.  The V2 format is the
+        recommended choice: it is much more optimized than V1 in terms of
+        memory required and latency incurred during restore.  Regardless of
+        this flag, the Saver is able to restore from both V2 and V1 checkpoints.
+      pad_step_number: if True, pads the global step number in the checkpoint
+        filepaths to some fixed width (8 by default).  This is turned off by
+        default.
+      save_relative_paths: If `True`, will write relative paths to the
+        checkpoint state file. This is needed if the user wants to copy the
+        checkpoint directory and reload from the copied directory.
+      filename: If known at graph construction time, filename used for variable
+        loading/saving.
 
     Raises:
       TypeError: If `var_list` is invalid.
       ValueError: If any of the keys or values in `var_list` are not unique.
     """
-    if not saver_def:
-      if builder is None:
-        builder = BaseSaverBuilder()
-      if var_list is None:
-        var_list = variables.all_variables()
-      if not var_list:
-        raise ValueError("No variables to save")
-      saver_def = builder.build(
-          var_list,
-          reshape=reshape,
-          sharded=sharded,
-          max_to_keep=max_to_keep,
-          keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
-          name=name,
-          restore_sequentially=restore_sequentially)
-    if not isinstance(saver_def, saver_pb2.SaverDef):
-      raise ValueError("saver_def must if a saver_pb2.SaverDef: %s" % saver_def)
-    if not saver_def.save_tensor_name:
-      raise ValueError("saver_def must specify the save_tensor_name: %s"
-                       % str(saver_def))
-    if not saver_def.restore_op_name:
-      raise ValueError("saver_def must specify the restore_op_name: %s"
-                       % str(saver_def))
-
-    # Assigns saver_def.
+    if defer_build and var_list:
+      raise ValueError(
+          "If `var_list` is provided then build cannot be deferred. "
+          "Either set defer_build=False or var_list=None.")
+    self._var_list = var_list
+    self._reshape = reshape
+    self._sharded = sharded
+    self._max_to_keep = max_to_keep
+    self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
+    self._name = name
+    self._restore_sequentially = restore_sequentially
     self.saver_def = saver_def
+    self._builder = builder
+    self._is_built = False
+    self._allow_empty = allow_empty
+    self._is_empty = None
+    self._write_version = write_version
+    self._pad_step_number = pad_step_number
+    self._filename = filename
+    if not defer_build:
+      self.build()
+    if self.saver_def:
+      self._check_saver_def()
+      self._write_version = self.saver_def.version
+    self._save_relative_paths = save_relative_paths
+
+  def build(self):
+    """Builds saver_def."""
+    if self._is_built:
+      return
+    self._is_built = True
+    if not self.saver_def:
+      if self._builder is None:
+        self._builder = BaseSaverBuilder(self._write_version)
+      if self._var_list is None:
+        # pylint: disable=protected-access
+        self._var_list = variables._all_saveable_objects()
+      if not self._var_list:
+        if self._allow_empty:
+          self._is_empty = True
+          return
+        else:
+          raise ValueError("No variables to save")
+      self._is_empty = False
+      self.saver_def = self._builder.build(
+          self._var_list,
+          reshape=self._reshape,
+          sharded=self._sharded,
+          max_to_keep=self._max_to_keep,
+          keep_checkpoint_every_n_hours=self._keep_checkpoint_every_n_hours,
+          name=self._name,
+          restore_sequentially=self._restore_sequentially,
+          filename=self._filename)
+    elif self.saver_def and self._name:
+      # Since self._name is used as a name_scope by builder(), we are
+      # overloading the use of this field to represent the "import_scope" as
+      # well.
+      self.saver_def.filename_tensor_name = ops.prepend_name_scope(
+          self.saver_def.filename_tensor_name, self._name)
+      self.saver_def.save_tensor_name = ops.prepend_name_scope(
+          self.saver_def.save_tensor_name, self._name)
+      self.saver_def.restore_op_name = ops.prepend_name_scope(
+          self.saver_def.restore_op_name, self._name)
+
+    self._check_saver_def()
     # Updates next checkpoint time.
     self._next_checkpoint_time = (
         time.time() + self.saver_def.keep_checkpoint_every_n_hours * 3600)
     self._last_checkpoints = []
+
+  def _check_saver_def(self):
+    if not isinstance(self.saver_def, saver_pb2.SaverDef):
+      raise ValueError("saver_def must be a saver_pb2.SaverDef: %s" %
+                       self.saver_def)
+    if not self.saver_def.save_tensor_name:
+      raise ValueError("saver_def must specify the save_tensor_name: %s" %
+                       str(self.saver_def))
+    if not self.saver_def.restore_op_name:
+      raise ValueError("saver_def must specify the restore_op_name: %s" %
+                       str(self.saver_def))
 
   def _CheckpointFilename(self, p):
     """Returns the checkpoint filename given a `(filename, time)` pair.
@@ -888,7 +1227,8 @@ class Saver(object):
     meta_graph_filename = ".".join([basename, meta_graph_suffix])
     return meta_graph_filename
 
-  def _MaybeDeleteOldCheckpoints(self, latest_save_path,
+  def _MaybeDeleteOldCheckpoints(self,
+                                 latest_save_path,
                                  meta_graph_suffix="meta"):
     """Deletes old checkpoints if necessary.
 
@@ -920,17 +1260,26 @@ class Saver(object):
         self._next_checkpoint_time += (
             self.saver_def.keep_checkpoint_every_n_hours * 3600)
         return
+
       # Otherwise delete the files.
-      for f in pywrap_tensorflow.get_matching_files(
-          self._CheckpointFilename(p)):
-        try:
-          pywrap_tensorflow.delete_file(f)
-          meta_graph_filename = self._MetaGraphFilename(
-              f, meta_graph_suffix=meta_graph_suffix)
-          if pywrap_tensorflow.file_exists(meta_graph_filename):
-            pywrap_tensorflow.delete_file(meta_graph_filename)
-        except Exception as e:  # pylint: disable=broad-except
-          logging.warning("Ignoring: %s", str(e))
+      try:
+        checkpoint_prefix = self._CheckpointFilename(p)
+        self._delete_file_if_exists(
+            self._MetaGraphFilename(checkpoint_prefix, meta_graph_suffix))
+        if self.saver_def.version == saver_pb2.SaverDef.V2:
+          # V2 has a metadata file and some data files.
+          self._delete_file_if_exists(checkpoint_prefix + ".index")
+          self._delete_file_if_exists(checkpoint_prefix +
+                                      ".data-?????-of-?????")
+        else:
+          # V1, Legacy.  Exact match on the data file.
+          self._delete_file_if_exists(checkpoint_prefix)
+      except Exception as e:  # pylint: disable=broad-except
+        logging.warning("Ignoring: %s", str(e))
+
+  def _delete_file_if_exists(self, filespec):
+    for pathname in file_io.get_matching_files(filespec):
+      file_io.delete_file(pathname)
 
   def as_saver_def(self):
     """Generates a `SaverDef` representation of this saver.
@@ -940,18 +1289,45 @@ class Saver(object):
     """
     return self.saver_def
 
-  def to_proto(self):
+  def to_proto(self, export_scope=None):
     """Converts this `Saver` to a `SaverDef` protocol buffer.
+
+    Args:
+      export_scope: Optional `string`. Name scope to remove.
 
     Returns:
       A `SaverDef` protocol buffer.
     """
-    return self.saver_def
+    if export_scope is None:
+      return self.saver_def
+
+    if not (self.saver_def.filename_tensor_name.startswith(export_scope) and
+            self.saver_def.save_tensor_name.startswith(export_scope) and
+            self.saver_def.restore_op_name.startswith(export_scope)):
+      return None
+
+    saver_def = saver_pb2.SaverDef()
+    saver_def.CopyFrom(self.saver_def)
+    saver_def.filename_tensor_name = ops.strip_name_scope(
+        saver_def.filename_tensor_name, export_scope)
+    saver_def.save_tensor_name = ops.strip_name_scope(
+        saver_def.save_tensor_name, export_scope)
+    saver_def.restore_op_name = ops.strip_name_scope(
+        saver_def.restore_op_name, export_scope)
+    return saver_def
 
   @staticmethod
-  def from_proto(saver_def):
-    """Returns a `Saver` object created from `saver_def`."""
-    return Saver(saver_def=saver_def)
+  def from_proto(saver_def, import_scope=None):
+    """Returns a `Saver` object created from `saver_def`.
+
+    Args:
+      saver_def: a `SaveDef` protocol buffer.
+      import_scope: Optional `string`. Name scope to use.
+
+    Returns:
+      A `Saver` built from saver_def.
+    """
+    return Saver(saver_def=saver_def, name=import_scope)
 
   @property
   def last_checkpoints(self):
@@ -994,8 +1370,28 @@ class Saver(object):
     assert isinstance(last_checkpoints_with_time, list)
     self._last_checkpoints = last_checkpoints_with_time
 
-  def save(self, sess, save_path, global_step=None, latest_filename=None,
-           meta_graph_suffix="meta", write_meta_graph=True):
+  def recover_last_checkpoints(self, checkpoint_paths):
+    """Recovers the internal saver state after a crash.
+
+    This method is useful for recovering the "self._last_checkpoints" state.
+
+    Globs for the checkpoints pointed to by `checkpoint_paths`.  If the files
+    exist, use their mtime as the checkpoint timestamp.
+
+    Args:
+      checkpoint_paths: a list of checkpoint paths.
+    """
+    mtimes = get_checkpoint_mtimes(checkpoint_paths)
+    self.set_last_checkpoints_with_time(list(zip(checkpoint_paths, mtimes)))
+
+  def save(self,
+           sess,
+           save_path,
+           global_step=None,
+           latest_filename=None,
+           meta_graph_suffix="meta",
+           write_meta_graph=True,
+           write_state=True):
     """Saves variables.
 
     This method runs the ops added by the constructor for saving variables.
@@ -1020,18 +1416,33 @@ class Saver(object):
       meta_graph_suffix: Suffix for `MetaGraphDef` file. Defaults to 'meta'.
       write_meta_graph: `Boolean` indicating whether or not to write the meta
         graph file.
+      write_state: `Boolean` indicating whether or not to write the
+        `CheckpointStateProto`.
 
     Returns:
       A string: path at which the variables were saved.  If the saver is
         sharded, this string ends with: '-?????-of-nnnnn' where 'nnnnn'
         is the number of shards created.
+      If the saver is empty, returns None.
 
     Raises:
       TypeError: If `sess` is not a `Session`.
-      ValueError: If `latest_filename` contains path components.
+      ValueError: If `latest_filename` contains path components, or if it
+        collides with `save_path`.
+      RuntimeError: If save and restore ops weren't built.
     """
+    if not self._is_built:
+      raise RuntimeError(
+          "`build()` should be called before save if defer_build==True")
     if latest_filename is None:
       latest_filename = "checkpoint"
+    if self._write_version != saver_pb2.SaverDef.V2:
+      logging.warning("*******************************************************")
+      logging.warning("TensorFlow's V1 checkpoint format has been deprecated.")
+      logging.warning("Consider switching to the more efficient V2 format:")
+      logging.warning("   `tf.train.Saver(write_version=tf.train.SaverDef.V2)`")
+      logging.warning("now on by default.")
+      logging.warning("*******************************************************")
 
     if os.path.split(latest_filename)[0]:
       raise ValueError("'latest_filename' must not contain path components")
@@ -1040,46 +1451,82 @@ class Saver(object):
       if not isinstance(global_step, compat.integral_types):
         global_step = training_util.global_step(sess, global_step)
       checkpoint_file = "%s-%d" % (save_path, global_step)
+      if self._pad_step_number:
+        # Zero-pads the step numbers, so that they are sorted when listed.
+        checkpoint_file = "%s-%s" % (save_path, "{:08d}".format(global_step))
     else:
       checkpoint_file = save_path
-    save_path = os.path.dirname(save_path)
+      if os.path.basename(
+          save_path) == latest_filename and not self.saver_def.sharded:
+        # Guard against collision between data file and checkpoint state file.
+        raise ValueError(
+            "'latest_filename' collides with 'save_path': '%s' and '%s'" %
+            (latest_filename, save_path))
+
     if not isinstance(sess, session.SessionInterface):
       raise TypeError("'sess' must be a Session; %s" % sess)
 
-    model_checkpoint_path = sess.run(
-        self.saver_def.save_tensor_name,
-        {self.saver_def.filename_tensor_name: checkpoint_file})
-    model_checkpoint_path = compat.as_str(model_checkpoint_path)
-    self._MaybeDeleteOldCheckpoints(model_checkpoint_path,
-                                    meta_graph_suffix=meta_graph_suffix)
-    update_checkpoint_state(save_path, model_checkpoint_path,
-                            self.last_checkpoints, latest_filename)
+    save_path_parent = os.path.dirname(save_path)
+    if not self._is_empty:
+      try:
+        model_checkpoint_path = sess.run(
+            self.saver_def.save_tensor_name,
+            {self.saver_def.filename_tensor_name: checkpoint_file})
+        model_checkpoint_path = compat.as_str(model_checkpoint_path)
+        if write_state:
+          self._MaybeDeleteOldCheckpoints(
+              model_checkpoint_path, meta_graph_suffix=meta_graph_suffix)
+          _update_checkpoint_state(
+              save_dir=save_path_parent,
+              model_checkpoint_path=model_checkpoint_path,
+              all_model_checkpoint_paths=self.last_checkpoints,
+              latest_filename=latest_filename,
+              save_relative_paths=self._save_relative_paths)
+      except (errors.FailedPreconditionError, errors.NotFoundError) as exc:
+        if not gfile.IsDirectory(save_path_parent):
+          exc = ValueError(
+              "Parent directory of {} doesn't exist, can't save.".format(
+                  save_path))
+        raise exc
+
     if write_meta_graph:
       meta_graph_filename = self._MetaGraphFilename(
           checkpoint_file, meta_graph_suffix=meta_graph_suffix)
       with sess.graph.as_default():
         self.export_meta_graph(meta_graph_filename)
 
-    return model_checkpoint_path
+    if self._is_empty:
+      return None
+    else:
+      return model_checkpoint_path
 
-  def export_meta_graph(self, filename=None, collection_list=None,
-                        as_text=False):
+  def export_meta_graph(self,
+                        filename=None,
+                        collection_list=None,
+                        as_text=False,
+                        export_scope=None,
+                        clear_devices=False):
     """Writes `MetaGraphDef` to save_path/filename.
 
     Args:
       filename: Optional meta_graph filename including the path.
       collection_list: List of string keys to collect.
       as_text: If `True`, writes the meta_graph as an ASCII proto.
+      export_scope: Optional `string`. Name scope to remove.
+      clear_devices: Whether or not to clear the device field for an `Operation`
+        or `Tensor` during export.
 
     Returns:
       A `MetaGraphDef` proto.
     """
-    return export_meta_graph(filename=filename,
-                             graph_def=ops.get_default_graph().as_graph_def(
-                                 add_shapes=True),
-                             saver_def=self.saver_def,
-                             collection_list=collection_list,
-                             as_text=as_text)
+    return export_meta_graph(
+        filename=filename,
+        graph_def=ops.get_default_graph().as_graph_def(add_shapes=True),
+        saver_def=self.saver_def,
+        collection_list=collection_list,
+        as_text=as_text,
+        export_scope=export_scope,
+        clear_devices=clear_devices)
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.
@@ -1095,24 +1542,43 @@ class Saver(object):
     Args:
       sess: A `Session` to use to restore the parameters.
       save_path: Path where parameters were previously saved.
-
-    Raises:
-      ValueError: If the given `save_path` does not point to a file.
     """
-    if not pywrap_tensorflow.get_matching_files(save_path):
-      raise ValueError("Restore called with invalid save path %s" % save_path)
+    if self._is_empty:
+      return
+    logging.info("Restoring parameters from %s", save_path)
     sess.run(self.saver_def.restore_op_name,
              {self.saver_def.filename_tensor_name: save_path})
 
   @staticmethod
-  def _add_collection_def(meta_graph_def, key):
+  def _add_collection_def(meta_graph_def, key, export_scope=None):
     """Adds a collection to MetaGraphDef protocol buffer.
 
     Args:
       meta_graph_def: MetaGraphDef protocol buffer.
       key: One of the GraphKeys or user-defined string.
+      export_scope: Optional `string`. Name scope to remove.
     """
-    _add_collection_def(meta_graph_def, key)
+    meta_graph.add_collection_def(meta_graph_def, key,
+                                  export_scope=export_scope)
+
+
+def _prefix_to_checkpoint_path(prefix, format_version):
+  """Returns the pathname of a checkpoint file, given the checkpoint prefix.
+
+  For V1 checkpoint, simply returns the prefix itself (the data file).  For V2,
+  returns the pathname to the index file.
+
+  Args:
+    prefix: a string, the prefix of a checkpoint.
+    format_version: the checkpoint format version that corresponds to the
+      prefix.
+  Returns:
+    The pathname of a checkpoint file, taking into account the checkpoint
+      format version.
+  """
+  if format_version == saver_pb2.SaverDef.V2:
+    return prefix + ".index"  # The index file identifies a checkpoint.
+  return prefix  # Just the data file.
 
 
 def latest_checkpoint(checkpoint_dir, latest_filename=None):
@@ -1130,241 +1596,22 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   # Pick the latest checkpoint based on checkpoint state.
   ckpt = get_checkpoint_state(checkpoint_dir, latest_filename)
   if ckpt and ckpt.model_checkpoint_path:
-    if pywrap_tensorflow.get_matching_files(ckpt.model_checkpoint_path):
+    # Look for either a V2 path or a V1 path, with priority for V2.
+    v2_path = _prefix_to_checkpoint_path(ckpt.model_checkpoint_path,
+                                         saver_pb2.SaverDef.V2)
+    v1_path = _prefix_to_checkpoint_path(ckpt.model_checkpoint_path,
+                                         saver_pb2.SaverDef.V1)
+    if file_io.get_matching_files(v2_path) or file_io.get_matching_files(
+        v1_path):
       return ckpt.model_checkpoint_path
-
+    else:
+      logging.error("Couldn't match files for checkpoint %s",
+                    ckpt.model_checkpoint_path)
   return None
 
 
-def _get_kind_name(item):
-  """Returns the kind name in CollectionDef.
-
-  Args:
-    item: A data item.
-
-  Returns:
-    The string representation of the kind in CollectionDef.
-  """
-  if isinstance(item, (six.string_types, six.binary_type)):
-    kind = "bytes_list"
-  elif isinstance(item, six.integer_types):
-    kind = "int64_list"
-  elif isinstance(item, float):
-    kind = "float_list"
-  elif isinstance(item, Any):
-    kind = "any_list"
-  else:
-    kind = "node_list"
-  return kind
-
-
-def _add_collection_def(meta_graph_def, key):
-  """Adds a collection to MetaGraphDef protocol buffer.
-
-  Args:
-    meta_graph_def: MetaGraphDef protocol buffer.
-    key: One of the GraphKeys or user-defined string.
-  """
-  if not isinstance(key, six.string_types) and not isinstance(key, bytes):
-    logging.warning("Only collections with string type keys will be "
-                    "serialized. This key has %s", type(key))
-    return
-  collection_list = ops.get_collection(key)
-  if not collection_list:
-    return
-  try:
-    col_def = meta_graph_def.collection_def[key]
-    to_proto = ops.get_to_proto_function(key)
-    proto_type = ops.get_collection_proto_type(key)
-    if to_proto:
-      kind = "bytes_list"
-      for x in collection_list:
-        # Additional type check to make sure the returned proto is indeed
-        # what we expect.
-        proto = to_proto(x)
-        assert isinstance(proto, proto_type)
-        getattr(col_def, kind).value.append(proto.SerializeToString())
-    else:
-      kind = _get_kind_name(collection_list[0])
-      if kind == "node_list":
-        getattr(col_def, kind).value.extend([x.name for x in collection_list])
-      elif kind == "bytes_list":
-        # NOTE(opensource): This force conversion is to work around the fact
-        # that Python3 distinguishes between bytes and strings.
-        getattr(col_def, kind).value.extend(
-            [compat.as_bytes(x) for x in collection_list])
-      else:
-        getattr(col_def, kind).value.extend([x for x in collection_list])
-  except Exception as e:  # pylint: disable=broad-except
-    logging.warning("Error encountered when serializing %s.\n"
-                    "Type is unsupported, or the types of the items don't "
-                    "match field type in CollectionDef.\n%s", key, str(e))
-    if key in meta_graph_def.collection_def:
-      del meta_graph_def.collection_def[key]
-    return
-
-
-def _as_meta_graph_def(meta_info_def=None, graph_def=None, saver_def=None,
-                       collection_list=None):
-  """Construct and returns a `MetaGraphDef` protocol buffer.
-
-  Args:
-    meta_info_def: `MetaInfoDef` protocol buffer.
-    graph_def: `GraphDef` protocol buffer.
-    saver_def: `SaverDef` protocol buffer.
-    collection_list: List of string keys to collect.
-
-  Returns:
-    MetaGraphDef protocol buffer.
-
-  Raises:
-    TypeError: If the arguments are not of the correct proto buffer type.
-  """
-  # Type check.
-  if meta_info_def and not isinstance(meta_info_def,
-                                      meta_graph_pb2.MetaGraphDef.MetaInfoDef):
-    raise TypeError("meta_info_def must be of type MetaInfoDef, not %s",
-                    type(meta_info_def))
-  if graph_def and not isinstance(graph_def, graph_pb2.GraphDef):
-    raise TypeError("graph_def must be of type GraphDef, not %s",
-                    type(graph_def))
-  if saver_def and not isinstance(saver_def, saver_pb2.SaverDef):
-    raise TypeError("saver_def must be of type SaverDef, not %s",
-                    type(saver_def))
-
-  # Creates a MetaGraphDef proto.
-  meta_graph_def = meta_graph_pb2.MetaGraphDef()
-  # Adds meta_info_def.
-  if meta_info_def:
-    meta_graph_def.meta_info_def.MergeFrom(meta_info_def)
-
-  # Adds graph_def or the default.
-  if not graph_def:
-    meta_graph_def.graph_def.MergeFrom(
-        ops.get_default_graph().as_graph_def(add_shapes=True))
-  else:
-    meta_graph_def.graph_def.MergeFrom(graph_def)
-
-  # Fills in meta_info_def.stripped_op_list using the ops from graph_def.
-  # pylint: disable=g-explicit-length-test
-  if len(meta_graph_def.meta_info_def.stripped_op_list.op) == 0:
-    meta_graph_def.meta_info_def.stripped_op_list.MergeFrom(
-        stripped_op_list_for_graph(meta_graph_def.graph_def))
-  # pylint: enable=g-explicit-length-test
-
-  # Adds saver_def.
-  if saver_def:
-    meta_graph_def.saver_def.MergeFrom(saver_def)
-
-  # Adds collection_list.
-  if collection_list:
-    clist = collection_list
-  else:
-    clist = ops.get_all_collection_keys()
-  for ctype in clist:
-    _add_collection_def(meta_graph_def, ctype)
-  return meta_graph_def
-
-
-def read_meta_graph_file(filename):
-  """Reads a file containing `MetaGraphDef` and returns the protocol buffer.
-
-  Args:
-    filename: `meta_graph_def` filename including the path.
-
-  Returns:
-    A `MetaGraphDef` protocol buffer.
-
-  Raises:
-    IOError: If the file doesn't exist, or cannot be successfully parsed.
-  """
-  meta_graph_def = meta_graph_pb2.MetaGraphDef()
-  if not pywrap_tensorflow.file_exists(filename):
-    raise IOError("File %s does not exist." % filename)
-  # First try to read it as a binary file.
-  file_content = pywrap_tensorflow.read_file_to_string(filename)
-  try:
-    meta_graph_def.ParseFromString(file_content)
-    return meta_graph_def
-  except Exception:  # pylint: disable=broad-except
-    pass
-
-  # Next try to read it as a text file.
-  try:
-    text_format.Merge(file_content.decode("utf-8"), meta_graph_def)
-  except text_format.ParseError as e:
-    raise IOError("Cannot parse file %s: %s." % (filename, str(e)))
-
-  return meta_graph_def
-
-
-def _import_meta_graph_def(meta_graph_def):
-  """Recreates a Graph saved in a `MetaGraphDef` proto.
-
-  This function adds all the nodes from the meta graph def proto to the current
-  graph, recreates all the collections, and returns a saver from saver_def.
-
-  Args:
-    meta_graph_def: `MetaGraphDef` protocol buffer.
-
-  Returns:
-    A saver constructed from `saver_def` in `meta_graph_def` or None.
-
-    A None value is returned if no variables exist in the `meta_graph_def`
-    (i.e., no variables to restore).
-  """
-  # Gathers the list of nodes we are interested in.
-  producer_op_list = None
-  if meta_graph_def.meta_info_def.HasField("stripped_op_list"):
-    producer_op_list = meta_graph_def.meta_info_def.stripped_op_list
-  importer.import_graph_def(meta_graph_def.graph_def, name="",
-                            producer_op_list=producer_op_list)
-
-  # Restores all the other collections.
-  for key, col_def in meta_graph_def.collection_def.items():
-    kind = col_def.WhichOneof("kind")
-    if kind is None:
-      logging.error("Cannot identify data type for collection %s. Skipping.",
-                    key)
-      continue
-    from_proto = ops.get_from_proto_function(key)
-    if from_proto:
-      assert kind == "bytes_list"
-      proto_type = ops.get_collection_proto_type(key)
-      for value in col_def.bytes_list.value:
-        proto = proto_type()
-        proto.ParseFromString(value)
-        ops.add_to_collection(key, from_proto(proto))
-    else:
-      field = getattr(col_def, kind)
-      if kind == "node_list":
-        for value in field.value:
-          col_op = ops.get_default_graph().as_graph_element(value)
-          ops.add_to_collection(key, col_op)
-      elif kind == "int64_list":
-        # NOTE(opensource): This force conversion is to work around the fact
-        # that Python2 distinguishes between int and long, while Python3 has
-        # only int.
-        for value in field.value:
-          ops.add_to_collection(key, int(value))
-      else:
-        for value in field.value:
-          ops.add_to_collection(key, value)
-
-  if meta_graph_def.HasField("saver_def"):
-    return Saver(saver_def=meta_graph_def.saver_def)
-  else:
-    if variables.all_variables():
-      # Return the default saver instance for all graph variables.
-      return Saver()
-    else:
-      # If not graph variables exist, then a Saver cannot be constructed.
-      logging.info("Saver not created because there are no variables in the"
-                   " graph to restore")
-      return None
-
-
-def import_meta_graph(meta_graph_or_file):
+def import_meta_graph(meta_graph_or_file, clear_devices=False,
+                      import_scope=None, **kwargs):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
 
   This function takes a `MetaGraphDef` protocol buffer as input. If
@@ -1418,6 +1665,11 @@ def import_meta_graph(meta_graph_or_file):
   Args:
     meta_graph_or_file: `MetaGraphDef` protocol buffer or filename (including
       the path) containing a `MetaGraphDef`.
+    clear_devices: Whether or not to clear the device field for an `Operation`
+      or `Tensor` during import.
+    import_scope: Optional `string`. Name scope to add. Only used when
+      initializing from protocol buffer.
+    **kwargs: Optional keyed arguments.
 
   Returns:
     A saver constructed from `saver_def` in `MetaGraphDef` or None.
@@ -1425,18 +1677,42 @@ def import_meta_graph(meta_graph_or_file):
     A None value is returned if no variables exist in the `MetaGraphDef`
     (i.e., there are no variables to restore).
   """
-  if isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
-    return _import_meta_graph_def(meta_graph_or_file)
+  if not isinstance(meta_graph_or_file, meta_graph_pb2.MetaGraphDef):
+    meta_graph_def = meta_graph.read_meta_graph_file(meta_graph_or_file)
   else:
-    return _import_meta_graph_def(read_meta_graph_file(meta_graph_or_file))
+    meta_graph_def = meta_graph_or_file
+
+  meta_graph.import_scoped_meta_graph(meta_graph_def,
+                                      clear_devices=clear_devices,
+                                      import_scope=import_scope,
+                                      **kwargs)
+  if meta_graph_def.HasField("saver_def"):
+    return Saver(saver_def=meta_graph_def.saver_def, name=import_scope)
+  else:
+    if variables._all_saveable_objects():  # pylint: disable=protected-access
+      # Return the default saver instance for all graph variables.
+      return Saver()
+    else:
+      # If no graph variables exist, then a Saver cannot be constructed.
+      logging.info("Saver not created because there are no variables in the"
+                   " graph to restore")
+      return None
 
 
-def export_meta_graph(filename=None, meta_info_def=None, graph_def=None,
-                      saver_def=None, collection_list=None, as_text=False):
+def export_meta_graph(filename=None,
+                      meta_info_def=None,
+                      graph_def=None,
+                      saver_def=None,
+                      collection_list=None,
+                      as_text=False,
+                      graph=None,
+                      export_scope=None,
+                      clear_devices=False,
+                      **kwargs):
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
   This function exports the graph, saver, and collection objects into
-  `MetaGraphDef` protocol buffer with the intension of it being imported
+  `MetaGraphDef` protocol buffer with the intention of it being imported
   at a later time or location to restart training, run inference, or be
   a subgraph.
 
@@ -1448,20 +1724,99 @@ def export_meta_graph(filename=None, meta_info_def=None, graph_def=None,
     saver_def: `SaverDef` protocol buffer.
     collection_list: List of string keys to collect.
     as_text: If `True`, writes the `MetaGraphDef` as an ASCII proto.
+    graph: The `Graph` to import into. If `None`, use the default graph.
+    export_scope: Optional `string`. Name scope under which to extract
+      the subgraph. The scope name will be striped from the node definitions
+      for easy import later into new name scopes. If `None`, the whole graph
+      is exported. graph_def and export_scope cannot both be specified.
+    clear_devices: Whether or not to clear the device field for an `Operation`
+      or `Tensor` during export.
+    **kwargs: Optional keyed arguments.
 
   Returns:
     A `MetaGraphDef` proto.
+
+  Raises:
+    ValueError: When the `GraphDef` is larger than 2GB.
   """
-  meta_graph_def = _as_meta_graph_def(meta_info_def=meta_info_def,
-                                      graph_def=graph_def,
-                                      saver_def=saver_def,
-                                      collection_list=collection_list)
-  if filename:
-    training_util.write_graph(meta_graph_def, os.path.dirname(filename),
-                              os.path.basename(filename), as_text=as_text)
+  meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
+      filename=filename,
+      meta_info_def=meta_info_def,
+      graph_def=graph_def,
+      saver_def=saver_def,
+      collection_list=collection_list,
+      as_text=as_text,
+      graph=graph,
+      export_scope=export_scope,
+      clear_devices=clear_devices,
+      **kwargs)
   return meta_graph_def
 
-ops.register_proto_function(ops.GraphKeys.SAVERS,
-                            proto_type=saver_pb2.SaverDef,
-                            to_proto=Saver.to_proto,
-                            from_proto=Saver.from_proto)
+
+def checkpoint_exists(checkpoint_prefix):
+  """Checks whether a V1 or V2 checkpoint exists with the specified prefix.
+
+  This is the recommended way to check if a checkpoint exists, since it takes
+  into account the naming difference between V1 and V2 formats.
+
+  Args:
+    checkpoint_prefix: the prefix of a V1 or V2 checkpoint, with V2 taking
+      priority.  Typically the result of `Saver.save()` or that of
+      `tf.train.latest_checkpoint()`, regardless of sharded/non-sharded or
+      V1/V2.
+  Returns:
+    A bool, true iff a checkpoint referred to by `checkpoint_prefix` exists.
+  """
+  pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
+                                        saver_pb2.SaverDef.V2)
+  if file_io.get_matching_files(pathname):
+    return True
+  elif file_io.get_matching_files(checkpoint_prefix):
+    return True
+  else:
+    return False
+
+
+def get_checkpoint_mtimes(checkpoint_prefixes):
+  """Returns the mtimes (modification timestamps) of the checkpoints.
+
+  Globs for the checkpoints pointed to by `checkpoint_prefixes`.  If the files
+  exist, collect their mtime.  Both V2 and V1 checkpoints are considered, in
+  that priority.
+
+  This is the recommended way to get the mtimes, since it takes into account
+  the naming difference between V1 and V2 formats.
+
+  Args:
+    checkpoint_prefixes: a list of checkpoint paths, typically the results of
+      `Saver.save()` or those of `tf.train.latest_checkpoint()`, regardless of
+      sharded/non-sharded or V1/V2.
+  Returns:
+    A list of mtimes (in microseconds) of the found checkpoints.
+  """
+  mtimes = []
+
+  def match_maybe_append(pathname):
+    fnames = file_io.get_matching_files(pathname)
+    if fnames:
+      mtimes.append(file_io.stat(fnames[0]).mtime_nsec / 1e9)
+      return True
+    return False
+
+  for checkpoint_prefix in checkpoint_prefixes:
+    # Tries V2's metadata file first.
+    pathname = _prefix_to_checkpoint_path(checkpoint_prefix,
+                                          saver_pb2.SaverDef.V2)
+    if match_maybe_append(pathname):
+      continue
+    # Otherwise, tries V1, where the prefix is the complete pathname.
+    match_maybe_append(checkpoint_prefix)
+
+  return mtimes
+
+
+ops.register_proto_function(
+    ops.GraphKeys.SAVERS,
+    proto_type=saver_pb2.SaverDef,
+    to_proto=Saver.to_proto,
+    from_proto=Saver.from_proto)

@@ -1,4 +1,4 @@
-# Copyright 2016 Google Inc. All Rights Reserved.
+# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,267 +18,140 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-import tensorflow as tf
+from tensorflow.contrib import distributions as distributions_lib
+from tensorflow.contrib.bayesflow.python.ops import stochastic_graph_impl
+from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
+from tensorflow.python.platform import test
 
-sg = tf.contrib.bayesflow.stochastic_graph
-distributions = tf.contrib.distributions
+st = stochastic_tensor
+sg = stochastic_graph_impl
+distributions = distributions_lib
 
 
 class NormalNotParam(distributions.Normal):
 
   @property
-  def is_reparameterized(self):
-    return False
+  def reparameterization_type(self):
+    return distributions.NOT_REPARAMETERIZED
 
 
-class DistributionTensorTest(tf.test.TestCase):
-
-  def testConstructionAndValue(self):
-    with self.test_session() as sess:
-      mu = [0.0, 0.1, 0.2]
-      sigma = tf.constant([1.1, 1.2, 1.3])
-      sigma2 = tf.constant([0.1, 0.2, 0.3])
-      with self.assertRaisesRegexp(ValueError, 'No value type currently set'):
-        prior = sg.DistributionTensor(distributions.Normal, mu=mu, sigma=sigma)
-
-      prior_0 = sg.DistributionTensor(
-          distributions.Normal, mu=mu, sigma=sigma,
-          dist_value_type=sg.SampleAndReshapeValue())
-
-      with sg.value_type(sg.SampleAndReshapeValue()):
-        prior = sg.DistributionTensor(distributions.Normal, mu=mu, sigma=sigma)
-        likelihood = sg.DistributionTensor(
-            distributions.Normal, mu=prior, sigma=sigma2)
-
-      coll = tf.get_collection(sg.STOCHASTIC_TENSOR_COLLECTION)
-      self.assertEqual(coll, [prior_0, prior, likelihood])
-
-      prior_0 = tf.identity(prior_0)
-      prior = tf.identity(prior)  # Also works: tf.convert_to_tensor(prior)
-      likelihood = tf.identity(likelihood)
-
-      # Mostly a smoke test for now...
-      prior_0_val, prior_val, _ = sess.run(
-          [prior_0, prior, likelihood])
-
-      self.assertEqual(prior_0_val.shape, prior_val.shape)
-      # These are different random samples from the same distribution,
-      # so the values should differ.
-      self.assertGreater(np.abs(prior_0_val - prior_val).sum(), 1e-6)
-
-  def testMeanValue(self):
-    with self.test_session() as sess:
-      mu = [0.0, -1.0, 1.0]
-      sigma = tf.constant([1.1, 1.2, 1.3])
-
-      with sg.value_type(sg.MeanValue()):
-        prior = sg.DistributionTensor(distributions.Normal, mu=mu, sigma=sigma)
-
-      prior_mean = prior.mean()
-      prior_value = prior.value()
-
-      prior_mean_val, prior_value_val = sess.run([prior_mean, prior_value])
-      self.assertAllEqual(prior_mean_val, mu)
-      self.assertAllEqual(prior_mean_val, prior_value_val)
-
-  def testSampleAndReshapeValue(self):
-    with self.test_session() as sess:
-      mu = [[0.0, -1.0, 1.0], [0.0, -1.0, 1.0]]
-      sigma = tf.constant([[1.1, 1.2, 1.3], [1.1, 1.2, 1.3]])
-
-      with sg.value_type(sg.SampleAndReshapeValue()):
-        prior_single = sg.DistributionTensor(
-            distributions.Normal, mu=mu, sigma=sigma)
-
-      prior_single_value = prior_single.value()
-      self.assertEqual(prior_single_value.get_shape(), (2, 3))
-
-      prior_single_value_val = sess.run([prior_single_value])[0]
-      self.assertEqual(prior_single_value_val.shape, (2, 3))
-
-      with sg.value_type(sg.SampleAndReshapeValue(n=2)):
-        prior_double = sg.DistributionTensor(
-            distributions.Normal, mu=mu, sigma=sigma)
-
-      prior_double_value = prior_double.value()
-      self.assertEqual(prior_double_value.get_shape(), (4, 3))
-
-      prior_double_value_val = sess.run([prior_double_value])[0]
-      self.assertEqual(prior_double_value_val.shape, (4, 3))
-
-  def testSampleValue(self):
-    with self.test_session() as sess:
-      mu = [[0.0, -1.0, 1.0], [0.0, -1.0, 1.0]]
-      sigma = tf.constant([[1.1, 1.2, 1.3], [1.1, 1.2, 1.3]])
-
-      with sg.value_type(sg.SampleValue()):
-        prior_single = sg.DistributionTensor(
-            distributions.Normal, mu=mu, sigma=sigma)
-
-      prior_single_value = prior_single.value()
-      self.assertEqual(prior_single_value.get_shape(), (1, 2, 3))
-
-      prior_single_value_val = sess.run([prior_single_value])[0]
-      self.assertEqual(prior_single_value_val.shape, (1, 2, 3))
-
-      with sg.value_type(sg.SampleValue(n=2)):
-        prior_double = sg.DistributionTensor(
-            distributions.Normal, mu=mu, sigma=sigma)
-
-      prior_double_value = prior_double.value()
-      self.assertEqual(prior_double_value.get_shape(), (2, 2, 3))
-
-      prior_double_value_val = sess.run([prior_double_value])[0]
-      self.assertEqual(prior_double_value_val.shape, (2, 2, 3))
-
-  def testDistributionEntropy(self):
-    with self.test_session() as sess:
-      mu = [0.0, -1.0, 1.0]
-      sigma = tf.constant([1.1, 1.2, 1.3])
-      with sg.value_type(sg.MeanValue()):
-        prior = sg.DistributionTensor(distributions.Normal, mu=mu, sigma=sigma)
-        entropy = prior.entropy()
-        deep_entropy = prior.entropy()
-        expected_deep_entropy = distributions.Normal(
-            mu=mu, sigma=sigma).entropy()
-        entropies = sess.run([entropy, deep_entropy, expected_deep_entropy])
-        self.assertAllEqual(entropies[2], entropies[0])
-        self.assertAllEqual(entropies[1], entropies[0])
-
-
-class ValueTypeTest(tf.test.TestCase):
-
-  def testValueType(self):
-    type_mean = sg.MeanValue()
-    type_reshape = sg.SampleAndReshapeValue()
-    type_full = sg.SampleValue()
-    with sg.value_type(type_mean):
-      self.assertEqual(sg.get_current_value_type(), type_mean)
-      with sg.value_type(type_reshape):
-        self.assertEqual(sg.get_current_value_type(), type_reshape)
-      with sg.value_type(type_full):
-        self.assertEqual(sg.get_current_value_type(), type_full)
-      self.assertEqual(sg.get_current_value_type(), type_mean)
-    with self.assertRaisesRegexp(ValueError, 'No value type currently set'):
-      sg.get_current_value_type()
-
-
-class TestSurrogateLosses(tf.test.TestCase):
+class TestSurrogateLosses(test.TestCase):
 
   def testPathwiseDerivativeDoesNotAddSurrogateLosses(self):
     with self.test_session():
       mu = [0.0, 0.1, 0.2]
-      sigma = tf.constant([1.1, 1.2, 1.3])
-      with sg.value_type(sg.SampleAndReshapeValue()):
-        prior = sg.DistributionTensor(distributions.Normal, mu=mu, sigma=sigma)
-        likelihood = sg.DistributionTensor(
-            distributions.Normal, mu=prior, sigma=sigma)
-        self.assertTrue(prior.distribution.is_reparameterized)
-        self.assertTrue(likelihood.distribution.is_reparameterized)
+      sigma = constant_op.constant([1.1, 1.2, 1.3])
+      with st.value_type(st.SampleValue()):
+        prior = st.StochasticTensor(distributions.Normal(loc=mu, scale=sigma))
+        likelihood = st.StochasticTensor(
+            distributions.Normal(
+                loc=prior, scale=sigma))
+        self.assertEqual(
+            prior.distribution.reparameterization_type,
+            distributions.FULLY_REPARAMETERIZED)
+        self.assertEqual(
+            likelihood.distribution.reparameterization_type,
+            distributions.FULLY_REPARAMETERIZED)
 
-      loss = tf.square(tf.identity(likelihood) - [0.0, 0.1, 0.2])
-      sum_loss = tf.reduce_sum(loss)
+      loss = math_ops.square(array_ops.identity(likelihood) - [0.0, 0.1, 0.2])
+      sum_loss = math_ops.reduce_sum(loss)
 
-      surrogate_from_loss = sg.surrogate_losses([loss])
-      surrogate_from_sum_loss = sg.surrogate_losses([sum_loss])
-      surrogate_from_both = sg.surrogate_losses(
-          [loss, sum_loss])
+      surrogate_loss = sg.surrogate_loss([loss])
+      with self.assertRaisesRegexp(ValueError, "dimensionality 1 or greater"):
+        _ = sg.surrogate_loss([sum_loss])
+      surrogate_from_both = sg.surrogate_loss(
+          [loss, sum_loss * array_ops.ones_like(loss)])
 
-      # Pathwise derivative terms do not require score function
-      # surrogate losses.
-      self.assertEqual(surrogate_from_loss, [])
-      self.assertEqual(surrogate_from_sum_loss, [])
-      self.assertEqual(surrogate_from_both, [])
+      # Pathwise derivative terms do not require add'l surrogate loss terms.
+      with self.test_session() as sess:
+        self.assertAllClose(*sess.run([loss, surrogate_loss]))
+        self.assertAllClose(*sess.run([(loss + sum_loss), surrogate_from_both]))
 
-  def _testSurrogateLoss(self, session, losses, expected, xs):
-    sf_losses = sg.surrogate_losses(losses)
-    n = len(expected)
-    self.assertEqual(len(expected), len(sf_losses))
-    values = session.run(list(expected) + sf_losses)
-
-    # Test forward surrogate losses
-    if isinstance(expected, set):
-      # Hack: sort the two halves of the values by norm, and compare
-      # those
-      sorted_expected = sorted(values[:n], key=np.linalg.norm)
-      sorted_losses = sorted(values[n:], key=np.linalg.norm)
-      self.assertAllClose(sorted_expected, sorted_losses)
-    else:
-      # Expected losses in a particular order
-      self.assertAllClose(values[:n], values[n:])
+  def _testSurrogateLoss(self, session, losses, expected_addl_terms, xs):
+    surrogate_loss = sg.surrogate_loss(losses)
+    expected_surrogate_loss = math_ops.add_n(losses + expected_addl_terms)
+    self.assertAllClose(*session.run([surrogate_loss, expected_surrogate_loss]))
 
     # Test backprop
-    expected_grads = tf.gradients(ys=losses + list(expected), xs=xs)
-    sf_grads = tf.gradients(ys=losses + sf_losses, xs=xs)
-    self.assertEqual(len(expected_grads), len(sf_grads))
+    expected_grads = gradients_impl.gradients(ys=expected_surrogate_loss, xs=xs)
+    surrogate_grads = gradients_impl.gradients(ys=surrogate_loss, xs=xs)
+    self.assertEqual(len(expected_grads), len(surrogate_grads))
+    grad_values = session.run(expected_grads + surrogate_grads)
     n_grad = len(expected_grads)
-    grad_values = session.run(expected_grads + sf_grads)
     self.assertAllClose(grad_values[:n_grad], grad_values[n_grad:])
 
   def testSurrogateLoss(self):
     with self.test_session() as sess:
-      mu = tf.constant([0.0, 0.1, 0.2])
-      sigma = tf.constant([1.1, 1.2, 1.3])
-      with sg.value_type(sg.SampleAndReshapeValue()):
-        prior = sg.DistributionTensor(NormalNotParam, mu=mu, sigma=sigma)
-        likelihood = sg.DistributionTensor(
-            NormalNotParam, mu=prior, sigma=sigma)
-        prior_2 = sg.DistributionTensor(NormalNotParam, mu=mu, sigma=sigma)
+      mu = constant_op.constant([0.0, 0.1, 0.2])
+      sigma = constant_op.constant([1.1, 1.2, 1.3])
+      with st.value_type(st.SampleValue()):
+        prior = st.StochasticTensor(NormalNotParam(loc=mu, scale=sigma))
+        likelihood = st.StochasticTensor(NormalNotParam(loc=prior, scale=sigma))
+        prior_2 = st.StochasticTensor(NormalNotParam(loc=mu, scale=sigma))
 
-      loss = tf.square(tf.identity(likelihood) - mu)
-      part_loss = tf.square(tf.identity(prior) - mu)
-      sum_loss = tf.reduce_sum(loss)
-      loss_nodeps = tf.square(tf.identity(prior_2) - mu)
+      loss = math_ops.square(array_ops.identity(likelihood) - mu)
+      part_loss = math_ops.square(array_ops.identity(prior) - mu)
+      sum_loss = math_ops.reduce_sum(loss)
+      loss_nodeps = math_ops.square(array_ops.identity(prior_2) - mu)
 
       # For ground truth, use the stop-gradient versions of the losses
-      loss_nograd = tf.stop_gradient(loss)
-      loss_nodeps_nograd = tf.stop_gradient(loss_nodeps)
-      sum_loss_nograd = tf.stop_gradient(sum_loss)
+      loss_nograd = array_ops.stop_gradient(loss)
+      loss_nodeps_nograd = array_ops.stop_gradient(loss_nodeps)
+      sum_loss_nograd = array_ops.stop_gradient(sum_loss)
 
       # These score functions should ignore prior_2
       self._testSurrogateLoss(
           session=sess,
           losses=[loss],
-          expected=set([
-              likelihood.distribution.log_pdf(likelihood.value()) * loss_nograd,
-              prior.distribution.log_pdf(prior.value()) * loss_nograd]),
+          expected_addl_terms=[
+              likelihood.distribution.log_prob(
+                  likelihood.value()) * loss_nograd,
+              prior.distribution.log_prob(prior.value()) * loss_nograd
+          ],
           xs=[mu, sigma])
 
       self._testSurrogateLoss(
           session=sess,
           losses=[loss, part_loss],
-          expected=set([
-              likelihood.distribution.log_pdf(likelihood.value()) * loss_nograd,
-              (prior.distribution.log_pdf(prior.value())
-               * tf.stop_gradient(part_loss + loss))]),
+          expected_addl_terms=[
+              likelihood.distribution.log_prob(
+                  likelihood.value()) * loss_nograd,
+              (prior.distribution.log_prob(prior.value()) *
+               array_ops.stop_gradient(part_loss + loss))
+          ],
           xs=[mu, sigma])
 
       self._testSurrogateLoss(
           session=sess,
-          losses=[sum_loss],
-          expected=set([
-              (likelihood.distribution.log_pdf(likelihood.value())
-               * sum_loss_nograd),
-              prior.distribution.log_pdf(prior.value()) * sum_loss_nograd]),
+          losses=[sum_loss * array_ops.ones_like(loss)],
+          expected_addl_terms=[(
+              likelihood.distribution.log_prob(likelihood.value()) *
+              sum_loss_nograd), prior.distribution.log_prob(prior.value()) *
+                               sum_loss_nograd],
           xs=[mu, sigma])
 
       self._testSurrogateLoss(
           session=sess,
-          losses=[loss, sum_loss],
-          expected=set([
-              (likelihood.distribution.log_pdf(likelihood.value())
-               * tf.stop_gradient(loss + sum_loss)),
-              (prior.distribution.log_pdf(prior.value())
-               * tf.stop_gradient(loss + sum_loss))]),
+          losses=[loss, sum_loss * array_ops.ones_like(loss)],
+          expected_addl_terms=[(
+              likelihood.distribution.log_prob(likelihood.value()) *
+              array_ops.stop_gradient(loss + sum_loss)),
+                               (prior.distribution.log_prob(prior.value()) *
+                                array_ops.stop_gradient(loss + sum_loss))],
           xs=[mu, sigma])
 
       # These score functions should ignore prior and likelihood
       self._testSurrogateLoss(
           session=sess,
           losses=[loss_nodeps],
-          expected=[prior_2.distribution.log_pdf(prior_2.value())
-                    * loss_nodeps_nograd],
+          expected_addl_terms=[(prior_2.distribution.log_prob(prior_2.value()) *
+                                loss_nodeps_nograd)],
           xs=[mu, sigma])
 
       # These score functions should include all terms selectively
@@ -286,14 +159,88 @@ class TestSurrogateLosses(tf.test.TestCase):
           session=sess,
           losses=[loss, loss_nodeps],
           # We can't guarantee ordering of output losses in this case.
-          expected=set(
-              [(likelihood.distribution.log_pdf(likelihood.value())
-                * loss_nograd),
-               prior.distribution.log_pdf(prior.value()) * loss_nograd,
-               (prior_2.distribution.log_pdf(prior_2.value())
-                * loss_nodeps_nograd)]),
+          expected_addl_terms=[(
+              likelihood.distribution.log_prob(likelihood.value()) *
+              loss_nograd), prior.distribution.log_prob(prior.value()) *
+                               loss_nograd,
+                               (prior_2.distribution.log_prob(prior_2.value()) *
+                                loss_nodeps_nograd)],
           xs=[mu, sigma])
 
+  def testNoSurrogateLoss(self):
+    with self.test_session():
+      mu = constant_op.constant([0.0, 0.1, 0.2])
+      sigma = constant_op.constant([1.1, 1.2, 1.3])
+      with st.value_type(st.SampleValue()):
+        dt = st.StochasticTensor(
+            NormalNotParam(
+                loc=mu, scale=sigma), loss_fn=None)
+        self.assertEqual(None, dt.loss(constant_op.constant([2.0])))
 
-if __name__ == '__main__':
-  tf.test.main()
+  def testExplicitStochasticTensors(self):
+    with self.test_session() as sess:
+      mu = constant_op.constant([0.0, 0.1, 0.2])
+      sigma = constant_op.constant([1.1, 1.2, 1.3])
+      with st.value_type(st.SampleValue()):
+        dt1 = st.StochasticTensor(NormalNotParam(loc=mu, scale=sigma))
+        dt2 = st.StochasticTensor(NormalNotParam(loc=mu, scale=sigma))
+        loss = math_ops.square(array_ops.identity(dt1)) + 10. + dt2
+
+        sl_all = sg.surrogate_loss([loss])
+        sl_dt1 = sg.surrogate_loss([loss], stochastic_tensors=[dt1])
+        sl_dt2 = sg.surrogate_loss([loss], stochastic_tensors=[dt2])
+
+        dt1_term = dt1.distribution.log_prob(dt1) * loss
+        dt2_term = dt2.distribution.log_prob(dt2) * loss
+
+        self.assertAllClose(*sess.run(
+            [sl_all, sum([loss, dt1_term, dt2_term])]))
+        self.assertAllClose(*sess.run([sl_dt1, sum([loss, dt1_term])]))
+        self.assertAllClose(*sess.run([sl_dt2, sum([loss, dt2_term])]))
+
+
+class StochasticDependenciesMapTest(test.TestCase):
+
+  def testBuildsMapOfUpstreamNodes(self):
+    dt1 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
+    dt2 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
+    out1 = dt1.value() + 1.
+    out2 = dt2.value() + 2.
+    x = out1 + out2
+    y = out2 * 3.
+    dep_map = sg._stochastic_dependencies_map([x, y])
+    self.assertEqual(dep_map[dt1], set([x]))
+    self.assertEqual(dep_map[dt2], set([x, y]))
+
+  def testHandlesStackedStochasticNodes(self):
+    dt1 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
+    out1 = dt1.value() + 1.
+    dt2 = st.StochasticTensor(distributions.Normal(loc=out1, scale=1.))
+    x = dt2.value() + 2.
+    dt3 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
+    y = dt3.value() * 3.
+    dep_map = sg._stochastic_dependencies_map([x, y])
+    self.assertEqual(dep_map[dt1], set([x]))
+    self.assertEqual(dep_map[dt2], set([x]))
+    self.assertEqual(dep_map[dt3], set([y]))
+
+  def testTraversesControlInputs(self):
+    dt1 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
+    logits = dt1.value() * 3.
+    dt2 = st.StochasticTensor(distributions.Bernoulli(logits=logits))
+    dt3 = st.StochasticTensor(distributions.Normal(loc=0., scale=1.))
+    x = dt3.value()
+    y = array_ops.ones((2, 2)) * 4.
+    z = array_ops.ones((2, 2)) * 3.
+    out = control_flow_ops.cond(
+        math_ops.cast(dt2, dtypes.bool), lambda: math_ops.add(x, y),
+        lambda: math_ops.square(z))
+    out += 5.
+    dep_map = sg._stochastic_dependencies_map([out])
+    self.assertEqual(dep_map[dt1], set([out]))
+    self.assertEqual(dep_map[dt2], set([out]))
+    self.assertEqual(dep_map[dt3], set([out]))
+
+
+if __name__ == "__main__":
+  test.main()

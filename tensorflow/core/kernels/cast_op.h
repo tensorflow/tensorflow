@@ -19,7 +19,7 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -43,24 +43,75 @@ struct CastFunctor {
 namespace Eigen {
 namespace internal {
 
+// Eigen can't convert to/from complex numbers, because it is limited to cases
+// that can be static_casted. But numpy is able to cast to/from complex, which
+// we want to replicate. So we add specializations for complex here.
+template <typename From, typename To>
+struct scalar_cast_op<std::complex<From>, To> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE To
+  operator()(const std::complex<From>& a) const {
+    // Replicate numpy behavior of returning just the real part
+    return static_cast<To>(a.real());
+  }
+};
+
+template <typename From, typename To>
+struct scalar_cast_op<From, std::complex<To>> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<To> operator()(
+      const From& a) const {
+    // Replicate numpy behavior of setting the imaginary part to 0
+    return std::complex<To>(static_cast<To>(a), To(0));
+  }
+};
+
+template <typename From, typename To>
+struct scalar_cast_op<std::complex<From>, std::complex<To>> {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<To> operator()(
+      const std::complex<From>& a) const {
+    return std::complex<To>(static_cast<To>(a.real()),
+                            static_cast<To>(a.imag()));
+  }
+};
+
+template <typename From, typename To>
+struct functor_traits_complex_impl {
+  enum { Cost = NumTraits<To>::AddCost, PacketAccess = false };
+};
+
+template <typename From, typename To>
+struct functor_traits<scalar_cast_op<std::complex<From>, To>>
+    : functor_traits_complex_impl<std::complex<From>, To> {};
+template <typename From, typename To>
+struct functor_traits<scalar_cast_op<From, std::complex<To>>>
+    : functor_traits_complex_impl<From, std::complex<To>> {};
+// Needed to avoid ambiguous partial specialization
+template <typename From, typename To>
+struct functor_traits<scalar_cast_op<std::complex<From>, std::complex<To>>>
+    : functor_traits_complex_impl<std::complex<From>, std::complex<To>> {};
+
 // Specialized cast op impls for bfloat16.
 template <>
-struct scalar_cast_op< ::tensorflow::bfloat16, float> {
+struct scalar_cast_op<::tensorflow::bfloat16, float> {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_cast_op)
   typedef float result_type;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE float operator()(
       const ::tensorflow::bfloat16& a) const {
-    static_assert(::tensorflow::port::kLittleEndian, "");
     float ret;
     uint16_t* p = reinterpret_cast<uint16_t*>(&ret);
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    p[0] = a.value;  
+    p[1] = 0;  
+#else  
+    static_assert(::tensorflow::port::kLittleEndian, "Not a little endian system!");  
     p[0] = 0;
     p[1] = a.value;
+#endif
     return ret;
   }
 };
 
 template <>
-struct functor_traits<scalar_cast_op< ::tensorflow::bfloat16, float> > {
+struct functor_traits<scalar_cast_op<::tensorflow::bfloat16, float>> {
   enum { Cost = NumTraits<float>::AddCost, PacketAccess = false };
 };
 
@@ -70,14 +121,19 @@ struct scalar_cast_op<float, ::tensorflow::bfloat16> {
   typedef ::tensorflow::bfloat16 result_type;
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const ::tensorflow::bfloat16 operator()(
       const float a) const {
-    static_assert(::tensorflow::port::kLittleEndian, "");
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    const uint16_t* p = reinterpret_cast<const uint16_t*>(&a);  
+    return ::tensorflow::bfloat16(p[0]);  
+#else 
+    static_assert(::tensorflow::port::kLittleEndian, "Not a little endian system!");
     const uint16_t* p = reinterpret_cast<const uint16_t*>(&a);
     return ::tensorflow::bfloat16(p[1]);
+#endif 
   }
 };
 
 template <>
-struct functor_traits<scalar_cast_op<float, ::tensorflow::bfloat16> > {
+struct functor_traits<scalar_cast_op<float, ::tensorflow::bfloat16>> {
   enum { Cost = NumTraits<float>::AddCost, PacketAccess = false };
 };
 

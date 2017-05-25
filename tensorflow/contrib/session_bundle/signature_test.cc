@@ -1,4 +1,4 @@
-/* Copyright 2016 Google Inc. All Rights Reserved.
+/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
-namespace contrib {
+namespace serving {
 namespace {
 
 static bool HasSubstr(const string& base, const string& substr) {
@@ -478,6 +478,95 @@ TEST(SetAndGetSignatures, RoundTrip) {
                         .tensor_name());
 }
 
+TEST(GetSignatures, MissingSignature) {
+  tensorflow::MetaGraphDef meta_graph_def;
+  Signatures read_signatures;
+  const auto status = GetSignatures(meta_graph_def, &read_signatures);
+  EXPECT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
+  EXPECT_TRUE(
+      StringPiece(status.error_message()).contains("Expected exactly one"))
+      << status.error_message();
+}
+
+TEST(GetSignatures, WrongProtoInAny) {
+  tensorflow::MetaGraphDef meta_graph_def;
+  auto& collection_def = *(meta_graph_def.mutable_collection_def());
+  auto* any =
+      collection_def[kSignaturesKey].mutable_any_list()->mutable_value()->Add();
+  // Put an unexpected type into the Signatures Any.
+  any->PackFrom(TensorBinding());
+  Signatures read_signatures;
+  const auto status = GetSignatures(meta_graph_def, &read_signatures);
+  EXPECT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
+  EXPECT_TRUE(StringPiece(status.error_message())
+                  .contains("Expected Any type_url for: "
+                            "tensorflow.serving.Signatures"))
+      << status.error_message();
+}
+
+TEST(GetSignatures, JunkInAny) {
+  tensorflow::MetaGraphDef meta_graph_def;
+  auto& collection_def = *(meta_graph_def.mutable_collection_def());
+  auto* any =
+      collection_def[kSignaturesKey].mutable_any_list()->mutable_value()->Add();
+  // Create a valid Any then corrupt it.
+  any->PackFrom(Signatures());
+  any->set_value("junk junk");
+  Signatures read_signatures;
+  const auto status = GetSignatures(meta_graph_def, &read_signatures);
+  EXPECT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
+  EXPECT_TRUE(StringPiece(status.error_message()).contains("Failed to unpack"))
+      << status.error_message();
+}
+
+TEST(GetSignatures, DefaultAndNamedTogetherOK) {
+  tensorflow::MetaGraphDef meta_graph_def;
+  auto& collection_def = *(meta_graph_def.mutable_collection_def());
+  auto* any =
+      collection_def[kSignaturesKey].mutable_any_list()->mutable_value()->Add();
+  Signatures signatures;
+  signatures.mutable_default_signature()
+      ->mutable_classification_signature()
+      ->mutable_input()
+      ->set_tensor_name("in:0");
+  ClassificationSignature* input_signature =
+      (*signatures.mutable_named_signatures())["foo"]
+          .mutable_classification_signature();
+  input_signature->mutable_input()->set_tensor_name("flow");
+
+  any->PackFrom(signatures);
+  Signatures read_signatures;
+  const auto status = GetSignatures(meta_graph_def, &read_signatures);
+
+  EXPECT_TRUE(status.ok());
+}
+
+// Check that we only have one 'Signatures' entry in the collection_def map.
+// Note that each such object can have multiple named_signatures inside of it.
+TEST(GetSignatures, MultipleSignaturesNotOK) {
+  tensorflow::MetaGraphDef meta_graph_def;
+  auto& collection_def = *(meta_graph_def.mutable_collection_def());
+  auto* any =
+      collection_def[kSignaturesKey].mutable_any_list()->mutable_value()->Add();
+  Signatures signatures;
+  signatures.mutable_default_signature()
+      ->mutable_classification_signature()
+      ->mutable_input()
+      ->set_tensor_name("in:0");
+  any->PackFrom(signatures);
+
+  // Add another signatures object.
+  any =
+      collection_def[kSignaturesKey].mutable_any_list()->mutable_value()->Add();
+  any->PackFrom(signatures);
+  Signatures read_signatures;
+  const auto status = GetSignatures(meta_graph_def, &read_signatures);
+  EXPECT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
+  EXPECT_TRUE(
+      StringPiece(status.error_message()).contains("Expected exactly one"))
+      << status.error_message();
+}
+
 // GenericSignature test fixture that contains a signature initialized with two
 // bound Tensors.
 class GenericSignatureTest : public ::testing::Test {
@@ -598,5 +687,5 @@ TEST_F(GenericSignatureTest, BindGenericNamesMissingBinding) {
 }
 
 }  // namespace
-}  // namespace contrib
+}  // namespace serving
 }  // namespace tensorflow

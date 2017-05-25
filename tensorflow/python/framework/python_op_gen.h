@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_PYTHON_FRAMEWORK_PYTHON_OP_GEN_H_
 
 #include <string>
+#include <vector>
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -26,15 +27,17 @@ namespace tensorflow {
 // list of Op names that should get a leading _ in the output.
 // The Print* version prints the output to stdout, Get* version returns the
 // output as a string.
-void PrintPythonOps(const OpList& ops, const string& hidden_ops,
+void PrintPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
                     bool require_shapes);
-string GetPythonOps(const OpList& ops, const string& hidden_ops,
+string GetPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
                     bool require_shapes);
+string GetPythonOp(const OpDef& op_def, bool is_hidden, const string& op_name);
 
 // Get the python wrappers for a list of ops in a OpList.
-// buf should be a pointer to a buffer containing the binary encoded OpList
-// proto, and len should be the length of that buffer.
-string GetPythonWrappers(const char* op_wrapper_buf, size_t op_wrapper_len);
+// `op_list_buf` should be a pointer to a buffer containing
+// the binary encoded OpList proto, and `op_list_len` should be the
+// length of that buffer.
+string GetPythonWrappers(const char* op_list_buf, size_t op_list_len);
 
 }  // namespace tensorflow
 

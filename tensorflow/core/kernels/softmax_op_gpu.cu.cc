@@ -41,6 +41,7 @@ struct SoftmaxFunctor<GPUDevice, T> {
 // Instantiate the GPU implementation for float.
 template struct functor::SoftmaxFunctor<GPUDevice, Eigen::half>;
 template struct functor::SoftmaxFunctor<GPUDevice, float>;
+template struct functor::SoftmaxFunctor<GPUDevice, double>;
 
 }  // end namespace tensorflow
 

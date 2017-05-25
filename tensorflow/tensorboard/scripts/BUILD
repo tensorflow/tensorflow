@@ -8,23 +8,19 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["LICENSE"])
 
 py_binary(
-    name = "serialize_tensorboard",
-    srcs = ["serialize_tensorboard.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:platform",
-        "//tensorflow/tensorboard/backend:server",
-    ],
-)
-
-py_binary(
     name = "generate_testdata",
     srcs = ["generate_testdata.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:logging_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 

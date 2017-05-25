@@ -62,7 +62,7 @@ class DecodeCSVOp : public OpKernel {
 
     for (int i = 0; i < static_cast<int>(out_type_.size()); ++i) {
       Tensor* out = nullptr;
-      output.allocate(i, records->shape(), &out);
+      OP_REQUIRES_OK(ctx, output.allocate(i, records->shape(), &out));
     }
 
     for (int64 i = 0; i < records_size; ++i) {

@@ -7,27 +7,88 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
-    name = "handler",
-    srcs = ["handler.py"],
+    name = "http_util",
+    srcs = ["http_util.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
-        ":process_graph",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        ":json_util",
         "//tensorflow/python:util",
-        "//tensorflow/tensorboard/lib/python:json_util",
+        "@org_pocoo_werkzeug//:werkzeug",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
-    name = "handler_test",
+    name = "http_util_test",
     size = "small",
-    srcs = ["handler_test.py"],
+    srcs = ["http_util_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":handler",
+        ":http_util",
+        "//tensorflow/python:client_testlib",
+        "@org_pocoo_werkzeug//:werkzeug",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "json_util",
+    srcs = ["json_util.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/python:util"],
+)
+
+py_test(
+    name = "json_util_test",
+    size = "small",
+    srcs = ["json_util_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":json_util",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
+    name = "application",
+    srcs = ["application.py"],
+    data = ["//tensorflow/tensorboard:assets"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":http_util",
+        ":process_graph",
+        "//tensorflow/python:platform",
+        "//tensorflow/tensorboard/backend/event_processing:event_accumulator",
+        "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
+        "@org_pocoo_werkzeug//:werkzeug",
+        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "application_test",
+    size = "medium",
+    srcs = ["application_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["manual"],
+    deps = [
+        ":application",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:summary",
+        "//tensorflow/python:training",
+        "//tensorflow/tensorboard",
+        "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
+        "//tensorflow/tensorboard/plugins:base_plugin",
+        "@org_pocoo_werkzeug//:werkzeug",
     ],
 )
 
@@ -36,31 +97,7 @@ py_library(
     srcs = ["process_graph.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [],
-)
-
-py_library(
-    name = "server",
-    srcs = ["server.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":handler",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
-    ],
-)
-
-py_test(
-    name = "server_test",
-    size = "small",
-    srcs = ["server_test.py"],
-    data = ["//tensorflow/tensorboard:frontend"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":server",
-        "//tensorflow:tensorflow_py",
-        "//tensorflow/python:summary",
-    ],
+    deps = ["//tensorflow/python:util"],
 )
 
 filegroup(

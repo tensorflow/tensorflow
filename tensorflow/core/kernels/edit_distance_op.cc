@@ -235,7 +235,7 @@ class EditDistanceOp : public OpKernel {
       Name("EditDistance").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       EditDistanceOp<T>);
 
-TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
+TF_CALL_POD_STRING_TYPES(REGISTER_CPU_KERNEL);
 
 #undef REGISTER_CPU_KERNEL
 

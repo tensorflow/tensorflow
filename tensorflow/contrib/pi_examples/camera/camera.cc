@@ -412,21 +412,26 @@ int main(int argc, char** argv) {
   int32 video_height = 480;
   int print_threshold = 50;
   string root_dir = "";
-  const bool parse_result = tensorflow::ParseFlags(
-      &argc, argv, {Flag("graph", &graph),                      //
-                    Flag("labels", &labels_file_name),          //
-                    Flag("input_width", &input_width),          //
-                    Flag("input_height", &input_height),        //
-                    Flag("input_mean", &input_mean),            //
-                    Flag("input_std", &input_std),              //
-                    Flag("input_layer", &input_layer),          //
-                    Flag("output_layer", &output_layer),        //
-                    Flag("video_width", &video_width),          //
-                    Flag("video_height", &video_height),        //
-                    Flag("print_threshold", &print_threshold),  //
-                    Flag("root_dir", &root_dir)});
-  if (!parse_result) {
-    LOG(ERROR) << "Error parsing command-line flags.";
+  std::vector<Flag> flag_list = {
+      Flag("graph", &graph, "graph file name"),
+      Flag("labels", &labels_file_name, "labels file name"),
+      Flag("input_width", &input_width, "image input width"),
+      Flag("input_height", &input_height, "image input height"),
+      Flag("input_mean", &input_mean, "transformed mean of input pixels"),
+      Flag("input_std", &input_std, "transformed std dev of input pixels"),
+      Flag("input_layer", &input_layer, "input layer name"),
+      Flag("output_layer", &output_layer, "output layer name"),
+      Flag("video_width", &video_width, "video width expected from device"),
+      Flag("video_height", &video_height, "video height expected from device"),
+      Flag("print_threshold", &print_threshold,
+           "print labels with scoe exceeding this"),
+      Flag("root_dir", &root_dir,
+           "interpret graph file name relative to this directory")};
+  string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+
+  if (!parse_result || argc != 1) {
+    LOG(ERROR) << "\n" << usage;
     return -1;
   }
 

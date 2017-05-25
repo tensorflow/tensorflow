@@ -13,15 +13,30 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/util/example_proto_helper.h"
 
 namespace tensorflow {
+
+using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 REGISTER_OP("DecodeRaw")
     .Input("bytes: string")
     .Output("output: out_type")
-    .Attr("out_type: {float,double,int32,uint8,int16,int8,int64}")
+    .Attr("out_type: {half,float,double,int32,uint8,int16,int8,int64}")
     .Attr("little_endian: bool = true")
+    .SetShapeFn([](InferenceContext* c) {
+      // Note: last dimension is data dependent.
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->Concatenate(
+          c->input(0), c->Vector(InferenceContext::kUnknownDim), &out));
+      c->set_output(0, out);
+      return Status::OK();
+    })
     .Doc(R"doc(
 Reinterpret the bytes of a string as a vector of numbers.
 
@@ -49,6 +64,38 @@ REGISTER_OP("ParseExample")
     .Attr("sparse_types: list({float,int64,string}) >= 0")
     .Attr("Tdense: list({float,int64,string}) >= 0")
     .Attr("dense_shapes: list(shape) >= 0")
+    .SetShapeFn([](InferenceContext* c) {
+      ParseSingleExampleAttrs attrs;
+      TF_RETURN_IF_ERROR(attrs.Init(c));
+
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &input));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));  // names
+
+      // Output sparse_indices, sparse_values, and sparse_shapes.
+      int output_idx = 0;
+      for (int i = 0; i < attrs.num_sparse; ++i) {
+        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 2));
+      }
+      for (int i = 0; i < attrs.num_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
+      }
+      for (int i = 0; i < attrs.num_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(2));
+      }
+
+      // Output dense_shapes.
+      TensorShapeProto shape_proto;
+      for (int i = 0; i < attrs.num_dense; ++i) {
+        attrs.dense_shapes[i].AsProto(&shape_proto);
+        ShapeHandle dense;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &dense));
+        TF_RETURN_IF_ERROR(c->Concatenate(input, dense, &dense));
+        c->set_output(output_idx++, dense);
+      }
+      return Status::OK();
+    })
     .Doc(R"doc(
 Transforms a vector of brain.Example protos (as strings) into typed tensors.
 
@@ -66,7 +113,11 @@ dense_defaults: A list of Ndense Tensors (some may be empty).
   when the example's feature_map lacks dense_key[j].  If an empty Tensor is
   provided for dense_defaults[j], then the Feature dense_keys[j] is required.
   The input type is inferred from dense_defaults[j], even when it's empty.
-  If dense_defaults[j] is not empty, its shape must match dense_shapes[j].
+  If dense_defaults[j] is not empty, and dense_shapes[j] is fully defined,
+  then the shape of dense_defaults[j] must match that of dense_shapes[j].
+  If dense_shapes[j] has an undefined major dimension (variable strides dense
+  feature), dense_defaults[j] must contain a single element:
+  the padding element.
 dense_shapes: A list of Ndense shapes; the shapes of data in each Feature
   given in dense_keys.
   The number of elements in the Feature corresponding to dense_key[j]
@@ -74,6 +125,13 @@ dense_shapes: A list of Ndense shapes; the shapes of data in each Feature
   If dense_shapes[j] == (D0, D1, ..., DN) then the shape of output
   Tensor dense_values[j] will be (|serialized|, D0, D1, ..., DN):
   The dense outputs are just the inputs row-stacked by batch.
+  This works for dense_shapes[j] = (-1, D1, ..., DN).  In this case
+  the shape of the output Tensor dense_values[j] will be
+  (|serialized|, M, D1, .., DN), where M is the maximum number of blocks
+  of elements of length D1 * .... * DN, across all minibatch entries
+  in the input.  Any minibatch entry with less than M blocks of elements of
+  length D1 * ... * DN will be padded with the corresponding default_value
+  scalar element along the second dimension.
 sparse_keys: A list of Nsparse string Tensors (scalars).
   The keys expected in the Examples' features associated with sparse values.
 sparse_types: A list of Nsparse types; the data types of data in each Feature
@@ -113,6 +171,63 @@ REGISTER_OP("ParseSingleSequenceExample")
     .Attr("context_dense_shapes: list(shape) >= 0 = []")
     .Attr("feature_list_sparse_types: list({float,int64,string}) >= 0 = []")
     .Attr("feature_list_dense_shapes: list(shape) >= 0 = []")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle unused;
+      ParseSingleSequenceExampleAttrs attrs;
+      TF_RETURN_IF_ERROR(attrs.Init(c));
+
+      ShapeHandle input;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &input));
+
+      // feature_list_dense_missing_assumed_empty
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 1, &unused));
+
+      int output_idx = 0;
+
+      // Output context_sparse_indices, context_sparse_values, and
+      // context_sparse_shapes.
+      for (int i = 0; i < attrs.num_context_sparse; ++i) {
+        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 1));
+      }
+      for (int i = 0; i < attrs.num_context_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
+      }
+      for (int i = 0; i < attrs.num_context_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(1));
+      }
+
+      // Output context_dense_shapes.
+      TensorShapeProto shape_proto;
+      for (int i = 0; i < attrs.num_context_dense; ++i) {
+        attrs.context_dense_shapes[i].AsProto(&shape_proto);
+        ShapeHandle s;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
+        c->set_output(output_idx++, s);
+      }
+
+      // Output feature_list_sparse_indices, feature_list_sparse_values,
+      // feature_list_sparse_shapes.
+      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
+        c->set_output(output_idx++, c->Matrix(c->UnknownDim(), 2));
+      }
+      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(c->UnknownDim()));
+      }
+      for (int i = 0; i < attrs.num_feature_list_sparse; ++i) {
+        c->set_output(output_idx++, c->Vector(2));
+      }
+
+      // Output feature_list_dense_shapes.
+      for (int i = 0; i < attrs.num_feature_list_dense; ++i) {
+        attrs.feature_list_dense_shapes[i].AsProto(&shape_proto);
+        ShapeHandle s;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromShapeProto(shape_proto, &s));
+        TF_RETURN_IF_ERROR(
+            c->Concatenate(c->Vector(InferenceContext::kUnknownDim), s, &s));
+        c->set_output(output_idx++, s);
+      }
+      return Status::OK();
+    })
     .Doc(R"doc(
 Transforms a scalar brain.SequenceExample proto (as strings) into typed tensors.
 
@@ -166,9 +281,24 @@ feature_list_sparse_types: A list of Nfeature_list_sparse types; the data types
   DT_INT64 (Int64List), and DT_STRING (BytesList).
 )doc");
 
+REGISTER_OP("ParseTensor")
+    .Input("serialized: string")
+    .Output("output: out_type")
+    .Attr("out_type: type")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Transforms a serialized tensorflow.TensorProto proto into a Tensor.
+
+serialized: A scalar string containing a serialized TensorProto proto.
+out_type: The type of the serialized tensor.  The provided type must match the
+  type of the serialized tensor and no implicit conversion will take place.
+output: A Tensor of type `out_type`.
+)doc");
+
 REGISTER_OP("DecodeJSONExample")
     .Input("json_examples: string")
     .Output("binary_examples: string")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Convert JSON-encoded Example records to binary protocol buffer strings.
 
@@ -191,6 +321,21 @@ REGISTER_OP("DecodeCSV")
     .Output("output: OUT_TYPE")
     .Attr("OUT_TYPE: list({float,int32,int64,string})")
     .Attr("field_delim: string = ','")
+    .SetShapeFn([](InferenceContext* c) {
+      // Validate the record_defaults inputs.
+      for (int i = 1; i < c->num_inputs(); ++i) {
+        ShapeHandle v;
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &v));
+        if (c->Value(c->Dim(v, 0)) > 1) {
+          return errors::InvalidArgument(
+              "Shape of a default must be a length-0 or length-1 vector");
+        }
+      }
+
+      // Propagate shape of the records input.
+      for (int i = 0; i < c->num_outputs(); ++i) c->set_output(i, c->input(0));
+      return Status::OK();
+    })
     .Doc(R"doc(
 Convert CSV records to tensors. Each column maps to one tensor.
 
@@ -209,14 +354,15 @@ output: Each tensor will have the same shape as records.
 REGISTER_OP("StringToNumber")
     .Input("string_tensor: string")
     .Output("output: out_type")
-    .Attr("out_type: {float, int32} = DT_FLOAT")
+    .Attr("out_type: {float, double, int32, int64} = DT_FLOAT")
+    .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Converts each string in the input Tensor to the specified numeric type.
 
 (Note that int32 overflow results in an error while float overflow
 results in a rounded value.)
 
-out_type: The numeric type to interpret each string in string_tensor as.
+out_type: The numeric type to interpret each string in `string_tensor` as.
 output: A Tensor of the same shape as the input `string_tensor`.
 )doc");
 

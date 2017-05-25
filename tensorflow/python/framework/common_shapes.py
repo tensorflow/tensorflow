@@ -17,7 +17,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+import six.moves
+
+from tensorflow.core.framework import types_pb2
+from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import cpp_shape_inference_pb2
+from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 
 
 def scalar_shape(unused_op):
@@ -93,45 +102,6 @@ def matmul_shape(op):
   inner_b = b_shape[1] if transpose_b else b_shape[0]
   inner_a.assert_is_compatible_with(inner_b)
   return [tensor_shape.TensorShape([output_rows, output_cols])]
-
-
-def bias_add_shape(op):
-  """Shape function for a BiasAdd op."""
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
-  bias_shape = op.inputs[1].get_shape().with_rank(1)
-  if input_shape.ndims is not None:
-    # Output has the same shape as input, and matches the length of
-    # bias in its bias dimension.
-    try:
-      data_format = op.get_attr("data_format")
-    except ValueError:
-      data_format = None
-    if data_format == b"NCHW":
-      # Merge the length of bias_shape into the third-to-last dimension.
-      output_shape = input_shape[0:-3].concatenate(input_shape[-3].merge_with(
-          bias_shape[0])).concatenate(input_shape[-2:])
-    else:
-      output_shape = input_shape[0:-1].concatenate(input_shape[-1].merge_with(
-          bias_shape[0]))
-  else:
-    output_shape = tensor_shape.unknown_shape()
-  return [output_shape]
-
-
-def bias_add_grad_shape(op):
-  """Shape function for a BiasAddGrad op."""
-  input_shape = op.inputs[0].get_shape().with_rank_at_least(2)
-  try:
-    data_format = op.get_attr("data_format")
-  except ValueError:
-    data_format = None
-
-  if data_format == b"NCHW":
-    output_shape = input_shape[-3]
-  else:
-    output_shape = input_shape[-1]
-
-  return [output_shape]
 
 
 def get_conv_output_size(input_size, filter_size, strides, padding_type):
@@ -215,7 +185,7 @@ def conv2d_shape(op):
     data_format = None
 
   if data_format == b"NCHW":
-    # Convert input shape to the dfeault NHWC for inference.
+    # Convert input shape to the default NHWC for inference.
     input_shape = [input_shape[0], input_shape[2], input_shape[3],
                    input_shape[1]]
 
@@ -400,7 +370,7 @@ def avg_pool_shape(op):
     data_format = None
 
   if data_format == b"NCHW":
-    # Convert input shape to the dfeault NHWC for inference.
+    # Convert input shape to the default NHWC for inference.
     input_shape = [input_shape[0], input_shape[2], input_shape[3],
                    input_shape[1]]
 
@@ -528,3 +498,221 @@ def no_outputs(unused_op):
 def unknown_shape(op):
   """Shape function for use with ops whose output shapes are unknown."""
   return [tensor_shape.unknown_shape() for _ in op.outputs]
+
+
+def broadcast_shape(shape_x, shape_y):
+  """Returns the broadcasted shape between `shape_x` and `shape_y`.
+
+  Args:
+    shape_x: A `TensorShape`
+    shape_y: A `TensorShape`
+
+  Returns:
+    A `TensorShape` representing the broadcasted shape.
+
+  Raises:
+    ValueError: If the two shapes can not be broadcasted.
+  """
+  if shape_x.ndims is None or shape_y.ndims is None:
+    return tensor_shape.unknown_shape()
+
+  # To compute the broadcasted dimensions, we zip together shape_x and shape_y,
+  # and pad with 1 to make them the same length.
+  broadcasted_dims = reversed(list(six.moves.zip_longest(
+      reversed(shape_x.dims),
+      reversed(shape_y.dims),
+      fillvalue=tensor_shape.Dimension(1))))
+  # Next we combine the dimensions according to the numpy broadcasting rules.
+  # http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html
+  return_dims = []
+  for (dim_x, dim_y) in broadcasted_dims:
+    if dim_x.value is None or dim_y.value is None:
+      # One or both dimensions is unknown. If either dimension is greater than
+      # 1, we assume that the program is correct, and the other dimension will
+      # be broadcast to match it.
+      # TODO(mrry): If we eliminate the shape checks in C++, we must still
+      # assert that the unknown dim is either 1 or the same as the known dim.
+      if dim_x.value is not None and dim_x.value > 1:
+        return_dims.append(dim_x)
+      elif dim_y.value is not None and dim_y.value > 1:
+        return_dims.append(dim_y)
+      else:
+        return_dims.append(None)
+    elif dim_x.value == 1:
+      # We will broadcast dim_x to dim_y.
+      return_dims.append(dim_y)
+    elif dim_y.value == 1:
+      # We will broadcast dim_y to dim_x.
+      return_dims.append(dim_x)
+    elif dim_x.value == dim_y.value:
+      # The dimensions are compatible, so output is the same size in that
+      # dimension.
+      return_dims.append(dim_x.merge_with(dim_y))
+    else:
+      raise ValueError("Incompatible shapes for broadcasting: %s and %s"
+                       % (shape_x, shape_y))
+  return tensor_shape.TensorShape(return_dims)
+
+
+def call_cpp_shape_fn(op,
+                      input_tensors_needed=None,
+                      input_tensors_as_shapes_needed=None,
+                      debug_python_shape_fn=None,
+                      require_shape_fn=True):
+  """A shape function that delegates to the registered C++ shape function.
+
+  Args:
+    op: the node in the graph for which to compute output shapes.
+    input_tensors_needed: a list of input tensor indices for which to compute
+      the input tensor's value and pass to the C++ shape function.
+    input_tensors_as_shapes_needed: a list of input tensor indices for which to
+      compute the constant_value_as_shape and pass to the C++ shape function.
+    debug_python_shape_fn: For testing only during migration to using
+      call_cpp_shape_fn. Do not submit calls that set this,
+      as the comparison is slow. If non-None, the python shape function;
+      this function will be called and its output compared to that of
+      the C++ shape function.
+    require_shape_fn: If true, and the C++ shape function is not registered
+      in the current binary then an exception is raised; otherwise, if the
+      C++ shape function is not registered then unknown_shape is used.
+
+  Returns:
+    A dictionary with the following keys:
+      shapes: A TensorShape list of the output shapes of the op, as computed
+        using the C++ shape inference function registered for the op.
+      handle_shapes: A TensorShape list of the shapes for handle outputs, if
+         any.
+      handle_dtypes: A list of DataType enums for the handle outputs, if any.
+
+  Raises:
+    ValueError: If the C++ shape function returned an error (e.g. because the
+      shapes of the inputs are of the wrong rank or otherwise incompatible
+      according to the shape function).
+    RuntimeError: If the C++ shape function is not registered and
+      <require_shape_fn> is True.
+  """
+  if op.type == "Const":
+    # To avoid serializing large constants, we special-case constant
+    # here, even though it has a C++ shape function.  When Python
+    # calls the C / C-API directly, we should be able to remove this.
+    return {
+        "shapes": [tensor_shape.TensorShape(op.get_attr("value").tensor_shape)],
+        "handle_shapes": [tensor_shape.TensorShape(None).as_proto()],
+        "handle_dtypes": [types_pb2.DT_INVALID]
+    }
+
+  input_tensors_needed = input_tensors_needed or []
+  input_tensors_as_shapes_needed = input_tensors_as_shapes_needed or []
+
+  while True:
+    res = _call_cpp_shape_fn_impl(op, input_tensors_needed,
+                                  input_tensors_as_shapes_needed,
+                                  debug_python_shape_fn, require_shape_fn)
+    if not isinstance(res, dict):
+      # Handles the case where _call_cpp_shape_fn_impl calls unknown_shape(op).
+      return res
+
+    # See if we need to evaluate some inputs.
+    if not res["inputs_needed"]:
+      return res
+    p = cpp_shape_inference_pb2.CppShapeInferenceInputsNeeded()
+    p = p.FromString(res["inputs_needed"])
+    changed = False
+    for idx in p.input_tensors_needed:
+      if idx not in input_tensors_needed:
+        input_tensors_needed.append(idx)
+        changed = True
+    for idx in p.input_tensors_as_shapes_needed:
+      if idx not in input_tensors_as_shapes_needed:
+        input_tensors_as_shapes_needed.append(idx)
+        changed = True
+    if not changed:
+      return res
+
+
+def _call_cpp_shape_fn_impl(
+    op, input_tensors_needed,
+    input_tensors_as_shapes_needed,
+    debug_python_shape_fn, require_shape_fn):
+  """Core implementaton of call_cpp_shape_fn."""
+  graph_def_version = op.graph.graph_def_versions.producer
+  node_def_str = op.node_def.SerializeToString()
+
+  def tensor_to_inference_result(t):
+    r = cpp_shape_inference_pb2.CppShapeInferenceResult()
+    r.shape.CopyFrom(t.get_shape().as_proto())
+    # pylint: disable=protected-access
+    r.handle_shape.CopyFrom(t._handle_shape)
+    r.handle_dtype = t._handle_dtype
+    # pylint: enable=protected-access
+    return r.SerializeToString()
+  input_shapes = [tensor_to_inference_result(i) for i in op.inputs]
+
+  input_tensors = [None for i in input_shapes]
+  for idx in input_tensors_needed:
+    v = tensor_util.constant_value(op.inputs[idx])
+    if v is not None:
+      input_tensors[idx] = np.asarray(v)
+
+  serialized_unknown_shape = (
+      tensor_shape.TensorShape(None).as_proto().SerializeToString())
+  arr = [serialized_unknown_shape for i in input_shapes]
+  for idx in input_tensors_as_shapes_needed:
+    s = tensor_util.constant_value_as_shape(op.inputs[idx])
+    if s is not None:
+      arr[idx] = s.as_proto().SerializeToString()
+  input_tensors_as_shapes = arr
+
+  missing_shape_fn = False
+  try:
+    with errors.raise_exception_on_not_ok_status() as status:
+      output = pywrap_tensorflow.RunCppShapeInference(
+          graph_def_version, node_def_str, input_shapes, input_tensors,
+          input_tensors_as_shapes, status)
+  except errors.InvalidArgumentError as err:
+    if err.message.startswith("No shape inference function exists for op"):
+      missing_shape_fn = True
+    else:
+      raise ValueError(err.message)
+
+  if missing_shape_fn:
+    if require_shape_fn:
+      raise RuntimeError(
+          "No C++ shape function registered for standard op: %s" % op.type)
+    return unknown_shape(op)
+
+  output_shapes = output[:-1]
+
+  # Convert TensorShapeProto values in output_shapes.
+  result_protos = [
+      cpp_shape_inference_pb2.CppShapeInferenceResult().FromString(s)
+      for s in output_shapes
+  ]
+  result = [r.shape for r in result_protos]
+  result_handle_shapes = [r.handle_shape for r in result_protos]
+  result_handle_dtypes = [r.handle_dtype for r in result_protos]
+
+  if debug_python_shape_fn:
+    try:
+      python_result = [tensor_shape.as_shape(s)
+                       for s in debug_python_shape_fn(op)]
+    except Exception as err:
+      raise AssertionError("Python shape function return error but "
+                           "C++ shape functon did not: %s" % str(err))
+    result_as_shapes = [tensor_shape.as_shape(s) for s in result]
+    if str(result_as_shapes) != str(python_result):
+      raise ValueError(
+          ("Python vs CPP shape mismatch.  "
+           "CPP: %s vs python: %s on node %s "
+           "with input shapes %s") % (
+               str(result_as_shapes), str(python_result), str(op.node_def),
+               ",".join([str(i.get_shape()) for i in op.inputs])))
+
+  return {"shapes": result,
+          "handle_shapes": result_handle_shapes,
+          "handle_dtypes": result_handle_dtypes,
+          "inputs_needed": output[-1]}
+
+# pylint: disable=protected-access
+ops._set_call_cpp_shape_fn(call_cpp_shape_fn)
+# pylint: enable=protected-access

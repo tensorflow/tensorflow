@@ -23,7 +23,7 @@ limitations under the License.
 #if defined(PLATFORM_GOOGLE) || defined(GOOGLE_INTEGRAL_TYPES)
 #include "tensorflow/core/platform/google/integral_types.h"
 #elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID)
+    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/default/integral_types.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
