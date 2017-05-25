@@ -497,6 +497,7 @@ class DNNRegressorPredictTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_1d(self):
@@ -584,6 +585,7 @@ class DNNRegressorIntegrationTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_complete_flow(self):
@@ -691,6 +693,7 @@ class DNNRegressorTrainTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def _assert_checkpoint(

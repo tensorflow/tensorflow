@@ -168,6 +168,7 @@ class LinearRegressorEvaluationTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_evaluation_for_simple_data(self):
@@ -338,6 +339,7 @@ class LinearRegressorPredictTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_1d(self):
@@ -428,6 +430,7 @@ class LinearRegressorIntegrationTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_complete_flow(self):
@@ -501,6 +504,7 @@ class LinearRegressorTrainingTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def _mockOptimizer(self, expected_loss=None):
