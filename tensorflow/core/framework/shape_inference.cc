@@ -33,8 +33,9 @@ InferenceContext::InferenceContext(
     const std::vector<TensorShapeProto>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<TensorShapeProto>& input_tensors_as_shapes,
-    const std::vector<TensorShapeProto>& input_handle_shapes,
-    const std::vector<DataType>& input_handle_dtypes)
+    const std::vector<
+        std::unique_ptr<std::vector<std::pair<TensorShapeProto, DataType>>>>&
+        input_handle_shapes_and_types)
     : graph_def_version_(graph_def_version),
       node_def_(*CHECK_NOTNULL(node_def)) {
   std::vector<ShapeHandle> input_tensors_as_shape_handles;
@@ -56,16 +57,26 @@ InferenceContext::InferenceContext(
     }
     inputs_.push_back(shape);
   }
-  std::vector<ShapeHandle> handle_shapes;
-  for (const auto& p : input_handle_shapes) {
-    ShapeHandle shape;
-    construction_status_.Update(MakeShapeFromShapeProto(p, &shape));
-    if (!construction_status_.ok()) {
-      return;
+  std::vector<std::unique_ptr<std::vector<ShapeAndType>>> handle_data(
+      input_shapes.size());
+  for (int i = 0; i < input_handle_shapes_and_types.size(); ++i) {
+    const auto& v = input_handle_shapes_and_types[i];
+    if (v == nullptr) {
+      continue;
     }
-    handle_shapes.push_back(shape);
+    handle_data[i].reset(new std::vector<ShapeAndType>(v->size()));
+    auto& new_v = *handle_data[i];
+    for (int j = 0; j < v->size(); ++j) {
+      const auto& p = (*v)[j];
+      construction_status_.Update(
+          MakeShapeFromShapeProto(p.first, &new_v[j].shape));
+      if (!construction_status_.ok()) {
+        return;
+      }
+      new_v[j].dtype = p.second;
+    }
   }
-  PostInputInit(handle_shapes, input_handle_dtypes);
+  PostInputInit(std::move(handle_data));
 }
 
 InferenceContext::InferenceContext(
@@ -73,14 +84,15 @@ InferenceContext::InferenceContext(
     const std::vector<ShapeHandle>& input_shapes,
     const std::vector<const Tensor*>& input_tensors,
     const std::vector<ShapeHandle>& input_tensors_as_shapes,
-    const std::vector<ShapeHandle>& input_handle_shapes,
-    const std::vector<DataType>& input_handle_dtypes)
+    std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
+        input_handle_shapes_and_types)
     : graph_def_version_(graph_def_version),
       node_def_(*CHECK_NOTNULL(node_def)) {
   PreInputInit(op_def, input_tensors, input_tensors_as_shapes);
   if (!construction_status_.ok()) return;
   inputs_ = input_shapes;
-  PostInputInit(input_handle_shapes, input_handle_dtypes);
+
+  PostInputInit(std::move(input_handle_shapes_and_types));
 }
 
 InferenceContext::~InferenceContext() {}
@@ -149,16 +161,11 @@ void InferenceContext::PreInputInit(
   for (int i = 0; i < num_outputs; ++i) {
     outputs_.push_back(nullptr);
   }
-  output_handle_shape_.reserve(num_outputs);
-  for (int i = 0; i < num_outputs; ++i) {
-    output_handle_shape_.push_back(UnknownShape());
-  }
-  output_handle_dtype_ = std::vector<DataType>(num_outputs, DT_INVALID);
+  output_handle_shapes_and_types_.resize(num_outputs);
 }
 
 void InferenceContext::PostInputInit(
-    const std::vector<ShapeHandle>& input_handle_shapes,
-    const std::vector<DataType>& input_handle_dtypes) {
+    std::vector<std::unique_ptr<std::vector<ShapeAndType>>> input_handle_data) {
   int num_inputs_from_node_def = 0;
   for (const auto& e : input_name_map_) {
     num_inputs_from_node_def =
@@ -166,25 +173,16 @@ void InferenceContext::PostInputInit(
   }
 
   // Allow passing empty shapes/dtypes to avoid changing every single test.
-  if (input_handle_shapes.empty()) {
-    input_handle_shape_.resize(inputs_.size());
+  if (input_handle_data.empty()) {
+    input_handle_shapes_and_types_.resize(inputs_.size());
   } else {
-    input_handle_shape_ = input_handle_shapes;
-    if (input_handle_shape_.size() != inputs_.size()) {
+    if (input_handle_data.size() != inputs_.size()) {
       construction_status_ = errors::InvalidArgument(
           "Wrong number of handle shapes passed; expected ", inputs_.size(),
-          " got ", input_handle_shape_.size());
+          " got ", input_handle_data.size());
+      return;
     }
-  }
-  if (input_handle_dtypes.empty()) {
-    input_handle_dtype_ = std::vector<DataType>(inputs_.size(), DT_INVALID);
-  } else {
-    input_handle_dtype_ = input_handle_dtypes;
-    if (input_handle_dtype_.size() != inputs_.size()) {
-      construction_status_ = errors::InvalidArgument(
-          "Wrong number of handle dtypes passed; expected ", inputs_.size(),
-          " got ", input_handle_dtype_.size());
-    }
+    input_handle_shapes_and_types_ = std::move(input_handle_data);
   }
 
   if (inputs_.size() != num_inputs_from_node_def) {
@@ -756,7 +754,7 @@ Status InferenceContext::Multiply(DimensionHandle first,
   } else if (first_value == kUnknownDim || second_value == kUnknownDim) {
     *out = UnknownDim();
   } else {
-    // Invariant: Both values are known and and greater than 1.
+    // Invariant: Both values are known and greater than 1.
     const int64 product = first_value * second_value;
     if (product < 0) {
       return errors::InvalidArgument(
@@ -847,10 +845,65 @@ Status InferenceContext::AttachContext(const Status& status) {
 }
 
 ShapeHandle InferenceContext::input_handle_shape(int idx) {
-  if (!input_handle_shape_[idx].IsSet()) {
-    input_handle_shape_[idx] = UnknownShape();
+  if (input_handle_shapes_and_types_[idx] == nullptr) {
+    input_handle_shapes_and_types_[idx].reset(
+        new std::vector<ShapeAndType>{{UnknownShape(), DT_INVALID}});
   }
-  return input_handle_shape_[idx];
+  return (*input_handle_shapes_and_types_[idx])[0].shape;
+}
+
+bool InferenceContext::MergeHandleShapesAndTypes(
+    const std::vector<ShapeAndType>& shapes_and_types,
+    std::vector<ShapeAndType>* to_update) {
+  if (shapes_and_types.size() != to_update->size()) {
+    return false;
+  }
+  std::vector<ShapeAndType> new_values(shapes_and_types.size());
+  bool refined = false;
+  for (int i = 0; i < shapes_and_types.size(); ++i) {
+    const ShapeAndType& existing = (*to_update)[i];
+    new_values[i].dtype = shapes_and_types[i].dtype;
+    if (new_values[i].dtype != existing.dtype && existing.dtype == DT_INVALID) {
+      refined = true;
+    }
+    if (!Merge(existing.shape, shapes_and_types[i].shape, &new_values[i].shape)
+             .ok()) {
+      // merge failed, ignore the new value.
+      new_values[i].shape = existing.shape;
+    }
+    if (!existing.shape.SameHandle(new_values[i].shape)) {
+      refined = true;
+    }
+  }
+  if (!refined) {
+    return false;
+  }
+  for (int i = 0; i < new_values.size(); ++i) {
+    (*to_update)[i] = new_values[i];
+  }
+  return true;
+}
+
+bool InferenceContext::MergeOutputHandleShapesAndTypes(
+    int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+  if (output_handle_shapes_and_types_[idx] == nullptr) {
+    output_handle_shapes_and_types_[idx].reset(
+        new std::vector<ShapeAndType>(shapes_and_types));
+    return true;
+  }
+  return MergeHandleShapesAndTypes(shapes_and_types,
+                                   output_handle_shapes_and_types_[idx].get());
+}
+
+bool InferenceContext::MergeInputHandleShapesAndTypes(
+    int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+  if (input_handle_shapes_and_types_[idx] == nullptr) {
+    input_handle_shapes_and_types_[idx].reset(
+        new std::vector<ShapeAndType>(shapes_and_types));
+    return true;
+  }
+  return MergeHandleShapesAndTypes(shapes_and_types,
+                                   input_handle_shapes_and_types_[idx].get());
 }
 
 // -----------------------------------------------------------------------------

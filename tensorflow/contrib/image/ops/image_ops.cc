@@ -34,8 +34,6 @@ REGISTER_OP("ImageProjectiveTransform")
     .Output("transformed_images: dtype")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(0));
-      c->set_output_handle_dtype(0, c->input_handle_dtype(0));
-      c->set_output_handle_shape(0, c->input_handle_shape(0));
       return Status::OK();
     })
     .Doc(R"doc(
