@@ -80,5 +80,6 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
+        "//tensorflow/python/estimator:inputs",
     ],
 )

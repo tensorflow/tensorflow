@@ -17,13 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.rnn.python.ops.core_rnn_cell import BasicRNNCell
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import gradient_descent
 
@@ -55,7 +57,7 @@ def BuildFullModel():
     with variable_scope.variable_scope('inp_%d' % i):
       seq.append(array_ops.reshape(BuildSmallModel(), [2, 1, -1]))
 
-  cell = BasicRNNCell(16, 48)
+  cell = rnn_cell.BasicRNNCell(16)
   out = rnn.dynamic_rnn(
       cell, array_ops.concat(seq, axis=1), dtype=dtypes.float32)[0]
 
@@ -63,5 +65,3 @@ def BuildFullModel():
   loss = nn_ops.l2_loss(math_ops.reduce_mean(target - out))
   sgd_op = gradient_descent.GradientDescentOptimizer(1e-2)
   return sgd_op.minimize(loss)
-
-
