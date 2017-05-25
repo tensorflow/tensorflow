@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -349,6 +350,13 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   const auto* node = GetCurrNode();
   const auto& op_name = node->op();
 
+  // Also keep track of op counts and times per op (with their shapes).
+  NodeInfo node_info = GetCurrNodeInfo();
+  string node_description = GetOpDescription(node_info.op_info);
+  op_counts_[node_description] += 1;
+  op_costs_[node_description] =
+      node_costs.execution_time.asMicroSeconds().count();
+
   auto& op_cost = FindOrCreateZero(op_name, &op_to_cost_);
   op_cost = CombineCosts(op_cost, node_costs);
 
@@ -443,6 +451,13 @@ Costs VirtualScheduler::Summary() const {
     if (critical_path_costs.execution_time <= state.GetCurrTime()) {
       critical_path_costs = state.device_costs;
     }
+  }
+
+  // Also log the op description and their corresponding counts.
+  VLOG(1) << "Node description, counts, cost:";
+  for (const auto& item : op_counts_) {
+    VLOG(1) << "Node: " << item.first << ", Count: " << item.second
+            << ", Individual Cost: " << op_costs_.at(item.first);
   }
 
   VLOG(1) << "Critical path execution time: "

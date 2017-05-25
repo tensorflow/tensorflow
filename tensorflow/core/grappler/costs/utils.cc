@@ -219,5 +219,16 @@ OpInfo BuildOpInfo(
   return op_info;
 }
 
+string GetOpDescription(const OpInfo& op_info) {
+  string description = "[";
+  description += "Op=" + op_info.op() + ", ";
+  description += "input_shapes=[";
+  for (auto const& input : op_info.inputs()) {
+    description += PartialTensorShape::DebugString(input.shape());
+  }
+  description += "]";
+  return description;
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow
