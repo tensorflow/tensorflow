@@ -383,11 +383,15 @@ Status TFTensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
   return Status::OK();
 }
 
-// Converts the given numpy ndarray to a (safe) TF_Tensor. If `ndarray` contains
-// a resource handle, `*resource_handle` will be set to the deserialized
-// handle. Otherwise it is set to nullptr. `resource_handle` and `out_tensor`
-// must be non-null. Caller retains ownership of `ndarray` and becomes owner of
-// `*resource_handle` if it's set.
+// Converts the given numpy ndarray to a (safe) TF_Tensor.
+//
+// If `ndarray` contains a resource handle, `*resource_handle` will be set to
+// the deserialized handle. Otherwise it is set to nullptr. Caller becomes owner
+// of `*resource_handle` if it's set, and it must outlive the returned
+// `out_tensor`.
+//
+// `resource_handle` and `out_tensor` must be non-null. Caller retains ownership
+// of `ndarray`.
 Status PyArrayToTFTensor(PyObject* ndarray, Safe_TF_TensorPtr* out_tensor,
                          ResourceHandle** resource_handle) {
   DCHECK(out_tensor != nullptr);
@@ -479,7 +483,7 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
   int index = 0;
   Status s;
 
-  gtl::InlinedVector<std::shared_ptr<ResourceHandle>, 4> resource_handles;
+  gtl::InlinedVector<std::unique_ptr<ResourceHandle>, 4> resource_handles;
   while (PyDict_Next(feed_dict, &pos, &key, &value)) {
     char* key_string = PyBytes_AsString(key);
     if (!key_string) {
@@ -492,6 +496,10 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
     inputs_safe.emplace_back(make_safe(static_cast<TF_Tensor*>(nullptr)));
     ResourceHandle* resource_handle;
     s = PyArrayToTFTensor(value, &inputs_safe.back(), &resource_handle);
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(out_status, s);
+      return;
+    }
     inputs_unsafe.push_back(inputs_safe.back().get());
     if (resource_handle != nullptr) {
       resource_handles.emplace_back(resource_handle);

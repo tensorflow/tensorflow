@@ -258,6 +258,21 @@ class LayoutAssignment : public HloPassInterface {
                                       const HloInstruction* instruction,
                                       LayoutConstraints* constraints);
 
+  // Chooses a layout of operand `operand_no` of `instruction` that minimizes
+  // the cost of `instruction`. `output_layout` is the layout of `instruction`.
+  // Returns null if it can't decide the best layout.
+  // Precondition: `instruction` and the operand are array-shaped.
+  std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
+      const Layout& output_layout, const HloInstruction* instruction,
+      int64 operand_no);
+  // Given the layout of `user`'s `operand_no`-th operand, chooses a layout of
+  // `user` that minimizes its cost on that operand.  Returns null if it can't
+  // decide the best layout.
+  // Precondition: `user` and the operand are array-shaped.
+  std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
+      const Layout& operand_layout, const HloInstruction* user,
+      int64 operand_no);
+
  private:
   // Adds constraints which must be satisfied for correctness on all
   // backends. Called once prior to propagating constraints.
@@ -271,15 +286,6 @@ class LayoutAssignment : public HloPassInterface {
   // and before propagating constraints.
   virtual Status AddBackendConstraints(LayoutConstraints* constraints) {
     return Status::OK();
-  }
-
-  // This method can be overridden to mark instructions as requiring the operands
-  // to have the same layout as the result, for performance or correctness. This
-  // will propagate constraints through the instruction from the result into the
-  // operands.
-  virtual bool InstructionRequiresInputLayoutEqualToOutputLayout(
-      const HloInstruction* instruction) {
-    return false;
   }
 
   // Construct contraints and assign layouts to all instructions in the
@@ -300,21 +306,6 @@ class LayoutAssignment : public HloPassInterface {
   // minimize the local cost of the computation. This propagation is *not*
   // required for correctness.
   Status PropagateConstraints(LayoutConstraints* constraints);
-
-  // Chooses a layout of operand `operand_no` of `instruction` that minimizes
-  // the cost of `instruction`. `output_layout` is the layout of `instruction`.
-  // Returns null if it can't decide the best layout.
-  // Precondition: `instruction` and the operand are array-shaped.
-  std::unique_ptr<Layout> ChooseOperandLayoutFromOutputLayout(
-      const Layout& output_layout, const HloInstruction* instruction,
-      int64 operand_no);
-  // Given the layout of `user`'s `operand_no`-th operand, chooses a layout of
-  // `user` that minimizes its cost on that operand.  Returns null if it can't
-  // decide the best layout.
-  // Precondition: `user` and the operand are array-shaped.
-  std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
-      const Layout& operand_layout, const HloInstruction* user,
-      int64 operand_no);
 
   ComputationLayout* entry_computation_layout_;
 

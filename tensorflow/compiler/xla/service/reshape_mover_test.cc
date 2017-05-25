@@ -116,7 +116,169 @@ TEST_F(ReshapeMoverTest, EquivalentReshapesMoved) {
             computation->root_instruction()->shape().DebugString());
 }
 
-TEST_F(ReshapeMoverTest, ConstantAndReshapeMoved) {
+// For a graph that looks like:
+//
+// +- reshape2 - param2
+// |
+// +- reshape1 - param1
+// |
+// +- constant0
+// |
+// select
+//
+// Verifies that the reshape1 and reshape2 sink past select:
+//
+// +- param2
+// |
+// +- param1
+// |
+// +- reshape3(constant0)
+// |
+// select
+// |
+// reshape4
+TEST_F(ReshapeMoverTest, 1ConstantAnd2ReshapesMoved) {
+  HloComputation::Builder builder(TestName());
+  auto root_shape = ShapeUtil::MakeShape(F32, {2, 3});
+  auto const0 = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR2<bool>(
+          {{true, true, false}, {false, false, true}})));
+
+  auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {1, 3, 1, 2}), "param1"));
+  auto reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param1));
+
+  auto param2 = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {1, 3, 1, 2}), "param2"));
+  auto reshape2 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param2));
+
+  builder.AddInstruction(HloInstruction::CreateTernary(
+      ShapeUtil::MakeShape(PRED, {2, 3}), HloOpcode::kSelect, const0, reshape1,
+      reshape2));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Select(const0, reshape1, reshape2));
+
+  EXPECT_TRUE(ReshapeMover().Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Reshape(op::Select(op::Reshape(const0), param1, param2)));
+
+  EXPECT_EQ(const0->shape().DebugString(),
+            computation->root_instruction()->shape().DebugString());
+}
+
+// For a graph that looks like:
+//
+// +- reshape0 - param0
+// |
+// +- param1
+// |
+// add
+//
+// Verifies that the reshape0 *does not* unnecessarily sink below add:
+//
+// +- reshape0 - param0
+// |
+// +- param1
+// |
+// add
+TEST_F(ReshapeMoverTest, 1ParameterAnd1ReshapeNotMoved) {
+  HloComputation::Builder builder(TestName());
+  auto root_shape = ShapeUtil::MakeShape(F32, {8, 7});
+  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param0"));
+  auto reshape0 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, param0));
+  auto param1 = builder.AddInstruction(HloInstruction::CreateParameter(
+      1, ShapeUtil::MakeShape(F32, {1, 8, 1, 7}), "param1"));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      root_shape, HloOpcode::kAdd, reshape0, param1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Add(op::Reshape(param0), param1));
+  EXPECT_FALSE(ReshapeMover().Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Add(op::Reshape(param0), param1));
+  EXPECT_EQ(root_shape.DebugString(),
+            computation->root_instruction()->shape().DebugString());
+}
+
+// For a graph that looks like:
+//
+// +- reshape0 - const0
+// |
+// +- reshape1 - const1
+// |
+// +- param1
+// |
+// select
+//
+// Verifies that we don't unnecessarily sink reshapes, which are in fact
+// trivial reshapes.
+TEST_F(ReshapeMoverTest, 2TrivialConstantReshapeNotMoved) {
+  HloComputation::Builder builder(TestName());
+  auto root_shape = ShapeUtil::MakeShape(F32, {2, 3});
+  auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
+  auto reshape0 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, const0));
+
+  auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::CreateR2<float>({{1, 2, 3}, {4, 5, 6}})));
+  auto reshape1 =
+      builder.AddInstruction(HloInstruction::CreateReshape(root_shape, const1));
+
+  auto pred = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(PRED, {1, 3, 1, 2}), "pred"));
+
+  builder.AddInstruction(HloInstruction::CreateTernary(
+      root_shape, HloOpcode::kSelect, pred, reshape0, reshape1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Select(pred, op::Reshape(const0), op::Reshape(const1)));
+
+  EXPECT_FALSE(ReshapeMover().Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              op::Select(pred, op::Reshape(const0), op::Reshape(const1)));
+  EXPECT_EQ(root_shape.DebugString(),
+            computation->root_instruction()->shape().DebugString());
+}
+
+// For a graph that looks like:
+//
+// +- reshape0 - param0
+// |
+// +- const1
+// |
+// add
+//
+// where there is only 1 non-trivial reshape (reshape0), we sink the reshape
+// here for canonicalization benefit:
+//
+// +- param0
+// |
+// +- reshape1 - const1
+// |
+// add
+// |
+// reshape2
+//
+// (note that reshape1 here is trivial).
+TEST_F(ReshapeMoverTest, 1NonTrivialReshapeNotMoved) {
   HloComputation::Builder builder(TestName());
   auto root_shape = ShapeUtil::MakeShape(F32, {2, 3});
   auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(

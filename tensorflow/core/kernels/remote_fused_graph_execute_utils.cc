@@ -69,6 +69,45 @@ const NodeDef* FindNodeDefByName(const string& input,
   return nullptr;
 }
 
+bool IsSameNodeName(const NodeDef& node_def, const string& node_name_and_port,
+                    TensorId* tid) {
+  CHECK_NOTNULL(tid);
+  *tid = ParseTensorName(node_name_and_port);
+  if (node_def.name() == tid->first.ToString()) {
+    return true;
+  }
+  return false;
+}
+
+bool ContainsSameTensorId(const string& tensor_name,
+                          const std::vector<string>& tensor_names) {
+  const TensorId tid0 = ParseTensorName(tensor_name);
+  for (const string& name : tensor_names) {
+    const TensorId tid1 = ParseTensorName(name);
+    if (tid0.first == tid1.first && tid0.second == tid1.second) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void AppendDeliminator(string* str) {
+  CHECK_NOTNULL(str);
+  if (!str->empty()) {
+    *str += ":";
+  }
+}
+
+void ConvertMapToVector(const std::unordered_map<int, string>& in,
+                        std::vector<string>* out) {
+  CHECK_NOTNULL(out);
+  out->resize(in.size());
+  for (int i = 0; i < in.size(); ++i) {
+    CHECK(in.count(i) > 0);
+    out->at(i) = in.at(i);
+  }
+}
+
 string DumpGraphDef(const GraphDef& graph_def) {
   string out;
   for (const NodeDef& node : graph_def.node()) {
@@ -106,6 +145,8 @@ string DumpCluster(const RemoteFusedGraphExecuteUtils::ClusterInfo& cluster) {
     RemoteFusedGraphExecuteUtils::ATTR_OUTPUT_SHAPES;
 /* static */ constexpr const char* const RemoteFusedGraphExecuteUtils::
     ATTR_SERIALIZED_REMOTE_FUSED_GRAPH_EXECUTE_INFO;
+/* static */ constexpr const char* const
+    RemoteFusedGraphExecuteUtils::ATTR_NODE_TYPE;
 /* static */ constexpr const char* const RemoteFusedGraphExecuteUtils::
     TRANSFORM_ARG_REMOTE_FUSED_GRAPH_EXECUTOR_NAME;
 /* static */ constexpr const char* const
@@ -954,13 +995,13 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       if (output_name == subgraph_output_name) {
         LOG(INFO) << "As graph output and subgraph output are same, "
                   << "the graph output node is replaced by identity node";
-        Node* original_output_node = FindMutableNodeByName(output, &graph);
+        Node* original_output_node = FindMutableNodeByName(output_name, &graph);
         CHECK_NOTNULL(original_output_node);
         CHECK_EQ(1, original_output_node->num_outputs())
             << "Num outputs should be 1 for " << output << ".";
         graph.RemoveNode(original_output_node);
         Node* new_node;
-        TF_RETURN_IF_ERROR(BuildIdentityOpNode(output,
+        TF_RETURN_IF_ERROR(BuildIdentityOpNode(output_name,
                                                remote_fused_graph_node_name, i,
                                                DT_FLOAT, &graph, &new_node));
         CHECK_NOTNULL(new_node);
@@ -1022,6 +1063,223 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
       remote_graph_executor_name, require_shape_type, output_graph_def);
 }
 
+/* static */ Status RemoteFusedGraphExecuteUtils::PlaceRemoteGraphArguments(
+    const std::vector<string>& inputs, const std::vector<string>& outputs,
+    const std::unordered_set<string>& fused_node_names,
+    const std::vector<string>& border_inputs,
+    const std::vector<string>& border_outputs,
+    const string& remote_fused_graph_node_name,
+    const string& remote_graph_executor_name, GraphDef* graph_def) {
+  CHECK_NOTNULL(graph_def);
+  for (NodeDef& node_def : *graph_def->mutable_node()) {
+    string attr_str;
+    TensorId tid;
+    for (int i = 0; i < inputs.size(); ++i) {
+      if (IsSameNodeName(node_def, inputs.at(i), &tid)) {
+        AppendDeliminator(&attr_str);
+        attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::GRAPH_INPUT,
+                                      tid.second, i, remote_graph_executor_name,
+                                      remote_fused_graph_node_name);
+      }
+    }
+    for (int i = 0; i < outputs.size(); ++i) {
+      if (IsSameNodeName(node_def, outputs.at(i), &tid)) {
+        AppendDeliminator(&attr_str);
+        attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::GRAPH_OUTPUT,
+                                      tid.second, i);
+      }
+    }
+    for (const string& fused_node_name : fused_node_names) {
+      if (fused_node_name == node_def.name()) {
+        AppendDeliminator(&attr_str);
+        attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::FUSED_NODE);
+      }
+    }
+    for (int i = 0; i < border_inputs.size(); ++i) {
+      if (IsSameNodeName(node_def, border_inputs.at(i), &tid)) {
+        AppendDeliminator(&attr_str);
+        attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::BORDER_INPUT,
+                                      tid.second, i);
+      }
+    }
+    for (int i = 0; i < border_outputs.size(); ++i) {
+      if (IsSameNodeName(node_def, border_outputs.at(i), &tid)) {
+        AppendDeliminator(&attr_str);
+        attr_str += BuildNodeTypeAttr(
+            RemoteFusedGraphExecuteInfo::BORDER_OUTPUT, tid.second, i);
+      }
+    }
+    if (attr_str.empty()) {
+      attr_str += BuildNodeTypeAttr(RemoteFusedGraphExecuteInfo::UNUSED);
+    }
+    AddNodeAttr(ATTR_NODE_TYPE, attr_str, &node_def);
+  }
+  return Status::OK();
+}
+
+/* static */ Status
+RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
+    const GraphDef& input_graph_def,
+    const std::vector<std::pair<string, Tensor>>& input_tensors,
+    GraphDef* output_graph_def) {
+  std::unordered_map<int, string> input_map;
+  std::unordered_map<int, string> output_map;
+  std::unordered_set<string> fused_node_names;
+  std::unordered_map<int, string> border_input_map;
+  std::unordered_map<int, string> border_output_map;
+  string remote_graph_executor_name;
+  string remote_fused_graph_node_name;
+
+  for (const NodeDef& node_def : input_graph_def.node()) {
+    string attr_str;
+    TF_RETURN_IF_ERROR(GetNodeAttr(node_def, ATTR_NODE_TYPE, &attr_str));
+    std::vector<std::vector<string>> attr_strs;
+    for (const string& str : str_util::Split(attr_str, ":")) {
+      attr_strs.emplace_back(str_util::Split(str, ","));
+    }
+    if (attr_strs.empty()) {
+      return errors::InvalidArgument("Remote graph node type not found.");
+    }
+    for (const std::vector<string>& attr : attr_strs) {
+      if (attr.empty()) {
+        return errors::InvalidArgument("Empty remote graph node type attr.");
+      }
+      int node_type_int;
+      CHECK(strings::safe_strto32(attr.at(0), &node_type_int)) << attr.at(0);
+      const RemoteFusedGraphExecuteInfo::NodeType node_type =
+          static_cast<RemoteFusedGraphExecuteInfo::NodeType>(node_type_int);
+      const string& name = node_def.name();
+      int port;
+      int index;
+
+      switch (node_type) {
+        case RemoteFusedGraphExecuteInfo::GRAPH_INPUT:
+          VLOG(2) << "Graph input: " << name;
+          CHECK_EQ(5, attr.size());
+          CHECK(strings::safe_strto32(attr.at(1), &port));
+          CHECK(strings::safe_strto32(attr.at(2), &index));
+          CHECK(!attr.at(3).empty());
+          remote_graph_executor_name = attr.at(3);
+          CHECK(!attr.at(4).empty());
+          remote_fused_graph_node_name = attr.at(4);
+          input_map.emplace(index, strings::StrCat(name, ":", port));
+          if (GetExecutorBuildFunc(remote_graph_executor_name) == nullptr) {
+            LOG(INFO) << "Executor for " << remote_graph_executor_name
+                      << " not registered.  Do not fuse.";
+            *output_graph_def = input_graph_def;
+            return Status::OK();
+          }
+          break;
+        case RemoteFusedGraphExecuteInfo::GRAPH_OUTPUT:
+          VLOG(2) << "Graph output: " << name;
+          CHECK_EQ(3, attr.size());
+          CHECK(strings::safe_strto32(attr.at(1), &port));
+          CHECK(strings::safe_strto32(attr.at(2), &index));
+          output_map.emplace(index, strings::StrCat(name, ":", port));
+          break;
+        case RemoteFusedGraphExecuteInfo::FUSED_NODE:
+          VLOG(2) << "Fused node: " << name;
+          CHECK_EQ(1, attr.size());
+          fused_node_names.emplace(name);
+          break;
+        case RemoteFusedGraphExecuteInfo::BORDER_INPUT:
+          VLOG(2) << "Border input: " << name;
+          CHECK_EQ(3, attr.size());
+          CHECK(strings::safe_strto32(attr.at(1), &port));
+          CHECK(strings::safe_strto32(attr.at(2), &index));
+          border_input_map.emplace(index, strings::StrCat(name, ":", port));
+          break;
+        case RemoteFusedGraphExecuteInfo::BORDER_OUTPUT:
+          VLOG(2) << "Border output: " << name;
+          CHECK_EQ(3, attr.size());
+          CHECK(strings::safe_strto32(attr.at(1), &port));
+          CHECK(strings::safe_strto32(attr.at(2), &index));
+          border_output_map.emplace(index, strings::StrCat(name, ":", port));
+          break;
+        case RemoteFusedGraphExecuteInfo::UNUSED:
+          // do nothing
+          break;
+        default:
+          // unsupported value
+          CHECK(false);
+      }
+    }
+  }
+  bool require_shape_type = false;
+  std::vector<string> inputs;
+  std::vector<string> outputs;
+  std::vector<string> border_inputs;
+  std::vector<string> border_outputs;
+  ConvertMapToVector(input_map, &inputs);
+  ConvertMapToVector(output_map, &outputs);
+  ConvertMapToVector(border_input_map, &border_inputs);
+  ConvertMapToVector(border_output_map, &border_outputs);
+
+  if (!input_tensors.empty()) {
+    bool input_match = false;
+    if (inputs.size() == input_tensors.size()) {
+      for (const std::pair<string, Tensor>& input_tensor : input_tensors) {
+        if (!ContainsSameTensorId(input_tensor.first, inputs)) {
+          break;
+        }
+        DataType data_type;
+        TensorShape shape;
+        if (GetOutputTensorShapeType(input_graph_def, input_tensor.first,
+                                     &data_type, &shape)) {
+          if (data_type == input_tensor.second.dtype() &&
+              shape == input_tensor.second.shape()) {
+            VLOG(2) << "Input matched!";
+            // Shape type matched.
+            input_match = true;
+            require_shape_type = true;
+          }
+        } else {
+          // Shape type not required.
+          input_match = true;
+        }
+      }
+    }
+    if (!input_match) {
+      // Input mismatch.  Just copy original graph
+      *output_graph_def = input_graph_def;
+      return Status::OK();
+    }
+  }
+
+  if (!fused_node_names.empty()) {
+    TF_RETURN_IF_ERROR(FuseRemoteGraphByNodeNames(
+        input_graph_def, inputs, outputs, remote_fused_graph_node_name,
+        fused_node_names, remote_graph_executor_name, require_shape_type,
+        output_graph_def));
+  } else if (!border_inputs.empty() || !border_outputs.empty()) {
+    TF_RETURN_IF_ERROR(FuseRemoteGraphByBorder(
+        input_graph_def, inputs, outputs, remote_fused_graph_node_name,
+        border_inputs, border_outputs, remote_graph_executor_name,
+        require_shape_type, output_graph_def));
+  } else {
+    *output_graph_def = input_graph_def;
+  }
+
+  return Status::OK();
+}
+
+/* static */ bool RemoteFusedGraphExecuteUtils::IsFuseReady(
+    const GraphDef& graph_def,
+    const std::vector<std::pair<string, Tensor>>& input_tensors) {
+  for (const std::pair<string, Tensor>& input_tensor : input_tensors) {
+    const NodeDef* node_def = FindNodeDefByName(input_tensor.first, graph_def);
+    if (node_def == nullptr) {
+      return false;
+    }
+    string attr;
+    const Status status = GetNodeAttr(*node_def, ATTR_NODE_TYPE, &attr);
+    if (!status.ok() || attr.empty()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 /* static */ Status RemoteFusedGraphExecuteUtils::ReplaceInputNodeByPlaceHolder(
     const string& input, const DataType type, const TensorShape& shape,
     GraphDef* graph_def) {
@@ -1049,6 +1307,24 @@ RemoteFusedGraphExecuteUtils::BuildRemoteFusedGraphExecuteOpNode(
   }
   return errors::InvalidArgument(
       strings::StrCat(node_name, " not found for replacement."));
+}
+
+/* static */ string RemoteFusedGraphExecuteUtils::BuildNodeTypeAttr(
+    const RemoteFusedGraphExecuteInfo::NodeType node_type, const int port,
+    const int index, const string& executor_name, const string& node_name) {
+  return strings::StrCat(static_cast<int>(node_type), ",", port, ",", index,
+                         ",", executor_name, ",", node_name);
+}
+
+/* static */ string RemoteFusedGraphExecuteUtils::BuildNodeTypeAttr(
+    const RemoteFusedGraphExecuteInfo::NodeType node_type, const int port,
+    const int index) {
+  return strings::StrCat(static_cast<int>(node_type), ",", port, ",", index);
+}
+
+/* static */ string RemoteFusedGraphExecuteUtils::BuildNodeTypeAttr(
+    const RemoteFusedGraphExecuteInfo::NodeType node_type) {
+  return strings::StrCat(static_cast<int>(node_type));
 }
 
 }  // namespace tensorflow

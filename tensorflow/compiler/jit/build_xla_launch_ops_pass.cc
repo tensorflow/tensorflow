@@ -125,9 +125,9 @@ static Status ReplaceNodeWithXlaLaunch(Graph* graph, Node* node) {
 Status BuildXlaLaunchOpsPass::Run(const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
 
-  for (Node* n : graph->nodes()) {
+  for (Node* n : graph->op_nodes()) {
     // In all cases, only try to compile computational nodes.
-    if (!n->IsOp() || n->IsSend() || n->IsRecv() || n->IsControlFlow()) {
+    if (n->IsSend() || n->IsRecv() || n->IsControlFlow()) {
       continue;
     }
 

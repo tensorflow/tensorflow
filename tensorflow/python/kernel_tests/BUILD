@@ -2291,6 +2291,7 @@ cuda_py_test(
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
     ],
+    shard_count = 5,
 )
 
 cuda_py_test(

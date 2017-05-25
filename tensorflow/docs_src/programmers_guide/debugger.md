@@ -302,12 +302,12 @@ shared storage location of your choice when the `Session.run()` call occurs.
 For example:
 
 ```python
-from tensorflow.python.debug import debug_utils
+from tensorflow.python import debug as tf_debug
 
 # ... Code where your session and graph are set up...
 
 run_options = tf.RunOptions()
-debug_utils.watch_graph(
+tf_debug.watch_graph(
       run_options,
       session.graph,
       debug_urls=["file:///shared/storage/location/tfdbg_dumps_1"])
@@ -333,7 +333,7 @@ To use it, simply do:
 # Let your BUILD target depend on "//tensorflow/python/debug:debug_py
 # (You don't need to worry about the BUILD dependency if you are using a pip
 #  install of open-source TensorFlow.)
-from tensorflow.python.debug import debug_utils
+from tensorflow.python import debug as tf_debug
 
 sess = tf_debug.DumpingDebugWrapperSession(
     sess, "/shared/storage/location/tfdbg_dumps_1/", watch_fn=my_watch_fn)

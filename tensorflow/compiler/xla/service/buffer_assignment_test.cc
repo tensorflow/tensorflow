@@ -84,10 +84,7 @@ class BufferAssignmentTest : public HloTestBase {
                                                         int64 alignment = 1) {
     return BufferAssigner::Run(
                module, MakeUnique<DependencyHloOrdering>(module),
-               [this](const LogicalBuffer& buffer) {
-                 return backend_->compiler()->ShapeSizeBytes(buffer.shape());
-               },
-               alignment)
+               backend_->compiler()->BufferSizeBytesFunction(), alignment)
         .ConsumeValueOrDie();
   }
 
