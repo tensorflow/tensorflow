@@ -1035,13 +1035,13 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
         x = array_ops.zeros([1, 2])
         c0 = array_ops.zeros([1, 2])
         h0 = array_ops.zeros([1, 2])
-        state0 = core_rnn_cell_impl.LSTMStateTuple(c0, h0)
+        state0 = rnn_cell.LSTMStateTuple(c0, h0)
         c1 = array_ops.zeros([1, 2])
         h1 = array_ops.zeros([1, 2])
-        state1 = core_rnn_cell_impl.LSTMStateTuple(c1, h1)
+        state1 = rnn_cell.LSTMStateTuple(c1, h1)
         state = (state0, state1)
-        single_cell = lambda: rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)
-        cell = core_rnn_cell_impl.MultiRNNCell([single_cell() for _ in range(2)])
+        single_cell = lambda: contrib_rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)
+        cell = rnn_cell.MultiRNNCell([single_cell() for _ in range(2)])
         g, out_m = cell(x, state)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([g, out_m], {
@@ -1076,8 +1076,8 @@ class LayerNormBasicLSTMCellTest(test.TestCase):
           [1, 3])  # Test BasicLSTMCell with input_size != num_units.
         c = array_ops.zeros([1, 2])
         h = array_ops.zeros([1, 2])
-        state = core_rnn_cell_impl.LSTMStateTuple(c, h)
-        cell = rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)
+        state = rnn_cell.LSTMStateTuple(c, h)
+        cell = contrib_rnn_cell.LayerNormBasicLSTMCell(2, layer_norm=False)
         g, out_m = cell(x, state)
         sess.run([variables.global_variables_initializer()])
         res = sess.run([g, out_m], {
