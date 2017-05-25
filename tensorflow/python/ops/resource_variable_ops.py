@@ -183,14 +183,6 @@ class ResourceVariable(variables.Variable):
         else:
           self._initial_value = ops.convert_to_tensor(
               initial_value, name="initial_value", dtype=dtype)
-          # pylint: disable=protected-access
-          if self._initial_value.op._get_control_flow_context() is not None:
-            raise ValueError(
-                "Initializer for variable %s is from inside a control-flow "
-                "construct, such as a loop or conditional. When creating a "
-                "variable inside a loop or conditional, use a lambda as the "
-                "initializer." % name)
-          # pylint: enable=protected-access
           self._handle = gen_resource_variable_ops.var_handle_op(
               shape=self._initial_value.get_shape(),
               dtype=self._initial_value.dtype.base_dtype,
