@@ -1336,6 +1336,11 @@ cc_library(
     ],
 )
 
+cc_header_only_library(
+    name = "lookup_headers_lib",
+    deps = [":lookup"],
+)
+
 DATA_FLOW_DEPS = [
     ":bounds_check",
     ":concat_lib",

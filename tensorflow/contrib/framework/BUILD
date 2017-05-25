@@ -25,6 +25,7 @@ tf_custom_op_py_library(
         "python/framework/__init__.py",
         "python/framework/checkpoint_utils.py",
         "python/framework/experimental.py",
+        "python/framework/load_and_remap_matrix_ops.py",
         "python/framework/tensor_util.py",
         "python/ops/__init__.py",
         "python/ops/arg_scope.py",
@@ -34,13 +35,20 @@ tf_custom_op_py_library(
     ],
     dso = [
         ":python/ops/_variable_ops.so",
+        ":python/framework/_checkpoint_ops.so",
     ],
     kernels = [
+        ":checkpoint_ops_op_lib",
+        ":generate_vocab_remapping_kernel",
+        ":generate_vocab_remapping_ops_op_lib",
+        ":load_and_remap_matrix_kernel",
         ":variable_kernels",
         ":variable_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":gen_checkpoint_ops",
+        ":gen_generate_vocab_remapping_ops",
         ":gen_variable_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:array_ops",
@@ -81,6 +89,32 @@ tf_kernel_library(
     alwayslink = 1,
 )
 
+tf_kernel_library(
+    name = "generate_vocab_remapping_kernel",
+    srcs = ["kernels/generate_vocab_remapping_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:lookup_table_init_op",
+        "//tensorflow/core/kernels:lookup_table_op",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
+tf_kernel_library(
+    name = "load_and_remap_matrix_kernel",
+    srcs = ["kernels/load_and_remap_matrix_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/tensor_bundle",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 1,
+)
+
 tf_custom_op_library(
     name = "python/ops/_variable_ops.so",
     srcs = [
@@ -94,13 +128,33 @@ tf_custom_op_library(
     ],
 )
 
+tf_custom_op_library(
+    name = "python/framework/_checkpoint_ops.so",
+    srcs = [
+        "kernels/generate_vocab_remapping_op.cc",
+        "kernels/load_and_remap_matrix_op.cc",
+        "ops/checkpoint_ops.cc",
+        "ops/generate_vocab_remapping_ops.cc",
+    ],
+    deps = [
+        "//tensorflow/core/kernels:lookup_headers_lib",
+        "//tensorflow/core/util/tensor_bundle:tensor_bundle_headers_lib",
+    ],
+)
+
 tf_gen_op_libs(
-    op_lib_names = ["variable_ops"],
+    op_lib_names = [
+        "checkpoint_ops",
+        "generate_vocab_remapping_ops",
+        "variable_ops",
+    ],
 )
 
 cc_library(
     name = "all_ops",
     deps = [
+        ":checkpoint_ops_op_lib",
+        ":generate_vocab_remapping_ops_op_lib",
         ":variable_ops_op_lib",
     ],
 )
@@ -110,6 +164,22 @@ tf_gen_op_wrapper_py(
     out = "python/ops/gen_variable_ops.py",
     deps = [
         ":variable_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gen_generate_vocab_remapping_ops",
+    out = "python/ops/gen_generate_vocab_remapping_ops.py",
+    deps = [
+        ":generate_vocab_remapping_ops_op_lib",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "gen_checkpoint_ops",
+    out = "python/ops/gen_checkpoint_ops.py",
+    deps = [
+        ":checkpoint_ops_op_lib",
     ],
 )
 
@@ -220,6 +290,43 @@ py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+filegroup(
+    name = "load_and_remap_matrix_testdata",
+    srcs = [
+        "testdata/bundle_checkpoint.data-00000-of-00001",
+        "testdata/bundle_checkpoint.index",
+        "testdata/bundle_checkpoint_vocab.txt",
+        "testdata/bundle_checkpoint_vocab_with_oov.txt",
+        "testdata/keyword.txt",
+        "testdata/keyword_new.txt",
+        "testdata/keyword_shifted.txt",
+    ],
+)
+
+py_test(
+    name = "load_and_remap_matrix_ops_test",
+    size = "medium",
+    srcs = ["python/framework/load_and_remap_matrix_ops_test.py"],
+    data = [":load_and_remap_matrix_testdata"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":framework_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
