@@ -56,6 +56,8 @@ class ExecutorExecutable : public Executable {
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments) override;
 
+  static int64 ShapeSizeBytes(const Shape& shape);
+
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(ExecutorExecutable);
 };

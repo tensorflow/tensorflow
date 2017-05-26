@@ -48,7 +48,7 @@ class ExecutorCompiler : public Compiler {
       std::vector<std::unique_ptr<HloModule>> module,
       HloDumper dump_hlo, const AotCompilationOptions& options) override;
 
-  int64 ShapeSizeBytes(const Shape& shape) const override;
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
   perftools::gputools::Platform::Id PlatformId() const override;
 
