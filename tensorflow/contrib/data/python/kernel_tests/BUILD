@@ -52,7 +52,10 @@ py_test(
     size = "small",
     srcs = ["dataset_constructor_op_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["nomac"],  # b/62040583
+    tags = [
+        "manual",
+        "nomac",
+    ],  # b/62040583
     deps = [
         "//tensorflow/contrib/data",
         "//tensorflow/python:array_ops",
