@@ -60,7 +60,10 @@ DEFAULT_SIZE_GUIDANCE = {
 #
 # Once everything has been migrated, we should be able to delete
 # /data/runs entirely.
-_MIGRATED_DATA_KEYS = frozenset(('scalars',))
+_MIGRATED_DATA_KEYS = frozenset((
+    'scalars',
+    'histograms',
+))
 
 DATA_PREFIX = '/data'
 LOGDIR_ROUTE = '/logdir'
@@ -69,7 +72,6 @@ PLUGIN_PREFIX = '/plugin'
 PLUGINS_LISTING_ROUTE = '/plugins_listing'
 IMAGES_ROUTE = '/' + event_accumulator.IMAGES
 AUDIO_ROUTE = '/' + event_accumulator.AUDIO
-HISTOGRAMS_ROUTE = '/' + event_accumulator.HISTOGRAMS
 COMPRESSED_HISTOGRAMS_ROUTE = '/' + event_accumulator.COMPRESSED_HISTOGRAMS
 INDIVIDUAL_IMAGE_ROUTE = '/individualImage'
 INDIVIDUAL_AUDIO_ROUTE = '/individualAudio'
@@ -181,8 +183,6 @@ class TensorBoardWSGIApp(object):
             self._serve_compressed_histograms,
         DATA_PREFIX + GRAPH_ROUTE:
             self._serve_graph,
-        DATA_PREFIX + HISTOGRAMS_ROUTE:
-            self._serve_histograms,
         DATA_PREFIX + IMAGES_ROUTE:
             self._serve_images,
         DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE:
@@ -354,14 +354,6 @@ class TensorBoardWSGIApp(object):
         request, str(run_metadata), 'text/x-protobuf')  # pbtxt
 
   @wrappers.Request.application
-  def _serve_histograms(self, request):
-    """Given a tag and single run, return an array of histogram values."""
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-    values = self._multiplexer.Histograms(run, tag)
-    return http_util.Respond(request, values, 'application/json')
-
-  @wrappers.Request.application
   def _serve_compressed_histograms(self, request):
     """Given a tag and single run, return an array of compressed histograms."""
     tag = request.args.get('tag')
@@ -529,7 +521,6 @@ class TensorBoardWSGIApp(object):
       A werkzeug Response with the following content:
       {runName: {images: [tag1, tag2, tag3],
                  audio: [tag4, tag5, tag6],
-                 histograms: [tagX, tagY, tagZ],
                  firstEventTimestamp: 123456.789}}
     """
     runs = self._multiplexer.Runs()

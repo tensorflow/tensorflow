@@ -32,6 +32,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_file_inspector as efi
+from tensorflow.tensorboard.plugins.histograms import histograms_plugin
 from tensorflow.tensorboard.plugins.projector import projector_plugin
 from tensorflow.tensorboard.plugins.scalars import scalars_plugin
 from tensorflow.tensorboard.plugins.text import text_plugin
@@ -199,6 +200,7 @@ def main(unused_argv=None):
   else:
     plugins = [
         scalars_plugin.ScalarsPlugin(),
+        histograms_plugin.HistogramsPlugin(),
         projector_plugin.ProjectorPlugin(),
         text_plugin.TextPlugin(),
     ]

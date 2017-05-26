@@ -151,8 +151,9 @@ export class Backend {
   /**
    * Return a promise showing the Run-to-Tag mapping for histogram data.
    */
-  public histogramRuns(): Promise<RunToTag> {
-    return this.runs().then((x) => _.mapValues(x, 'histograms'));
+  public histogramTags(): Promise<RunToTag> {
+    return this.requestManager.request(
+        this.router.pluginRoute('histograms', '/tags'));
   }
 
   /**
@@ -258,7 +259,8 @@ export class Backend {
   public histogram(tag: string, run: string):
       Promise<Array<HistogramSeriesDatum>> {
     let p: Promise<TupleData<HistogramTuple>[]>;
-    let url = this.router.histograms(tag, run);
+    const url =
+        (this.router.pluginRunTagRoute('histograms', '/histograms')(tag, run));
     p = this.requestManager.request(url);
     return p.then(map(detupler(createHistogram))).then(function(histos) {
       // Get the minimum and maximum values across all histograms so that the

@@ -174,7 +174,6 @@ class TensorboardServerTest(test.TestCase):
         {
             'run1': {
                 'compressedHistograms': ['histogram'],
-                'histograms': ['histogram'],
                 'images': ['image'],
                 'audio': ['audio'],
                 # if only_use_meta_graph, the graph is from the metagraph
@@ -214,12 +213,6 @@ class TensorboardServerTest(test.TestCase):
       self.assertEqual(response.getheader('Expires'), '0', msg=path)
       response.read()
       connection.close()
-
-  def testHistograms(self):
-    """Test the format of /data/histograms."""
-    self.assertEqual(
-        self._getJson('/data/histograms?tag=histogram&run=run1'),
-        [[0, 0, [0, 2.0, 3.0, 6.0, 5.0, [0.0, 1.0, 2.0], [1.0, 1.0, 1.0]]]])
 
   def testImages(self):
     """Test listing images and retrieving an individual image."""
@@ -318,9 +311,13 @@ class TensorboardServerTest(test.TestCase):
     """Generates the test data directory.
 
     The test data has a single run named run1 which contains:
-     - a histogram
+     - a histogram [1]
      - an image at timestamp and step 0
      - a graph definition
+
+    [1]: Histograms no longer appear in `/runs`, but compressed
+    histograms do, and they use the same test data. Thus, histograms are
+    still here for now.
 
     Returns:
       temp_dir: The directory the test data is generated under.
