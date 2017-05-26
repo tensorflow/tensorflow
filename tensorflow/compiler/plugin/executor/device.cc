@@ -27,7 +27,7 @@ const char* const DEVICE_XLA_EXEC = "XLA_EXEC";
 const char* const DEVICE_EXEC_XLA_JIT = "XLA_EXEC_JIT";
 
 constexpr std::array<DataType, 5> kExecAllTypes = {
-    {DT_INT32, DT_FLOAT, DT_BOOL}};
+    {DT_INT32, DT_FLOAT, DT_BOOL, DT_DOUBLE, DT_INT64}};
 
 class XlaExaDeviceFactory : public DeviceFactory {
  public:
@@ -50,7 +50,7 @@ Status XlaExaDeviceFactory::CreateDevices(const SessionOptions& options,
   return Status::OK();
 }
 
-REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_EXEC, XlaExaDeviceFactory, 210);
+REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_EXEC, XlaExaDeviceFactory, 110);
 
 // Kernel registrations
 
