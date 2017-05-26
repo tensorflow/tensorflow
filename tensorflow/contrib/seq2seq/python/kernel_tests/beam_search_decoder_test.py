@@ -224,7 +224,7 @@ class TestBeamStep(test.TestCase):
 class BeamSearchDecoderTest(test.TestCase):
 
   def _testDynamicDecodeRNN(self, time_major, has_attention):
-    encoder_sequence_length = [3, 2, 3, 1, 0]
+    encoder_sequence_length = [3, 2, 3, 1, 1]
     decoder_sequence_length = [2, 0, 1, 2, 3]
     batch_size = 5
     decoder_max_time = 4
