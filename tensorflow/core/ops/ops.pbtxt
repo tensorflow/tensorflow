@@ -11039,6 +11039,8 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -14546,6 +14548,95 @@ op {
   }
   summary: "Quantize the \'input\' tensor of type float to \'output\' tensor of type \'T\'."
   description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nout[i] = (in[i] - min_range) * range(T) / (max_range - min_range)\nif T == qint8, out[i] -= (range(T) + 1) / 2.0\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nAssume the input is type float and has a possible range of [0.0, 6.0] and the\noutput type is quint8 ([0, 255]). The min_range and max_range values should be\nspecified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each\nvalue of the input by 255/6 and cast to quint8.\n\nIf the output type was qint8 ([-128, 127]), the operation will additionally\nsubtract each value by 128 prior to casting, so that the range of values aligns\nwith the range of qint8.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = number_of_steps / range\nquantized = round(input * range_scale) - round(range_min * range_scale) +\n  numeric_limits<T>::min()\nquantized = max(quantized, numeric_limits<T>::min())\nquantized = min(quantized, numeric_limits<T>::max())\n```\n\nThe biggest difference between this and MIN_COMBINED is that the minimum range\nis rounded first, before it\'s subtracted from the rounded value. With\nMIN_COMBINED, a small bias is introduced where repeated iterations of quantizing\nand dequantizing will introduce a larger and larger error.\n\nOne thing to watch out for is that the operator may choose to adjust the\nrequested minimum and maximum values slightly during the quantization process,\nso you should always use the output ports as the range for further calculations.\nFor example, if the requested minimum and maximum values are close to equal,\nthey will be separated by a small epsilon value to prevent ill-formed quantized\nbuffers from being created. Otherwise, you can end up with buffers where all the\nquantized values map to the same float value, which causes problems for\noperations that have to perform further calculations on them."
+}
+op {
+  name: "QuantizedAdd"
+  input_arg {
+    name: "x"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_x"
+    description: "The float value that the lowest quantized `x` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_x"
+    description: "The float value that the highest quantized `x` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_y"
+    description: "The float value that the lowest quantized `y` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_y"
+    description: "The float value that the highest quantized `y` value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "z"
+    type_attr: "Toutput"
+  }
+  output_arg {
+    name: "min_z"
+    description: "The float value that the lowest quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_z"
+    description: "The float value that the highest quantized output value represents.\n\n*NOTE*: `QuantizedAdd` supports limited forms of broadcasting. More about\nbroadcasting [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Returns x + y element-wise, working on quantized buffers."
+  is_commutative: true
 }
 op {
   name: "QuantizedAvgPool"
@@ -23512,6 +23603,83 @@ op {
   }
   summary: "Component-wise multiplies a SparseTensor by a dense Tensor."
   description: "The output locations corresponding to the implicitly zero elements in the sparse\ntensor will be zero (i.e., will not take up storage space), regardless of the\ncontents of the dense tensor (even if it\'s +/-INF and that INF*0 == NaN).\n\n*Limitation*: this Op only broadcasts the dense side to the sparse side, but not\nthe other direction."
+}
+op {
+  name: "SparseFillEmptyRows"
+  input_arg {
+    name: "indices"
+    description: "2-D. the indices of the sparse tensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    description: "1-D. the values of the sparse tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "dense_shape"
+    description: "1-D. the shape of the sparse tensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "default_value"
+    description: "0-D. default value to insert into location `[row, 0, ..., 0]`\n  for rows missing from the input sparse tensor.\noutput indices: 2-D. the indices of the filled sparse tensor."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    description: "1-D. the values of the filled sparse tensor."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "empty_row_indicator"
+    description: "1-D. whether the dense row was missing in the\ninput sparse tensor."
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "reverse_index_map"
+    description: "1-D. a map from the input indices to the output indices."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Fills empty rows in the input 2-D `SparseTensor` with a default value."
+  description: "The input `SparseTensor` is represented via the tuple of inputs\n(`indices`, `values`, `dense_shape`).  The output `SparseTensor` has the\nsame `dense_shape` but with indices `output_indices` and values\n`output_values`.\n\nThis op inserts a single entry for every row that doesn\'t have any values.\nThe index is created as `[row, 0, ..., 0]` and the inserted value\nis `default_value`.\n\nFor example, suppose `sp_input` has shape `[5, 6]` and non-empty values:\n\n    [0, 1]: a\n    [0, 3]: b\n    [2, 0]: c\n    [3, 1]: d\n\nRows 1 and 4 are empty, so the output will be of shape `[5, 6]` with values:\n\n    [0, 1]: a\n    [0, 3]: b\n    [1, 0]: default_value\n    [2, 0]: c\n    [3, 1]: d\n    [4, 0]: default_value\n\nThe output `SparseTensor` will be in row-major order and will have the\nsame shape as the input.\n\nThis op also returns an indicator vector shaped `[dense_shape[0]]` such that\n\n    empty_row_indicator[i] = True iff row i was an empty row.\n\nAnd a reverse index map vector shaped `[indices.shape[0]]` that is used during\nbackpropagation,\n\n    reverse_index_map[j] = out_j s.t. indices[j, :] == output_indices[out_j, :]"
+}
+op {
+  name: "SparseFillEmptyRowsGrad"
+  input_arg {
+    name: "reverse_index_map"
+    description: "1-D.  The reverse index map from SparseFillEmptyRows."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "grad_values"
+    description: "1-D.  The gradients from backprop."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "d_values"
+    description: "1-D.  The backprop into values."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "d_default_value"
+    description: "0-D.  The backprop into default_value."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "The gradient of SparseFillEmptyRows."
+  description: "Takes vectors reverse_index_map, shaped `[N]`, and grad_values,\nshaped `[N_full]`, where `N_full >= N` and copies data into either\n`d_values` or `d_default_value`.  Here `d_values` is shaped `[N]` and\n`d_default_value` is a scalar.\n\n  d_values[j] = grad_values[reverse_index_map[j]]\n  d_default_value = sum_{k : 0 .. N_full - 1} (\n     grad_values[k] * 1{k not in reverse_index_map})"
 }
 op {
   name: "SparseMatMul"

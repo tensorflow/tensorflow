@@ -200,7 +200,7 @@ Status RewriteAndPruneGraph(Graph* graph, const Config& config,
   for (const Fetch& fetch : config.fetch()) {
     missing_fetches.insert(TensorIdToString(fetch.id()));
   }
-  for (const Node* n : graph->nodes()) {
+  for (const Node* n : graph->op_nodes()) {
     if (n->type_string() == kArgOp) {
       string feed_id;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFeedIdAttr, &feed_id));

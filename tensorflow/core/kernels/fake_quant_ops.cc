@@ -19,8 +19,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
-#define FAKE_QUANT_NO_DEBUG
-
 #include "tensorflow/core/kernels/fake_quant_ops_functor.h"
 
 #include "tensorflow/core/framework/numeric_op.h"
@@ -169,12 +167,6 @@ class FakeQuantWithMinMaxVarsOp : public OpKernel {
     OP_REQUIRES(context, IsNumBitsValid(num_bits),
                 InvalidArgument("num_bits must be between 2 and 8, inclusive"));
     steps_ = (1 << num_bits) - 1;
-#ifndef FAKE_QUANT_NO_DEBUG
-    OP_REQUIRES_OK(context,
-                   context->allocate_persistent(DT_BOOL, {},
-                                                &check_min_max_handle_,
-                                                nullptr));
-#endif
   }
 
   void Compute(OpKernelContext* context) override {
@@ -182,9 +174,6 @@ class FakeQuantWithMinMaxVarsOp : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& min = context->input(1);
     const Tensor& max = context->input(2);
-#ifndef FAKE_QUANT_NO_DEBUG
-    Tensor* check_min_max = check_min_max_handle_.AccessTensor(context);
-#endif
 
     Tensor* output;
     OP_REQUIRES_OK(context,
@@ -193,17 +182,11 @@ class FakeQuantWithMinMaxVarsOp : public OpKernel {
     FakeQuantWithMinMaxVarsFunctor<Device> functor;
     functor(context->eigen_device<Device>(), input.flat<float>(),
             min.scalar<float>(), max.scalar<float>(), steps_,
-#ifndef FAKE_QUANT_NO_DEBUG
-            check_min_max->scalar<bool>(),
-#endif
             output->flat<float>());
   }
 
  private:
   int steps_;
-#ifndef FAKE_QUANT_NO_DEBUG
-  PersistentTensor check_min_max_handle_;
-#endif
 };
 
 // Implementation of FakeQuantWithMinMaxVarsGradientOp, see its documentation in
@@ -218,12 +201,6 @@ class FakeQuantWithMinMaxVarsGradientOp : public OpKernel {
     OP_REQUIRES(context, IsNumBitsValid(num_bits),
                 InvalidArgument("num_bits must be between 2 and 8, inclusive"));
     steps_ = (1 << num_bits) - 1;
-#ifndef FAKE_QUANT_NO_DEBUG
-    OP_REQUIRES_OK(context,
-                   context->allocate_persistent(DT_BOOL, {},
-                                                &check_min_max_handle_,
-                                                nullptr));
-#endif
   }
 
   void Compute(OpKernelContext* context) override {
@@ -234,9 +211,6 @@ class FakeQuantWithMinMaxVarsGradientOp : public OpKernel {
                 InvalidArgument("gradient and input must be the same size"));
     const Tensor& min = context->input(2);
     const Tensor& max = context->input(3);
-#ifndef FAKE_QUANT_NO_DEBUG
-    Tensor* check_min_max = check_min_max_handle_.AccessTensor(context);
-#endif
 
     Tensor* grad_wrt_input;
     OP_REQUIRES_OK(context,
@@ -255,18 +229,12 @@ class FakeQuantWithMinMaxVarsGradientOp : public OpKernel {
     functor(context->eigen_device<Device>(), gradient.flat<float>(),
             input.flat<float>(), min.scalar<float>(), max.scalar<float>(),
             steps_,
-#ifndef FAKE_QUANT_NO_DEBUG
-            check_min_max->scalar<bool>(),
-#endif
             grad_wrt_input->flat<float>(), grad_wrt_min->scalar<float>(),
             grad_wrt_max->scalar<float>());
   }
 
  private:
   int steps_;
-#ifndef FAKE_QUANT_NO_DEBUG
-  PersistentTensor check_min_max_handle_;
-#endif
 };
 
 REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVars").Device(DEVICE_CPU),
@@ -281,9 +249,6 @@ void FakeQuantWithMinMaxVarsFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstFlat inputs,
     typename TTypes<float>::ConstScalar min,
     typename TTypes<float>::ConstScalar max, int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-    typename TTypes<bool>::Scalar check_min_max,
-#endif
     typename TTypes<float>::Flat output);
 extern template struct FakeQuantWithMinMaxVarsFunctor<GPUDevice>;
 REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVars")
@@ -298,9 +263,6 @@ void FakeQuantWithMinMaxVarsGradientFunctor<GPUDevice>::operator()(
     typename TTypes<float>::ConstFlat inputs,
     typename TTypes<float>::ConstScalar min,
     typename TTypes<float>::ConstScalar max, int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-    typename TTypes<bool>::Scalar check_min_max,
-#endif
     typename TTypes<float>::Flat backprops_wrt_input,
     typename TTypes<float>::Scalar backprop_wrt_min,
     typename TTypes<float>::Scalar backprop_wrt_max);
@@ -325,12 +287,6 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
     OP_REQUIRES(context, IsNumBitsValid(num_bits),
                 InvalidArgument("num_bits must be between 2 and 8, inclusive"));
     steps_ = (1 << num_bits) - 1;
-#ifndef FAKE_QUANT_NO_DEBUG
-    OP_REQUIRES_OK(context,
-                   context->allocate_persistent(DT_BOOL, {},
-                                                &check_min_max_handle_,
-                                                nullptr));
-#endif
   }
 
   void Compute(OpKernelContext* context) override {
@@ -345,9 +301,6 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
     OP_REQUIRES(context, max.dim_size(0) == depth,
                 InvalidArgument("max has incorrect size, expected ", depth,
                                 " was ", max.dim_size(0)));
-#ifndef FAKE_QUANT_NO_DEBUG
-    Tensor* check_min_max = check_min_max_handle_.AccessTensor(context);
-#endif
 
     Tensor* output;
     OP_REQUIRES_OK(context,
@@ -359,9 +312,6 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
         functor(context->eigen_device<Device>(), input.dim_size(0),
                 input.dim_size(1), input.dim_size(2), input.dim_size(3),
                 input.flat<float>(), min.vec<float>(), max.vec<float>(), steps_,
-#ifndef FAKE_QUANT_NO_DEBUG
-                check_min_max->scalar<bool>(),
-#endif
                 output->flat<float>());
         break;
       }
@@ -370,9 +320,6 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
         functor(context->eigen_device<Device>(), input.dim_size(0),
                 input.dim_size(1), input.flat<float>(), min.vec<float>(),
                 max.vec<float>(), steps_,
-#ifndef FAKE_QUANT_NO_DEBUG
-                check_min_max->scalar<bool>(),
-#endif
                 output->flat<float>());
         break;
       }
@@ -380,9 +327,6 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
         FakeQuant1WithMinMaxVarsPerChannelFunctor<Device> functor;
         functor(context->eigen_device<Device>(), input.vec<float>(),
                 min.vec<float>(), max.vec<float>(), steps_,
-#ifndef FAKE_QUANT_NO_DEBUG
-                check_min_max->scalar<bool>(),
-#endif
                 output->vec<float>());
         break;
       }
@@ -395,9 +339,6 @@ class FakeQuantWithMinMaxVarsPerChannelOp : public OpKernel {
 
  private:
   int steps_;
-#ifndef FAKE_QUANT_NO_DEBUG
-  PersistentTensor check_min_max_handle_;
-#endif
 };
 
 // Implementation of FakeQuantWithMinMaxVarsPerChannelGradientOp, see its
@@ -412,12 +353,6 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
     OP_REQUIRES(context, IsNumBitsValid(num_bits),
                 InvalidArgument("num_bits must be between 2 and 8, inclusive"));
     steps_ = (1 << num_bits) - 1;
-#ifndef FAKE_QUANT_NO_DEBUG
-    OP_REQUIRES_OK(context,
-                   context->allocate_persistent(DT_BOOL, {},
-                                                &check_min_max_handle_,
-                                                nullptr));
-#endif
   }
 
   void Compute(OpKernelContext* context) override {
@@ -435,9 +370,6 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
     OP_REQUIRES(context, max.dim_size(0) == depth,
                 InvalidArgument("max has incorrect size, expected ", depth,
                                 " was ", max.dim_size(0)));
-#ifndef FAKE_QUANT_NO_DEBUG
-    Tensor* check_min_max = check_min_max_handle_.AccessTensor(context);
-#endif
 
     Tensor* grad_wrt_input;
     OP_REQUIRES_OK(context,
@@ -459,9 +391,6 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
                 input.dim_size(1), input.dim_size(2), input.dim_size(3),
                 gradient.flat<float>(), input.flat<float>(), min.vec<float>(),
                 max.vec<float>(), steps_,
-#ifndef FAKE_QUANT_NO_DEBUG
-                check_min_max->scalar<bool>(),
-#endif
                 grad_wrt_input->flat<float>(), grad_wrt_min->vec<float>(),
                 grad_wrt_max->vec<float>());
         break;
@@ -471,9 +400,6 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
         functor(context->eigen_device<Device>(), input.dim_size(0),
                 input.dim_size(1), gradient.flat<float>(), input.flat<float>(),
                 min.vec<float>(), max.vec<float>(), steps_,
-#ifndef FAKE_QUANT_NO_DEBUG
-                check_min_max->scalar<bool>(),
-#endif
                 grad_wrt_input->flat<float>(), grad_wrt_min->vec<float>(),
                 grad_wrt_max->vec<float>());
         break;
@@ -482,9 +408,6 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
         FakeQuant1WithMinMaxVarsPerChannelGradientFunctor<Device> functor;
         functor(context->eigen_device<Device>(), gradient.vec<float>(),
                 input.vec<float>(), min.vec<float>(), max.vec<float>(), steps_,
-#ifndef FAKE_QUANT_NO_DEBUG
-                check_min_max->scalar<bool>(),
-#endif
                 grad_wrt_input->vec<float>(), grad_wrt_min->vec<float>(),
                 grad_wrt_max->vec<float>());
         break;
@@ -498,9 +421,6 @@ class FakeQuantWithMinMaxVarsPerChannelGradientOp : public OpKernel {
 
  private:
   int steps_;
-#ifndef FAKE_QUANT_NO_DEBUG
-  PersistentTensor check_min_max_handle_;
-#endif
 };
 
 REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsPerChannel")
@@ -516,9 +436,6 @@ void FakeQuant1WithMinMaxVarsPerChannelFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstVec inputs,
     typename TTypes<float>::ConstVec min, typename TTypes<float>::ConstVec max,
     int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-    typename TTypes<bool>::Scalar check_min_max,
-#endif
     typename TTypes<float>::Vec outputs);
 extern template struct FakeQuant1WithMinMaxVarsPerChannelFunctor<GPUDevice>;
 
@@ -528,9 +445,6 @@ void FakeQuant2WithMinMaxVarsPerChannelFunctor<GPUDevice>::operator()(
     typename TTypes<float>::ConstFlat inputs,
     typename TTypes<float>::ConstFlat min,
     typename TTypes<float>::ConstFlat max, int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-    typename TTypes<bool>::Scalar check_min_max,
-#endif
     typename TTypes<float>::Flat outputs);
 extern template struct FakeQuant2WithMinMaxVarsPerChannelFunctor<GPUDevice>;
 
@@ -541,9 +455,6 @@ void FakeQuant4WithMinMaxVarsPerChannelFunctor<GPUDevice>::operator()(
     typename TTypes<float>::ConstFlat inputs,
     typename TTypes<float>::ConstFlat min,
     typename TTypes<float>::ConstFlat max, int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-    typename TTypes<bool>::Scalar check_min_max,
-#endif
     typename TTypes<float>::Flat outputs);
 extern template struct FakeQuant4WithMinMaxVarsPerChannelFunctor<GPUDevice>;
 
@@ -559,9 +470,6 @@ void FakeQuant1WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>::operator()(
     typename TTypes<float>::ConstVec inputs,
     typename TTypes<float>::ConstVec min, typename TTypes<float>::ConstVec max,
     int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-    typename TTypes<bool>::Scalar check_min_max,
-#endif
     typename TTypes<float>::Vec backprops_wrt_input,
     typename TTypes<float>::Vec backprop_wrt_min,
     typename TTypes<float>::Vec backprop_wrt_max);
@@ -575,9 +483,6 @@ void FakeQuant2WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>::operator()(
     typename TTypes<float>::ConstFlat inputs,
     typename TTypes<float>::ConstVec min, typename TTypes<float>::ConstVec max,
     int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-    typename TTypes<bool>::Scalar check_min_max,
-#endif
     typename TTypes<float>::Flat backprops_wrt_input,
     typename TTypes<float>::Vec backprop_wrt_min,
     typename TTypes<float>::Vec backprop_wrt_max);
@@ -592,9 +497,6 @@ void FakeQuant4WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>::operator()(
     typename TTypes<float>::ConstFlat inputs,
     typename TTypes<float>::ConstVec min, typename TTypes<float>::ConstVec max,
     int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-    typename TTypes<bool>::Scalar check_min_max,
-#endif
     typename TTypes<float>::Flat backprops_wrt_input,
     typename TTypes<float>::Vec backprop_wrt_min,
     typename TTypes<float>::Vec backprop_wrt_max);

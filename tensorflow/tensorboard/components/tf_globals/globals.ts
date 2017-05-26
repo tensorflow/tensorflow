@@ -13,20 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/* tslint:disable:no-namespace */
-module TF.Globals {
 
-  // The names of TensorBoard tabs.
-  export var TABS = [
-    'scalars', 'images', 'audio', 'graphs', 'distributions', 'histograms',
-    'embeddings', 'text'
-  ];
 
-  // If true, TensorBoard stores its hash in the URI state.
-  // If false, tab switching in TensorBoard will not update location hash,
-  // because hash updates interfere with wct_tests.
-  export var USE_HASH = false;
+// The names of TensorBoard tabs.
+export const TABS = [
+  'scalars', 'images', 'audio', 'graphs', 'distributions', 'histograms',
+  'embeddings', 'text'
+];
 
-  // If USE_HASH is false, FAKE_HASH holds the hash contents.
-  export var FAKE_HASH = '';
+// If true, TensorBoard stores its hash in the URI state.
+// If false, tab switching in TensorBoard will not update location hash,
+// because hash updates interfere with wct_tests.
+export let USE_HASH = false;
+
+let _fakeHash = '';
+
+export function setFakeHash(h: string) {
+  _fakeHash = h;
 }
+
+export function getFakeHash() {
+  return _fakeHash;
+}
+

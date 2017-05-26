@@ -42,6 +42,8 @@ class RemoteFusedGraphExecuteUtils {
   static constexpr const char* const
       ATTR_SERIALIZED_REMOTE_FUSED_GRAPH_EXECUTE_INFO =
           "serialized_remote_fused_graph_execute_info";
+  static constexpr const char* const ATTR_NODE_TYPE =
+      "_remote_fused_graph_node_type";
 
   // Argument key strings to fuse a subgraph into RemoteFusedGraphExecuteOp.
   static constexpr const char* const
@@ -228,6 +230,25 @@ class RemoteFusedGraphExecuteUtils {
       const string& remote_graph_executor_name, const bool require_shape_type,
       GraphDef* output_graph_def);
 
+  // Place arguments to fuse remote graph
+  static Status PlaceRemoteGraphArguments(
+      const std::vector<string>& inputs, const std::vector<string>& outputs,
+      const std::unordered_set<string>& fused_node_names,
+      const std::vector<string>& border_inputs,
+      const std::vector<string>& border_outputs,
+      const string& remote_fused_graph_node_name,
+      const string& remote_graph_executor_name, GraphDef* graph_def);
+
+  // Fuse remote graph by placed arguments
+  static Status FuseRemoteGraphByPlacedArguments(
+      const GraphDef& input_graph_def,
+      const std::vector<std::pair<string, Tensor>>& input_tensors,
+      GraphDef* output_graph_def);
+
+  static bool IsFuseReady(
+      const GraphDef& input_graph_def,
+      const std::vector<std::pair<string, Tensor>>& input_tensors);
+
  private:
   static void EmplaceTensorShapeType(const string& name, const Tensor& tensor,
                                      TensorShapeMap* tensor_shape_map);
@@ -238,6 +259,17 @@ class RemoteFusedGraphExecuteUtils {
                                               GraphDef* graph_def);
 
   static ExecutorBuildRegistry* GetExecutorBuildRegistry();
+
+  static string BuildNodeTypeAttr(
+      const RemoteFusedGraphExecuteInfo::NodeType node_type, const int port,
+      const int index, const string& executor_name, const string& node_name);
+
+  static string BuildNodeTypeAttr(
+      const RemoteFusedGraphExecuteInfo::NodeType node_type, const int port,
+      const int index);
+
+  static string BuildNodeTypeAttr(
+      const RemoteFusedGraphExecuteInfo::NodeType node_type);
 
   TF_DISALLOW_COPY_AND_ASSIGN(RemoteFusedGraphExecuteUtils);
 };

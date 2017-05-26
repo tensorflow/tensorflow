@@ -107,11 +107,12 @@ class HloExecutionProfiler {
 
 // Implementation note: HLO profiling is always enabled for GPU executables,
 // since we can use timers around thunks.
-GpuExecutable::GpuExecutable(tensorflow::StringPiece ptx,
-                             std::unique_ptr<ThunkSchedule> thunk_schedule,
-                             std::unique_ptr<HloModule> hlo_module,
-                             std::unique_ptr<BufferAssignment> assignment)
-    : Executable(std::move(hlo_module)),
+GpuExecutable::GpuExecutable(
+    tensorflow::StringPiece ptx, std::unique_ptr<ThunkSchedule> thunk_schedule,
+    std::unique_ptr<HloModule> hlo_module,
+    std::unique_ptr<BufferAssignment> assignment,
+    HloCostAnalysis::ShapeSizeFunction shape_size_function)
+    : Executable(std::move(hlo_module), std::move(shape_size_function)),
       ptx_(ptx),
       thunk_schedule_(std::move(thunk_schedule)),
       assignment_(std::move(assignment)) {}

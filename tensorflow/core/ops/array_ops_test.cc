@@ -135,7 +135,7 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
 
   shape_proto->add_dim()->set_size(-1);
   rebuild_node_def();
-  INFER_ERROR("Shape [1,2,3,4,-1] has negative dimensions", op, "");
+  INFER_ERROR("Shape [1,2,3,4,?] is not fully defined", op, "");
 }
 
 TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
@@ -162,9 +162,15 @@ TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
   // Check that handle dtypes are preserved.
   const OpRegistrationData* op_reg_data;
   TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
+  std::vector<
+      std::unique_ptr<std::vector<std::pair<TensorShapeProto, DataType>>>>
+      handle_data;
+  handle_data.emplace_back(
+      new std::vector<std::pair<TensorShapeProto, DataType>>{
+          {TensorShapeProto(), DT_BOOL}});
   shape_inference::InferenceContext c(TF_GRAPH_DEF_VERSION, &op.node_def,
                                       op_reg_data->op_def, {TensorShapeProto()},
-                                      {}, {}, {}, {DT_BOOL});
+                                      {}, {}, handle_data);
   TF_ASSERT_OK(c.construction_status());
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));

@@ -519,9 +519,7 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
   MemoryTypeVector output_memory_types;
 
   info->device_types.resize(g.num_node_ids(), DEVICE_CPU);
-  for (const Node* node : g.nodes()) {
-    if (!node->IsOp()) continue;  // Skip Sink/Source nodes.
-
+  for (const Node* node : g.op_nodes()) {
     DeviceNameUtils::ParsedName parsed;
     if (!DeviceNameUtils::ParseFullName(node->assigned_device_name(),
                                         &parsed)) {
@@ -831,9 +829,7 @@ Status Partition(const PartitionOptions& opts, Graph* g,
 
   int32 num_data = 0;
   int32 num_control = 0;
-  for (const Node* dst : g->nodes()) {
-    if (!dst->IsOp()) continue;  // Skip Sink/Source nodes.
-
+  for (const Node* dst : g->op_nodes()) {
     dstp = opts.node_to_loc(dst);
     GraphDef* dst_graph = &(*partitions)[dstp];
     NodeDef* dst_def = dst_graph->add_node();

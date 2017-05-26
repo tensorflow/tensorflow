@@ -247,7 +247,7 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
     # not have a scoped name or namespace scheme.
     functions = function._from_library(graph_def.library)
     for f in functions:
-      g._add_function(f)
+      f.add_to_graph(g)
       op_dict[f.name] = f.definition.signature
     # pylint: enable=protected-access
 

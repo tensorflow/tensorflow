@@ -18,7 +18,6 @@ limitations under the License.
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-button/paper-button.html">
 <link rel="import" href="../paper-dialog/paper-dialog.html">
-<link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="tf-multi-checkbox.html">
 <link rel="import" href="scrollbar-style.html">
 
@@ -36,8 +35,7 @@ Properties out:
 -->
 <dom-module id="tf-run-selector">
   <template>
-    <paper-dialog with-backdrop
-                  id="logdir-dialog">
+    <paper-dialog with-backdrop id="logdir-dialog">
       <h2>logdir</h2>
       <div inner-h-t-m-l="{{_breakString(logdir)}}"></div>
     </paper-dialog>

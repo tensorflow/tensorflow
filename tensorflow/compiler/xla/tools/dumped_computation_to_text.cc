@@ -76,9 +76,7 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool compile) {
       VersionedComputationHandle versioned_handle =
           user_computation->GetVersionedHandle();
       std::unique_ptr<HloModule> module =
-          tracker
-              .BuildHloModule(versioned_handle,
-                              /*config=*/nullptr)
+          tracker.BuildHloModule(versioned_handle, HloModuleConfig())
               .ConsumeValueOrDie();
 
       fprintf(stdout, "%s\n", module->ToString().c_str());

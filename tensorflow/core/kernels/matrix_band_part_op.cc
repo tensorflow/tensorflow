@@ -143,7 +143,8 @@ namespace functor {
   extern template struct MatrixBandPart<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
-
+TF_CALL_complex64(DECLARE_GPU_SPEC);
+TF_CALL_complex128(DECLARE_GPU_SPEC);
 }  // namespace functor
 
 // Registration of the GPU implementations.
@@ -155,6 +156,8 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
                               .HostMemory("num_upper"),  \
                           MatrixBandPartOp<GPUDevice, type>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_MATRIX_BAND_PART_GPU);
+TF_CALL_complex64(REGISTER_MATRIX_BAND_PART_GPU);
+TF_CALL_complex128(REGISTER_MATRIX_BAND_PART_GPU);
 #undef REGISTER_MATRIX_BAND_PART_GPU
 
 // Registration of the deprecated kernel.

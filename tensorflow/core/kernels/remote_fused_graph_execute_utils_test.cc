@@ -48,6 +48,12 @@ class FuseRemoteGraphMultipleAddOpsTest : public ::testing::Test {
   void SetUp() final {
     TF_ASSERT_OK(
         RemoteFusedGraphExecuteOpTestUtils::BuildMultipleAddGraph(&graph_def_));
+    RemoteFusedGraphExecuteUtils::ExecutorBuildRegistrar
+        k_hexagon_remote_fused_graph_executor_build(
+            "remote_graph_executor_name",
+            [](std::unique_ptr<IRemoteFusedGraphExecutor>* executor) -> Status {
+              return Status::OK();
+            });
   }
 
   void TearDown() final {}
@@ -71,6 +77,31 @@ class FuseRemoteGraphMultipleAddOpsTest : public ::testing::Test {
         graph_def_, inputs_, outputs_, "remote_fused_graph_node_names",
         subgraph_node_names_, "remote_graph_executor_name",
         /*require_shape_type=*/false, &result_graph_def_);
+  }
+
+  Status BuildAndAddTensorShape() {
+    return RemoteFusedGraphExecuteUtils::BuildAndAddTensorShapes(
+        input_tensors_, /*dry_run_inference=*/true, &graph_def_);
+  }
+
+  Status PlaceRemoteGraphArguments() {
+    return RemoteFusedGraphExecuteUtils::PlaceRemoteGraphArguments(
+        inputs_, outputs_, subgraph_node_names_, subgraph_input_names_,
+        subgraph_output_names_, "remote_fused_graph_node_names",
+        "remote_graph_executor_name", &graph_def_);
+  }
+
+  Status FuseByPlacedArguments() {
+    const Status status =
+        RemoteFusedGraphExecuteUtils::FuseRemoteGraphByPlacedArguments(
+            graph_def_, input_tensors_, &graph_def_);
+    result_graph_def_ = graph_def_;
+    return status;
+  }
+
+  bool IsFuseReady() {
+    return RemoteFusedGraphExecuteUtils::IsFuseReady(graph_def_,
+                                                     input_tensors_);
   }
 
  public:
@@ -613,6 +644,112 @@ TEST_F(FuseRemoteGraphMultipleAddOpsTest, FuseSubgraphByNodes_ABCDEFGHIJK) {
 
   EXPECT_EQ(11, graph_def_.node_size());
   EXPECT_EQ(3, result_graph_def_.node_size())  // "A", "RFG", "K"
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, PlaceAndFuse_H) {
+  subgraph_node_names_ = {"H"};
+
+  TF_ASSERT_OK(PlaceRemoteGraphArguments());
+  ASSERT_TRUE(IsFuseReady());
+  TF_ASSERT_OK(BuildAndAddTensorShape());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+
+  TF_ASSERT_OK(FuseByPlacedArguments());
+
+  EXPECT_EQ(11, result_graph_def_.node_size())
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, PlaceAndFuse_CFGHIJ) {
+  subgraph_node_names_ = {"C", "F", "G", "H", "I", "J"};
+
+  TF_ASSERT_OK(PlaceRemoteGraphArguments());
+  ASSERT_TRUE(IsFuseReady());
+  TF_ASSERT_OK(BuildAndAddTensorShape());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+
+  TF_ASSERT_OK(FuseByPlacedArguments());
+
+  EXPECT_EQ(6, result_graph_def_.node_size())
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, PlaceAndFuse_ABCDEFGHIJK) {
+  subgraph_node_names_ = {"A", "B", "C", "D", "E", "F",
+                          "G", "H", "I", "J", "K"};
+
+  TF_ASSERT_OK(PlaceRemoteGraphArguments());
+  ASSERT_TRUE(IsFuseReady());
+  TF_ASSERT_OK(BuildAndAddTensorShape());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+
+  TF_ASSERT_OK(FuseByPlacedArguments());
+
+  EXPECT_EQ(3, result_graph_def_.node_size())  // "A", "RFG", "K"
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, PlaceAndFuse_HI_J) {
+  SetSubgraphArguments(std::vector<string>{"H", "I"}, std::vector<string>{"J"},
+                       this);
+
+  TF_ASSERT_OK(PlaceRemoteGraphArguments());
+  ASSERT_TRUE(IsFuseReady());
+  TF_ASSERT_OK(BuildAndAddTensorShape());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+
+  TF_ASSERT_OK(FuseByPlacedArguments());
+
+  EXPECT_EQ(11, result_graph_def_.node_size())
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, PlaceAndFuse_FCG_J) {
+  SetSubgraphArguments(std::vector<string>{"F", "C", "G"},
+                       std::vector<string>{"J"}, this);
+
+  TF_ASSERT_OK(PlaceRemoteGraphArguments());
+  ASSERT_TRUE(IsFuseReady());
+  TF_ASSERT_OK(BuildAndAddTensorShape());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+
+  TF_ASSERT_OK(FuseByPlacedArguments());
+
+  EXPECT_EQ(9, result_graph_def_.node_size())
+      << "=== Before: \n"
+      << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
+      << SummarizeGraphDef(result_graph_def_);
+}
+
+TEST_F(FuseRemoteGraphMultipleAddOpsTest, PlaceAndFuse_ABCDE_K) {
+  SetSubgraphArguments(std::vector<string>{"A", "B", "C", "D", "E"},
+                       std::vector<string>{"K"}, this);
+
+  TF_ASSERT_OK(PlaceRemoteGraphArguments());
+  ASSERT_TRUE(IsFuseReady());
+  TF_ASSERT_OK(BuildAndAddTensorShape());
+
+  EXPECT_EQ(11, graph_def_.node_size());
+
+  TF_ASSERT_OK(FuseByPlacedArguments());
+
+  EXPECT_EQ(7, result_graph_def_.node_size())
       << "=== Before: \n"
       << SummarizeGraphDef(graph_def_) << "\n\n\n=== After: \n"
       << SummarizeGraphDef(result_graph_def_);
