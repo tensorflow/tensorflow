@@ -794,7 +794,7 @@ tf_module {
   }
   member_method {
     name: "decode_csv"
-    argspec: "args=[\'records\', \'record_defaults\', \'field_delim\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'records\', \'record_defaults\', \'field_delim\', \'use_quote_delim\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "decode_json_example"
