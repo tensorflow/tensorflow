@@ -1354,6 +1354,17 @@ Status DirectSession::CreateGraphs(
   return s;
 }
 
+::tensorflow::Status DirectSession::ListDevices(
+    std::vector<DeviceAttributes>* response) {
+  response->clear();
+  response->reserve(devices_.size());
+  for (Device* d : devices_) {
+    const DeviceAttributes& attrs = d->attributes();
+    response->emplace_back(attrs);
+  }
+  return ::tensorflow::Status::OK();
+}
+
 ::tensorflow::Status DirectSession::Reset(
     const std::vector<string>& containers) {
   device_mgr_->ClearContainers(containers);

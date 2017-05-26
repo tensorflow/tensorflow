@@ -1102,6 +1102,30 @@ Status MasterSession::CreateWorkerSessions(
   return status;
 }
 
+Status MasterSession::ListDevices(ListDevicesResponse* resp) const {
+  if (worker_cache_) {
+    // This is a ClusterSpec-propagated session, and thus env_->local_devices
+    // are invalid.
+
+    // Mark the "client_device" as the sole local device.
+    const Device* client_device = devices_->client_device();
+    for (const Device* dev : devices_->devices()) {
+      if (dev != client_device) {
+        *(resp->add_remote_device()) = dev->attributes();
+      }
+    }
+    *(resp->add_local_device()) = client_device->attributes();
+  } else {
+    for (Device* dev : env_->local_devices) {
+      *(resp->add_local_device()) = dev->attributes();
+    }
+    for (auto&& dev : *remote_devs_) {
+      *(resp->add_local_device()) = dev->attributes();
+    }
+  }
+  return Status::OK();
+}
+
 Status MasterSession::Extend(const ExtendSessionRequest* req,
                              ExtendSessionResponse* resp) {
   UpdateLastAccessTime();

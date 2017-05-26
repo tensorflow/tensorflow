@@ -95,6 +95,8 @@ class DirectSession : public Session {
   // If 'containers' is empty, then Reset clears the default container.
   ::tensorflow::Status Reset(const std::vector<string>& containers);
 
+  ::tensorflow::Status ListDevices(
+      std::vector<DeviceAttributes>* response) override;
   ::tensorflow::Status Close() override;
 
   void ExportCostModels(CostModelManager::CostModelMap* cost_models) {
