@@ -79,12 +79,14 @@ class SplitOp : public XlaOpKernel {
     // split dimensions varies for each output.
     std::vector<int64> begin;
     std::vector<int64> limits;
+    std::vector<int64> strides;
     for (int i = 0; i < input_shape.dims(); ++i) {
       // Initially set up the limits to be the full size of the input:
       // the split dimension is filled in below.
       int64 dim = input_shape.dim_size(i);
       begin.push_back(0);
       limits.push_back(dim);
+      strides.push_back(1);
     }
 
     auto input = ctx->Input(1);
@@ -94,7 +96,7 @@ class SplitOp : public XlaOpKernel {
       // Slice out the ith split from the split dimension.
       begin[split_dim] = i * slice_size;
       limits[split_dim] = (i + 1) * slice_size;
-      ctx->SetOutput(i, ctx->builder()->Slice(input, begin, limits));
+      ctx->SetOutput(i, ctx->builder()->Slice(input, begin, limits, strides));
     }
   }
 };
@@ -188,7 +190,7 @@ class SplitVOp : public XlaOpKernel {
     std::vector<int64> begin(input_shape.dims(), 0);
     auto dim_sizes = input_shape.dim_sizes();
     std::vector<int64> limits(dim_sizes.begin(), dim_sizes.end());
-
+    std::vector<int64> strides(input_shape.dims(), 0);
     for (int i = 0; i < num_split; ++i) {
       TensorShape output_shape(input_shape);
       int slice_size = split_sizes_vec[i];
@@ -196,7 +198,7 @@ class SplitVOp : public XlaOpKernel {
 
       // Slice out the ith split from the split dimension.
       limits[split_dim] = begin[split_dim] + slice_size;
-      ctx->SetOutput(i, ctx->builder()->Slice(input, begin, limits));
+      ctx->SetOutput(i, ctx->builder()->Slice(input, begin, limits, strides));
       begin[split_dim] = limits[split_dim];
     }
   }
