@@ -585,6 +585,13 @@ class HloInstruction {
   // Precondition: opcode() == HloOpcode::kFusion
   const std::vector<HloInstruction*>& fused_parameters() const;
 
+  // Returns true if this instruction is a fusion instruction that generates
+  // multiple outputs.
+  const bool IsMultiOutputFusion() const {
+    return (opcode() == HloOpcode::kFusion &&
+            fused_expression_root()->opcode() == HloOpcode::kTuple);
+  }
+
   FusionKind fusion_kind() const {
     CHECK_EQ(HloOpcode::kFusion, opcode_);
     return fusion_kind_;
