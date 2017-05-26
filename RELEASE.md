@@ -49,6 +49,13 @@
   processing of the rnn.  For RNN decoding, this functionality has been replaced
   with an alternative API in `tf.contrib.seq2seq`.
 
+## Deprecations
+
+* TensorFlow 1.2 may be the last time we build with cuDNN 5.1. Starting with
+  TensorFlow 1.3, we will try to build all our prebuilt binaries with cuDNN 6.0.
+  While we will try to keep our source code compatible with cuDNN 5.1, it will
+  be best effort.
+
 ## Breaking Changes to the API
 * `org.tensorflow.contrib.android.TensorFlowInferenceInterface` now throws exceptions where possible and has simplified method signatures.
 
