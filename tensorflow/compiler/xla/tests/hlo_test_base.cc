@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -79,25 +78,9 @@ StatusOr<perftools::gputools::DeviceMemoryBase> HloTestBase::Execute(
     tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
         arguments,
     Shape* result_shape) {
-  auto module_config = MakeUnique<HloModuleConfig>(
-      module->entry_computation()->ComputeProgramShape());
-  return Execute(std::move(module), std::move(module_config), arguments,
-                 result_shape);
-}
-
-StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
-    Shape* result_shape) {
-  VLOG(3) << "module_config layout "
-          << LayoutUtil::HumanString(module_config->entry_computation_layout()
-                                         .result_layout()
-                                         .layout());
-  hlo_module->set_config(*module_config);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend_->compiler()->Compile(std::move(hlo_module), test_hlo_dumper_,
+      backend_->compiler()->Compile(std::move(module), test_hlo_dumper_,
                                     backend_->default_stream_executor()));
 
   se::Stream stream(backend_->default_stream_executor());
@@ -177,18 +160,6 @@ std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
   Shape result_shape;
   se::DeviceMemoryBase device_base =
       Execute(std::move(module), arguments, &result_shape).ValueOrDie();
-  return TransferFromDevice(result_shape, device_base);
-}
-
-std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module,
-    std::unique_ptr<HloModuleConfig> module_config,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
-  Shape result_shape;
-  se::DeviceMemoryBase device_base =
-      Execute(std::move(module), std::move(module_config), arguments,
-              &result_shape)
-          .ValueOrDie();
   return TransferFromDevice(result_shape, device_base);
 }
 

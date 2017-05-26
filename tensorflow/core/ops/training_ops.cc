@@ -23,11 +23,12 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 static ShapeHandle ShapeOrHandleShape(InferenceContext* c, int input) {
-  auto h_dtype = c->input_handle_dtype(input);
-  if (h_dtype == DT_INVALID) {
-    return c->input(input);
+  auto* handle_data = c->input_handle_shapes_and_types(input);
+  if (handle_data != nullptr && !handle_data->empty() &&
+      (*handle_data)[0].dtype != DT_INVALID) {
+    return (*handle_data)[0].shape;
   }
-  return c->input_handle_shape(input);
+  return c->input(input);
 }
 
 // Handle the gradient and, if <sparse>, indices inputs.

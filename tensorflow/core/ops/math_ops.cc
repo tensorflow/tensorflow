@@ -927,18 +927,33 @@ REGISTER_OP("Select")
     .Output("output: T")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
+      auto* handle_data_1 = c->input_handle_shapes_and_types(1);
+      auto* handle_data_2 = c->input_handle_shapes_and_types(2);
       // Merge handle shape and dtype if applicable.
-      if (c->input_handle_dtype(1) != c->input_handle_dtype(2)) {
-        // TODO(apassos) resolve this in the manner of b/32476923
-        return errors::InvalidArgument(
-            "Trying to merge handles pointing to different dtypes.");
+      if (handle_data_1 != nullptr && handle_data_2 != nullptr) {
+        const auto size = handle_data_1->size();
+        std::vector<shape_inference::ShapeAndType> merged_handle_data(size);
+        if (size != handle_data_2->size()) {
+          return errors::InvalidArgument(
+              "Trying to merge handles pointing to different numbers of "
+              "tensors.");
+        }
+
+        for (int i = 0; i < size; ++i) {
+          const shape_inference::ShapeAndType& s1 = (*handle_data_1)[i];
+          const shape_inference::ShapeAndType& s2 = (*handle_data_2)[i];
+          if (s1.dtype != s2.dtype) {
+            // TODO(apassos) resolve this in the manner of b/32476923
+            return errors::InvalidArgument(
+                "Trying to merge handles pointing to different dtypes.");
+          }
+          merged_handle_data[i].dtype = s1.dtype;
+          TF_RETURN_IF_ERROR(
+              c->Merge(s1.shape, s2.shape, &merged_handle_data[i].shape));
+        }
+
+        c->set_output_handle_shapes_and_types(0, merged_handle_data);
       }
-      c->set_output_handle_dtype(0, c->input_handle_dtype(1));
-      ShapeHandle output_handle_shape;
-      TF_RETURN_IF_ERROR(c->Merge(c->input_handle_shape(1),
-                                  c->input_handle_shape(2),
-                                  &output_handle_shape));
-      c->set_output_handle_shape(0, output_handle_shape);
 
       // The inputs 'then' and 'else' must have the same shape.
       ShapeHandle data = c->input(1);
@@ -2074,7 +2089,6 @@ REGISTER_OP("Bincount")
     .Output("bins: T")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(1));
-      c->set_output_handle_dtype(0, c->input_handle_dtype(2));
       return Status::OK();
     })
     .Doc(R"doc(

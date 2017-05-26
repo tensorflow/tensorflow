@@ -60,12 +60,11 @@ class TFProfTimelineTest : public ::testing::Test {
 // manually check it's correct
 TEST_F(TFProfTimelineTest, GraphView) {
   string dump_file = io::JoinPath(testing::TmpDir(), "dump");
-  Options opts(10000, 0, 0, 0, 0, {".*"}, "name",
-               {".*"},  // accout_type_regexes
+  Options opts(10000, 0, 0, 0, 0, 0, "name", {".*"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
-               {"params", "bytes", "micros", "float_ops", "num_hidden_ops"},
-               "timeline", {{"outfile", dump_file}});
-  tf_stats_->PrintGraph("graph", opts);
+               {"params", "bytes", "micros", "float_ops"}, "timeline",
+               {{"outfile", dump_file}});
+  tf_stats_->ShowGraphNode("graph", opts);
 
   string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));
@@ -74,11 +73,11 @@ TEST_F(TFProfTimelineTest, GraphView) {
 
 TEST_F(TFProfTimelineTest, ScopeView) {
   string dump_file = io::JoinPath(testing::TmpDir(), "dump");
-  Options opts(5, 0, 0, 0, 0, {".*"}, "name", {".*"},  // accout_type_regexes
+  Options opts(5, 0, 0, 0, 0, 0, "name", {".*"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
-               {"params", "bytes", "micros", "float_ops", "num_hidden_ops"},
-               "timeline", {{"outfile", dump_file}});
-  tf_stats_->PrintGraph("scope", opts);
+               {"params", "bytes", "micros", "float_ops"}, "timeline",
+               {{"outfile", dump_file}});
+  tf_stats_->ShowGraphNode("scope", opts);
 
   string dump_str;
   TF_CHECK_OK(ReadFileToString(Env::Default(), dump_file, &dump_str));

@@ -121,6 +121,14 @@ struct DimensionOrConstant {
   DimensionOrConstant();
 };
 
+struct ShapeAndType {
+  ShapeAndType() {}
+  ShapeAndType(ShapeHandle s, DataType t) : shape(s), dtype(t) {}
+
+  ShapeHandle shape;
+  DataType dtype = DT_INVALID;
+};
+
 // Shape inference functions registered on ops in REGISTER_OP implement
 // their shape functions in terms of this InferenceContext.  An InferenceContext
 // is created by the framework and passed to a shape inference function.  The
@@ -149,26 +157,28 @@ class InferenceContext {
                    const std::vector<ShapeHandle>& input_shapes,
                    const std::vector<const Tensor*>& input_tensors,
                    const std::vector<ShapeHandle>& input_tensors_as_shapes,
-                   const std::vector<ShapeHandle>& input_handle_shapes,
-                   const std::vector<DataType>& input_handle_dtypes);
+                   std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
+                       input_handle_shapes_and_types);
 
   // <input_tensors> is NULL-padded to be the same size as <input_shapes>.
   //
-  // Elements of <input_tensors_as_shapes> are used for when a shape function
-  // makes a call to MakeShapeFromShapeTensor; in particular, when the
-  // input_tensors[i] is nullptr but the shape represented by it is partially
-  // known from analysis of the graph.
-  // <input_tensors_as_shapes> can have fewer elements than <input_shapes>.
-  // Values of <input_tensors_as_shapes> do not need to outlive the context.
+  // Elements of <input_tensors_as_shapes> are used for when a shape
+  // function makes a call to MakeShapeFromShapeTensor; in particular, when
+  // the input_tensors[i] is nullptr but the shape represented by it is
+  // partially known from analysis of the graph. <input_tensors_as_shapes>
+  // can have fewer elements than <input_shapes>. Values of
+  // <input_tensors_as_shapes> do not need to outlive the context.
   //
-  // REQUIRES: <node_def> is not NULL, and must outlive the InferenceContext.
-  InferenceContext(int graph_def_version, const NodeDef* node_def,
-                   const OpDef& op_def,
-                   const std::vector<TensorShapeProto>& input_shapes,
-                   const std::vector<const Tensor*>& input_tensors,
-                   const std::vector<TensorShapeProto>& input_tensors_as_shapes,
-                   const std::vector<TensorShapeProto>& input_handle_shapes,
-                   const std::vector<DataType>& input_handle_dtypes);
+  // REQUIRES: <node_def> is not NULL, and must outlive the
+  // InferenceContext.
+  InferenceContext(
+      int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
+      const std::vector<TensorShapeProto>& input_shapes,
+      const std::vector<const Tensor*>& input_tensors,
+      const std::vector<TensorShapeProto>& input_tensors_as_shapes,
+      const std::vector<
+          std::unique_ptr<std::vector<std::pair<TensorShapeProto, DataType>>>>&
+          input_handle_shapes_and_types);
 
   ~InferenceContext();
 
@@ -441,70 +451,62 @@ class InferenceContext {
   // propagate that information. Output handle dtypes and shapes are ignored if
   // the output tensor is not of type DT_RESOURCE.
 
-  // Merge the stored shape corresponding to the input handle in position idx
-  // with the specified shape. This requires idx to be in the [0, num_inputs)
-  // range. If the merge is successful and the new shape differs from the old
-  // one, store the new shape and return true. Return false otherwise.
-  bool MergeInputHandleShape(int idx, ShapeHandle shape) {
-    ShapeHandle new_shape;
-    if (!Merge(input_handle_shape_[idx], shape, &new_shape).ok() ||
-        input_handle_shape_[idx].SameHandle(new_shape)) {
-      return false;
-    }
-    input_handle_shape_[idx] = shape;
-    return true;
+  // Merge the stored shapes and types corresponding to the input handle in
+  // position idx with the specified shapes and types. This requires idx to be
+  // in the [0, num_inputs) range.
+  //
+  // If the merge is successful and any of the new shapes differs from the old
+  // one, or any of the old dtypes was DT_INVALID, store the new shapes and
+  // return true.  Return false otherwise.
+  bool MergeInputHandleShapesAndTypes(
+      int idx,
+      const std::vector<ShapeAndType>& shapes_and_types) TF_MUST_USE_RESULT;
+
+  // As MergeInputHandleShapesAndTypes, but for an output.
+  bool MergeOutputHandleShapesAndTypes(
+      int idx, const std::vector<ShapeAndType>& shapes) TF_MUST_USE_RESULT;
+
+  // Returns the output handle shapes and types, for the resource tensor output
+  // at index <idx>. Returns NULL if the shape and types were never set.
+  const std::vector<ShapeAndType>* output_handle_shapes_and_types(int idx) {
+    return output_handle_shapes_and_types_[idx].get();
   }
 
-  // Set the type corresponding to the resource in position idx. This requires
-  // idx to be in the [0, num_inputs) range. Returns true iff the stored type
-  // has been updated.
-  bool set_input_handle_dtype(int idx, DataType dtype) {
-    if (input_handle_dtype_[idx] != dtype) {
-      input_handle_dtype_[idx] = dtype;
-      return true;
-    }
-    return false;
+  // Returns the inputs handle shapes and types, for the resource tensor output
+  // at index <idx>. Returns NULL if the shape and types were not available.
+  const std::vector<ShapeAndType>* input_handle_shapes_and_types(int idx) {
+    return input_handle_shapes_and_types_[idx].get();
   }
+
+  // DEPRECATED: use input_handle_shapes_and_types.
   ShapeHandle input_handle_shape(int idx);
+  // DEPRECATED: use input_handle_shapes_and_types.
   DataType input_handle_dtype(int idx) const {
-    return input_handle_dtype_[idx];
-  }
-
-  // Merge the stored shape corresponding to the output handle in position idx
-  // with the specified shape. This requires idx to be in the [0, num_outputs)
-  // range. If the merge is successful and the new shape differs from the old
-  // one, store the new shape and return true. Return false otherwise.
-
-  bool MergeOutputHandleShape(int idx, ShapeHandle shape) {
-    ShapeHandle new_shape;
-    if (!Merge(output_handle_shape_[idx], shape, &new_shape).ok() ||
-        output_handle_shape_[idx].SameHandle(new_shape)) {
-      return false;
+    if (input_handle_shapes_and_types_[idx] == nullptr) {
+      return DT_INVALID;
+    } else {
+      DCHECK_EQ(input_handle_shapes_and_types_[idx]->size(), 1);
+      return (*input_handle_shapes_and_types_[idx])[0].dtype;
     }
-    output_handle_shape_[idx] = shape;
-    return true;
-  }
-  // Overwrite the shape corresponding to the output handle in position idx with
-  // the specified shape.
-  void set_output_handle_shape(int idx, ShapeHandle shape) {
-    output_handle_shape_[idx] = shape;
   }
 
-  // Set the type corresponding to the resource in position idx. This requires
-  // idx to be in the [0, num_outputs) range. Returns true iff the stored type
-  // has been updated.
-  bool set_output_handle_dtype(int idx, DataType dtype) {
-    if (output_handle_dtype_[idx] != dtype) {
-      output_handle_dtype_[idx] = dtype;
-      return true;
-    }
-    return false;
+  void set_output_handle_shapes_and_types(
+      int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+    output_handle_shapes_and_types_[idx].reset(
+        new std::vector<ShapeAndType>(shapes_and_types));
   }
-  ShapeHandle output_handle_shape(int idx) const {
-    return output_handle_shape_[idx];
+
+  // DEPRECATED: use output_handle_shapes_and_types.
+  ShapeHandle output_handle_shape(int idx) {
+    return output_handle_shapes_and_types_[idx] == nullptr
+               ? UnknownShape()
+               : (*output_handle_shapes_and_types_[idx])[0].shape;
   }
+  // DEPRECATED: use output_handle_shapes_and_types.
   DataType output_handle_dtype(int idx) const {
-    return output_handle_dtype_[idx];
+    return output_handle_shapes_and_types_[idx] == nullptr
+               ? DT_INVALID
+               : (*output_handle_shapes_and_types_[idx])[0].dtype;
   }
 
   // Note that shape functions should usually call MakeShapeFromShapeTensor,
@@ -555,8 +557,8 @@ class InferenceContext {
   void PreInputInit(const OpDef& op_def,
                     const std::vector<const Tensor*>& input_tensors,
                     const std::vector<ShapeHandle>& input_tensors_as_shapes);
-  void PostInputInit(const std::vector<ShapeHandle>& input_handle_shapes,
-                     const std::vector<DataType>& input_handle_dtypes);
+  void PostInputInit(std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
+                         input_handle_data);
 
   DimensionHandle GetDimension(const DimensionOrConstant& d);
 
@@ -573,6 +575,12 @@ class InferenceContext {
   // Adds additional context to the given status.
   Status AttachContext(const Status& status);
 
+  // Used to implement MergeInputHandleShapesAndTypes and
+  // MergeOutputHandleShapesAndTypes.
+  bool MergeHandleShapesAndTypes(
+      const std::vector<ShapeAndType>& shapes_and_types,
+      std::vector<ShapeAndType>* to_update) TF_MUST_USE_RESULT;
+
   ShapeManager shape_manager_;
 
   // inputs_, outputs_, and input_tensors_as_shapes_ refer to values from
@@ -585,10 +593,19 @@ class InferenceContext {
   std::vector<ShapeHandle> input_tensors_as_shapes_;
   std::vector<bool> requested_input_tensor_as_partial_shape_;
 
-  std::vector<ShapeHandle> input_handle_shape_;
-  std::vector<DataType> input_handle_dtype_;
-  std::vector<ShapeHandle> output_handle_shape_;
-  std::vector<DataType> output_handle_dtype_;
+  // input_handle_shapes_and_types_[i] is the list of shape/type pairs available
+  // through the resource handle passed along input i of the node.
+  //
+  // Values may be NULL.
+  std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
+      input_handle_shapes_and_types_;
+
+  // output_handle_shapes_and_types_[i] is the list of shape/type pairs
+  // available through the resource handle passed along output i of the node.
+  //
+  // Values may be NULL.
+  std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
+      output_handle_shapes_and_types_;
 
   const int graph_def_version_;
   const NodeDef& node_def_;

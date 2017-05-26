@@ -18,6 +18,7 @@ cc_library(
         ":tfprof_code",
         ":tfprof_graph",
         ":tfprof_node",
+        ":tfprof_op",
         ":tfprof_options",
         ":tfprof_scope",
         ":tfprof_show",
@@ -80,6 +81,26 @@ cc_library(
 )
 
 cc_library(
+    name = "tfprof_op",
+    srcs = ["tfprof_op.cc"],
+    hdrs = ["tfprof_op.h"],
+    deps = [
+        ":tfprof_constants",
+        ":tfprof_node",
+        ":tfprof_options",
+        ":tfprof_show_multi",
+        ":tfprof_tensor",
+        ":tfprof_utils",
+        "//tensorflow/c:c_api",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:regexp_internal",
+        "//tensorflow/tools/tfprof:protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "tfprof_code",
     srcs = ["tfprof_code.cc"],
     hdrs = ["tfprof_code.h"],
@@ -87,7 +108,7 @@ cc_library(
         ":tfprof_constants",
         ":tfprof_node",
         ":tfprof_options",
-        ":tfprof_show_code",
+        ":tfprof_show_multi",
         ":tfprof_timeline",
         ":tfprof_utils",
         "//tensorflow/c:c_api",
@@ -156,9 +177,9 @@ cc_library(
 )
 
 cc_library(
-    name = "tfprof_show_code",
-    srcs = ["tfprof_show_code.cc"],
-    hdrs = ["tfprof_show_code.h"],
+    name = "tfprof_show_multi",
+    srcs = ["tfprof_show_multi.cc"],
+    hdrs = ["tfprof_show_multi.h"],
     deps = [
         ":tfprof_constants",
         ":tfprof_node",

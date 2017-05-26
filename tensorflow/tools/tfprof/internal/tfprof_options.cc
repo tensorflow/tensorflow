@@ -145,9 +145,7 @@ tensorflow::Status Options::FromProtoStr(const string& opts_proto_str,
 
   *opts = Options(
       opts_pb.max_depth(), opts_pb.min_bytes(), opts_pb.min_micros(),
-      opts_pb.min_params(), opts_pb.min_float_ops(),
-      std::vector<string>(opts_pb.device_regexes().begin(),
-                          opts_pb.device_regexes().end()),
+      opts_pb.min_params(), opts_pb.min_float_ops(), opts_pb.min_occurrence(),
       opts_pb.order_by(),
       std::vector<string>(opts_pb.account_type_regexes().begin(),
                           opts_pb.account_type_regexes().end()),
@@ -172,7 +170,7 @@ string Options::ToString() const {
       "%-28s%lld\n"
       "%-28s%lld\n"
       "%-28s%lld\n"
-      "%-28s%s\n"
+      "%-28s%lld\n"
       "%-28s%s\n"
       "%-28s%s\n"
       "%-28s%s\n"
@@ -184,8 +182,7 @@ string Options::ToString() const {
       "%-28s%s:%s\n",
       kOptions[0], max_depth, kOptions[1], min_bytes, kOptions[2], min_micros,
       kOptions[3], min_params, kOptions[4], min_float_ops, kOptions[5],
-      str_util::Join(device_regexes, ",").c_str(), kOptions[6],
-      order_by.c_str(), kOptions[7],
+      min_occurrence, kOptions[6], order_by.c_str(), kOptions[7],
       str_util::Join(account_type_regexes, ",").c_str(), kOptions[8],
       str_util::Join(start_name_regexes, ",").c_str(), kOptions[9],
       str_util::Join(trim_name_regexes, ",").c_str(), kOptions[10],

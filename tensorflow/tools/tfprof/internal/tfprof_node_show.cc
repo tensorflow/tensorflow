@@ -19,14 +19,16 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
-ShowNode::ShowNode(const TFGraphNode* node) : node(node), account(true) {
+namespace {}
+
+ShowNode::ShowNode(const TFGraphNode* node) : node(node), account(false) {
   ReInit();
 }
 
 void ShowNode::ReInit() {
   mutable_proto()->set_name(name());
-  for (const string& device : node->devices()) {
-    *mutable_proto()->mutable_devices()->Add() = device;
+  if (!node->canonical_device().empty()) {
+    mutable_proto()->add_devices(node->canonical_device());
   }
   mutable_proto()->set_exec_micros(node->kernel_exec_micros());
   mutable_proto()->set_requested_bytes(node->requested_bytes());
@@ -49,72 +51,6 @@ void ShowNode::ReInit() {
       fprintf(stderr, "Incomplete shape.");
     }
   }
-}
-
-string ShowNode::Format(const Options& opts) {
-  if (opts.select.empty()) {
-    return name();
-  }
-  return strings::Printf("%s (%s)", name().c_str(), FormatMeta(opts).c_str());
-}
-
-string ShowNode::FormatMeta(const Options& opts) {
-  std::vector<string> info;
-  if (opts.select.find(kShown[2]) != opts.select.end()) {
-    const string shape = FormatShapes(node->shape());
-    if (!shape.empty()) {
-      info.push_back(shape);
-    }
-    string params = FormatNumber(proto().total_parameters()) + " params";
-    if (account) {
-      params = FormatNumber(proto().parameters()) + "/" + params;
-    } else {
-      params = "--/" + params;
-    }
-    info.push_back(params);
-  }
-  if (opts.select.find(kShown[3]) != opts.select.end()) {
-    string fops = FormatNumber(proto().total_float_ops()) + " flops";
-    if (account) {
-      fops = FormatNumber(proto().float_ops()) + "/" + fops;
-    } else {
-      fops = "--/" + fops;
-    }
-    info.push_back(fops);
-  }
-  if (opts.select.find(kShown[0]) != opts.select.end()) {
-    string memory = FormatMemory(proto().total_requested_bytes());
-    if (account) {
-      memory = FormatMemory(proto().requested_bytes()) + "/" + memory;
-
-    } else {
-      memory = "--/" + memory;
-    }
-    info.push_back(memory);
-  }
-  if (opts.select.find(kShown[1]) != opts.select.end()) {
-    string time = FormatTime(proto().total_exec_micros());
-    if (account) {
-      time = FormatTime(proto().exec_micros()) + "/" + time;
-    } else {
-      time = "--/" + time;
-    }
-    info.push_back(time);
-  }
-  if (opts.select.find(kShown[6]) != opts.select.end()) {
-    if (proto().devices_size() > 0) {
-      info.push_back(str_util::Join(proto().devices(), "|"));
-    }
-  }
-  if (opts.select.find(kShown[7]) != opts.select.end()) {
-    std::set<string> op_types = node->op_types();
-    // Device is considered a type.
-    if (proto().devices_size() > 0) {
-      op_types.insert(str_util::Join(proto().devices(), "|"));
-    }
-    info.push_back(str_util::Join(op_types, "|"));
-  }
-  return str_util::Join(info, ", ");
 }
 
 TFGraphNodeProto* ShowNode::mutable_proto() { return &proto_; }
@@ -152,14 +88,21 @@ void ShowNode::ResetTotalStats() {
   mutable_proto()->mutable_children()->Clear();
 }
 
-ShowCodeNode::ShowCodeNode(const TFCodeNode* node) : node(node), account(true) {
-  std::vector<ScopeNode> snodes;
+ShowMultiNode::ShowMultiNode(TFMultiGraphNode* node)
+    : node(node), account(false), show(false) {
+  ReInit({".*"});
+}
+
+bool ShowMultiNode::ReInit(const std::vector<string>& type_regexes) {
+  bool has_matched_type = node->SnapshotNodes(type_regexes);
+
+  std::vector<ShowNode> snodes;
+  mutable_proto()->mutable_graph_nodes()->Clear();
   for (auto it : node->graph_nodes()) {
-    ScopeNode snode(it.second);
+    ShowNode snode(it.second);
     snodes.push_back(snode);
-    snodes[snodes.size() - 1].AddSelfToTotalStats();
-    *mutable_proto()->mutable_graph_nodes()->Add() =
-        snodes[snodes.size() - 1].proto();
+    snodes.back().AddSelfToTotalStats();
+    mutable_proto()->add_graph_nodes()->MergeFrom(snodes.back().proto());
   }
 
   mutable_proto()->set_name(name());
@@ -167,6 +110,7 @@ ShowCodeNode::ShowCodeNode(const TFCodeNode* node) : node(node), account(true) {
   mutable_proto()->set_requested_bytes(node->requested_bytes());
   mutable_proto()->set_float_ops(node->float_ops());
 
+  mutable_proto()->set_parameters(0);
   if (!node->shapes().empty()) {
     for (const std::vector<int64>& shape : node->shapes()) {
       int64 params = 1;
@@ -186,83 +130,15 @@ ShowCodeNode::ShowCodeNode(const TFCodeNode* node) : node(node), account(true) {
       }
     }
   }
+  return has_matched_type;
 }
 
-string ShowCodeNode::Format(const Options& opts) {
-  if (opts.select.empty()) {
-    return name();
-  }
-  return strings::Printf("%s (%s)", name().c_str(), FormatMeta(opts).c_str());
-}
+TFMultiGraphNodeProto* ShowMultiNode::mutable_proto() { return &proto_; }
 
-string ShowCodeNode::FormatMeta(const Options& opts) {
-  std::vector<string> info;
-  std::vector<string> shapes;
-  if (opts.select.find(kShown[2]) != opts.select.end()) {
-    for (const std::vector<int64>& shape : node->shapes()) {
-      if (!shape.empty()) {
-        shapes.push_back(FormatShapes(shape));
-      }
-    }
-    if (!shapes.empty()) {
-      info.push_back(str_util::Join(shapes, "|"));
-    }
-    string params = FormatNumber(proto().total_parameters()) + " params";
-    if (account) {
-      params = FormatNumber(proto().parameters()) + "/" + params;
-    } else {
-      params = "--/" + params;
-    }
-    info.push_back(params);
-  }
-  if (opts.select.find(kShown[3]) != opts.select.end()) {
-    string fops = FormatNumber(proto().total_float_ops()) + " flops";
-    if (account) {
-      fops = FormatNumber(proto().float_ops()) + "/" + fops;
-    } else {
-      fops = "--/" + fops;
-    }
-    info.push_back(fops);
-  }
-  if (opts.select.find(kShown[0]) != opts.select.end()) {
-    string memory = FormatMemory(proto().total_requested_bytes());
-    if (account) {
-      memory = FormatMemory(proto().requested_bytes()) + "/" + memory;
+const TFMultiGraphNodeProto& ShowMultiNode::proto() const { return proto_; }
 
-    } else {
-      memory = "--/" + memory;
-    }
-    info.push_back(memory);
-  }
-  if (opts.select.find(kShown[1]) != opts.select.end()) {
-    string time = FormatTime(proto().total_exec_micros());
-    if (account) {
-      time = FormatTime(proto().exec_micros()) + "/" + time;
-    } else {
-      time = "--/" + time;
-    }
-    info.push_back(time);
-  }
-  if (opts.select.find(kShown[6]) != opts.select.end()) {
-    if (!node->devices().empty()) {
-      info.push_back(str_util::Join(node->devices(), "|"));
-    }
-  }
-  if (opts.select.find(kShown[7]) != opts.select.end()) {
-    std::set<string> op_types = node->op_types();
-    // Device is considered a type.
-    op_types.insert(node->devices().cbegin(), node->devices().cend());
-    info.push_back(str_util::Join(op_types, "|"));
-  }
-  return str_util::Join(info, ", ");
-}
-
-TFCodeNodeProto* ShowCodeNode::mutable_proto() { return &proto_; }
-
-const TFCodeNodeProto& ShowCodeNode::proto() const { return proto_; }
-
-void ShowCodeNode::AggregateTotalStats(ShowCodeNode* node) {
-  TFCodeNodeProto* node_pb = node->mutable_proto();
+void ShowMultiNode::AggregateTotalStats(ShowMultiNode* node) {
+  TFMultiGraphNodeProto* node_pb = node->mutable_proto();
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          node_pb->total_exec_micros());
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
@@ -273,7 +149,7 @@ void ShowCodeNode::AggregateTotalStats(ShowCodeNode* node) {
                                        node_pb->total_float_ops());
 }
 
-void ShowCodeNode::AddSelfToTotalStats() {
+void ShowMultiNode::AddSelfToTotalStats() {
   mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
                                          proto().exec_micros());
   mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
@@ -284,7 +160,7 @@ void ShowCodeNode::AddSelfToTotalStats() {
                                        proto().float_ops());
 }
 
-void ShowCodeNode::ResetTotalStats() {
+void ShowMultiNode::ResetTotalStats() {
   mutable_proto()->set_total_exec_micros(0);
   mutable_proto()->set_total_requested_bytes(0);
   mutable_proto()->set_total_parameters(0);

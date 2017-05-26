@@ -32,10 +32,11 @@ Status SwitchShape(InferenceContext* c) {
   c->set_output(1, out);
 
   // Handle resource shape / dtype.
-  c->set_output_handle_shape(0, c->input_handle_shape(0));
-  c->set_output_handle_shape(1, c->input_handle_shape(0));
-  c->set_output_handle_dtype(0, c->input_handle_dtype(0));
-  c->set_output_handle_dtype(1, c->input_handle_dtype(0));
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data != nullptr) {
+    c->set_output_handle_shapes_and_types(0, *handle_data);
+    c->set_output_handle_shapes_and_types(1, *handle_data);
+  }
   return Status::OK();
 }
 }  // namespace
@@ -200,8 +201,10 @@ REGISTER_OP("Enter")
       c->set_output(0, c->UnknownShape());
 
       // Handle resource shape / dtype, if present.
-      c->set_output_handle_shape(0, c->input_handle_shape(0));
-      c->set_output_handle_dtype(0, c->input_handle_dtype(0));
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr) {
+        c->set_output_handle_shapes_and_types(0, *handle_data);
+      }
 
       return Status::OK();
     })

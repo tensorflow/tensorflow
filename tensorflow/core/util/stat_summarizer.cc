@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -122,10 +123,46 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
   int node_num = 0;
   for (const auto& ds : step_stats.dev_stats()) {
     for (const auto& ns : ds.node_stats()) {
+      // NOTE(blackhc): To better support GPUs:
+      // GPU kernels are duplicated both in /stream:all and their
+      // /stream:$index. GPU memcpys are duplicated both in /memcpy and their
+      // /stream:$index. So only keep /stream:all and /memcpy and ignore all
+      // /stream:$index to only count GPU executions once.
+      if (ds.device().find("/stream") != std::string::npos &&
+          ds.device().find("/stream:all") == std::string::npos) {
+        continue;
+      }
+
+      std::string name = ns.node_name();
+      std::string op_type = "<>";
+      // NOTE(blackhc): we have to ensure that all keys into the detail map
+      // are unique, so we add [Kernel] or [MemCpy] as a suffix to the name.
+      // To make the node type summary work better, we prefix "gpu:" to
+      // the op type when the info is from a /gpu/stream or /memcpy channel.
+      if (ds.device().find("/stream") != std::string::npos) {
+        // node_name: name ":" opType
+        auto parts = str_util::Split(ns.node_name(), ':');
+        if (parts.size() == 2) {
+          name = parts[0] + " [Kernel]";
+          op_type = "gpu:" + parts[1];
+        }
+      } else if (ds.device().find("/memcpy") != std::string::npos) {
+        // node_name: name (":" opType)? ":" memCpyType
+        auto parts = str_util::Split(ns.node_name(), ':');
+        if (parts.size() == 2 || parts.size() == 3) {
+          name = parts.front() + " [MemCpy]";
+          // We don't care about the actual op type (it might not be available
+          // for edge_ memcpys). We only care that it's a memcpy for now.
+          op_type = "gpu:" + parts.back();
+        }
+      } else {
+        op_type = OpType(ds, ns);
+      }
+
       ++node_num;
       const int64 curr_time = ns.all_end_rel_micros();
       curr_total_us += curr_time;
-      auto result = details_.emplace(ns.node_name(), Detail());
+      auto result = details_.emplace(name, Detail());
       Detail* detail = &(result.first->second);
 
       detail->start_us.UpdateStat(ns.all_start_micros() - first_node_start_us);
@@ -133,8 +170,8 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
 
       // If this is the first pass, initialize some values.
       if (result.second) {
-        detail->name = ns.node_name();
-        detail->type = OpType(ds, ns);
+        detail->name = name;
+        detail->type = op_type;
 
         detail->run_order = node_num;
 
