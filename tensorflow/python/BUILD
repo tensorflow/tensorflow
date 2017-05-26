@@ -2658,6 +2658,7 @@ tf_py_wrap_cc(
         "client/device_lib.i",
         "client/events_writer.i",
         "client/tf_session.i",
+        "client/tf_sessionrun_wrapper.i",
         "framework/cpp_shape_inference.i",
         "framework/python_op_gen.i",
         "grappler/cost_analyzer.i",

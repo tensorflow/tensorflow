@@ -55,6 +55,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
+ops._USE_C_API = True
 
 # NOTE(mrry): Dummy shape registration for ops used in the tests, since they
 # don't have C++ op registrations on which to attach C++ shape fns.
@@ -63,6 +64,7 @@ ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 class SessionTest(test_util.TensorFlowTestCase):
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testUseExistingGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
       a = constant_op.constant(6.0, shape=[1, 1])
@@ -72,6 +74,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       result = c.eval()
       self.assertAllEqual(result, [[42.0]])
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testUseDefaultGraph(self):
     with ops.Graph().as_default(), ops.device('/cpu:0'):
       a = constant_op.constant(6.0, shape=[1, 1])
@@ -138,6 +141,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(lambda e: e.op == a.op):
         a.eval()
 
+  @test_util.disable_c_api  # Partial runs don't work with C API
   def testErrorCodeWithNoNodeDef(self):
     with session.Session() as s:
       a = array_ops.placeholder(dtypes.float32, shape=[])
@@ -151,6 +155,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         # Run with a bogus handle.
         s.partial_run('foo', r1, feed_dict={a: 1, b: 2})
 
+  @test_util.disable_c_api  # No shape registration for 'ConstructionFails'
   def testOpConstructionErrorPayload(self):
     with session.Session():
       failing_op = ops.get_default_graph().create_op(
@@ -193,6 +198,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaises(TypeError):
         s.run({'a': a, 'b': None})
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchSingleton(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
@@ -215,6 +221,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       res = sess.run(a.op)  # An op, not a tensor.
       self.assertEqual(None, res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchList(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
@@ -230,6 +237,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertTrue(isinstance(res, list))
       self.assertEqual([42.0, None, 44.0, 42.0, None], res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchTuple(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
@@ -243,6 +251,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertTrue(isinstance(res, tuple))
       self.assertEqual((42.0, None, 44.0, 42.0), res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchNamedTuple(self):
     # pylint: disable=invalid-name
     ABC = collections.namedtuple('ABC', ['a', 'b', 'c'])
@@ -860,6 +869,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       v_val = v.eval()
       self.assertAllEqual([[6.0, 6.0, 6.0]], v_val)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testExtendWithGroupBy(self):
     with session.Session() as s:
       a = constant_op.constant(1.0, shape=[1, 2])
@@ -1071,6 +1081,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
         sess.run({})
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testNotEntered(self):
     # pylint: disable=protected-access
     self.assertEqual(ops._default_session_stack.get_default(), None)
@@ -1086,6 +1097,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           ValueError, lambda e: 'No default session is registered.' in str(e)):
         c_2.eval()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInteractive(self):
     with ops.device('/cpu:0'):
       sess = session.InteractiveSession()
@@ -1098,6 +1110,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[24.0]], e.eval())
       sess.close()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInteractivePlacePrunedGraph(self):
     sess = session.InteractiveSession()
 
@@ -1119,6 +1132,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       a.eval()
     sess.close()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testDefaultSessionPlacePrunedGraph(self):
     sess = session.Session()
 
@@ -1140,6 +1154,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
     sess.close()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testSharedGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
       a = constant_op.constant(1.0, shape=[1, 2])
@@ -1159,6 +1174,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(b_val, [[2.0, 2.0, 2.0]])
       self.assertAllEqual(a2_val, [[1.0, 1.0]])
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFeedAndFetch(self):
     with session.Session() as sess:
       for dtype in [dtypes.float16,
@@ -1353,6 +1369,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(TypeError, 'Cannot interpret feed_dict'):
         sess.run(a, feed_dict={'a': [2.0]})
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testPerStepTrace(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -1373,6 +1390,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertTrue(run_metadata.HasField('step_stats'))
         self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testRunOptionsRunMetadata(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -1408,6 +1426,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, 'may not be fed'):
         sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInferShapesFalse(self):
     with ops.Graph().as_default(), ops.device('/cpu:0'):
       a = constant_op.constant([[1, 2]])
@@ -1416,6 +1435,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       # Avoid lint error regarding 'unused' var a.
       self.assertTrue(a == a)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInferShapesTrue(self):
     config = config_pb2.ConfigProto(
         graph_options=config_pb2.GraphOptions(infer_shapes=True))
@@ -1426,6 +1446,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       # Avoid lint error regarding 'unused' var a.
       self.assertTrue(a == a)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testBuildCostModel(self):
     run_options = config_pb2.RunOptions()
     config = config_pb2.ConfigProto(
@@ -1505,6 +1526,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess.run(enqueue_op)
       self.assertEqual(sess.run(q.size()), num_epochs * 2)
 
+  @test_util.disable_c_api  # Partial runs don't work with C API
   def testRegisterFetchAndFeedConversionFunctions(self):
     class SquaredTensor(object):
       def __init__(self, tensor):
@@ -1622,6 +1644,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     server = server_lib.Server.create_local_server()
     self.runTestBuildGraphError(session.Session(server.target))
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationSimple(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()
@@ -1637,6 +1660,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     output = sess.run(const)
     self.assertEqual(17, output)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationWorker2Placement(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()
@@ -1664,6 +1688,7 @@ class SessionTest(test_util.TensorFlowTestCase):
                          dev_stats.device and 'Const' == node_stats.node_name
                      ]))
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationWorker1Placement(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()
@@ -1680,6 +1705,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     output = sess.run(const)
     self.assertEqual(17, output)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationThreeServers2Graphs(self):
     """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
 
@@ -1741,6 +1767,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(expected_ones, sess2.run(var2))
     self.assertAllEqual(expected_ones + expected_ones, sess1.run(var1))
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationThreeServers(self):
     """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
 
@@ -1795,6 +1822,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     self.assertAllEqual(expected_ones, sess2.run(var))
     self.assertAllEqual(expected_ones + expected_ones, sess1.run(var))
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testClusterSpecPropagationThreeServersOneCluster(self):
     """Boots 3 servers, ensures appropriate communication across workers.
 
@@ -1858,6 +1886,7 @@ class SessionTest(test_util.TensorFlowTestCase):
               node_stats.node_name.startswith('Const')
           ]), run_metadata)
 
+  @test_util.disable_c_api  # Partial runs don't work with C API
   def testClusterSpecPropagationPartialRun(self):
     """Test successful partial run with ClusterSpec propagation."""
     server1 = server_lib.Server.create_local_server()
@@ -1941,6 +1970,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     str_repr = '%s' % attrs
     self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
 
+  @test_util.disable_c_api  # list_devices doesn't work with C API
   def testListDevices(self):
     with session.Session() as sess:
       devices = sess.list_devices()
@@ -1948,6 +1978,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           [d.name for d in devices]), devices)
       self.assertGreaterEqual(1, len(devices), devices)
 
+  @test_util.disable_c_api  # list_devices doesn't work with C API
   def testListDevicesGrpcSession(self):
     server = server_lib.Server.create_local_server()
     with session.Session(server.target) as sess:
@@ -1956,6 +1987,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           [d.name for d in devices]), devices)
       self.assertGreaterEqual(1, len(devices), devices)
 
+  @test_util.disable_c_api  # list_devices doesn't work with C API
   def testListDevicesClusterSpecPropagation(self):
     server1 = server_lib.Server.create_local_server()
     server2 = server_lib.Server.create_local_server()
@@ -1977,6 +2009,15 @@ class SessionTest(test_util.TensorFlowTestCase):
 
 
 class PartialRunTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    # Partial runs don't work with C API
+    ops._USE_C_API = False
+    super(PartialRunTest, self).setUp()
+
+  def tearDown(self):
+    ops._USE_C_API = True
+    super(PartialRunTest, self).tearDown()
 
   def runTestPartialRun(self, sess):
     a = array_ops.placeholder(dtypes.float32, shape=[])

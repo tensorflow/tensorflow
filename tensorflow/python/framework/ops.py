@@ -1438,6 +1438,7 @@ class Operation(object):
     Args:
       device: string or device..  The device to set.
     """
+    assert not _USE_C_API, "Operation._set_device doesn't work with C API"
     self._node_def.device = _device_string(device)
 
   def _add_input(self, tensor, dtype=None):
