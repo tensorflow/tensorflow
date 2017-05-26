@@ -22,6 +22,10 @@
 * TensorFlow C library now available for Windows.
 * We released a new open-source version of TensorBoard.
 * [`SavedModel CLI`](https://www.tensorflow.org/versions/master/programmers_guide/saved_model_cli) tool available to inspect and execute MetaGraph in SavedModel
+* Android releases of TensorFlow are now pushed to jcenter for easier
+  integration into apps. See
+  https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md
+  for more details.
 * RNNCells' variable names have been renamed for consistency with Keras layers.
   Specifically, the previous variable names "weights" and "biases" have
   been changed to "kernel" and "bias", respectively.
