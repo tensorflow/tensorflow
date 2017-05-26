@@ -230,5 +230,60 @@ string GetOpDescription(const OpInfo& op_info) {
   return description;
 }
 
+OpPerformanceList CostGraphToOpPerformanceData(const CostGraphDef& cost_graph,
+                                               const GraphDef& graph) {
+  OpPerformanceList ret;
+  std::unordered_map<string, const CostGraphDef::Node*> name_to_cost;
+  std::unordered_map<string, const NodeDef*> name_to_node;
+  for (auto& node : cost_graph.node()) {
+    name_to_cost[node.name()] = &node;
+  }
+  for (auto& node : graph.node()) {
+    name_to_node[node.name()] = &node;
+  }
+
+  for (const auto& node : graph.node()) {
+    // Skip the nodes that are not in the cost graph: these are nodes that
+    // aren't run, because they aren't in the intersection of transitive
+    // fan-in of a fetch node and the transitive fan-out of an input, or nodes
+    // that were optimized away by the optimizer. Since they don't contribute
+    // to the execution time we simply discard them.
+    auto it = name_to_cost.find(node.name());
+    if (it == name_to_cost.end()) {
+      continue;
+    }
+    const CostGraphDef::Node* cost_node = it->second;
+
+    OpPerformance* perf = ret.add_op_performance();
+    perf->set_node(node.name());
+
+    std::vector<OpInfo::TensorProperties> inputs =
+        FindInputFeatures(node, name_to_cost, name_to_node);
+    (*perf->mutable_op()) =
+        BuildOpInfo(node, cost_node->device(), name_to_node, inputs);
+
+    perf->set_temporary_memory_size(cost_node->temporary_memory_size());
+    // Note that CostGraphDef::Node::compute_cost is microseconds, while
+    // OpPerformance.compute_cost is nanoseconds.
+    perf->set_compute_cost(cost_node->compute_cost() * 1000);
+    perf->set_compute_time(cost_node->compute_time() * 1000);
+    perf->set_memory_time(cost_node->memory_time() * 1000);
+
+    for (const auto& output_info : cost_node->output_info()) {
+      perf->mutable_op_memory()->add_output_memory(output_info.size());
+    }
+
+    perf->mutable_op_memory()->set_host_temp_memory(
+        cost_node->host_temp_memory_size());
+    perf->mutable_op_memory()->set_device_temp_memory(
+        cost_node->device_temp_memory_size());
+    perf->mutable_op_memory()->set_host_persistent_memory(
+        cost_node->host_persistent_memory_size());
+    perf->mutable_op_memory()->set_device_persistent_memory(
+        cost_node->device_persistent_memory_size());
+  }
+  return ret;
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

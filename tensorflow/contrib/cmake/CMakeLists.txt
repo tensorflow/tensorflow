@@ -258,6 +258,7 @@ endif()
 # We include tf_cc_ops first, because tf_c depends on tf_cc.
 include(tf_cc_ops.cmake)
 include(tf_c.cmake)
+include(tf_grappler.cmake)
 if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)

@@ -156,6 +156,22 @@ tf_py_test(
 )
 
 cc_library(
+    name = "cost_analyzer_lib",
+    srcs = ["grappler/cost_analyzer.cc"],
+    hdrs = ["grappler/cost_analyzer.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/clusters:single_machine",
+        "//tensorflow/core/grappler/costs:analytical_cost_estimator",
+        "//tensorflow/core/grappler/costs:measuring_cost_estimator",
+        "//tensorflow/core/grappler/costs:op_performance_data_cc",
+        "//tensorflow/core/grappler/costs:utils",
+    ],
+)
+
+cc_library(
     name = "numpy_lib",
     srcs = ["lib/core/numpy.cc"],
     hdrs = ["lib/core/numpy.h"],
@@ -2644,6 +2660,7 @@ tf_py_wrap_cc(
         "client/tf_session.i",
         "framework/cpp_shape_inference.i",
         "framework/python_op_gen.i",
+        "grappler/cost_analyzer.i",
         "grappler/tf_optimizer.i",
         "lib/core/py_func.i",
         "lib/core/strings.i",
@@ -2660,6 +2677,7 @@ tf_py_wrap_cc(
         "util/transform_graph.i",
     ],
     deps = [
+        ":cost_analyzer_lib",
         ":cpp_shape_inference",
         ":kernel_registry",
         ":numpy_lib",
@@ -3671,5 +3689,30 @@ cuda_py_test(
         ":random_ops",
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "cost_analyzer",
+    srcs = [
+        "grappler/cost_analyzer.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [":pywrap_tensorflow_internal"],
+)
+
+py_test(
+    name = "cost_analyzer_test",
+    size = "small",
+    srcs = ["grappler/cost_analyzer_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":client_testlib",
+        ":cost_analyzer",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
     ],
 )
