@@ -125,7 +125,9 @@ class LinearRegressorPartitionerTest(test.TestCase):
 
   def testDefaultPartitionerWithMultiplePsReplicas(self):
     partitions = 2
-    x_dim = 4 * 64 << 20
+    # This results in weights larger than the default partition size of 64M,
+    # so partitioned weights are created (each weight uses 4 bytes).
+    x_dim = 32 << 20
 
     class FakeRunConfig(run_config.RunConfig):
 
