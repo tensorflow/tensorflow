@@ -274,12 +274,13 @@ PoplarCompiler::CompileAheadOfTime(
       "AOT compilation not supported on Poplar");
 }
 
-int64 PoplarCompiler::ShapeSizeBytes(const Shape& shape) const {
-  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
-}
-
 se::Platform::Id PoplarCompiler::PlatformId() const {
   return sep::kPoplarPlatformId;
+}
+
+HloCostAnalysis::ShapeSizeFunction
+PoplarCompiler::ShapeSizeBytesFunction() const {
+  return PoplarExecutable::ShapeSizeBytes;
 }
 
 }  // namespace poplarplugin

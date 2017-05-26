@@ -52,7 +52,7 @@ class PoplarCompiler : public Compiler {
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>>, HloDumper,
   const AotCompilationOptions&) override;
 
-  int64 ShapeSizeBytes(const Shape& shape) const override;
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
   perftools::gputools::Platform::Id PlatformId() const override;
 

@@ -29,7 +29,7 @@ PoplarExecutable::PoplarExecutable(
         std::unique_ptr<HloModule> hlo_module,
         std::unique_ptr<poplar::Engine> engine,
         const std::map<int64, int64>& output_map)
-    : Executable(std::move(hlo_module)),
+    : Executable(std::move(hlo_module), ShapeSizeBytes),
       poplar_engine_(std::move(engine)),
       output_map_(output_map) {
 }
@@ -88,6 +88,13 @@ PoplarExecutable::ExecuteAsyncOnStream(
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   return tensorflow::errors::Unimplemented(
           "ExecuteAsyncOnStream is not yet supported on Poplar.");
+}
+
+/*static*/ int64 PoplarExecutable::ShapeSizeBytes(const Shape& shape) {
+  if (ShapeUtil::IsOpaque(shape)) {
+    return sizeof(void*);
+  }
+  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
 }  // namespace poplarplugin
