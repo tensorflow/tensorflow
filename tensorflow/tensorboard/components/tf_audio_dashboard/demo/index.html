@@ -18,8 +18,8 @@ limitations under the License.
 
 <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
 <link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
+<link rel="import" href="../../paper-styles/typography.html">
 <link rel="import" href="../tf-audio-dashboard.html">
-    <link rel="import" href="../../paper-styles/typography.html">
 
 <title>Audio Dashboard Demo</title>
 <style>
@@ -48,7 +48,7 @@ limitations under the License.
             backend: {
               type: Object,
               value: function() {
-                var router = new TF.Backend.router("data", true);
+                var router = new TF.Backend.router("/data", true);
                 return new TF.Backend.Backend(router);
               },
             },

@@ -42,7 +42,8 @@ struct Costs {
   struct MicroSeconds : std::chrono::microseconds {
     MicroSeconds() : std::chrono::microseconds(0) {}
     MicroSeconds(double d) : std::chrono::microseconds(static_cast<int64>(d)) {}
-    MicroSeconds(std::chrono::microseconds& d) : std::chrono::microseconds(d) {}
+    MicroSeconds(const std::chrono::microseconds& d)
+        : std::chrono::microseconds(d) {}
     MicroSeconds& operator=(const std::chrono::microseconds& d) {
       std::chrono::microseconds::operator=(d);
       return *this;
@@ -51,7 +52,8 @@ struct Costs {
   struct NanoSeconds : std::chrono::nanoseconds {
     NanoSeconds() : std::chrono::nanoseconds(0) {}
     NanoSeconds(double d) : std::chrono::nanoseconds(static_cast<int64>(d)) {}
-    NanoSeconds(std::chrono::nanoseconds& d) : std::chrono::nanoseconds(d) {}
+    NanoSeconds(const std::chrono::nanoseconds& d)
+        : std::chrono::nanoseconds(d) {}
     NanoSeconds& operator=(const std::chrono::nanoseconds& d) {
       std::chrono::nanoseconds::operator=(d);
       return *this;
@@ -90,6 +92,8 @@ struct Costs {
   int64 max_per_op_buffers;    // Sum of all buffers used by the ops.
   int64 max_per_op_streaming;  // Ignore largest input buffer, assuming it
                                // streams from main memory.
+  // If the time estimation is inaccurate.
+  bool inaccurate = false;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const Costs::MicroSeconds d) {
@@ -126,7 +130,7 @@ class CostEstimator {
  public:
   virtual ~CostEstimator() {}
 
-  // Initalizes the estimator for the specified grappler item.
+  // Initializes the estimator for the specified grappler item.
   // The estimator shouldn't be used if this function returns any status other
   // that OK.
   virtual Status Initialize(const GrapplerItem& item) = 0;

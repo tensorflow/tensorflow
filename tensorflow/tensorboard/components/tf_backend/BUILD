@@ -1,24 +1,23 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
+load("//tensorflow/tensorboard:hacks.bzl", "tensorboard_typescript_bundle")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
 
-# TODO(dandelion): Add webfiles support for the test code.
-
-webfiles(
+web_library(
     name = "tf_backend",
     srcs = [
+        "bundle.js",
         "tf-backend.html",
-        ":ts",
     ],
     path = "/tf-backend",
+    visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/tensorboard/components/tf_imports:d3",
         "//tensorflow/tensorboard/components/tf_imports:lodash",
+        "//tensorflow/tensorboard/components/tf_imports:plottable",
         "//tensorflow/tensorboard/components/vz_sorting",
         "@org_polymer",
     ],
@@ -26,54 +25,34 @@ webfiles(
 
 tensorboard_typescript_genrule(
     name = "ts",
-    srcs = [
+    srcs = ["bundle.ts"],
+    typings = [
+        "@org_definitelytyped//:lodash.d.ts",
+        "@org_definitelytyped//:polymer.d.ts",
+        "@org_definitelytyped//:webcomponents.js.d.ts",
+        "//tensorflow/tensorboard/components/tf_imports:d3.d.ts",
+        "//tensorflow/tensorboard/components/tf_imports:plottable.d.ts",
+        "//tensorflow/tensorboard/components/vz_sorting:bundle.d.ts",
+    ],
+)
+
+tensorboard_typescript_bundle(
+    name = "bundle",
+    out = "bundle.ts",
+    namespace_srcs = {"TF.Backend": [
+        "requestManager.ts",
         "backend.ts",
         "behavior.ts",
-        "requestManager.ts",
-        "router.ts",
         "urlPathHelpers.ts",
-    ],
-    typings = [
-        "@org_definitelytyped//:d3.d.ts",
-        "@org_definitelytyped//:lodash.d.ts",
-        "//tensorflow/tensorboard/components/vz_sorting:ts_typings",
-    ],
+        "router.ts",
+    ]},
+    namespace_symbol_aliases = {"TF.Backend": {
+        "compareTagNames": "VZ.Sorting.compareTagNames",
+    }},
 )
 
 filegroup(
     name = "all_files",
     srcs = glob(["**"]),
     tags = ["notsan"],
-)
-
-################################################################################
-# MARKED FOR DELETION
-
-tensorboard_webcomponent_library(
-    name = "legacy",
-    srcs = [
-        "tf-backend.html",
-        ":legacy_ts",
-    ],
-    visibility = ["//visibility:public"],
-    destdir = "tf-backend",
-    deps = [
-        "//tensorflow/tensorboard/components:tf_imports",
-        "//third_party/javascript/polymer/v1/polymer:lib",
-    ],
-)
-
-tensorboard_ts_library(
-    name = "legacy_ts",
-    srcs = [
-        "backend.ts",
-        "behavior.ts",
-        "requestManager.ts",
-        "router.ts",
-        "urlPathHelpers.ts",
-    ],
-    deps = [
-        "//tensorflow/tensorboard/components:common_deps",
-        "//tensorflow/tensorboard/components/vz_sorting:legacy_ts",
-    ],
 )

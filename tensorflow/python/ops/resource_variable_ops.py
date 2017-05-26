@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import variables
 # go/tf-wildcard-import
@@ -34,7 +35,7 @@ from tensorflow.python.ops.gen_resource_variable_ops import *
 from tensorflow.python.util import compat
 
 
-class ResourceVariable(object):
+class ResourceVariable(variables.Variable):
   """Variable based on resource handles.
 
   TODO(apassos): fill this out explaining the semantics and Variable
@@ -197,8 +198,10 @@ class ResourceVariable(object):
             self._initialize_op = gen_resource_variable_ops.assign_variable_op(
                 self._handle, self._initial_value, name=n)
         with ops.name_scope("Read"), ops.colocate_with(self._handle):
-          value = gen_resource_variable_ops.read_variable_op(
-              self._handle, dtype=self._dtype)
+          # Manually assign reads to the handle's device to avoid log messages.
+          with ops.device(self._handle.device):
+            value = gen_resource_variable_ops.read_variable_op(
+                self._handle, dtype=self._dtype)
           self._graph_element = value
           if caching_device is not None:
             # Variables may be created in a tf.device() or ops.colocate_with()
@@ -242,6 +245,7 @@ class ResourceVariable(object):
       self._save_slice_info = None
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
+    self._graph_element = self.value()
 
   @property
   def dtype(self):
@@ -252,6 +256,11 @@ class ResourceVariable(object):
   def device(self):
     """The device this variable is on."""
     return self._handle.device
+
+  @property
+  def graph(self):
+    """The `Graph` of this variable."""
+    return self._handle.graph
 
   @property
   def name(self):
@@ -276,8 +285,10 @@ class ResourceVariable(object):
     """A cached operation which reads the value of this variable."""
     if self._cached_value is not None:
       return self._cached_value
-    return gen_resource_variable_ops.read_variable_op(
-        self._handle, dtype=self._dtype)
+    with ops.colocate_with(None, ignore_existing=True):
+      with ops.device(self._handle.device):
+        return gen_resource_variable_ops.read_variable_op(
+            self._handle, dtype=self._dtype)
 
   def _as_graph_element(self):
     """Conversion function for Graph.as_graph_element()."""
@@ -287,6 +298,11 @@ class ResourceVariable(object):
   def initializer(self):
     """The op responsible for initializing this variable."""
     return self._initialize_op
+
+  @property
+  def initial_value(self):
+    """Returns the Tensor used as the initial value for the variable."""
+    return self._initial_value
 
   @property
   def op(self):
@@ -318,8 +334,9 @@ class ResourceVariable(object):
      the read operation.
     """
     with ops.name_scope("Read"):
-      value = gen_resource_variable_ops.read_variable_op(
-          self._handle, dtype=self._dtype)
+      with ops.device(self._handle.device):
+        value = gen_resource_variable_ops.read_variable_op(
+            self._handle, dtype=self._dtype)
     # Return an identity so it can get placed on whatever device the context
     # specifies instead of the device where the variable is.
     return array_ops.identity(value)
@@ -377,6 +394,10 @@ class ResourceVariable(object):
   def _AsTensor(self):
     return self.value()
 
+  def _ref(self):
+    """Unsupported."""
+    raise NotImplementedError("ResourceVariable does not implement _ref()")
+
   @staticmethod
   def _OverloadOperator(operator):  # pylint: disable=invalid-name
     """Defer an operator overload to `ops.Tensor`.
@@ -424,6 +445,31 @@ class ResourceVariable(object):
             ops.convert_to_tensor(value, dtype=self.dtype), name=name)]):
       return self.read_value()
 
+  def _strided_slice_assign(self,
+                            begin,
+                            end,
+                            strides,
+                            value,
+                            name,
+                            begin_mask,
+                            end_mask,
+                            ellipsis_mask,
+                            new_axis_mask,
+                            shrink_axis_mask):
+    with ops.control_dependencies([gen_array_ops.resource_strided_slice_assign(
+        ref=self.handle,
+        begin=begin,
+        end=end,
+        strides=strides,
+        value=value,
+        name=name,
+        begin_mask=begin_mask,
+        end_mask=end_mask,
+        ellipsis_mask=ellipsis_mask,
+        new_axis_mask=new_axis_mask,
+        shrink_axis_mask=shrink_axis_mask)]):
+      return self.value()
+
 
 # pylint: disable=unused-argument,protected-access
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
@@ -437,7 +483,13 @@ def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
+
+# Note: registering for Variable after ResourceVariable because inheritance will
+# otherwise lead to the wrong behavior.
 ops.register_tensor_conversion_function(ResourceVariable, _dense_var_to_tensor)
+ops.register_tensor_conversion_function(
+    variables.Variable,
+    variables.Variable._TensorConversionFunction)  # pylint: disable=protected-access
 
 # pylint: disable=protected-access
 ResourceVariable._OverloadAllOperators()

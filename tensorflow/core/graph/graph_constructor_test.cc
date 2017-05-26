@@ -146,7 +146,7 @@ class GraphConstructorTest : public ::testing::Test {
       return "";
     }
     std::vector<string> value;
-    Status s = GetNodeAttr(n->def(), kColocationAttrName, &value);
+    Status s = GetNodeAttr(n->attrs(), kColocationAttrName, &value);
     if (!s.ok()) {
       return "";
     }
@@ -997,7 +997,7 @@ TEST_F(GraphConstructorTest, ImportGraphDef_DefaultAttrs) {
   }
   ASSERT_TRUE(a != nullptr);
   int value = 0;
-  s = GetNodeAttr(a->def(), "default_int", &value);
+  s = GetNodeAttr(a->attrs(), "default_int", &value);
   ASSERT_EQ(Status::OK(), s) << s << " -- " << a->def().DebugString();
   EXPECT_EQ(31415, value);
 }
@@ -1201,9 +1201,9 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMap) {
 
   // Check that t1's NodeDef is consistent with graph
   Node* t1 = FindNode("t1");
-  ASSERT_EQ(t1->def().input_size(), 2);
-  ASSERT_EQ(t1->def().input(0), "input:1");
-  ASSERT_EQ(t1->def().input(1), "input:0");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  ASSERT_EQ(t1->requested_inputs()[0], "input:1");
+  ASSERT_EQ(t1->requested_inputs()[1], "input:0");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithPrefix) {
@@ -1254,19 +1254,19 @@ TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithPrefix) {
 
   // Check that NodeDefs are consistent with graph
   Node* t1 = FindNode("import/t1");
-  ASSERT_EQ(t1->def().input_size(), 2);
-  EXPECT_EQ(t1->def().input(0), "input:0");
-  EXPECT_EQ(t1->def().input(1), "input:0");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  EXPECT_EQ(t1->requested_inputs()[0], "input:0");
+  EXPECT_EQ(t1->requested_inputs()[1], "input:0");
 
   Node* t2 = FindNode("import/t2");
-  ASSERT_EQ(t2->def().input_size(), 2);
-  EXPECT_EQ(t2->def().input(0), "import/t1:0");
-  EXPECT_EQ(t2->def().input(1), "import/t1:0");
+  ASSERT_EQ(t2->requested_inputs().size(), 2);
+  EXPECT_EQ(t2->requested_inputs()[0], "import/t1:0");
+  EXPECT_EQ(t2->requested_inputs()[1], "import/t1:0");
 
   Node* t3 = FindNode("import/t3");
-  ASSERT_EQ(t3->def().input_size(), 2);
-  EXPECT_EQ(t3->def().input(0), "import/unmapped_input:0");
-  EXPECT_EQ(t3->def().input(1), "import/unmapped_input:1");
+  ASSERT_EQ(t3->requested_inputs().size(), 2);
+  EXPECT_EQ(t3->requested_inputs()[0], "import/unmapped_input:0");
+  EXPECT_EQ(t3->requested_inputs()[1], "import/unmapped_input:1");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_InputMapWithControlEdges) {
@@ -1795,24 +1795,24 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ControlDeps) {
 
   // Test that node defs are consistent with graph
   Node* w1 = FindNode("import/W1");
-  ASSERT_EQ(w1->def().input_size(), 2);
-  EXPECT_EQ(w1->def().input(0), "^W1");
-  EXPECT_EQ(w1->def().input(1), "^W2");
+  ASSERT_EQ(w1->requested_inputs().size(), 2);
+  EXPECT_EQ(w1->requested_inputs()[0], "^W1");
+  EXPECT_EQ(w1->requested_inputs()[1], "^W2");
 
   Node* input = FindNode("import/input");
-  ASSERT_EQ(input->def().input_size(), 2);
-  EXPECT_EQ(input->def().input(0), "^W1");
-  EXPECT_EQ(input->def().input(1), "^W2");
+  ASSERT_EQ(input->requested_inputs().size(), 2);
+  EXPECT_EQ(input->requested_inputs()[0], "^W1");
+  EXPECT_EQ(input->requested_inputs()[1], "^W2");
 
   Node* input2 = FindNode("import/input2");
-  ASSERT_EQ(input2->def().input_size(), 2);
-  EXPECT_EQ(input2->def().input(0), "^W1");
-  EXPECT_EQ(input2->def().input(1), "^W2");
+  ASSERT_EQ(input2->requested_inputs().size(), 2);
+  EXPECT_EQ(input2->requested_inputs()[0], "^W1");
+  EXPECT_EQ(input2->requested_inputs()[1], "^W2");
 
   Node* t1 = FindNode("import/t1");
-  ASSERT_EQ(t1->def().input_size(), 2);
-  EXPECT_EQ(t1->def().input(0), "import/input:0");
-  EXPECT_EQ(t1->def().input(1), "import/input:1");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  EXPECT_EQ(t1->requested_inputs()[0], "import/input:0");
+  EXPECT_EQ(t1->requested_inputs()[1], "import/input:1");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsWithCycle) {
@@ -1856,15 +1856,15 @@ TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsWithCycle) {
 
   // Test that node defs are consistent with graph
   Node* merge = FindNode("merge");
-  ASSERT_EQ(merge->def().input_size(), 3);
-  EXPECT_EQ(merge->def().input(0), "input:0");
-  EXPECT_EQ(merge->def().input(1), "t1:0");
-  EXPECT_EQ(merge->def().input(2), "^W1");
+  ASSERT_EQ(merge->requested_inputs().size(), 3);
+  EXPECT_EQ(merge->requested_inputs()[0], "input:0");
+  EXPECT_EQ(merge->requested_inputs()[1], "t1:0");
+  EXPECT_EQ(merge->requested_inputs()[2], "^W1");
 
   Node* t1 = FindNode("t1");
-  ASSERT_EQ(t1->def().input_size(), 2);
-  EXPECT_EQ(t1->def().input(0), "merge:0");
-  EXPECT_EQ(t1->def().input(1), "merge:0");
+  ASSERT_EQ(t1->requested_inputs().size(), 2);
+  EXPECT_EQ(t1->requested_inputs()[0], "merge:0");
+  EXPECT_EQ(t1->requested_inputs()[1], "merge:0");
 }
 
 TEST_F(GraphConstructorTest, ImportGraphDef_ControlDepsErrors) {
@@ -2269,6 +2269,177 @@ TEST_F(GraphConstructorTest, GraphDefVersionMergingDuringImport) {
   EXPECT_EQ(1, graph_.versions().bad_consumers(0));
   EXPECT_EQ(2, graph_.versions().bad_consumers(1));
   EXPECT_EQ(3, graph_.versions().bad_consumers(2));
+}
+
+TEST_F(GraphConstructorTest, ImportGraphDefProvidedShapeRefinerVersions) {
+  ImportGraphDefOptions opts;
+  // A valid graph at producer version 20, but one
+  // that would not import if the graph_def_version were 21.
+  string gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "Sum/input"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\001\000\000\000\002\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "Sum/reduction_indices"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\000\000\000\000\001\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "Sum"
+  op: "Sum"
+  input: "Sum/input"
+  input: "Sum/reduction_indices"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+versions {
+  producer: 20
+})EOF");
+
+  // Create a shape refiner with the latest TF_GRAPH_DEF_VERSION.
+  // Importing the graphdef with an existing refiner should
+  // make the refiner inherit the graphdef version from the
+  // passed in graphdef since it has a lower producer.
+  ShapeRefiner refiner(TF_GRAPH_DEF_VERSION, graph_.op_registry());
+  ExpectOK(gdef_ascii, opts, &refiner);
+
+  // Add another node with a higher producer
+  gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "RandomConst"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\001\000\000\000\002\000\000\000"
+      }
+    }
+  }
+}
+versions {
+  producer: 21
+})EOF");
+
+  ExpectOK(gdef_ascii, opts, &refiner);
+  // Check that the refiner's graph def version is the lowest of
+  // the graph defs we have seen so far.
+  EXPECT_EQ(20, refiner.graph_def_version());
+
+  // Add another node with a lower producer
+  gdef_ascii = strings::StrCat(R"EOF(
+node {
+  name: "RandomConst2"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+          dim {
+            size: 1
+          }
+        }
+        tensor_content: "\001\000\000\000\002\000\000\000"
+      }
+    }
+  }
+}
+versions {
+  producer: 17
+})EOF");
+  ExpectOK(gdef_ascii, opts, &refiner);
+
+  // Check that the refiner's graph def version is the lowest of
+  // the graph defs we have seen so far.
+  EXPECT_EQ(17, refiner.graph_def_version());
 }
 
 }  // namespace

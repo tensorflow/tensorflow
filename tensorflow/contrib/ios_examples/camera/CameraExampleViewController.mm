@@ -323,10 +323,10 @@ didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
       auto predictions = output->flat<float>();
 
       NSMutableDictionary *newValues = [NSMutableDictionary dictionary];
-      for (int index = 0; index < predictions.size(); index += 1) {
+      for (int index = 0; index < predictions.size(); ++index) {
         const float predictionValue = predictions(index);
         if (predictionValue > 0.05f) {
-          std::string label = labels[index % predictions.size()];
+          std::string label = labels[index];
           NSString *labelObject = [NSString stringWithUTF8String:label.c_str()];
           NSNumber *valueObject = [NSNumber numberWithFloat:predictionValue];
           [newValues setObject:valueObject forKey:labelObject];

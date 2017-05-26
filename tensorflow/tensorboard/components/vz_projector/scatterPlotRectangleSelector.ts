@@ -32,8 +32,8 @@ export interface BoundingBox {
  * A class that manages and renders a data selection rectangle.
  */
 export class ScatterPlotRectangleSelector {
-  private svgElement: d3.Selection<any>;
-  private rectElement: d3.Selection<any>;
+  private svgElement: SVGElement;
+  private rectElement: SVGRectElement;
 
   private isMouseDown: boolean;
   private startCoordinates: [number, number];
@@ -51,20 +51,23 @@ export class ScatterPlotRectangleSelector {
   constructor(
       container: HTMLElement,
       selectionCallback: (boundingBox: BoundingBox) => void) {
-    this.svgElement = d3.select(container).select('#selector');
-    this.rectElement = this.svgElement.append('rect')
-                           .style('stroke', STROKE)
-                           .style('stroke-dasharray', STROKE_DASHARRAY)
-                           .style('stroke-width', STROKE_WIDTH)
-                           .style('fill', FILL)
-                           .style('fill-opacity', FILL_OPACITY);
+    this.svgElement = container.querySelector('#selector') as SVGElement;
+    this.rectElement =
+        document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+    this.rectElement.style.stroke = STROKE;
+    this.rectElement.style.strokeDasharray = STROKE_DASHARRAY;
+    this.rectElement.style.strokeWidth = '' + STROKE_WIDTH;
+    this.rectElement.style.fill = FILL;
+    this.rectElement.style.fillOpacity = '' + FILL_OPACITY;
+    this.svgElement.appendChild(this.rectElement);
+
     this.selectionCallback = selectionCallback;
     this.isMouseDown = false;
   }
 
   onMouseDown(offsetX: number, offsetY: number) {
     this.isMouseDown = true;
-    this.svgElement.style('display', 'block');
+    this.rectElement.style.display = 'block';
 
     this.startCoordinates = [offsetX, offsetY];
     this.lastBoundingBox = {
@@ -87,19 +90,18 @@ export class ScatterPlotRectangleSelector {
     this.lastBoundingBox.height =
         this.lastBoundingBox.y - Math.min(offsetY, this.startCoordinates[1]);
 
-    this.rectElement.attr({
-      x: this.lastBoundingBox.x,
-      y: this.lastBoundingBox.y - this.lastBoundingBox.height,
-      width: this.lastBoundingBox.width,
-      height: this.lastBoundingBox.height
-    });
+    this.rectElement.setAttribute('x', '' + this.lastBoundingBox.x);
+    this.rectElement.setAttribute(
+        'y', '' + (this.lastBoundingBox.y - this.lastBoundingBox.height));
+    this.rectElement.setAttribute('width', '' + this.lastBoundingBox.width);
+    this.rectElement.setAttribute('height', '' + this.lastBoundingBox.height);
   }
 
   onMouseUp() {
     this.isMouseDown = false;
-    this.svgElement.style('display', 'none');
-    this.rectElement.attr('width', 0);
-    this.rectElement.attr('height', 0);
+    this.rectElement.style.display = 'none';
+    this.rectElement.setAttribute('width', '0');
+    this.rectElement.setAttribute('height', '0');
     this.selectionCallback(this.lastBoundingBox);
   }
 }

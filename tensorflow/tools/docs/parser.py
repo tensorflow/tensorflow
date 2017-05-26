@@ -21,7 +21,6 @@ from __future__ import print_function
 import ast
 import collections
 import functools
-import inspect
 import json
 import os
 import re
@@ -30,6 +29,8 @@ import codegen
 import six
 
 from google.protobuf.message import Message as ProtoMessage
+from tensorflow.python.util import tf_inspect
+
 
 # A regular expression capturing a python indentifier.
 IDENTIFIER_RE = '[a-zA-Z_][a-zA-Z0-9_]*'
@@ -71,12 +72,12 @@ def _get_raw_docstring(py_object):
   Returns:
     The docstring, or the empty string if no docstring was found.
   """
-  # For object instances, inspect.getdoc does give us the docstring of their
+  # For object instances, tf_inspect.getdoc does give us the docstring of their
   # type, which is not what we want. Only return the docstring if it is useful.
-  if (inspect.isclass(py_object) or inspect.ismethod(py_object) or
-      inspect.isfunction(py_object) or inspect.ismodule(py_object) or
+  if (tf_inspect.isclass(py_object) or tf_inspect.ismethod(py_object) or
+      tf_inspect.isfunction(py_object) or tf_inspect.ismodule(py_object) or
       isinstance(py_object, property)):
-    return inspect.getdoc(py_object) or ''
+    return tf_inspect.getdoc(py_object) or ''
   else:
     return ''
 
@@ -119,12 +120,12 @@ class ReferenceResolver(object):
       an instance of `ReferenceResolver` ()
     """
     is_class = {
-        name: inspect.isclass(visitor.index[name])
+        name: tf_inspect.isclass(visitor.index[name])
         for name, obj in visitor.index.items()
     }
 
     is_module = {
-        name: inspect.ismodule(visitor.index[name])
+        name: tf_inspect.ismodule(visitor.index[name])
         for name, obj in visitor.index.items()
     }
 
@@ -530,7 +531,7 @@ def _parse_md_docstring(py_object, relative_path_to_root, reference_resolver):
 def _get_arg_spec(func):
   """Extracts signature information from a function or functools.partial object.
 
-  For functions, uses `inspect.getargspec`. For `functools.partial` objects,
+  For functions, uses `tf_inspect.getargspec`. For `functools.partial` objects,
   corrects the signature of the underlying function to take into account the
   removed arguments.
 
@@ -539,11 +540,11 @@ def _get_arg_spec(func):
 
   Returns:
     An `ArgSpec` namedtuple `(args, varargs, keywords, defaults)`, as returned
-    by `inspect.getargspec`.
+    by `tf_inspect.getargspec`.
   """
   # getargspec does not work for functools.partial objects directly.
   if isinstance(func, functools.partial):
-    argspec = inspect.getargspec(func.func)
+    argspec = tf_inspect.getargspec(func.func)
     # Remove the args from the original function that have been used up.
     first_default_arg = (
         len(argspec.args or []) - len(argspec.defaults or []))
@@ -566,12 +567,12 @@ def _get_arg_spec(func):
           argspec_defaults.pop(i-first_default_arg)
         else:
           first_default_arg -= 1
-    return inspect.ArgSpec(args=argspec_args,
-                           varargs=argspec.varargs,
-                           keywords=argspec.keywords,
-                           defaults=tuple(argspec_defaults))
+    return tf_inspect.ArgSpec(args=argspec_args,
+                              varargs=argspec.varargs,
+                              keywords=argspec.keywords,
+                              defaults=tuple(argspec_defaults))
   else:  # Regular function or method, getargspec will work fine.
-    return inspect.getargspec(func)
+    return tf_inspect.getargspec(func)
 
 
 def _remove_first_line_indent(string):
@@ -583,7 +584,7 @@ def _generate_signature(func, reverse_index):
   """Given a function, returns a list of strings representing its args.
 
   This function produces a list of strings representing the arguments to a
-  python function. It uses inspect.getargspec, which
+  python function. It uses tf_inspect.getargspec, which
   does not generalize well to Python 3.x, which is more flexible in how *args
   and **kwargs are handled. This is not a problem in TF, since we have to remain
   compatible to Python 2.7 anyway.
@@ -603,9 +604,6 @@ def _generate_signature(func, reverse_index):
     code.
   """
 
-  # This produces poor signatures for decorated functions.
-  # TODO(wicke): We need to use something like the decorator module to fix it.
-
   args_list = []
 
   argspec = _get_arg_spec(func)
@@ -624,7 +622,7 @@ def _generate_signature(func, reverse_index):
   # Add all args with defaults.
   if argspec.defaults:
     try:
-      source = _remove_first_line_indent(inspect.getsource(func))
+      source = _remove_first_line_indent(tf_inspect.getsource(func))
       func_ast = ast.parse(source)
       ast_defaults = func_ast.body[0].args.defaults
     except IOError:  # If this is a builtin, getsource fails with IOError
@@ -689,7 +687,7 @@ def _get_guides_markdown(duplicate_names, guide_index, relative_path):
 
 
 def _get_defining_class(py_class, name):
-  for cls in inspect.getmro(py_class):
+  for cls in tf_inspect.getmro(py_class):
     if name in cls.__dict__:
       return cls
   return None
@@ -800,7 +798,29 @@ class _FunctionPageInfo(object):
 
 
 class _ClassPageInfo(object):
-  """Collects docs for a class page."""
+  """Collects docs for a class page.
+
+  Attributes:
+    full_name: The fully qualified name of the object at the master
+      location. Aka `master_name`. For example: `tf.nn.sigmoid`.
+    short_name: The last component of the `full_name`. For example: `sigmoid`.
+    defined_in: The path to the file where this object is defined.
+    aliases: The list of all fully qualified names for the locations where the
+      object is visible in the public api. This includes the master location.
+    doc: A `_DocstringInfo` object representing the object's docstring (can be
+      created with `_parse_md_docstring`).
+    guides: A markdown string, of back links pointing to the api_guides that
+      reference this object.
+    bases: A list of `_LinkInfo` objects pointing to the docs for the parent
+      classes.
+    properties: A list of `_PropertyInfo` objects documenting the class'
+      properties (attributes that use `@property`).
+    methods: A list of `_MethodInfo` objects documenting the class' methods.
+    classes: A list of `_LinkInfo` objects pointing to docs for any nested
+      classes.
+    other_members: A list of `_OtherMemberInfo` objects documenting any other
+      object's defined inside the class object (mostly enum style fields).
+  """
 
   def __init__(self, full_name):
     self._full_name = full_name
@@ -809,105 +829,206 @@ class _ClassPageInfo(object):
     self._doc = None
     self._guides = None
 
+    self._bases = None
     self._properties = []
     self._methods = []
     self._classes = []
     self._other_members = []
 
   def for_function(self):
+    """Returns true if this object documents a function."""
     return False
 
   def for_class(self):
+    """Returns true if this object documents a class."""
     return True
 
   def for_module(self):
+    """Returns true if this object documents a module."""
     return False
 
   @property
   def full_name(self):
+    """Returns the documented object's fully qualified name."""
     return self._full_name
 
   @property
   def short_name(self):
+    """Returns the documented object's short name."""
     return self._full_name.split('.')[-1]
 
   @property
   def defined_in(self):
+    """Returns the path to the file where the documented object is defined."""
     return self._defined_in
 
   def set_defined_in(self, defined_in):
+    """Sets the `defined_in` path."""
     assert self.defined_in is None
     self._defined_in = defined_in
 
   @property
   def aliases(self):
+    """Returns a list of all full names for the documented object."""
     return self._aliases
 
   def set_aliases(self, aliases):
+    """Sets the `aliases` list.
+
+    Args:
+      aliases: A list of strings. Containing all the obejct's full names.
+    """
     assert self.aliases is None
     self._aliases = aliases
 
   @property
   def doc(self):
+    """Returns a `_DocstringInfo` created from the object's docstring."""
     return self._doc
 
   def set_doc(self, doc):
+    """Sets the `doc` field.
+
+    Args:
+      doc: An instance of `_DocstringInfo`.
+    """
     assert self.doc is None
     self._doc = doc
 
   @property
   def guides(self):
+    """Returns a markdown string containing backlinks to relevent api_guides."""
     return self._guides
 
   def set_guides(self, guides):
+    """Sets the `guides` field.
+
+    Args:
+      guides: A markdown string containing backlinks to all the api_guides that
+        link to the documented object.
+    """
     assert self.guides is None
     self._guides = guides
 
   @property
+  def bases(self):
+    """Returns a list of `_LinkInfo` objects pointing to the class' parents."""
+    return self._bases
+
+  def _set_bases(self, relative_path, parser_config):
+    """Builds the `bases` attribute, to document this class' parent-classes.
+
+    This method sets the `bases` to a list of `_LinkInfo` objects point to the
+    doc pages for the class' parents.
+
+    Args:
+      relative_path: The relative path from the doc this object describes to
+        the documentation root.
+      parser_config: An instance of `ParserConfig`.
+    """
+    bases = []
+    obj = parser_config.py_name_to_object(self.full_name)
+    for base in obj.__bases__:
+      base_full_name = parser_config.reverse_index.get(id(base), None)
+      if base_full_name is None:
+        continue
+      base_doc = _parse_md_docstring(base, relative_path,
+                                     parser_config.reference_resolver)
+      base_url = parser_config.reference_resolver.reference_to_url(
+          base_full_name, relative_path)
+
+      link_info = _LinkInfo(short_name=base_full_name.split('.')[-1],
+                            full_name=base_full_name, obj=base,
+                            doc=base_doc, url=base_url)
+      bases.append(link_info)
+
+    self._bases = bases
+
+  @property
   def properties(self):
+    """Returns a list of `_PropertyInfo` describing the class' properties."""
     return self._properties
 
   def _add_property(self, short_name, full_name, obj, doc):
+    """Adds a `_PropertyInfo` entry to the `properties` list.
+
+    Args:
+      short_name: The property's short name.
+      full_name: The property's fully qualified name.
+      obj: The property object itself
+      doc: The property's parsed docstring, a `_DocstringInfo`.
+    """
     property_info = _PropertyInfo(short_name, full_name, obj, doc)
     self._properties.append(property_info)
 
   @property
   def methods(self):
+    """Returns a list of `_MethodInfo` describing the class' methods."""
     return self._methods
 
   def _add_method(self, short_name, full_name, obj, doc, signature):
+    """Adds a `_MethodInfo` entry to the `methods` list.
+
+    Args:
+      short_name: The method's short name.
+      full_name: The method's fully qualified name.
+      obj: The method object itself
+      doc: The method's parsed docstring, a `_DocstringInfo`
+      signature: The method's parsed signature (see: `_generate_signature`)
+    """
     method_info = _MethodInfo(short_name, full_name, obj, doc, signature)
     self._methods.append(method_info)
 
   @property
   def classes(self):
+    """Returns a list of `_LinkInfo` pointing to any nested classes."""
     return self._classes
 
   def _add_class(self, short_name, full_name, obj, doc, url):
+    """Adds a `_LinkInfo` for a nested class to `classes` list.
+
+    Args:
+      short_name: The class' short name.
+      full_name: The class' fully qualified name.
+      obj: The class object itself
+      doc: The class' parsed docstring, a `_DocstringInfo`
+      url: A url pointing to where the nested class is documented.
+    """
     page_info = _LinkInfo(short_name, full_name, obj, doc, url)
 
     self._classes.append(page_info)
 
   @property
   def other_members(self):
+    """Returns a list of `_OtherMemberInfo` describing any other contents."""
     return self._other_members
 
   def _add_other_member(self, short_name, full_name, obj, doc):
+    """Adds an `_OtherMemberInfo` entry to the `other_members` list.
+
+    Args:
+      short_name: The class' short name.
+      full_name: The class' fully qualified name.
+      obj: The class object itself
+      doc: The class' parsed docstring, a `_DocstringInfo`
+    """
     other_member_info = _OtherMemberInfo(short_name, full_name, obj, doc)
     self._other_members.append(other_member_info)
 
   def collect_docs_for_class(self, py_class, parser_config):
-    """Collect information necessary specifically for a class's doc page.
+    """Collects information necessary specifically for a class's doc page.
 
-    Mainly, this is details about information about the class's members.
+    Mainly, this is details about the class's members.
 
     Args:
-      py_class: the class object being documented
+      py_class: The class object being documented
       parser_config: An instance of ParserConfig.
     """
     doc_path = documentation_path(self.full_name)
     relative_path = os.path.relpath(
         path='.', start=os.path.dirname(doc_path) or '.')
+
+    self._set_bases(relative_path, parser_config)
 
     for short_name in parser_config.tree[self.full_name]:
       # Remove builtin members that we never want to document.
@@ -936,15 +1057,15 @@ class _ClassPageInfo(object):
       if isinstance(child, property):
         self._add_property(short_name, child_name, child, child_doc)
 
-      elif inspect.isclass(child):
+      elif tf_inspect.isclass(child):
         if defining_class is None:
           continue
         url = parser_config.reference_resolver.reference_to_url(
             child_name, relative_path)
         self._add_class(short_name, child_name, child, child_doc, url)
 
-      elif (inspect.ismethod(child) or inspect.isfunction(child) or
-            inspect.isroutine(child)):
+      elif (tf_inspect.ismethod(child) or tf_inspect.isfunction(child) or
+            tf_inspect.isroutine(child)):
         if defining_class is None:
           continue
 
@@ -967,7 +1088,7 @@ class _ClassPageInfo(object):
           child_signature = _generate_signature(child,
                                                 parser_config.reverse_index)
         except TypeError:
-          # If this is a (dynamically created) slot wrapper, inspect will
+          # If this is a (dynamically created) slot wrapper, tf_inspect will
           # raise typeerror when trying to get to the code. Ignore such
           # functions.
           continue
@@ -1106,13 +1227,13 @@ class _ModulePageInfo(object):
       url = parser_config.reference_resolver.reference_to_url(
           member_full_name, relative_path)
 
-      if inspect.ismodule(member):
+      if tf_inspect.ismodule(member):
         self._add_module(name, member_full_name, member, member_doc, url)
 
-      elif inspect.isclass(member):
+      elif tf_inspect.isclass(member):
         self._add_class(name, member_full_name, member, member_doc, url)
 
-      elif inspect.isfunction(member):
+      elif tf_inspect.isfunction(member):
         self._add_function(name, member_full_name, member, member_doc, url)
 
       else:
@@ -1196,17 +1317,17 @@ def docs_for_object(full_name, py_object, parser_config):
   duplicate_names = parser_config.duplicates.get(master_name, [full_name])
 
   # TODO(wicke): Once other pieces are ready, enable this also for partials.
-  if (inspect.ismethod(py_object) or inspect.isfunction(py_object) or
+  if (tf_inspect.ismethod(py_object) or tf_inspect.isfunction(py_object) or
       # Some methods in classes from extensions come in as routines.
-      inspect.isroutine(py_object)):
+      tf_inspect.isroutine(py_object)):
     page_info = _FunctionPageInfo(master_name)
     page_info.set_signature(py_object, parser_config.reverse_index)
 
-  elif inspect.isclass(py_object):
+  elif tf_inspect.isclass(py_object):
     page_info = _ClassPageInfo(master_name)
     page_info.collect_docs_for_class(py_object, parser_config)
 
-  elif inspect.ismodule(py_object):
+  elif tf_inspect.ismodule(py_object):
     page_info = _ModulePageInfo(master_name)
     page_info.collect_docs_for_module(parser_config)
 
@@ -1341,7 +1462,7 @@ def _get_defined_in(py_object, parser_config):
   # TODO(wicke): Only use decorators that support this in TF.
 
   try:
-    path = os.path.relpath(path=inspect.getfile(py_object),
+    path = os.path.relpath(path=tf_inspect.getfile(py_object),
                            start=parser_config.base_dir)
   except TypeError:  # getfile throws TypeError if py_object is a builtin.
     return _PythonBuiltin()
@@ -1384,15 +1505,15 @@ def generate_global_index(library_name, index, reference_resolver):
   """
   symbol_links = []
   for full_name, py_object in six.iteritems(index):
-    if (inspect.ismodule(py_object) or inspect.isfunction(py_object) or
-        inspect.isclass(py_object)):
+    if (tf_inspect.ismodule(py_object) or tf_inspect.isfunction(py_object) or
+        tf_inspect.isclass(py_object)):
       # In Python 3, unbound methods are functions, so eliminate those.
-      if inspect.isfunction(py_object):
+      if tf_inspect.isfunction(py_object):
         if full_name.count('.') == 0:
           parent_name = ''
         else:
           parent_name = full_name[:full_name.rfind('.')]
-        if parent_name in index and inspect.isclass(index[parent_name]):
+        if parent_name in index and tf_inspect.isclass(index[parent_name]):
           # Skip methods (=functions with class parents).
           continue
       symbol_links.append((

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
@@ -348,6 +349,19 @@ def _SoftplusGrad(op, grad):
   return gen_nn_ops._softplus_grad(grad, op.inputs[0])
 
 
+@ops.RegisterGradient("SoftplusGrad")
+def _SoftplusGradGrad(op, grad):
+  # Let:
+  #   y = tf.nn.softplus(x)
+  #   dx = gen_nn_ops._softplus_grad(dy, x) = dy / (1 + exp(-x))
+  # This op computes (ddy, d2x) from op.inputs == [dy, x] and grad == ddx.
+  dy, x = op.inputs
+  with ops.control_dependencies([grad.op]):
+    ddy = gen_nn_ops._softplus_grad(grad, x)  # pylint: disable=protected-access
+    d2x = grad * dy / (math_ops.exp(-x) + 2.0 + math_ops.exp(x))
+    return (ddy, d2x)
+
+
 @ops.RegisterGradient("Softsign")
 def _SoftsignGrad(op, grad):
   return gen_nn_ops._softsign_grad(grad, op.inputs[0])
@@ -387,7 +401,14 @@ def _SoftmaxCrossEntropyWithLogitsGrad(op, grad_loss, grad_grad):
   softmax_grad = op.outputs[1]
   grad = _BroadcastMul(grad_loss, softmax_grad)
 
-  if grad_grad.op.type not in ("ZerosLike", "Zeros"):
+  def IsZero(g):
+    # Some introspection to check if the gradient is feeding zeros
+    if g.op.type in ("ZerosLike", "Zeros"):
+      return True
+    const_fill_value = tensor_util.constant_value(g)
+    return const_fill_value is not None and (const_fill_value == 0).all()
+
+  if not IsZero(grad_grad):
     logits = op.inputs[0]
     softmax = nn_ops.softmax(logits)
 
@@ -502,6 +523,16 @@ def _MaxPoolGrad(op, grad):
                                    op.get_attr("strides"),
                                    padding=op.get_attr("padding"),
                                    data_format=op.get_attr("data_format"))
+
+
+@ops.RegisterGradient("MaxPoolWithArgmax")
+def _MaxPoolGradWithArgmax(op, grad, unused_argmax_grad):
+  return gen_nn_ops._max_pool_grad_with_argmax(op.inputs[0],
+                                               grad,
+                                               op.outputs[1],
+                                               op.get_attr("ksize"),
+                                               op.get_attr("strides"),
+                                               padding=op.get_attr("padding"))
 
 
 @ops.RegisterGradient("MaxPoolGrad")

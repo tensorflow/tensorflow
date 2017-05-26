@@ -46,7 +46,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (nodes_to_preserve.find(node.name()) != nodes_to_preserve.end()) {
       continue;
     }
-    // Don't remove nodes that are explicitely placed.
+    // Don't remove nodes that are explicitly placed.
     if (!node.device().empty()) {
       continue;
     }

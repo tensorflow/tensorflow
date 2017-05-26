@@ -40,15 +40,16 @@ Typical use:
 ResNet-101 for image classification into 1000 classes:
 
    # inputs has shape [batch, 224, 224, 3]
-   with slim.arg_scope(resnet_v1.resnet_arg_scope(is_training)):
-      net, end_points = resnet_v1.resnet_v1_101(inputs, 1000)
+   with slim.arg_scope(resnet_v1.resnet_arg_scope()):
+      net, end_points = resnet_v1.resnet_v1_101(inputs, 1000, is_training=False)
 
 ResNet-101 for semantic segmentation into 21 classes:
 
    # inputs has shape [batch, 513, 513, 3]
-   with slim.arg_scope(resnet_v1.resnet_arg_scope(is_training)):
+   with slim.arg_scope(resnet_v1.resnet_arg_scope()):
       net, end_points = resnet_v1.resnet_v1_101(inputs,
                                                 21,
+                                                is_training=False,
                                                 global_pool=False,
                                                 output_stride=16)
 """
@@ -127,6 +128,7 @@ def bottleneck(inputs,
 def resnet_v1(inputs,
               blocks,
               num_classes=None,
+              is_training=None,
               global_pool=True,
               output_stride=None,
               include_root_block=True,
@@ -161,6 +163,8 @@ def resnet_v1(inputs,
       is a resnet_utils.Block object describing the units in the block.
     num_classes: Number of predicted classes for classification tasks. If None
       we return the features before the logit layer.
+    is_training: whether is training or not. If None, the value inherited from
+      the resnet_arg_scope is used. Specifying value None is deprecated.
     global_pool: If True, we perform global average pooling before computing the
       logits. Set to True for image classification, False for dense prediction.
     output_stride: If None, then the output will be computed at the nominal
@@ -192,30 +196,36 @@ def resnet_v1(inputs,
     with arg_scope(
         [layers.conv2d, bottleneck, resnet_utils.stack_blocks_dense],
         outputs_collections=end_points_collection):
-      net = inputs
-      if include_root_block:
-        if output_stride is not None:
-          if output_stride % 4 != 0:
-            raise ValueError('The output_stride needs to be a multiple of 4.')
-          output_stride /= 4
-        net = resnet_utils.conv2d_same(net, 64, 7, stride=2, scope='conv1')
-        net = layers_lib.max_pool2d(net, [3, 3], stride=2, scope='pool1')
-      net = resnet_utils.stack_blocks_dense(net, blocks, output_stride)
-      if global_pool:
-        # Global average pooling.
-        net = math_ops.reduce_mean(net, [1, 2], name='pool5', keep_dims=True)
-      if num_classes is not None:
-        net = layers.conv2d(
-            net,
-            num_classes, [1, 1],
-            activation_fn=None,
-            normalizer_fn=None,
-            scope='logits')
-      # Convert end_points_collection into a dictionary of end_points.
-      end_points = utils.convert_collection_to_dict(end_points_collection)
-      if num_classes is not None:
-        end_points['predictions'] = layers_lib.softmax(net, scope='predictions')
-      return net, end_points
+      if is_training is not None:
+        bn_scope = arg_scope([layers.batch_norm], is_training=is_training)
+      else:
+        bn_scope = arg_scope([])
+      with bn_scope:
+        net = inputs
+        if include_root_block:
+          if output_stride is not None:
+            if output_stride % 4 != 0:
+              raise ValueError('The output_stride needs to be a multiple of 4.')
+            output_stride /= 4
+          net = resnet_utils.conv2d_same(net, 64, 7, stride=2, scope='conv1')
+          net = layers_lib.max_pool2d(net, [3, 3], stride=2, scope='pool1')
+        net = resnet_utils.stack_blocks_dense(net, blocks, output_stride)
+        if global_pool:
+          # Global average pooling.
+          net = math_ops.reduce_mean(net, [1, 2], name='pool5', keep_dims=True)
+        if num_classes is not None:
+          net = layers.conv2d(
+              net,
+              num_classes, [1, 1],
+              activation_fn=None,
+              normalizer_fn=None,
+              scope='logits')
+        # Convert end_points_collection into a dictionary of end_points.
+        end_points = utils.convert_collection_to_dict(end_points_collection)
+        if num_classes is not None:
+          end_points['predictions'] = layers_lib.softmax(
+              net, scope='predictions')
+        return net, end_points
 resnet_v1.default_image_size = 224
 
 
@@ -245,6 +255,7 @@ def resnet_v1_block(scope, base_depth, num_units, stride):
 
 def resnet_v1_50(inputs,
                  num_classes=None,
+                 is_training=None,
                  global_pool=True,
                  output_stride=None,
                  reuse=None,
@@ -260,6 +271,7 @@ def resnet_v1_50(inputs,
       inputs,
       blocks,
       num_classes,
+      is_training,
       global_pool,
       output_stride,
       include_root_block=True,
@@ -269,6 +281,7 @@ def resnet_v1_50(inputs,
 
 def resnet_v1_101(inputs,
                   num_classes=None,
+                  is_training=None,
                   global_pool=True,
                   output_stride=None,
                   reuse=None,
@@ -284,6 +297,7 @@ def resnet_v1_101(inputs,
       inputs,
       blocks,
       num_classes,
+      is_training,
       global_pool,
       output_stride,
       include_root_block=True,
@@ -293,6 +307,7 @@ def resnet_v1_101(inputs,
 
 def resnet_v1_152(inputs,
                   num_classes=None,
+                  is_training=None,
                   global_pool=True,
                   output_stride=None,
                   reuse=None,
@@ -308,6 +323,7 @@ def resnet_v1_152(inputs,
       inputs,
       blocks,
       num_classes,
+      is_training,
       global_pool,
       output_stride,
       include_root_block=True,
@@ -317,6 +333,7 @@ def resnet_v1_152(inputs,
 
 def resnet_v1_200(inputs,
                   num_classes=None,
+                  is_training=None,
                   global_pool=True,
                   output_stride=None,
                   reuse=None,
@@ -332,6 +349,7 @@ def resnet_v1_200(inputs,
       inputs,
       blocks,
       num_classes,
+      is_training,
       global_pool,
       output_stride,
       include_root_block=True,

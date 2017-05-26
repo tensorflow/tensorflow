@@ -15,10 +15,13 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
+#include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -36,6 +39,13 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
   }
   if (optimizer == "layout") {
     graph_optimizer.reset(new LayoutOptimizer());
+  }
+  if (optimizer == "memory") {
+    graph_optimizer.reset(new MemoryOptimizer());
+  }
+  if (optimizer == "autoparallel") {
+    graph_optimizer.reset(
+        new AutoParallel(cfg_.auto_parallel().num_replicas()));
   }
   return graph_optimizer;
 }
@@ -55,10 +65,19 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(
           std::unique_ptr<GraphOptimizer>(new LayoutOptimizer()));
     }
+    if (cfg_.memory_optimization() > 0) {
+      optimizers.push_back(
+          std::unique_ptr<GraphOptimizer>(new MemoryOptimizer()));
+    }
+    if (cfg_.auto_parallel().enable()) {
+      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
+          new AutoParallel(cfg_.auto_parallel().num_replicas())));
+    }
   } else {
-    std::set<string> avaliable_optimizers = {"pruning", "constfold", "layout"};
+    std::set<string> available_optimizers = {"pruning", "constfold", "layout",
+                                             "memory", "autoparallel"};
     for (const auto& optimizer : cfg_.optimizers()) {
-      if (avaliable_optimizers.find(optimizer) != avaliable_optimizers.end()) {
+      if (available_optimizers.find(optimizer) != available_optimizers.end()) {
         optimizers.push_back(NewOptimizer(optimizer));
       }
     }
@@ -72,16 +91,16 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   bool already_optimized = false;
   for (const auto& optimizer : optimizers) {
     if (!already_optimized) {
-      TF_RETURN_IF_ERROR(optimizer->Optimize(nullptr, item, optimized_graph));
+      TF_RETURN_IF_ERROR(optimizer->Optimize(cluster, item, optimized_graph));
       already_optimized = true;
     } else {
       GrapplerItem optimized_item = item;
       optimized_item.graph = *optimized_graph;
       TF_RETURN_IF_ERROR(
-          optimizer->Optimize(nullptr, optimized_item, optimized_graph));
+          optimizer->Optimize(cluster, optimized_item, optimized_graph));
     }
   }
-
+  TopologicalSort(optimized_graph);
   // Copy the graph version.
   *optimized_graph->mutable_versions() = item.graph.versions();
 
@@ -94,13 +113,14 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
 }
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
-  return cfg.optimize_tensor_layout();
+  return cfg.optimize_tensor_layout() || cfg.constant_folding() ||
+         cfg.auto_parallel().enable() || !cfg.optimizers().empty();
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
-                        GraphDef* optimized_graph) {
+                        Cluster* cluster, GraphDef* optimized_graph) {
   MetaOptimizer optimizer(cfg);
-  return optimizer.Optimize(nullptr, item, optimized_graph);
+  return optimizer.Optimize(cluster, item, optimized_graph);
 }
 
 }  // namespace grappler

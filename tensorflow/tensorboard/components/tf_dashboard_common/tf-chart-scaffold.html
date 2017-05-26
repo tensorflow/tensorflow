@@ -16,8 +16,6 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
-<link rel="import" href="../tf-imports/plottable.html">
-<link rel="import" href="../tf-imports/lodash.html">
 
 <!--
 tf-chart-scaffold is responsible for providing data from TensorBoard to charts.
@@ -34,7 +32,7 @@ chart() - Returns the underlying chart element.
 reload() - Reloads the data and sends it to the underlying chart.
 
 This element should have a compatible chart plugin element as it's content. The
-plugin is requred to implement two functions:
+plugin is required to implement two functions:
 - setVisibleSeries(names: string[]): a function that receives an array of series
     names as the first parameter, responsible for changing the series currently
     being displayed to only the series in this array.
@@ -57,6 +55,8 @@ plugin is requred to implement two functions:
     </style>
   </template>
   <script>
+    "use strict";
+
     Polymer({
       is: "tf-chart-scaffold",
       properties: {

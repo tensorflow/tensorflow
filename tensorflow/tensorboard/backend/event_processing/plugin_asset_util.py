@@ -30,6 +30,11 @@ def _IsDirectory(parent, item):
   return gfile.IsDirectory(os.path.join(parent, item))
 
 
+def PluginDirectory(logdir, plugin_name):
+  """Returns the plugin directory for plugin_name."""
+  return os.path.join(logdir, _PLUGINS_DIR, plugin_name)
+
+
 def ListPlugins(logdir):
   """List all the plugins that have registered assets in logdir.
 
@@ -61,7 +66,7 @@ def ListAssets(logdir, plugin_name):
     not exist (either because the logdir doesn't exist, or because the plugin
     didn't register) an empty list is returned.
   """
-  plugin_dir = os.path.join(logdir, _PLUGINS_DIR, plugin_name)
+  plugin_dir = PluginDirectory(logdir, plugin_name)
   if not gfile.IsDirectory(plugin_dir):
     return []
   entries = gfile.ListDirectory(plugin_dir)
@@ -83,7 +88,7 @@ def RetrieveAsset(logdir, plugin_name, asset_name):
     KeyError: if the asset does not exist.
   """
 
-  asset_path = os.path.join(logdir, _PLUGINS_DIR, plugin_name, asset_name)
+  asset_path = os.path.join(PluginDirectory(logdir, plugin_name), asset_name)
   try:
     with gfile.Open(asset_path, "r") as f:
       return f.read()

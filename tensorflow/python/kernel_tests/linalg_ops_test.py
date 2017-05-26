@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.python.ops.special_math_ops."""
+"""Tests for tensorflow.python.ops.linalg_ops."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -28,7 +28,7 @@ from tensorflow.python.platform import test
 
 
 def _random_pd_matrix(n, rng):
-  """Random postive definite matrix."""
+  """Random positive definite matrix."""
   temp = rng.randn(n, n)
   return temp.dot(temp.T)
 

@@ -158,8 +158,7 @@ visualization.
         }
 
         .axis {
-          font-size: 10px;
-          fill: #aaa;
+          font-size: 11px;
         }
 
         .axis path.domain {
@@ -253,13 +252,13 @@ visualization.
 
         /**
          * Scale that maps series names to colors. The default colors are from
-         * d3.scale.category10() scale. Use this property to replace the default
+         * d3.schemeCategory10() scale. Use this property to replace the default
          * line colors with colors of your own choice.
          */
         colorScale: {
           type: Object,
           value: function() {
-            return d3.scale.category10();
+            return d3.scaleOrdinal(d3.schemeCategory10);
           }
         },
 
@@ -378,7 +377,7 @@ visualization.
         var yAxisFormat = d3.format(".0f");
 
         if (timeProp === "wall_time") {
-          yAxisFormat = d3.time.format("%m/%d %X");
+          yAxisFormat = d3.timeFormat("%m/%d %X");
         } else if (timeProp === "relative") {
           yAxisFormat = function(d) {
             return d3.format(".1r")(d / 3.6e6) + 'h'; // Convert to hours.
@@ -405,19 +404,19 @@ visualization.
 
         var extent = d3.extent(data, timeAccessor);
 
-        var yScale = (timeProp === "wall_time" ? d3.time.scale() : d3.scale.linear())
+        var yScale = (timeProp === "wall_time" ? d3.scaleTime() : d3.scaleLinear())
             .domain(extent)
             .range([0, (mode === "offset" ? height : 0)]);
 
-        var ySliceScale = d3.scale.linear()
+        var ySliceScale = d3.scaleLinear()
             .domain([0, d3.max(data, function(d, i) { return yExtents[i][1]; })])
             .range([sliceHeight, 0]);
 
-        var yLineScale = d3.scale.linear()
+        var yLineScale = d3.scaleLinear()
             .domain(ySliceScale.domain())
             .range([outlineCanvasSize, 0]);
 
-        var xScale = d3.scale.linear()
+        var xScale = d3.scaleLinear()
             .domain([
               d3.min(data, function(d, i) { return xExtents[i][0]; }),
               d3.max(data, function(d, i) { return xExtents[i][1]; })
@@ -425,39 +424,33 @@ visualization.
             .nice()
             .range([0, width]);
 
-        var xLineScale = d3.scale.linear()
+        var xLineScale = d3.scaleLinear()
             .domain(xScale.domain())
             .range([0, outlineCanvasSize]);
 
-        var outlineColor = d3.scale.linear()
+        var outlineColor = d3.scaleLinear()
             .domain(d3.extent(data, timeAccessor))
             .range([color.darker(), color.brighter()])
             .interpolate(d3.interpolateHcl);
 
-        var xAxis = d3.svg.axis()
-            .scale(xScale)
-            .ticks(Math.max(2, width / 20))
-            .orient("bottom");
+        var xAxis = d3.axisBottom(xScale).ticks(Math.max(2, width / 20));
 
-        var yAxis = d3.svg.axis()
-            .scale(yScale)
+        var yAxis = d3.axisRight(yScale)
             .ticks(Math.max(2, height / 15))
-            .tickFormat(yAxisFormat)
-            .orient("right");
+            .tickFormat(yAxisFormat);
 
-        var ySliceAxis = d3.svg.axis()
-            .scale(ySliceScale)
+
+
+        var ySliceAxis = d3.axisRight(ySliceScale)
             .ticks(Math.max(2, height / 15))
             .tickSize(width + 5)
-            .tickFormat(format)
-            .orient("right");
+            .tickFormat(format);
 
         var xBinCentroid = function(d) {
           return d[xProp] + d[dxProp] / 2;
         };
 
-        var linePath = d3.svg.line()
-            .interpolate("linear")
+        var linePath = d3.line()
             .x(function(d) { return xLineScale(xBinCentroid(d)); })
             .y(function(d) { return yLineScale(d[yProp]); });
 
@@ -513,7 +506,7 @@ visualization.
         var histogram = stage.selectAll(".histogram").data(data),
             histogramExit = histogram.exit().remove(),
             histogramEnter = histogram.enter().append("g").attr("class", "histogram"),
-            histogramUpdate = histogram
+            histogramUpdate = histogramEnter.merge(histogram)
                 .sort(function(a, b) { return timeAccessor(a) - timeAccessor(b); }),
             histogramTransition = gTransition.selectAll(".histogram")
                 .attr("transform", function(d) {
@@ -556,7 +549,7 @@ visualization.
 
         var xAxisHover = g.select(".x-axis-hover").selectAll(".label").data(["x"]),
             xAxisHoverEnter = xAxisHover.enter().append("g").attr("class", "label"),
-            xAxisHoverUpdate = xAxisHover;
+            xAxisHoverUpdate = xAxisHover.merge(xAxisHoverEnter);
 
         xAxisHoverEnter.append("rect")
             .attr("x", -20)
@@ -575,7 +568,7 @@ visualization.
 
         var yAxisHover = g.select(".y-axis-hover").selectAll(".label").data(["y"]),
             yAxisHoverEnter = yAxisHover.enter().append("g").attr("class", "label"),
-            yAxisHoverUpdate = yAxisHover;
+            yAxisHoverUpdate = yAxisHover.merge(yAxisHoverEnter);
 
         yAxisHoverEnter.append("rect")
             .attr("x", 8)
@@ -595,7 +588,7 @@ visualization.
 
         var ySliceAxisHover = g.select(".y-slice-axis-hover").selectAll(".label").data(["y"]),
             ySliceAxisHoverEnter = ySliceAxisHover.enter().append("g").attr("class", "label"),
-            ySliceAxisHoverUpdate = ySliceAxisHover;
+            ySliceAxisHoverUpdate = ySliceAxisHover.merge(ySliceAxisHoverEnter);
 
         ySliceAxisHoverEnter.append("rect")
             .attr("x", 8)
@@ -626,6 +619,11 @@ visualization.
             .style("opacity", mode === "offset" ? 1 : 0)
             .attr("transform", "translate(" + width + ", " + (mode === "offset" ? 0 : height) + ")")
             .call(yAxis);
+
+        gTransition.selectAll(".tick text")
+            .attr("fill", "#aaa");
+        gTransition.selectAll(".axis path.domain").attr("stroke", "none");
+
 
         function onMouseMove() {
           var m = d3.mouse(this),

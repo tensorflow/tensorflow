@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
@@ -31,9 +32,10 @@ namespace tensorflow {
 
 class CropAndResizeOpTest : public OpsTestBase {
  protected:
+  template <typename T>
   void MakeOp(float extrapolation_value) {
     TF_EXPECT_OK(NodeDefBuilder("crop_and_resize_op", "CropAndResize")
-                     .Input(FakeInput(DT_FLOAT))
+                     .Input(FakeInput(DataTypeToEnum<T>::value))
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))
                      .Input(FakeInput(DT_INT32))
@@ -43,12 +45,33 @@ class CropAndResizeOpTest : public OpsTestBase {
   }
 };
 
-TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1) {
-  MakeOp(0);
+#define REGISTER_TEST(T)                                               \
+  TEST_F(CropAndResizeOpTest, TestCropAndResize##T) {                  \
+    MakeOp<T>(0);                                                      \
+    AddInputFromArray<T>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});     \
+    AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});       \
+    AddInputFromArray<int32>(TensorShape({1}), {0});                   \
+    AddInputFromArray<int32>(TensorShape({2}), {1, 1});                \
+    TF_ASSERT_OK(RunOpKernel());                                       \
+                                                                       \
+    Tensor expected(allocator(), DT_FLOAT, TensorShape({1, 1, 1, 1})); \
+    test::FillValues<float>(&expected, {2.5});                         \
+    test::ExpectTensorEqual<float>(expected, *GetOutput(0));           \
+  }
+
+REGISTER_TEST(float)
+REGISTER_TEST(double)
+REGISTER_TEST(int8)
+REGISTER_TEST(uint8)
+
+#undef REGISTER_TEST
+
+TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Uint8) {
+  MakeOp<uint8>(0);
   // Input:
   //  1, 2
   //  3, 4
-  AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
+  AddInputFromArray<uint8>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
   AddInputFromArray<int32>(TensorShape({1}), {0});
   AddInputFromArray<int32>(TensorShape({2}), {1, 1});
@@ -60,7 +83,7 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1) {
 }
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Flipped) {
-  MakeOp(0);
+  MakeOp<float>(0);
   // Input:
   //  1, 2
   //  3, 4
@@ -76,7 +99,7 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To1x1Flipped) {
 }
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3) {
-  MakeOp(0);
+  MakeOp<float>(0);
   // Input:
   //  1, 2
   //  3, 4
@@ -97,7 +120,7 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3) {
 }
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Flipped) {
-  MakeOp(0);
+  MakeOp<float>(0);
   // Input:
   //  1, 2
   //  3, 4
@@ -118,7 +141,7 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Flipped) {
 }
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2) {
-  MakeOp(0);
+  MakeOp<float>(0);
   // Input:
   //  1, 2, 3
   //  4, 5, 6
@@ -143,7 +166,7 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2) {
 }
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2Flipped) {
-  MakeOp(0);
+  MakeOp<float>(0);
   // Input:
   //  1, 2, 3
   //  4, 5, 6
@@ -169,7 +192,7 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize3x3To2x2Flipped) {
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Extrapolated) {
   const float v = -1;
-  MakeOp(v);
+  MakeOp<float>(v);
   // Input:
   //  1, 2
   //  3, 4
@@ -190,7 +213,7 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3Extrapolated) {
 }
 
 TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3NoCrop) {
-  MakeOp(0);
+  MakeOp<float>(0);
   // Input:
   //  1, 2
   //  3, 4
@@ -208,7 +231,7 @@ TEST_F(CropAndResizeOpTest, TestCropAndResize2x2To3x3NoCrop) {
 }
 
 TEST_F(CropAndResizeOpTest, TestInvalidInputShape) {
-  MakeOp(0);
+  MakeOp<float>(0);
   AddInputFromArray<float>(TensorShape({2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
   AddInputFromArray<int32>(TensorShape({1}), {0});
@@ -220,7 +243,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidInputShape) {
 }
 
 TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
-  MakeOp(0);
+  MakeOp<float>(0);
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
   AddInputFromArray<int32>(TensorShape({2}), {0, 0});
@@ -233,7 +256,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
 }
 
 TEST_F(CropAndResizeOpTest, TestInvalidBoxIndex) {
-  MakeOp(0);
+  MakeOp<float>(0);
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});
   AddInputFromArray<float>(TensorShape({1, 4}), {0, 0, 1, 1});
   AddInputFromArray<int32>(TensorShape({1}), {1});

@@ -138,6 +138,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
     ],
     tags = [
+        "no_pip",  # b/38283730
         "notsan",  # Flaky: b/30756419
     ],
 )
@@ -202,6 +203,7 @@ tf_py_test(
     additional_deps = [
         ":factorization_py",
         ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",
+        ":factorization_ops_test_utils_py",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -212,6 +214,7 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
+    tags = ["manual"],
 )
 
 # Kernel tests

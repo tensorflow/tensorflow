@@ -1,19 +1,16 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
+load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
+load("//tensorflow/tensorboard:hacks.bzl", "tensorboard_typescript_bundle")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 licenses(["notice"])  # Apache 2.0
 
-# TODO(dandelion): Add webfiles support for the test code.
-
-webfiles(
+web_library(
     name = "tf_color_scale",
     srcs = [
+        "bundle.js",
         "tf-color-scale.html",
-        ":ts",
     ],
     path = "/tf-color-scale",
     deps = [
@@ -22,42 +19,41 @@ webfiles(
     ],
 )
 
+web_library(
+    name = "demo",
+    srcs = ["index.html"],
+    path = "/tf-color-scale",
+    deps = [
+        ":tf_color_scale",
+        "//tensorflow/tensorboard/components/tf_imports:d3",
+        "@org_polymer_iron_demo_helpers",
+        "@org_polymer_paper_button",
+        "@org_polymer_paper_styles",
+        "@org_polymer_webcomponentsjs",
+    ],
+)
+
 tensorboard_typescript_genrule(
     name = "ts",
-    srcs = [
-        "colorScale.ts",
-        "palettes.ts",
+    srcs = ["bundle.ts"],
+    typings = [
+        "@org_definitelytyped//:polymer.d.ts",
+        "@org_definitelytyped//:webcomponents.js.d.ts",
+        "//tensorflow/tensorboard/components/tf_imports:d3.d.ts",
     ],
-    typings = ["@org_definitelytyped//:d3.d.ts"],
+)
+
+tensorboard_typescript_bundle(
+    name = "bundle",
+    out = "bundle.ts",
+    namespace_srcs = {"TF": [
+        "palettes.ts",
+        "colorScale.ts",
+    ]},
 )
 
 filegroup(
     name = "all_files",
     srcs = glob(["**"]),
     tags = ["notsan"],
-)
-
-################################################################################
-# MARKED FOR DELETION
-
-tensorboard_webcomponent_library(
-    name = "legacy",
-    srcs = [
-        "tf-color-scale.html",
-        ":legacy_ts",
-    ],
-    destdir = "tf-color-scale",
-    deps = [
-        "//tensorflow/tensorboard/components:tf_imports",
-        "//third_party/javascript/polymer/v1/polymer:lib",
-    ],
-)
-
-tensorboard_ts_library(
-    name = "legacy_ts",
-    srcs = [
-        "colorScale.ts",
-        "palettes.ts",
-    ],
-    deps = ["//tensorflow/tensorboard/components:common_deps"],
 )

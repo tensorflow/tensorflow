@@ -422,14 +422,15 @@ def import_scoped_meta_graph(meta_graph_or_file,
                              graph=None,
                              import_scope=None,
                              input_map=None,
-                             unbound_inputs_col_name="unbound_inputs"):
-  """Recreates a`Graph` saved in a `MetaGraphDef` proto.
+                             unbound_inputs_col_name="unbound_inputs",
+                             restore_collections_predicate=(lambda key: True)):
+  """Recreates a `Graph` saved in a `MetaGraphDef` proto.
 
   This function takes a `MetaGraphDef` protocol buffer as input. If
   the argument is a file containing a `MetaGraphDef` protocol buffer ,
   it constructs a protocol buffer from the file content. The function
   then adds all the nodes from the `graph_def` field to the
-  current graph, recreates all the collections, and returns a saver
+  current graph, recreates the desired collections, and returns a saver
   constructed from the `saver_def` field.
 
   In combination with `export_scoped_meta_graph()`, this function can be used to
@@ -453,6 +454,10 @@ def import_scoped_meta_graph(meta_graph_or_file,
       `Tensor` objects. The values of the named input tensors in the imported
       graph will be re-mapped to the respective `Tensor` values.
     unbound_inputs_col_name: Collection name for looking up unbound inputs.
+    restore_collections_predicate: a predicate on collection names. A collection
+      named c (i.e whose key is c) will be restored iff
+      1) `restore_collections_predicate(c)` is True, and
+      2) `c != unbound_inputs_col_name`.
 
   Returns:
     A dictionary of all the `Variables` imported into the name scope.
@@ -498,10 +503,15 @@ def import_scoped_meta_graph(meta_graph_or_file,
         input_graph_def, name=(import_scope or ""), input_map=input_map,
         producer_op_list=producer_op_list)
 
+    scope_to_prepend_to_names = "/".join(
+        [part for part in [graph.get_name_scope(), import_scope] if part])
+
     # Restores all the other collections.
     for key, col_def in meta_graph_def.collection_def.items():
       # Don't add unbound_inputs to the new graph.
       if key == unbound_inputs_col_name:
+        continue
+      if not restore_collections_predicate(key):
         continue
 
       kind = col_def.WhichOneof("kind")
@@ -517,13 +527,13 @@ def import_scoped_meta_graph(meta_graph_or_file,
           proto = proto_type()
           proto.ParseFromString(value)
           graph.add_to_collection(
-              key, from_proto(proto, import_scope=import_scope))
+              key, from_proto(proto, import_scope=scope_to_prepend_to_names))
       else:
         field = getattr(col_def, kind)
         if kind == "node_list":
           for value in field.value:
             col_op = graph.as_graph_element(
-                ops.prepend_name_scope(value, import_scope))
+                ops.prepend_name_scope(value, scope_to_prepend_to_names))
             graph.add_to_collection(key, col_op)
         elif kind == "int64_list":
           # NOTE(opensource): This force conversion is to work around the fact
@@ -534,13 +544,13 @@ def import_scoped_meta_graph(meta_graph_or_file,
         else:
           for value in field.value:
             graph.add_to_collection(
-                key, ops.prepend_name_scope(value, import_scope))
+                key, ops.prepend_name_scope(value, scope_to_prepend_to_names))
 
     var_list = {}
     variables = graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
-                                     scope=import_scope)
+                                     scope=scope_to_prepend_to_names)
     for v in variables:
-      var_list[ops.strip_name_scope(v.name, import_scope)] = v
+      var_list[ops.strip_name_scope(v.name, scope_to_prepend_to_names)] = v
 
   return var_list
 

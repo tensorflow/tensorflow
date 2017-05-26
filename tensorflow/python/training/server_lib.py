@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
@@ -276,14 +277,14 @@ class ClusterSpec(object):
                           "from integers to strings." % job_name)
         self._cluster_spec[job_name] = job_tasks
       self._make_cluster_def()
-    elif isinstance(cluster, tensorflow_server_pb2.ClusterDef):
+    elif isinstance(cluster, cluster_pb2.ClusterDef):
       self._cluster_def = cluster
       self._cluster_spec = {}
       for job_def in self._cluster_def.job:
         self._cluster_spec[job_def.name] = {
             i: t for i, t in job_def.tasks.items()}
     elif isinstance(cluster, ClusterSpec):
-      self._cluster_def = tensorflow_server_pb2.ClusterDef()
+      self._cluster_def = cluster_pb2.ClusterDef()
       self._cluster_def.MergeFrom(cluster.as_cluster_def())
       self._cluster_spec = {}
       for job_def in self._cluster_def.job:
@@ -440,7 +441,7 @@ class ClusterSpec(object):
       TypeError: If `cluster_spec` is not a dictionary mapping strings to lists
         of strings.
     """
-    self._cluster_def = tensorflow_server_pb2.ClusterDef()
+    self._cluster_def = cluster_pb2.ClusterDef()
 
     # NOTE(mrry): Sort by job_name to produce deterministic protobufs.
     for job_name, tasks in sorted(self._cluster_spec.items()):

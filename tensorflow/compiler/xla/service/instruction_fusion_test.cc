@@ -15,7 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
 
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+
+namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
 
@@ -60,7 +63,7 @@ TEST_F(InstructionFusionTest,
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())
           .ValueOrDie());
-  EXPECT_EQ(HloOpcode::kFusion, computation->root_instruction()->opcode());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest,
@@ -80,7 +83,7 @@ TEST_F(InstructionFusionTest,
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())
           .ValueOrDie());
-  EXPECT_EQ(HloOpcode::kFusion, computation->root_instruction()->opcode());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest,
@@ -100,7 +103,7 @@ TEST_F(InstructionFusionTest,
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())
           .ValueOrDie());
-  EXPECT_EQ(HloOpcode::kFusion, computation->root_instruction()->opcode());
+  EXPECT_THAT(computation->root_instruction(), op::Fusion());
 }
 
 TEST_F(InstructionFusionTest, PotentialBitcastReshapeOfParameterUnfused) {
@@ -145,6 +148,25 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfParameterUnfused) {
   auto module = MakeUnique<HloModule>(TestName());
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(transpose1, computation->root_instruction());
+  EXPECT_FALSE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie());
+}
+
+TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusable) {
+  HloComputation::Builder builder(TestName());
+  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {16, 16}), "0"));
+  HloInstruction* unary1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kFloor, param0));
+  builder.AddInstruction(HloInstruction::CreateSend(unary1, 0));
+  HloInstruction* unary2 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShape(S32, {}), HloOpcode::kAbs, unary1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(unary2, computation->root_instruction());
   EXPECT_FALSE(
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())

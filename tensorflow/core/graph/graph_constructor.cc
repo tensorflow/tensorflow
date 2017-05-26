@@ -424,7 +424,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
   // For nodes with the _output_shapes atttribute, override the shape.
   std::vector<TensorShapeProto> shape_attrs;
   const char* kAttrName = "_output_shapes";
-  if (!GetNodeAttr(node->def(), kAttrName, &shape_attrs).ok()) {
+  if (!GetNodeAttr(node->attrs(), kAttrName, &shape_attrs).ok()) {
     // No _output_shapes attribute, the AddNode call above was sufficient.
     return Status::OK();
   }
@@ -458,7 +458,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
       // functions that are not critical to correct execution but
       // would cause graphs to fail if imported after correcting.
       //
-      const string& op = node->def().op();
+      const string& op = node->type_string();
       const std::vector<string> whitelist = {
           // To be removed after 2017/03/08.
           "RandomShuffleQueue", "PaddingFIFOQueue", "FIFOQueue",
@@ -839,11 +839,6 @@ Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
 Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
                       Graph* g, ShapeRefiner* refiner,
                       std::vector<std::pair<Node*, int>>* return_tensors) {
-  ShapeRefiner default_refiner(gdef.versions().producer(), g->op_registry());
-  if (refiner == nullptr) {
-    refiner = &default_refiner;
-  }
-
   if (!opts.return_tensors.empty()) {
     if (return_tensors == nullptr) {
       return errors::InvalidArgument(
@@ -857,6 +852,36 @@ Status ImportGraphDef(const ImportGraphDefOptions& opts, const GraphDef& gdef,
           return_tensors->size(), ")");
     }
   }
+
+  ShapeRefiner default_refiner(gdef.versions().producer(), g->op_registry());
+  if (refiner == nullptr) {
+    refiner = &default_refiner;
+  } else {
+    // Log a warning if we are importing a GraphDef at an older
+    // producer version after already having added non-source/sink
+    // nodes to the graph in the past.
+    if (gdef.versions().producer() > 0 &&
+        gdef.versions().producer() < refiner->graph_def_version() &&
+        g->num_nodes() > 2) {
+      LOG(WARNING) << "Importing a graph with a lower producer version "
+                   << gdef.versions().producer()
+                   << " into an existing graph with producer version "
+                   << refiner->graph_def_version() << ". Shape inference will "
+                   << "have run different parts of the graph with different "
+                   << "producer versions.";
+    }
+  }
+
+  // Set the graph def version of the refiner as the min of the
+  // current value and the version from the graph we are about to
+  // import.
+  //
+  // Note: to match Run() semantics, we should re-run shape inference
+  // on the entire graph if the producer version has changed.  For now
+  // we log the warning above.
+  refiner->set_graph_def_version(
+      std::min(refiner->graph_def_version(), gdef.versions().producer()));
+
   return GraphConstructor::Construct(opts, &gdef, g, refiner, return_tensors);
 }
 
@@ -873,9 +898,7 @@ void CopyGraph(const Graph& src, Graph* dest) {
       node_map;  // "Node in src" -> "Node in *dest"
   node_map[src.source_node()] = dest->source_node();
   node_map[src.sink_node()] = dest->sink_node();
-  for (Node* n : src.nodes()) {
-    if (n->IsSource() || n->IsSink()) continue;
-    CHECK(n->IsOp());
+  for (Node* n : src.op_nodes()) {
     node_map[n] = dest->CopyNode(n);
   }
 

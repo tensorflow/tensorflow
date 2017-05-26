@@ -42,6 +42,7 @@ from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import gc
 from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
+from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.platform import gfile
@@ -308,7 +309,7 @@ def get_most_recent_export(export_dir_base):
                      directories.
 
   Returns:
-    A gc.Path, whith is just a namedtuple of (path, export_version).
+    A gc.Path, with is just a namedtuple of (path, export_version).
   """
   select_filter = gc.largest_export_versions(1)
   results = select_filter(gc.get_paths(export_dir_base,
@@ -352,7 +353,8 @@ def make_export_strategy(serving_input_fn,
       `InputFnOps`.
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
-      Not needed for single-headed models.
+      Must be `None` if the estimator inherits from ${tf.estimator.Estimator}
+      or for single-headed models.
     assets_extra: A dict specifying how to populate the assets.extra directory
       within the exported SavedModel.  Each key should give the destination
       path (including the filename) relative to the assets.extra directory.
@@ -384,14 +386,30 @@ def make_export_strategy(serving_input_fn,
 
     Returns:
       The string path to the exported directory.
+
+    Raises:
+      ValueError: If `estimator` is a ${tf.estimator.Estimator} instance
+        and `default_output_alternative_key` was specified.
     """
-    export_result = estimator.export_savedmodel(
-        export_dir_base,
-        serving_input_fn,
-        default_output_alternative_key=default_output_alternative_key,
-        assets_extra=assets_extra,
-        as_text=as_text,
-        checkpoint_path=checkpoint_path)
+    if isinstance(estimator, core_estimator.Estimator):
+      if default_output_alternative_key is not None:
+        raise ValueError(
+            'default_output_alternative_key is not supported in core '
+            'Estimator. Given: {}'.format(default_output_alternative_key))
+      export_result = estimator.export_savedmodel(
+          export_dir_base,
+          serving_input_fn,
+          assets_extra=assets_extra,
+          as_text=as_text,
+          checkpoint_path=checkpoint_path)
+    else:
+      export_result = estimator.export_savedmodel(
+          export_dir_base,
+          serving_input_fn,
+          default_output_alternative_key=default_output_alternative_key,
+          assets_extra=assets_extra,
+          as_text=as_text,
+          checkpoint_path=checkpoint_path)
 
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result

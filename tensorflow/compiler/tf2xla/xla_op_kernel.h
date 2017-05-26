@@ -110,6 +110,9 @@ class XlaOpKernelContext {
   // Converts a constant 1D int32 or int64 tensor into a vector of int64s.
   Status ConstantInputAsIntVector(int index, std::vector<int64>* out);
 
+  // Converts a constant int32 or int64 Tensor into an xla int64 Literal.
+  Status ConstantInputAsInt64Literal(int index, xla::Literal* out);
+
   // Converts a constant 1D int32 or int64 tensor into a TensorShape.
   Status ConstantInputAsShape(int index, TensorShape* shape);
 
@@ -183,10 +186,9 @@ class XlaOpKernelContext {
   // Returns the underlying OpKernelContext. Use rarely.
   OpKernelContext* op_kernel_context() const { return context_; }
 
-  // Returns the options passed to the XlaCompiler that is being
-  // run. Used for, e.g., While to inherit options needed for nested
-  // computation.
-  const XlaCompiler::Options& GetCompilerOptions() const;
+  // Returns the XlaCompiler that is performing the compilation. Used for, e.g.,
+  // While to compile nested computations.
+  XlaCompiler* compiler() const;
 
   // TODO(phawkins): find a better home for these helpers.
 

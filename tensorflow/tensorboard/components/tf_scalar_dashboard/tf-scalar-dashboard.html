@@ -190,11 +190,16 @@ contains vz-line-charts embedded inside tf-panes-helper's.
   </template>
 
   <script>
-    Polymer({
+    TF.Dashboard.TfScalarDashboard = Polymer({
       is: "tf-scalar-dashboard",
+      factoryImpl: function(backend, router) {
+        this.backend = backend;
+        this.router = router;
+      },
       behaviors: [
+        TF.Dashboard.DashboardBehavior("scalars"),
         TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
-        TF.Backend.Behavior,
+        TF.Backend.BackendBehavior,
       ],
       properties: {
         backend: Object,
@@ -240,7 +245,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         });
       },
       _getScalarUrl: function() {
-        return this.router.scalars;
+        return this.router.pluginRunTagRoute('scalars', '/scalars');
       },
       _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
           '_showDownloadLinks', /*default=*/ false, /*useLocalStorage=*/ true),

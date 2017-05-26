@@ -24,7 +24,6 @@ from __future__ import print_function
 
 import csv
 import imghdr
-import mimetypes
 import os
 import re
 import threading
@@ -43,9 +42,6 @@ from tensorflow.tensorboard.backend import http_util
 from tensorflow.tensorboard.backend import process_graph
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
-from tensorflow.tensorboard.plugins.debugger import debugger_plugin
-from tensorflow.tensorboard.plugins.projector import projector_plugin
-from tensorflow.tensorboard.plugins.text import text_plugin
 
 
 DEFAULT_SIZE_GUIDANCE = {
@@ -57,11 +53,20 @@ DEFAULT_SIZE_GUIDANCE = {
     event_accumulator.HISTOGRAMS: 50,
 }
 
+# The following types of data shouldn't be shown in the output of the
+# /data/runs route, because they're now handled by independent plugins
+# (e.g., the content at the 'scalars' key should now be fetched from
+# /data/plugin/scalars/runs).
+#
+# Once everything has been migrated, we should be able to delete
+# /data/runs entirely.
+_MIGRATED_DATA_KEYS = frozenset(('scalars',))
+
 DATA_PREFIX = '/data'
 LOGDIR_ROUTE = '/logdir'
 RUNS_ROUTE = '/runs'
 PLUGIN_PREFIX = '/plugin'
-SCALARS_ROUTE = '/' + event_accumulator.SCALARS
+PLUGINS_LISTING_ROUTE = '/plugins_listing'
 IMAGES_ROUTE = '/' + event_accumulator.IMAGES
 AUDIO_ROUTE = '/' + event_accumulator.AUDIO
 HISTOGRAMS_ROUTE = '/' + event_accumulator.HISTOGRAMS
@@ -80,6 +85,11 @@ _IMGHDR_TO_MIMETYPE = {
 }
 _DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
 
+# Slashes in a plugin name could throw the router for a loop. An empty
+# name would be confusing, too. To be safe, let's restrict the valid
+# names as follows.
+_VALID_PLUGIN_RE = re.compile(r'^[A-Za-z0-9_.-]+$')
+
 
 def _content_type_for_image(encoded_image_string):
   image_type = imghdr.what(None, encoded_image_string)
@@ -96,17 +106,26 @@ class _OutputFormat(object):
   CSV = 'csv'
 
 
-def standard_tensorboard_wsgi(logdir, purge_orphaned_data, reload_interval):
-  """Construct a TensorBoardWSGIApp with standard plugins and multiplexer."""
+def standard_tensorboard_wsgi(
+    logdir,
+    purge_orphaned_data,
+    reload_interval,
+    plugins):
+  """Construct a TensorBoardWSGIApp with standard plugins and multiplexer.
+
+  Args:
+    logdir: The path to the directory containing events files.
+    purge_orphaned_data: Whether to purge orphaned data.
+    reload_interval: The interval at which the backend reloads more data in
+        seconds.
+    plugins: A list of plugins for TensorBoard to initialize.
+
+  Returns:
+    The new TensorBoard WSGI application.
+  """
   multiplexer = event_multiplexer.EventMultiplexer(
       size_guidance=DEFAULT_SIZE_GUIDANCE,
       purge_orphaned_data=purge_orphaned_data)
-
-  plugins = [
-      debugger_plugin.DebuggerPlugin(),
-      projector_plugin.ProjectorPlugin(),
-      text_plugin.TextPlugin(),
-  ]
 
   return TensorBoardWSGIApp(logdir, plugins, multiplexer, reload_interval)
 
@@ -137,7 +156,11 @@ class TensorBoardWSGIApp(object):
 
     Raises:
       ValueError: If some plugin has no plugin_name
+      ValueError: If some plugin has an invalid plugin_name (plugin
+          names must only contain [A-Za-z0-9_.-])
       ValueError: If two plugins have the same plugin_name
+      ValueError: If some plugin handles a route that does not start
+          with a slash
     """
     self._logdir = logdir
     self._plugins = plugins
@@ -152,30 +175,30 @@ class TensorBoardWSGIApp(object):
       reload_multiplexer(self._multiplexer, path_to_run)
 
     self.data_applications = {
-        DATA_PREFIX + LOGDIR_ROUTE:
-            self._serve_logdir,
-        DATA_PREFIX + SCALARS_ROUTE:
-            self._serve_scalars,
-        DATA_PREFIX + GRAPH_ROUTE:
-            self._serve_graph,
-        DATA_PREFIX + RUN_METADATA_ROUTE:
-            self._serve_run_metadata,
-        DATA_PREFIX + HISTOGRAMS_ROUTE:
-            self._serve_histograms,
-        DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
-            self._serve_compressed_histograms,
-        DATA_PREFIX + IMAGES_ROUTE:
-            self._serve_images,
-        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE:
-            self._serve_image,
         DATA_PREFIX + AUDIO_ROUTE:
             self._serve_audio,
+        DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
+            self._serve_compressed_histograms,
+        DATA_PREFIX + GRAPH_ROUTE:
+            self._serve_graph,
+        DATA_PREFIX + HISTOGRAMS_ROUTE:
+            self._serve_histograms,
+        DATA_PREFIX + IMAGES_ROUTE:
+            self._serve_images,
         DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE:
             self._serve_individual_audio,
+        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE:
+            self._serve_image,
+        DATA_PREFIX + LOGDIR_ROUTE:
+            self._serve_logdir,
+        # TODO(chizeng): Delete this RPC once we have skylark rules that obviate
+        # the need for the frontend to determine which plugins are active.
+        DATA_PREFIX + PLUGINS_LISTING_ROUTE:
+            self._serve_plugins_listing,
+        DATA_PREFIX + RUN_METADATA_ROUTE:
+            self._serve_run_metadata,
         DATA_PREFIX + RUNS_ROUTE:
             self._serve_runs,
-        '/app.js':
-            self._serve_js
     }
 
     # Serve the routes from the registered plugins using their name as the route
@@ -185,6 +208,9 @@ class TensorBoardWSGIApp(object):
     for plugin in self._plugins:
       if plugin.plugin_name is None:
         raise ValueError('Plugin %s has no plugin_name' % plugin)
+      if not _VALID_PLUGIN_RE.match(plugin.plugin_name):
+        raise ValueError('Plugin %s has invalid name %r' % (plugin,
+                                                            plugin.plugin_name))
       if plugin.plugin_name in plugin_names_encountered:
         raise ValueError('Duplicate plugins for name %s' % plugin.plugin_name)
       plugin_names_encountered.add(plugin.plugin_name)
@@ -196,6 +222,10 @@ class TensorBoardWSGIApp(object):
                         str(e))
         continue
       for route, app in plugin_apps.items():
+        if not route.startswith('/'):
+          raise ValueError('Plugin named %r handles invalid route %r: '
+                           'route does not start with a slash' %
+                           (plugin.plugin_name, route))
         path = DATA_PREFIX + PLUGIN_PREFIX + '/' + plugin.plugin_name + route
         self.data_applications[path] = app
 
@@ -271,23 +301,6 @@ class TensorBoardWSGIApp(object):
     """Respond with a JSON object containing this TensorBoard's logdir."""
     return http_util.Respond(
         request, {'logdir': self._logdir}, 'application/json')
-
-  @wrappers.Request.application
-  def _serve_scalars(self, request):
-    """Given a tag and single run, return array of ScalarEvents."""
-    # TODO(cassandrax): return HTTP status code for malformed requests
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-    values = self._multiplexer.Scalars(run, tag)
-
-    if request.args.get('format') == _OutputFormat.CSV:
-      string_io = StringIO()
-      writer = csv.writer(string_io)
-      writer.writerow(['Wall time', 'Step', 'Value'])
-      writer.writerows(values)
-      return http_util.Respond(request, string_io.getvalue(), 'text/csv')
-    else:
-      return http_util.Respond(request, values, 'application/json')
 
   @wrappers.Request.application
   def _serve_graph(self, request):
@@ -489,6 +502,21 @@ class TensorBoardWSGIApp(object):
     return query_string
 
   @wrappers.Request.application
+  def _serve_plugins_listing(self, request):
+    """Serves an object mapping plugin name to whether it is enabled.
+
+    Args:
+      request: The werkzeug.Request object.
+
+    Returns:
+      A werkzeug.Response object.
+    """
+    return http_util.Respond(
+        request,
+        {plugin.plugin_name: plugin.is_active() for plugin in self._plugins},
+        'application/json')
+
+  @wrappers.Request.application
   def _serve_runs(self, request):
     """WSGI app serving a JSON object about runs and tags.
 
@@ -501,12 +529,14 @@ class TensorBoardWSGIApp(object):
       A werkzeug Response with the following content:
       {runName: {images: [tag1, tag2, tag3],
                  audio: [tag4, tag5, tag6],
-                 scalars: [tagA, tagB, tagC],
                  histograms: [tagX, tagY, tagZ],
                  firstEventTimestamp: 123456.789}}
     """
     runs = self._multiplexer.Runs()
     for run_name, run_data in runs.items():
+      for key in _MIGRATED_DATA_KEYS:
+        if key in run_data:
+          del run_data[key]
       try:
         run_data['firstEventTimestamp'] = self._multiplexer.FirstEventTimestamp(
             run_name)
@@ -519,59 +549,9 @@ class TensorBoardWSGIApp(object):
   @wrappers.Request.application
   def _serve_index(self, request):
     """Serves the index page (i.e., the tensorboard app itself)."""
-    return self._serve_static_file(request, '/dist/index.html')
-
-  @wrappers.Request.application
-  def _serve_js(self, request):
-    """Serves the JavaScript for the index page."""
-    return self._serve_static_file(request, '/dist/app.js')
-
-  def _serve_static_file(self, request, path):
-    """Serves the static file located at the given path.
-
-    Args:
-      request: A werkzeug Request
-      path: The path of the static file, relative to the tensorboard/ directory.
-
-    Returns:
-      A werkzeug.Response application.
-    """
-    # Strip off the leading forward slash.
-    orig_path = path.lstrip('/')
-    if not self._path_is_safe(orig_path):
-      logging.warning('path not safe: %s', orig_path)
-      return http_util.Respond(request, 'Naughty naughty!', 'text/plain', 400)
-      # Resource loader wants a path relative to //WORKSPACE/tensorflow.
-    path = os.path.join('tensorboard', orig_path)
-    # Open the file and read it.
-    try:
-      contents = resource_loader.load_resource(path)
-    except IOError:
-      # For compatibility with latest version of Bazel, we renamed bower
-      # packages to use '_' rather than '-' in their package name.
-      # This means that the directory structure is changed too.
-      # So that all our recursive imports work, we need to modify incoming
-      # requests to map onto the new directory structure.
-      path = orig_path
-      components = path.split('/')
-      components[0] = components[0].replace('-', '_')
-      path = ('/').join(components)
-      # Bazel keeps all the external dependencies in //WORKSPACE/external.
-      # and resource loader wants a path relative to //WORKSPACE/tensorflow/.
-      path = os.path.join('../external', path)
-      try:
-        contents = resource_loader.load_resource(path)
-      except IOError:
-        logging.warning('path %s not found, sending 404', path)
-        return http_util.Respond(request, 'Not found', 'text/plain', code=404)
-    mimetype, content_encoding = mimetypes.guess_type(path)
-    mimetype = mimetype or 'application/octet-stream'
-    return http_util.Respond(
-        request,
-        contents,
-        mimetype,
-        expires=3600,
-        content_encoding=content_encoding)
+    contents = resource_loader.load_resource(
+        'tensorboard/components/index.html')
+    return http_util.Respond(request, contents, 'text/html', expires=3600)
 
   def __call__(self, environ, start_response):  # pylint: disable=invalid-name
     """Central entry point for the TensorBoard application.
@@ -602,8 +582,9 @@ class TensorBoardWSGIApp(object):
     elif clean_path in TAB_ROUTES:
       return self._serve_index(environ, start_response)
     else:
-      return self._serve_static_file(request, clean_path)(environ,
-                                                          start_response)
+      logging.warning('path %s not found, sending 404', clean_path)
+      return http_util.Respond(request, 'Not found', 'text/plain', code=404)(
+          environ, start_response)
     # pylint: enable=too-many-function-args
 
 

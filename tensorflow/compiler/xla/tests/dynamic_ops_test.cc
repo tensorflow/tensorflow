@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
+#include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -108,7 +109,7 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT>
   void RunR1(const std::vector<float>& input_values,
              const std::vector<IndexT> slice_starts,
-             const std::vector<int64> slice_sizes,
+             const std::vector<int64>& slice_sizes,
              const std::vector<float>& expected_values) {
     ComputationBuilder builder(client_, TestName());
     // Initialize and transfer dynamic slice start indices parameter.
@@ -126,7 +127,7 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT>
   void RunR2(const Array2D<float>& input_values,
              const std::vector<IndexT> slice_starts,
-             const std::vector<int64> slice_sizes,
+             const std::vector<int64>& slice_sizes,
              const Array2D<float>& expected_values) {
     ComputationBuilder builder(client_, TestName());
     // Initialize and transfer dynamic slice start indices parameter.
@@ -144,7 +145,7 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT>
   void RunR3(const Array3D<float>& input_values,
              const std::vector<IndexT> slice_starts,
-             const std::vector<int64> slice_sizes,
+             const std::vector<int64>& slice_sizes,
              const Array3D<float>& expected_values) {
     ComputationBuilder builder(client_, TestName());
     // Initialize and transfer dynamic slice start indices parameter.

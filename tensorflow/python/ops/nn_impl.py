@@ -301,9 +301,8 @@ def zero_fraction(value, name=None):
   This is useful in summaries to measure and report sparsity.  For example,
 
   ```python
-      z = tf.Relu(...)
-      summ = tf.contrib.deprecated.scalar_summary('sparsity',
-      tf.nn.zero_fraction(z))
+      z = tf.nn.relu(...)
+      summ = tf.summary.scalar('sparsity', tf.nn.zero_fraction(z))
   ```
 
   Args:
@@ -449,10 +448,6 @@ def separable_conv2d(input,
     A 4-D `Tensor` with shape according to 'data_format'. For
       example, with data_format="NHWC", shape is [batch, out_height,
       out_width, out_channels].
-
-  Raises:
-    ValueError: If channel_multiplier * in_channels > out_channels,
-      which means that the separable convolution is overparameterized.
   """
   with ops.name_scope(name, "separable_conv2d",
                       [input, depthwise_filter, pointwise_filter]) as name:
@@ -466,25 +461,8 @@ def separable_conv2d(input,
     pointwise_filter_shape[0].assert_is_compatible_with(1)
     pointwise_filter_shape[1].assert_is_compatible_with(1)
 
-    channel_multiplier = depthwise_filter.get_shape().with_rank(4)[3]
-    if data_format and data_format == "NCHW":
-      in_channels = input.get_shape().with_rank(4)[1]
-    else:
-      in_channels = input.get_shape().with_rank(4)[3]
-
-    out_channels = pointwise_filter_shape[3]
-
     if rate is None:
       rate = [1, 1]
-
-    # If any of channel numbers is unknown, then the comparison below returns
-    # None. See TensorShape.__gt__().
-    if channel_multiplier * in_channels > out_channels:
-      raise ValueError("Refusing to perform an overparameterized separable "
-                       "convolution: channel_multiplier * in_channels = "
-                       "%d * %d = %d > %d = out_channels" %
-                       (channel_multiplier, in_channels,
-                        channel_multiplier * in_channels, out_channels))
 
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
@@ -639,18 +617,22 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
           math_ops.reduce_mean(y, axes, keep_dims=True))
     else:
       shift = math_ops.cast(shift, y.dtype)
-    counts, m_ss, v_ss, shift = sufficient_statistics(
-        y, axes, shift=shift, keep_dims=keep_dims, name=name)
-    # Reshape shift as needed.
-    shift = array_ops.reshape(shift, array_ops.shape(m_ss))
-    shift.set_shape(m_ss.get_shape())
-    with ops.control_dependencies([counts, m_ss, v_ss]):
-      mean, variance = normalize_moments(counts, m_ss, v_ss, shift, name=name)
-      if x.dtype == dtypes.float16:
-        return (math_ops.cast(mean, dtypes.float16),
-                math_ops.cast(variance, dtypes.float16))
-      else:
-        return (mean, variance)
+    shifted_mean = math_ops.reduce_mean(
+        math_ops.subtract(y, shift), axes, keep_dims=True, name="shifted_mean")
+    variance = math_ops.subtract(
+        math_ops.reduce_mean(
+            math_ops.squared_difference(y, shift), axes, keep_dims=True),
+        math_ops.square(shifted_mean),
+        name="variance")
+    mean = math_ops.add(shifted_mean, shift, name="mean")
+    if not keep_dims:
+      mean = array_ops.squeeze(mean, axes)
+      variance = array_ops.squeeze(variance, axes)
+    if x.dtype == dtypes.float16:
+      return (math_ops.cast(mean, dtypes.float16), math_ops.cast(
+          variance, dtypes.float16))
+    else:
+      return (mean, variance)
 
 
 def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
@@ -920,7 +902,8 @@ def _compute_sampled_logits(weights,
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
         objects whose concatenation along dimension 0 has shape
         `[num_classes, dim]`.  The (possibly-partitioned) class embeddings.
-    biases: A `Tensor` of shape `[num_classes]`.  The class biases.
+    biases: A `Tensor` of shape `[num_classes]`.  The (possibly-partitioned)
+        class biases.
     labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
         the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
@@ -985,7 +968,8 @@ def _compute_sampled_logits(weights,
     # weights shape is [num_classes, dim]
     all_w = embedding_ops.embedding_lookup(
         weights, all_ids, partition_strategy=partition_strategy)
-    all_b = embedding_ops.embedding_lookup(biases, all_ids)
+    all_b = embedding_ops.embedding_lookup(
+        biases, all_ids, partition_strategy=partition_strategy)
     # true_w shape is [batch_size * num_true, dim]
     # true_b is a [batch_size * num_true] tensor
     true_w = array_ops.slice(

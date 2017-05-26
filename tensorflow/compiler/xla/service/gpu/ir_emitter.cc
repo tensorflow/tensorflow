@@ -57,7 +57,8 @@ IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
                 &ir_emitter_context->buffer_assignment(), &ir_builder_,
                 is_nested),
       hlo_module_config_(hlo_module_config) {
-  ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(hlo_module_config));
+  ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(
+      /*fast_math_enabled=*/!hlo_module_config.fast_math_disabled()));
 }
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {
@@ -399,7 +400,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot,
   llvm::Type* accum_type = target_array.GetElementLlvmType();
   llvm::Value* accum_address = llvm_ir::EmitAllocaAtFunctionEntry(
       accum_type,       // The pointee type of the alloca instruction.
-      "accum_address",  // The name of the alloca instuction.
+      "accum_address",  // The name of the alloca instruction.
       &ir_builder_);
 
   // Initialize the accumulator in the preheader to zero.
@@ -549,14 +550,12 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   return EmitTargetElementLoop(*fusion, fused_emitter.GetRootGenerator());
 }
 
-Status IrEmitter::HandleCall(
-    HloInstruction* call, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* computation) {
+Status IrEmitter::HandleCall(HloInstruction* call) {
   std::vector<llvm::Value*> operand_addresses;
-  for (HloInstruction* operand : operands) {
+  for (HloInstruction* operand : call->operands()) {
     operand_addresses.push_back(GetBasePointer(*operand));
   }
-  return EmitCallToNestedComputation(*computation, operand_addresses,
+  return EmitCallToNestedComputation(*call->to_apply(), operand_addresses,
                                      GetBasePointer(*call));
 }
 

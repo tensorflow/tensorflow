@@ -45,7 +45,7 @@ enum JPEGErrors {
   JPEGERRORS_BAD_PARAM
 };
 
-// Prevent bad compiler behaviour in ASAN mode by wrapping most of the
+// Prevent bad compiler behavior in ASAN mode by wrapping most of the
 // arguments in a struct struct.
 class FewerArgsForCompiler {
  public:
@@ -337,7 +337,8 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
 uint8* Uncompress(const void* srcdata, int datasize,
                   const UncompressFlags& flags, int64* nwarn,
                   std::function<uint8*(int, int, int)> allocate_output) {
-  FewerArgsForCompiler argball(datasize, flags, nwarn, allocate_output);
+  FewerArgsForCompiler argball(datasize, flags, nwarn,
+                               std::move(allocate_output));
   uint8* const dstdata = UncompressLow(srcdata, &argball);
 
   const float fraction_read =

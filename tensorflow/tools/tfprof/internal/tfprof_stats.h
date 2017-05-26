@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_code.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_graph.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_node.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
@@ -56,7 +57,8 @@ class TFStats {
 
   // Prints the results to stdout. Also returns the printed output in
   // a proto.
-  const TFProfNode& PrintGraph(const string& cmd, const Options& opts);
+  const TFGraphNodeProto& PrintGraph(const string& cmd, const Options& opts);
+  const TFCodeNodeProto& PrintCode(const Options& opts);
 
  private:
   void ParseGraph();
@@ -67,13 +69,16 @@ class TFStats {
 
   std::unique_ptr<TFScope> scope_view_;
   std::unique_ptr<TFGraph> graph_view_;
+  std::unique_ptr<TFCode> code_view_;
   std::unique_ptr<GraphDef> graph_;
   std::unique_ptr<RunMetadata> run_meta_;
   std::unique_ptr<OpLog> op_log_;
   std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader_;
-  // Store TFNode instead of TFNode* to avoid large number of dynamic alloc.
-  std::map<string, TFNode> nodes_map_;
-  TFProfNode empty_node_;
+  // Store TFGraphNode instead of TFGraphNode* to avoid large number of
+  // dynamic alloc.
+  std::map<string, TFGraphNode> nodes_map_;
+  TFGraphNodeProto empty_graph_node_;
+  TFCodeNodeProto empty_code_node_;
 };
 
 }  // namespace tfprof

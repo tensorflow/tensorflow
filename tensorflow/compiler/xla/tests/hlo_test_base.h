@@ -65,7 +65,7 @@ class HloTestBase : public ::testing::Test {
   perftools::gputools::DeviceMemoryBase TransferToDevice(
       const Literal& literal);
 
-  // Transfers the array refered to by the given handle from the device and
+  // Transfers the array referred to by the given handle from the device and
   // returns as a Literal.
   std::unique_ptr<Literal> TransferFromDevice(
       const Shape& shape, perftools::gputools::DeviceMemoryBase device_base);
@@ -83,28 +83,6 @@ class HloTestBase : public ::testing::Test {
       std::unique_ptr<HloModuleConfig> module_config,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments);
-
-  // Helpers for comparing ordered and unordered equality of HloInstruction
-  // containers.
-  void ExpectEqOrdered(
-      tensorflow::gtl::ArraySlice<const HloInstruction*> actual,
-      tensorflow::gtl::ArraySlice<const HloInstruction*> expected) {
-    std::vector<const HloInstruction*> expected_vec(expected.begin(),
-                                                    expected.end());
-    std::vector<const HloInstruction*> actual_vec(actual.begin(), actual.end());
-    EXPECT_TRUE(testing::VectorMatcher<const HloInstruction*>(expected_vec)(
-        actual_vec));
-  }
-
-  void ExpectEqUnordered(
-      tensorflow::gtl::ArraySlice<const HloInstruction*> actual,
-      tensorflow::gtl::ArraySlice<const HloInstruction*> expected) {
-    std::vector<const HloInstruction*> expected_vec(expected.begin(),
-                                                    expected.end());
-    std::vector<const HloInstruction*> actual_vec(actual.begin(), actual.end());
-    EXPECT_TRUE(testing::UnorderedElementsAre<const HloInstruction*>(
-        expected_vec)(actual_vec));
-  }
 
   string TestName() const;
 

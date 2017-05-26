@@ -137,10 +137,10 @@ For example this code runs the summary op every 100 steps in the training loop:
       if sv.should_stop():
         break
       if step % 100 == 0:
-        _, summ = session.run([my_train_op, my_summary_op])
+        _, summ = sess.run([my_train_op, my_summary_op])
         sv.summary_computed(sess, summ)
       else:
-        session.run(my_train_op)
+        sess.run(my_train_op)
 ```
 
 ## Pre-trained Model Scenario
@@ -362,8 +362,8 @@ following keyword arguments to the `Supervisor()` constructor:
    If not specified, the supervisor uses the first op in the
    `tf.GraphKeys.LOCAL_INIT_OP` collection.  If the collection is empty the
    supervisor adds an op to initialize all the tables and local variables in
-   the graph by calling `tf.initialize_all_tables()` and
-   `tf.initialize_all_local_variables()`.
+   the graph by calling `tf.tables_initializer()` and
+   `tf.local_variables_initializer()`.
 
    Pass `None` to not use a local init op.
 

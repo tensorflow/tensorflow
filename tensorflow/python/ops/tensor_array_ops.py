@@ -22,30 +22,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
-
-
-def _maybe_set_device(handle_op, value_t):
-  # NOTE(ebrevdo): Do not try this at home, kids
-  # _______________________________________________
-  # | I WILL NOT ACCESS PRIVATE METHODS ^^^^^^^^\ |
-  # | I WILL NOT ACCESS PRIVATE METHODS |       | |
-  # | I WILL NOT ACCESS PRIVATE METHODS |_ __   | |
-  # | I WILL NOT ACCESS PRIVATE METHODS (.(. )  | |
-  # | I WILL NOT ACCESS PRIVATE         (_      ) |
-  # |                           \\      /___/' /  |
-  # |                           _\\_      \    |  |
-  # |                          ((   )     /====|  |
-  # |                           \  <.__._-      \ |
-  # |___________________________ <//___.         ||
-  #
-  if not handle_op.device and value_t.device:
-    handle_op._set_device(value_t.device)  # pylint: disable=protected-access
+from tensorflow.python.util import tf_should_use
 
 
 # TensorArray object accesses many of the hidden generated ops, but is
@@ -131,6 +116,12 @@ class TensorArray(object):
     dynamic_size = dynamic_size or False
 
     self._dtype = dtype
+
+    # Used to keep track of what tensors the TensorArray should be
+    # colocated with.  We choose to colocate the TensorArray with the
+    # first tensor written to it.
+    self._colocate_with = []
+
     # Record the current static shape for the array elements. The element
     # shape is defined either by `element_shape` or the shape of the tensor
     # of the first write. If `infer_shape` is true, all writes checks for
@@ -196,6 +187,24 @@ class TensorArray(object):
     else:
       self._element_shape.append(shape)
 
+  @contextlib.contextmanager
+  def _maybe_colocate_with(self, value):
+    """Colocate operations with an internal colocation group or `value`.
+
+    Args:
+      value: `Tensor`, the tensor to try to colocate with.
+
+    Yields:
+      Does not yield anything, but the new context is a colocation context.
+
+    If no internal colocation group is set, colocate with `value` and set
+    the internal colocation group to be value.
+    """
+    if not self._colocate_with:
+      self._colocate_with.append(value)
+    with ops.colocate_with(self._colocate_with[0]):
+      yield
+
   def identity(self):
     """Returns a TensorArray with the same content and properties.
 
@@ -208,6 +217,7 @@ class TensorArray(object):
     ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow,
                      infer_shape=self._infer_shape)
     ta._element_shape = self._element_shape
+    ta._colocate_with = self._colocate_with
     return ta
 
   def grad(self, source, flow=None, name=None):
@@ -241,17 +251,17 @@ class TensorArray(object):
     Returns:
       The tensor at index `index`.
     """
-    with ops.colocate_with(self._handle):
-      value = gen_data_flow_ops._tensor_array_read_v3(
-          handle=self._handle,
-          index=index,
-          flow_in=self._flow,
-          dtype=self._dtype,
-          name=name)
-      if self._element_shape:
-        value.set_shape(self._element_shape[0].dims)
-      return value
+    value = gen_data_flow_ops._tensor_array_read_v3(
+        handle=self._handle,
+        index=index,
+        flow_in=self._flow,
+        dtype=self._dtype,
+        name=name)
+    if self._element_shape:
+      value.set_shape(self._element_shape[0].dims)
+    return value
 
+  @tf_should_use.should_use_result
   def write(self, index, value, name=None):
     """Write `value` into index `index` of the TensorArray.
 
@@ -269,8 +279,7 @@ class TensorArray(object):
     """
     with ops.name_scope(name, "TensorArrayWrite", [self._handle, index, value]):
       value = ops.convert_to_tensor(value, name="value")
-      _maybe_set_device(self._handle.op, value)
-      with ops.colocate_with(self._handle):
+      with self._maybe_colocate_with(value):
         flow_out = gen_data_flow_ops._tensor_array_write_v3(
             handle=self._handle,
             index=index,
@@ -280,6 +289,7 @@ class TensorArray(object):
       ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow_out)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
+      ta._colocate_with = self._colocate_with
       if ta._infer_shape:
         ta._merge_element_shape(value.get_shape())
       return ta
@@ -314,21 +324,20 @@ class TensorArray(object):
     Returns:
       The in the `TensorArray` selected by `indices`, packed into one tensor.
     """
-    with ops.colocate_with(self._handle):
-      if self._element_shape:
-        element_shape = self._element_shape[0]
-      else:
-        element_shape = tensor_shape.TensorShape(None)
-      value = gen_data_flow_ops._tensor_array_gather_v3(
-          handle=self._handle,
-          indices=indices,
-          flow_in=self._flow,
-          dtype=self._dtype,
-          name=name,
-          element_shape=element_shape)
-      if self._element_shape and self._element_shape[0].dims is not None:
-        value.set_shape([None] + self._element_shape[0].dims)
-      return value
+    if self._element_shape:
+      element_shape = self._element_shape[0]
+    else:
+      element_shape = tensor_shape.TensorShape(None)
+    value = gen_data_flow_ops._tensor_array_gather_v3(
+        handle=self._handle,
+        indices=indices,
+        flow_in=self._flow,
+        dtype=self._dtype,
+        name=name,
+        element_shape=element_shape)
+    if self._element_shape and self._element_shape[0].dims is not None:
+      value.set_shape([None] + self._element_shape[0].dims)
+    return value
 
   def concat(self, name=None):
     """Return the values in the TensorArray as a concatenated `Tensor`.
@@ -347,17 +356,17 @@ class TensorArray(object):
           tensor_shape.TensorShape(self._element_shape[0].dims[1:]))
     else:
       element_shape_except0 = tensor_shape.TensorShape(None)
-    with ops.colocate_with(self._handle):
-      value, _ = gen_data_flow_ops._tensor_array_concat_v3(
-          handle=self._handle,
-          flow_in=self._flow,
-          dtype=self._dtype,
-          name=name,
-          element_shape_except0=element_shape_except0)
-      if self._element_shape and self._element_shape[0].dims is not None:
-        value.set_shape([None] + self._element_shape[0].dims[1:])
-      return value
+    value, _ = gen_data_flow_ops._tensor_array_concat_v3(
+        handle=self._handle,
+        flow_in=self._flow,
+        dtype=self._dtype,
+        name=name,
+        element_shape_except0=element_shape_except0)
+    if self._element_shape and self._element_shape[0].dims is not None:
+      value.set_shape([None] + self._element_shape[0].dims[1:])
+    return value
 
+  @tf_should_use.should_use_result
   def unstack(self, value, name=None):
     """Unstack the values of a `Tensor` in the TensorArray.
 
@@ -380,6 +389,7 @@ class TensorArray(object):
       return self.scatter(
           indices=math_ops.range(0, num_elements), value=value, name=name)
 
+  @tf_should_use.should_use_result
   def scatter(self, indices, value, name=None):
     """Scatter the values of a `Tensor` in specific indices of a `TensorArray`.
 
@@ -399,8 +409,7 @@ class TensorArray(object):
     with ops.name_scope(name, "TensorArrayScatter",
                         [self._handle, value, indices]):
       value = ops.convert_to_tensor(value, name="value")
-      _maybe_set_device(self._handle.op, value)
-      with ops.colocate_with(self._handle):
+      with self._maybe_colocate_with(value):
         flow_out = gen_data_flow_ops._tensor_array_scatter_v3(
             handle=self._handle,
             indices=indices,
@@ -410,6 +419,7 @@ class TensorArray(object):
       ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow_out)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
+      ta._colocate_with = self._colocate_with
       if ta._infer_shape:
         val_shape = flow_out.op.inputs[2].get_shape()
         element_shape = tensor_shape.unknown_shape()
@@ -418,6 +428,7 @@ class TensorArray(object):
         ta._merge_element_shape(element_shape)
       return ta
 
+  @tf_should_use.should_use_result
   def split(self, value, lengths, name=None):
     """Split the values of a `Tensor` into the TensorArray.
 
@@ -437,9 +448,8 @@ class TensorArray(object):
     with ops.name_scope(name, "TensorArraySplit",
                         [self._handle, value, lengths]):
       value = ops.convert_to_tensor(value, name="value")
-      _maybe_set_device(self._handle.op, value)
-      lengths_64 = math_ops.to_int64(lengths)
-      with ops.colocate_with(self._handle):
+      with self._maybe_colocate_with(value):
+        lengths_64 = math_ops.to_int64(lengths)
         flow_out = gen_data_flow_ops._tensor_array_split_v3(
             handle=self._handle,
             value=value,
@@ -449,6 +459,7 @@ class TensorArray(object):
       ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow_out)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
+      ta._colocate_with = self._colocate_with
       if ta._infer_shape:
         val_shape = flow_out.op.inputs[1].get_shape()
         clengths = tensor_util.constant_value(flow_out.op.inputs[2])
@@ -462,14 +473,13 @@ class TensorArray(object):
 
   def size(self, name=None):
     """Return the size of the TensorArray."""
-    with ops.colocate_with(self._handle):
-      return gen_data_flow_ops._tensor_array_size_v3(
-          handle=self._handle, flow_in=self.flow, name=name)
+    return gen_data_flow_ops._tensor_array_size_v3(
+        handle=self._handle, flow_in=self.flow, name=name)
 
+  @tf_should_use.should_use_result
   def close(self, name=None):
     """Close the current TensorArray."""
-    with ops.colocate_with(self._handle):
-      return gen_data_flow_ops._tensor_array_close_v3(
-          handle=self._handle, name=name)
+    return gen_data_flow_ops._tensor_array_close_v3(
+        handle=self._handle, name=name)
 
 # pylint: enable=protected-access

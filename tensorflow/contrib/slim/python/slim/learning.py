@@ -261,7 +261,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
@@ -502,7 +502,7 @@ def train_step(sess, train_op, global_step, train_step_kwargs):
 
   if 'should_log' in train_step_kwargs:
     if sess.run(train_step_kwargs['should_log']):
-      logging.info('global step %d: loss = %.4f (%.2f sec/step)',
+      logging.info('global step %d: loss = %.4f (%.3f sec/step)',
                    np_global_step, total_loss, time_elapsed)
 
   # TODO(nsilberman): figure out why we can't put this into sess.run. The
@@ -578,8 +578,10 @@ def train(train_op,
       replica during replica training.
     global_step: The `Tensor` representing the global step. If left as `None`,
       then slim.variables.get_or_create_global_step() is used.
-    number_of_steps: The max number of gradient steps to take during training.
-      If the value is left as None, training proceeds indefinitely.
+    number_of_steps: The max number of gradient steps to take during training,
+      as measured by 'global_step': training will stop if global_step is
+      greater than 'number_of_steps'. If the value is left as None, training
+      proceeds indefinitely.
     init_op: The initialization operation. If left to its default value, then
       the session is initialized by calling `tf.global_variables_initializer()`.
     init_feed_dict: A feed dictionary to use when executing the `init_op`.
@@ -655,7 +657,7 @@ def train(train_op,
       if local_init_op == _USE_DEFAULT:
         local_init_op = control_flow_ops.group(
             tf_variables.local_variables_initializer(),
-            data_flow_ops.tables_initializer())
+            lookup_ops.tables_initializer())
 
       if sync_optimizer is not None and isinstance(
           sync_optimizer, sync_replicas_optimizer.SyncReplicasOptimizer):
@@ -694,8 +696,9 @@ def train(train_op,
         else:
           should_stop_op = constant_op.constant(False)
         train_step_kwargs['should_stop'] = should_stop_op
-        train_step_kwargs['should_log'] = math_ops.equal(
-            math_ops.mod(global_step, log_every_n_steps), 0)
+        if log_every_n_steps > 0:
+          train_step_kwargs['should_log'] = math_ops.equal(
+              math_ops.mod(global_step, log_every_n_steps), 0)
         if is_chief and trace_every_n_steps is not None:
           train_step_kwargs['should_trace'] = math_ops.equal(
               math_ops.mod(global_step, trace_every_n_steps), 0)
@@ -735,7 +738,7 @@ def train(train_op,
           _wait_for_step(sess, global_step,
                          min(startup_delay_steps, number_of_steps or
                              sys.maxint))
-        sv.start_queue_runners(sess)
+        threads = sv.start_queue_runners(sess)
         logging.info('Starting Queues.')
         if is_chief and sync_optimizer is not None:
           sv.start_queue_runners(sess, [chief_queue_runner])
@@ -746,6 +749,7 @@ def train(train_op,
                 sess, train_op, global_step, train_step_kwargs)
             if should_stop:
               logging.info('Stopping Training.')
+              sv.request_stop()
               break
         except errors.OutOfRangeError:
           # OutOfRangeError is thrown when epoch limit per
@@ -754,6 +758,7 @@ def train(train_op,
         if logdir and sv.is_chief:
           logging.info('Finished training! Saving model to disk.')
           sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
+          sv.stop(threads, close_summary_writer=True)
 
     except errors.AbortedError:
       # Always re-run on AbortedError as it indicates a restart of one of the

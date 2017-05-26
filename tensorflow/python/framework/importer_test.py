@@ -685,6 +685,17 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual("return_elements must be a list of strings.",
                        str(e.exception))
 
+  def testDuplicateOperationNames(self):
+    with ops.Graph().as_default():
+      with self.assertRaises(ValueError) as e:
+        importer.import_graph_def(
+            self._MakeGraphDef("""
+            node { name: 'A' op: 'Oi' }
+            node { name: 'B' op: 'Oi' }
+            node { name: 'A' op: 'Oi' }
+            """))
+      self.assertEqual("Duplicate name 'A' in GraphDef.", str(e.exception))
+
   def testWithExtensionAndAttr(self):
     with ops.Graph().as_default() as g:
       c = constant_op.constant(5.0, dtype=dtypes.float32, name="c")
@@ -1003,6 +1014,35 @@ class ImportGraphDefTest(test.TestCase):
     with self.test_session():
       z_val = z.eval()
       self.assertEqual(z_val, -2.0)
+
+  def testImportGraphWithFunctionTwice(self):
+    g = ops.Graph()
+    with g.as_default():
+      @function.Defun()
+      def Add2(x, y):
+        return math_ops.add(x, y)
+
+      x = array_ops.placeholder(dtype=dtypes.float32, name="x")
+      y = array_ops.placeholder(dtype=dtypes.float32, name="y")
+      _ = Add2(x, y, name="z")  # pylint: disable=unexpected-keyword-arg
+
+    gdef = g.as_graph_def()
+
+    x = random_ops.random_uniform(dtype=dtypes.float32, shape=())
+    y = random_ops.random_uniform(dtype=dtypes.float32, shape=())
+    input_map = {"x:0": x, "y:0": y}
+
+    with ops.name_scope("first"):
+      z1 = importer.import_graph_def(gdef, return_elements=["z:0"],
+                                     input_map=input_map)[0]
+
+    with ops.name_scope("second"):
+      z2 = importer.import_graph_def(gdef, return_elements=["z:0"],
+                                     input_map=input_map)[0]
+
+    with self.test_session() as sess:
+      z1_val, z2_val = sess.run((z1, z2))
+      self.assertAllEqual(z1_val, z2_val)
 
 
 if __name__ == "__main__":

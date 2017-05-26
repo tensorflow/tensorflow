@@ -15,9 +15,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-// See docs in ../ops/fft_ops.cc.
+// See docs in ../ops/spectral_ops.cc.
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -26,25 +25,17 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
+#endif
 
 namespace tensorflow {
 
-namespace {
-// TODO(vrv/zhifengc): Refactor AsDeviceMemory() into GPUUtil.
-template <typename T>
-perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
-  perftools::gputools::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
-  perftools::gputools::DeviceMemory<T> typed(wrapped);
-  return typed;
-}
-}  // end namespace
-
-class FFTGPUBase : public OpKernel {
+class FFTBase : public OpKernel {
  public:
-  explicit FFTGPUBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit FFTBase(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {
     const Tensor& in = ctx->input(0);
@@ -63,9 +54,8 @@ class FFTGPUBase : public OpKernel {
     // instead of inferring it from the input shape.
     if (IsReal()) {
       const Tensor& fft_length = ctx->input(1);
-      OP_REQUIRES(ctx,
-                  fft_length.shape().dims() == 1 &&
-                      fft_length.shape().dim_size(0) == fft_rank,
+      OP_REQUIRES(ctx, fft_length.shape().dims() == 1 &&
+                           fft_length.shape().dim_size(0) == fft_rank,
                   errors::InvalidArgument("fft_length must  have shape [",
                                           fft_rank, "]"));
 
@@ -97,9 +87,165 @@ class FFTGPUBase : public OpKernel {
   virtual bool IsForward() const = 0;
   virtual bool IsReal() const = 0;
 
- private:
+  // The function that actually computes the FFT.
+  virtual void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
+                     Tensor* out) = 0;
+};
+
+typedef Eigen::ThreadPoolDevice CPUDevice;
+
+template <bool Forward, bool _Real, int FFTRank>
+class FFTCPU : public FFTBase {
+ public:
+  using FFTBase::FFTBase;
+
+ protected:
+  int Rank() const override { return FFTRank; }
+  bool IsForward() const override { return Forward; }
+  bool IsReal() const override { return _Real; }
+
   void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
-             Tensor* out) {
+             Tensor* out) override {
+    // Create the axes (which are always trailing).
+    auto axes = Eigen::ArrayXi::LinSpaced(FFTRank, 1, FFTRank);
+    auto device = ctx->eigen_device<CPUDevice>();
+
+    if (!IsReal()) {
+      auto input = ((Tensor)in).flat_inner_dims<complex64, FFTRank + 1>();
+      // Compute the FFT using eigen.
+      auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
+      output.device(device) = input.template fft < Eigen::BothParts,
+      Forward ? Eigen::FFT_FORWARD : Eigen::FFT_REVERSE > (axes);
+    } else {
+      if (IsForward()) {
+        auto input = ((Tensor)in).flat_inner_dims<float, FFTRank + 1>();
+        auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
+        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> startIndices;
+
+        // Compute the full FFT using a temporary tensor.
+        Tensor temp;
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<complex64>::v(),
+                                               in.shape(), &temp));
+        auto full_fft = temp.flat_inner_dims<complex64, FFTRank + 1>();
+        full_fft.device(device) =
+            input.template fft<Eigen::BothParts, Eigen::FFT_FORWARD>(axes);
+
+        // Slice away the negative frequency components.
+        output.device(device) =
+            full_fft.slice(startIndices, output.dimensions());
+      } else {
+        // Reconstruct the full fft and take the inverse.
+        auto input = ((Tensor)in).flat_inner_dims<complex64, FFTRank + 1>();
+        auto output = out->flat_inner_dims<float, FFTRank + 1>();
+
+        auto sizes = input.dimensions();
+
+        // Calculate the shape of full-fft temporary tensor.
+        TensorShape fullShape;
+        fullShape.AddDim(sizes[0]);
+        for (auto i = 1; i <= FFTRank; i++) {
+          fullShape.AddDim(fft_shape[i - 1]);
+        }
+
+        Tensor temp;
+        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<complex64>::v(),
+                                               fullShape, &temp));
+        auto full_fft = temp.flat_inner_dims<complex64, FFTRank + 1>();
+
+        // Calculate the starting point and range of the source of
+        // negative frequency part.
+        auto negSizes = input.dimensions();
+        negSizes[FFTRank] = fft_shape[FFTRank - 1] - sizes[FFTRank];
+        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> negTargetIndices;
+        negTargetIndices[FFTRank] = sizes[FFTRank];
+
+        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> startIndices,
+            negStartIndices;
+        negStartIndices[FFTRank] = 1;
+
+        full_fft.slice(startIndices, sizes) = input.slice(startIndices, sizes);
+
+        // First, conduct FFT on outer dimensions.
+        auto outerAxes = Eigen::ArrayXi::LinSpaced(FFTRank - 1, 1, FFTRank - 1);
+        full_fft = full_fft.template fft<Eigen::BothParts, Eigen::FFT_REVERSE>(
+            outerAxes);
+
+        // Reconstruct the full fft by appending reversed and conjugated
+        // spectrum as the negative frequency part.
+        Eigen::array<bool, FFTRank + 1> reversedAxis;
+        for (auto i = 0; i <= FFTRank; i++) {
+          reversedAxis[i] = i == FFTRank;
+        }
+
+        full_fft.slice(negTargetIndices, negSizes) =
+            full_fft.slice(negStartIndices, negSizes)
+                .reverse(reversedAxis)
+                .conjugate();
+
+        auto innerAxis = Eigen::array<int, 1>{FFTRank};
+        output.device(device) =
+            full_fft.template fft<Eigen::RealPart, Eigen::FFT_REVERSE>(
+                innerAxis);
+      }
+    }
+  }
+};
+
+// Use labels to distinguish between internal and open source versions
+// of these kernels.
+#ifdef PLATFORM_GOOGLE
+#define FFT_LABEL "eigen"
+#else
+#define FFT_LABEL ""
+#endif
+
+REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<true, false, 1>);
+REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<false, false, 1>);
+REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<true, false, 2>);
+REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<false, false, 2>);
+REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<true, false, 3>);
+REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<false, false, 3>);
+
+REGISTER_KERNEL_BUILDER(Name("RFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<true, true, 1>);
+REGISTER_KERNEL_BUILDER(Name("IRFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<false, true, 1>);
+REGISTER_KERNEL_BUILDER(Name("RFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<true, true, 2>);
+REGISTER_KERNEL_BUILDER(Name("IRFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<false, true, 2>);
+REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<true, true, 3>);
+REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+                        FFTCPU<false, true, 3>);
+
+#undef FFT_LABEL
+
+#if GOOGLE_CUDA
+
+namespace {
+// TODO(vrv/zhifengc): Refactor AsDeviceMemory() into GPUUtil.
+template <typename T>
+perftools::gputools::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory) {
+  perftools::gputools::DeviceMemoryBase wrapped(const_cast<T*>(cuda_memory));
+  perftools::gputools::DeviceMemory<T> typed(wrapped);
+  return typed;
+}
+}  // end namespace
+
+class FFTGPUBase : public FFTBase {
+ public:
+  using FFTBase::FFTBase;
+
+ protected:
+  void DoFFT(OpKernelContext* ctx, const Tensor& in, uint64* fft_shape,
+             Tensor* out) override {
     auto* stream = ctx->op_device_context()->stream();
     OP_REQUIRES(ctx, stream, errors::Internal("No GPU stream available."));
 
@@ -238,7 +384,6 @@ REGISTER_KERNEL_BUILDER(Name("BatchFFT3D").Device(DEVICE_GPU),
                         FFTGPU<true, false, 3>);
 REGISTER_KERNEL_BUILDER(Name("BatchIFFT3D").Device(DEVICE_GPU),
                         FFTGPU<false, false, 3>);
+#endif  // GOOGLE_CUDA
 
 }  // end namespace tensorflow
-
-#endif  // GOOGLE_CUDA

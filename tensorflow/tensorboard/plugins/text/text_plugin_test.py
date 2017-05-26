@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -389,6 +390,24 @@ class TextPluginTest(test.TestCase):
       </tbody>
       </table>""")
     self.assertEqual(convert(d3), d3_expected)
+
+  def testPluginIsActive(self):
+    plugin = text_plugin.TextPlugin()
+    multiplexer = event_multiplexer.EventMultiplexer()
+    plugin.get_plugin_apps(event_multiplexer.EventMultiplexer(), None)
+
+    # The plugin is inactive because text summaries are not available.
+    self.assertFalse(plugin.is_active())
+
+    multiplexer.AddRunsFromDirectory(self.logdir)
+    multiplexer.Reload()
+
+    # The plugin is active because text summaries are available.
+    self.assertTrue(self.plugin.is_active())
+
+  def testUnicode(self):
+    self.assertConverted(u'<p>Iñtërnâtiônàlizætiøn⚡💩</p>',
+                         'Iñtërnâtiônàlizætiøn⚡💩')
 
 
 if __name__ == '__main__':

@@ -22,3 +22,20 @@ def tf_additional_license_deps():
       "//tensorflow:with_xla_support": ["@llvm//:LICENSE.TXT"],
       "//conditions:default": [],
   })
+
+def tf_additional_verbs_deps():
+  return select({
+      "//tensorflow:with_verbs_support": [
+          "//tensorflow/contrib/verbs:verbs_server_lib",
+          "//tensorflow/contrib/verbs:grpc_verbs_client",
+      ], 
+      "//conditions:default": [],
+  })
+
+def tf_additional_mpi_deps():
+  return select({
+      "//tensorflow:with_mpi_support": [
+          "//tensorflow/contrib/mpi:mpi_server_lib",
+      ],
+      "//conditions:default": [],
+  })

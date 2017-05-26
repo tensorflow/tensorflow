@@ -18,7 +18,6 @@ limitations under the License.
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-button/paper-button.html">
 <link rel="import" href="../paper-dialog/paper-dialog.html">
-<link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="tf-multi-checkbox.html">
 <link rel="import" href="scrollbar-style.html">
 
@@ -36,8 +35,7 @@ Properties out:
 -->
 <dom-module id="tf-run-selector">
   <template>
-    <paper-dialog with-backdrop
-                  id="logdir-dialog">
+    <paper-dialog with-backdrop id="logdir-dialog">
       <h2>logdir</h2>
       <div inner-h-t-m-l="{{_breakString(logdir)}}"></div>
     </paper-dialog>
@@ -139,17 +137,9 @@ Properties out:
       },
     },
     observers: [
+      "_onBackendUpdate(backend)",
       "_logdirSet(logdir)",
     ],
-    ready: function() {
-      // Populate the logdir.
-      this.backend.logdir().then(logdirObject => {
-        this.set('logdir', logdirObject.logdir);
-      }).catch(e => {
-        // Fetching the logdir failed. Prevent the exception from logging to
-        // console. The console already logs a 404 network event.
-      });
-    },
     _toggleAll: function() {
       this.$.multiCheckbox.toggleAll();
     },
@@ -157,8 +147,21 @@ Properties out:
     _breakString: function(originalString) {
       return originalString.replace(/([\/=\-_,])/g, "$1<wbr>");
     },
+    _onBackendUpdate: function(backend) {
+      if (backend === undefined) {
+        return;
+      }
+
+      // When the backend is set, the selector can request the logdir.
+      backend.logdir().then(logdirObject => {
+        this.set('logdir', logdirObject.logdir);
+      }).catch(e => {
+        // Fetching the logdir failed. Prevent the exception from logging to
+        // console. The console already logs a 404 network event.
+      });
+    },
     _logdirSet: function(logdir) {
-      if (!logdir) {
+      if (logdir === undefined) {
         // The logdir has not been set yet.
         return;
       }

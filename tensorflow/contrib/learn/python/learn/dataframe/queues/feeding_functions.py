@@ -18,12 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 # pylint: disable=unused-import
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _ArrayFeedFn
-from tensorflow.python.estimator.inputs.queues.feeding_functions import _enqueue_data as enqueue_data
+from tensorflow.python.estimator.inputs.queues.feeding_functions import _enqueue_data
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _GeneratorFeedFn
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _OrderedDictNumpyFeedFn
 from tensorflow.python.estimator.inputs.queues.feeding_functions import _PandasFeedFn
-from tensorflow.python.estimator.inputs.queues.feeding_functions import _GeneratorFeedFn
 # pylint: enable=unused-import
+
+from tensorflow.python.util.deprecation import deprecated
+
+
+@deprecated('2017-06-15', 'Moved to tf.contrib.training.enqueue_data.')
+def enqueue_data(*args, **kwargs):
+  return _enqueue_data(*args, **kwargs)

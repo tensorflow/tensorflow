@@ -21,6 +21,7 @@ import glob
 import os
 import shutil
 import tempfile
+import threading
 
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
@@ -334,6 +335,25 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
       self.assertEqual(repr(self.inc_v), dump.run_fetches_info)
       self.assertEqual(repr(None), dump.run_feed_keys_info)
+
+  def testDumpingFromMultipleThreadsObeysThreadNameFilter(self):
+    sess = dumping_wrapper.DumpingDebugWrapperSession(
+        self.sess, session_root=self.session_root, log_usage=False,
+        thread_name_filter=r"MainThread$")
+
+    self.assertAllClose(1.0, sess.run(self.delta))
+    def child_thread_job():
+      sess.run(sess.run(self.eta))
+
+    thread = threading.Thread(name="ChildThread", target=child_thread_job)
+    thread.start()
+    thread.join()
+
+    dump_dirs = glob.glob(os.path.join(self.session_root, "run_*"))
+    self.assertEqual(1, len(dump_dirs))
+    dump = debug_data.DebugDumpDir(dump_dirs[0])
+    self.assertEqual(1, dump.size)
+    self.assertEqual("delta", dump.dumped_tensor_data[0].node_name)
 
   def testCallingInvokeNodeStepperOnDumpingWrapperRaisesException(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(

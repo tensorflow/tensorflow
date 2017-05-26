@@ -35,19 +35,20 @@ from tensorflow.python.platform import tf_logging as logging
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
 def lbeta(x, name='lbeta'):
-  r"""Computes `ln(|Beta(x)|)`, reducing along the last dimension.
+  r"""Computes \\(ln(|Beta(x)|)\\), reducing along the last dimension.
 
   Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
 
-  ```Beta(z) = \prod_j Gamma(z_j) / Gamma(\sum_j z_j)```
+  $$Beta(z) = \prod_j Gamma(z_j) / Gamma(\sum_j z_j)$$
 
   And for `n + 1` dimensional `x` with shape `[N1, ..., Nn, K]`, we define
-  `lbeta(x)[i1, ..., in] = Log(|Beta(x[i1, ..., in, :])|)`.  In other words,
-  the last dimension is treated as the `z` vector.
+  $$lbeta(x)[i1, ..., in] = Log(|Beta(x[i1, ..., in, :])|)$$.
+
+  In other words, the last dimension is treated as the `z` vector.
 
   Note that if `z = [u, v]`, then
-  `Beta(z) = int_0^1 t^{u-1} (1 - t)^{v-1} dt`, which defines the traditional
-  bivariate beta function.
+  \\(Beta(z) = int_0^1 t^{u-1} (1 - t)^{v-1} dt\\), which defines the
+  traditional bivariate beta function.
 
   If the last dimension is empty, we follow the convention that the sum over
   the empty set is zero, and the product is one.
@@ -57,7 +58,7 @@ def lbeta(x, name='lbeta'):
     name: A name for the operation (optional).
 
   Returns:
-    The logarithm of `|Beta(x)|` reducing along the last dimension.
+    The logarithm of \\(|Beta(x)|\\) reducing along the last dimension.
   """
   # In the event that the last dimension has zero entries, we return -inf.
   # This is consistent with a convention that the sum over the empty set 0, and
@@ -423,7 +424,7 @@ def _exponential_space_einsum(equation, *inputs):
   missing_idx = set(idx_out).difference(idx_all)
   if missing_idx:
     raise ValueError(
-        'Unknown ouput axes: %s' % missing_idx
+        'Unknown output axes: %s' % missing_idx
     )
 
   axis_order = {}

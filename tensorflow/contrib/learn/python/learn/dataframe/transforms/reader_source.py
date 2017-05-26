@@ -75,43 +75,43 @@ class ReaderSource(transform.TensorFlowTransform):
     self._num_threads = num_threads
     self._seed = seed
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def reader_cls(self):
     return self._reader_cls
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def work_units(self):
     return self._work_units
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def reader_kwargs(self):
     return self._reader_kwargs
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def enqueue_size(self):
     return self._enqueue_size
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def batch_size(self):
     return self._batch_size
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def queue_capacity(self):
     return self._queue_capacity
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def shuffle(self):
     return self._shuffle
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def min_after_dequeue(self):
     return self._min_after_dequeue
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def num_threads(self):
     return self._num_threads
 
-  @transform.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def seed(self):
     return self._seed
 

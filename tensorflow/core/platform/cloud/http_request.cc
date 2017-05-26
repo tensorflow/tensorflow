@@ -35,6 +35,10 @@ constexpr uint32 kRequestTimeoutSeconds = 3600;  // 1 hour
 // Timeout for the connection phase.
 constexpr uint32 kConnectTimeoutSeconds = 120;  // 2 minutes
 
+// The maximum period of request inactivity, after which the request
+// is terminated.
+constexpr uint64 kInactivityTimeoutSeconds = 60;  // 1 minute
+
 // Proxy to the real libcurl implementation.
 class LibCurlProxy : public LibCurl {
  public:
@@ -75,6 +79,13 @@ class LibCurlProxy : public LibCurl {
     return ::curl_easy_setopt(curl, option, param);
   }
 
+  CURLcode curl_easy_setopt(CURL* curl, CURLoption option,
+                            int (*param)(void* clientp, curl_off_t dltotal,
+                                         curl_off_t dlnow, curl_off_t ultotal,
+                                         curl_off_t ulnow)) override {
+    return ::curl_easy_setopt(curl, option, param);
+  }
+
   CURLcode curl_easy_perform(CURL* curl) override {
     return ::curl_easy_perform(curl);
   }
@@ -111,7 +122,8 @@ class LibCurlProxy : public LibCurl {
 
 HttpRequest::HttpRequest() : HttpRequest(LibCurlProxy::Load()) {}
 
-HttpRequest::HttpRequest(LibCurl* libcurl) : libcurl_(libcurl) {
+HttpRequest::HttpRequest(LibCurl* libcurl, Env* env)
+    : libcurl_(libcurl), env_(env) {
   default_response_buffer_.reserve(CURL_MAX_WRITE_SIZE);
 }
 
@@ -151,6 +163,12 @@ Status HttpRequest::Init() {
                              kConnectTimeoutSeconds);
   libcurl_->curl_easy_setopt(curl_, CURLOPT_HTTP_VERSION,
                              CURL_HTTP_VERSION_2_0);
+
+  // Set up the progress meter.
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_NOPROGRESS, 0ULL);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFODATA, this);
+  libcurl_->curl_easy_setopt(curl_, CURLOPT_XFERINFOFUNCTION,
+                             &HttpRequest::ProgressCallback);
 
   // If response buffer is not set, libcurl will print results to stdout,
   // so we always set it.
@@ -469,5 +487,32 @@ string HttpRequest::GetResponseHeader(const string& name) const {
 }
 
 uint64 HttpRequest::GetResponseCode() const { return response_code_; }
+
+// Cancels the transmission if no progress has been made for too long.
+int HttpRequest::ProgressCallback(void* this_object, curl_off_t dltotal,
+                                  curl_off_t dlnow, curl_off_t ultotal,
+                                  curl_off_t ulnow) {
+  auto that = reinterpret_cast<HttpRequest*>(this_object);
+  const auto now = that->env_->NowSeconds();
+  const auto current_progress = dlnow + ulnow;
+  if (that->last_progress_timestamp_ == 0 ||
+      current_progress > that->last_progress_bytes_) {
+    // This is the first time the callback is called or some progress
+    // was made since the last tick.
+    that->last_progress_timestamp_ = now;
+    that->last_progress_bytes_ = current_progress;
+    return 0;
+  }
+
+  if (now - that->last_progress_timestamp_ > kInactivityTimeoutSeconds) {
+    LOG(ERROR) << "The transmission has been stuck at " << current_progress
+               << " bytes for " << now - that->last_progress_timestamp_
+               << " seconds and will be aborted.";
+    return 1;  // Will abort the request.
+  }
+
+  // No progress was made since the last call, but we should wait a bit longer.
+  return 0;
+}
 
 }  // namespace tensorflow
