@@ -797,6 +797,14 @@ def _execute(repository_ctx, cmdline, error_msg=None, error_details=None,
   return result
 
 
+def _norm_path(path):
+  """Returns a path with '/' and remove the trailing slash."""
+  path = path.replace("\\", "/")
+  if path[-1] == "/":
+    path = path[:-1]
+  return path
+
+
 def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name,
     src_files = [], dest_files = []):
   """Returns a genrule to symlink(or copy if on Windows) a set of files.
@@ -805,12 +813,8 @@ def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name,
   we assume files are in src_files and dest_files
   """
   if src_dir != None:
-    src_dir = src_dir.replace("\\", "/")
-    dest_dir = dest_dir.replace("\\", "/")
-    if src_dir[-1] == "/":
-      src_dir = src_dir[:-1]
-    if dest_dir[-1] == "/":
-      dest_dir = dest_dir[:-1]
+    src_dir = _norm_path(src_dir)
+    dest_dir = _norm_path(dest_dir)
     files = _read_dir(repository_ctx, src_dir)
     # Create a list with the src_dir stripped to use for outputs.
     dest_files = files.replace(src_dir, '').splitlines()
