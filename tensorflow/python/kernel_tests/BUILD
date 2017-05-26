@@ -2333,6 +2333,7 @@ cuda_py_test(
     name = "stage_op_test",
     size = "medium",
     srcs = ["stage_op_test.py"],
+    tags = ["manual"],
     additional_deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
