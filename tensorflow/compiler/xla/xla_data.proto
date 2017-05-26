@@ -349,6 +349,7 @@ message SliceRequest {
   ComputationDataHandle operand = 2;
   repeated int64 start_indices = 3;
   repeated int64 limit_indices = 4;
+  repeated int64 stride = 5;
 }
 
 message DynamicSliceRequest {
