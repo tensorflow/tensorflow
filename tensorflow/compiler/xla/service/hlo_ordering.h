@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
@@ -32,9 +33,8 @@ limitations under the License.
 
 namespace xla {
 
-// Abstract base class for describing a partial ordering of HLO
-// instructions. Used to determine live range overlap of HLO instruction output
-// buffers.
+// Base class for describing a partial ordering of HLO instructions. Used to
+// determine live range overlap of HLO instruction output buffers.
 class HloOrdering {
  public:
   HloOrdering(const HloModule* module)
@@ -51,6 +51,10 @@ class HloOrdering {
       const HloComputation& computation) const = 0;
 
   virtual string ToString() const = 0;
+
+  // Returns the serialized representation of this ordering.
+  // Only sequential computation orders are represented.
+  HloOrderingProto ToProto() const;
 
  protected:
   // Returns true if instruction 'a' executes before instruction 'b'.
