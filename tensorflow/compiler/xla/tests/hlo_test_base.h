@@ -66,6 +66,34 @@ class HloTestBase : public ::testing::Test {
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments);
 
+  // Convenience method to force the layout of a given parameter in a module.
+  // The layout of parameter number 'param_no' in the 'module' is set to
+  // 'layout'.
+  void ForceParameterLayout(HloModule* module, int64 param_no,
+                            const Layout& layout) {
+    ASSERT_LT(param_no,
+              module->mutable_entry_computation_layout()->parameter_count());
+    module->mutable_entry_computation_layout()
+        ->mutable_parameter_layout(param_no)
+        ->ResetLayout(layout);
+  }
+
+  // Convenience method to force the layout of the computation result in a
+  // module. The result layout of 'module' is set to 'layout'.
+  void ForceResultLayout(HloModule* module, const Layout& layout) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->ResetLayout(layout);
+  }
+
+  // Convenience method to clear the layout of the computation result in
+  // 'module'.
+  void ForceClearResultLayout(HloModule* module) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->Clear();
+  }
+
   string TestName() const;
 
   std::unique_ptr<Backend> backend_;
