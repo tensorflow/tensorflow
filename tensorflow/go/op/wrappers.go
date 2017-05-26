@@ -8004,11 +8004,23 @@ type DecodeCSVAttr func(optionalAttr)
 
 // DecodeCSVFieldDelim sets the optional field_delim attribute to value.
 //
-// value: delimiter to separate fields in a record.
+// value: char delimiter to separate fields in a record.
 // If not specified, defaults to ","
 func DecodeCSVFieldDelim(value string) DecodeCSVAttr {
 	return func(m optionalAttr) {
 		m["field_delim"] = value
+	}
+}
+
+// DecodeCSVUseQuoteDelim sets the optional use_quote_delim attribute to value.
+//
+// value: If false, treats double quotation marks as regular
+// characters inside of the string fields (ignoring RFC 4180, Section 2,
+// Bullet 5).
+// If not specified, defaults to true
+func DecodeCSVUseQuoteDelim(value bool) DecodeCSVAttr {
+	return func(m optionalAttr) {
+		m["use_quote_delim"] = value
 	}
 }
 
