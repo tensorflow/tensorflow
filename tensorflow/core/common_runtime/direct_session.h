@@ -242,8 +242,8 @@ class DirectSession : public Session {
   }
 
   ::tensorflow::Status CreateDebuggerState(
-      const DebugOptions& debug_options, int64 session_run_count,
-      int64 executor_step_count, const std::vector<string>& input_names,
+      const DebugOptions& debug_options, int64 session_run_index,
+      int64 executor_step_index, const std::vector<string>& input_names,
       const std::vector<string>& output_names,
       const std::vector<string>& target_names,
       std::unique_ptr<DebuggerStateInterface>* debugger_state);

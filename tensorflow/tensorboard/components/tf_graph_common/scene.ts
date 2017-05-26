@@ -80,6 +80,7 @@ module tf.graph.scene {
    * backend.ts.
    */
   export interface HealthPill {
+    device_name: string;
     node_name: string;
     output_slot: number;
     value: number[];
@@ -539,6 +540,7 @@ function _addHealthPill(
     return;
   }
 
+  const deviceName = healthPill.device_name;
   let lastHealthPillData = healthPill.value;
 
   // For now, we only visualize the 6 values that summarize counts of tensor
@@ -608,7 +610,8 @@ function _addHealthPill(
 
   // Show a title with specific counts on hover.
   let titleSvg = document.createElementNS(svgNamespace, 'title');
-  titleSvg.textContent = '#(elements): ' + totalCount + '\n\n' +
+  titleSvg.textContent = 'Device: ' + deviceName + '\n\n' +
+      '#(elements): ' + totalCount + '\n\n' +
       titleOnHoverTextEntries.join(', ') + '\n\nmin: ' + minVal +
       ', max: ' + maxVal + '\nmean: ' + meanVal + ', stddev: ' + stddevVal;
   healthPillGroup.appendChild(titleSvg);

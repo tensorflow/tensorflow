@@ -1444,8 +1444,8 @@ Status MasterSession::CreateDebuggerState(
   // DirectSessions, it is less so for non-direct Sessions. Devise a better
   // way to get its value when the need arises.
   TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
-      debug_options.global_step(), -1, rcg_execution_count, input_names,
-      output_names, target_names));
+      debug_options.global_step(), rcg_execution_count, rcg_execution_count,
+      input_names, output_names, target_names));
 
   return Status::OK();
 }

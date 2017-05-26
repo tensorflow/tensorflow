@@ -371,15 +371,15 @@ Status DirectSession::Run(const NamedTensorList& inputs,
 }
 
 Status DirectSession::CreateDebuggerState(
-    const DebugOptions& debug_options, int64 session_run_count,
-    int64 executor_step_count, const std::vector<string>& input_names,
+    const DebugOptions& debug_options, int64 session_run_index,
+    int64 executor_step_index, const std::vector<string>& input_names,
     const std::vector<string>& output_names,
     const std::vector<string>& target_names,
     std::unique_ptr<DebuggerStateInterface>* debugger_state) {
   TF_RETURN_IF_ERROR(
       DebuggerStateRegistry::CreateState(debug_options, debugger_state));
   TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
-      debug_options.global_step(), session_run_count, executor_step_count,
+      debug_options.global_step(), session_run_index, executor_step_index,
       input_names, output_names, target_names));
   return Status::OK();
 }
