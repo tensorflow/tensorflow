@@ -5362,6 +5362,13 @@ op {
     type: "type"
   }
   attr {
+    name: "device_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
     name: "tensor_name"
     type: "string"
     default_value {
@@ -5407,6 +5414,13 @@ op {
     type: "type"
   }
   attr {
+    name: "device_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
     name: "tensor_name"
     type: "string"
     default_value {
@@ -5450,6 +5464,13 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "device_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   attr {
     name: "tensor_name"
