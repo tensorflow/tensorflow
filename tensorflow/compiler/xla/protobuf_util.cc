@@ -46,7 +46,7 @@ StatusOr<string> ToJson(const tensorflow::protobuf::Message& message) {
       message, &json_output, json_options);
   if (!status.ok()) {
     return InternalError("MessageToJsonString failed: %s",
-                         status.error_message().c_str());
+                         status.error_message().data());
   }
   return json_output;
 }
