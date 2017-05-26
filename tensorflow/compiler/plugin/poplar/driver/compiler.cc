@@ -123,7 +123,7 @@ public:
     return Status::OK();
   }
 
-  Status HandleWhile(HloInstruction* inst) {
+  Status HandleWhile(HloInstruction* inst) override {
     targets.insert(inst->while_condition());
     targets.insert(inst->while_body());
     return Status::OK();
