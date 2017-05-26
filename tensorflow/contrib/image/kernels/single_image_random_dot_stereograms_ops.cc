@@ -19,8 +19,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::InferenceContext;
-
 template <typename T>
 class SingleImageRandomDotStereogramsOp : public OpKernel {
  private:
