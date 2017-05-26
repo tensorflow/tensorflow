@@ -66,5 +66,5 @@ passing_tests=$(bazel query "kind(py_test,  //${PY_TEST_DIR}/tensorflow/python/.
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-# GPU tests are very flaky when running concurently, so set local_test_jobs=5
+# GPU tests are very flaky when running concurently, so set local_test_jobs=2
 bazel test -c opt --config=win-cuda $BUILD_OPTS -k $passing_tests --define=no_tensorflow_py_deps=true --test_output=errors --local_test_jobs=2
