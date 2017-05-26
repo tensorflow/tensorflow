@@ -30,10 +30,9 @@ from tensorflow.python.platform import tf_logging
 
 
 class MatrixDiagTest(test.TestCase):
-  _use_gpu = False
 
   def testVector(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v = np.array([1.0, 2.0, 3.0])
       mat = np.diag(v)
       v_diag = array_ops.matrix_diag(v)
@@ -41,7 +40,7 @@ class MatrixDiagTest(test.TestCase):
       self.assertAllEqual(v_diag.eval(), mat)
 
   def testBatchVector(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v_batch = np.array([[1.0, 2.0, 3.0],
                           [4.0, 5.0, 6.0]])
       mat_batch = np.array(
@@ -60,14 +59,14 @@ class MatrixDiagTest(test.TestCase):
       array_ops.matrix_diag(0)
 
   def testInvalidShapeAtEval(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v = array_ops.placeholder(dtype=dtypes_lib.float32)
       with self.assertRaisesOpError("input must be at least 1-dim"):
         array_ops.matrix_diag(v).eval(feed_dict={v: 0.0})
 
   def testGrad(self):
     shapes = ((3,), (7, 4))
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       for shape in shapes:
         x = constant_op.constant(np.random.rand(*shape), np.float32)
         y = array_ops.matrix_diag(x)
@@ -78,15 +77,10 @@ class MatrixDiagTest(test.TestCase):
         self.assertLess(error, 1e-4)
 
 
-class MatrixDiagGpuTest(MatrixDiagTest):
-  _use_gpu = True
-
-
 class MatrixSetDiagTest(test.TestCase):
-  _use_gpu = False
 
   def testSquare(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v = np.array([1.0, 2.0, 3.0])
       mat = np.array([[0.0, 1.0, 0.0],
                       [1.0, 0.0, 1.0],
@@ -99,7 +93,7 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertAllEqual(mat_set_diag, output.eval())
 
   def testRectangular(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v = np.array([3.0, 4.0])
       mat = np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0]])
       expected = np.array([[3.0, 1.0, 0.0], [1.0, 4.0, 1.0]])
@@ -115,7 +109,7 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertAllEqual(expected, output.eval())
 
   def testSquareBatch(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v_batch = np.array([[-1.0, -2.0, -3.0],
                           [-4.0, -5.0, -6.0]])
       mat_batch = np.array(
@@ -138,7 +132,7 @@ class MatrixSetDiagTest(test.TestCase):
       self.assertAllEqual(mat_set_diag_batch, output.eval())
 
   def testRectangularBatch(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v_batch = np.array([[-1.0, -2.0],
                           [-4.0, -5.0]])
       mat_batch = np.array(
@@ -163,7 +157,7 @@ class MatrixSetDiagTest(test.TestCase):
       array_ops.matrix_set_diag([[0]], 0)
 
   def testInvalidShapeAtEval(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v = array_ops.placeholder(dtype=dtypes_lib.float32)
       with self.assertRaisesOpError("input must be at least 2-dim"):
         array_ops.matrix_set_diag(v, [v]).eval(feed_dict={v: 0.0})
@@ -173,7 +167,7 @@ class MatrixSetDiagTest(test.TestCase):
 
   def testGrad(self):
     shapes = ((3, 4, 4), (3, 3, 4), (3, 4, 3), (7, 4, 8, 8))
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       for shape in shapes:
         x = constant_op.constant(
             np.random.rand(*shape), dtype=dtypes_lib.float32)
@@ -189,7 +183,7 @@ class MatrixSetDiagTest(test.TestCase):
         self.assertLess(error_x_diag, 1e-4)
 
   def testGradWithNoShapeInformation(self):
-    with self.test_session(use_gpu=self._use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       v = array_ops.placeholder(dtype=dtypes_lib.float32)
       mat = array_ops.placeholder(dtype=dtypes_lib.float32)
       grad_input = array_ops.placeholder(dtype=dtypes_lib.float32)
@@ -207,15 +201,10 @@ class MatrixSetDiagTest(test.TestCase):
                           grad_vals[0])
 
 
-class MatrixSetDiagGpuTest(MatrixSetDiagTest):
-  _use_gpu = True
-
-
 class MatrixDiagPartTest(test.TestCase):
-  _use_gpu = False
 
   def testSquare(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v = np.array([1.0, 2.0, 3.0])
       mat = np.diag(v)
       mat_diag = array_ops.matrix_diag_part(mat)
@@ -223,7 +212,7 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertAllEqual(mat_diag.eval(), v)
 
   def testRectangular(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       mat = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
       mat_diag = array_ops.matrix_diag_part(mat)
       self.assertAllEqual(mat_diag.eval(), np.array([1.0, 5.0]))
@@ -232,7 +221,7 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertAllEqual(mat_diag.eval(), np.array([1.0, 4.0]))
 
   def testSquareBatch(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v_batch = np.array([[1.0, 2.0, 3.0],
                           [4.0, 5.0, 6.0]])
       mat_batch = np.array(
@@ -248,7 +237,7 @@ class MatrixDiagPartTest(test.TestCase):
       self.assertAllEqual(mat_batch_diag.eval(), v_batch)
 
   def testRectangularBatch(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v_batch = np.array([[1.0, 2.0],
                           [4.0, 5.0]])
       mat_batch = np.array(
@@ -266,14 +255,14 @@ class MatrixDiagPartTest(test.TestCase):
       array_ops.matrix_diag_part(0)
 
   def testInvalidShapeAtEval(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       v = array_ops.placeholder(dtype=dtypes_lib.float32)
       with self.assertRaisesOpError("input must be at least 2-dim"):
         array_ops.matrix_diag_part(v).eval(feed_dict={v: 0.0})
 
   def testGrad(self):
     shapes = ((3, 3), (2, 3), (3, 2), (5, 3, 3))
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       for shape in shapes:
         x = constant_op.constant(np.random.rand(*shape), dtype=np.float32)
         y = array_ops.matrix_diag_part(x)
@@ -282,10 +271,6 @@ class MatrixDiagPartTest(test.TestCase):
                                                         y,
                                                         y.get_shape().as_list())
         self.assertLess(error, 1e-4)
-
-
-class MatrixDiagPartGpuTest(MatrixDiagPartTest):
-  _use_gpu = True
 
 
 class DiagTest(test.TestCase):

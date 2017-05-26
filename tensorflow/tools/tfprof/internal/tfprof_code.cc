@@ -56,21 +56,21 @@ void TFCode::AddNode(TFGraphNode* node) {
   if (!node->code()) {
     return;
   }
-  TFCodeNode* pre_trace_node = nullptr;
+  TFMultiGraphNode* pre_trace_node = nullptr;
   for (int i = 0; i < node->code()->traces_size(); ++i) {
     // Unlike op name, which is globally unique, trace name is only unique
     // w.r.t. it's parent.
     const string& trace = GetTraceString(node->code()->traces(i));
     if (i == 0) {
       if (!trace_root_) {
-        trace_root_.reset(new TFCodeNode(trace));
+        trace_root_.reset(new TFMultiGraphNode(trace));
       }
       CHECK(trace_root_->name() == trace) << "Different trace root";
       pre_trace_node = trace_root_.get();
       continue;
     }
     pre_trace_node->AddChildren(trace);
-    TFCodeNode* trace_node = pre_trace_node->children()[trace].get();
+    TFMultiGraphNode* trace_node = pre_trace_node->children().at(trace).get();
 
     if (i == node->code()->traces_size() - 1) {
       trace_node->AddGraphNode(node);
@@ -80,13 +80,19 @@ void TFCode::AddNode(TFGraphNode* node) {
 }
 
 void TFCode::Build() {
-  if (!trace_root_) {
+  if (root_) {
     return;
   }
-  code_root_ = BuildCodeNodes(trace_root_.get());
+  tfprof_trace_root_.reset(new TFMultiGraphNode(kTFProfRoot));
+  root_.reset(new CodeNode(tfprof_trace_root_.get()));
+
+  if (trace_root_) {
+    code_root_ = BuildCodeNodes(trace_root_.get());
+    root_->children.push_back(code_root_);
+  }
 }
 
-CodeNode* TFCode::BuildCodeNodes(TFCodeNode* root) {
+CodeNode* TFCode::BuildCodeNodes(TFMultiGraphNode* root) {
   auto code_root = std::unique_ptr<CodeNode>(new CodeNode(root));
   CodeNode* code_root_ptr = code_root.get();
   code_nodes_.insert(std::move(code_root));
@@ -98,30 +104,41 @@ CodeNode* TFCode::BuildCodeNodes(TFCodeNode* root) {
   return code_root_ptr;
 }
 
-const ShowCodeNode* TFCode::ShowInternal(const Options& opts,
-                                         Timeline* timeline) {
-  // Search from roots recursively to find start node, if start_name_regexes
-  // is specified.
-  tfprof_trace_root_.reset(new TFCodeNode(kTFProfRoot));
-  tfprof_code_root_.reset(new CodeNode(tfprof_trace_root_.get()));
-  if (!code_root_) {
-    return tfprof_code_root_.get();
+const ShowMultiNode* TFCode::ShowInternal(const Options& opts,
+                                          Timeline* timeline) {
+  std::vector<CodeNode*> roots = Account(root_->children, opts);
+  root_->ResetTotalStats();
+  root_->show_children.clear();
+  for (CodeNode* n : roots) {
+    root_->AggregateTotalStats(n);
   }
 
-  std::vector<CodeNode*> roots = {code_root_};
   if (opts.start_name_regexes.size() != 1 ||
       opts.start_name_regexes[0] != ".*") {
     roots = SearchRoot(roots, opts.start_name_regexes);
   }
 
-  tfprof_code_root_->children.assign(roots.begin(), roots.end());
-  Account({tfprof_code_root_.get()}, opts);
+  root_->show_children.assign(roots.begin(), roots.end());
 
-  CodeNode* root = PrintScope({tfprof_code_root_.get()}, opts, 1, 0)[0];
+  CodeNode* root = PrintScope({root_.get()}, opts, 1, 0)[0];
+
+  root->formatted_str = FormatLegend(opts) + root->formatted_str;
+  Format(root->show_children, &root->formatted_str, root->mutable_proto());
+
   if (timeline) {
     timeline->GenerateCodeTimeline(root);
   }
   return root;
+}
+
+void TFCode::Format(const std::vector<CodeNode*> roots, string* display_str,
+                    TFMultiGraphNodeProto* proto) {
+  for (CodeNode* node : roots) {
+    display_str->append(node->formatted_str);
+    TFMultiGraphNodeProto* child = proto->add_children();
+    child->MergeFrom(node->proto());
+    Format(node->show_children, display_str, child);
+  }
 }
 
 std::vector<CodeNode*> TFCode::SearchRoot(std::vector<CodeNode*> roots,
@@ -143,7 +160,7 @@ std::vector<CodeNode*> TFCode::SearchRoot(std::vector<CodeNode*> roots,
       // Found a start node at this branch, no need to continue.
       continue;
     }
-    std::vector<CodeNode*> nroots = SearchRoot(root->children, regexes);
+    std::vector<CodeNode*> nroots = SearchRoot(root->show_children, regexes);
     res.insert(res.end(), nroots.begin(), nroots.end());
   }
   return res;
@@ -155,46 +172,34 @@ std::vector<CodeNode*> TFCode::PrintScope(const std::vector<CodeNode*> roots,
   std::vector<CodeNode*> show_nodes;
 
   for (CodeNode* node : roots) {
-    int nlast_ident = last_ident;
+    int ident = last_ident;
     bool show = ShouldShow(node, opts, depth);
+    if (show) ident += 2;
+
+    std::vector<CodeNode*> show_cnodes;
+    if (!ShouldTrim(node, opts.trim_name_regexes) && depth <= opts.max_depth) {
+      show_cnodes = PrintScope(node->show_children, opts, depth + 1, ident);
+    }
     if (show) {
-      node->formatted_str.clear();
+      node->show_children.clear();
       if (opts.account_displayed_op_only) {
         node->ResetTotalStats();
         node->AddSelfToTotalStats();
       }
-      nlast_ident += 2;
-    }
 
-    std::vector<CodeNode*> show_cnodes;
-    if (!ShouldTrim(node, opts.trim_name_regexes)) {
-      show_cnodes = PrintScope(node->children, opts, depth + 1, nlast_ident);
-    }
-    if (show) {
       show_cnodes = SortNodes(show_cnodes, opts);
-      string children_str;
       for (CodeNode* sc : show_cnodes) {
-        if (opts.output_type == kOutput[1] || opts.output_type == kOutput[2]) {
-          children_str += sc->formatted_str;
-          sc->formatted_str.clear();
-        }
-        node->mutable_proto()->add_children()->MergeFrom(sc->proto());
-        sc->mutable_proto()->mutable_children()->Clear();
         node->show_children.push_back(sc);
         if (opts.account_displayed_op_only) {
           node->AggregateTotalStats(sc);
         }
       }
 
-      node->formatted_str =
-          strings::Printf("%s%s\n", string(last_ident, ' ').c_str(),
-                          node->Format(opts).c_str());
+      node->formatted_str = FormatNode(node, opts, last_ident);
 
-      if (opts.select.find(kShown[5]) != opts.select.end()) {
+      if (opts.select.find(kShown[4]) != opts.select.end()) {
         fprintf(stderr, "code view has no tensor value to show\n");
       }
-
-      node->formatted_str += children_str;
       show_nodes.push_back(node);
     } else {
       show_nodes.insert(show_nodes.end(), show_cnodes.begin(),
@@ -204,21 +209,82 @@ std::vector<CodeNode*> TFCode::PrintScope(const std::vector<CodeNode*> roots,
   return show_nodes;
 }
 
-void TFCode::Account(const std::vector<CodeNode*>& roots, const Options& opts) {
-  if (roots.empty()) return;
+std::vector<CodeNode*> TFCode::Account(const std::vector<CodeNode*>& roots,
+                                       const Options& opts) {
+  std::vector<CodeNode*> act_nodes;
 
   for (CodeNode* node : roots) {
     node->ResetTotalStats();
-    Account(node->children, opts);
-
-    node->account = ShouldAccount(node, opts);
-    if (node->account) {
+    std::vector<CodeNode*> act_cnodes = Account(node->children, opts);
+    node->account = ReAccount(node, opts);
+    // LOG(ERROR) << act_cnodes.size() << " " << node->account;
+    if (node->account || !act_cnodes.empty()) {
+      // LOG(ERROR) << node->name();
+      node->show_children.clear();
+      node->ResetTotalStats();
       node->AddSelfToTotalStats();
-    }
-    for (CodeNode* c : node->children) {
-      node->AggregateTotalStats(c);
+      for (CodeNode* c : act_cnodes) {
+        node->AggregateTotalStats(c);
+        node->show_children.push_back(c);
+      }
+      act_nodes.push_back(node);
     }
   }
+  return act_nodes;
+}
+
+string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
+  std::vector<string> attrs;
+
+  if (opts.select.find(kShown[2]) != opts.select.end()) {
+    string params = FormatNumber(node->proto().total_parameters()) + " params";
+    if (node->account) {
+      params = FormatNumber(node->proto().parameters()) + "/" + params;
+    } else {
+      params = "--/" + params;
+    }
+    attrs.push_back(params);
+  }
+
+  if (opts.select.find(kShown[3]) != opts.select.end()) {
+    string fops = FormatNumber(node->proto().total_float_ops()) + " flops";
+    if (node->account) {
+      fops = FormatNumber(node->proto().float_ops()) + "/" + fops;
+    } else {
+      fops = "--/" + fops;
+    }
+    attrs.push_back(fops);
+  }
+  if (opts.select.find(kShown[0]) != opts.select.end()) {
+    string memory = FormatMemory(node->proto().total_requested_bytes());
+    if (node->account) {
+      memory = FormatMemory(node->proto().requested_bytes()) + "/" + memory;
+    } else {
+      memory = "--/" + memory;
+    }
+    attrs.push_back(memory);
+  }
+  if (opts.select.find(kShown[1]) != opts.select.end()) {
+    string time = FormatTime(node->proto().total_exec_micros());
+    if (node->account) {
+      time = FormatTime(node->proto().exec_micros()) + "/" + time;
+    } else {
+      time = "--/" + time;
+    }
+    attrs.push_back(time);
+  }
+  if (opts.select.find(kShown[5]) != opts.select.end() &&
+      !node->node->devices().empty()) {
+    attrs.push_back(str_util::Join(node->node->devices(), "|"));
+  }
+  if (opts.select.find(kShown[6]) != opts.select.end()) {
+    std::set<string> op_types = node->node->op_types();
+    attrs.push_back(str_util::Join(op_types, "|"));
+  }
+
+  return strings::Printf("%s%s (%s)\n", string(indent, ' ').c_str(),
+                         node->name().c_str(),
+                         str_util::Join(attrs, ", ").c_str());
 }
 }  // namespace tfprof
 }  // namespace tensorflow

@@ -807,7 +807,9 @@ TEST_F(LiteralUtilTest, Populate) {
     std::vector<int64> layout;
   } populate_data[] = {
       {{}, {}},
+      {{0}, {0}},
       {{16}, {0}},
+      {{2, 0}, {1, 0}},
       {{4, 16}, {1, 0}},
       {{21, 12}, {0, 1}},
       {{6, 11, 17}, {2, 0, 1}},

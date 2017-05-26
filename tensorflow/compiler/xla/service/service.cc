@@ -368,7 +368,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(auto module,
                         computation_tracker_.BuildHloModule(
-                            versioned_handle, &config,
+                            versioned_handle, config,
                             /*include_unreachable_instructions=*/true));
     modules.push_back(std::move(module));
   }
@@ -420,7 +420,7 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> module,
-      computation_tracker_.BuildHloModule(versioned_handle, module_config.get(),
+      computation_tracker_.BuildHloModule(versioned_handle, *module_config,
                                           /*include_unreachable_instructions=*/
                                           !executable_for_compute_constant));
 
@@ -1137,9 +1137,9 @@ tensorflow::Status Service::GetComputationStats(
   VersionedComputationHandle versioned_handle =
       user_computation->GetVersionedHandle();
 
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
-                      computation_tracker_.BuildHloModule(versioned_handle,
-                                                          /*config=*/nullptr));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> module,
+      computation_tracker_.BuildHloModule(versioned_handle, HloModuleConfig()));
 
   MakeHloDumper()(*module, "computation statistics subject");
 

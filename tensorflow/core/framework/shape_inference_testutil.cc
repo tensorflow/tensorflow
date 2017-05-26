@@ -45,7 +45,7 @@ Status ShapeInferenceTestutil::InferShapes(ShapeInferenceTestOp op,
 
   shape_inference::InferenceContext c(op.graph_def_version, &op.node_def,
                                       op_reg_data->op_def, in_shapes,
-                                      op.input_tensors, {}, {}, {});
+                                      op.input_tensors, {}, {});
   TF_RETURN_IF_ERROR(c.construction_status());
   if (op_reg_data->shape_inference_fn == nullptr) {
     return errors::InvalidArgument(

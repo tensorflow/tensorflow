@@ -248,6 +248,7 @@ class IrEmitterUnnested : public IrEmitter {
       HloInstruction* tuple,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
   Status HandleWhile(HloInstruction* xla_while) override;
+  Status HandleInfeed(HloInstruction* xla_infeed) override;
   Status HandleRng(HloInstruction* random,
                    RandomDistribution distribution) override;
   Status HandleSelect(HloInstruction* select, HloInstruction* pred,
@@ -340,6 +341,10 @@ class IrEmitterUnnested : public IrEmitter {
 
   // Returns a CopyThunk that calls host-to-device cuMemcpy to implement `inst`.
   std::unique_ptr<Thunk> BuildCopyThunk(const HloInstruction* inst);
+
+  // Returns an InfeedThunk that performs device-to-device memcpy to implement
+  // `inst`.
+  std::unique_ptr<Thunk> BuildInfeedThunk(const HloInstruction* inst);
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
