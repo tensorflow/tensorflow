@@ -13,9 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Nodes used for different views.
-// ScopeNode is for scope view. GraphNode is for graph view and CodeNode
-// is for code view.
+// Node classes used for different views. They are wrappers with "show"
+// methods.
+//
+// ScopeNode is for scope view. GraphNode is for graph view, CodeNode
+// is for code view and OpNode for op view.
+// ScopeNode and GraphNode each maps to one TFGraphNode.
+// CodeNode and OpNode each maps to one TFMultiGraphNode.
 
 #ifndef THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_NODE_SHOW_H_
 #define THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_NODE_SHOW_H_
@@ -46,54 +50,28 @@ class ShowNode {
 
   void ReInit();
 
-  string Format(const Options& opts);
-
-  string FormatMeta(const Options& opts);
-
-  const TFGraphNode* node;
-  bool account;
-  string formatted_str;
-
- protected:
   void AggregateTotalStats(ShowNode* node);
 
   void AddSelfToTotalStats();
 
   void ResetTotalStats();
 
+  const TFGraphNode* node;
+  bool account;
+  string formatted_str;
+
+ protected:
   TFGraphNodeProto proto_;
 };
 
 class GraphNode : public ShowNode {
  public:
   explicit GraphNode(TFGraphNode* node) : ShowNode(node) {
-    mutable_proto()->set_inputs(node->inputs().size());
-    mutable_proto()->set_total_inputs(0);
     trackable = Trackable();
   }
 
   void ReInit() {
     ShowNode::ReInit();
-    mutable_proto()->set_inputs(node->inputs().size());
-    mutable_proto()->set_total_inputs(0);
-  }
-
-  void AggregateTotalStats(GraphNode* node) {
-    ShowNode::AggregateTotalStats(node);
-    mutable_proto()->set_total_inputs(proto().total_inputs() +
-                                      node->proto().total_inputs() + 1);
-  }
-
-  void AddSelfToTotalStats() {
-    ShowNode::AddSelfToTotalStats();
-    mutable_proto()->set_total_inputs(proto().total_inputs() +
-                                      proto().inputs());
-  }
-
-  void ResetTotalStats() {
-    ShowNode::ResetTotalStats();
-    mutable_proto()->set_total_inputs(0);
-    show_children.clear();
   }
 
   bool Trackable() {
@@ -115,69 +93,51 @@ class ScopeNode : public ShowNode {
   explicit ScopeNode(const TFGraphNode* node) : ShowNode(node) {}
   ~ScopeNode() override {}
 
-  void ReInit() { ShowNode::ReInit(); }
-
-  void AggregateTotalStats(ScopeNode* node) {
-    ShowNode::AggregateTotalStats(node);
-  }
-
-  void AddSelfToTotalStats() { ShowNode::AddSelfToTotalStats(); }
-
-  void ResetTotalStats() {
-    ShowNode::ResetTotalStats();
-    show_children.clear();
-  }
-
   std::vector<ScopeNode*> children;
   std::vector<ScopeNode*> show_children;
 };
 
-class ShowCodeNode {
+class ShowMultiNode {
  public:
-  explicit ShowCodeNode(const TFCodeNode* node);
-  virtual ~ShowCodeNode() {}
+  explicit ShowMultiNode(TFMultiGraphNode* node);
+  virtual ~ShowMultiNode() {}
+
+  bool ReInit(const std::vector<string>& type_regexes);
 
   const string& name() const { return node->name(); }
-  TFCodeNodeProto* mutable_proto();
-  const TFCodeNodeProto& proto() const;
+  TFMultiGraphNodeProto* mutable_proto();
+  const TFMultiGraphNodeProto& proto() const;
 
-  string Format(const Options& opts);
-
-  string FormatMeta(const Options& opts);
-
-  const TFCodeNode* node;
-  bool account;
-  string formatted_str;
-
- protected:
-  void AggregateTotalStats(ShowCodeNode* node);
+  void AggregateTotalStats(ShowMultiNode* node);
 
   void AddSelfToTotalStats();
 
   void ResetTotalStats();
 
-  TFCodeNodeProto proto_;
+  TFMultiGraphNode* node;
+  bool account;
+  bool show;
+  string formatted_str;
+
+ protected:
+  TFMultiGraphNodeProto proto_;
 };
 
-class CodeNode : public ShowCodeNode {
+class CodeNode : public ShowMultiNode {
  public:
-  explicit CodeNode(const TFCodeNode* node) : ShowCodeNode(node) {}
+  explicit CodeNode(TFMultiGraphNode* node) : ShowMultiNode(node) {}
   ~CodeNode() override {}
-
-  void AggregateTotalStats(CodeNode* node) {
-    ShowCodeNode::AggregateTotalStats(node);
-  }
-
-  void AddSelfToTotalStats() { ShowCodeNode::AddSelfToTotalStats(); }
-
-  void ResetTotalStats() {
-    ShowCodeNode::ResetTotalStats();
-    show_children.clear();
-  }
 
   std::vector<CodeNode*> children;
   std::vector<CodeNode*> show_children;
 };
+
+class OpNode : public ShowMultiNode {
+ public:
+  explicit OpNode(TFMultiGraphNode* node) : ShowMultiNode(node) {}
+  ~OpNode() override {}
+};
+
 }  // namespace tfprof
 }  // namespace tensorflow
 

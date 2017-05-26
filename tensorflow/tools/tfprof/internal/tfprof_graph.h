@@ -43,7 +43,7 @@ namespace tfprof {
 class TFGraph : public TFShow {
  public:
   explicit TFGraph(checkpoint::CheckpointReader* ckpt_reader)
-      : TFShow(ckpt_reader) {}
+      : TFShow(ckpt_reader), root_(nullptr) {}
   ~TFGraph() override {}
 
   void AddNode(TFGraphNode* node) override;
@@ -66,21 +66,18 @@ class TFGraph : public TFShow {
                                      std::set<string>* visited);
 
   std::vector<GraphNode*> PrintGraph(const std::vector<GraphNode*> roots,
-                                     const Options& opts, int depth, int hidden,
+                                     const Options& opts, int depth,
                                      int last_ident, std::set<string>* visits);
 
-  void VisualizeGraph(GraphNode* root, const Options& opts);
+  std::vector<GraphNode*> Account(const std::vector<GraphNode*>& roots,
+                                  const Options& opts,
+                                  std::set<string>* visits);
 
-  std::vector<GraphNode*> GenerateGraphDot(
-      GraphNode* root, GraphNode* last_shown, const Options& opts, int depth,
-      int hidden, std::set<string>* declared_nodes,
-      std::set<string>* declared_edges, TFGraphNodeProto* parent);
-
-  void Account(const std::vector<GraphNode*>& roots, const Options& opts,
-               std::map<string, int64>* visits);
+  void Format(const std::vector<GraphNode*> roots, string* display_str,
+              TFGraphNodeProto* proto);
 
   MemoryTracker memory_tracker_;
-  std::vector<GraphNode*> roots_;
+  GraphNode* root_;
   std::vector<std::unique_ptr<NodeDef>> node_defs_;
   std::map<string, std::unique_ptr<TFGraphNode>> parent_nodes_;
   std::map<string, std::unique_ptr<GraphNode>> nodes_map_;

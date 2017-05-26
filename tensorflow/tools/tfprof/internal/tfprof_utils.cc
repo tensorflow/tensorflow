@@ -170,11 +170,10 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       }
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[5]) {
-      if (pieces.size() <= i + 1) {
+      if (pieces.size() <= i + 1 ||
+          !strings::safe_strto64(pieces[i + 1], &opts->min_occurrence)) {
         return ReturnError(pieces, i);
       }
-      opts->device_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
-                                             str_util::SkipEmpty());
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[6]) {
       if (pieces.size() <= i + 1) {
@@ -292,8 +291,6 @@ void PrintHelp() {
       "float operations. Only available if an op has "
       "op.RegisterStatistics() defined and OpLog is "
       "provided\n\n"
-      "  -device_regexes: Show ops that a placed on the specified devices. "
-      "regexes are comma-separated.\n\n"
       "  -order_by: Order the results by [name|depth|bytes|micros|params|"
       "float_ops]\n\n"
       "  -account_type_regexes: Account and display the ops whose types match "
@@ -326,7 +323,7 @@ void PrintHelp() {
       "ops eventually displayed. If False, account all "
       "op statistics matching -account_type_regexes recursively.\n\n"
       "  -select: Comma-separated list of metrics to show: [bytes|micros|"
-      "params|float_ops|num_hidden_ops|tensor_value|device|op_types]."
+      "params|float_ops|tensor_value|device|op_types]."
       "\n\n"
       "  -dump_to_file: Dump the output to a file, instead of terminal.\n\n"
       ""

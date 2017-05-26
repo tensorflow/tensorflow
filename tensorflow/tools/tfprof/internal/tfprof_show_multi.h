@@ -15,8 +15,8 @@ limitations under the License.
 
 // Parent class and utilities for tfprof_code.
 
-#ifndef THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_CODE_H_
-#define THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_CODE_H_
+#ifndef THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_MULTI_H_
+#define THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_MULTI_H_
 
 #include <algorithm>
 #include <string>
@@ -38,32 +38,34 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-class TFShowCode {
+class TFMultiShow {
  public:
-  explicit TFShowCode() {}
-  virtual ~TFShowCode() {}
+  explicit TFMultiShow() {}
+  virtual ~TFMultiShow() {}
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  const TFCodeNodeProto& Show(const Options& opts);
+  const TFMultiGraphNodeProto& Show(const Options& opts);
 
  protected:
-  virtual const ShowCodeNode* ShowInternal(const Options& opts,
+  virtual const ShowMultiNode* ShowInternal(const Options& opts,
                                            Timeline* timeline) = 0;
 
   bool LookUpCheckPoint(const string& name,
                         std::unique_ptr<TFProfTensor>* tensor);
 
   // Overridden by subclass if extra requirements need to be met.
-  virtual bool ShouldShowIfExtra(ShowCodeNode* node, const Options& opts,
+  virtual bool ShouldShowIfExtra(ShowMultiNode* node, const Options& opts,
                                  int depth) {
     return true;
   }
 
-  bool ShouldShow(ShowCodeNode* node, const Options& opts, int depth);
+  bool ShouldShow(ShowMultiNode* node, const Options& opts, int depth);
 
-  bool ShouldTrim(ShowCodeNode* node, const std::vector<string>& regexes);
+  bool ShouldTrim(ShowMultiNode* node, const std::vector<string>& regexes);
 
-  bool ShouldAccount(ShowCodeNode* node, const Options& opts);
+  bool ReAccount(ShowMultiNode* node, const Options& opts);
+
+  string FormatLegend(const Options& opts);
 
   template <typename T>
   std::vector<T*> SortNodes(const std::vector<T*>& nodes, const Options& opts) {
@@ -90,6 +92,9 @@ class TFShowCode {
                 } else if (opts.order_by == kOrderBy[4]) {
                   return n1->proto().total_float_ops() >
                          n2->proto().total_float_ops();
+                } else if (opts.order_by == kOrderBy[5]) {
+                  return n1->node->graph_nodes().size() >
+                         n2->node->graph_nodes().size();
                 }
                 return name_cmp;
               });
@@ -100,4 +105,4 @@ class TFShowCode {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_CODE_H_
+#endif  // THIRD_PARTY_TENSORFLOW_TOOLS_TFPROF_INTERNAL_TFPROF_SHOW_MULTI_H_

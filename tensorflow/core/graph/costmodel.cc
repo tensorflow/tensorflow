@@ -145,7 +145,7 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
     perslot->resize(num_outputs, Bytes(-1));
     output_port_alloc_ids->resize(num_outputs, -1);
     max_mem_usage->output_port_mem.resize(num_outputs, Bytes(-1));
-    max_mem_usage->output_port_shape.resize(num_outputs, TensorShapeProto());
+    max_mem_usage->output_port_shape.resize(num_outputs, unknown_shape_);
     max_mem_usage->output_port_type.resize(num_outputs, DT_INVALID);
   }
 }
@@ -254,26 +254,28 @@ void CostModel::RecordMaxMemorySize(const Node* node, int output_slot,
 
 Bytes CostModel::MaxMemorySize(const Node* node, int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size() ||
+      max_mem_usage_[id].output_port_mem.size() <= static_cast<size_t>(slot)) {
     return Bytes(0);
   }
   return max_mem_usage_[id].output_port_mem[slot];
 }
 
-TensorShapeProto CostModel::MaxMemoryShape(const Node* node, int slot) const {
+const TensorShapeProto& CostModel::MaxMemoryShape(const Node* node,
+                                                  int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
-    return TensorShapeProto();
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size() ||
+      max_mem_usage_[id].output_port_shape.size() <=
+          static_cast<size_t>(slot)) {
+    return unknown_shape_;
   }
   return max_mem_usage_[id].output_port_shape[slot];
 }
 
 DataType CostModel::MaxMemoryType(const Node* node, int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size() ||
+      max_mem_usage_[id].output_port_type.size() <= static_cast<size_t>(slot)) {
     return DT_INVALID;
   }
   return max_mem_usage_[id].output_port_type[slot];
@@ -369,8 +371,8 @@ void CostModel::RecordAllocationId(const Node* node, int output_slot,
 
 int64 CostModel::AllocationId(const Node* node, int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+  if (id < 0 || static_cast<size_t>(id) >= output_port_alloc_ids_.size() ||
+      output_port_alloc_ids_[id].size() <= static_cast<size_t>(slot)) {
     return -1;
   }
   return output_port_alloc_ids_[id][slot];

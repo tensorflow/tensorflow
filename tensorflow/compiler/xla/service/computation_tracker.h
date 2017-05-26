@@ -74,14 +74,14 @@ class ComputationTracker {
   // module will include the entry computation as well as all computations which
   // are called directly or indirectly from the entry computation via operations
   // like "map". config is the HLO module configuration to use for the
-  // constructed module; pass nullptr for "no configuration".
+  // constructed module.
   // If include_unreachable_instructions is true, then instructions
   // which are not reachable from the root are lowered into HloInstructions
   // including unreachable parameters. This ensures the entry HloComputation has
   // the same program shape (ProgramShape) as the entry UserComputation.
   StatusOr<std::unique_ptr<HloModule>> BuildHloModule(
       const VersionedComputationHandle& entry_handle,
-      const HloModuleConfig* config,
+      const HloModuleConfig& config,
       bool include_unreachable_instructions = true) const;
 
   string ToString() const;

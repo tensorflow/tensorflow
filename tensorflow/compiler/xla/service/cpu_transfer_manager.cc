@@ -96,8 +96,8 @@ Status CpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
 
 }  // namespace xla
 
-static xla::TransferManager* CreateCpuTransferManager() {
-  return new xla::CpuTransferManager();
+static std::unique_ptr<xla::TransferManager> CreateCpuTransferManager() {
+  return xla::MakeUnique<xla::CpuTransferManager>();
 }
 
 static bool InitModule() {

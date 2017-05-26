@@ -48,50 +48,61 @@ namespace xla {
 
 namespace {
 
-// Finds the first non-scalar operand of an instruction that is a reshape or
-// transpose and returns the operand if it is found or nullptr if not found.
-HloInstruction* FirstNonScalarReshapeOperand(const HloInstruction* hlo) {
-  for (HloInstruction* operand : hlo->operands()) {
-    if (!ShapeUtil::IsScalar(operand->shape()) &&
-        (operand->opcode() == HloOpcode::kReshape ||
-         operand->opcode() == HloOpcode::kTranspose)) {
-      VLOG(5) << "Found first non-scalar reshape operand of "
-              << hlo->ToStringNoMetadata() << ":\n\t"
-              << operand->ToStringNoMetadata();
-      return operand;
-    }
+// Checks if an instruction can change its shape simply by adjusting metadata.
+// This is the case if it is:
+//
+// - an instruction does not have any producers like Constants
+// or Rng instruction, or is a scalar.
+//
+// Or
+//
+// - an reshape/transpose instruction with an operand that can trivially change
+// its shape.
+bool InstructionCanTriviallyChangeShape(const HloInstruction* instruction) {
+  // Reshape/Transposes are only trivial if their operand is trivial.
+  if (instruction->opcode() == HloOpcode::kReshape ||
+      instruction->opcode() == HloOpcode::kTranspose) {
+    CHECK_EQ(instruction->operand_count(), 1);
+    return InstructionCanTriviallyChangeShape(instruction->operand(0));
   }
-  return nullptr;
-}
 
-// Checks if an operand of an instruction can change its shape simply by
-// adjusting metadata. This is the case if an operand does not have any
-// producers like Constants or Rng instruction, or is a scalar.
-bool OperandCanTrivallyChangeShape(const HloInstruction* instruction,
-                                   const HloInstruction* operand) {
   // Scalars can operate with any shape.
-  if (ShapeUtil::IsScalar(operand->shape())) {
+  if (ShapeUtil::IsScalar(instruction->shape())) {
     return true;
   }
 
   // A constant can trivially reshape the literal it holds.
-  if (operand->opcode() == HloOpcode::kConstant &&
-      ShapeUtil::SameDimensions(operand->shape(), instruction->shape())) {
-    VLOG(5) << "Constant had same dimensions as instruction:\n\toperand: "
-            << operand->ToStringNoMetadata()
-            << "\n\tinstruction: " << instruction->ToStringNoMetadata();
+  if (instruction->opcode() == HloOpcode::kConstant) {
     return true;
   }
 
   // An Rng instruction can be any shape as long as it has one user. Two copies
   // of the same Rng would be problematic if an Rng of a different shape would
   // produce random numbers in a different order.
-  if (operand->opcode() == HloOpcode::kRng &&
-      ShapeUtil::SameDimensions(operand->shape(), instruction->shape()) &&
-      operand->user_count() == 1) {
+  if (instruction->opcode() == HloOpcode::kRng &&
+      instruction->user_count() == 1) {
     return true;
   }
   return false;
+}
+
+// Finds the first non-scalar operand of an instruction that is a non-trivial
+// reshape or transpose. Returns the operand if it is found or nullptr if not
+// found.
+HloInstruction* FirstNonScalarAndNonTrivialReshapeOperand(
+    const HloInstruction* hlo) {
+  for (HloInstruction* operand : hlo->operands()) {
+    if (!ShapeUtil::IsScalar(operand->shape()) &&
+        ((operand->opcode() == HloOpcode::kReshape ||
+          operand->opcode() == HloOpcode::kTranspose) &&
+         !InstructionCanTriviallyChangeShape(operand->operand(0)))) {
+      VLOG(5) << "Found first non-scalar and non-trivial reshape operand of "
+              << hlo->ToStringNoMetadata() << ":\n\t"
+              << operand->ToStringNoMetadata();
+      return operand;
+    }
+  }
+  return nullptr;
 }
 
 // Returns whether `a` and `b` are equivalent for the purposes of this pass.
@@ -120,9 +131,9 @@ bool IsElementwiseOfEquivalentReshapesOrTransposes(
     const HloInstruction* instruction) {
   const std::vector<HloInstruction*>& operands = instruction->operands();
   HloInstruction* first_reshape_operand =
-      FirstNonScalarReshapeOperand(instruction);
-  // If there are no reshapes or transposes, then there is nothing to sink below
-  // the elementwise operation.
+      FirstNonScalarAndNonTrivialReshapeOperand(instruction);
+  // If there are no non-trivial reshapes or transposes, then there is nothing
+  // to sink below the elementwise operation.
   if (!first_reshape_operand) {
     return false;
   }
@@ -144,13 +155,7 @@ bool IsElementwiseOfEquivalentReshapesOrTransposes(
   //     or
   //    2. Are one of kConstant, kRng, and scalars that can change shape
   //    trivially,
-  //
-  // And:
-  //    3. The number of operands of kReshape/kTranspose type are greater than
-  //    the 1, and their associated operands are not constant. In other words,
-  //    the number of eliminable non-trivial reshapes is greater than 1.
   if (result) {
-    int nontrivial_reshape_operands = 0;
     for (auto& operand : operands) {
       if (!ShapeUtil::SameDimensions(operand->shape(), instruction->shape())) {
         VLOG(5) << "Operand shape differs from output shape; may be "
@@ -166,17 +171,10 @@ bool IsElementwiseOfEquivalentReshapesOrTransposes(
         VLOG(5) << "Are equivalent reshapes:\n\tfirst_reshape_operand: "
                 << first_reshape_operand->ToStringNoMetadata()
                 << "\n\toperand: " << operand->ToStringNoMetadata();
-        CHECK_EQ(operand->operand_count(), 1);
-        if (!OperandCanTrivallyChangeShape(operand, operand->operand(0))) {
-          VLOG(5) << "Reshape/Transpose is nontrivial because its operand "
-                     "cannot trivially change shape: "
-                  << operand->ToStringNoMetadata();
-          nontrivial_reshape_operands++;
-        }
         continue;
       }
 
-      if (OperandCanTrivallyChangeShape(instruction, operand)) {
+      if (InstructionCanTriviallyChangeShape(operand)) {
         VLOG(5) << "Operand can trivially change shape: "
                 << operand->ToStringNoMetadata();
         continue;
@@ -190,10 +188,6 @@ bool IsElementwiseOfEquivalentReshapesOrTransposes(
       result = false;
       break;
     }
-    if (nontrivial_reshape_operands == 0) {
-      VLOG(5) << "No eliminable and non-trivial reshapes found.";
-      result = false;
-    }
   }
 
   VLOG(3) << "ElementwiseOfEquivalentReshapesOrTransposes result for "
@@ -202,15 +196,17 @@ bool IsElementwiseOfEquivalentReshapesOrTransposes(
 }
 
 // Try to sink any reshape or transpose operands of `instruction` across it. We
-// do so if `instruction` is elementwise and all operands are equivalent
-// reshapes or transposes.
+// do so if `instruction` is elementwise and all operands are either equivalent
+// reshapes/transposes or are trivially reshapable. Note that no move is
+// performend if there is no nontrivial reshapes/transposes.
 StatusOr<bool> TrySinkReshapeOrTranspose(HloComputation* computation,
                                          HloInstruction* instruction) {
   if (!IsElementwiseOfEquivalentReshapesOrTransposes(instruction)) {
     return false;
   }
 
-  HloInstruction* old_reshape = FirstNonScalarReshapeOperand(instruction);
+  HloInstruction* old_reshape =
+      FirstNonScalarAndNonTrivialReshapeOperand(instruction);
   TF_RET_CHECK(old_reshape != nullptr);
   Shape new_elementwise_shape = old_reshape->operand(0)->shape();
 

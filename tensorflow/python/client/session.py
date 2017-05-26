@@ -402,8 +402,8 @@ class _FetchHandler(object):
         and to convert all fetches to tensors or ops as needed.
       fetches: An arbitrary fetch structure: singleton, list, tuple,
         namedtuple, or dict.
-      feeds: A feed dict where keys are fully resolved tensor names.
-      feed_handles: A dict from feed names to TensorHandle objects used as
+      feeds: A feed dict where keys are Tensors.
+      feed_handles: A dict from feed Tensors to TensorHandle objects used as
         direct feeds.
     """
     with graph.as_default():
@@ -415,20 +415,19 @@ class _FetchHandler(object):
     self._ops = []
     self._fetch_handles = {}
     for fetch in self._fetch_mapper.unique_fetches():
-      fetch_name = compat.as_bytes(fetch.name)
       if isinstance(fetch, ops.Operation):
         self._assert_fetchable(graph, fetch)
-        self._targets.append(fetch_name)
+        self._targets.append(fetch)
         self._ops.append(True)
       else:
         self._assert_fetchable(graph, fetch.op)
-        self._fetches.append(fetch_name)
+        self._fetches.append(fetch)
         self._ops.append(False)
       # Remember the fetch if it is for a tensor handle.
       if (isinstance(fetch, ops.Tensor) and
           (fetch.op.type == 'GetSessionHandle' or
            fetch.op.type == 'GetSessionHandleV2')):
-        self._fetch_handles[fetch_name] = fetch.op.inputs[0].dtype
+        self._fetch_handles[fetch] = fetch.op.inputs[0].dtype
     self._final_fetches = [x for x in self._fetches if x not in feeds]
 
   def _assert_fetchable(self, graph, op):
@@ -499,6 +498,18 @@ class _FetchHandler(object):
         i += 1
     assert j == len(tensor_values)
     return self._fetch_mapper.build_results(full_values)
+
+
+def _name_list(tensor_list):
+  """Utility function for transitioning to the new session API.
+
+  Args:
+    tensor_list: a list of `Tensor`s.
+
+  Returns:
+    A list of each `Tensor`s name (as byte arrays).
+  """
+  return [compat.as_bytes(t.name) for t in tensor_list]
 
 
 class BaseSession(SessionInterface):
@@ -909,7 +920,8 @@ class BaseSession(SessionInterface):
                                        target_list, status)
 
     return self._do_call(_setup_fn, self._session, feed_list,
-                         fetch_handler.fetches(), fetch_handler.targets())
+                         _name_list(fetch_handler.fetches()),
+                         _name_list(fetch_handler.targets()))
 
   def _run(self, handle, fetches, feed_dict, options, run_metadata):
     """Perform either run or partial_run, depending the presence of `handle`."""
@@ -928,7 +940,7 @@ class BaseSession(SessionInterface):
                          'graph before calling run().')
 
     # Create request.
-    feed_dict_string = {}
+    feed_dict_tensor = {}
     feed_map = {}
 
     # Validate and process feed_dict.
@@ -960,10 +972,9 @@ class BaseSession(SessionInterface):
 
           is_tensor_handle_feed = isinstance(subfeed_val,
                                              session_ops.TensorHandle)
-          subfeed_name = compat.as_bytes(subfeed_t.name)
           if is_tensor_handle_feed:
             np_val = subfeed_val.to_numpy_array()
-            feed_handles[subfeed_name] = subfeed_val
+            feed_handles[subfeed_t] = subfeed_val
           else:
             np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
@@ -976,27 +987,27 @@ class BaseSession(SessionInterface):
           if not self.graph.is_feedable(subfeed_t):
             raise ValueError('Tensor %s may not be fed.' % subfeed_t)
 
-          feed_dict_string[subfeed_name] = np_val
-          feed_map[subfeed_name] = (subfeed_t, subfeed_val)
+          feed_dict_tensor[subfeed_t] = np_val
+          feed_map[compat.as_bytes(subfeed_t.name)] = (subfeed_t, subfeed_val)
 
     # Create a fetch handler to take care of the structure of fetches.
     fetch_handler = _FetchHandler(
-        self._graph, fetches, feed_dict_string, feed_handles=feed_handles)
+        self._graph, fetches, feed_dict_tensor, feed_handles=feed_handles)
 
     # Run request and get response.
-    # We need to keep the movers alive for the following _do_run().
+    # We need to keep the returned movers alive for the following _do_run().
     # These movers are no longer needed when _do_run() completes, and
     # are deleted when `movers` goes out of scope when this _run() ends.
     # TODO(yuanbyu, keveman): Revisit whether we should just treat feeding
     # of a handle from a different device as an error.
-    movers = self._update_with_movers(feed_dict_string, feed_map)
+    _ = self._update_with_movers(feed_dict_tensor, feed_map)
     final_fetches = fetch_handler.fetches()
     final_targets = fetch_handler.targets()
     # We only want to really perform the run if fetches or targets are provided,
     # or if the call is a partial run that specifies feeds.
-    if final_fetches or final_targets or (handle and feed_dict_string):
+    if final_fetches or final_targets or (handle and feed_dict_tensor):
       results = self._do_run(handle, final_targets, final_fetches,
-                             feed_dict_string, options, run_metadata)
+                             feed_dict_tensor, options, run_metadata)
     else:
       results = []
     return fetch_handler.build_results(self, results)
@@ -1051,8 +1062,8 @@ class BaseSession(SessionInterface):
 
     # Create a fetch handler to take care of the structure of fetches.
     fetch_handler = _FetchHandler(self._graph, fetches, {})
-    fetch_list_as_strings = fetch_handler.fetches()
-    target_list_as_strings = fetch_handler.targets()
+    fetch_list_as_strings = _name_list(fetch_handler.fetches())
+    target_list_as_strings = _name_list(fetch_handler.targets())
 
     if isinstance(fetches, ops.Operation):
       # Special case for fetching a single operation, because the
@@ -1095,12 +1106,9 @@ class BaseSession(SessionInterface):
 
     Args:
       handle: a handle for partial_run. None if this is just a call to run().
-      target_list: A list of byte arrays corresponding to names of tensors
-        or operations to be run to, but not fetched.
-      fetch_list: A list of byte arrays corresponding to names of tensors to
-        be fetched and operations to be run.
-      feed_dict: A dictionary that maps tensor names (as byte arrays) to
-        numpy ndarrays.
+      target_list: A list of operations to be run, but not fetched.
+      fetch_list: A list of tensors to be fetched.
+      feed_dict: A dictionary that maps tensors to numpy ndarrays.
       options: A (pointer to a) [`RunOptions`] protocol buffer, or None
       run_metadata: A (pointer to a) [`RunMetadata`] protocol buffer, or None
 
@@ -1113,6 +1121,10 @@ class BaseSession(SessionInterface):
     Raises:
       tf.errors.OpError: Or one of its subclasses on error.
     """
+    feeds = dict((compat.as_bytes(t.name), v) for t, v in feed_dict.items())
+    fetches = _name_list(fetch_list)
+    targets = _name_list(target_list)
+
     def _run_fn(session, feed_dict, fetch_list, target_list, options,
                 run_metadata):
       # Ensure any changes to the graph are reflected in the runtime.
@@ -1130,11 +1142,10 @@ class BaseSession(SessionInterface):
                                   status)
 
     if handle is None:
-      return self._do_call(_run_fn, self._session, feed_dict, fetch_list,
-                           target_list, options, run_metadata)
+      return self._do_call(_run_fn, self._session, feeds, fetches, targets,
+                           options, run_metadata)
     else:
-      return self._do_call(_prun_fn, self._session, handle, feed_dict,
-                           fetch_list)
+      return self._do_call(_prun_fn, self._session, handle, feeds, fetches)
 
   def _do_call(self, fn, *args):
     try:
@@ -1213,7 +1224,9 @@ class BaseSession(SessionInterface):
       handles = self.run(fetches, feed_dict=feeds)
       for handle_mover, handle in zip(handle_movers, handles):
         np_val = np.array(handle.handle, dtype=np.object)
-        feed_dict[handle_mover[0]] = np_val
+        feed_name = handle_mover[0]
+        feed_tensor = feed_map[feed_name][0]
+        feed_dict[feed_tensor] = np_val
       return handles
 
 

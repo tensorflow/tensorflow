@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/tools/tfprof/internal/tfprof_show_code.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_show_multi.h"
 
 #include <memory>
 #include <set>
@@ -27,12 +27,12 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-const TFCodeNodeProto& TFShowCode::Show(const Options& opts) {
+const TFMultiGraphNodeProto& TFMultiShow::Show(const Options& opts) {
   if (opts.output_type == kOutput[0]) {
     Timeline timeline(opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
   } else if (opts.output_type == kOutput[2]) {
-    const ShowCodeNode* root = ShowInternal(opts, nullptr);
+    const ShowMultiNode* root = ShowInternal(opts, nullptr);
     Status s =
         WriteStringToFile(Env::Default(), opts.output_options.at(kFileOpts[0]),
                           root->formatted_str);
@@ -41,19 +41,18 @@ const TFCodeNodeProto& TFShowCode::Show(const Options& opts) {
     }
     return root->proto();
   } else {
-    const ShowCodeNode* root = ShowInternal(opts, nullptr);
+    const ShowMultiNode* root = ShowInternal(opts, nullptr);
     printf("%s", root->formatted_str.c_str());
     fflush(stdout);
     return root->proto();
   }
 }
 
-bool TFShowCode::ShouldShow(ShowCodeNode* node, const Options& opts,
+bool TFMultiShow::ShouldShow(ShowMultiNode* node, const Options& opts,
                             int depth) {
   // Always show kTFProfRoot.
   if (node->name() == kTFProfRoot) return true;
 
-  if (!node->account) return false;
   // TODO(xpan): Think more carefully about node filtering in code view.
   // Unlike graph/scope view, which users want to see the exact leaf op.
   // In code view, users want to see the middle code traces they wrote.
@@ -70,23 +69,6 @@ bool TFShowCode::ShouldShow(ShowCodeNode* node, const Options& opts,
   }
 
   bool show = false;
-  if (opts.device_regexes.size() == 1 && opts.device_regexes[0] == ".*") {
-    show = true;
-  } else {
-    for (const string& regex : opts.device_regexes) {
-      for (const string& device : node->node->devices()) {
-        if (RE2::FullMatch(device, regex)) {
-          show = true;
-          break;
-        }
-      }
-      if (show) break;
-    }
-  }
-  // Don't show if device_regexes don't cover it.
-  if (!show) return false;
-
-  show = false;
   if (opts.show_name_regexes.size() == 1 && opts.show_name_regexes[0] == ".*") {
     show = true;
   } else {
@@ -106,7 +88,7 @@ bool TFShowCode::ShouldShow(ShowCodeNode* node, const Options& opts,
   return true;
 }
 
-bool TFShowCode::ShouldTrim(ShowCodeNode* node,
+bool TFMultiShow::ShouldTrim(ShowMultiNode* node,
                             const std::vector<string>& regexes) {
   for (const string& regex : regexes) {
     if (RE2::FullMatch(node->name(), regex)) {
@@ -116,24 +98,35 @@ bool TFShowCode::ShouldTrim(ShowCodeNode* node,
   return false;
 }
 
-bool TFShowCode::ShouldAccount(ShowCodeNode* node, const Options& opts) {
-  if (opts.account_type_regexes.size() == 1 &&
-      opts.account_type_regexes[0] == ".*") {
-    return true;
+bool TFMultiShow::ReAccount(ShowMultiNode* node, const Options& opts) {
+  return node->ReInit(opts.account_type_regexes);
+}
+
+string TFMultiShow::FormatLegend(const Options& opts) {
+  std::vector<string> legends;
+  if (opts.select.find(kShown[0]) != opts.select.end()) {
+    legends.push_back("output bytes");
   }
-  for (const string& regex : opts.account_type_regexes) {
-    for (const string& type : node->node->op_types()) {
-      if (RE2::FullMatch(type, regex)) {
-        return true;
-      }
-    }
-    for (const string& device : node->node->devices()) {
-      if (RE2::FullMatch(device, regex)) {
-        return true;
-      }
-    }
+  if (opts.select.find(kShown[1]) != opts.select.end()) {
+    legends.push_back("execution time");
   }
-  return false;
+  if (opts.select.find(kShown[2]) != opts.select.end()) {
+    legends.push_back("# parameters");
+  }
+  if (opts.select.find(kShown[3]) != opts.select.end()) {
+    legends.push_back("# float_ops");
+  }
+  if (opts.select.find(kShown[5]) != opts.select.end()) {
+    legends.push_back("assigned devices");
+  }
+  if (opts.select.find(kShown[6]) != opts.select.end()) {
+    legends.push_back("op types");
+  }
+  if (opts.select.find(kShown[7]) != opts.select.end()) {
+    legends.push_back("op occurrence");
+  }
+  return strings::Printf("node name | %s\n",
+                         str_util::Join(legends, " | ").c_str());
 }
 
 }  // namespace tfprof
