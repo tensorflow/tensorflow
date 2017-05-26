@@ -39,9 +39,10 @@ tensorboard_typescript_bundle(
     ]},
     namespace_symbol_aliases = {"TF.URIStorage": {
         "TABS": "TF.Globals.TABS",
-        "USE_HASH": "TF.Globals.USE_HASH",
         "getFakeHash": "TF.Globals.getFakeHash",
         "setFakeHash": "TF.Globals.setFakeHash",
+        "setUseHash": "TF.Globals.setUseHash",
+        "useHash": "TF.Globals.useHash",
     }},
 )
 
