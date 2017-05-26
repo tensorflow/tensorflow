@@ -118,7 +118,33 @@ class CrfTest(test.TestCase):
       log_norm = array_ops.squeeze(log_norm, [0])
       tf_brute_force_log_norm, tf_log_norm = sess.run(
           [brute_force_log_norm, log_norm])
+      self.assertAllClose(tf_log_norm, tf_brute_force_log_norm)
 
+    # Test case with zero sequence length.
+    sequence_lengths = np.array(0, dtype=np.int32)
+    with self.test_session() as sess:
+      all_sequence_scores = []
+
+      # Compare the dynamic program with brute force computation.
+      for tag_indices in itertools.product(
+          range(num_tags), repeat=sequence_lengths):
+        tag_indices = list(tag_indices)
+        tag_indices.extend([0] * (num_words - sequence_lengths))
+        all_sequence_scores.append(
+            crf.crf_sequence_score(
+                inputs=array_ops.expand_dims(inputs, 0),
+                tag_indices=array_ops.expand_dims(tag_indices, 0),
+                sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
+                transition_params=constant_op.constant(transition_params)))
+
+      brute_force_log_norm = math_ops.reduce_logsumexp(all_sequence_scores)
+      log_norm = crf.crf_log_norm(
+          inputs=array_ops.expand_dims(inputs, 0),
+          sequence_lengths=array_ops.expand_dims(sequence_lengths, 0),
+          transition_params=constant_op.constant(transition_params))
+      log_norm = array_ops.squeeze(log_norm, [0])
+      tf_brute_force_log_norm, tf_log_norm = sess.run(
+          [brute_force_log_norm, log_norm])
       self.assertAllClose(tf_log_norm, tf_brute_force_log_norm)
 
   def testCrfLogLikelihood(self):
