@@ -44,16 +44,13 @@ namespace xla {
 class HloModule {
  public:
   HloModule(const string& name,
-            const VersionedComputationHandle& entry_computation_handle);
-
-  HloModule(const string& name,
             const VersionedComputationHandle& entry_computation_handle,
             const HloModuleConfig& config);
 
   // Constructor without a versioned computation handle. This constructor should
   // only be used for HloModules used outside of the XLA service (eg
   // tests). The versioned handle is used by the service in the compilation
-  // cache.
+  // cache. A default configuration is created for this module.
   explicit HloModule(const string& name);
 
   // Adds an entry computation to the module. A module can only have one entry
@@ -83,6 +80,10 @@ class HloModule {
     return entry_computation_;
   }
 
+  ComputationLayout* mutable_entry_computation_layout() {
+    return config_.mutable_entry_computation_layout();
+  }
+
   const VersionedComputationHandle& entry_computation_handle() const {
     return entry_computation_handle_;
   }
@@ -96,13 +97,7 @@ class HloModule {
   // computation B, then A will appear after B in the sort.
   std::list<HloComputation*> MakeComputationPostOrder() const;
 
-  bool has_config() const { return config_ != nullptr; }
-
-  void set_config(const HloModuleConfig& config);
-
-  const HloModuleConfig& config() const { return *config_; }
-
-  HloModuleConfig* mutable_config() { return config_.get(); }
+  const HloModuleConfig& config() const { return config_; }
 
   string ToString() const;
 
@@ -129,7 +124,7 @@ class HloModule {
       std::unique_ptr<HloComputation> computation);
 
   const string name_;
-  std::unique_ptr<HloModuleConfig> config_;
+  HloModuleConfig config_;
   HloComputation* entry_computation_;
   std::vector<std::unique_ptr<HloComputation>> computations_;
 

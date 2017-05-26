@@ -42,10 +42,6 @@ void CodegenTestBase::CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
 
 std::unique_ptr<Executable> CodegenTestBase::CompileToExecutable(
     std::unique_ptr<HloModule> hlo_module) {
-  HloModuleConfig module_config(
-      hlo_module->entry_computation()->ComputeProgramShape());
-  module_config.set_fast_math_disabled(fast_math_disabled_);
-  hlo_module->set_config(module_config);
   return backend_->compiler()
       ->Compile(std::move(hlo_module), test_hlo_dumper_,
                 backend_->default_stream_executor())

@@ -68,19 +68,24 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
     printf("%s", opts.ToString().c_str());
     printf("\n==================Model Analysis Report======================\n");
     string ret = "";
-    if (*command == kCmds[2]) {
-      ret = tf_stats.PrintCode(opts).SerializeAsString();
+    if (*command == kCmds[2] || *command == kCmds[3]) {
+      ret = tf_stats.ShowMultiGraphNode(*command, opts).SerializeAsString();
+    } else if (*command == kCmds[0] || *command == kCmds[1]) {
+      ret = tf_stats.ShowGraphNode(*command, opts).SerializeAsString();
     } else {
-      ret = tf_stats.PrintGraph(*command, opts).SerializeAsString();
+      fprintf(stderr, "Unknown command: %s\n", command->c_str());
     }
     printf("\n======================End of Report==========================\n");
     fflush(stdout);
     return ret;
   }
-  if (*command == kCmds[2]) {
-    return tf_stats.PrintCode(opts).SerializeAsString();
+  if (*command == kCmds[2] || *command == kCmds[3]) {
+    return tf_stats.ShowMultiGraphNode(*command, opts).SerializeAsString();
+  } else if (*command == kCmds[0] || *command == kCmds[1]) {
+    return tf_stats.ShowGraphNode(*command, opts).SerializeAsString();
   } else {
-    return tf_stats.PrintGraph(*command, opts).SerializeAsString();
+    fprintf(stderr, "Unknown command: %s\n", command->c_str());
+    return "";
   }
 }
 }  // namespace tfprof

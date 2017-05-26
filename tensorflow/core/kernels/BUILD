@@ -1346,6 +1346,11 @@ cc_library(
     ],
 )
 
+cc_header_only_library(
+    name = "lookup_headers_lib",
+    deps = [":lookup"],
+)
+
 DATA_FLOW_DEPS = [
     ":bounds_check",
     ":concat_lib",
@@ -4106,7 +4111,6 @@ filegroup(
         "tensor_array.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
-        "topk_op.h",
         "training_op_helpers.h",
         "training_ops.h",
         "transpose_functor.h",
@@ -4886,11 +4890,14 @@ tf_cc_test(
 
 tf_kernel_library(
     name = "remote_fused_graph_ops",
-    prefix = "remote_fused_graph_ops",
+    prefix = "remote_fused_graph_execute_op",
     deps = [
         ":remote_fused_graph_execute_op",
+        ":remote_fused_graph_execute_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:remote_fused_graph_ops_op_lib",
     ],
 )

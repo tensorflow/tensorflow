@@ -23,6 +23,7 @@ py_library(
         ":inputs",
         ":linear",
         ":model_fn",
+        ":parsing_utils",
         ":run_config",
         "//tensorflow/python:util",
     ],
@@ -194,6 +195,32 @@ py_test(
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
+    ],
+)
+
+py_library(
+    name = "parsing_utils",
+    srcs = [
+        "canned/parsing_utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_test(
+    name = "parsing_utils_test",
+    srcs = ["canned/parsing_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":parsing_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python/feature_column",
     ],
 )
 

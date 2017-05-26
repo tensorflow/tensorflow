@@ -791,8 +791,8 @@ TEST(ShapeRefinerTest, IncrementalUpdates) {
   // Inject a shape, and incrementally propagate it to the dequeue op.
   ctx = m.GetContext(queue);
   shape_inference::ShapeHandle shp = ctx->MakeShape({3, 7});
-  ctx->set_output_handle_shape(0, shp);
-  ctx->set_output_handle_dtype(0, DT_FLOAT);
+  ctx->set_output_handle_shapes_and_types(
+      0, std::vector<shape_inference::ShapeAndType>{{shp, DT_FLOAT}});
 
   bool refined = false;
   TF_ASSERT_OK(m.UpdateNode(dequeue, &refined));

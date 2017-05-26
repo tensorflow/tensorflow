@@ -29,6 +29,7 @@ namespace tensorflow {
 
 using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
+using shape_inference::ShapeAndType;
 using shape_inference::ShapeHandle;
 
 ShapeRefiner::ShapeRefiner(int graph_def_version,
@@ -49,8 +50,8 @@ Status ShapeRefiner::AddNode(const Node* node) {
   // indexed by 'node's input.
   std::vector<Node*> input_nodes(node->num_inputs());
   std::vector<ShapeHandle> input_shapes(node->num_inputs());
-  std::vector<DataType> input_handle_dtypes(node->num_inputs());
-  std::vector<ShapeHandle> input_handle_shapes(node->num_inputs());
+  std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
+      input_handle_shapes_and_types(node->num_inputs());
   for (const Edge* e : node->in_edges()) {
     if (e->IsControlEdge()) continue;
 
@@ -67,13 +68,13 @@ Status ShapeRefiner::AddNode(const Node* node) {
     input_nodes[e->dst_input()] = input;
     input_shapes[e->dst_input()] = c->output(e->src_output());
 
-    // Only propagate handle xshape and dtype of edges which are carrying
-    // resource handles.
+    // Only propagate handle data of edges which are carrying resource handles.
     if (e->src()->output_type(e->src_output()) == DT_RESOURCE) {
-      input_handle_dtypes[e->dst_input()] =
-          c->output_handle_dtype(e->src_output());
-      input_handle_shapes[e->dst_input()] =
-          c->output_handle_shape(e->src_output());
+      const auto* in_v = c->output_handle_shapes_and_types(e->src_output());
+      if (in_v != nullptr) {
+        input_handle_shapes_and_types[e->dst_input()].reset(
+            new std::vector<ShapeAndType>(*in_v));
+      }
     }
   }
 
@@ -95,7 +96,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
   std::unique_ptr<InferenceContext> c(
       new InferenceContext(graph_def_version_, &node->def(), node->op_def(),
                            input_shapes, input_tensors, input_tensors_as_shapes,
-                           input_handle_shapes, input_handle_dtypes));
+                           std::move(input_handle_shapes_and_types)));
   if (!c->construction_status().ok()) {
     return c->construction_status();
   }
@@ -170,12 +171,11 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool* refined) {
     // Also propagate handle shape and dtype of edges which are carrying
     // resource handles.
     if (e->src()->output_type(e->src_output()) == DT_RESOURCE) {
-      if (node_context->set_input_handle_dtype(
-              e->dst_input(), c->output_handle_dtype(e->src_output()))) {
-        *refined = true;
-      }
-      if (node_context->MergeInputHandleShape(
-              e->dst_input(), c->output_handle_shape(e->src_output()))) {
+      auto* shapes_and_types =
+          c->output_handle_shapes_and_types(e->src_output());
+      if (shapes_and_types != nullptr &&
+          node_context->MergeInputHandleShapesAndTypes(e->dst_input(),
+                                                       *shapes_and_types)) {
         *refined = true;
       }
     }

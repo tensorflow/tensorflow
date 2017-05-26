@@ -17,7 +17,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
-#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
 
 namespace tensorflow {
@@ -39,6 +38,7 @@ void TFGraphNode::AddStepStat(const string& device,
     canonical_device_ = dev;
     // TODO(xpan): Support things other than gpu?
     host_device_ = StringReplace(dev, "gpu:\\d+", "cpu:0");
+    AddOpType(canonical_device_);
   }
 
   devices_.insert(dev);

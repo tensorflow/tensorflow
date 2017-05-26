@@ -31,8 +31,6 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.core.framework import tensor_shape_pb2
-from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import device as pydev
@@ -323,8 +321,8 @@ class Tensor(_TensorLike):
     self._consumers = []
 
     # Attributes used for C++ shape inference. Not inspected, only forwarded.
-    self._handle_shape = tensor_shape_pb2.TensorShapeProto()
-    self._handle_dtype = types_pb2.DT_INVALID
+    # If set, will be a HandleData object from cpp_shape_inference.proto.
+    self._handle_data = None
 
   @property
   def op(self):
@@ -1877,12 +1875,10 @@ def set_shapes_for_outputs(op):
     # Returned by call_cpp_shape_fn
     shapes_dict = shapes
     shapes = shapes_dict["shapes"]
-    handle_shapes = shapes_dict["handle_shapes"]
-    handle_dtypes = shapes_dict["handle_dtypes"]
-    for output, handle_shape, handle_dtype in zip(op.outputs, handle_shapes, handle_dtypes):
+    handle_datas = shapes_dict["handle_data"]
+    for output, handle_data in zip(op.outputs, handle_datas):
       # pylint: disable=protected-access
-      output._handle_shape = handle_shape
-      output._handle_dtype = handle_dtype
+      output._handle_data = handle_data
       # pylint: enable=protected-access
 
   if len(op.outputs) != len(shapes):

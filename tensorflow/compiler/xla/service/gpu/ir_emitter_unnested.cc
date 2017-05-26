@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
@@ -1577,6 +1578,11 @@ Status IrEmitterUnnested::HandleSelect(HloInstruction* select,
   return IrEmitter::HandleSelect(select, pred, on_true, on_false);
 }
 
+Status IrEmitterUnnested::HandleInfeed(HloInstruction* infeed) {
+  thunk_sequence_->emplace_back(BuildInfeedThunk(infeed));
+  return Status::OK();
+}
+
 llvm::Function* IrEmitterUnnested::EmitBasePointersForHloAndItsOperands(
     const HloInstruction& hlo, std::vector<const HloInstruction*>* io_hlos) {
   const BufferAssignment& buffer_assignment =
@@ -1643,6 +1649,17 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildCopyThunk(
       /*destination_buffer=*/GetAllocationSlice(*inst),
       /*mem_size=*/
       llvm_ir::ByteSizeOf(operand->shape(),
+                          ir_emitter_context_->llvm_module()->getDataLayout()),
+      inst);
+}
+
+std::unique_ptr<Thunk> IrEmitterUnnested::BuildInfeedThunk(
+    const HloInstruction* inst) {
+  CHECK_EQ(HloOpcode::kInfeed, inst->opcode());
+  return MakeUnique<InfeedThunk>(
+      /*destination_buffer=*/GetAllocationSlice(*inst),
+      /*mem_size=*/
+      llvm_ir::ByteSizeOf(inst->shape(),
                           ir_emitter_context_->llvm_module()->getDataLayout()),
       inst);
 }

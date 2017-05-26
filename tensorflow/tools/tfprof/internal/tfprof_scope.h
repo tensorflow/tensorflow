@@ -40,7 +40,7 @@ namespace tfprof {
 class TFScope : public TFShow {
  public:
   explicit TFScope(checkpoint::CheckpointReader* ckpt_reader)
-      : TFShow(ckpt_reader) {}
+      : TFShow(ckpt_reader), root_(nullptr) {}
   ~TFScope() override {}
 
   void AddNode(TFGraphNode* node) override;
@@ -60,9 +60,13 @@ class TFScope : public TFShow {
                                      const Options& opts, int depth,
                                      int last_ident);
 
-  void Account(const std::vector<ScopeNode*>& roots, const Options& opts);
+  std::vector<ScopeNode*> Account(const std::vector<ScopeNode*>& roots,
+                                  const Options& opts);
 
-  std::vector<ScopeNode*> roots_;
+  void Format(const std::vector<ScopeNode*> roots, string* display_str,
+              TFGraphNodeProto* proto);
+
+  ScopeNode* root_;
   std::vector<std::unique_ptr<NodeDef>> node_defs_;
   std::map<string, std::unique_ptr<TFGraphNode>> parent_nodes_;
   std::map<string, std::unique_ptr<ScopeNode>> nodes_map_;

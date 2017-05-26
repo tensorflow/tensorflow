@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 
@@ -32,14 +33,34 @@ namespace xla {
 // executable.
 class HloModuleConfig {
  public:
+  // A configuration can be created either with, or without an entry
+  // ComputationLayout. The default ctor creates it without -- in this case
+  // accessing entry_computation_layout will CHECK-fail. The ctor accepting a
+  // ProgramShape creates a computation layout using this shape.
+  HloModuleConfig();
   explicit HloModuleConfig(const ProgramShape& program_shape);
 
-  // Return a reference to the layout of the entry computation.
-  const ComputationLayout& entry_computation_layout() const {
-    return entry_computation_layout_;
+  // Checks if this config has an entry computation layout already.
+  bool has_entry_computation_layout() const {
+    return entry_computation_layout_.has_value();
   }
+
+  // Sets the entry computation layout for this config. If the entry computation
+  // layout already exists, it is silently replaced.
+  void SetDefaultComputationLayout(const ProgramShape& program_shape);
+
+  // Returns a constant reference to the layout of the entry computation.
+  // Assumes the layout was set.
+  const ComputationLayout& entry_computation_layout() const {
+    CHECK(entry_computation_layout_.has_value());
+    return *entry_computation_layout_;
+  }
+
+  // Returns a mutable pointer to the layout of the entry computation. Assumes
+  // the layout was set.
   ComputationLayout* mutable_entry_computation_layout() {
-    return &entry_computation_layout_;
+    CHECK(entry_computation_layout_.has_value());
+    return &(*entry_computation_layout_);
   }
 
   // Sets/returns whether to enable HLO-level profiling.
@@ -76,7 +97,7 @@ class HloModuleConfig {
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
-  ComputationLayout entry_computation_layout_;
+  tensorflow::gtl::optional<ComputationLayout> entry_computation_layout_;
 
   // Whether to enable HLO-level profiling.
   bool hlo_profiling_enabled_ = false;
