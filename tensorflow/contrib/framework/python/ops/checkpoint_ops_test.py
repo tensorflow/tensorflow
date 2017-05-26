@@ -21,9 +21,8 @@ import os
 import numpy as np
 
 from tensorflow.contrib import framework as contrib_framework
-from tensorflow.contrib.framework.python.framework import load_and_remap_matrix_ops
+from tensorflow.contrib.framework.python.ops import checkpoint_ops
 from tensorflow.contrib.framework.python.ops import gen_checkpoint_ops
-from tensorflow.contrib.framework.python.ops.gen_generate_vocab_remapping_ops import generate_vocab_remapping
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -52,7 +51,7 @@ class GenerateVocabRemappingTest(test.TestCase):
 
   def test_generate_remapping_with_no_vocab_changes(self):
     """Tests where vocab does not change at all."""
-    remapping, num_present = generate_vocab_remapping(
+    remapping, num_present = gen_checkpoint_ops.generate_vocab_remapping(
         new_vocab_file=self.old_vocab_file,
         old_vocab_file=self.old_vocab_file,
         num_new_vocab=3,
@@ -65,7 +64,7 @@ class GenerateVocabRemappingTest(test.TestCase):
 
   def test_generate_remapping_with_shifted_vocab(self):
     """Tests where vocab is the same, but shifted / ordered differently."""
-    remapping, num_present = generate_vocab_remapping(
+    remapping, num_present = gen_checkpoint_ops.generate_vocab_remapping(
         new_vocab_file=self.new_vocab_file,
         old_vocab_file=self.old_vocab_file,
         num_new_vocab=3,
@@ -78,7 +77,7 @@ class GenerateVocabRemappingTest(test.TestCase):
 
   def test_generate_remapping_with_offset(self):
     """Tests offset and num_new_vocab logic."""
-    remapping, num_present = generate_vocab_remapping(
+    remapping, num_present = gen_checkpoint_ops.generate_vocab_remapping(
         new_vocab_file=self.new_vocab_file,
         old_vocab_file=self.old_vocab_file,
         num_new_vocab=1,
@@ -281,7 +280,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
     # column vocabulary files, calls the relevant remappings, and returns the
     # weight matrix.  Take this example to be linear multi-class by providing
     # both row and column vocabularies.
-    remapped_matrix = load_and_remap_matrix_ops._load_and_remap_matrix(
+    remapped_matrix = checkpoint_ops._load_and_remap_matrix(
         new_row_vocab_file=self.new_feature_vocab_file,
         old_row_vocab_file=self.old_feature_vocab_file,
         num_rows_to_load=4,

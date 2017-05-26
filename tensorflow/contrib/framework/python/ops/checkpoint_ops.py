@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework.python.ops import gen_checkpoint_ops
-from tensorflow.contrib.framework.python.ops import gen_generate_vocab_remapping_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -141,7 +140,7 @@ def _load_and_remap_matrix(ckpt_path,
   num_rows_present = num_rows_to_load
   if remap_rows:
     row_remapping, num_rows_present = (
-        gen_generate_vocab_remapping_ops.generate_vocab_remapping(
+        gen_checkpoint_ops.generate_vocab_remapping(
             new_vocab_file=new_row_vocab_file,
             old_vocab_file=old_row_vocab_file,
             new_vocab_offset=new_row_vocab_offset,
@@ -159,7 +158,7 @@ def _load_and_remap_matrix(ckpt_path,
   num_cols_present = new_col_vocab_size
   if remap_cols:
     col_remapping, num_cols_present = (
-        gen_generate_vocab_remapping_ops.generate_vocab_remapping(
+        gen_checkpoint_ops.generate_vocab_remapping(
             new_vocab_file=new_col_vocab_file,
             old_vocab_file=old_col_vocab_file,
             new_vocab_offset=0,  # Offset is unused for cols (no partitioning).
