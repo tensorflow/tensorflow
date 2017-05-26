@@ -211,9 +211,11 @@ class ComputationBuilder {
   //
   // Note that "limit" means up-to-but-not-including; i.e. [start, limit) in 1D
   // range notation.
+  // The stride parameter determines the stride over the slice
   ComputationDataHandle Slice(const ComputationDataHandle& operand,
                               tensorflow::gtl::ArraySlice<int64> start_indices,
-                              tensorflow::gtl::ArraySlice<int64> limit_indices);
+                              tensorflow::gtl::ArraySlice<int64> limit_indices,
+                              tensorflow::gtl::ArraySlice<int64> stride);
 
   // Enqueues a slice operation onto the computation that slices the 'operand'
   // from dynamic start indices which are passed in 'start_indices'.
