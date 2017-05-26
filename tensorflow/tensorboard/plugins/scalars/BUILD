@@ -47,6 +47,16 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "scalars_demo",
+    srcs = ["scalars_demo.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "@six_archive//:six",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(["**"]),
