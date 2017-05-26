@@ -112,6 +112,7 @@ ExecutorCompiler::ShapeSizeBytesFunction() const {
   return ExecutorExecutable::ShapeSizeBytes;
 }
 
+
 }  // namespace executorplugin
 }  // namespace xla
 

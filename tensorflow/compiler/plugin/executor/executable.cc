@@ -142,5 +142,6 @@ StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteAsyncOnStream(
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
+
 }  // namespace executorplugin
 }  // namespace xla
