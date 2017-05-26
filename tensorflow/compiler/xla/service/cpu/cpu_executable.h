@@ -78,6 +78,8 @@ class CpuExecutable : public Executable {
     ir_module_string_ = ir_module_string;
   }
 
+  static int64 ShapeSizeBytes(const Shape& shape);
+
  private:
   // Allocate buffers required for execution and assign them to the elements of
   // "buffers". "buffers" should be sized to the number of buffers in buffer

@@ -848,9 +848,7 @@ void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // remember 'y' in node_map[x->id()].
   std::vector<Node*> node_map(fbody->graph->num_node_ids());
   Status s;
-  for (Node* n : fbody->graph->nodes()) {
-    if (n->IsSource() || n->IsSink()) continue;
-    CHECK(n->IsOp());
+  for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
     ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
     Node* clone = g->AddNode(ndef, &s);
@@ -1077,7 +1075,7 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
       ret_types(ret_t.begin(), ret_t.end()) {
   this->arg_nodes.resize(arg_types.size());
   this->ret_nodes.resize(ret_types.size());
-  for (Node* n : this->graph->nodes()) {
+  for (Node* n : this->graph->op_nodes()) {
     gtl::InlinedVector<Node*, 4>* node_vec;
     if (n->type_string() == kRetOp) {
       node_vec = &this->ret_nodes;
@@ -1124,9 +1122,7 @@ void SymbolicGradientHelper::Copy() {
   // Copy the nodes.
   node_map[src.source_node()->id()] = dst->source_node();
   node_map[src.sink_node()->id()] = dst->sink_node();
-  for (Node* n : src.nodes()) {
-    if (n->IsSource() || n->IsSink()) continue;
-    CHECK(n->IsOp());
+  for (Node* n : src.op_nodes()) {
     node_map[n->id()] = dst->CopyNode(n);
   }
 

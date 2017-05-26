@@ -19,6 +19,7 @@ limitations under the License.
 #include "include/json/json.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_node_show.h"
 
@@ -44,6 +45,9 @@ class ChromeTraceFormatter {
 
   void EmitFlowEnd(const string& name, int64 ts, int64 pid, int64 tid,
                    int64 flow_id);
+
+  void EmitCounter(const string& category, const string& name, int64 pid,
+                   int64 ts, const string& device, int64 bytes);
 
   string Format();
 
@@ -80,12 +84,40 @@ class TimeNode {
   std::vector<TimeNode*> next_tnodes;
 };
 
+// Tracking the memory based on the op input/output, temporary bytes and
+// persistent bytes.
+// Currently, we calculate a "predicted" memory, but do not use it for display.
+// The displayed memory timeline is directly from the TensorFlow allocator,
+// which is the groundtruth.
+class MemoryTracker {
+ public:
+  class Device {
+   public:
+    // The first 3 fields are predicted.
+    std::map<string, int64> tensor_size;
+    std::map<string, int64> earliest_ref;
+    std::map<string, int64> latest_ref;
+    // ground truth memory stats. time->bytes.
+    std::map<int64, int64> allocator_stats;
+  };
+
+  void TrackNode(GraphNode* node);
+
+  void TrackNodeConnection(GraphNode* node, GraphNode* src);
+
+  const std::map<string, Device>& devices() const { return devices_; }
+
+ private:
+  std::map<string, Device> devices_;
+};
+
 class Timeline {
  public:
   Timeline(const string& outfile) : outfile_(outfile) {}
   ~Timeline() {}
 
-  void GenerateGraphTimeline(const GraphNode* gnode);
+  void GenerateGraphTimeline(const GraphNode* gnode,
+                             const MemoryTracker& memory_tracker);
 
   void GenerateScopeTimeline(const ScopeNode* node);
 

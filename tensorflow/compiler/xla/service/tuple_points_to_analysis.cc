@@ -33,10 +33,9 @@ limitations under the License.
 namespace xla {
 
 string BufferAlias::ToString() const {
-  return tensorflow::strings::StrCat("BufferAlias(",
-                                     instruction_->FullyQualifiedName(), "[",
-                                     tensorflow::str_util::Join(index_, ","),
-                                     "] => ", buffer_->ToString(), ")");
+  return tensorflow::strings::StrCat(
+      "BufferAlias(", instruction_->FullyQualifiedName(), "[",
+      tensorflow::str_util::Join(index_, ","), "])");
 }
 
 std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias) {
@@ -174,7 +173,7 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
         if (buffer_aliases_.count(buffer) == 0) {
           buffer_aliases_.insert({buffer, std::vector<BufferAlias>()});
         }
-        buffer_aliases_[buffer].emplace_back(*buffer, instruction.get(), index);
+        buffer_aliases_[buffer].emplace_back(instruction.get(), index);
       }
       return Status::OK();
     }));

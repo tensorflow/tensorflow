@@ -363,6 +363,8 @@ Status LoadSessionBundleOrSavedModelBundle(
     return LoadSavedModel(session_options, run_options, export_dir,
                           saved_model_tags, saved_model_bundle);
   } else if (IsPossibleExportDirectory(export_dir)) {
+    LOG(ERROR) << "Found possible SessionBundle in export directory. "
+                  "SessionBundle is deprecated. Use SavedModel instead.";
     LOG(INFO) << "Attempting to up-convert SessionBundle to SavedModelBundle "
                  "in bundle-shim from: "
               << export_dir;

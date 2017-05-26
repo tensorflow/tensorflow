@@ -22,6 +22,7 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/Function.h"
 #include "external/llvm/include/llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"

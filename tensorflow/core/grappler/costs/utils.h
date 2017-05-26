@@ -45,6 +45,9 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
 DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node);
 DeviceProperties GetDeviceInfo(const string& device_str);
 
+// Return a string describing a node given a nodeinfo.
+string GetOpDescription(const OpInfo& op_info);
+
 // Builds the OpInfo proto for node, given all nodes in the graph, the node's
 // device and its input properties which are typically built by shape inference
 // or calling FindInputFeatures.

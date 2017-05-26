@@ -711,8 +711,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   CHECK(ShapeUtil::IsArray(instruction->shape()) &&
         ShapeUtil::IsArray(operand->shape()));
 
-  if ((instruction->IsElementwiseOnOperand(operand_no) ||
-       InstructionRequiresInputLayoutEqualToOutputLayout(instruction)) &&
+  if (instruction->IsElementwiseOnOperand(operand_no) &&
       !ShapeUtil::IsScalar(operand->shape()) &&
       ShapeUtil::Rank(operand->shape()) ==
           ShapeUtil::Rank(instruction->shape())) {

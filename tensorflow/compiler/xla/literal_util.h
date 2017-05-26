@@ -1076,6 +1076,7 @@ template <typename NativeT>
     ShapeUtil::ForEachIndex(shape, stride_config.base, stride_config.dimensions,
                             stride_config.step, init_function);
   } else {
+    // For scalars.
     data.at(0) = generator({});
   }
   return Status::OK();

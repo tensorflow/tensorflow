@@ -254,3 +254,9 @@ def tf_additional_verbs_lib_defines():
       "//tensorflow:with_verbs_support": ["TENSORFLOW_USE_VERBS"],
       "//conditions:default": [],
   })
+
+def tf_additional_mpi_lib_defines():
+  return select({
+      "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],
+      "//conditions:default": [],
+  })

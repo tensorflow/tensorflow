@@ -23,6 +23,7 @@ py_library(
         ":inputs",
         ":linear",
         ":model_fn",
+        ":parsing_utils",
         ":run_config",
         "//tensorflow/python:util",
     ],
@@ -114,17 +115,20 @@ py_test(
     deps = [
         ":dnn",
         ":export_export",
+        ":head",
         ":metric_keys",
+        ":model_fn",
         ":numpy_io",
         ":prediction_keys",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn",
         "//tensorflow/python:platform",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
@@ -184,12 +188,39 @@ py_test(
         "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:loader",
         "//tensorflow/python/saved_model:tag_constants",
+    ],
+)
+
+py_library(
+    name = "parsing_utils",
+    srcs = [
+        "canned/parsing_utils.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
+py_test(
+    name = "parsing_utils_test",
+    srcs = ["canned/parsing_utils_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":parsing_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python/feature_column",
     ],
 )
 
@@ -353,6 +384,7 @@ py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
+        "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",

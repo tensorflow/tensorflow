@@ -29,6 +29,8 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::MatrixBandPart<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
+TF_CALL_complex64(DEFINE_GPU_SPEC);
+TF_CALL_complex128(DEFINE_GPU_SPEC);
 
 }  // end namespace tensorflow
 

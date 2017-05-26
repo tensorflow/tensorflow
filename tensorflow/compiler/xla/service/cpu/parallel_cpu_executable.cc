@@ -61,7 +61,7 @@ ParallelCpuExecutable::ParallelCpuExecutable(
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
         aligned_constants)
-    : Executable(std::move(hlo_module)),
+    : Executable(std::move(hlo_module), ParallelCpuExecutable::ShapeSizeBytes),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       functions_names_(std::move(function_names)),
