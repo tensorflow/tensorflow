@@ -69,7 +69,7 @@ supported choices are as follows:
   * ["native" pip](#InstallingNativePip)
   * [Docker](#InstallingDocker)
   * [Anaconda](#InstallingAnaconda)
-  * installing from sources, which is for experts and is documented in
+  * installing from sources, which is documented in
     [a separate guide](https://www.tensorflow.org/install/install_sources).
 
 **We recommend the virtualenv installation.**
