@@ -170,8 +170,8 @@ int64 ExecutorTransferManager::GetByteSizeRequirement(const Shape& shape) {
 }  // namespace executorplugin
 }  // namespace xla
 
-static xla::TransferManager* CreateExecutorTransferManager() {
-  return new xla::executorplugin::ExecutorTransferManager();
+static std::unique_ptr<xla::TransferManager> CreateExecutorTransferManager() {
+  return xla::MakeUnique<xla::executorplugin::ExecutorTransferManager>();
 }
 
 static bool InitModule() {
