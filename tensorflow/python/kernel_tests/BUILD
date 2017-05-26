@@ -2143,6 +2143,11 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:spectral_ops",
     ],
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",  # http://b/62067589
+    ],
 )
 
 cuda_py_test(
