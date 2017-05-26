@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -499,6 +500,9 @@ class HloInstruction {
 
   // As ToString, but returns a shorter string.
   string ToShortString() const;
+
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const;
 
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".

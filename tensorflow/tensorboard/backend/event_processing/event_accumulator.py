@@ -39,9 +39,9 @@ from tensorflow.tensorboard.backend.event_processing import reservoir
 namedtuple = collections.namedtuple
 ScalarEvent = namedtuple('ScalarEvent', ['wall_time', 'step', 'value'])
 
-HealthPillEvent = namedtuple(
-    'HealthPillEvent',
-    ['wall_time', 'step', 'node_name', 'output_slot', 'value'])
+HealthPillEvent = namedtuple('HealthPillEvent', [
+    'wall_time', 'step', 'device_name', 'node_name', 'output_slot', 'value'
+])
 
 CompressedHistogramEvent = namedtuple('CompressedHistogramEvent',
                                       ['wall_time', 'step',
@@ -118,7 +118,7 @@ STORE_EVERYTHING_SIZE_GUIDANCE = {
 # The tag that values containing health pills have. Health pill data is stored
 # in tensors. In order to distinguish health pill values from scalar values, we
 # rely on how health pill values have this special tag value.
-HEALTH_PILL_EVENT_TAG = '__health_pill__'
+HEALTH_PILL_EVENT_TAG_PREFIX = '__health_pill__/'
 
 
 def IsTensorFlowEventsFile(path):
@@ -348,7 +348,8 @@ class EventAccumulator(object):
       self._tagged_metadata[tag] = event.tagged_run_metadata.run_metadata
     elif event.HasField('summary'):
       for value in event.summary.value:
-        if value.HasField('tensor') and value.tag == HEALTH_PILL_EVENT_TAG:
+        if (value.HasField('tensor') and
+            value.tag.startswith(HEALTH_PILL_EVENT_TAG_PREFIX)):
           self._ProcessHealthPillSummary(value, event)
         else:
           for summary_type, summary_func in SUMMARY_TYPES.items():
@@ -387,8 +388,9 @@ class EventAccumulator(object):
 
     node_name = match.group(1)
     output_slot = int(match.group(2))
-    self._ProcessHealthPill(
-        event.wall_time, event.step, node_name, output_slot, elements)
+    device_name = value.tag[len(HEALTH_PILL_EVENT_TAG_PREFIX):]
+    self._ProcessHealthPill(event.wall_time, event.step, device_name, node_name,
+                            output_slot, elements)
 
   def Tags(self):
     """Return all tags found in the value stream.
@@ -674,8 +676,8 @@ class EventAccumulator(object):
     tv = TensorEvent(wall_time=wall_time, step=step, tensor_proto=tensor)
     self._tensors.AddItem(tag, tv)
 
-  def _ProcessHealthPill(self, wall_time, step, node_name, output_slot,
-                         elements):
+  def _ProcessHealthPill(self, wall_time, step, device_name, node_name,
+                         output_slot, elements):
     """Processes a health pill value by adding it to accumulated state.
 
     Args:
@@ -683,6 +685,7 @@ class EventAccumulator(object):
         debugger.
       step: The step at which the health pill was created. Provided by the
         debugger.
+      device_name: The name of the node's device.
       node_name: The name of the node for this health pill.
       output_slot: The output slot for this health pill.
       elements: An ND array of 12 floats. The elements of the health pill.
@@ -690,14 +693,14 @@ class EventAccumulator(object):
     # Key by the node name for fast retrieval of health pills by node name. The
     # array is cast to a list so that it is JSON-able. The debugger data plugin
     # serves a JSON response.
-    self._health_pills.AddItem(
-        node_name,
-        HealthPillEvent(
-            wall_time=wall_time,
-            step=step,
-            node_name=node_name,
-            output_slot=output_slot,
-            value=list(elements)))
+    self._health_pills.AddItem(node_name,
+                               HealthPillEvent(
+                                   wall_time=wall_time,
+                                   step=step,
+                                   device_name=device_name,
+                                   node_name=node_name,
+                                   output_slot=output_slot,
+                                   value=list(elements)))
 
   def _Purge(self, event, by_tags):
     """Purge all events that have occurred after the given event.step.

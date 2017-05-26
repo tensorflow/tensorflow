@@ -23,6 +23,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -100,6 +101,7 @@ class HloModule {
   const HloModuleConfig& config() const { return config_; }
 
   string ToString() const;
+  HloModuleProto ToProto() const;
 
   // Outlines the given expression from the given computation.
   // instructions_to_outline contains the instructions that form the expression.

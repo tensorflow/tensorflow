@@ -107,10 +107,32 @@ class BaseDebugOp : public OpKernel {
   explicit BaseDebugOp(const string& debug_op_name,
                        OpKernelConstruction* context)
       : OpKernel(context), debug_op_name_(debug_op_name) {
-    OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name_));
     OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls_));
     OP_REQUIRES_OK(context, context->GetAttr("gated_grpc", &gated_grpc_));
-    watch_key_ = strings::StrCat(tensor_name_, ":", debug_op_name_);
+
+    string device_name;
+    string tensor_name;
+    OP_REQUIRES_OK(context, context->GetAttr("device_name", &device_name));
+    OP_REQUIRES_OK(context, context->GetAttr("tensor_name", &tensor_name));
+
+    std::vector<string> name_items = str_util::Split(tensor_name, ':');
+    string node_name;
+    int32 output_slot = 0;
+    OP_REQUIRES(context, name_items.size() == 1 || name_items.size() == 2,
+                errors::InvalidArgument("Failed to parse tensor name: \"",
+                                        tensor_name, "\""));
+    if (name_items.size() == 2) {
+      node_name = name_items[0];
+      OP_REQUIRES(
+          context, strings::safe_strto32(name_items[1], &output_slot),
+          errors::InvalidArgument("Invalid string value for output_slot: \"",
+                                  name_items[1], "\""));
+    } else if (name_items.size() == 1) {
+      node_name = name_items[0];
+    }
+
+    debug_watch_key_.reset(
+        new DebugNodeKey(device_name, node_name, output_slot, debug_op_name_));
   }
 
   bool IsExpensive() override { return false; }
@@ -122,14 +144,16 @@ class BaseDebugOp : public OpKernel {
   // disabled currently (i.e., gated off), in which case the debug op will emit
   // an empty (size {0}) tensor of undefined data type.
   bool ApplyGrpcGating(OpKernelContext* context) {
-    if (gated_grpc_ && !DebugIO::IsDebugNodeGateOpen(watch_key_, debug_urls_)) {
+    if (gated_grpc_ && !DebugIO::IsDebugNodeGateOpen(
+                           debug_watch_key_->debug_node_name, debug_urls_)) {
       // The entire node is gated off: Output an empty tensor and avoid
       // expensive computation.
       Tensor* output_tensor;
       TensorShape shape({0});
       if (!context->allocate_output(0, shape, &output_tensor).ok()) {
-        LOG(ERROR) << "Debug node of watch key " << watch_key_
-                   << "failed to allocate empty tensor under gated-off state.";
+        LOG(ERROR) << "Debug node of watch key "
+                   << debug_watch_key_->debug_node_name
+                   << " failed to allocate empty tensor under gated-off state.";
       }
       return false;
     } else {
@@ -141,11 +165,12 @@ class BaseDebugOp : public OpKernel {
   // Log an error if the publishing failed.
   void PublishTensor(const Tensor& tensor) {
     if (!debug_urls_.empty()) {
-      Status status = DebugIO::PublishDebugTensor(
-          tensor_name_, debug_op_name_, tensor, Env::Default()->NowMicros(),
-          debug_urls_, gated_grpc_);
+      Status status = DebugIO::PublishDebugTensor(*debug_watch_key_, tensor,
+                                                  Env::Default()->NowMicros(),
+                                                  debug_urls_, gated_grpc_);
       if (!status.ok()) {
-        LOG(ERROR) << "Debug node of watch key " << watch_key_
+        LOG(ERROR) << "Debug node of watch key "
+                   << debug_watch_key_->debug_node_name
                    << "failed to publish debug tensor data to all URLs "
                    << str_util::Join(debug_urls_, ", ")
                    << ", due to: " << status.error_message();
@@ -154,9 +179,8 @@ class BaseDebugOp : public OpKernel {
   }
 
  private:
-  string debug_op_name_;
-  string tensor_name_;
-  string watch_key_;
+  const string debug_op_name_;
+  std::unique_ptr<DebugNodeKey> debug_watch_key_;
   std::vector<string> debug_urls_;
   bool gated_grpc_;
 };

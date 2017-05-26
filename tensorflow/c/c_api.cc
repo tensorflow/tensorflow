@@ -718,6 +718,49 @@ TF_Buffer* TF_GetAllOpList() {
   return ret;
 }
 
+// --------------------------------------------------------------------------
+// ListDevices & SessionListDevices API
+
+void TF_DeleteDeviceList(TF_DeviceList* s) { delete s; }
+
+TF_DeviceList* TF_SessionListDevices(TF_Session* session, TF_Status* status) {
+  TF_DeviceList* response = new TF_DeviceList;
+  status->status = session->session->ListDevices(&response->response);
+  return response;
+}
+
+TF_DeviceList* TF_DeprecatedSessionListDevices(TF_DeprecatedSession* session,
+                                               TF_Status* status) {
+  TF_DeviceList* response = new TF_DeviceList;
+  status->status = session->session->ListDevices(&response->response);
+  return response;
+}
+
+int TF_DeviceListCount(const TF_DeviceList* list) {
+  return list->response.size();
+}
+
+#define TF_DEVICELIST_METHOD(return_type, method_name, accessor, err_val) \
+  return_type method_name(const TF_DeviceList* list, const int index,     \
+                          TF_Status* status) {                            \
+    if (list == nullptr) {                                                \
+      status->status = InvalidArgument("list is null!");                  \
+      return err_val;                                                     \
+    }                                                                     \
+    if (index < 0 || index >= list->response.size()) {                    \
+      status->status = InvalidArgument("index out of bounds");            \
+      return err_val;                                                     \
+    }                                                                     \
+    return list->response[index].accessor;                                \
+  }
+
+TF_DEVICELIST_METHOD(const char*, TF_DeviceListName, name().c_str(), nullptr);
+TF_DEVICELIST_METHOD(const char*, TF_DeviceListType, device_type().c_str(),
+                     nullptr);
+TF_DEVICELIST_METHOD(int64_t, TF_DeviceListMemoryBytes, memory_limit(), -1);
+
+#undef TF_DEVICELIST_METHOD
+
 }  // end extern "C"
 
 // --------------------------------------------------------------------------

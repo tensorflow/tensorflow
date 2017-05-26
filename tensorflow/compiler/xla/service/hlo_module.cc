@@ -150,6 +150,17 @@ string HloModule::ToString() const {
   return s.str();
 }
 
+HloModuleProto HloModule::ToProto() const {
+  HloModuleProto proto;
+  proto.set_name(name_);
+  proto.set_entry_computation_name(entry_computation_->name());
+  for (const HloComputation* computation : MakeComputationPostOrder()) {
+    HloComputationProto computation_proto = computation->ToProto();
+    proto.add_computations()->Swap(&computation_proto);
+  }
+  return proto;
+}
+
 namespace {
 // Returns whether `hlo` is used outside the given subcomputation.
 // `instructions_in_subcomputation` is the instruction set of the given
