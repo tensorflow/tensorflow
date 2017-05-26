@@ -1317,19 +1317,6 @@ class SeparableConv2DTest(test.TestCase):
       return
     self._testSeparableConv2DEqualInputOutputDepth("NCHW")
 
-  def testSeparableConv2DIllegalCases(self):
-    # Output depth less then input depth.
-    with self.assertRaisesRegexp(
-        ValueError,
-        "Refusing to perform an overparameterized separable convolution"):
-      self._VerifyValues(
-          tensor_in_sizes=[1, 4, 4, 2],
-          depthwise_filter_in_sizes=[2, 2, 2, 3],
-          pointwise_filter_in_sizes=[1, 1, 6, 5],
-          stride=1,
-          padding="SAME",
-          expected=None)
-
 
 class DeepConv2DTest(test.TestCase):
 

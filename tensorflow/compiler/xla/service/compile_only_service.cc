@@ -116,7 +116,7 @@ CompileOnlyService::CompileAheadOfTime(
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                         computation_tracker_.BuildHloModule(
-                            versioned_handle, &hlo_module_config,
+                            versioned_handle, hlo_module_config,
                             /*include_unreachable_instructions=*/true));
     hlo_modules.push_back(std::move(hlo_module));
   }

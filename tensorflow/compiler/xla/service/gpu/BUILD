@@ -219,6 +219,7 @@ cc_library(
         "for_thunk.cc",
         "gemm_thunk.cc",
         "gpu_executable.cc",
+        "infeed_thunk.cc",
         "kernel_thunk.cc",
         "sequential_thunk.cc",
         "thunk_schedule.cc",
@@ -231,6 +232,7 @@ cc_library(
         "for_thunk.h",
         "gemm_thunk.h",
         "gpu_executable.h",
+        "infeed_thunk.h",
         "kernel_thunk.h",
         "sequential_thunk.h",
         "thunk.h",
@@ -240,6 +242,7 @@ cc_library(
     ],
     deps = [
         ":buffer_allocations",
+        ":infeed_manager",
         ":partition_assignment",
         ":stream_assignment",
         "//tensorflow/compiler/xla:array2d",
@@ -448,6 +451,18 @@ cc_library(
         "@llvm//:support",
     ],
     alwayslink = True,  # Contains compiler registration
+)
+
+cc_library(
+    name = "infeed_manager",
+    srcs = ["infeed_manager.cc"],
+    hdrs = ["infeed_manager.h"],
+    deps = [
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
 )
 
 cc_library(

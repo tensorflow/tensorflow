@@ -134,6 +134,63 @@ TEST_F(SingleMachineTest, MultipleItems) {
   }
 }
 
+TEST_F(SingleMachineTest, GraphOptimizations) {
+  // Create a graph that can be fully precomputed
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  auto zero = ops::Const(root.WithOpName("zero"), 0.0f, {2, 3});
+  auto one = ops::Const(root.WithOpName("one"), 1.0f, {2, 3});
+  auto add = ops::Add(root.WithOpName("add"), zero, one);
+  auto square = ops::Square(root.WithOpName("square"), add);
+
+  auto new_shape = ops::Const(root.WithOpName("new_shape"), {3, -1}, {2});
+  auto reshaped = ops::Reshape(root.WithOpName("reshaped"), square, new_shape);
+  auto final_shape = ops::Shape(root.WithOpName("final_shape"), reshaped);
+
+  auto expected_shape =
+      ops::Const(root.WithOpName("expected_shape"), {3, 2}, {2});
+  auto valid =
+      ops::Equal(root.WithOpName("valid"), final_shape, expected_shape);
+  auto all_dims = ops::Const(root.WithOpName("all_dims"), {0}, {1});
+
+  auto all_valid = ops::All(root.WithOpName("all_valid"), valid, all_dims);
+  auto assert_valid = ops::Assert(root.WithOpName("assert_valid"), all_valid,
+                                  {final_shape.output});
+
+  GrapplerItem item;
+  TF_CHECK_OK(root.ToGraphDef(&item.graph));
+  item.fetch.push_back("assert_valid");
+
+  // Force the placement of all the nodes on CPU since TF attempts to use a GPU
+  // when possible event though we created the session to have a single CPU !.
+  for (auto& node : *item.graph.mutable_node()) {
+    node.set_device("/cpu:0");
+  }
+
+  // With optimizations turned on, some nodes could have been optimized away,
+  // and the cost model could be partial. Restart the cluster with optimizations
+  // disabled and make sure we have all the information we're looking for.
+  cluster_.reset();
+  cluster_.reset(new SingleMachine(5, 3, 0));
+  cluster_->DisableOptimizer(true);
+  TF_CHECK_OK(cluster_->Provision());
+
+  RunMetadata metadata;
+  TF_CHECK_OK(cluster_->Initialize(item));
+  TF_CHECK_OK(cluster_->Run(item.graph, item.feed, item.fetch, &metadata));
+  std::set<string> cost_nodes;
+  for (const auto& node : metadata.cost_graph().node()) {
+    // Skip nodes added by TF internally.
+    if (node.name()[0] != '_') {
+      cost_nodes.insert(node.name());
+    }
+  }
+  const std::set<string> expected_cost_nodes = {
+      "zero",      "one",      "add",         "square",
+      "new_shape", "reshaped", "final_shape", "expected_shape",
+      "valid",     "all_dims", "all_valid",   "assert_valid"};
+  EXPECT_EQ(expected_cost_nodes, cost_nodes);
+}
+
 TEST_F(SingleMachineTest, TimeOuts) {
   // Create a graph that will block forever: Just try to dequeue data from a
   // queue that is never fed.
@@ -152,6 +209,115 @@ TEST_F(SingleMachineTest, TimeOuts) {
   EXPECT_TRUE(errors::IsDeadlineExceeded(s1));
   Status s2 = cluster_->Run(item.graph, item.feed, item.fetch, &metadata);
   EXPECT_TRUE(errors::IsDeadlineExceeded(s2));
+}
+
+static void RunInfiniteTFLoop() {
+  // Create a while(true) loop
+  GrapplerItem item;
+
+  NodeDef* shp = item.graph.add_node();
+  shp->set_name("shape");
+  shp->set_op("Const");
+  (*shp->mutable_attr())["dtype"].set_type(DT_INT32);
+  Tensor shp_tensor(DT_INT32, TensorShape({1}));
+  shp_tensor.flat<int32>()(0) = 1;
+  shp_tensor.AsProtoTensorContent(
+      (*shp->mutable_attr())["value"].mutable_tensor());
+
+  NodeDef* r = item.graph.add_node();
+  r->set_name("random");
+  r->set_op("RandomUniform");
+  (*r->mutable_attr())["dtype"].set_type(DT_FLOAT);
+  (*r->mutable_attr())["T"].set_type(DT_INT32);
+  *r->add_input() = "shape";
+
+  NodeDef* e = item.graph.add_node();
+  e->set_name("while/Enter");
+  e->set_op("Enter");
+  (*e->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*e->mutable_attr())["frame_name"].set_s("while/while/");
+  *e->add_input() = "random";
+
+  NodeDef* m = item.graph.add_node();
+  m->set_name("while/Merge");
+  m->set_op("Merge");
+  (*m->mutable_attr())["T"].set_type(DT_FLOAT);
+  (*m->mutable_attr())["N"].set_i(2);
+  *m->add_input() = "while/Enter";
+  *m->add_input() = "while/NextIteration";
+
+  NodeDef* t = item.graph.add_node();
+  t->set_name("always_true");
+  t->set_op("Const");
+  (*t->mutable_attr())["dtype"].set_type(DT_BOOL);
+  *t->add_input() = "^while/Merge";
+  Tensor true_tensor(DT_BOOL, TensorShape());
+  true_tensor.flat<bool>()(0) = true;
+  true_tensor.AsProtoTensorContent(
+      (*t->mutable_attr())["value"].mutable_tensor());
+
+  NodeDef* c = item.graph.add_node();
+  c->set_name("while/LoopCond");
+  c->set_op("LoopCond");
+  *c->add_input() = "always_true";
+
+  NodeDef* s = item.graph.add_node();
+  s->set_name("while/Switch");
+  (*s->mutable_attr())["T"].set_type(DT_FLOAT);
+  s->set_op("Switch");
+  *s->add_input() = "while/Merge";
+  *s->add_input() = "while/LoopCond";
+
+  NodeDef* i = item.graph.add_node();
+  i->set_name("while/Identity");
+  i->set_op("Identity");
+  (*i->mutable_attr())["T"].set_type(DT_FLOAT);
+  *i->add_input() = "while/Switch:1";
+
+  NodeDef* n = item.graph.add_node();
+  n->set_name("while/NextIteration");
+  n->set_op("NextIteration");
+  (*n->mutable_attr())["T"].set_type(DT_FLOAT);
+  *n->add_input() = "while/Identity";
+
+  NodeDef* x = item.graph.add_node();
+  x->set_name("while/Exit");
+  x->set_op("Exit");
+  (*x->mutable_attr())["T"].set_type(DT_FLOAT);
+  *x->add_input() = "while/Switch";
+
+  item.fetch.push_back("while/Exit");
+
+  // Create our own cluster to run it
+  SingleMachine cluster(5, 3, 0);
+  TF_CHECK_OK(cluster.Provision());
+  TF_CHECK_OK(cluster.Initialize(item));
+
+  Status s1 = cluster.Run(item.graph, item.feed, item.fetch, nullptr);
+  if (!errors::IsDeadlineExceeded(s1)) {
+    LOG(ERROR) << "Expected 'deadline exceeded' error, got " << s1;
+    // Exit to break the infinite loop
+    _exit(1);
+  }
+
+  // Attempt to shutdown the cluster and make sure we get the proper error code.
+  Status s2 = cluster.Shutdown();
+  if (!errors::IsUnavailable(s2)) {
+    LOG(ERROR) << "Expected 'unavailable' error, got " << s2;
+    // Exit to break the infinite loop
+    _exit(2);
+  }
+
+  // The isn't much we can do at this point. Exit with the error code 0 to
+  // indicate everything went according to plan.
+  _exit(0);
+}
+
+TEST_F(SingleMachineTest, InfiniteLoops) {
+  // The RunInfiniteTFLoop function creates its own cluster.
+  cluster_.reset();
+
+  EXPECT_EXIT(RunInfiniteTFLoop(), ::testing::ExitedWithCode(0), ".*");
 }
 
 TEST_F(SingleMachineTest, InitializationMemory) {

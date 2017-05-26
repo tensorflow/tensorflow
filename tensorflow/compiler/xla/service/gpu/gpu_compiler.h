@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
@@ -56,7 +55,13 @@ class GpuCompiler : public Compiler {
 
   perftools::gputools::Platform::Id PlatformId() const override;
 
-  int64 ShapeSizeBytes(const Shape& shape) const override;
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
+    // Capture just the pointer size, not the entire GpuCompiler object.
+    int64 pointer_size = pointer_size_;
+    return [pointer_size](const Shape& shape) {
+      return ShapeUtil::ByteSizeOf(shape, pointer_size);
+    };
+  }
 
  private:
   // The parent directory of libdevice IR libraries.
@@ -68,7 +73,7 @@ class GpuCompiler : public Compiler {
   tensorflow::mutex mutex_;
   std::vector<std::unique_ptr<string>> generated_ptxes_ GUARDED_BY(mutex_);
 
-  // The size in bytes of a pointer. Used for computing ShapeSizeBytes.
+  // The size in bytes of a pointer. Used by ShapeSizeBytesFunction.
   int64 pointer_size_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuCompiler);

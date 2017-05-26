@@ -961,8 +961,9 @@ typedef struct TF_WhileParams {
 // - Reference-type inputs
 // - Directly referencing external tensors from the cond/body graphs (this is
 //   possible in the Python API)
-TF_WhileParams TF_NewWhile(TF_Graph* g, TF_Output* inputs, int ninputs,
-                           TF_Status* status);
+TF_CAPI_EXPORT extern TF_WhileParams TF_NewWhile(TF_Graph* g, TF_Output* inputs,
+                                                 int ninputs,
+                                                 TF_Status* status);
 
 // Builds the while loop specified by `params` and returns the output tensors of
 // the while loop in `outputs`. `outputs` should be allocated to size
@@ -972,13 +973,14 @@ TF_WhileParams TF_NewWhile(TF_Graph* g, TF_Output* inputs, int ninputs,
 //
 // Either this or TF_AbortWhile() must be called after a successful
 // TF_NewWhile() call.
-void TF_FinishWhile(const TF_WhileParams* params, TF_Status* status,
-                    TF_Output* outputs);
+TF_CAPI_EXPORT extern void TF_FinishWhile(const TF_WhileParams* params,
+                                          TF_Status* status,
+                                          TF_Output* outputs);
 
 // Frees `params`s resources without building a while loop. `params` is no
 // longer valid after this returns. Either this or TF_FinishWhile() must be
 // called after a successful TF_NewWhile() call.
-void TF_AbortWhile(const TF_WhileParams* params);
+TF_CAPI_EXPORT extern void TF_AbortWhile(const TF_WhileParams* params);
 
 // Adds operations to compute the partial derivatives of sum of `y`s w.r.t `x`s,
 // i.e., d(y_1 + y_2 + ...)/dx_1, d(y_1 + y_2 + ...)/dx_2...
@@ -994,8 +996,9 @@ void TF_AbortWhile(const TF_WhileParams* params);
 // supports. See
 // https://www.tensorflow.org/code/tensorflow/cc/gradients/README.md
 // for instructions on how to add C++ more gradients.
-void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
-                     TF_Output* dx, TF_Status* status, TF_Output* dy);
+TF_CAPI_EXPORT void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny,
+                                    TF_Output* x, int nx, TF_Output* dx,
+                                    TF_Status* status, TF_Output* dy);
 
 // TODO(josh11b): Register OpDef, available to all operations added
 // to this graph.
@@ -1032,7 +1035,7 @@ TF_CAPI_EXPORT extern TF_Session* TF_NewSession(TF_Graph* graph,
 //
 // If successful, populates `graph` with the contents of the Graph and
 // `meta_graph_def` with the MetaGraphDef of the loaded model.
-TF_Session* TF_LoadSessionFromSavedModel(
+TF_CAPI_EXPORT extern TF_Session* TF_LoadSessionFromSavedModel(
     const TF_SessionOptions* session_options, const TF_Buffer* run_options,
     const char* export_dir, const char* const* tags, int tags_len,
     TF_Graph* graph, TF_Buffer* meta_graph_def, TF_Status* status);

@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 #include "tensorflow/tools/tfprof/tfprof_log.pb.h"
 
@@ -41,10 +43,16 @@ class TFGraphNode {
       : node_(node),
         code_(nullptr),
         step_stat_(nullptr),
+        all_start_micros_(0),
+        latest_end_rel_micros_(0),
         requested_bytes_(0),
-        float_ops_(0) {
-    if (!node) return;
-
+        host_temp_bytes_(0),
+        host_persistent_bytes_(0),
+        accelerator_temp_bytes_(0),
+        accelerator_persistent_bytes_(0),
+        allocator_bytes_in_use_(0),
+        float_ops_(0),
+        op_(node->op()) {
     for (const auto& attr : node->attr()) {
       // TODO(xpan): Also consider _output_shapes.
       if (attr.first != "shape" || !attr.second.has_shape()) continue;
@@ -67,8 +75,6 @@ class TFGraphNode {
     op_types_.insert(node->op());
   }
 
-  TFGraphNode() : TFGraphNode(nullptr) {}
-
   void AddInput(TFGraphNode* input, int64 output_idx) {
     inputs_[input->name()] = input;
     output_idx_[input->name()] = output_idx;
@@ -83,32 +89,57 @@ class TFGraphNode {
   void AddCode(const CodeDef* code) { code_ = code; }
 
   const string& name() const { return node_->name(); }
+  const string& op() const { return op_; }
   const NodeDef* node_def() { return node_; }
 
   const NodeExecStats* step_stats() const { return step_stat_; }
 
   const std::map<string, TFGraphNode*>& inputs() const { return inputs_; }
-  const std::map<string, int64>& output_idx() { return output_idx_; }
+  const std::map<string, int64>& output_idx() const { return output_idx_; }
 
   // This is time spent in kernel execution.
   int64 kernel_exec_micros() const {
     if (!step_stat_) return 0;
     int64 total = 0;
-    for (const auto& execs : op_kernel_execs_) {
+    for (const auto& execs : gpu_kernel_execs_) {
+      for (const auto& exec : execs.second) {
+        total += exec.second;
+      }
+    }
+    if (total > 0) return total;
+
+    // If there is no gpu kernel time, fall back to assume it runs on cpu.
+    for (const auto& execs : op_execs_) {
       for (const auto& exec : execs.second) {
         total += exec.second;
       }
     }
     return total;
   }
-  const std::map<string, std::vector<std::pair<int64, int64>>>&
-  op_kernel_execs() const {
-    return op_kernel_execs_;
+
+  int64 all_start_micros() const { return all_start_micros_; }
+  int64 latest_end_rel_micros() const { return latest_end_rel_micros_; }
+  const std::map<string, std::vector<std::pair<int64, int64>>>& op_execs()
+      const {
+    return op_execs_;
   }
 
   int64 requested_bytes() const { return requested_bytes_; }
+  int64 accelerator_temp_bytes() const { return accelerator_temp_bytes_; }
+  int64 host_temp_bytes() const { return host_temp_bytes_; }
+  int64 accelerator_persistent_bytes() const {
+    return accelerator_persistent_bytes_;
+  }
+  int64 host_persistent_bytes() const { return host_persistent_bytes_; }
+  const std::map<int64, std::pair<int64, uint64>>& output_bytes() const {
+    return output_bytes_;
+  }
+  int64 allocator_bytes_in_use() const { return allocator_bytes_in_use_; }
+
   int64 float_ops() const { return float_ops_; }
   const CodeDef* code() { return code_; }
+  string canonical_device() const { return canonical_device_; }
+  string host_device() const { return host_device_; }
   std::set<string> devices() const { return devices_; }
   const std::set<string>& op_types() const { return op_types_; }
 
@@ -127,53 +158,109 @@ class TFGraphNode {
   std::vector<int64> shape_;
   std::set<string> op_types_;
 
+  // The earliest/latest time including scheduling and kernel execution.
+  int64 all_start_micros_;
+  int64 latest_end_rel_micros_;
   // device -> vector of {op_start_micros, op_kernel_exec_micros} pairs.
-  std::map<string, std::vector<std::pair<int64, int64>>> op_kernel_execs_;
+  std::map<string, std::vector<std::pair<int64, int64>>> gpu_kernel_execs_;
+  std::map<string, std::vector<std::pair<int64, int64>>> op_execs_;
 
+  // /j:#/t:#/r:#/device:#. A canonical device name without extra suffix.
+  string canonical_device_;
+  // The host device name.
+  string host_device_;
+  // All devices the op is associated with (e.g. gpu:0 (scheduling),
+  // gpu:0:stream:xx (kernel exec), cpu:0 host)
   std::set<string> devices_;
+
+  // Total output bytes requested by the op.
   int64 requested_bytes_;
+  // Total temporary bytes allocated and released by the op.
+  int64 host_temp_bytes_;
+  // Total persistent bytes (e.g. variable) allocated by the op.
+  int64 host_persistent_bytes_;
+  int64 accelerator_temp_bytes_;
+  int64 accelerator_persistent_bytes_;
+  // The total number of bytes currently allocated by the allocator if >0.
+  int64 allocator_bytes_in_use_;
+  // output_idx -> {output_bytes, memory_ptr}
+  std::map<int64, std::pair<int64, uint64>> output_bytes_;
+
   int64 float_ops_;
+
+  string op_;
 };
 
-class TFCodeNode {
+class TFMultiGraphNode {
  public:
-  TFCodeNode(const string& trace)
-      : trace_(trace),
+  TFMultiGraphNode(const string& name)
+      : name_(name),
         kernel_exec_micros_(0),
         requested_bytes_(0),
         float_ops_(0) {}
+
+  bool SnapshotNodes(const std::vector<string>& type_regexes) {
+    kernel_exec_micros_ = 0;
+    requested_bytes_ = 0;
+    float_ops_ = 0;
+    op_types_.clear();
+    shapes_.clear();
+    devices_.clear();
+    snapshot_nodes_.clear();
+
+    std::map<string, std::vector<const TFGraphNode*>> nodes =
+        pick_nodes(type_regexes);
+
+    if (nodes.empty()) {
+      return (type_regexes.size() == 1 && type_regexes[0] == ".*");
+    }
+
+    std::set<string> visits;
+    for (const auto& entry : nodes) {
+      op_types_.insert(entry.first);
+
+      for (const TFGraphNode* node : entry.second) {
+        if (visits.find(node->name()) != visits.end()) continue;
+        visits.insert(node->name());
+
+        kernel_exec_micros_ += node->kernel_exec_micros();
+        requested_bytes_ += node->requested_bytes();
+        float_ops_ += node->float_ops();
+        if (node->shape().size() > 0) {
+          shapes_.push_back(node->shape());
+        }
+        devices_.insert(node->canonical_device());
+        snapshot_nodes_[node->name()] = node;
+      }
+    }
+    return true;
+  }
 
   void AddGraphNode(const TFGraphNode* node) {
     if (nodes_.find(node->name()) != nodes_.end()) {
       return;
     }
     nodes_[node->name()] = node;
-
-    kernel_exec_micros_ += node->kernel_exec_micros();
-    requested_bytes_ += node->requested_bytes();
-    float_ops_ += node->float_ops();
-    op_types_.insert(node->op_types().begin(), node->op_types().end());
-    if (node->shape().size() > 0) {
-      shapes_.push_back(node->shape());
+    for (const string& type : node->op_types()) {
+      nodes_by_type_[type].push_back(node);
     }
-    std::set<string> devices = node->devices();
-    devices_.insert(devices.begin(), devices.end());
-  }
-  const std::map<string, const TFGraphNode*>& graph_nodes() const {
-    return nodes_;
   }
 
-  void AddChildren(const string& trace) {
-    if (children_.find(trace) != children_.end()) {
+  const std::map<string, const TFGraphNode*>& graph_nodes() const {
+    return snapshot_nodes_;
+  }
+
+  void AddChildren(const string& name) {
+    if (children_.find(name) != children_.end()) {
       return;
     }
-    children_[trace].reset(new TFCodeNode(trace));
+    children_[name].reset(new TFMultiGraphNode(name));
   }
-  std::map<string, std::unique_ptr<TFCodeNode>>& children() {
+  const std::map<string, std::unique_ptr<TFMultiGraphNode>>& children() const {
     return children_;
   }
 
-  const string& name() const { return trace_; }
+  const string& name() const { return name_; }
 
   int64 kernel_exec_micros() const { return kernel_exec_micros_; }
 
@@ -188,16 +275,39 @@ class TFCodeNode {
   const std::vector<std::vector<int64>>& shapes() const { return shapes_; }
 
  private:
-  const string trace_;
+  std::map<string, std::vector<const TFGraphNode*>> pick_nodes(
+      const std::vector<string>& type_regexes) {
+    if (type_regexes.empty()) {
+      return {};
+    }
+    if (type_regexes.size() == 1 && type_regexes[0] == ".*") {
+      return nodes_by_type_;
+    }
+    std::map<string, std::vector<const TFGraphNode*>> ret;
+    for (const string& regex : type_regexes) {
+      for (const auto& n : nodes_by_type_) {
+        if (RE2::FullMatch(n.first, regex)) {
+          ret[n.first] = n.second;
+        }
+      }
+    }
+    return ret;
+  }
+
+  const string name_;
+  // Snapshot micros based on type_regexes
   std::set<string> op_types_;
   int64 kernel_exec_micros_;
   int64 requested_bytes_;
   int64 float_ops_;
-
   std::set<string> devices_;
   std::vector<std::vector<int64>> shapes_;
+  std::map<string, const TFGraphNode*> snapshot_nodes_;
+
+  // Overall data held by the TFMultiGraphNode.
   std::map<string, const TFGraphNode*> nodes_;
-  std::map<string, std::unique_ptr<TFCodeNode>> children_;
+  std::map<string, std::vector<const TFGraphNode*>> nodes_by_type_;
+  std::map<string, std::unique_ptr<TFMultiGraphNode>> children_;
 };
 }  // namespace tfprof
 }  // namespace tensorflow

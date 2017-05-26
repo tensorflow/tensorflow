@@ -47,7 +47,14 @@ class ClientLibraryTestBase : public ::testing::Test {
  protected:
   explicit ClientLibraryTestBase(
       perftools::gputools::Platform* platform = nullptr,
-      tensorflow::gtl::ArraySlice<string> disabled_pass_names = {});
+      tensorflow::gtl::ArraySlice<string> disabled_pass_names = {},
+      // Note: here we are disabling constant_folding paths so that the tests
+      // (usually written using Constants) will exercise the intended code
+      // paths, instead of being constant folded.
+      // TODO(b/38354253): Constant folding is currently disabled here. Change
+      // tests to Parameters instead of Constants, and re-enable constant
+      // folding by default.
+      bool disable_constant_folding = true);
 
   // Returns the name of the test currently being run.
   string TestName() const;

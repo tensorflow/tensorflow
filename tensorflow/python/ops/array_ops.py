@@ -783,6 +783,7 @@ def parallel_stack(values, name="parallel_stack"):
     return gen_array_ops._parallel_concat(
         [expand_dims(value, 0) for value in values], shape=output_shape)
 
+
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
@@ -944,7 +945,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
     `value[:, i, :, :]` and each tensor in `output` will have shape `(A, C, D)`.
   Etc.
 
-  This is the opposite of pack.  The numpy equivalent is
+  This is the opposite of stack.  The numpy equivalent is
 
       tf.unstack(x, n) = list(x)
 
