@@ -1505,7 +1505,8 @@ class Saver(object):
                         collection_list=None,
                         as_text=False,
                         export_scope=None,
-                        clear_devices=False):
+                        clear_devices=False,
+                        clear_extraneous_savers=False):
     """Writes `MetaGraphDef` to save_path/filename.
 
     Args:
@@ -1515,6 +1516,9 @@ class Saver(object):
       export_scope: Optional `string`. Name scope to remove.
       clear_devices: Whether or not to clear the device field for an `Operation`
         or `Tensor` during export.
+      clear_extraneous_savers: Remove any Saver-related information from the
+        graph (both Save/Restore ops and SaverDefs) that are not associated
+        with this Saver.
 
     Returns:
       A `MetaGraphDef` proto.
@@ -1526,7 +1530,8 @@ class Saver(object):
         collection_list=collection_list,
         as_text=as_text,
         export_scope=export_scope,
-        clear_devices=clear_devices)
+        clear_devices=clear_devices,
+        clear_extraneous_savers=clear_extraneous_savers)
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.
@@ -1708,6 +1713,7 @@ def export_meta_graph(filename=None,
                       graph=None,
                       export_scope=None,
                       clear_devices=False,
+                      clear_extraneous_savers=False,
                       **kwargs):
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -1731,6 +1737,9 @@ def export_meta_graph(filename=None,
       is exported. graph_def and export_scope cannot both be specified.
     clear_devices: Whether or not to clear the device field for an `Operation`
       or `Tensor` during export.
+    clear_extraneous_savers: Remove any Saver-related information from the
+        graph (both Save/Restore ops and SaverDefs) that are not associated
+        with the provided SaverDef.
     **kwargs: Optional keyed arguments.
 
   Returns:
@@ -1749,6 +1758,7 @@ def export_meta_graph(filename=None,
       graph=graph,
       export_scope=export_scope,
       clear_devices=clear_devices,
+      clear_extraneous_savers=clear_extraneous_savers,
       **kwargs)
   return meta_graph_def
 
