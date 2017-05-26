@@ -936,10 +936,14 @@ auto f64 = LiteralUtil::CreateR4WithLayout<double>({{
   conv = LiteralUtil::ConvertIfSrcTypeMatches(*s32, F32).ConsumeValueOrDie();
   EXPECT_TRUE(LiteralUtil::Equal(*conv, *f32));
 
-  EXPECT_FALSE(LiteralUtil::ConvertIfSrcTypeMatches(*s32, TUPLE).ok());
-  EXPECT_FALSE(LiteralUtil::ConvertIfSrcTypeMatches(*s32, F16).ok());
-  EXPECT_FALSE(LiteralUtil::ConvertIfSrcTypeMatches(*s32, S16).ok());
-  EXPECT_FALSE(LiteralUtil::ConvertIfSrcTypeMatches(*s32, U16).ok());
+  EXPECT_EQ(LiteralUtil::ConvertIfSrcTypeMatches(*s32, TUPLE).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(LiteralUtil::ConvertIfSrcTypeMatches(*s32, F16).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(LiteralUtil::ConvertIfSrcTypeMatches(*s32, S16).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(LiteralUtil::ConvertIfSrcTypeMatches(*s32, U16).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
 }
 
 }  // namespace
