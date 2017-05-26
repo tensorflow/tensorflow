@@ -45,7 +45,7 @@ class Base2 {
 
 class Derived : public Base1, public Base2 {
  public:
-  virtual ~Derived() {}
+  ~Derived() override {}
   int evenmorepad;
 };
 
@@ -436,17 +436,17 @@ class BenchmarkFactory {
   }
 
   Status ArgumentFactoryFail(T** result) TF_ATTRIBUTE_NOINLINE {
-    *result = NULL;
+    *result = nullptr;
     return Status(tensorflow::error::CANCELLED, "");
   }
 
   Status ArgumentFactoryFailShortMsg(T** result) TF_ATTRIBUTE_NOINLINE {
-    *result = NULL;
+    *result = nullptr;
     return Status(::tensorflow::error::INTERNAL, "");
   }
 
   Status ArgumentFactoryFailLongMsg(T** result) TF_ATTRIBUTE_NOINLINE {
-    *result = NULL;
+    *result = nullptr;
     return Status(::tensorflow::error::INTERNAL,
                   "a big string of message junk that will never be read");
   }
@@ -495,7 +495,7 @@ static void BM_CalibrateWorkLoop(int iters) {
   BenchmarkType* result = factory.TrivialFactory();
   tensorflow::testing::StartTiming();
   for (int i = 0; i != iters; ++i) {
-    if (result != NULL) result->DoWork();
+    if (result != nullptr) result->DoWork();
   }
 }
 BENCHMARK(BM_CalibrateWorkLoop);
@@ -508,7 +508,7 @@ static void BM_TrivialFactory(int iters) {
   tensorflow::testing::StartTiming();
   for (int i = 0; i != iters; ++i) {
     BenchmarkType* result = factory.TrivialFactory();
-    if (result != NULL) result->DoWork();
+    if (result != nullptr) result->DoWork();
   }
 }
 BENCHMARK(BM_TrivialFactory);
@@ -521,9 +521,9 @@ static void BM_ArgumentFactory(int iters) {
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
   for (int i = 0; i != iters; ++i) {
-    BenchmarkType* result = NULL;
+    BenchmarkType* result = nullptr;
     Status status = factory.ArgumentFactory(&result);
-    if (status.ok() && result != NULL) {
+    if (status.ok() && result != nullptr) {
       result->DoWork();
     }
   }
@@ -553,9 +553,9 @@ static void BM_ArgumentFactoryFail(int iters) {
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
   for (int i = 0; i != iters; ++i) {
-    BenchmarkType* result = NULL;
+    BenchmarkType* result = nullptr;
     Status status = factory.ArgumentFactoryFail(&result);
-    if (status.ok() && result != NULL) {
+    if (status.ok() && result != nullptr) {
       result->DoWork();
     }
   }
@@ -585,9 +585,9 @@ static void BM_ArgumentFactoryFailShortMsg(int iters) {
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
   for (int i = 0; i != iters; ++i) {
-    BenchmarkType* result = NULL;
+    BenchmarkType* result = nullptr;
     Status status = factory.ArgumentFactoryFailShortMsg(&result);
-    if (status.ok() && result != NULL) {
+    if (status.ok() && result != nullptr) {
       result->DoWork();
     }
   }
@@ -617,9 +617,9 @@ static void BM_ArgumentFactoryFailLongMsg(int iters) {
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
   for (int i = 0; i != iters; ++i) {
-    BenchmarkType* result = NULL;
+    BenchmarkType* result = nullptr;
     Status status = factory.ArgumentFactoryFailLongMsg(&result);
-    if (status.ok() && result != NULL) {
+    if (status.ok() && result != nullptr) {
       result->DoWork();
     }
   }
