@@ -82,29 +82,22 @@ CreateConv2D(poplar::Graph &graph,
   unsigned int pl_y = window.dimensions(0).padding_low();
   unsigned int pl_x = window.dimensions(1).padding_low();
 
-  unsigned int ph_y = window.dimensions(0).padding_high();
-  unsigned int ph_x = window.dimensions(1).padding_high();
+  unsigned int pu_y = window.dimensions(0).padding_high();
+  unsigned int pu_x = window.dimensions(1).padding_high();
 
-  poplar::Tensor conv_in = popconv::createInput(graph, dtype,
-                                                n_b, n_y, n_x, n_i,
-                                                f_y, f_x, n_o,
-                                                {s_y, s_x},
-                                                {pl_y, pl_x},
-                                                {ph_y, ph_x},
-                                                false, "", opts);
+  popconv::ConvParams params(dtype,
+                             {n_b, n_y, n_x, n_i},
+                             {f_y, f_x, n_o, n_i},
+                             {s_y, s_x},
+                             {pl_y, pl_x},
+                             {pu_y, pu_x},
+                             false);
 
-  poplar::Tensor conv_kernel = popconv::createWeights(graph, conv_in,
-                                                      f_y, f_x, n_o,
-                                                      {s_y, s_x},
-                                                      {pl_y, pl_x},
-                                                      {ph_y, ph_x},
-                                                      false, opts);
+  poplar::Tensor conv_in = popconv::createInput(graph, params, "", opts);
+
+  poplar::Tensor conv_kernel = popconv::createWeights(graph, params, "", opts);
   
-  popconv::mapActivations(graph, conv_in, conv_kernel, {s_y, s_x},
-                          {pl_y, pl_x}, {ph_y, ph_x}, false, opts);
-
-  popconv::mapWeights(conv_kernel, graph, conv_in, {s_y, s_x}, {pl_y, pl_x},
-                      {ph_y, ph_x}, false, opts);
+  popconv::mapWeights(graph, conv_kernel, params, opts);
 
   poplar::program::Sequence prog;
 
@@ -133,17 +126,9 @@ CreateConv2D(poplar::Graph &graph,
   kernel = kernel.dimShuffle({4, 2, 0, 1, 5, 3});
   prog.add(poplar::program::Copy(kernel, conv_kernel));
 
-  popstd::mapActivations(graph, in);
-  popconv::mapWeights(kernel, graph, in, {s_y, s_x}, {pl_y, pl_x},
-                      {ph_y, ph_x}, false, opts);
-
   // Add the convolution
-  poplar::Tensor out = popconv::convolution(graph,
-                                            {s_y, s_x},
-                                            {pl_y, pl_x},
-                                            {ph_y, ph_x},
-                                            n_o, in, kernel, dtype,
-                                            false, false, prog, "", opts);
+  poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
+                                            false, prog, "", opts);
 
   const std::vector<size_t> &output_dims = out.shape();
   unsigned int o_y = output_dims[2];

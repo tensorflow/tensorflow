@@ -179,8 +179,8 @@ int64 PoplarTransferManager::GetByteSizeRequirement(const Shape& shape) {
 }  // namespace poplarplugin
 }  // namespace xla
 
-static xla::TransferManager* CreatePoplarTransferManager() {
-  return new xla::poplarplugin::PoplarTransferManager();
+static std::unique_ptr<xla::TransferManager> CreatePoplarTransferManager() {
+  return xla::MakeUnique<xla::poplarplugin::PoplarTransferManager>();
 }
 
 static bool InitModule() {

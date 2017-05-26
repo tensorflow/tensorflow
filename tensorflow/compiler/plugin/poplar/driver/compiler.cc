@@ -118,11 +118,16 @@ public:
 
   Status DefaultAction(HloInstruction*) override { return Status::OK(); }
 
-  Status HandleCall(HloInstruction* call) override {
-    targets.insert(call->to_apply());
+  Status HandleCall(HloInstruction* inst) override {
+    targets.insert(inst->to_apply());
     return Status::OK();
   }
 
+  Status HandleWhile(HloInstruction* inst) {
+    targets.insert(inst->while_condition());
+    targets.insert(inst->while_body());
+    return Status::OK();
+  }
   std::set<HloComputation*> targets;
 };
 
@@ -269,12 +274,13 @@ PoplarCompiler::CompileAheadOfTime(
       "AOT compilation not supported on Poplar");
 }
 
-int64 PoplarCompiler::ShapeSizeBytes(const Shape& shape) const {
-  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
-}
-
 se::Platform::Id PoplarCompiler::PlatformId() const {
   return sep::kPoplarPlatformId;
+}
+
+HloCostAnalysis::ShapeSizeFunction
+PoplarCompiler::ShapeSizeBytesFunction() const {
+  return PoplarExecutable::ShapeSizeBytes;
 }
 
 }  // namespace poplarplugin

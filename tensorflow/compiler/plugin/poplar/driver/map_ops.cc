@@ -29,41 +29,13 @@ public:
   ParallelMapTester() : _is_ok(true) {}
 
   Status DefaultAction(HloInstruction* inst) override {
-    switch (inst->opcode()) {
-      case HloOpcode::kAbs:
-      case HloOpcode::kAdd:
-      case HloOpcode::kCeil:
-      case HloOpcode::kClamp:
-      case HloOpcode::kConstant:
-      case HloOpcode::kConvert:
-      case HloOpcode::kDivide:
-      case HloOpcode::kEq:
-      case HloOpcode::kExp:
-      case HloOpcode::kFloor:
-      case HloOpcode::kGe:
-      case HloOpcode::kGt:
-      case HloOpcode::kLe:
-      case HloOpcode::kLog:
-      case HloOpcode::kLogicalAnd:
-      case HloOpcode::kLogicalNot:
-      case HloOpcode::kLogicalOr:
-      case HloOpcode::kLt:
-      case HloOpcode::kMultiply:
-      case HloOpcode::kNe:
-      case HloOpcode::kNegate:
-      case HloOpcode::kParameter:
-      case HloOpcode::kPower:
-      case HloOpcode::kRemainder:
-      case HloOpcode::kSign:
-      case HloOpcode::kTanh:
-      case HloOpcode::kSelect:
-      case HloOpcode::kSubtract:
-      case HloOpcode::kMaximum:
-      case HloOpcode::kMinimum:
-        return Status::OK();
-      default:
-        _is_ok = false;
-        return Status::OK();
+    if (inst->IsElementwise()) {
+      return Status::OK();
+    } else if (inst->opcode() == HloOpcode::kParameter) {
+      return Status::OK();
+    } else {
+      _is_ok = false;
+      return Status::OK();
     }
   }
 
@@ -118,30 +90,27 @@ CreateCallOp(poplar::Graph &graph,
   HloComputation* comp = inst->to_apply();
   poplar::program::Sequence seq;
 
-  CallVisitor visitor(&graph, res, op_count);
-  CallVisitor* v = &visitor;
-
-  if (res.computation_map.find(comp) != res.computation_map.end()) {
-    v = &(res.computation_map.at(comp));
-  } else {
-    TF_RETURN_IF_ERROR(comp->Accept(&visitor));
+  auto visitor(res.computation_map.find(comp));
+  if (visitor == res.computation_map.end()) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Couldn't find sub-computation for Call op");
   }
 
   for (int64 i = 0; i < op_count; i++) {
     poplar::Tensor t;
     TF_ASSIGN_OR_RETURN(t, FindInstructionInput(tensor_map, inst, i, 0));
-    seq.add(poplar::program::Copy(t, v->inputs()[i]));
+    seq.add(poplar::program::Copy(t, visitor->second.inputs()[i]));
   }
 
-  seq.add(v->sequence);
+  seq.add(visitor->second.sequence);
 
-  for (size_t i=0; i<v->outputs().size(); i++) {
+  for (size_t i=0; i<visitor->second.outputs().size(); i++) {
     // TODO use 'clone' when poplar supports it
     poplar::Tensor o = graph.addTensor(
-            graph.getTensorElementType(v->outputs()[i]),
-            v->outputs()[i].shape());
+            graph.getTensorElementType(visitor->second.outputs()[i]),
+            visitor->second.outputs()[i].shape());
     popstd::mapTensor(graph, o);    
-    seq.add(poplar::program::Copy(v->outputs()[i], o));
+    seq.add(poplar::program::Copy(visitor->second.outputs()[i], o));
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, o));
   }
 
@@ -160,16 +129,27 @@ CreateWhileOp(poplar::Graph &graph,
                         "Poplar doesn't support tuple arguments to 'while' "
                         "operations");
   }
+  if (ShapeUtil::IsTuple(inst->shape())) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Poplar doesn't support tuple return from 'while' "
+                                "operations");
+  }
 
-  CallVisitor body_visitor(&graph, res, 1);
-  TF_RETURN_IF_ERROR(inst->while_body()->Accept(&body_visitor));
+  auto body_visitor(res.computation_map.find(inst->while_body()));
+  if (body_visitor == res.computation_map.end()) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Couldn't find body sub-computation for while op");
+  }
 
-  CallVisitor condition_visitor(&graph, res, 1);
-  TF_RETURN_IF_ERROR(inst->while_condition()->Accept(&condition_visitor));
+  auto condition_visitor(res.computation_map.find(inst->while_condition()));
+  if (condition_visitor == res.computation_map.end()) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Couldn't find condition sub-computation for while op");
+  }
 
-  poplar::Tensor body_input = body_visitor.inputs()[0];
-  poplar::Tensor body_output = body_visitor.outputs()[0];
-  poplar::Tensor cond_input = condition_visitor.inputs()[0];
+  poplar::Tensor body_input = body_visitor->second.inputs()[0];
+  poplar::Tensor body_output = body_visitor->second.outputs()[0];
+  poplar::Tensor cond_input = condition_visitor->second.inputs()[0];
 
   poplar::Tensor init;
   TF_ASSIGN_OR_RETURN(init, FindInstructionInput(tensor_map, inst, 0, 0));
@@ -178,18 +158,26 @@ CreateWhileOp(poplar::Graph &graph,
   main_seq.add(poplar::program::Copy(init, body_input));
 
   // Body
-  body_visitor.sequence.add(poplar::program::Copy(body_output, body_input));
-  body_visitor.sequence.add(poplar::program::Copy(body_output, cond_input));
-
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, body_output));
-
+  body_visitor->second.sequence.add(poplar::program::Copy(body_output,
+                                                          body_input));
+  body_visitor->second.sequence.add(poplar::program::Copy(body_output,
+                                                          cond_input));
+  
   // Condition
   std::vector<poplar::Tensor> condition_inputs(1, body_output);
 
-  poplar::program::RepeatWhileTrue repeat_while_true(condition_visitor.sequence,
-                                                     body_visitor.sequence);
+  poplar::program::RepeatWhileTrue repeat_while_true(
+          condition_visitor->second.sequence,
+          body_visitor->second.sequence);
 
   main_seq.add(repeat_while_true);
+
+  // TODO use 'clone' when poplar supports it
+  poplar::Tensor o = graph.addTensor(
+          graph.getTensorElementType(body_output), body_output.shape());
+  popstd::mapTensor(graph, o);
+  main_seq.add(poplar::program::Copy(body_output, o));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, o));
 
   return main_seq;
 }

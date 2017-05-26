@@ -173,6 +173,11 @@ class LiteralUtil {
   template <typename NativeSrcT, typename NativeDestT>
   static std::unique_ptr<Literal> Convert(const Literal& literal);
 
+  // Convert a literal to another primitive type, but only if the literal
+  // type is connvertable into the destination type
+  static StatusOr<std::unique_ptr<Literal>> ConvertIfSrcTypeMatches(
+      const Literal& src_literal, PrimitiveType primitive_dest_type);
+
   // Create a literal value zero of the given primitive type.
   static Literal Zero(PrimitiveType primitive_type);
 

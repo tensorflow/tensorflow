@@ -61,6 +61,8 @@ class PoplarExecutable : public Executable {
           tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments) override;
 
+  static int64 ShapeSizeBytes(const Shape& shape);
+
  private:
   std::unique_ptr<poplar::Engine> poplar_engine_;
   std::map<int64, int64> output_map_;

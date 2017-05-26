@@ -28,7 +28,7 @@ namespace xla {
 namespace executorplugin {
 
 ExecutorExecutable::ExecutorExecutable(std::unique_ptr<HloModule> hlo_module)
-    : Executable(std::move(hlo_module)) {}
+    : Executable(std::move(hlo_module), ShapeSizeBytes) {}
 
 ExecutorExecutable::~ExecutorExecutable() {}
 
@@ -133,6 +133,13 @@ StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteAsyncOnStream(
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   return tensorflow::errors::Unimplemented(
       "ExecuteAsyncOnStream is not yet supported on Executor.");
+}
+
+/*static*/ int64 ExecutorExecutable::ShapeSizeBytes(const Shape& shape) {
+  if (ShapeUtil::IsOpaque(shape)) {
+    return sizeof(void*);
+  }
+  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
 }  // namespace executorplugin

@@ -103,12 +103,13 @@ ExecutorCompiler::CompileAheadOfTime(
       "AOT compilation not supported on Executor");
 }
 
-int64 ExecutorCompiler::ShapeSizeBytes(const Shape& shape) const {
-  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
-}
-
 se::Platform::Id ExecutorCompiler::PlatformId() const {
   return sep::kExecutorPlatformId;
+}
+
+HloCostAnalysis::ShapeSizeFunction
+ExecutorCompiler::ShapeSizeBytesFunction() const {
+  return ExecutorExecutable::ShapeSizeBytes;
 }
 
 }  // namespace executorplugin
