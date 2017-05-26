@@ -22,6 +22,9 @@ load(
     "if_mkl",)
 
 
+def full_path(relative_paths):
+  return [PACKAGE_NAME + "/" + relative for relative in relative_paths]
+
 # List of proto files for android builds
 def tf_android_core_proto_sources(core_proto_sources_relative):
   return [
