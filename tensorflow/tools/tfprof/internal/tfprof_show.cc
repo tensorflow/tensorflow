@@ -68,8 +68,6 @@ bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
   // Always show kTFProfRoot.
   if (node->name() == kTFProfRoot) return true;
 
-  if (!node->account) return false;
-
   if (node->proto().requested_bytes() < opts.min_bytes ||
       node->proto().exec_micros() < opts.min_micros ||
       node->proto().parameters() < opts.min_params ||
@@ -79,23 +77,6 @@ bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
   }
 
   bool show = false;
-  if (opts.device_regexes.size() == 1 && opts.device_regexes[0] == ".*") {
-    show = true;
-  } else {
-    for (const string& regex : opts.device_regexes) {
-      for (const string& device : node->proto().devices()) {
-        if (RE2::FullMatch(device, regex)) {
-          show = true;
-          break;
-        }
-      }
-      if (show) break;
-    }
-  }
-  // Don't show if device_regexes don't cover it.
-  if (!show) return false;
-
-  show = false;
   if (opts.show_name_regexes.size() == 1 && opts.show_name_regexes[0] == ".*") {
     show = true;
   } else {
@@ -135,12 +116,89 @@ bool TFShow::ShouldAccount(ShowNode* node, const Options& opts) {
         return true;
       }
     }
-    for (const string& device : node->proto().devices())
-      if (RE2::FullMatch(device, regex)) {
-        return true;
-      }
   }
   return false;
+}
+
+string TFShow::FormatNode(ShowNode* node, const Options& opts) {
+  std::vector<string> info;
+  if (opts.select.find(kShown[2]) != opts.select.end()) {
+    const string shape = FormatShapes(node->node->shape());
+    if (!shape.empty()) {
+      info.push_back(shape);
+    }
+    string params = FormatNumber(node->proto().total_parameters()) + " params";
+    if (node->account) {
+      params = FormatNumber(node->proto().parameters()) + "/" + params;
+    } else {
+      params = "--/" + params;
+    }
+    info.push_back(params);
+  }
+  if (opts.select.find(kShown[3]) != opts.select.end()) {
+    string fops = FormatNumber(node->proto().total_float_ops()) + " flops";
+    if (node->account) {
+      fops = FormatNumber(node->proto().float_ops()) + "/" + fops;
+    } else {
+      fops = "--/" + fops;
+    }
+    info.push_back(fops);
+  }
+  if (opts.select.find(kShown[0]) != opts.select.end()) {
+    string memory = FormatMemory(node->proto().total_requested_bytes());
+    if (node->account) {
+      memory = FormatMemory(node->proto().requested_bytes()) + "/" + memory;
+
+    } else {
+      memory = "--/" + memory;
+    }
+    info.push_back(memory);
+  }
+  if (opts.select.find(kShown[1]) != opts.select.end()) {
+    string time = FormatTime(node->proto().total_exec_micros());
+    if (node->account) {
+      time = FormatTime(node->proto().exec_micros()) + "/" + time;
+    } else {
+      time = "--/" + time;
+    }
+    info.push_back(time);
+  }
+  if (opts.select.find(kShown[5]) != opts.select.end()) {
+    if (node->proto().devices_size() > 0) {
+      info.push_back(str_util::Join(node->proto().devices(), "|"));
+    }
+  }
+  if (opts.select.find(kShown[6]) != opts.select.end()) {
+    std::set<string> op_types = node->node->op_types();
+    info.push_back(str_util::Join(op_types, "|"));
+  }
+
+  return strings::Printf("%s (%s)", node->name().c_str(),
+                         str_util::Join(info, ", ").c_str());
+}
+
+string TFShow::FormatLegend(const Options& opts) {
+  std::vector<string> legends;
+  if (opts.select.find(kShown[2]) != opts.select.end()) {
+    legends.push_back("# parameters");
+  }
+  if (opts.select.find(kShown[3]) != opts.select.end()) {
+    legends.push_back("# float_ops");
+  }
+  if (opts.select.find(kShown[0]) != opts.select.end()) {
+    legends.push_back("output bytes");
+  }
+  if (opts.select.find(kShown[1]) != opts.select.end()) {
+    legends.push_back("execution time");
+  }
+  if (opts.select.find(kShown[5]) != opts.select.end()) {
+    legends.push_back("assigned devices");
+  }
+  if (opts.select.find(kShown[6]) != opts.select.end()) {
+    legends.push_back("op types");
+  }
+  return strings::Printf("node name | %s\n",
+                         str_util::Join(legends, " | ").c_str());
 }
 
 }  // namespace tfprof

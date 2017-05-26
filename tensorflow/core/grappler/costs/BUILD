@@ -173,6 +173,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_properties",
+        ":utils",
         ":virtual_placer",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",

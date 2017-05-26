@@ -121,9 +121,7 @@ class VirtualScheduler {
   const string kAttrSrcDevice = "src_device_";
   const string kAttrDstDevice = "dst_device_";
   const string kChannelDevice = "Channel";
-  const string kDefaultDevice = "/CPU:0";
 
-  const NodeDef* GetCurrNode() const;
   void MaybeUpdateInputProperties(
       const NodeDef* node, std::vector<OpInfo::TensorProperties>* inputs) const;
   NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
@@ -137,6 +135,8 @@ class VirtualScheduler {
   bool IsRecvOp(const NodeDef* node) const;
 
   GraphProperties graph_properties_;
+  std::map<string, int> op_counts_;  // Op counts with key with input shape.
+  std::map<string, int> op_costs_;   // Individual op costs (with input shapes).
   Costs graph_costs_;                   // Graph cost.
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
   std::unique_ptr<ReadyNodeManager> ready_nodes_;

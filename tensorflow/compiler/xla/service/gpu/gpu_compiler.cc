@@ -167,7 +167,7 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   pipeline.AddInvariantChecker<HloVerifier>();
   pipeline.AddPass<PadInsertion>();
   pipeline.AddPass<GpuLayoutAssignment>(
-      hlo_module->mutable_config()->mutable_entry_computation_layout());
+      hlo_module->mutable_entry_computation_layout());
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(

@@ -37,10 +37,9 @@ block_lstm = lstm_ops._block_lstm  # pylint: disable=protected-access
 
 
 class LSTMBlockCellTest(test.TestCase):
-  _use_gpu = False
 
   def testNoneDimsWithDynamicRNN(self):
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
       batch_size = 4
       num_steps = 5
       input_dim = 6
@@ -57,7 +56,7 @@ class LSTMBlockCellTest(test.TestCase):
       sess.run(output, feed)
 
   def testLSTMBlockCell(self):
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()) as sess:
+    with self.test_session(use_gpu=True, graph=ops.Graph()) as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
         x = array_ops.zeros([1, 2])
@@ -85,7 +84,7 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(res[4], [[0.24024698, 0.24024698]])
 
   def testCompatibleNames(self):
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()):
+    with self.test_session(use_gpu=True, graph=ops.Graph()):
       cell = rnn_cell.LSTMCell(10)
       pcell = rnn_cell.LSTMCell(10, use_peepholes=True)
       inputs = [array_ops.zeros([4, 5])] * 6
@@ -96,7 +95,7 @@ class LSTMBlockCellTest(test.TestCase):
           for v in variables.trainable_variables()
       }
 
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()):
+    with self.test_session(use_gpu=True, graph=ops.Graph()):
       cell = lstm_ops.LSTMBlockCell(10)
       pcell = lstm_ops.LSTMBlockCell(10, use_peephole=True)
       inputs = [array_ops.zeros([4, 5])] * 6
@@ -107,7 +106,7 @@ class LSTMBlockCellTest(test.TestCase):
           for v in variables.trainable_variables()
       }
 
-    with self.test_session(use_gpu=self._use_gpu, graph=ops.Graph()):
+    with self.test_session(use_gpu=True, graph=ops.Graph()):
       cell = lstm_ops.LSTMBlockFusedCell(10)
       pcell = lstm_ops.LSTMBlockFusedCell(10, use_peephole=True)
       inputs = [array_ops.zeros([4, 5])] * 6
@@ -122,7 +121,7 @@ class LSTMBlockCellTest(test.TestCase):
     self.assertEqual(basic_names, fused_names)
 
   def testLSTMBasicToBlockCell(self):
-    with self.test_session(use_gpu=self._use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       x = array_ops.zeros([1, 2])
       x_values = np.random.randn(1, 2)
 
@@ -172,7 +171,7 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(basic, block)
 
   def testLSTMBasicToBlockCellPeeping(self):
-    with self.test_session(use_gpu=self._use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       x = array_ops.zeros([1, 2])
       x_values = np.random.randn(1, 2)
 
@@ -225,7 +224,7 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(basic, block)
 
   def testLSTMBasicToBlock(self):
-    with self.test_session(use_gpu=self._use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       batch_size = 2
       input_size = 3
       cell_size = 4
@@ -299,7 +298,7 @@ class LSTMBlockCellTest(test.TestCase):
         self.assertAllClose(basic, fused, rtol=1e-2, atol=1e-2)
 
   def testLSTMBasicToBlockPeeping(self):
-    with self.test_session(use_gpu=self._use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       batch_size = 2
       input_size = 3
       cell_size = 4
@@ -387,7 +386,7 @@ class LSTMBlockCellTest(test.TestCase):
 
   def testLSTMFusedSequenceLengths(self):
     """Verify proper support for sequence lengths in LSTMBlockFusedCell."""
-    with self.test_session(use_gpu=self._use_gpu) as sess:
+    with self.test_session(use_gpu=True) as sess:
       batch_size = 3
       input_size = 4
       cell_size = 5
@@ -467,10 +466,6 @@ class LSTMBlockCellTest(test.TestCase):
       self.assertAllClose(basic_grads, unfused_grads)
       for basic, unfused in zip(basic_wgrads, unfused_wgrads):
         self.assertAllClose(basic, unfused, rtol=1e-2, atol=1e-2)
-
-
-class LSTMBlockCellGpuTest(LSTMBlockCellTest):
-  _use_gpu = True
 
 
 if __name__ == "__main__":

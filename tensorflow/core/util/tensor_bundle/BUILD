@@ -3,11 +3,16 @@
 
 package(
     default_visibility = ["//visibility:public"],
+    features = ["-parse_headers"],
 )
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_copts")
+load(
+    "//tensorflow:tensorflow.bzl",
+    "cc_header_only_library",
+    "tf_copts",
+)
 
 # To be exported to tensorflow/core:mobile_srcs.
 filegroup(
@@ -40,6 +45,13 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_header_only_library(
+    name = "tensor_bundle_headers_lib",
+    deps = [
+        ":tensor_bundle",
     ],
 )
 

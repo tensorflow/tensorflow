@@ -96,10 +96,12 @@ cc_test(
         ":hlo_evaluator",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:test_main",
     ],
@@ -346,6 +348,7 @@ cc_library(
         ":device_memory_allocator",
         ":executable",
         ":execution_tracker",
+        ":gpu_transfer_manager",
         ":hlo",
         ":hlo_cost_analysis",
         ":hlo_execution_profile",
@@ -439,7 +442,7 @@ cc_library(
 cc_library(
     name = "gpu_plugin",
     deps = [
-        ":generic_transfer_manager",
+        ":gpu_transfer_manager",
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/core:stream_executor_no_cuda",
@@ -971,6 +974,27 @@ cc_library(
     alwayslink = True,  # Contains per-platform transfer manager registration
 )
 
+cc_library(
+    name = "gpu_transfer_manager",
+    srcs = ["gpu_transfer_manager.cc"],
+    hdrs = ["gpu_transfer_manager.h"],
+    deps = [
+        ":generic_transfer_manager",
+        ":transfer_manager",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service/gpu:infeed_manager",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+    alwayslink = True,  # Contains per-platform transfer manager registration
+)
+
 cc_test(
     name = "transfer_manager_test",
     srcs = ["transfer_manager_test.cc"],
@@ -1423,7 +1447,9 @@ cc_library(
     hdrs = ["hlo_constant_folding.h"],
     deps = [
         ":hlo",
+        ":hlo_evaluator",
         ":hlo_pass",
+        ":hlo_query",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
@@ -1499,6 +1525,7 @@ cc_library(
         ":computation_layout",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/core:lib",

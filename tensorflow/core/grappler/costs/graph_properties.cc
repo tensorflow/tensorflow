@@ -26,6 +26,38 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+using shape_inference::InferenceContext;
+using shape_inference::ShapeAndType;
+using shape_inference::ShapeHandle;
+
+namespace {
+
+// Merges shapes <shapes_and_types>, determined from an EnqueueV2 node, into
+// <*queue_shapes_and_types>.
+Status MergeEnqueueShapesAndTypes(
+    const std::vector<ShapeAndType>& shapes_and_types, InferenceContext* qctx,
+    std::vector<ShapeAndType>* queue_shapes_and_types) {
+  if (shapes_and_types.size() != queue_shapes_and_types->size()) {
+    return errors::InvalidArgument(
+        "Enqueue nodes mixed number of tensors: ", shapes_and_types.size(),
+        "  vs ", queue_shapes_and_types->size());
+  }
+  for (int i = 0; i < shapes_and_types.size(); ++i) {
+    const ShapeAndType& a = shapes_and_types[i];
+    ShapeAndType& b = (*queue_shapes_and_types)[i];
+    if (a.dtype != b.dtype) {
+      return errors::InvalidArgument("Enqueue nodes mixed dtypes for tensor ",
+                                     i, ": ", DataTypeString(a.dtype), " vs ",
+                                     DataTypeString(b.dtype));
+    }
+
+    TF_RETURN_IF_ERROR(qctx->Merge(a.shape, b.shape, &b.shape));
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
 Status GraphProperties::InferStatically() {
   Graph graph(OpRegistry::Global());
   ShapeRefiner shape_refiner(graph.versions().producer(), graph.op_registry());
@@ -60,32 +92,49 @@ Status GraphProperties::InferStatically() {
       if (!qctx) {
         continue;
       }
-      DataType queue_type = qctx->output_handle_dtype(0);
-      shape_inference::ShapeHandle queue_shp = qctx->output_handle_shape(0);
-      if (qctx->FullyDefined(queue_shp) && queue_type != DT_INVALID) {
-        continue;
+
+      // Check to see if the shape is fully defined.
+      auto* queue_handle_data = qctx->output_handle_shapes_and_types(0);
+      if (queue_handle_data != nullptr) {
+        bool fully_defined = true;
+        for (const auto& shape_and_type : *queue_handle_data) {
+          if (!qctx->FullyDefined(shape_and_type.shape) ||
+              shape_and_type.dtype == DT_INVALID) {
+            fully_defined = false;
+          }
+        }
+        if (fully_defined) {
+          continue;
+        }
       }
 
+      std::vector<ShapeAndType> queue_shapes_and_types;
+      if (queue_handle_data != nullptr) {
+        queue_shapes_and_types = *queue_handle_data;
+      }
       for (const auto& node : resource_data.second) {
         auto ctx = shape_refiner.GetContext(node);
         if (!ctx) {
           continue;
         }
-        if (node->type_string().find("Enqueue") != std::string::npos) {
-          if (ctx->num_inputs() == 2) {
-            const DataType dtype = node->input_type(1);
-            if (queue_type == DT_INVALID) {
-              queue_type = dtype;
-            } else {
-              CHECK_EQ(queue_type, dtype);
-            }
-            shape_inference::ShapeHandle shp = ctx->input(1);
-            TF_RETURN_IF_ERROR(qctx->Merge(queue_shp, shp, &queue_shp));
+        // TODO(bsteiner): handle EnqueueMany as well.
+        if (node->type_string().find("Enqueue") != std::string::npos &&
+            node->type_string().find("EnqueueMany") == std::string::npos) {
+          std::vector<ShapeAndType> shapes_and_types;
+          for (int i = 1; i < ctx->num_inputs(); ++i) {
+            shapes_and_types.push_back({ctx->input(i), node->input_type(i)});
+          }
+
+          if (queue_shapes_and_types.empty()) {
+            queue_shapes_and_types = shapes_and_types;
+          } else {
+            TF_RETURN_IF_ERROR(MergeEnqueueShapesAndTypes(
+                shapes_and_types, qctx, &queue_shapes_and_types));
           }
         }
       }
-      if (qctx->set_output_handle_dtype(0, queue_type) |
-          qctx->MergeOutputHandleShape(0, queue_shp)) {
+      if (!queue_shapes_and_types.empty() &&
+          qctx->MergeOutputHandleShapesAndTypes(0, queue_shapes_and_types)) {
         new_shapes.push(qnode);
       }
     }
@@ -115,7 +164,7 @@ Status GraphProperties::InferStatically() {
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       OpInfo::TensorProperties properties;
       properties.set_dtype(node->input_type(i));
-      shape_inference::ShapeHandle shp = ctx->input(i);
+      ShapeHandle shp = ctx->input(i);
       if (!ctx->RankKnown(shp)) {
         properties.mutable_shape()->set_unknown_rank(true);
       } else {
@@ -135,7 +184,7 @@ Status GraphProperties::InferStatically() {
     for (int i = 0; i < ctx->num_outputs(); ++i) {
       OpInfo::TensorProperties properties;
       properties.set_dtype(node->output_type(i));
-      shape_inference::ShapeHandle shp = ctx->output(i);
+      ShapeHandle shp = ctx->output(i);
       if (!ctx->RankKnown(shp)) {
         properties.mutable_shape()->set_unknown_rank(true);
       } else {

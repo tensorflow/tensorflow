@@ -358,16 +358,14 @@ port::Status CudnnSupport::Init() {
 
   LOG(ERROR) << "could not create cudnn handle: " << ToString(status);
   if (status == CUDNN_STATUS_NOT_INITIALIZED) {
-    // This is the error code that the driver returns when we're not running a
-    // sufficient CUDA driver -- cudnn requires 6.5+ compatibility, which
-    // starts with the 340.XX driver series.
     auto result = cuda::Diagnostician::FindKernelDriverVersion();
     if (!result.ok()) {
       LOG(ERROR) << "error retrieving driver version: "
                  << DriverVersionStatusToString(result);
     } else {
       const auto& version = result.ValueOrDie();
-      LOG(INFO) << "running driver version: " << DriverVersionToString(version);
+      LOG(INFO) << "possibly insufficient driver version: "
+                << DriverVersionToString(version);
       // OS X kernel driver does not report version accurately
 #if !defined(__APPLE__)
       if (std::get<0>(version) < 340) {

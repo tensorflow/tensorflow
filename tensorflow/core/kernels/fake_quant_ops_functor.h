@@ -121,19 +121,7 @@ struct FakeQuantWithMinMaxVarsFunctor {
   void operator()(const Device& d, ConstFlat<float> inputs,
                   ConstScalar<float> min, ConstScalar<float> max,
                   const int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-                  Scalar<bool> check_min_max,
-#endif
                   Flat<float> outputs) {
-#ifndef FAKE_QUANT_NO_DEBUG
-    check_min_max.device(d) = (min <= 0.0f).all();
-    eigen_assert(check_min_max() && "min should be <= 0.0 coeff-wise");
-    check_min_max.device(d) = (max >= 0.0f).all();
-    eigen_assert(check_min_max() >= 0.0f && "max should be >= 0.0 coeff-wise");
-    check_min_max.device(d) = (min < max).all();
-    eigen_assert(check_min_max() && "min should be < max coeff-wise");
-#endif
-
     float nudged_min, nudged_max, nudged_scale;
     Nudge(min(), max(), steps, &nudged_min, &nudged_max, &nudged_scale);
     const auto nudged_scale_repl = inputs.constant(nudged_scale);
@@ -153,21 +141,9 @@ struct FakeQuantWithMinMaxVarsGradientFunctor {
   void operator()(const Device& d, ConstFlat<float> gradients,
                   ConstFlat<float> inputs, ConstScalar<float> min,
                   ConstScalar<float> max, const int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-                  Scalar<bool> check_min_max,
-#endif
                   Flat<float> backprops_wrt_input,
                   Scalar<float> backprop_wrt_min,
                   Scalar<float> backprop_wrt_max) {
-#ifndef FAKE_QUANT_NO_DEBUG
-    check_min_max.device(d) = (min <= 0.0f).all();
-    eigen_assert(check_min_max() && "min should be <= 0.0 coeff-wise");
-    check_min_max.device(d) = (max >= 0.0f).all();
-    eigen_assert(check_min_max() >= 0.0f && "max should be >= 0.0 coeff-wise");
-    check_min_max.device(d) = (min < max).all();
-    eigen_assert(check_min_max() && "min should be < max coeff-wise");
-#endif
-
     float nudged_min, nudged_max, nudged_scale;
     Nudge(min(), max(), steps, &nudged_min, &nudged_max, &nudged_scale);
 
@@ -198,19 +174,7 @@ template <typename Device>
 struct FakeQuant1WithMinMaxVarsPerChannelFunctor {
   void operator()(const Device& d, ConstVec<float> inputs, ConstVec<float> min,
                   ConstVec<float> max, const int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-                  Scalar<bool> check_min_max,
-#endif
                   Vec<float> outputs) {
-#ifndef FAKE_QUANT_NO_DEBUG
-    check_min_max.device(d) = (min <= 0.0f).all();
-    eigen_assert(check_min_max() && "min should be <= 0.0 coeff-wise");
-    check_min_max.device(d) = (max >= 0.0f).all();
-    eigen_assert(check_min_max() >= 0.0f && "max should be >= 0.0 coeff-wise");
-    check_min_max.device(d) = (min < max).all();
-    eigen_assert(check_min_max() && "min should be < max coeff-wise");
-#endif
-
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
       Nudge(min(i), max(i), steps, &nudged_min, &nudged_max, &nudged_scale);
@@ -231,19 +195,7 @@ struct FakeQuant2WithMinMaxVarsPerChannelFunctor {
   void operator()(const Device& d, const Index batch_size, const Index depth,
                   ConstFlat<float> inputs, ConstVec<float> min,
                   ConstVec<float> max, const int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-                  Scalar<bool> check_min_max,
-#endif
                   Flat<float> outputs) {
-#ifndef FAKE_QUANT_NO_DEBUG
-    check_min_max.device(d) = (min <= 0.0f).all();
-    eigen_assert(check_min_max() && "min should be <= 0.0 coeff-wise");
-    check_min_max.device(d) = (max >= 0.0f).all();
-    eigen_assert(check_min_max() >= 0.0f && "max should be >= 0.0 coeff-wise");
-    check_min_max.device(d) = (min < max).all();
-    eigen_assert(check_min_max() && "min should be < max coeff-wise");
-#endif
-
     Eigen::DSizes<Index, 2> restored(batch_size, depth);
     const auto inputs_restored = inputs.reshape(restored);
     for (Index i = 0; i < min.size(); ++i) {
@@ -267,19 +219,7 @@ struct FakeQuant4WithMinMaxVarsPerChannelFunctor {
   void operator()(const Device& d, const Index batch_size, const Index height,
                   const Index width, const Index depth, ConstFlat<float> inputs,
                   ConstVec<float> min, ConstVec<float> max, const int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-                  Scalar<bool> check_min_max,
-#endif
                   Flat<float> outputs) {
-#ifndef FAKE_QUANT_NO_DEBUG
-    check_min_max.device(d) = (min <= 0.0f).all();
-    eigen_assert(check_min_max() && "min should be <= 0.0 coeff-wise");
-    check_min_max.device(d) = (max >= 0.0f).all();
-    eigen_assert(check_min_max() >= 0.0f && "max should be >= 0.0 coeff-wise");
-    check_min_max.device(d) = (min < max).all();
-    eigen_assert(check_min_max() && "min should be < max coeff-wise");
-#endif
-
     Eigen::DSizes<Index, 4> restored(batch_size, height, width, depth);
     const auto inputs_restored = inputs.reshape(restored);
     for (Index i = 0; i < min.size(); ++i) {
@@ -306,20 +246,8 @@ struct FakeQuant1WithMinMaxVarsPerChannelGradientFunctor {
   void operator()(const Device& d, ConstVec<float> gradients,
                   ConstVec<float> inputs, ConstVec<float> min,
                   ConstVec<float> max, const int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-                  Scalar<bool> check_min_max,
-#endif
                   Vec<float> backprops_wrt_input, Vec<float> backprop_wrt_min,
                   Vec<float> backprop_wrt_max) {
-#ifndef FAKE_QUANT_NO_DEBUG
-    check_min_max.device(d) = (min <= 0.0f).all();
-    eigen_assert(check_min_max() && "min should be <= 0.0 coeff-wise");
-    check_min_max.device(d) = (max >= 0.0f).all();
-    eigen_assert(check_min_max() >= 0.0f && "max should be >= 0.0 coeff-wise");
-    check_min_max.device(d) = (min < max).all();
-    eigen_assert(check_min_max() && "min should be < max coeff-wise");
-#endif
-
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
       Nudge(min(i), max(i), steps, &nudged_min, &nudged_max, &nudged_scale);
@@ -344,20 +272,8 @@ struct FakeQuant2WithMinMaxVarsPerChannelGradientFunctor {
   void operator()(const Device& d, const Index batch_size, const Index depth,
                   ConstFlat<float> gradients, ConstFlat<float> inputs,
                   ConstVec<float> min, ConstVec<float> max, const int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-                  Scalar<bool> check_min_max,
-#endif
                   Flat<float> backprops_wrt_input, Vec<float> backprop_wrt_min,
                   Vec<float> backprop_wrt_max) {
-#ifndef FAKE_QUANT_NO_DEBUG
-    check_min_max.device(d) = (min <= 0.0f).all();
-    eigen_assert(check_min_max() && "min should be <= 0.0 coeff-wise");
-    check_min_max.device(d) = (max >= 0.0f).all();
-    eigen_assert(check_min_max() >= 0.0f && "max should be >= 0.0 coeff-wise");
-    check_min_max.device(d) = (min < max).all();
-    eigen_assert(check_min_max() && "min should be < max coeff-wise");
-#endif
-
     Eigen::DSizes<Index, 2> restored(batch_size, depth);
     const auto gradients_restored = gradients.reshape(restored);
     const auto inputs_restored = inputs.reshape(restored);
@@ -397,20 +313,8 @@ struct FakeQuant4WithMinMaxVarsPerChannelGradientFunctor {
                   const Index width, const Index depth,
                   ConstFlat<float> gradients, ConstFlat<float> inputs,
                   ConstVec<float> min, ConstVec<float> max, const int steps,
-#ifndef FAKE_QUANT_NO_DEBUG
-                  Scalar<bool> check_min_max,
-#endif
                   Flat<float> backprops_wrt_input, Vec<float> backprop_wrt_min,
                   Vec<float> backprop_wrt_max) {
-#ifndef FAKE_QUANT_NO_DEBUG
-    check_min_max.device(d) = (min <= 0.0f).all();
-    eigen_assert(check_min_max() && "min should be <= 0.0 coeff-wise");
-    check_min_max.device(d) = (max >= 0.0f).all();
-    eigen_assert(check_min_max() >= 0.0f && "max should be >= 0.0 coeff-wise");
-    check_min_max.device(d) = (min < max).all();
-    eigen_assert(check_min_max() && "min should be < max coeff-wise");
-#endif
-
     Eigen::DSizes<Index, 4> restored(batch_size, height, width, depth);
     const auto gradients_restored = gradients.reshape(restored);
     const auto inputs_restored = inputs.reshape(restored);

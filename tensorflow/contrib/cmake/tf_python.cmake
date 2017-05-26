@@ -229,6 +229,7 @@ add_python_module("tensorflow/tensorboard")
 add_python_module("tensorflow/tensorboard/backend")
 add_python_module("tensorflow/tensorboard/backend/event_processing")
 add_python_module("tensorflow/tensorboard/plugins")
+add_python_module("tensorflow/tensorboard/plugins/images")
 add_python_module("tensorflow/tensorboard/plugins/projector")
 add_python_module("tensorflow/tensorboard/plugins/scalars")
 add_python_module("tensorflow/tensorboard/plugins/text")
@@ -618,6 +619,8 @@ GENERATE_PYTHON_OP_LIB("contrib_factorization_clustering_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_clustering_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_factorization_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_framework_checkpoint_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_checkpoint_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_framework_variable_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_variable_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_input_pipeline_ops"
@@ -724,7 +727,7 @@ if(WIN32)
         $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
         $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
     )
-    
+
     target_include_directories(pywrap_tensorflow_internal_static PUBLIC
         ${PYTHON_INCLUDE_DIR}
         ${NUMPY_INCLUDE_DIR}
@@ -732,14 +735,14 @@ if(WIN32)
     #target_link_libraries(pywrap_tensorflow_internal_static
     #	tf_protos_cc
     #	tf_python_protos_cc
-    #)  
+    #)
     add_dependencies(pywrap_tensorflow_internal_static tf_protos_cc tf_python_protos_cc)
     set(pywrap_tensorflow_internal_static_dependencies
         $<TARGET_FILE:pywrap_tensorflow_internal_static>
         $<TARGET_FILE:tf_protos_cc>
         $<TARGET_FILE:tf_python_protos_cc>
     )
-    
+
     set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")
     set_source_files_properties(${pywrap_tensorflow_deffile} PROPERTIES GENERATED TRUE)
 

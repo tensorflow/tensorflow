@@ -41,6 +41,9 @@ namespace tensorflow {
 extern const char* const DEVICE_CPU_XLA_JIT;  // "CPU_XLA_JIT"
 extern const char* const DEVICE_GPU_XLA_JIT;  // "GPU_XLA_JIT"
 
+extern const char* const DEVICE_XLA_CPU;
+extern const char* const DEVICE_XLA_GPU;
+
 constexpr std::array<DataType, 2> kIntTypes = {{DT_INT32, DT_INT64}};
 constexpr std::array<DataType, 2> kFloatTypes = {{DT_FLOAT, DT_DOUBLE}};
 constexpr std::array<DataType, 4> kNumericTypes = {
