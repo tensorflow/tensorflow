@@ -11,8 +11,8 @@ You must pick the mechanism by which you install TensorFlow. The supported choic
   * virtualenv
   * "native" pip
   * Docker
-  * installing from sources, which is for experts and is documented in
-    a separate guide.
+  * installing from sources, which is documented in
+    [a separate guide](https://www.tensorflow.org/install/install_sources).
 
 **We recommend the virtualenv installation.**
 [Virtualenv](https://virtualenv.pypa.io/en/stable/)
