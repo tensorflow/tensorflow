@@ -21,9 +21,82 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/crc32c.h"
 #include "tensorflow/core/lib/io/compression.h"
+#include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/platform/env.h"
 
+namespace {
+using tensorflow::io::InputStreamInterface;
+using tensorflow::RandomAccessFile;
+using tensorflow::Status;
+using tensorflow::int64;
+using tensorflow::string;
+using tensorflow::StringPiece;
+using tensorflow::io::InputBuffer;
+
+// Wraps a RandomAccessFile in an InputStreamInterface. A given instance of
+// BufferedRandomAccessInputStream is NOT safe for concurrent use by multiple
+// threads.
+class BufferedRandomAccessInputStream : public InputStreamInterface {
+ public:
+  // Does not take ownership of 'file'
+  // 'file' must outlive *this.
+  BufferedRandomAccessInputStream(RandomAccessFile* file, int io_bufer_size);
+
+  Status ReadNBytes(int64 bytes_to_read, string* result) override;
+
+  int64 Tell() const override;
+
+  Status Seek(int64 position) { return input_buffer->Seek(position); }
+
+  Status Reset() override { return Seek(0); }
+
+ private:
+  RandomAccessFile* file_;  // Not owned.
+  int io_bufer_size_;
+  bool returned_partial_ = false;
+  std::unique_ptr<InputBuffer> input_buffer;
+};
+
+BufferedRandomAccessInputStream::BufferedRandomAccessInputStream(
+    RandomAccessFile* file, int io_bufer_size)
+    : file_(file), io_bufer_size_(io_bufer_size) {
+  input_buffer.reset(new InputBuffer(file_, io_bufer_size_));
+}
+
+Status BufferedRandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
+                                                   string* result) {
+  if (bytes_to_read < 0) {
+    return tensorflow::errors::InvalidArgument(
+        "Cannot read negative number of bytes");
+  }
+  if (returned_partial_) {
+    return tensorflow::errors::OutOfRange("reached end of file");
+  }
+  result->clear();
+  result->resize(bytes_to_read);
+  char* result_buffer = &(*result)[0];
+  Status s = input_buffer->ReadNBytes(bytes_to_read, result);
+  if (!s.ok()) {
+    if (tensorflow::errors::IsOutOfRange(s)) returned_partial_ = true;
+    return s;
+  }
+
+  // If the amount of data we read is less than what we wanted, we return an
+  // out of range error. We need to catch this explicitly since file_->Read()
+  // would not do so if at least 1 byte is read (b/30839063).
+  if (result->size() < bytes_to_read) {
+    returned_partial_ = true;
+    return tensorflow::errors::OutOfRange("reached end of file");
+  }
+  return Status::OK();
+}
+
+int64 BufferedRandomAccessInputStream::Tell() const {
+  LOG(FATAL) << "not implemented";
+}
+int kIoBufferSize = 2 << 20;
+}
 namespace tensorflow {
 namespace io {
 
@@ -55,27 +128,29 @@ RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
 
 RecordReader::RecordReader(RandomAccessFile* file,
                            const RecordReaderOptions& options)
-    : src_(file), options_(options) {
+    : options_(options) {
   if (options.compression_type == RecordReaderOptions::ZLIB_COMPRESSION) {
 // We don't have zlib available on all embedded platforms, so fail.
 #if defined(IS_SLIM_BUILD)
     LOG(FATAL) << "Zlib compression is unsupported on mobile platforms.";
 #else   // IS_SLIM_BUILD
-    random_input_stream_.reset(new RandomAccessInputStream(file));
-    zlib_input_stream_.reset(new ZlibInputStream(
-        random_input_stream_.get(), options.zlib_options.input_buffer_size,
-        options.zlib_options.output_buffer_size, options.zlib_options));
+    underlaying_input_stream_ = new RandomAccessInputStream(file);
+    input_stream_ = new ZlibInputStream(
+        underlaying_input_stream_, options.zlib_options.input_buffer_size,
+        options.zlib_options.output_buffer_size, options.zlib_options);
 #endif  // IS_SLIM_BUILD
   } else if (options.compression_type == RecordReaderOptions::NONE) {
     // Nothing to do.
+    input_stream_ = new BufferedRandomAccessInputStream(file, kIoBufferSize);
+    underlaying_input_stream_ = nullptr;
   } else {
     LOG(FATAL) << "Unspecified compression type :" << options.compression_type;
   }
 }
 
 RecordReader::~RecordReader() {
-  zlib_input_stream_.reset(nullptr);
-  random_input_stream_.reset(nullptr);
+  delete input_stream_;
+  delete underlaying_input_stream_;
 }
 
 // Read n+4 bytes from file, verify that checksum of first n bytes is
@@ -90,51 +165,28 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n,
   const size_t expected = n + sizeof(uint32);
   storage->resize(expected);
 
-#if !defined(IS_SLIM_BUILD)
-  if (zlib_input_stream_) {
-    // If we have a zlib compressed buffer, we assume that the
-    // file is being read sequentially, and we use the underlying
-    // implementation to read the data.
-    //
-    // No checks are done to validate that the file is being read
-    // sequentially.  At some point the zlib input buffer may support
-    // seeking, possibly inefficiently.
-    TF_RETURN_IF_ERROR(zlib_input_stream_->ReadNBytes(expected, storage));
+  // If we have a zlib compressed buffer, we assume that the
+  // file is being read sequentially, and we use the underlying
+  // implementation to read the data.
+  //
+  // No checks are done to validate that the file is being read
+  // sequentially.  At some point the zlib input buffer may support
+  // seeking, possibly inefficiently.
+  TF_RETURN_IF_ERROR(input_stream_->ReadNBytes(expected, storage));
 
-    if (storage->size() != expected) {
-      if (storage->size() == 0) {
-        return errors::OutOfRange("eof");
-      } else {
-        return errors::DataLoss("truncated record at ", offset);
-      }
+  if (storage->size() != expected) {
+    if (storage->size() == 0) {
+      return errors::OutOfRange("eof");
+    } else {
+      return errors::DataLoss("truncated record at ", offset);
     }
-
-    uint32 masked_crc = core::DecodeFixed32(storage->data() + n);
-    if (crc32c::Unmask(masked_crc) != crc32c::Value(storage->data(), n)) {
-      return errors::DataLoss("corrupted record at ", offset);
-    }
-    *result = StringPiece(storage->data(), n);
-  } else {
-#endif  // IS_SLIM_BUILD
-    // This version supports reading from arbitrary offsets
-    // since we are accessing the random access file directly.
-    StringPiece data;
-    TF_RETURN_IF_ERROR(src_->Read(offset, expected, &data, &(*storage)[0]));
-    if (data.size() != expected) {
-      if (data.size() == 0) {
-        return errors::OutOfRange("eof");
-      } else {
-        return errors::DataLoss("truncated record at ", offset);
-      }
-    }
-    uint32 masked_crc = core::DecodeFixed32(data.data() + n);
-    if (crc32c::Unmask(masked_crc) != crc32c::Value(data.data(), n)) {
-      return errors::DataLoss("corrupted record at ", offset);
-    }
-    *result = StringPiece(data.data(), n);
-#if !defined(IS_SLIM_BUILD)
   }
-#endif  // IS_SLIM_BUILD
+
+  uint32 masked_crc = core::DecodeFixed32(storage->data() + n);
+  if (crc32c::Unmask(masked_crc) != crc32c::Value(storage->data(), n)) {
+    return errors::DataLoss("corrupted record at ", offset);
+  }
+  *result = StringPiece(storage->data(), n);
 
   return Status::OK();
 }

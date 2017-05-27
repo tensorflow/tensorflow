@@ -31,6 +31,7 @@ namespace tensorflow {
 class RandomAccessFile;
 
 namespace io {
+class RandomAccessInputStream;
 
 class RecordReaderOptions {
  public:
@@ -64,12 +65,9 @@ class RecordReader {
   Status ReadChecksummed(uint64 offset, size_t n, StringPiece* result,
                          string* storage);
 
-  RandomAccessFile* src_;
+  InputStreamInterface* input_stream_;
+  InputStreamInterface* underlaying_input_stream_;
   RecordReaderOptions options_;
-#if !defined(IS_SLIM_BUILD)
-  std::unique_ptr<RandomAccessInputStream> random_input_stream_;
-  std::unique_ptr<ZlibInputStream> zlib_input_stream_;
-#endif  // IS_SLIM_BUILD
 
   TF_DISALLOW_COPY_AND_ASSIGN(RecordReader);
 };
