@@ -344,6 +344,52 @@ Costs& VirtualScheduler::FindOrCreateZero(const string& op_name,
   return it->second;
 }
 
+bool VirtualScheduler::PopCurrNode() {
+  const auto* node = ready_nodes_->GetCurrNode();
+  auto& node_state = node_map_[node];
+  auto& device = device_[DeviceName(node)];
+  auto curr_time = device.GetCurrTime();
+
+  // Increment num_inputs_ready of the output nodes.
+  for (auto* output : node_state.outputs) {
+    auto& output_state = node_map_[output];
+    output_state.num_inputs_ready++;
+    if (output_state.num_inputs_ready == output_state.inputs.size()) {
+      // This output node is now ready.
+      output_state.time_ready = curr_time;
+      ready_nodes_->AddNode(output);
+    }
+  }
+
+  // Increment num_outputs_executed of the input nodes.
+  for (auto* input : node_state.inputs) {
+    auto& input_state = node_map_[input];
+    input_state.num_outputs_executed++;
+    if (input_state.num_outputs_executed == input_state.outputs.size()) {
+      // All the outputs are executed; no reference to this input nodel
+      input_state.time_no_reference = curr_time;
+      // TODO(dyoon): collect device memory usage; note that this input node
+      // use device memory between time_scheduled and time_no_reference.
+    }
+  }
+
+  // Remove the current node; assume FIFO.
+  ready_nodes_->RemoveCurrNode();
+
+  // Peek at the new node to see if we should skip it.
+  if (!ready_nodes_->Empty()) {
+    if (!use_static_shapes_ &&
+        !graph_properties_.HasInputProperties(GetCurrNodeInfo().name) &&
+        !IsSendOp(node) && !IsRecvOp(node)) {
+      // If infering shapes dynamically and node has no input properties,
+      // it's likely the node is not actually executed. Skip the node.
+      return PopCurrNode();
+    }
+  }
+
+  return !ready_nodes_->Empty();
+}
+
 bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   // Update graph_costs_ and per-op costs.
   graph_costs_ = CombineCosts(graph_costs_, node_costs);
@@ -385,32 +431,7 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
           << ", scheduled: " << node_state.time_scheduled.count()
           << ", finished: " << node_state.time_finished.count();
 
-  // Increment num_inputs_ready of the output nodes.
-  for (auto* output : node_state.outputs) {
-    auto& output_state = node_map_[output];
-    output_state.num_inputs_ready++;
-    if (output_state.num_inputs_ready == output_state.inputs.size()) {
-      // This output node is now ready.
-      output_state.time_ready = curr_time;
-      ready_nodes_->AddNode(output);
-    }
-  }
-
-  // Increment num_outputs_executed of the input nodes.
-  for (auto* input : node_state.inputs) {
-    auto& input_state = node_map_[input];
-    input_state.num_outputs_executed++;
-    if (input_state.num_outputs_executed == input_state.outputs.size()) {
-      // All the outputs are executed; no reference to this input nodel
-      input_state.time_no_reference = curr_time;
-      // TODO(dyoon): collect device memory usage; note that this input node
-      // use device memory between time_scheduled and time_no_reference.
-    }
-  }
-
-  // Remove the current node; assume FIFO.
-  ready_nodes_->RemoveCurrNode();
-  return !ready_nodes_->Empty();  // True if not empty.
+  return PopCurrNode();
 }
 
 Costs VirtualScheduler::Summary() const {
