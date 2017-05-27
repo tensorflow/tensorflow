@@ -66,9 +66,10 @@ inline T negative_infinity() {
   struct ReduceSliceFunctor##reduceop {                                        \
     virtual ~ReduceSliceFunctor##reduceop(){}                                  \
     virtual void operator()(OpKernelContext* ctx, const Device& d,             \
-                            typename TTypes<Index>::ConstMatrix indices,       \
-                            typename TTypes<T,3>::ConstTensor data,            \
-                            typename TTypes<T,3>::Tensor output);              \
+                            Index indices_width,                               \
+                            typename TTypes<Index, 1>::ConstTensor indices,    \
+                            typename TTypes<T, 3>::ConstTensor data,           \
+                            typename TTypes<T, 3>::Tensor output);             \
   };
 
 CALL_ALL_REDUCEOPS(ReduceSliceFunctorReduceop)

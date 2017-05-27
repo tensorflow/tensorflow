@@ -32,8 +32,8 @@ namespace functor {
 #define GPUReduceSliceFunctorReduceop(reduceop, beginning)                     \
   template <typename T, typename Index>                                        \
   __global__ void ReduceSliceDeviceKernel##reduceop(Index sizex, Index sizey,  \
-      Index sizez, Index jobsx, Index jobsy, Index jobsz, Index bound,         \
-      const T begin, const Index *indices, const T *input, T *out)             \
+      Index indices_width, Index sizez, Index jobsx, Index jobsy, Index jobsz, \
+      Index bound, const T begin, const Index *indices, const T *input, T *out)\
   {                                                                            \
     Index _x = blockIdx.x * blockDim.x + threadIdx.x;                          \
     Index _y = blockIdx.y * blockDim.y + threadIdx.y;                          \
@@ -44,8 +44,8 @@ namespace functor {
           if( x < sizex && y < sizey && z < sizez ) {                          \
             Index outidx = x * sizey * sizez + y * sizez + z;                  \
             out[outidx] = begin;                                               \
-            Index start = indices[y*2];                                        \
-            Index end   = Min(bound, indices[y * 2 + 1]);                      \
+            Index start = indices[y*indices_width];                            \
+            Index end   = Min(bound, indices[y + 1]);                          \
             for(Index yin = start; yin < end; yin++) {                         \
               Index inidx = x * bound * sizez + yin * sizez + z;               \
               out[outidx] = reduceop(out[outidx], input[inidx]);               \
@@ -60,7 +60,8 @@ namespace functor {
   struct ReduceSliceFunctor##reduceop<GPUDevice, T, Index> {                   \
     virtual ~ReduceSliceFunctor##reduceop(){}                                  \
     virtual void operator()(OpKernelContext* ctx, const GPUDevice& d,          \
-                            typename TTypes<Index>::ConstMatrix indices,       \
+                            Index indices_width,                               \
+                            typename TTypes<Index, 1>::ConstTensor indices,    \
                             typename TTypes<T,3>::ConstTensor data,            \
                             typename TTypes<T,3>::Tensor output)               \
     {                                                                          \
@@ -79,8 +80,9 @@ namespace functor {
                                                                                \
       ReduceSliceDeviceKernel##reduceop<T,Index> <<<config.block_count,        \
         config.thread_per_block, 0, d.stream()>>> (sizex, sizey, sizez,        \
-                                   jobsx, jobsy, jobsz, bound, beginning<T>(), \
-                                   indices.data(), data.data(), output.data());\
+                                   indices_width, jobsx, jobsy, jobsz, bound,  \
+                                   beginning<T>(), indices.data(), data.data(),\
+                                   output.data());                             \
     }                                                                          \
   };
 

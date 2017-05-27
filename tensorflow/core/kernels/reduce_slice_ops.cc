@@ -51,7 +51,8 @@ namespace functor {
   public:                                                                      \
     virtual ~ReduceSliceFunctor##reduceop(){}                                  \
     virtual void operator()(OpKernelContext* ctx, const CPUDevice& d,          \
-                            typename TTypes<Index>::ConstMatrix indices,       \
+                            Index indices_width,                               \
+                            typename TTypes<Index, 1>::ConstTensor indices,    \
                             typename TTypes<T,3>::ConstTensor data,            \
                             typename TTypes<T,3>::Tensor output)               \
     {                                                                          \
@@ -70,8 +71,8 @@ namespace functor {
           Index y = xyz.y;                                                     \
           Index z = xyz.z;                                                     \
           output(x, y, z) = zero;                                              \
-          Index slice_head = indices(y, 0);                                    \
-          Index slice_end = std::min(indices(y,1), bound);                     \
+          Index slice_head = indices(y * indices_width);                       \
+          Index slice_end = std::min(indices(y * indices_width + 1), bound);   \
           for(Index i = slice_head; i < slice_end; ++i) {                      \
             output(x, y, z) = reduceop(output(x, y, z), data(x, i, z));        \
           }                                                                    \
@@ -121,16 +122,22 @@ public:
   explicit ReduceSliceKernel(OpKernelConstruction* context) : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
+
     const Tensor &data = context->input(0);
     const Tensor &indices = context->input(1);
     const Tensor &_axis = context->input(2);
     int64 axis = _axis.scalar<int64>()(0);
+
+    Index indices_width = 1;
+    if(indices.dims() == 2 && indices.shape().dim_size(1) == 2) {
+      indices_width = 2;
+    }
     TensorShape output_shape = data.shape();
-    output_shape.set_dim(axis,indices.shape().dim_size(0));
+    output_shape.set_dim(axis, indices.shape().dim_size(0) - 2 + indices_width);
     Tensor *output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     auto functor = Functor<Device, T, Index>();
-    functor(context, context->eigen_device<Device>(), indices.matrix<Index>(),
+    functor(context, context->eigen_device<Device>(), indices_width, indices.flat<Index>(),
         data.flat_inner_outer_dims<T,3>(axis-1), output->flat_inner_outer_dims<T,3>(axis-1));
   }
 };

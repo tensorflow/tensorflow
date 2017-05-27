@@ -427,7 +427,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       # Consistent with desire to get numerator
       self.assertAllEqual(tf_result, expanded_nums)
 
-
+'''
 class ReduceSliceTest(test_util.TensorFlowTestCase):
 
   def testReduceSliceSum1D(self):
@@ -464,6 +464,15 @@ class ReduceSliceTest(test_util.TensorFlowTestCase):
     result = np.transpose(np.array([[1, 2, 3], [741, 852, 963], [40, 50, 60], [740, 850, 960], [41, 52, 63]], dtype=np.int32))
     with self.test_session(use_gpu=True):
       y_tf = math_ops.reduce_slice_sum(x,indices,1).eval()
+      self.assertAllEqual(y_tf, result)
+
+  def testReduceSliceSum1DIndices(self):
+    print('testReduceSliceSum1DIndices')
+    x = np.array([[1, 2, 3], [40, 50, 60], [700,800,900]], dtype=np.int32)
+    indices = np.array([[0, 1], [0, 3], [1, 2], [1, 3], [0,2]], dtype=np.int32)
+    result = np.array([[1, 2, 3], [741, 852, 963], [40, 50, 60], [740, 850, 960], [41, 52, 63]], dtype=np.int32)
+    with self.test_session(use_gpu=True):
+      y_tf = math_ops.reduce_slice_sum(x,indices,0).eval()
       self.assertAllEqual(y_tf, result)
 
   def testReduceSliceProd(self):
@@ -513,7 +522,7 @@ class ReduceSliceTest(test_util.TensorFlowTestCase):
     with self.test_session(use_gpu=True):
       y_tf = math_ops.reduce_slice_sum(x,indices,0).eval()
       self.assertAllEqual(y_tf, result)
-
+'''
 
 if __name__ == "__main__":
   googletest.main()
