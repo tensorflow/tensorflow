@@ -396,7 +396,9 @@ class EstimatorModelFnTest(test.TestCase):
     def _invalid_model_fn(features, labels):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
-      loss = 100.0 - w
+      update_global_step = variables.get_global_step().assign_add(1)
+      with control_flow_ops.control_dependencies([update_global_step]):
+        loss = 100.0 - w
       return None, loss, None
 
     est = estimator.Estimator(model_fn=_invalid_model_fn)
@@ -409,7 +411,9 @@ class EstimatorModelFnTest(test.TestCase):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
       loss = 100.0 - w
-      train_op = w.assign_add(loss / 100.0)
+      update_global_step = variables.get_global_step().assign_add(1)
+      with control_flow_ops.control_dependencies([update_global_step]):
+        train_op = w.assign_add(loss / 100.0)
       predictions = loss
       if mode == model_fn.ModeKeys.EVAL:
         loss = None
@@ -426,7 +430,9 @@ class EstimatorModelFnTest(test.TestCase):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
       loss = 100.0 - w
-      train_op = w.assign_add(loss / 100.0)
+      update_global_step = variables.get_global_step().assign_add(1)
+      with control_flow_ops.control_dependencies([update_global_step]):
+        train_op = w.assign_add(loss / 100.0)
       return None, loss, train_op
 
     est = estimator.Estimator(model_fn=_invalid_model_fn)

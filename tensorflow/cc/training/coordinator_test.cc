@@ -79,7 +79,7 @@ class MockQueueRunner : public RunnerInterface {
                                      status, counter, start));
   }
 
-  Status Join() {
+  Status Join() override {
     if (join_counter_ != nullptr) {
       (*join_counter_)++;
     }

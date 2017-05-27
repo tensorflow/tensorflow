@@ -22,6 +22,7 @@ import random
 
 import numpy as np
 
+from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn import datasets
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -29,8 +30,7 @@ from tensorflow.contrib.learn.python.learn.estimators import estimator as estima
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import accuracy_score
 from tensorflow.contrib.learn.python.learn.estimators._sklearn import train_test_split
 from tensorflow.python.framework import constant_op
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import variables
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training import momentum as momentum_lib
 
@@ -57,11 +57,12 @@ class FeatureEngineeringFunctionTest(test.TestCase):
 
     def model_fn(features, labels):
       # dummy variable:
-      _ = variables.Variable([0.])
+      _ = variables_lib.Variable([0.])
       _ = labels
       predictions = features["transformed_x"]
       loss = constant_op.constant([2.])
-      return predictions, loss, control_flow_ops.no_op()
+      update_global_step = variables.get_global_step().assign_add(1)
+      return predictions, loss, update_global_step
 
     estimator = estimator_lib.Estimator(
         model_fn=model_fn, feature_engineering_fn=feature_engineering_fn)
@@ -95,11 +96,12 @@ class FeatureEngineeringFunctionTest(test.TestCase):
 
     def model_fn(features, labels):
       # dummy variable:
-      _ = variables.Variable([0.])
+      _ = variables_lib.Variable([0.])
       _ = labels
       predictions = features["x"]
       loss = constant_op.constant([2.])
-      return predictions, loss, control_flow_ops.no_op()
+      update_global_step = variables.get_global_step().assign_add(1)
+      return predictions, loss, update_global_step
 
     estimator_with_fe_fn = estimator_lib.Estimator(
         model_fn=model_fn, feature_engineering_fn=feature_engineering_fn)

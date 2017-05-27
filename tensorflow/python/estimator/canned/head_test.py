@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
@@ -271,57 +272,75 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(n_classes)
     self.assertEqual(n_classes, head.logits_dimension)
 
-    # Create estimator spec.
-    logits = np.array(((1., 0., 0.), (0., 0., 1.),), dtype=np.int32)
+    logits = [[1., 0., 0.], [0., 0., 1.]]
+    expected_probabilities = [[0.576117, 0.2119416, 0.2119416],
+                              [0.2119416, 0.2119416, 0.576117]]
+    expected_class_ids = [[0], [2]]
+    expected_classes = [[b'0'], [b'2']]
+    expected_export_classes = [[b'0', b'1', b'2']] * 2
+
     spec = head.create_estimator_spec(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.PREDICT,
         logits=logits)
 
-    expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS: logits.astype(np.float32),
-        prediction_keys.PredictionKeys.PROBABILITIES:
-        np.array([[0.576117, 0.2119416, 0.2119416],
-                  [0.2119416, 0.2119416, 0.576117]], dtype=np.float32),
-        prediction_keys.PredictionKeys.CLASSES:
-            np.array(((0,), (2,)), dtype=np.int64),
-    }
-
-    expected_output_classes = [[b'0', b'1', b'2'], [b'0', b'1', b'2']]
-
-    # Assert spec contains expected tensors.
-    self.assertItemsEqual(expected_predictions.keys(), spec.predictions.keys())
-    self.assertEqual(
-        {k: v.dtype for k, v in six.iteritems(expected_predictions)},
-        {k: v.dtype.as_numpy_dtype for k, v in six.iteritems(spec.predictions)})
-    self.assertIsNone(spec.loss)
-    self.assertEqual({}, spec.eval_metric_ops)
-    self.assertIsNone(spec.train_op)
     self.assertItemsEqual(
         ('', _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
-    _assert_no_hooks(self, spec)
 
     # Assert predictions and export_outputs.
     with self.test_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
-      self.assertAllClose(expected_predictions, sess.run(spec.predictions))
+      predictions = sess.run(spec.predictions)
+      self.assertAllClose(logits,
+                          predictions[prediction_keys.PredictionKeys.LOGITS])
       self.assertAllClose(
-          expected_predictions[prediction_keys.PredictionKeys.PROBABILITIES],
+          expected_probabilities,
+          predictions[prediction_keys.PredictionKeys.PROBABILITIES])
+      self.assertAllClose(expected_class_ids,
+                          predictions[prediction_keys.PredictionKeys.CLASS_IDS])
+      self.assertAllEqual(expected_classes,
+                          predictions[prediction_keys.PredictionKeys.CLASSES])
+
+      self.assertAllClose(
+          expected_probabilities,
           sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].scores))
       self.assertAllEqual(
-          expected_output_classes,
+          expected_export_classes,
           sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].classes))
 
-  def test_weighted_multi_example_predict(self):
+  def test_predict_with_vocabulary_list(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, weight_feature_key='label_weights')
-    self.assertEqual(n_classes, head.logits_dimension)
+        n_classes, label_vocabulary=['aang', 'iroh', 'zuko'])
 
-    # Create estimator spec.
-    logits = np.array(((1., 0., 0.), (0., 0., 1.),), dtype=np.int32)
-    weights_2x1 = np.array(((1.,), (2.,),), dtype=np.float64)
+    logits = [[1., 0., 0.], [0., 0., 1.]]
+    expected_classes = [[b'aang'], [b'zuko']]
+    expected_export_classes = [[b'aang', b'iroh', b'zuko']] * 2
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.PREDICT,
+        logits=logits)
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertAllEqual(
+          expected_classes,
+          sess.run(spec.predictions[prediction_keys.PredictionKeys.CLASSES]))
+      self.assertAllEqual(
+          expected_export_classes,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].classes))
+
+  def test_weight_should_not_impact_prediction(self):
+    n_classes = 3
+    logits = [[1., 0., 0.], [0., 0., 1.]]
+    expected_probabilities = [[0.576117, 0.2119416, 0.2119416],
+                              [0.2119416, 0.2119416, 0.576117]]
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes, weight_feature_key='label_weights')
+
+    weights_2x1 = [[1.], [2.]]
     spec = head.create_estimator_spec(
         features={
             'x': np.array(((42,),), dtype=np.int32),
@@ -330,26 +349,14 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
         mode=model_fn.ModeKeys.PREDICT,
         logits=logits)
 
-    expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS: logits.astype(np.float32),
-        prediction_keys.PredictionKeys.PROBABILITIES:
-        np.array([[0.576117, 0.2119416, 0.2119416],
-                  [0.2119416, 0.2119416, 0.576117]], dtype=np.float32),
-        prediction_keys.PredictionKeys.CLASSES:
-            np.array(((0,), (2,)), dtype=np.int64),
-    }
-
-    # Assert spec contains expected tensors.
-    self.assertItemsEqual(expected_predictions.keys(), spec.predictions.keys())
-    self.assertEqual(
-        {k: v.dtype for k, v in six.iteritems(expected_predictions)},
-        {k: v.dtype.as_numpy_dtype for k, v in six.iteritems(spec.predictions)})
-
-    # Assert predictions.
     with self.test_session() as sess:
       _initialize_variables(self, spec.scaffold)
-      self.assertIsNone(spec.scaffold.summary_op)
-      self.assertAllClose(expected_predictions, sess.run(spec.predictions))
+      predictions = sess.run(spec.predictions)
+      self.assertAllClose(logits,
+                          predictions[prediction_keys.PredictionKeys.LOGITS])
+      self.assertAllClose(
+          expected_probabilities,
+          predictions[prediction_keys.PredictionKeys.PROBABILITIES])
 
   def test_eval(self):
     n_classes = 3
@@ -366,14 +373,6 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
         logits=logits,
         labels=labels)
 
-    expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS: logits.astype(np.float32),
-        prediction_keys.PredictionKeys.PROBABILITIES:
-            np.array(((1., 0., 0.), (0., 1., 0.),), dtype=np.float32),
-        prediction_keys.PredictionKeys.CLASSES:
-            np.array(((0,), (1,)), dtype=np.int64),
-    }
-
     keys = metric_keys.MetricKeys
     expected_metrics = {
         keys.LOSS_MEAN: expected_loss / 2,
@@ -381,10 +380,6 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     }
 
     # Assert spec contains expected tensors.
-    self.assertItemsEqual(expected_predictions.keys(), spec.predictions.keys())
-    self.assertEqual(
-        {k: v.dtype for k, v in six.iteritems(expected_predictions)},
-        {k: v.dtype.as_numpy_dtype for k, v in six.iteritems(spec.predictions)})
     self.assertIsNotNone(spec.loss)
     self.assertItemsEqual(expected_metrics.keys(), spec.eval_metric_ops.keys())
     self.assertIsNone(spec.train_op)
@@ -398,9 +393,43 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
       self.assertIsNone(spec.scaffold.summary_op)
       value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
       update_ops = {k: spec.eval_metric_ops[k][1] for k in spec.eval_metric_ops}
-      predictions, loss, metrics = sess.run((
-          spec.predictions, spec.loss, update_ops))
-      self.assertAllClose(expected_predictions, predictions, rtol=tol, atol=tol)
+      loss, metrics = sess.run((spec.loss, update_ops))
+      self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
+      # Check results of both update (in `metrics`) and value ops.
+      self.assertAllClose(expected_metrics, metrics, rtol=tol, atol=tol)
+      self.assertAllClose(
+          expected_metrics, {k: value_ops[k].eval()
+                             for k in value_ops},
+          rtol=tol,
+          atol=tol)
+
+  def test_eval_with_label_vocabulary(self):
+    n_classes = 3
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes, label_vocabulary=['aang', 'iroh', 'zuko'])
+
+    logits = [[10., 0, 0], [0, 10, 0]]
+    labels = [[b'iroh'], [b'iroh']]
+    # loss = sum(cross_entropy(labels, logits)) = sum(10, 0) = 10.
+    expected_loss = 10.
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=labels)
+
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        keys.LOSS_MEAN: expected_loss / 2,
+        keys.ACCURACY: 0.5,  # 1 of 2 labels is correct.
+    }
+
+    tol = 1e-2
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
+      update_ops = {k: spec.eval_metric_ops[k][1] for k in spec.eval_metric_ops}
+      loss, metrics = sess.run((spec.loss, update_ops))
       self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
       # Check results of both update (in `metrics`) and value ops.
       self.assertAllClose(expected_metrics, metrics, rtol=tol, atol=tol)
@@ -429,15 +458,6 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
         logits=logits,
         labels=labels)
 
-    expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS: logits.astype(np.float32),
-        prediction_keys.PredictionKeys.PROBABILITIES:
-            np.array(((1., 0., 0.), (0., 1., 0.), (0., 0., 1.)),
-                     dtype=np.float32),
-        prediction_keys.PredictionKeys.CLASSES:
-            np.array(((0,), (1,), (2,)), dtype=np.int64),
-    }
-
     keys = metric_keys.MetricKeys
     expected_metrics = {
         keys.LOSS_MEAN: expected_loss / np.sum(weights_3x1),
@@ -446,26 +466,20 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     }
 
     # Assert spec contains expected tensors.
-    self.assertItemsEqual(expected_predictions.keys(), spec.predictions.keys())
-    self.assertEqual(
-        {k: v.dtype for k, v in six.iteritems(expected_predictions)},
-        {k: v.dtype.as_numpy_dtype for k, v in six.iteritems(spec.predictions)})
     self.assertIsNotNone(spec.loss)
     self.assertItemsEqual(expected_metrics.keys(), spec.eval_metric_ops.keys())
     self.assertIsNone(spec.train_op)
     self.assertIsNone(spec.export_outputs)
     _assert_no_hooks(self, spec)
 
-    # Assert predictions, loss, and metrics.
+    # Assert loss, and metrics.
     tol = 1e-2
     with self.test_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
       value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
       update_ops = {k: spec.eval_metric_ops[k][1] for k in spec.eval_metric_ops}
-      predictions, loss, metrics = sess.run((
-          spec.predictions, spec.loss, update_ops))
-      self.assertAllClose(expected_predictions, predictions, rtol=tol, atol=tol)
+      loss, metrics = sess.run((spec.loss, update_ops))
       self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
       # Check results of both update (in `metrics`) and value ops.
       self.assertAllClose(expected_metrics, metrics, rtol=tol, atol=tol)
@@ -477,7 +491,6 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(n_classes)
 
-    # Create estimator spec.
     logits = np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32)
     labels = np.array(((1,), (1,)), dtype=np.int64)
     expected_train_result = 'my_train_op'
@@ -496,19 +509,6 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
         labels=labels,
         train_op_fn=_train_op_fn)
 
-    expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS: logits.astype(np.float32),
-        prediction_keys.PredictionKeys.PROBABILITIES:
-            np.array(((1., 0., 0.), (0., 1., 0.),), dtype=np.float32),
-        prediction_keys.PredictionKeys.CLASSES:
-            np.array(((0,), (1,)), dtype=np.int64),
-    }
-
-    # Assert spec contains expected tensors.
-    self.assertItemsEqual(expected_predictions.keys(), spec.predictions.keys())
-    self.assertEqual(
-        {k: v.dtype for k, v in six.iteritems(expected_predictions)},
-        {k: v.dtype.as_numpy_dtype for k, v in six.iteritems(spec.predictions)})
     self.assertIsNotNone(spec.loss)
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNotNone(spec.train_op)
@@ -520,10 +520,8 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     with self.test_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
-      predictions, loss, train_result, summary_str = sess.run((
-          spec.predictions, spec.loss, spec.train_op, spec.scaffold.summary_op))
-      self.assertAllClose(
-          expected_predictions, predictions, rtol=tol, atol=tol)
+      loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
+                                                  spec.scaffold.summary_op))
       self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
       self.assertEqual(
           six.b('{0:s}{1:.2f}'.format(expected_train_result, expected_loss)),
@@ -532,6 +530,33 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
           metric_keys.MetricKeys.LOSS: expected_loss,
           metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
       }, summary_str, tol)
+
+  def test_train_with_vocabulary(self):
+    n_classes = 3
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes, label_vocabulary=['aang', 'iroh', 'zuko'])
+
+    logits = [[10., 0, 0], [0, 10, 0]]
+    labels = [[b'iroh'], [b'iroh']]
+    # loss = sum(cross_entropy(labels, logits)) = sum(10, 0) = 10.
+    expected_loss = 10.
+
+    def _train_op_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.float32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+
+    tol = 1e-2
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss = sess.run(spec.loss)
+      self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
 
   def test_weighted_multi_example_train(self):
     n_classes = 3
@@ -562,20 +587,6 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
         labels=labels,
         train_op_fn=_train_op_fn)
 
-    expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS: logits.astype(np.float32),
-        prediction_keys.PredictionKeys.PROBABILITIES:
-            np.array(((1., 0., 0.), (0., 1., 0.), (0., 0., 1.),),
-                     dtype=np.float32),
-        prediction_keys.PredictionKeys.CLASSES:
-            np.array(((0,), (1,), (2,)), dtype=np.int64),
-    }
-
-    # Assert spec contains expected tensors.
-    self.assertItemsEqual(expected_predictions.keys(), spec.predictions.keys())
-    self.assertEqual(
-        {k: v.dtype for k, v in six.iteritems(expected_predictions)},
-        {k: v.dtype.as_numpy_dtype for k, v in six.iteritems(spec.predictions)})
     self.assertIsNotNone(spec.loss)
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNotNone(spec.train_op)
@@ -587,10 +598,8 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     with self.test_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
-      predictions, loss, train_result, summary_str = sess.run((
-          spec.predictions, spec.loss, spec.train_op, spec.scaffold.summary_op))
-      self.assertAllClose(
-          expected_predictions, predictions, rtol=tol, atol=tol)
+      loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
+                                                  spec.scaffold.summary_op))
       self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
       self.assertEqual(
           six.b('{0:s}{1:.2f}'.format(expected_train_result, expected_loss)),
@@ -731,12 +740,13 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         logits=logits)
 
     expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS: logits.astype(np.float32),
+        prediction_keys.PredictionKeys.LOGITS:
+            logits.astype(np.float32),
         prediction_keys.PredictionKeys.LOGISTIC:
             _sigmoid(logits).astype(np.float32),
         prediction_keys.PredictionKeys.PROBABILITIES:
             np.array(((0., 1.), (1., 0.),), dtype=np.float32),
-        prediction_keys.PredictionKeys.CLASSES:
+        prediction_keys.PredictionKeys.CLASS_IDS:
             np.array(((1,), (0,)), dtype=np.int64),
     }
 
@@ -770,13 +780,14 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         labels=np.array(((1,), (1,),), dtype=np.int32))
 
     expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS: logits.astype(np.float32),
+        prediction_keys.PredictionKeys.LOGITS:
+            logits.astype(np.float32),
         prediction_keys.PredictionKeys.LOGISTIC:
             _sigmoid(logits).astype(np.float32),
         prediction_keys.PredictionKeys.PROBABILITIES:
             np.array(((0., 1.), (1., 0.),), dtype=np.float32),
         # TODO(ptucker): Should this be (batch_size, 1) instead of (batch_size)?
-        prediction_keys.PredictionKeys.CLASSES:
+        prediction_keys.PredictionKeys.CLASS_IDS:
             np.array(((1,), (0,)), dtype=np.int64),
     }
     default_threshold = .5
@@ -828,7 +839,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     # Create estimator spec.
     logits = np.array(((45,), (-41,),), dtype=np.float32)
     expected_train_result = b'my_train_op'
-        # loss = sum(cross_entropy(labels, logits)) = sum(0, 41) = 41
+    # loss = sum(cross_entropy(labels, logits)) = sum(0, 41) = 41
     expected_loss = 41.
     def _train_op_fn(loss):
       with ops.control_dependencies((check_ops.assert_equal(
@@ -843,13 +854,14 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         train_op_fn=_train_op_fn)
 
     expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS: logits.astype(np.float32),
+        prediction_keys.PredictionKeys.LOGITS:
+            logits.astype(np.float32),
         prediction_keys.PredictionKeys.LOGISTIC:
             _sigmoid(logits).astype(np.float32),
         prediction_keys.PredictionKeys.PROBABILITIES:
             np.array(((0., 1.), (1., 0.),), dtype=np.float32),
         # TODO(ptucker): Should this be (batch_size, 1) instead of (batch_size)?
-        prediction_keys.PredictionKeys.CLASSES:
+        prediction_keys.PredictionKeys.CLASS_IDS:
             np.array(((1,), (0,)), dtype=np.int64),
     }
 
@@ -895,13 +907,14 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         logits=logits)
 
     expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS: logits.astype(np.float32),
+        prediction_keys.PredictionKeys.LOGITS:
+            logits.astype(np.float32),
         prediction_keys.PredictionKeys.LOGISTIC:
             _sigmoid(logits).astype(np.float32),
         prediction_keys.PredictionKeys.PROBABILITIES:
             np.array(((0., 1.), (1., 0.), (0., 1.)), dtype=np.float32),
         # TODO(ptucker): Should this be (batch_size, 1) instead of (batch_size)?
-        prediction_keys.PredictionKeys.CLASSES:
+        prediction_keys.PredictionKeys.CLASS_IDS:
             np.array(((1,), (0,), (1,)), dtype=np.int64),
     }
 

@@ -180,7 +180,7 @@ class Buffer : public ResourceBase {
     notify_inserters_if_bounded(l);
   }
 
-  string DebugString() {
+  string DebugString() override {
     mutex_lock l(mu_);
     return strings::StrCat("Staging size: ", buf_.size());
   }

@@ -42,6 +42,7 @@ py_test(
     name = "delay_compensated_gradient_descent_test",
     srcs = ["python/training/delay_compensated_gradient_descent_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":opt_py",
         "//tensorflow/python:array_ops",

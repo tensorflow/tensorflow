@@ -19,7 +19,11 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -33,11 +37,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 namespace grappler {
 
 namespace {
+
 void InitializeTensor(DataType type, Tensor* tensor) {
   const int period = 7;
   if (type == DT_FLOAT) {
@@ -58,96 +64,56 @@ void InitializeTensor(DataType type, Tensor* tensor) {
   }
 }
 
-// Helper function that returns a bool indicating if there are function
-// call nodes in graph.
-bool HasFunctionInGraph(const Graph& graph) {
-  for (const Node* n : graph.nodes()) {
-    if (graph.flib_def().Find(n->type_string()) != nullptr) {
-      return true;
-    }
-  }
-  return false;
-}
+// Optimize the graph def (including function inlining and other optimizations).
+// This is a temporary change that optimizes the graph in context of a single
+// gpu machine. Down the line, we may want to make grappler_item_builder aware
+// of the cluster type (E.g: single cpu, multiple gpu, etc)  being simulated in
+// order to get the correct session options and environment, and performing the
+// correct optimizations.
+Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def) {
+  // Create a session option for a single GPU device.
+  SessionOptions options;
 
-// Wrapper around FunctionDefToBodyHelper that creates a FunctionBody
-// for function_def.
-Status CreateFunctionBody(const FunctionLibraryDefinition& function_library,
-                          const FunctionDef& function_def,
-                          const NodeDef& node_def,
-                          FunctionBody** function_body) {
-  std::function<Status(const string&, const OpDef**)> get_function_signature =
-      [&function_library](const string& name, const OpDef** signature) {
-        return function_library.LookUpOpDef(name, signature);
-      };
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      function_def, AttrSlice(node_def), &function_library,
-      get_function_signature, function_body));
-  return Status::OK();
-}
-
-// Inlines all functions in a Graph.  Does not recursively inline, so if graph
-// contains Function A that calls Function B, calling InlineFunctions once will
-// produce a graph with A inlined but not B.  Calling InlineFunctions a second
-// time will produce a graph with both A and B inlined.
-Status InlineFunctions(Graph* graph) {
-  const FunctionLibraryDefinition& function_library = graph->flib_def();
-  std::vector<std::pair<Node*, FunctionBody*>> nodes_and_funcs_to_inline;
-  std::unordered_map<string, std::unique_ptr<FunctionBody>>
-      function_name_to_body;
-  std::function<Status(const string&, const OpDef**)> get_function_signature =
-      [&function_library](const string& name, const OpDef** signature) {
-        return function_library.LookUpOpDef(name, signature);
-      };
-
-  for (Node* node : graph->nodes()) {
-    const FunctionDef* function_def =
-        function_library.Find(node->type_string());
-    if (!function_def) {
-      // Not a function node.
-      continue;
-    }
-    FunctionBody* function_body = nullptr;
-    const string key = Canonicalize(node->def().op(), AttrSlice(node->def()));
-    if (function_name_to_body.find(key) == function_name_to_body.end()) {
-      TF_RETURN_IF_ERROR(CreateFunctionBody(function_library, *function_def,
-                                            node->def(), &function_body));
-      function_name_to_body.emplace(
-          key, std::unique_ptr<FunctionBody>(function_body));
-    }
-    function_body = function_name_to_body[key].get();
-    if (function_body) {
-      nodes_and_funcs_to_inline.emplace_back(node, function_body);
-    }
+  // Inline all functions.
+  GraphDef inlined_graph_def(graph_def);
+  for (int i = 0; i < inlined_graph_def.library().function().size(); i++) {
+    FunctionDef* fdef =
+        inlined_graph_def.mutable_library()->mutable_function(i);
+    SetAttrValue(false, &((*fdef->mutable_attr())[kNoInlineAttr]));
   }
 
-  for (const auto& iter : nodes_and_funcs_to_inline) {
-    InlineFunctionBody(function_library, graph, iter.first, iter.second);
-  }
-  return Status::OK();
-}
+  // Instantiate all variables for function library runtime creation.
+  std::vector<Device*> devices;
+  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(
+      options, "/job:localhost/replica:0/task:0", &devices));
+  std::unique_ptr<DeviceMgr> dvc_mgr(new DeviceMgr(devices));
+  FunctionLibraryDefinition function_library(OpRegistry::Global(),
+                                             inlined_graph_def.library());
+  Env* env = Env::Default();
 
-// Sets *inlined_graph to be graph with all function NodeDefs in graph inlined.
-// Recursively inlines, so if graph contains Function A that calls Function B,
-// calling InlineAllFunctions once will produce a graph with both A and B
-// inlined.
-Status InlineAllFunctions(const GraphDef& graph_def,
-                          GraphDef* inlined_graph_def) {
-  *inlined_graph_def = GraphDef::default_instance();
-  // Create a Graph from graph_def. Inlining needs to happen
-  // on a single Graph object in order to guarantee unique
-  // names of nodes created during the inlining process.
+  // Optimizer options: L1 and inlining. L1 is default.
+  OptimizerOptions* optimizer_opts =
+      options.config.mutable_graph_options()->mutable_optimizer_options();
+  optimizer_opts->set_do_function_inlining(true);
+
+  // Create the function library runtime.
+  std::unique_ptr<FunctionLibraryRuntime> flib(NewFunctionLibraryRuntime(
+      dvc_mgr.get(), env, devices[0], inlined_graph_def.versions().producer(),
+      &function_library, *optimizer_opts));
+
+  // Create the GraphOptimizer to optimize the graph def.
   GraphConstructorOptions graph_ctor_opts;
   graph_ctor_opts.allow_internal_ops = true;
   graph_ctor_opts.expect_device_spec = false;
-  FunctionLibraryDefinition function_library(OpRegistry::Global(),
-                                             graph_def.library());
-  Graph inlined_graph(function_library);
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(graph_ctor_opts, graph_def, &inlined_graph));
-  while (HasFunctionInGraph(inlined_graph)) {
-    TF_RETURN_IF_ERROR(InlineFunctions(&inlined_graph));
-  }
-  inlined_graph.ToGraphDef(inlined_graph_def);
+  std::unique_ptr<Graph> graphptr(new Graph(function_library));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(graph_ctor_opts, inlined_graph_def,
+                                            graphptr.get()));
+
+  // Optimize the graph.
+  GraphOptimizer optimizer(*optimizer_opts);
+  optimizer.Optimize(flib.get(), env, devices[0], &graphptr);
+  graphptr->ToGraphDef(output_graph_def);
+
   return Status::OK();
 }
 }  // namespace
@@ -163,11 +129,12 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   new_item->id = id;
   new_item->graph = meta_graph.graph_def();
 
-  if (cfg.inline_functions) {
-    Status s = InlineAllFunctions(meta_graph.graph_def(), &new_item->graph);
-    if (!s.ok()) {
-      LOG(ERROR) << "Unable to inline functions: " << s.error_message()
-                 << ", skipping this input.";
+  // Optimize the graph (function inlining, l1 optimizations, etc).
+  if (cfg.apply_optimizations) {
+    Status optimize_status =
+        OptimizeGraph(meta_graph.graph_def(), &new_item->graph);
+    if (!optimize_status.ok()) {
+      LOG(ERROR) << "Function optimization failed: " << optimize_status;
       return nullptr;
     }
   }

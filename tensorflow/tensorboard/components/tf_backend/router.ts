@@ -20,7 +20,6 @@ export type RunTagUrlFn = (tag: string, run: string) => string;
 export interface Router {
   logdir: () => string;
   runs: () => string;
-  histograms: RunTagUrlFn;
   compressedHistograms: RunTagUrlFn;
   images: RunTagUrlFn;
   individualImage: (query: string, wallTime: number) => string;
@@ -108,7 +107,6 @@ export function router(dataDir = 'data', demoMode = false): Router {
     individualImage: individualImageUrl,
     individualAudio: individualAudioUrl,
     graph: graphUrl,
-    histograms: standardRoute('histograms'),
     compressedHistograms: standardRoute('compressedHistograms'),
     images: standardRoute('images'),
     audio: standardRoute('audio'),

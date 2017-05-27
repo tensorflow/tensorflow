@@ -381,6 +381,16 @@ string HloComputation::ToString(int nested_level) const {
   return s.str();
 }
 
+HloComputationProto HloComputation::ToProto() const {
+  HloComputationProto proto;
+  proto.set_name(name_);
+  for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
+    HloInstructionProto instruction_proto = instruction->ToProto();
+    proto.add_instructions()->Swap(&instruction_proto);
+  }
+  return proto;
+}
+
 void HloComputation::FuseInstructionsInto(
     tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
     HloInstruction* fusion_instruction) {
