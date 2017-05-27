@@ -727,7 +727,6 @@ sh_test(
     name = "examples_test",
     size = "medium",
     srcs = ["examples/examples_test.sh"],
-    tags = ["manual"],
     data = [
         ":debug_errors",
         ":debug_fibonacci",
