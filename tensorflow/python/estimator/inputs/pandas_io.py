@@ -116,6 +116,8 @@ def pandas_input_fn(x,
     features = dict(zip(list(x.columns), features))
     if y is not None:
       target = features.pop(target_column)
+      # undo modification to dictionary
+      del x[target_column]
       return features, target
     return features
   return input_fn

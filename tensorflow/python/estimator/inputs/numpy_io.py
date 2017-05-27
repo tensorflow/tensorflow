@@ -132,6 +132,8 @@ def numpy_input_fn(x,
     features = dict(zip(ordered_dict_x.keys(), features))
     if y is not None:
       target = features.pop(unique_target_key)
+      # undo modification to dictionary
+      del x[unique_target_key]
       return features, target
     return features
 
