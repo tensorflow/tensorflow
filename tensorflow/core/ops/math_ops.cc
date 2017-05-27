@@ -2425,20 +2425,33 @@ namespace {
 Status ReduceSliceShapeFn(InferenceContext* c) {
   ShapeHandle handle;
   DimensionHandle dimhandle;
+  DimensionHandle dim_axis = c->UnknownDim();
   // "axis" must be a scala
   TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &handle));
-  // "indices" must have rank 2 and the number of columns must be 2
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 2, &handle));
-  TF_RETURN_IF_ERROR(c->Merge(c->Dim(c->input(1),1), c->MakeDim(2), &dimhandle));
   // "data" must have rank at least 1
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &handle));
+  // "indices" must have have rank 1 or rank 2 with the number of columns must be 2
+  if(c->RankKnown(c->input(1))) {
+    TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &handle));
+    TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 2, &handle));
+    if(c->Rank(c->input(1)) == 1) {
+      // if "indices" is a vector of 0 elements, then the axis dimension of output
+      // tensor should be of dimension 0.
+      DimensionHandle raw_dim_axis;
+      TF_RETURN_IF_ERROR(c->Max(c->Dim(c->input(1), 0), 1, &raw_dim_axis));
+      TF_RETURN_IF_ERROR(c->Subtract(raw_dim_axis, 1, &dim_axis));
+    } else { // c->Rank(c->input(1)) == 2
+      TF_RETURN_IF_ERROR(c->Merge(c->Dim(c->input(1), 1), c->MakeDim(2), &dimhandle));
+      dim_axis = c->Dim(c->input(1), 0);
+    }
+  }
   // shape of output tensor
   const Tensor *_axis = c->input_tensor(2);
   if(nullptr == _axis) {
     c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
   } else {
     int64 axis = _axis->scalar<int64>()(0);
-    TF_RETURN_IF_ERROR(c->ReplaceDim(handle, axis, c->Dim(c->input(1),0), &handle));
+    TF_RETURN_IF_ERROR(c->ReplaceDim(handle, axis, dim_axis, &handle));
     c->set_output(0, handle);
   }
   return Status::OK();

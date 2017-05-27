@@ -128,12 +128,17 @@ public:
     const Tensor &_axis = context->input(2);
     int64 axis = _axis.scalar<int64>()(0);
 
-    Index indices_width = 1;
-    if(indices.dims() == 2 && indices.shape().dim_size(1) == 2) {
-      indices_width = 2;
+    int indices_width = 2;
+    int out_axis_dim_size = indices.shape().dim_size(0);
+    if(indices.dims() == 1 || indices.shape().dim_size(1) == 1) {
+      indices_width = 1;
+      if(out_axis_dim_size > 0) {
+        out_axis_dim_size--;
+      }
     }
+
     TensorShape output_shape = data.shape();
-    output_shape.set_dim(axis, indices.shape().dim_size(0) - 2 + indices_width);
+    output_shape.set_dim(axis, out_axis_dim_size);
     Tensor *output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     auto functor = Functor<Device, T, Index>();
