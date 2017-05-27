@@ -84,6 +84,7 @@ export interface Audio {
 // A health pill encapsulates an overview of tensor element values. The value
 // field is a list of 12 numbers that shed light on the status of the tensor.
 export interface HealthPill {
+  device_name: string;
   node_name: string;
   output_slot: number;
   value: number[];

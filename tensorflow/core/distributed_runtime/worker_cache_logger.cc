@@ -96,7 +96,9 @@ void WorkerCacheLogger::RecordRecvTensor(int64 step_id, int64 start_usecs,
                                          src_device, " to ", dst_device));
   ns->set_all_start_micros(start_usecs);
   ns->set_op_start_rel_micros(0);
-  ns->set_op_end_rel_micros(end_usecs - start_usecs);
+  int64 elapsed = end_usecs - start_usecs;
+  ns->set_op_end_rel_micros(elapsed);
+  ns->set_all_end_rel_micros(elapsed);
   NodeOutput* no = ns->add_output();
   no->set_slot(0);
   // TODO(tucker): Maybe set the dimensions too, but then they'll

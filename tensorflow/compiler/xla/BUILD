@@ -183,7 +183,10 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":status_macros",
+        ":statusor",
         ":types",
+        ":util",
         "//tensorflow/core:lib",
     ],
 )

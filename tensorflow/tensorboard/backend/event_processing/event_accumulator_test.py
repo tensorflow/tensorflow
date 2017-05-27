@@ -71,10 +71,11 @@ class _EventGenerator(object):
                 tag=tag, simple_value=value)]))
     self.AddEvent(event)
 
-  def AddHealthPill(self, wall_time, step, op_name, output_slot, elements):
+  def AddHealthPill(self, wall_time, step, device_name, op_name, output_slot,
+                    elements):
     event = event_pb2.Event(step=step, wall_time=wall_time)
     value = event.summary.value.add(
-        tag='__health_pill__',
+        tag=ea.HEALTH_PILL_EVENT_TAG_PREFIX + device_name,
         node_name='%s:%d:DebugNumericSummary' % (op_name, output_slot))
     value.tensor.tensor_shape.dim.add(size=len(elements))
     value.tensor.dtype = types_pb2.DT_DOUBLE
@@ -289,6 +290,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """
     self.assertEqual(expected_event.wall_time, gotten_event.wall_time)
     self.assertEqual(expected_event.step, gotten_event.step)
+    self.assertEqual(expected_event.device_name, gotten_event.device_name)
     self.assertEqual(expected_event.node_name, gotten_event.node_name)
     self.assertEqual(expected_event.output_slot, gotten_event.output_slot)
     self.assertEqual(len(expected_event.value), len(gotten_event.value))
@@ -299,8 +301,10 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """HealthPills should be properly inserted into EventAccumulator."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
-    gen.AddHealthPill(13371337, 41, 'Add', 0, range(1, 13))
-    gen.AddHealthPill(13381338, 42, 'Add', 1, range(42, 54))
+    gen.AddHealthPill(13371337, 41, '/job:localhost/replica:0/task:0/cpu:0',
+                      'Add', 0, range(1, 13))
+    gen.AddHealthPill(13381338, 42, '/job:localhost/replica:0/task:0/gpu:0',
+                      'Add', 1, range(42, 54))
     acc.Reload()
 
     # Retrieve the health pills for each node name.
@@ -310,24 +314,26 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
         ea.HealthPillEvent(
             wall_time=13371337,
             step=41,
+            device_name='/job:localhost/replica:0/task:0/cpu:0',
             node_name='Add',
             output_slot=0,
-            value=range(1, 13)),
-        gotten_events[0])
+            value=range(1, 13)), gotten_events[0])
     self._compareHealthPills(
         ea.HealthPillEvent(
             wall_time=13381338,
+            device_name='/job:localhost/replica:0/task:0/gpu:0',
             step=42,
             node_name='Add',
             output_slot=1,
-            value=range(42, 54)),
-        gotten_events[1])
+            value=range(42, 54)), gotten_events[1])
 
   def testGetOpsWithHealthPills(self):
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
-    gen.AddHealthPill(13371337, 41, 'Add', 0, range(1, 13))
-    gen.AddHealthPill(13381338, 42, 'MatMul', 1, range(42, 54))
+    gen.AddHealthPill(13371337, 41, '/job:localhost/replica:0/task:0/cpu:0',
+                      'Add', 0, range(1, 13))
+    gen.AddHealthPill(13381338, 42, '/job:localhost/replica:0/task:0/cpu:0',
+                      'MatMul', 1, range(42, 54))
     acc.Reload()
     self.assertItemsEqual(['Add', 'MatMul'], acc.GetOpsWithHealthPills())
 

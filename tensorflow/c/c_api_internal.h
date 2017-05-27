@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 
-
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
 
@@ -113,4 +112,8 @@ struct TF_Session {
 
 struct TF_ImportGraphDefOptions {
   tensorflow::ImportGraphDefOptions opts;
+};
+
+struct TF_DeviceList {
+  std::vector<tensorflow::DeviceAttributes> response;
 };

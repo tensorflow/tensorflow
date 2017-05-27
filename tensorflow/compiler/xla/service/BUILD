@@ -21,6 +21,14 @@ xla_proto_library(
     deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
+xla_proto_library(
+    name = "hlo_proto",
+    srcs = ["hlo.proto"],
+    deps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+    ],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -126,6 +134,7 @@ cc_library(
     ],
     deps = [
         ":hlo_module_config",
+        ":hlo_proto",
         ":name_uniquer",
         ":versioned_computation_handle",
         "//tensorflow/compiler/xla:literal_util",
@@ -695,6 +704,7 @@ cc_library(
         ":buffer_liveness",
         ":hlo",
         ":hlo_ordering",
+        ":hlo_proto",
         ":logical_buffer",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:shape_util",
@@ -765,6 +775,7 @@ cc_library(
     deps = [
         ":call_graph",
         ":hlo",
+        ":hlo_proto",
         ":liveness_util",
         ":logical_buffer",
         ":tuple_points_to_analysis",
@@ -1130,6 +1141,7 @@ cc_library(
     ],
     deps = [
         ":hlo",
+        ":hlo_proto",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -1665,6 +1677,21 @@ cc_test(
         ":pool",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "hlo_proto_util",
+    srcs = ["hlo_proto_util.cc"],
+    hdrs = ["hlo_proto_util.h"],
+    deps = [
+        ":buffer_assignment",
+        ":hlo",
+        ":hlo_ordering",
+        ":hlo_proto",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
     ],
 )
 

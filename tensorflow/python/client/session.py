@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
+from tensorflow.python.framework import device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -512,6 +513,39 @@ def _name_list(tensor_list):
   return [compat.as_bytes(t.name) for t in tensor_list]
 
 
+class _DeviceAttributes(object):
+  """Struct-like object describing a device's attributes.
+
+  Each device has 3 key properties:
+   - name: the fully-qualified TensorFlow path to the device. For
+        example: /job:worker/replica:0/task:3/device:CPU:0
+   - device_type: the type of the device (e.g. CPU, GPU, TPU, etc.)
+   - memory_limit_bytes: the maximum amount of memory available on the device
+        (in bytes).
+  """
+
+  def __init__(self, name, device_type, memory_limit_bytes):
+    self._name = device.canonical_name(name)
+    self._device_type = device_type
+    self._memory_limit_bytes = memory_limit_bytes
+
+  @property
+  def name(self):
+    return self._name
+
+  @property
+  def device_type(self):
+    return self._device_type
+
+  @property
+  def memory_limit_bytes(self):
+    return self._memory_limit_bytes
+
+  def __repr__(self):
+    return '_DeviceAttributes(%s, %s, %d)' % (self.name, self.device_type,
+                                              self.memory_limit_bytes,)
+
+
 class BaseSession(SessionInterface):
   """A class for interacting with a TensorFlow computation.
 
@@ -573,6 +607,42 @@ class BaseSession(SessionInterface):
         self._session = tf_session.TF_NewDeprecatedSession(opts, status)
     finally:
       tf_session.TF_DeleteSessionOptions(opts)
+
+  def list_devices(self):
+    """Lists available devices in this session.
+
+    ```python
+    devices = sess.list_devices()
+    for d in devices:
+      print(d.name)
+    ```
+
+    Each element in the list has the following properties:
+     - `name`: A string with the full name of the device. ex:
+          `/job:worker/replica:0/task:3/device:CPU:0`
+     - `device_type`: The type of the device (e.g. `CPU`, `GPU`, `TPU`.)
+     - `memory_limit`: The maximum amount of memory available on the device.
+          Note: depending on the device, it is possible the usable memory could
+          be substantially less.
+    Raises:
+      tf.errors.OpError: If it encounters an error (e.g. session is in an
+      invalid state, or network errors occur).
+
+    Returns:
+      A list of devices in the session.
+    """
+    with errors.raise_exception_on_not_ok_status() as status:
+      raw_device_list = tf_session.TF_DeprecatedSessionListDevices(
+          self._session, status)
+      device_list = []
+      size = tf_session.TF_DeviceListCount(raw_device_list)
+      for i in range(size):
+        name = tf_session.TF_DeviceListName(raw_device_list, i, status)
+        device_type = tf_session.TF_DeviceListType(raw_device_list, i, status)
+        memory = tf_session.TF_DeviceListMemoryBytes(raw_device_list, i, status)
+        device_list.append(_DeviceAttributes(name, device_type, memory))
+      tf_session.TF_DeleteDeviceList(raw_device_list)
+      return device_list
 
   def close(self):
     """Closes this session.
