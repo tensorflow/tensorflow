@@ -16,15 +16,15 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_PARTIAL_REDUCTION_OPS_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_PARTIAL_REDUCTION_OPS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#define Sum(a,b) ((a)+(b))
-#define Prod(a,b) ((a)*(b))
-#define Max(a,b) ((a)>(b)?(a):(b))
-#define Min(a,b) ((a)<(b)?(a):(b))
+#define Sum(a, b) ((a) + (b))
+#define Prod(a, b) ((a) * (b))
+#define Max(a, b) ((a) > (b) ? (a) : (b))
+#define Min(a, b) ((a) < (b) ? (a) : (b))
 
 namespace tensorflow {
 
@@ -35,24 +35,28 @@ namespace functor {
 namespace reduce_functions {
 
 template <typename T>
-inline T zero() { return T(0); }
+inline T zero() {
+  return T(0);
+}
 
 template <typename T>
-inline T one() { return T(1); }
+inline T one() {
+  return T(1);
+}
 
 template <typename T>
 inline T infinity() {
-    return std::max<T>(std::numeric_limits<T>::max(),
-                       std::numeric_limits<T>::infinity());
+  return std::max<T>(std::numeric_limits<T>::max(),
+                     std::numeric_limits<T>::infinity());
 }
 
 template <typename T>
 inline T negative_infinity() {
-    return std::min<T>(-std::numeric_limits<T>::infinity(),
-                       std::numeric_limits<T>::min());
+  return std::min<T>(-std::numeric_limits<T>::infinity(),
+                     std::numeric_limits<T>::min());
 }
 
-} // namespace reduce_functions
+}  // namespace reduce_functions
 
 #define CALL_ALL_REDUCEOPS(func, ...)                                          \
   func(Sum, functor::reduce_functions::zero, ##__VA_ARGS__)                    \
@@ -60,16 +64,15 @@ inline T negative_infinity() {
   func(Max, functor::reduce_functions::negative_infinity, ##__VA_ARGS__)       \
   func(Min, functor::reduce_functions::infinity, ##__VA_ARGS__)
 
-
-#define ReduceSliceFunctorReduceop(reduceop, dummy)                            \
-  template <typename Device, typename T, typename Index>                       \
-  struct ReduceSliceFunctor##reduceop {                                        \
-    virtual ~ReduceSliceFunctor##reduceop(){}                                  \
-    virtual void operator()(OpKernelContext* ctx, const Device& d,             \
-                            Index indices_width,                               \
-                            typename TTypes<Index, 1>::ConstTensor indices,    \
-                            typename TTypes<T, 3>::ConstTensor data,           \
-                            typename TTypes<T, 3>::Tensor output);             \
+#define ReduceSliceFunctorReduceop(reduceop, dummy)                         \
+  template <typename Device, typename T, typename Index>                    \
+  struct ReduceSliceFunctor##reduceop {                                     \
+    virtual ~ReduceSliceFunctor##reduceop() {}                              \
+    virtual void operator()(OpKernelContext* ctx, const Device& d,          \
+                            Index indices_width,                            \
+                            typename TTypes<Index, 1>::ConstTensor indices, \
+                            typename TTypes<T, 3>::ConstTensor data,        \
+                            typename TTypes<T, 3>::Tensor output);          \
   };
 
 CALL_ALL_REDUCEOPS(ReduceSliceFunctorReduceop)
