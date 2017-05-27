@@ -122,6 +122,11 @@ def crf_log_norm(inputs, sequence_lengths, transition_params):
       initial_state=first_input,
       dtype=dtypes.float32)
   log_norm = math_ops.reduce_logsumexp(alphas, [1])
+  
+  # Force the log norm of zero length sequences to zero.
+  log_norm = log_norm * math_ops.cast(math_ops.greater(sequence_lengths, 0),
+                                      log_norm.dtype)
+
   return log_norm
 
 
