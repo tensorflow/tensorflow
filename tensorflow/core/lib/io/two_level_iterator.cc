@@ -32,24 +32,24 @@ class TwoLevelIterator : public Iterator {
   TwoLevelIterator(Iterator* index_iter, BlockFunction block_function,
                    void* arg);
 
-  virtual ~TwoLevelIterator();
+  ~TwoLevelIterator() override;
 
-  virtual void Seek(const StringPiece& target);
-  virtual void SeekToFirst();
-  virtual void Next();
+  void Seek(const StringPiece& target) override;
+  void SeekToFirst() override;
+  void Next() override;
 
-  virtual bool Valid() const {
+  bool Valid() const override {
     return (data_iter_ == nullptr) ? false : data_iter_->Valid();
   }
-  virtual StringPiece key() const {
+  StringPiece key() const override {
     assert(Valid());
     return data_iter_->key();
   }
-  virtual StringPiece value() const {
+  StringPiece value() const override {
     assert(Valid());
     return data_iter_->value();
   }
-  virtual Status status() const {
+  Status status() const override {
     // It'd be nice if status() returned a const Status& instead of a
     // Status
     if (!index_iter_->status().ok()) {

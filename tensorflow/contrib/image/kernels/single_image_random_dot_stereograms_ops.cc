@@ -99,7 +99,7 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
         eye_separation * dots_per_inch;  // Initialize pixels from eye to eye
   }
 
-  ~SingleImageRandomDotStereogramsOp() {  // Destructor
+  ~SingleImageRandomDotStereogramsOp() override {  // Destructor
   }
 
   void Compute(OpKernelContext* context) override {

@@ -52,7 +52,7 @@ class Buffer : public ResourceBase {
     buf_.pop_front();
   }
 
-  string DebugString() {
+  string DebugString() override {
     mutex_lock l(mu_);
     return strings::StrCat("Staging size: ", buf_.size());
   }

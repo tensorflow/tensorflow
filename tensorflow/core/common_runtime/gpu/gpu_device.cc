@@ -81,7 +81,7 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
       : scratch_(nullptr), semaphore_(nullptr), context_(nullptr) {
     Eigen::initializeDeviceProp();
   }
-  ~EigenCudaStreamDevice() {}
+  ~EigenCudaStreamDevice() override {}
   void Reinitialize(OpKernelContext* context, const cudaStream_t* cuda_stream,
                     int gpu_id, ::tensorflow::Allocator* alloc, char* scratch) {
     if (LogMemory::IsEnabled()) {
@@ -134,13 +134,13 @@ class EigenCudaStreamDevice : public ::Eigen::StreamInterface {
 
   // Return a pointer to a per stream scratchpad of 1024 bytes residing
   // in global memory.
-  void* scratchpad() const { return scratch_; }
+  void* scratchpad() const override { return scratch_; }
 
   // Return a semaphore. The semaphore is initially initialized to 0, and
   // each kernel using it is responsible for resetting to 0 upon completion
   // to maintain the invariant that the semaphore is always equal to 0 upon
   // each kernel start.
-  unsigned int* semaphore() const { return semaphore_; }
+  unsigned int* semaphore() const override { return semaphore_; }
 
  private:
   struct AsyncFreeData {

@@ -130,23 +130,23 @@ class Block::Iter : public Iterator {
     assert(num_restarts_ > 0);
   }
 
-  virtual bool Valid() const { return current_ < restarts_; }
-  virtual Status status() const { return status_; }
-  virtual StringPiece key() const {
+  bool Valid() const override { return current_ < restarts_; }
+  Status status() const override { return status_; }
+  StringPiece key() const override {
     assert(Valid());
     return key_;
   }
-  virtual StringPiece value() const {
+  StringPiece value() const override {
     assert(Valid());
     return value_;
   }
 
-  virtual void Next() {
+  void Next() override {
     assert(Valid());
     ParseNextKey();
   }
 
-  virtual void Seek(const StringPiece& target) {
+  void Seek(const StringPiece& target) override {
     // Binary search in restart array to find the last restart point
     // with a key < target
     uint32 left = 0;
@@ -186,7 +186,7 @@ class Block::Iter : public Iterator {
     }
   }
 
-  virtual void SeekToFirst() {
+  void SeekToFirst() override {
     SeekToRestartPoint(0);
     ParseNextKey();
   }

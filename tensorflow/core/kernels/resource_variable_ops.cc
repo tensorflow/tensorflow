@@ -39,7 +39,7 @@ class ReadVariableOp : public OpKernel {
  public:
   explicit ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
 
-  void Compute(OpKernelContext* ctx) {
+  void Compute(OpKernelContext* ctx) override {
     Var* variable = nullptr;
     ResourceHandle handle = HandleFromInput(ctx, 0);
     OP_REQUIRES(
