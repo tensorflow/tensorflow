@@ -54,8 +54,8 @@ py_test(
     srcs_version = "PY2AND3",
     tags = [
         "manual",
-        "nomac",
-    ],  # b/62040583
+        "nomac",  # b/62040583
+    ],
     deps = [
         "//tensorflow/contrib/data",
         "//tensorflow/python:array_ops",
