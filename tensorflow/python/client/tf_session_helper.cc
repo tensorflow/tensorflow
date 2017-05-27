@@ -383,7 +383,10 @@ Status TFTensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray) {
   return Status::OK();
 }
 
-// Converts the given numpy ndarray to a (safe) TF_Tensor.
+// Converts the given numpy ndarray to a (safe) TF_Tensor. The returned
+// TF_Tensor in `out_tensor` will have its own Python reference to `ndarray`s
+// data. After `out_tensor` is destroyed, this reference must (eventually) be
+// decremented via ClearDecrefCache().
 //
 // If `ndarray` contains a resource handle, `*resource_handle` will be set to
 // the deserialized handle. Otherwise it is set to nullptr. Caller becomes owner
@@ -445,7 +448,7 @@ Status PyArrayToTFTensor(PyObject* ndarray, Safe_TF_TensorPtr* out_tensor,
                                [](void* data, size_t len, void* arg) {
                                  delete[] reinterpret_cast<char*>(data);
                                },
-                               array));
+                               nullptr));
   }
   return Status::OK();
 }
@@ -618,6 +621,107 @@ void TF_Reset_wrapper(const TF_SessionOptions* opt,
                       const NameVector& containers, TF_Status* out_status) {
   TF_Reset(opt, const_cast<const char**>(containers.data()), containers.size(),
            out_status);
+}
+
+void TF_SessionRun_wrapper_helper(TF_Session* session,
+                                  const TF_Buffer* run_options,
+                                  const std::vector<TF_Output>& inputs,
+                                  const std::vector<PyObject*>& input_ndarrays,
+                                  const std::vector<TF_Output>& outputs,
+                                  const std::vector<TF_Operation*>& targets,
+                                  TF_Buffer* run_metadata,
+                                  TF_Status* out_status,
+                                  std::vector<PyObject*>* py_outputs) {
+  DCHECK_EQ(inputs.size(), input_ndarrays.size());
+  DCHECK(py_outputs != nullptr);
+  DCHECK(py_outputs->empty());
+  Status s;
+
+  // Convert input ndarray PyObjects to TF_Tensors. We maintain a continuous
+  // array of TF_Tensor*s as well as scoped containers to make sure they're
+  // cleaned up properly.
+  //
+  // Memory management:
+  // PyArrayToTFTensor() creates a new ndarray PyObject from the input
+  // ndarray. We manage the new ndarray's lifetime in order to keep the
+  // underlying data buffer alive (the new ndarray also guarantees a contiguous
+  // data buffer). The new ndarray's data buffer is used to create the
+  // corresponding TF_Tensor. The TF_Tensor's deallocator will queue the new
+  // ndarray to be decref'd by the next ClearDecrefCache() call (we can't call
+  // Py_DECREF in the deallocator directly because the GIL must be held).
+  //
+  // Note that TF_Tensor may directly delegate its data and deallocator to a
+  // TensorBuffer, which may outlive the TF_Tensor (e.g. if the tensor gets
+  // queued or assigned to a variable).
+  TF_TensorVector input_vals;
+  std::vector<Safe_TF_TensorPtr> input_vals_safe;
+  gtl::InlinedVector<std::unique_ptr<ResourceHandle>, 4> resource_handles;
+  for (PyObject* ndarray : input_ndarrays) {
+    input_vals_safe.emplace_back(make_safe(static_cast<TF_Tensor*>(nullptr)));
+    ResourceHandle* resource_handle;
+    s = PyArrayToTFTensor(ndarray, &input_vals_safe.back(), &resource_handle);
+    if (resource_handle != nullptr) {
+      resource_handles.emplace_back(resource_handle);
+    }
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(out_status, s);
+      return;
+    }
+    input_vals.push_back(input_vals_safe.back().get());
+  }
+
+  // Allocate space for output TF_Tensor*s
+  TF_TensorVector output_vals(outputs.size());
+
+  // Clear up any unused memory leftover from previous runs
+  ClearDecrefCache();
+
+  // Call TF_SessionRun() (and release GIL during execution)
+  Py_BEGIN_ALLOW_THREADS;
+  TF_SessionRun(session, run_options, inputs.data(), input_vals.data(),
+                inputs.size(), outputs.data(), output_vals.data(),
+                outputs.size(), targets.data(), targets.size(), run_metadata,
+                out_status);
+  Py_END_ALLOW_THREADS;
+
+  // Create scoped containers for output tensors
+  std::vector<Safe_TF_TensorPtr> output_vals_safe;
+  for (TF_Tensor* output : output_vals) {
+    output_vals_safe.emplace_back(make_safe(output));
+  }
+
+  // Convert outputs to ndarrays (in scoped containers)
+  std::vector<Safe_PyObjectPtr> py_outputs_safe;
+  for (int i = 0; i < outputs.size(); ++i) {
+    PyObject* py_array;
+    s = TFTensorToPyArray(std::move(output_vals_safe[i]), &py_array);
+    if (!s.ok()) {
+      Set_TF_Status_from_Status(out_status, s);
+      return;
+    }
+    py_outputs_safe.emplace_back(make_safe(py_array));
+  }
+
+  // If we reach this point, we have successfully built a list of objects so we
+  // can release them from the safe container into the return vector.
+  for (int i = 0; i < outputs.size(); ++i) {
+    py_outputs->push_back(py_outputs_safe[i].release());
+  }
+}
+
+void TF_SessionRun_wrapper(TF_Session* session, const TF_Buffer* run_options,
+                           const std::vector<TF_Output>& inputs,
+                           const std::vector<PyObject*>& input_ndarrays,
+                           const std::vector<TF_Output>& outputs,
+                           const std::vector<TF_Operation*>& targets,
+                           TF_Buffer* run_metadata, TF_Status* out_status,
+                           std::vector<PyObject*>* py_outputs) {
+  TF_SessionRun_wrapper_helper(session, run_options, inputs, input_ndarrays,
+                               outputs, targets, run_metadata, out_status,
+                               py_outputs);
+  // Release any unused ndarray references (see memory management comment in
+  // TF_SessionRun_wrapper_helper)
+  ClearDecrefCache();
 }
 
 string EqualGraphDefWrapper(const string& actual, const string& expected) {

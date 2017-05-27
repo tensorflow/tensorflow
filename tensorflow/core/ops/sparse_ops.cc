@@ -327,7 +327,7 @@ Converts a sparse representation into a dense tensor.
 
 Builds an array `dense` with shape `output_shape` such that
 
-```prettyprint
+```
 # If sparse_indices is scalar
 dense[i] = (i == sparse_indices ? sparse_values : default_value)
 

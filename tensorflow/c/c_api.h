@@ -1183,6 +1183,55 @@ TF_CAPI_EXPORT extern void TF_PRun(TF_DeprecatedSession*, const char* handle,
                                    const char** target_oper_names, int ntargets,
                                    TF_Status*);
 
+typedef struct TF_DeviceList TF_DeviceList;
+
+// Lists all devices in a TF_Session.
+//
+// Caller takes ownership of the returned TF_DeviceList* which must eventually
+// be freed with a call to TF_DeleteDeviceList.
+TF_CAPI_EXPORT extern TF_DeviceList* TF_SessionListDevices(TF_Session* session,
+                                                           TF_Status* status);
+
+// Lists all devices in a TF_Session.
+//
+// Caller takes ownership of the returned TF_DeviceList* which must eventually
+// be freed with a call to TF_DeleteDeviceList.
+TF_CAPI_EXPORT extern TF_DeviceList* TF_DeprecatedSessionListDevices(
+    TF_DeprecatedSession* session, TF_Status* status);
+
+// Deallocates the device list.
+TF_CAPI_EXPORT extern void TF_DeleteDeviceList(TF_DeviceList* list);
+
+// Counts the number of elements in the device list.
+TF_CAPI_EXPORT extern int TF_DeviceListCount(const TF_DeviceList* list);
+
+// Retrieves the full name of the device (e.g. /job:worker/replica:0/...)
+// The return value will be a pointer to a null terminated string. The caller
+// must not modify or delete the string. It will be deallocated upon a call to
+// TF_DeleteDeviceList.
+//
+// If index is out of bounds, an error code will be set in the status object,
+// and a null pointer will be returned.
+TF_CAPI_EXPORT extern const char* TF_DeviceListName(const TF_DeviceList* list,
+                                                    int index, TF_Status*);
+
+// Retrieves the type of the device at the given index.
+//
+// The caller must not modify or delete the string. It will be deallocated upon
+// a call to TF_DeleteDeviceList.
+//
+// If index is out of bounds, an error code will be set in the status object,
+// and a null pointer will be returned.
+TF_CAPI_EXPORT extern const char* TF_DeviceListType(const TF_DeviceList* list,
+                                                    int index, TF_Status*);
+
+// Retrieve the amount of memory associated with a given device.
+//
+// If index is out of bounds, an error code will be set in the status object,
+// and -1 will be returned.
+TF_CAPI_EXPORT extern int64_t TF_DeviceListMemoryBytes(
+    const TF_DeviceList* list, int index, TF_Status*);
+
 // --------------------------------------------------------------------------
 // Load plugins containing custom ops and kernels
 

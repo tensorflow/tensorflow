@@ -476,7 +476,7 @@ class _SparseColumn(
     return self._do_transform(input_tensor)
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return self.config
 
   @property
@@ -802,7 +802,7 @@ class _WeightedSparseColumn(
         inputs.get(self.sparse_id_column), inputs.get(self.weight_column_name))
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return self.config
 
   @property
@@ -960,7 +960,7 @@ class _OneHotColumn(
     return self._to_dnn_input_layer(inputs.get(self.sparse_id_column))
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return self.config
 
 
@@ -1110,7 +1110,7 @@ class _EmbeddingColumn(
     return inputs.get(self.sparse_id_column)
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return self.config
 
 
@@ -1467,7 +1467,7 @@ class _ScatteredEmbeddingColumn(
     return inputs.get(self.column_name)
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return self.config
 
 
@@ -1817,7 +1817,7 @@ class _RealValuedColumn(
         self._normalized_input_tensor(inputs.get(self.name)))
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return self.config
 
 
@@ -2081,7 +2081,7 @@ class _BucketizedColumn(
         _LazyBuilderByColumnsToTensor(columns_to_tensors))
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return self.config
 
   @property
@@ -2311,7 +2311,7 @@ class _CrossedColumn(
         _LazyBuilderByColumnsToTensor(columns_to_tensors))
 
   @property
-  def _parse_example_config(self):
+  def _parse_example_spec(self):
     return self.config
 
   @property
