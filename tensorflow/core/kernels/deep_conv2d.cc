@@ -26,7 +26,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// DeepConv2D is a Conv2D implementation specialzied for deep convolutions (i.e
+// DeepConv2D is a Conv2D implementation specialized for deep convolutions (i.e
 // large 'in_depth' and 'out_depth' product. See cost models below for details).
 //
 // DeepConv2D is implemented by computing the following equation:

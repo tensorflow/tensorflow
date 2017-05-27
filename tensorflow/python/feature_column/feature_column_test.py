@@ -772,7 +772,7 @@ class CrossedColumnTest(test.TestCase):
       fc.crossed_column(['a', fc.numeric_column('c')], 10)
 
     with self.assertRaisesRegexp(
-        ValueError, '_HashedCategoricalColumn is not supported'):
+        ValueError, 'categorical_column_with_hash_bucket is not supported'):
       fc.crossed_column(
           ['a', fc.categorical_column_with_hash_bucket('c', 10)], 10)
 
@@ -1507,6 +1507,131 @@ class LinearModelTest(test.TestCase):
                 features['price2']: [[1.], [5.]],
             })
 
+  def test_with_numpy_input_fn(self):
+    price = fc.numeric_column('price')
+    price_buckets = fc.bucketized_column(price, boundaries=[0., 10., 100.,])
+    body_style = fc.categorical_column_with_vocabulary_list(
+        'body-style', vocabulary_list=['hardtop', 'wagon', 'sedan'])
+
+    input_fn = numpy_io.numpy_input_fn(
+        x={
+            'price': np.array([-1., 2., 13., 104.]),
+            'body-style': np.array(['sedan', 'hardtop', 'wagon', 'sedan']),
+        },
+        batch_size=2,
+        shuffle=False)
+    features = input_fn()
+    net = fc.linear_model(features, [price_buckets, body_style])
+    # self.assertEqual(1 + 3 + 5, net.shape[1])
+    with _initialized_session() as sess:
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(sess, coord=coord)
+
+      bias = get_linear_model_bias()
+      price_buckets_var = get_linear_model_column_var(price_buckets)
+      body_style_var = get_linear_model_column_var(body_style)
+
+      sess.run(price_buckets_var.assign([[10.], [100.], [1000.], [10000.]]))
+      sess.run(body_style_var.assign([[-10.], [-100.], [-1000.]]))
+      sess.run(bias.assign([5.]))
+
+      self.assertAllClose([[10 - 1000 + 5.], [100 - 10 + 5.]], sess.run(net))
+
+      coord.request_stop()
+      coord.join(threads)
+
+  def test_with_1d_sparse_tensor(self):
+    price = fc.numeric_column('price')
+    price_buckets = fc.bucketized_column(price, boundaries=[0., 10., 100.,])
+    body_style = fc.categorical_column_with_vocabulary_list(
+        'body-style', vocabulary_list=['hardtop', 'wagon', 'sedan'])
+
+    # Provides 1-dim tensor and dense tensor.
+    features = {
+        'price': constant_op.constant([-1., 12.,]),
+        'body-style': sparse_tensor.SparseTensor(
+            indices=((0,), (1,)),
+            values=('sedan', 'hardtop'),
+            dense_shape=(2,)),
+    }
+    self.assertEqual(1, features['price'].shape.ndims)
+    self.assertEqual(1, features['body-style'].dense_shape.get_shape()[0])
+
+    net = fc.linear_model(features, [price_buckets, body_style])
+    with _initialized_session() as sess:
+      bias = get_linear_model_bias()
+      price_buckets_var = get_linear_model_column_var(price_buckets)
+      body_style_var = get_linear_model_column_var(body_style)
+
+      sess.run(price_buckets_var.assign([[10.], [100.], [1000.], [10000.]]))
+      sess.run(body_style_var.assign([[-10.], [-100.], [-1000.]]))
+      sess.run(bias.assign([5.]))
+
+      self.assertAllClose([[10 - 1000 + 5.], [1000 - 10 + 5.]], sess.run(net))
+
+  def test_with_1d_unknown_shape_sparse_tensor(self):
+    price = fc.numeric_column('price')
+    price_buckets = fc.bucketized_column(price, boundaries=[0., 10., 100.,])
+    body_style = fc.categorical_column_with_vocabulary_list(
+        'body-style', vocabulary_list=['hardtop', 'wagon', 'sedan'])
+    country = fc.categorical_column_with_vocabulary_list(
+        'country', vocabulary_list=['US', 'JP', 'CA'])
+
+    # Provides 1-dim tensor and dense tensor.
+    features = {
+        'price': array_ops.placeholder(dtypes.float32),
+        'body-style': array_ops.sparse_placeholder(dtypes.string),
+        'country': array_ops.placeholder(dtypes.string),
+    }
+    self.assertIsNone(features['price'].shape.ndims)
+    self.assertIsNone(features['body-style'].get_shape().ndims)
+
+    price_data = np.array([-1., 12.])
+    body_style_data = sparse_tensor.SparseTensorValue(
+        indices=((0,), (1,)),
+        values=('sedan', 'hardtop'),
+        dense_shape=(2,))
+
+    net = fc.linear_model(features, [price_buckets, body_style])
+    bias = get_linear_model_bias()
+    price_buckets_var = get_linear_model_column_var(price_buckets)
+    body_style_var = get_linear_model_column_var(body_style)
+    with _initialized_session() as sess:
+      sess.run(price_buckets_var.assign([[10.], [100.], [1000.], [10000.]]))
+      sess.run(body_style_var.assign([[-10.], [-100.], [-1000.]]))
+      sess.run(bias.assign([5.]))
+
+      self.assertAllClose(
+          [[10 - 1000 + 5.], [1000 - 10 + 5.]],
+          sess.run(net, feed_dict={
+              features['price']: price_data,
+              features['body-style']: body_style_data}))
+
+    # Dense categorical_column with unknown shape is not allowed.
+    with self.assertRaisesRegexp(ValueError, 'Undefined input_tensor shape.'):
+      fc.linear_model(features, [price_buckets, body_style, country])
+
+  def test_with_rank_0_feature(self):
+    price = fc.numeric_column('price')
+    features = {
+        'price': constant_op.constant(0),
+    }
+    self.assertEqual(0, features['price'].shape.ndims)
+
+    # Static rank 0 should fail
+    with self.assertRaisesRegexp(ValueError, 'Feature .* cannot have rank 0'):
+      fc.linear_model(features, [price])
+
+    # Dynamic rank 0 should fail
+    features = {
+        'price': array_ops.placeholder(dtypes.float32),
+    }
+    net = fc.linear_model(features, [price])
+    self.assertEqual(1, net.shape[1])
+    with _initialized_session() as sess:
+      with self.assertRaisesOpError('Feature .* cannot have rank 0'):
+        sess.run(net, feed_dict={features['price']: np.array(1)})
+
 
 class InputLayerTest(test.TestCase):
 
@@ -1817,6 +1942,28 @@ class InputLayerTest(test.TestCase):
           sess.run(net, feed_dict={
               features['price']: price_data,
               features['body-style']: body_style_data}))
+
+  def test_with_rank_0_feature(self):
+    # price has 1 dimension in input_layer
+    price = fc.numeric_column('price')
+    features = {
+        'price': constant_op.constant(0),
+    }
+    self.assertEqual(0, features['price'].shape.ndims)
+
+    # Static rank 0 should fail
+    with self.assertRaisesRegexp(ValueError, 'Feature .* cannot have rank 0'):
+      fc.input_layer(features, [price])
+
+    # Dynamic rank 0 should fail
+    features = {
+        'price': array_ops.placeholder(dtypes.float32),
+    }
+    net = fc.input_layer(features, [price])
+    self.assertEqual(1, net.shape[1])
+    with _initialized_session() as sess:
+      with self.assertRaisesOpError('Feature .* cannot have rank 0'):
+        sess.run(net, feed_dict={features['price']: np.array(1)})
 
 
 class MakeParseExampleSpecTest(test.TestCase):

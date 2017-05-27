@@ -97,7 +97,7 @@ exclude_cpu_cc_tests="${failing_cpu_cc_tests} + ${broken_cpu_cc_tests}"
 exclude_gpu_cc_tests="${extra_failing_gpu_cc_tests} + ${exclude_cpu_cc_tests}"
 
 # Python tests
-# The first argument is the name of the python test direcotry
+# The first argument is the name of the python test directory
 function get_failing_cpu_py_tests() {
     echo "
     //$1/tensorflow/python:basic_session_run_hooks_test + \
@@ -130,6 +130,7 @@ function get_failing_cpu_py_tests() {
     //$1/tensorflow/python/kernel_tests:decode_image_op_test + \
     //$1/tensorflow/python/kernel_tests:depthwise_conv_op_test + \
     //$1/tensorflow/python/kernel_tests:functional_ops_test + \
+    //$1/tensorflow/python/kernel_tests:neon_depthwise_conv_op_test + \
     //$1/tensorflow/python/kernel_tests:py_func_test + \
     //$1/tensorflow/python/kernel_tests:rnn_test + \
     //$1/tensorflow/python/kernel_tests:sets_test + \
@@ -137,6 +138,8 @@ function get_failing_cpu_py_tests() {
     //$1/tensorflow/python/kernel_tests:string_to_number_op_test + \
     //$1/tensorflow/python/kernel_tests:summary_ops_test + \
     //$1/tensorflow/python/kernel_tests:variable_scope_test + \
+    //$1/tensorflow/python/tools:saved_model_cli_test + \
+    //$1/tensorflow/python/feature_column:feature_column_test + \
     //$1/tensorflow/python/saved_model:saved_model_test \
     "
 }

@@ -344,7 +344,7 @@ def _prepare_sequence_inputs(inputs, states):
   key = _check_rank(inputs.key, 0)
 
   if length.dtype != dtypes.int32:
-    raise TypeError("length dtype must be int32, but recieved: %s" %
+    raise TypeError("length dtype must be int32, but received: %s" %
                     length.dtype)
   if key.dtype != dtypes.string:
     raise TypeError("key dtype must be string, but received: %s" % key.dtype)
@@ -1673,7 +1673,7 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
     shape = array_ops.concat(
         [array_ops.expand_dims(value_length, 0), sp_tensor.dense_shape], 0)
 
-    # Construct new indices by mutliplying old ones and prepending [0, n).
+    # Construct new indices by multiplying old ones and prepending [0, n).
     # First multiply indices n times along a newly created 0-dimension.
     multiplied_indices = array_ops.tile(
         array_ops.expand_dims(sp_tensor.indices, 0),

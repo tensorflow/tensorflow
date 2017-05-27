@@ -163,7 +163,7 @@ REGISTER_OP("HasDefaultType")
 
 // This verifies that a function using an op before a type attr (with
 // a default) is added, still works.  This is important for backwards
-// compatibilty.
+// compatibility.
 TEST(TFunc, MissingTypeAttr) {
   auto fdef = FDH::Create(
       // Name
@@ -1021,7 +1021,7 @@ TEST(FunctionLibraryDefinitionTest, AddLibrary) {
   EXPECT_EQ(s.error_message(),
             "Gradient for function 'XTimesTwo' already exists.");
 
-  // No conflicing functions or gradients OK
+  // No conflicting functions or gradients OK
   proto.Clear();
   *proto.add_function() = test::function::XTimesFour();
   grad.set_function_name(test::function::XTimes16().signature().name());

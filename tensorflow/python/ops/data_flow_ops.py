@@ -516,7 +516,7 @@ class QueueBase(object):
     that would block will fail immediately.
 
     If `cancel_pending_enqueues` is `True`, all pending requests will also
-    be cancelled.
+    be canceled.
 
     Args:
       cancel_pending_enqueues: (Optional.) A boolean, defaulting to
@@ -988,7 +988,7 @@ class Barrier(object):
     TakeMany operations that would block will fail immediately.
 
     If `cancel_pending_enqueues` is `True`, all pending requests to the
-    underlying queue will also be cancelled, and completing of already
+    underlying queue will also be canceled, and completing of already
     started values is also not acceptable anymore.
 
     Args:
@@ -2099,9 +2099,7 @@ class RecordInput(object):
       file_pattern: File path to the dataset, possibly containing wildcards.
         All matching files will be iterated over each epoch.
       batch_size: How many records to return at a time.
-      buffer_size: The maximum number of records the buffer will contain.  This
-        _must_ be smaller than the total number of records in an epoch or
-        deadlock can occur.
+      buffer_size: The maximum number of records the buffer will contain.
       parallelism: How many reader threads to use for reading from files.
       shift_ratio: What percentage of the total number files to move the start
         file forward by each epoch.

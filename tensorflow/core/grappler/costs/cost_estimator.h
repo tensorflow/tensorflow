@@ -130,7 +130,7 @@ class CostEstimator {
  public:
   virtual ~CostEstimator() {}
 
-  // Initalizes the estimator for the specified grappler item.
+  // Initializes the estimator for the specified grappler item.
   // The estimator shouldn't be used if this function returns any status other
   // that OK.
   virtual Status Initialize(const GrapplerItem& item) = 0;

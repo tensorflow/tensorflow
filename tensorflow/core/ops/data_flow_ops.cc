@@ -644,15 +644,15 @@ REGISTER_OP("QueueDequeueV2")
     .Attr("component_types: list(type) >= 1")
     .Attr("timeout_ms: int = -1")
     .SetShapeFn([](InferenceContext* c) {
-      if (c->num_outputs() == 1) {
-        c->set_output(0, c->input_handle_shape(0));
-      } else {
-        // TODO(vrv): handle the case of multiple outputs.
+      auto* t = c->input_handle_shapes_and_types(0);
+      if (t != nullptr && t->size() == c->num_outputs()) {
         for (int i = 0; i < c->num_outputs(); ++i) {
-          c->set_output(i, c->UnknownShape());
+          c->set_output(i, (*t)[i].shape);
         }
+        return Status::OK();
+      } else {
+        return shape_inference::UnknownShape(c);
       }
-      return Status::OK();
     })
     .Doc(R"doc(
 Dequeues a tuple of one or more tensors from the given queue.
@@ -827,7 +827,7 @@ operations that would block will fail immediately.
 
 handle: The handle to a queue.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the given queue will be cancelled.
+  blocked on the given queue will be canceled.
 )doc");
 
 REGISTER_OP("QueueCloseV2")
@@ -845,7 +845,7 @@ operations that would block will fail immediately.
 
 handle: The handle to a queue.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the given queue will be cancelled.
+  blocked on the given queue will be canceled.
 )doc");
 
 REGISTER_OP("QueueSize")
@@ -1879,7 +1879,7 @@ Subsequent TakeMany operations that would block will fail immediately.
 
 handle: The handle to a barrier.
 cancel_pending_enqueues: If true, all pending enqueue requests that are
-  blocked on the barrier's queue will be cancelled. InsertMany will fail, even
+  blocked on the barrier's queue will be canceled. InsertMany will fail, even
   if no new key is introduced.
 )doc");
 

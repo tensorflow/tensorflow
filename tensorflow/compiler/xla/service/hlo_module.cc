@@ -33,19 +33,10 @@ limitations under the License.
 namespace xla {
 
 HloModule::HloModule(const string& name,
-                     const VersionedComputationHandle& entry_computation_handle)
-    : name_(name),
-      config_(nullptr),
-      entry_computation_(nullptr),
-      has_entry_computation_handle_(true),
-      entry_computation_handle_(entry_computation_handle),
-      computation_name_uniquer_(/*separator=*/".") {}
-
-HloModule::HloModule(const string& name,
                      const VersionedComputationHandle& entry_computation_handle,
                      const HloModuleConfig& config)
     : name_(name),
-      config_(MakeUnique<HloModuleConfig>(config)),
+      config_(config),
       entry_computation_(nullptr),
       has_entry_computation_handle_(true),
       entry_computation_handle_(entry_computation_handle),
@@ -53,13 +44,8 @@ HloModule::HloModule(const string& name,
 
 HloModule::HloModule(const string& name)
     : name_(name),
-      config_(nullptr),
       entry_computation_(nullptr),
       computation_name_uniquer_(/*separator=*/".") {}
-
-void HloModule::set_config(const HloModuleConfig& config) {
-  config_ = MakeUnique<HloModuleConfig>(config);
-}
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation) {
@@ -73,6 +59,13 @@ HloComputation* HloModule::AddEntryComputation(
     std::unique_ptr<HloComputation> computation) {
   CHECK_EQ(nullptr, entry_computation_);
   entry_computation_ = computation.get();
+
+  // If the module configuration has no entry layout computation set, create a
+  // default one based on the program shape.
+  if (!config_.has_entry_computation_layout()) {
+    config_.SetDefaultComputationLayout(
+        entry_computation_->ComputeProgramShape());
+  }
   return AddComputationInternal(std::move(computation));
 }
 

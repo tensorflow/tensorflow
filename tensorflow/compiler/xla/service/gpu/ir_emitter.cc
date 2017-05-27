@@ -57,7 +57,8 @@ IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
                 &ir_emitter_context->buffer_assignment(), &ir_builder_,
                 is_nested),
       hlo_module_config_(hlo_module_config) {
-  ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(hlo_module_config));
+  ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(
+      /*fast_math_enabled=*/!hlo_module_config.fast_math_disabled()));
 }
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {

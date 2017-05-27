@@ -22,6 +22,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.tfprof.python.tools.tfprof import pywrap_tensorflow_print_model_analysis_lib as print_mdl
 from tensorflow.contrib.tfprof.python.tools.tfprof import tfprof_logger
+from tensorflow.python.framework import errors
 from tensorflow.tools.tfprof import tfprof_options_pb2
 from tensorflow.tools.tfprof import tfprof_output_pb2
 
@@ -36,7 +37,6 @@ TRAINABLE_VARS_PARAMS_STAT_OPTIONS = {
     'min_micros': 0,
     'min_params': 0,
     'min_float_ops': 0,
-    'device_regexes': ['.*'],
     'order_by': 'name',
     'account_type_regexes': [tfprof_logger.TRAINABLE_VARIABLES],
     'start_name_regexes': ['.*'],
@@ -56,7 +56,6 @@ FLOAT_OPS_OPTIONS = {
     'min_micros': 0,
     'min_params': 0,
     'min_float_ops': 1,
-    'device_regexes': ['.*'],
     'order_by': 'float_ops',
     'account_type_regexes': ['.*'],
     'start_name_regexes': ['.*'],
@@ -78,7 +77,6 @@ PRINT_PARAMS_ON_DEVICE = {
     'min_micros': 0,
     'min_params': 0,
     'min_float_ops': 0,
-    'device_regexes': ['.*'],
     'order_by': 'name',
     'account_type_regexes': ['.*ps.*task:0.*'],
     'start_name_regexes': ['.*'],
@@ -98,7 +96,6 @@ PRINT_ALL_TIMING_MEMORY = {
     'min_micros': 1,  # Only >=1
     'min_params': 0,
     'min_float_ops': 0,
-    'device_regexes': ['.*'],
     'order_by': 'name',
     'account_type_regexes': ['.*'],
     'start_name_regexes': ['.*'],
@@ -122,18 +119,9 @@ def print_model_analysis(graph,
                          tfprof_options=TRAINABLE_VARS_PARAMS_STAT_OPTIONS):
   """Print model statistics.
 
-    Prints the model statistics to stdout. Also returns the results
-    in a TFGraphNodeProto proto. See go/tfprof or run tfprof tool:
+    See go/tfprof or README for examples and tutorials.
+    Run tfprof tool for help:
     'bazel run third_party/tensorflow/tools/tfprof help'
-
-    Examples:
-      Show the parameter/shape statistics of tf.trainable_variables().
-        print_model_analysis(sess.graph).
-
-      Show number of float ops. Only ops with RegisterStatistics defined
-      are counted.
-        show_float_op_opts = model_analyzer.FLOAT_OPS_OPTIONS
-        print_model_analysis(sess.graph, tfprof_options=show_float_op_opts)
 
   Args:
     graph: tf.Graph.
@@ -142,15 +130,16 @@ def print_model_analysis(graph,
               'micros' and 'bytes'.
     op_log: tensorflow::tfprof::OpLog proto. users can use this proto to
             group together ops and use a op_type to select the group.
-    tfprof_cmd: string. Either 'scope', 'graph', 'code'.
-                'scope' view organize outputs using ops' name scope.
-                'graph' view organize outputs using op's inputs/outputs.
+    tfprof_cmd: string. Either 'op', 'scope', 'graph', 'code'.
+                'op' view organize outputs using operation type. (e.g. MatMul)
+                'scope' view organize outputs using graph node name scope.
+                'graph' view organize outputs using graph node inputs/outputs.
                 'code' view organize outputs using Python call stack.
     tfprof_options: See 'tfprof help' for details.
   Returns:
     If tfprof_cmd is 'scope' or 'graph', returns TFGraphNodeProto proto.
-    If tfprof_cmd is 'code', returns TFCodeNodeProto proto.
-    Side effect: a formatted output to stdout.
+    If tfprof_cmd is 'op' or 'code', returns TFMultiGraphNodeProto proto.
+    Side effect: stdout/file/timeline.json depending on tfprof_options['output']
   """
   # pylint: disable=protected-access
   op_log = tfprof_logger._merge_default_with_oplog(
@@ -162,8 +151,11 @@ def print_model_analysis(graph,
   opts.min_micros = tfprof_options['min_micros']
   opts.min_params = tfprof_options['min_params']
   opts.min_float_ops = tfprof_options['min_float_ops']
-  for p in tfprof_options['device_regexes']:
-    opts.device_regexes.append(p)
+  if 'min_occurrence' in tfprof_options:
+    opts.min_occurrence = tfprof_options['min_occurrence']
+  else:
+    opts.min_occurrence = 0
+
   opts.order_by = tfprof_options['order_by']
   for p in tfprof_options['account_type_regexes']:
     opts.account_type_regexes.append(p)
@@ -183,8 +175,8 @@ def print_model_analysis(graph,
 
   run_meta_str = run_meta.SerializeToString() if run_meta else b''
 
-  if tfprof_cmd == 'code':
-    tfprof_node = tfprof_output_pb2.TFCodeNodeProto()
+  if tfprof_cmd == 'code' or tfprof_cmd == 'op':
+    tfprof_node = tfprof_output_pb2.TFMultiGraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.PrintModelAnalysis(
             graph.as_graph_def().SerializeToString(),
@@ -192,7 +184,7 @@ def print_model_analysis(graph,
             op_log.SerializeToString(),
             tfprof_cmd.encode('utf-8'),
             opts.SerializeToString()))
-  else:
+  elif tfprof_cmd == 'graph' or tfprof_cmd == 'scope':
     tfprof_node = tfprof_output_pb2.TFGraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.PrintModelAnalysis(
@@ -201,5 +193,8 @@ def print_model_analysis(graph,
             op_log.SerializeToString(),
             tfprof_cmd.encode('utf-8'),
             opts.SerializeToString()))
+  else:
+    raise errors.InvalidArgumentError(
+        None, None, 'unknown tfprof_cmd: %s\n' % tfprof_cmd)
 
   return tfprof_node

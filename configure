@@ -138,6 +138,7 @@ function setup_python {
   # Convert python path to Windows style before writing into bazel.rc
   if is_windows; then
     PYTHON_BIN_PATH="$(cygpath -m "$PYTHON_BIN_PATH")"
+    PYTHON_LIB_PATH="$(cygpath -m "$PYTHON_LIB_PATH")"
   fi
 
   # Set-up env variables used by python_configure.bzl
@@ -230,7 +231,7 @@ if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
     if [ -z "$MKL_INSTALL_PATH" ]; then
       MKL_INSTALL_PATH=$default_mkl_path
     fi
-    # Result returned from "read" will be used unexpanded. That make "~" unuseable.
+    # Result returned from "read" will be used unexpanded. That make "~" unusable.
     # Going through one more level of expansion to handle that.
     MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`
   fi
@@ -565,7 +566,7 @@ while true; do
     if [ -z "$CUDNN_INSTALL_PATH" ]; then
       CUDNN_INSTALL_PATH=$default_cudnn_path
     fi
-    # Result returned from "read" will be used unexpanded. That make "~" unuseable.
+    # Result returned from "read" will be used unexpanded. That make "~" unusable.
     # Going through one more level of expansion to handle that.
     CUDNN_INSTALL_PATH=`"${PYTHON_BIN_PATH}" -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
   fi
@@ -764,6 +765,84 @@ done
 
 # end of if "$TF_NEED_OPENCL" == "1"
 fi
+
+
+while [ "$TF_NEED_MPI" == "" ]; do
+  read -p "Do you wish to build TensorFlow with "\
+"MPI support? [y/N] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "MPI support will be enabled for "\
+"TensorFlow"; TF_NEED_MPI=1;;
+    [Nn]* ) echo "MPI support will not be enabled for "\
+"TensorFlow"; TF_NEED_MPI=0;;
+    "" ) echo "MPI support will not be enabled for "\
+"TensorFlow"; TF_NEED_MPI=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+# Find out where the MPI toolkit is installed
+while true; do
+    if [ "$TF_NEED_MPI" == "0" ]; then
+        break;
+    fi
+
+    fromuser=""
+    if [ -z "$MPI_HOME" ]; then
+        #Get the base folder by removing the bin path
+        default_path=$(dirname $(dirname $(which mpirun)) || dirname $(dirname $(which mpiexec))  || true)
+        read -p "Please specify the MPI toolkit folder. [Default is $default_mpi_path]: " MPI_HOME
+        fromuser="1"
+        if [ -z "$MPI_HOME" ]; then
+            MPI_HOME=$default_path
+        fi
+    fi
+
+    #Check that the include and library folders are where we expect them to be
+    if [ -e "$MPI_HOME/include" -a -e "$MPI_HOME/lib" ]; then
+        break
+    fi
+ 
+    echo "Invalid path to the MPI Toolkit. ${MPI_HOME}/include or ${MPI_HOME}/lib cannot be found."
+    if [ -z "$fromuser" ]; then
+        exit 1
+    fi
+
+    # Retry
+    MPI_HOME="" 
+done
+    
+    
+if [ "$TF_NEED_MPI" == "1" ]; then
+  write_to_bazelrc 'build --define with_mpi_support=true'
+
+  #Link the MPI header files
+  ln -sf "${MPI_HOME}/include/mpi.h" third_party/mpi/mpi.h
+
+
+  #Determine if we use OpenMPI or MVAPICH, these require different header files 
+  #to be included here to make bazel dependency checker happy
+
+  if [ -e "${MPI_HOME}/include/mpi_portable_platform.h" ]; then
+        #OpenMPI 
+        ln -sf "${MPI_HOME}/include/mpi_portable_platform.h" third_party/mpi/
+        sed -i -e "s/MPI_LIB_IS_OPENMPI=False/MPI_LIB_IS_OPENMPI=True/" third_party/mpi/mpi.bzl
+ else
+        #MVAPICH / MPICH
+        ln -sf "${MPI_HOME}/include/mpio.h" third_party/mpi/
+        ln -sf "${MPI_HOME}/include/mpicxx.h" third_party/mpi/
+        sed -i -e "s/MPI_LIB_IS_OPENMPI=True/MPI_LIB_IS_OPENMPI=False/" third_party/mpi/mpi.bzl
+ fi
+
+  
+  if [ -e "${MPI_HOME}/lib/libmpi.so" ]; then
+    ln -sf "${MPI_HOME}/lib/libmpi.so" third_party/mpi/
+  else
+    echo "Cannot find the MPI library file in ${MPI_HOME}/lib "
+    exit 1
+  fi
+fi
+
 
 # TODO(gunan): Remove once bazel correctly handles changes in remote repositories.
 bazel clean

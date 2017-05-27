@@ -141,7 +141,7 @@ class InstructionCopier {
   Status RecordAmbiguousOrNonDistinctIndices(
       const TuplePointsToAnalysis& points_to_analysis);
 
-  // Records instruction buffer indices which have interferring live ranges
+  // Records instruction buffer indices which have interfering live ranges
   // with 'other_instruction' buffers at same index.
   Status RecordIndicesWhichInterfereWithOtherInstruction(
       const BufferLiveness& liveness, const HloInstruction* other_instruction,
@@ -431,7 +431,7 @@ HloInstruction* InstructionCopier::Copy() {
   return copy;
 }
 
-// The 'read_only_indices' are initalized based on points-to analysis on the
+// The 'read_only_indices' are initialized based on points-to analysis on the
 // while body corresponding to 'while_hlo'. If the init buffer corresponding to
 // a read-only index aliases with an entry parameter (or constant), it cannot be
 // considered read-only, and must be copied. This is necessary because some

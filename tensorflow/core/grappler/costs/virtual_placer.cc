@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
-#include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -37,28 +36,40 @@ VirtualPlacer::VirtualPlacer(const Cluster* cluster) : has_gpu_(false) {
 }
 
 const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
-  DeviceNameUtils::ParsedName parsed;
+  string device;
   if (!node.device().empty()) {
     auto it = devices_.find(node.device());
     if (it != devices_.end()) {
       return it->second;
     }
-    if (DeviceNameUtils::ParseLocalName(node.device(), &parsed)) {
-      string device_name =
-          strings::StrCat("/job:localhost/replica:0/task:0/",
-                          str_util::Lowercase(parsed.type), ":", parsed.id);
-      it = devices_.find(device_name);
-      if (it != devices_.end()) {
-        return it->second;
+    DeviceNameUtils::ParsedName parsed_name;
+    bool parsed = DeviceNameUtils::ParseFullName(node.device(), &parsed_name);
+    if (!parsed) {
+      parsed = DeviceNameUtils::ParseLocalName(node.device(), &parsed_name);
+      parsed_name.job = "localhost";
+    }
+    if (!parsed) {
+      if (node.device() == "GPU" || node.device() == "CPU" ||
+          node.device() == "gpu" || node.device() == "cpu") {
+        parsed_name.job = "localhost";
+        parsed_name.type = node.device();
+        parsed = true;
       }
     }
-    return unknown_device_;
-  }
-  string device;
-  if (has_gpu_) {
-    device = "/job:localhost/replica:0/task:0/gpu:0";
+    if (!parsed) {
+      return unknown_device_;
+    } else {
+      device = strings::StrCat(
+          "/job:", parsed_name.job, "/replica:", parsed_name.replica,
+          "/task:", parsed_name.task, "/",
+          str_util::Lowercase(parsed_name.type), ":", parsed_name.id);
+    }
   } else {
-    device = "/job:localhost/replica:0/task:0/cpu:0";
+    if (has_gpu_) {
+      device = "/job:localhost/replica:0/task:0/gpu:0";
+    } else {
+      device = "/job:localhost/replica:0/task:0/cpu:0";
+    }
   }
   auto it = devices_.find(device);
   if (it == devices_.end()) {

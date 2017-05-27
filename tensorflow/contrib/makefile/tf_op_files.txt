@@ -189,6 +189,7 @@ tensorflow/core/kernels/quantization_utils.cc
 tensorflow/core/kernels/quantize_down_and_shrink_range.cc
 tensorflow/core/kernels/quantize_op.cc
 tensorflow/core/kernels/quantized_activation_ops.cc
+tensorflow/core/kernels/quantized_add_op.cc
 tensorflow/core/kernels/quantized_batch_norm_op.cc
 tensorflow/core/kernels/quantized_bias_add_op.cc
 tensorflow/core/kernels/quantized_concat_op.cc

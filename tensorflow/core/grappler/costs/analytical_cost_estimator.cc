@@ -32,7 +32,16 @@ namespace grappler {
 
 AnalyticalCostEstimator::AnalyticalCostEstimator(Cluster* cluster,
                                                  bool use_static_shapes)
-    : cluster_(cluster), use_static_shapes_(use_static_shapes) {}
+    : cluster_(cluster),
+      node_estimator_(new OpLevelCostEstimator()),
+      use_static_shapes_(use_static_shapes) {}
+
+AnalyticalCostEstimator::AnalyticalCostEstimator(
+    Cluster* cluster, OpLevelCostEstimator* node_estimator,
+    bool use_static_shapes)
+    : cluster_(cluster),
+      node_estimator_(node_estimator),
+      use_static_shapes_(use_static_shapes) {}
 
 Status AnalyticalCostEstimator::Initialize(const GrapplerItem& item) {
   item_ = item;
@@ -44,18 +53,6 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
                                              Costs* costs) const {
   GrapplerItem item = item_;
   item.graph = optimized_graph;
-  GraphProperties properties(item);
-  Status status;
-  if (use_static_shapes_) {
-    status = properties.InferStatically();
-  } else {
-    status = properties.InferDynamically(cluster_);
-  }
-
-  if (!status.ok()) {
-    costs->execution_time = Costs::Duration::max();
-    return status;
-  }
 
   std::unordered_map<string, CostGraphDef::Node*> name_to_cost;
   if (cost_graph) {
@@ -64,47 +61,43 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     }
   }
   std::vector<string> inaccurate_nodes;
-  VirtualScheduler scheduler(optimized_graph, item_.fetch);
   VirtualPlacer placer(cluster_);
+  VirtualScheduler scheduler(&item, use_static_shapes_,
+                             "CPU" /* default_device_type */, cluster_,
+                             &placer);
+  auto status = scheduler.Init();
+  if (!status.ok()) {
+    costs->execution_time = Costs::Duration::max();
+    return status;
+  }
+
   Costs node_costs;
   do {
-    const NodeDef* node = scheduler.GetCurrNode();
-    std::vector<OpInfo::TensorProperties> inputs =
-        properties.GetInputProperties(node->name());
+    NodeInfo node_info = scheduler.GetCurrNodeInfo();
+    auto& op_info = node_info.op_info;
+    const string& op_name = node_info.name;
 
-    DeviceProperties device = placer.get_device(*node);
-    OpInfo op_info;
-    op_info.set_op(node->op());
-    *op_info.mutable_attr() = node->attr();
-    for (auto& input : inputs) {
-      op_info.add_inputs()->Swap(&input);
-    }
-    op_info.mutable_device()->Swap(&device);
-
-    node_costs = node_estimator_.PredictCosts(op_info);
+    node_costs = node_estimator_->PredictCosts(op_info);
     if (node_costs.inaccurate) {
-      inaccurate_nodes.push_back(node->name());
+      inaccurate_nodes.push_back(op_name);
     }
     if (cost_graph) {
-      auto it = name_to_cost.find(node->name());
+      auto it = name_to_cost.find(op_name);
       CostGraphDef::Node* cost_node;
       if (it != name_to_cost.end()) {
         cost_node = it->second;
       } else {
         cost_node = cost_graph->add_node();
-        cost_node->set_name(node->name());
+        cost_node->set_name(op_name);
       }
-      string device_name = properties.GetDeviceName(node->name());
-      cost_node->set_device(device_name);
+      cost_node->set_device(node_info.device_name);
       cost_node->set_compute_cost(
           node_costs.execution_time.asMicroSeconds().count());
       cost_node->set_compute_time(
           node_costs.compute_time.asMicroSeconds().count());
       cost_node->set_memory_time(
           node_costs.memory_time.asMicroSeconds().count());
-      std::vector<OpInfo::TensorProperties> outputs =
-          properties.GetOutputProperties(node->name());
-      for (const auto& output : outputs) {
+      for (const auto& output : node_info.outputs) {
         auto output_info = cost_node->add_output_info();
         output_info->set_dtype(output.dtype());
         auto shape = output_info->mutable_shape();
