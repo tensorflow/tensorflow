@@ -475,9 +475,9 @@ Costs VirtualScheduler::Summary() const {
   }
 
   // Also log the op description and their corresponding counts.
-  VLOG(1) << "Node description, counts, cost:";
+  VLOG(2) << "Node description, counts, cost:";
   for (const auto& item : op_counts_) {
-    VLOG(1) << "Node: " << item.first << ", Count: " << item.second
+    VLOG(2) << "Node: " << item.first << ", Count: " << item.second
             << ", Individual Cost: " << op_costs_.at(item.first);
   }
 
