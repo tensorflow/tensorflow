@@ -120,6 +120,11 @@ def if_x86(a):
       "//conditions:default": [],
   })
 
+def if_darwin(a):
+  return select({
+      clean_dep("//tensorflow:darwin"): a,
+      "//conditions:default": [],
+  })
 
 # LINT.IfChange
 def tf_copts():
