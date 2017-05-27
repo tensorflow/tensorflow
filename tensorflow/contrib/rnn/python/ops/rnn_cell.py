@@ -26,7 +26,6 @@ from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
@@ -1941,12 +1940,12 @@ class ConvLSTMCell(core_rnn_cell.RNNCell):
     """Construct ConvLSTMCell.
     Args:
       conv_ndims: Convolution dimensionality (1, 2 or 3).
-      input_shape: Shape of the input as tuple, excluding the batch size.
-      output_channels: Number of output channels of the conv LSTM.
-      kernel_shape: Sequence of kernel sizes (of size 1,2 or 3).
+      input_shape: Shape of the input as int tuple, excluding the batch size.
+      output_channels: int, number of output channels of the conv LSTM.
+      kernel_shape: Shape of kernel as in tuple (of size 1,2 or 3).
       use_bias: Use bias in convolutions.
-      skip_connection: If set to `True`, concatenate the input to the output
-          of the conv LSTM. Default: `False`.
+      skip_connection: If set to `True`, concatenate the input to the
+      output of the conv LSTM. Default: `False`.
       forget_bias: Forget bias.
       name: Name of the module.
     Raises:
