@@ -122,7 +122,7 @@ def if_x86(a):
 
 def if_darwin(a):
   return select({
-      "//tensorflow:darwin": a,
+      clean_dep("//tensorflow:darwin"): a,
       "//conditions:default": [],
   })
 
