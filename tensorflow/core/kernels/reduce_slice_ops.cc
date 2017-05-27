@@ -60,6 +60,10 @@ namespace functor {
       Index dim1 = output.dimension(0);                                        \
       Index dim2 = output.dimension(1);                                        \
       Index dim3 = output.dimension(2);                                        \
+      Index size = dim1 * dim2 * dim3;                                         \
+      if(size == 0) {                                                          \
+        return;                                                                \
+      }                                                                        \
       T zero = beginning<T>();                                                 \
       ThreadPool* thread_pool = ctx->device()->                                \
                                   tensorflow_cpu_worker_threads()->workers;    \
@@ -80,8 +84,7 @@ namespace functor {
       };                                                                       \
     /* Here assumes the number of average CPU cycles for each slice equals the
      * average length of each slice */                                         \
-    thread_pool->ParallelFor(dim1 * dim2 * dim3,                               \
-                             std::max(bound / dim2, (Index) 1), work);         \
+    thread_pool->ParallelFor(size, std::max(bound / dim2, (Index) 1), work);   \
   }                                                                            \
 };
 

@@ -522,6 +522,22 @@ class ReduceSliceTest(test_util.TensorFlowTestCase):
       y_tf = math_ops.reduce_slice_sum(x, indices, 0).eval()
       self.assertAllEqual(y_tf, result)
 
+  def testReduceSliceEmpty0Indices1D(self):
+    x = np.array([[1, 2, 3], [4, 5, 6], [7,8,9]], dtype=np.int32)
+    indices = np.empty((0, ), dtype=np.int32)
+    result = np.empty((0, 3), dtype=np.int32)
+    with self.test_session(use_gpu=True):
+      y_tf = math_ops.reduce_slice_sum(x, indices, 0).eval()
+      self.assertAllEqual(y_tf, result)
+
+  def testReduceSliceEmpty1Indices1D(self):
+    x = np.array([[1, 2, 3], [4, 5, 6], [7,8,9]], dtype=np.int32)
+    indices = np.array([0], dtype=np.int32)
+    result = np.empty((0, 3), dtype=np.int32)
+    with self.test_session(use_gpu=True):
+      y_tf = math_ops.reduce_slice_sum(x, indices, 0).eval()
+      self.assertAllEqual(y_tf, result)
+
 
 if __name__ == "__main__":
   googletest.main()
