@@ -3124,6 +3124,7 @@ py_test(
     srcs = ["training/saver_large_variable_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
         "noasan",  # http://b/30379628
         "notsan",  # http://b/30379628
     ],
