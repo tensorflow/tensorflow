@@ -62,7 +62,6 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "full_path",
     "if_android",
     "if_ios",
     "if_x86",
