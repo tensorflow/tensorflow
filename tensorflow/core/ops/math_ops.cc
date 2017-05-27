@@ -2533,14 +2533,26 @@ the the output will be [[ 1,  2,  3]
                         [40,100,180]].
 ```
 
-he data must be at least rank 1. The indices must be of shape (?,2) where the
+The data must be at least rank 1. The indices can be of shape (?,2) where the
 first column is start indices and the second column is end indices. The end indices
 are not included in the reduce operation, which means, if you want to do a reduce
 over indices 0,1,2, then you should have start index 0 and end index 3. If end
 index is smaller than or equal to start, the result will be 1. If end index is
 out of bounds, then the reduce operation will automatically stop at the bound, so
 feel free to put a large number as your end of your index if you want to do the
-reduction until the bound.
+reduction until the bound. The indices can also be of shape (?), in this case, the
+start index of i will be the element at i, then end index of i will be the element
+at i+1. That is:
+
+```prettyprint
+indices = [0,5,11,115]
+
+is equivalent to
+
+indices = [ [0,5],
+            [5,11],
+            [11,115]]
+```
 
 data: The source of data where the computation will be taken from.
 indices: start, end indices that controls which part to be included.
@@ -2578,14 +2590,26 @@ the the output will be [[          1,         20,          3]
                         [        400,         20,         60]].
 ```
 
-he data must be at least rank 1. The indices must be of shape (?,2) where the
+The data must be at least rank 1. The indices can be of shape (?,2) where the
 first column is start indices and the second column is end indices. The end indices
 are not included in the reduce operation, which means, if you want to do a reduce
 over indices 0,1,2, then you should have start index 0 and end index 3. If end
-index is smaller than or equal to start, the result will be -BIG_VALUE or -inf
-if exist. If end index is out of bounds, then the reduce operation will automatically
-stop at the bound, so feel free to put a large number as your end of your index
-if you want to do the reduction until the bound.
+index is smaller than or equal to start, the result will be 1. If end index is
+out of bounds, then the reduce operation will automatically stop at the bound, so
+feel free to put a large number as your end of your index if you want to do the
+reduction until the bound. The indices can also be of shape (?), in this case, the
+start index of i will be the element at i, then end index of i will be the element
+at i+1. That is:
+
+```prettyprint
+indices = [0,5,11,115]
+
+is equivalent to
+
+indices = [ [0,5],
+            [5,11],
+            [11,115]]
+```
 
 data: The source of data where the computation will be taken from.
 indices: start, end indices that controls which part to be included.
@@ -2623,14 +2647,26 @@ the the output will be [[          1,         20,          3]
                         [          1,          5,          3]].
 ```
 
-he data must be at least rank 1. The indices must be of shape (?,2) where the
+The data must be at least rank 1. The indices can be of shape (?,2) where the
 first column is start indices and the second column is end indices. The end indices
 are not included in the reduce operation, which means, if you want to do a reduce
 over indices 0,1,2, then you should have start index 0 and end index 3. If end
-index is smaller than or equal to start, the result will be +BIG_VALUE or +inf
-if exist. If end index is out of bounds, then the reduce operation will automatically
-stop at the bound, so feel free to put a large number as your end of your index
-if you want to do the reduction until the bound.
+index is smaller than or equal to start, the result will be 1. If end index is
+out of bounds, then the reduce operation will automatically stop at the bound, so
+feel free to put a large number as your end of your index if you want to do the
+reduction until the bound. The indices can also be of shape (?), in this case, the
+start index of i will be the element at i, then end index of i will be the element
+at i+1. That is:
+
+```prettyprint
+indices = [0,5,11,115]
+
+is equivalent to
+
+indices = [ [0,5],
+            [5,11],
+            [11,115]]
+```
 
 data: The source of data where the computation will be taken from.
 indices: start, end indices that controls which part to be included.
