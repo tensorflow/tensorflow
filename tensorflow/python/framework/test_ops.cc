@@ -161,7 +161,7 @@ class ResourceUsingOp : public OpKernel {
  public:
   explicit ResourceUsingOp(OpKernelConstruction* context) : OpKernel(context) {}
 
-  void Compute(OpKernelContext* ctx) {
+  void Compute(OpKernelContext* ctx) override {
     StubResource* unused;
     OP_REQUIRES_OK(ctx, LookupResource<StubResource>(
                             ctx, HandleFromInput(ctx, 0), &unused));

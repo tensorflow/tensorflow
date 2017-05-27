@@ -341,12 +341,6 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleFusion(HloInstruction* fusion) {
-  return ShapeUtil::IsTuple(fusion->shape())
-             ? Unimplemented("HandleFusion with tuple output")
-             : DefaultAction(fusion);
-}
-
 const PointsToSet& TuplePointsToAnalysis::GetPointsToSet(
     const HloInstruction* hlo_instruction) const {
   return *FindOrDie(points_to_, hlo_instruction);

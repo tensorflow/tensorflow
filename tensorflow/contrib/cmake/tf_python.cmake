@@ -229,6 +229,7 @@ add_python_module("tensorflow/tensorboard")
 add_python_module("tensorflow/tensorboard/backend")
 add_python_module("tensorflow/tensorboard/backend/event_processing")
 add_python_module("tensorflow/tensorboard/plugins")
+add_python_module("tensorflow/tensorboard/plugins/histograms")
 add_python_module("tensorflow/tensorboard/plugins/images")
 add_python_module("tensorflow/tensorboard/plugins/projector")
 add_python_module("tensorflow/tensorboard/plugins/scalars")
@@ -721,6 +722,7 @@ if(WIN32)
         $<TARGET_OBJECTS:tf_cc_ops>
         $<TARGET_OBJECTS:tf_core_ops>
         $<TARGET_OBJECTS:tf_core_direct_session>
+        $<TARGET_OBJECTS:tf_grappler>
         $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
         $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
         $<TARGET_OBJECTS:tf_core_kernels>
@@ -767,6 +769,7 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_cc_ops>
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
+    $<TARGET_OBJECTS:tf_grappler>
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>

@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -125,6 +126,12 @@ class LogicalBuffer {
   bool IsArray() const { return ShapeUtil::IsArray(shape()); }
 
   string ToString() const;
+  LogicalBufferProto ToProto(const SizeFunction& size_fn) const;
+
+  // Returns the LogicalBufferProto::Location that serializes the given
+  // instruction and index.
+  static LogicalBufferProto::Location ToLocationProto(
+      const HloInstruction& instruction, const ShapeIndex& index);
 
  private:
   HloInstruction* instruction_;

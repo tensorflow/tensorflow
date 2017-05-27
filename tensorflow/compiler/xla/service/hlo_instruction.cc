@@ -1533,6 +1533,51 @@ string HloInstruction::ToShortString() const {
                     .c_str());
 }
 
+HloInstructionProto HloInstruction::ToProto() const {
+  HloInstructionProto proto;
+  proto.set_name(name_);
+  proto.set_opcode(HloOpcodeString(opcode_));
+  *proto.mutable_shape() = shape_;
+  for (const HloInstruction* operand : operands_) {
+    *proto.add_operand_names() = operand->name();
+  }
+  for (const HloInstruction* control : control_predecessors_) {
+    *proto.add_control_predecessor_names() = control->name();
+  }
+  for (const HloComputation* computation : called_computations_) {
+    *proto.add_called_computation_names() = computation->name();
+  }
+  *proto.mutable_metadata() = metadata_;
+  switch (opcode_) {
+    case HloOpcode::kConstant:
+      *proto.mutable_literal() = *literal_;
+      break;
+    case HloOpcode::kParameter:
+      proto.set_parameter_number(parameter_number_);
+      proto.set_parameter_name(parameter_name_);
+      break;
+    case HloOpcode::kFusion: {
+      HloComputationProto* proto_fused_computation =
+          proto.mutable_fused_instructions_computation();
+      proto_fused_computation->set_name(FullyQualifiedName());
+
+      // Fill in fused instructions. Note that fused_instructions() returns in
+      // reverse post-order (i.e. root first), so we reverse to get post-order.
+      for (auto fused_it = fused_instructions().rbegin();
+           fused_it != fused_instructions().rend(); ++fused_it) {
+        HloInstructionProto fused_proto = (*fused_it)->ToProto();
+        proto_fused_computation->add_instructions()->Swap(&fused_proto);
+      }
+      break;
+    }
+    case HloOpcode::kGetTupleElement:
+      proto.set_tuple_index(tuple_index_);
+      break;
+    default: {}  // Nothing to do
+  }
+  return proto;
+}
+
 string HloInstruction::ToCategory() const {
   if (opcode() == HloOpcode::kTranspose || opcode() == HloOpcode::kCopy ||
       opcode() == HloOpcode::kReshape) {

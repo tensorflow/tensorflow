@@ -125,7 +125,7 @@ class FailureKernel : public OpKernel {
                                     "could not be properly replaced."));
   }
 
-  void Compute(OpKernelContext*) {}
+  void Compute(OpKernelContext*) override {}
 };
 
 #define REGISTER(type)                                    \

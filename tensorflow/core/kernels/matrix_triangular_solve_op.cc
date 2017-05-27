@@ -62,7 +62,7 @@ class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
   using ConstMatrixMap = typename Base::ConstMatrixMap;
   using ConstMatrixMaps = typename Base::ConstMatrixMaps;
 
-  virtual void ValidateInputMatrixShapes(
+  void ValidateInputMatrixShapes(
       OpKernelContext* context,
       const TensorShapes& input_matrix_shapes) const final {
     Base::ValidateSquareSolver(context, input_matrix_shapes);
@@ -150,7 +150,7 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
     OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
   }
 
-  virtual void ValidateInputMatrixShapes(
+  void ValidateInputMatrixShapes(
       OpKernelContext* context,
       const TensorShapes& input_matrix_shapes) const final {
     Base::ValidateSquareSolver(context, input_matrix_shapes);

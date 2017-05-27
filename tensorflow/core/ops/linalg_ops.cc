@@ -326,7 +326,7 @@ Computes the eigen decomposition of one or more square self-adjoint matrices.
 Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
 `input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
 
-```prettyprint
+```python
 # a is a tensor.
 # e is a tensor of eigenvalues.
 # v is a tensor of eigenvectors.
@@ -478,7 +478,7 @@ Computes the QR decompositions of one or more matrices.
 Computes the QR decomposition of each inner matrix in `tensor` such that
 `tensor[..., :, :] = q[..., :, :] * r[..., :,:])`
 
-```prettyprint
+```python
 # a is a tensor.
 # q is a tensor of orthonormal matrices.
 # r is a tensor of upper triangular matrices.
@@ -512,7 +512,7 @@ Computes the singular value decompositions of one or more matrices.
 Computes the SVD of each inner matrix in `input` such that
 `input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`
 
-```prettyprint
+```python
 # a is a tensor containing a batch of matrices.
 # s is a tensor of singular values for each matrix.
 # u is the tensor containing of left singular vectors for each matrix.
