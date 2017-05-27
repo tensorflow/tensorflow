@@ -20,24 +20,26 @@ limitations under the License.
 
 #include <algorithm>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/platform/default/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-// Usage of GetCudaLaunchConfig, GetCuda2DLaunchConfig, and GetCuda3DLaunchConfig:
+// Usage of GetCudaLaunchConfig, GetCuda2DLaunchConfig, and
+// GetCuda3DLaunchConfig:
 //
 // There are two versions of GetCudaLaunchConfig and GetCuda2DLaunchConfig, one
 // version uses heuristics without any knowledge of the device kernel, the other
 // version uses cudaOccupancyMaxPotentialBlockSize to determine the theoretical
-// launch parameters that maximize occupancy. Currently, only the maximum occupancy
-// version of GetCuda3DLaunchConfig is available.
+// launch parameters that maximize occupancy. Currently, only the maximum
+// occupancy version of GetCuda3DLaunchConfig is available.
 //
 // For large number of work elements, the convention is that each kernel would
-// iterate through its assigned range. The return value of GetCudaLaunchConfig is
-// struct CudaLaunchConfig, which contains all the information needed for the kernel
-// launch, including: virtual number of threads, the number of threads per block and
-// number of threads per block used inside <<< >>> of a kernel launch.
-// GetCuda2DLaunchConfig and GetCuda3DLaunchConfig does the same thing as
-// CudaLaunchConfig. The only difference is the dimension. The macros
+// iterate through its assigned range. The return value of GetCudaLaunchConfig
+// is struct CudaLaunchConfig, which contains all the information needed for the
+// kernel launch, including: virtual number of threads, the number of threads
+// per block and number of threads per block used inside <<< >>> of a kernel
+// launch. GetCuda2DLaunchConfig and GetCuda3DLaunchConfig does the same thing
+// as CudaLaunchConfig. The only difference is the dimension. The macros
 // CUDA_1D_KERNEL_LOOP and CUDA_AXIS_KERNEL_LOOP might be used to do inner loop.
 //
 /* Sample code:
@@ -69,19 +71,27 @@ __global__ void MyKernel3D(Cuda3DLaunchConfig config, other_args...) {
 void MyDriverFunc(const GPUDevice &d) {
   // use heuristics
   CudaLaunchConfig cfg1 = GetCudaLaunchConfig(10240, d);
-  MyKernel1D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg1, other_args...);
+  MyKernel1D <<<config.block_count,
+                config.thread_per_block, 0, d.stream()>>> (cfg1, other_args...);
   Cuda2DLaunchConfig cfg2 = GetCuda2DLaunchConfig(10240, 10240, d);
-  MyKernel2D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg2, other_args...);
+  MyKernel2D <<<config.block_count,
+                config.thread_per_block, 0, d.stream()>>> (cfg2, other_args...);
   Cuda3DLaunchConfig cfg3 = GetCuda3DLaunchConfig(4096, 4096, 100, d);
-  MyKernel3D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg3, other_args...);
+  MyKernel3D <<<config.block_count,
+                config.thread_per_block, 0, d.stream()>>> (cfg3, other_args...);
 
   // maximize occupancy
   CudaLaunchConfig cfg4 = GetCudaLaunchConfig(10240, d, MyKernel1D, 0 );
-  MyKernel1D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg4, other_args...);
-  Cuda2DLaunchConfig cfg5 = GetCuda2DLaunchConfig(10240, 10240, d, MyKernel1D, 0 );
-  MyKernel2D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg5, other_args...);
-  Cuda3DLaunchConfig cfg6 = GetCuda3DLaunchConfig(4096, 4096, 100, d, MyKernel1D, 0 );
-  MyKernel3D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg6, other_args...);
+  MyKernel1D <<<config.block_count,
+                config.thread_per_block, 0, d.stream()>>> (cfg4, other_args...);
+  Cuda2DLaunchConfig cfg5 = GetCuda2DLaunchConfig(10240, 10240, d,
+                                                  MyKernel1D, 0);
+  MyKernel2D <<<config.block_count,
+                config.thread_per_block, 0, d.stream()>>> (cfg5, other_args...);
+  Cuda3DLaunchConfig cfg6 = GetCuda3DLaunchConfig(4096, 4096, 100, d,
+                                                  MyKernel1D, 0);
+  MyKernel3D <<<config.block_count,
+                config.thread_per_block, 0, d.stream()>>> (cfg6, other_args...);
 }
 
 // See the test for this for more example:
@@ -93,11 +103,11 @@ void MyDriverFunc(const GPUDevice &d) {
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; \
        i += blockDim.x * gridDim.x)
 
-#define CUDA_AXIS_KERNEL_LOOP(i, n, axis)                      \
-  for (int i = blockIdx.axis * blockDim.axis + threadIdx.axis; \
-       i < n.axis; i += blockDim.axis * gridDim.axis)
+#define CUDA_AXIS_KERNEL_LOOP(i, n, axis)                                  \
+  for (int i = blockIdx.axis * blockDim.axis + threadIdx.axis; i < n.axis; \
+       i += blockDim.axis * gridDim.axis)
 
-#define DIV_UP(a,b) ( ( (a) + (b) - 1 ) / (b) )
+#define DIV_UP(a, b) (((a) + (b) - 1) / (b))
 
 namespace tensorflow {
 
@@ -122,7 +132,7 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
   CudaLaunchConfig config;
 
   // in case of invalid input, return the default value config, which has all -1
-  if(work_element_count <= 0) {
+  if (work_element_count <= 0) {
     return config;
   }
 
@@ -131,9 +141,9 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
       d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor(),
       virtual_thread_count);
   const int thread_per_block = std::min(1024, d.maxCudaThreadsPerBlock());
-  const int block_count = std::min(
-      DIV_UP(physical_thread_count, thread_per_block),
-      d.getNumCudaMultiProcessors());
+  const int block_count =
+      std::min(DIV_UP(physical_thread_count, thread_per_block),
+               d.getNumCudaMultiProcessors());
 
   config.virtual_thread_count = virtual_thread_count;
   config.thread_per_block = thread_per_block;
@@ -149,15 +159,16 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                             size_t dynamic_shared_memory_size) {
   CudaLaunchConfig config;
 
-  if(work_element_count <= 0) {
+  if (work_element_count <= 0) {
     return config;
   }
 
   int block_count = 0;
   int thread_per_block = 0;
-  cudaOccupancyMaxPotentialBlockSize(&block_count, &thread_per_block, func,
-                                     dynamic_shared_memory_size,
-                                     work_element_count);
+  cudaError_t err = cudaOccupancyMaxPotentialBlockSize(
+      &block_count, &thread_per_block, func, dynamic_shared_memory_size,
+      work_element_count);
+  CHECK_EQ(err, cudaSuccess);
   block_count =
       std::min(block_count, DIV_UP(work_element_count, thread_per_block));
 
@@ -168,16 +179,16 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
 }
 
 struct Cuda2DLaunchConfig {
-  dim3 virtual_thread_count = dim3(0,0,0);
-  dim3 thread_per_block = dim3(0,0,0);
-  dim3 block_count = dim3(0,0,0);
+  dim3 virtual_thread_count = dim3(0, 0, 0);
+  dim3 thread_per_block = dim3(0, 0, 0);
+  dim3 block_count = dim3(0, 0, 0);
 };
 
 inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
                                                 const GPUDevice& d) {
   Cuda2DLaunchConfig config;
 
-  if(xdim <= 0 || ydim <= 0) {
+  if (xdim <= 0 || ydim <= 0) {
     return config;
   }
 
@@ -202,17 +213,17 @@ inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
 }
 
 // Calculate the Cuda 2D and 3D launch config we should use for a kernel launch.
-// This variant takes the resource limits of func into account to maximize occupancy.
+// This variant takes the resource limits of func into account to maximize
+// occupancy.
 using Cuda3DLaunchConfig = Cuda2DLaunchConfig;
 
 template <typename DeviceFunc>
-inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(int xdim, int ydim, int zdim,
-                                                const GPUDevice& d, DeviceFunc func,
-                                                size_t dynamic_shared_memory_size) {
-
+inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(
+    int xdim, int ydim, int zdim, const GPUDevice& d, DeviceFunc func,
+    size_t dynamic_shared_memory_size) {
   Cuda3DLaunchConfig config;
 
-  if(xdim <= 0 || ydim <= 0 || zdim <= 0) {
+  if (xdim <= 0 || ydim <= 0 || zdim <= 0) {
     return config;
   }
 
@@ -229,19 +240,25 @@ inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(int xdim, int ydim, int zdim,
 
   int block_count = 0;
   int thread_per_block = 0;
-  cudaOccupancyMaxPotentialBlockSize(&block_count, &thread_per_block, func,
-                                     dynamic_shared_memory_size,
-                                     xdim * ydim * zdim);
+  cudaError_t err = cudaOccupancyMaxPotentialBlockSize(
+      &block_count, &thread_per_block, func, dynamic_shared_memory_size,
+      xdim * ydim * zdim);
+  CHECK_EQ(err, cudaSuccess);
 
-  #define MIN3(a,b,c) std::min((a), std::min((b), (c)))
+#define MIN3(a, b, c) std::min((a), std::min((b), (c)))
   int threadsx = MIN3(xdim, thread_per_block, xthreadlimit);
-  int threadsy = MIN3(ydim, std::max(thread_per_block / threadsx, 1), ythreadlimit);
-  int threadsz = MIN3(zdim, std::max(thread_per_block / (threadsx * threadsy), 1), zthreadlimit);
+  int threadsy =
+      MIN3(ydim, std::max(thread_per_block / threadsx, 1), ythreadlimit);
+  int threadsz =
+      MIN3(zdim, std::max(thread_per_block / (threadsx * threadsy), 1),
+           zthreadlimit);
 
   int blocksx = MIN3(block_count, DIV_UP(xdim, threadsx), xgridlimit);
-  int blocksy = MIN3(DIV_UP(block_count, blocksx), DIV_UP(ydim, threadsy), ygridlimit);
-  int blocksz = MIN3(DIV_UP(block_count, (blocksx * blocksy)), DIV_UP(zdim, threadsz), zgridlimit);
-  #undef MIN3
+  int blocksy =
+      MIN3(DIV_UP(block_count, blocksx), DIV_UP(ydim, threadsy), ygridlimit);
+  int blocksz = MIN3(DIV_UP(block_count, (blocksx * blocksy)),
+                     DIV_UP(zdim, threadsz), zgridlimit);
+#undef MIN3
 
   config.virtual_thread_count = dim3(xdim, ydim, zdim);
   config.thread_per_block = dim3(threadsx, threadsy, threadsz);
@@ -250,12 +267,12 @@ inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(int xdim, int ydim, int zdim,
 }
 
 template <typename DeviceFunc>
-inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
-                                                const GPUDevice& d, DeviceFunc func,
-                                                size_t dynamic_shared_memory_size) {
-  return GetCuda3DLaunchConfig(xdim, ydim, 1, d, func, dynamic_shared_memory_size);
+inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(
+    int xdim, int ydim, const GPUDevice& d, DeviceFunc func,
+    size_t dynamic_shared_memory_size) {
+  return GetCuda3DLaunchConfig(xdim, ydim, 1, d, func,
+                               dynamic_shared_memory_size);
 }
-
 
 namespace gpu {
 

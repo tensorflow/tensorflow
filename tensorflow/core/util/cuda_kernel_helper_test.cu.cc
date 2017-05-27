@@ -16,50 +16,48 @@ limitations under the License.
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 
+#include <numeric>
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
-#include <numeric>
-#include <iostream>
-using namespace std;
 
-#define CUDA_EXPECT_SUCCESS {                             \
-  cudaDeviceSynchronize();                                \
-  cudaError_t err = cudaGetLastError();                   \
-  EXPECT_EQ(cudaSuccess, err) << cudaGetErrorString(err); \
-}
+#define CUDA_EXPECT_SUCCESS                                 \
+  {                                                         \
+    cudaDeviceSynchronize();                                \
+    cudaError_t err = cudaGetLastError();                   \
+    EXPECT_EQ(cudaSuccess, err) << cudaGetErrorString(err); \
+  }
 
-#define CUDA_ASSERT_SUCCESS {                             \
-  cudaDeviceSynchronize();                                \
-  cudaError_t err = cudaGetLastError();                   \
-  ASSERT_EQ(cudaSuccess, err) << cudaGetErrorString(err); \
-}
+#define CUDA_ASSERT_SUCCESS                                 \
+  {                                                         \
+    cudaDeviceSynchronize();                                \
+    cudaError_t err = cudaGetLastError();                   \
+    ASSERT_EQ(cudaSuccess, err) << cudaGetErrorString(err); \
+  }
 
 namespace tensorflow {
 
 namespace {
 
-__global__ void SetOutbufZero(CudaLaunchConfig config, int *outbuf) {
-  CUDA_1D_KERNEL_LOOP(x, config.virtual_thread_count) {
-    outbuf[x] = 0;
-  }
+__global__ void SetOutbufZero(CudaLaunchConfig config, int* outbuf) {
+  CUDA_1D_KERNEL_LOOP(x, config.virtual_thread_count) { outbuf[x] = 0; }
 }
 
 // counting number of jobs by using atomic +1
-__global__ void Count1D(CudaLaunchConfig config, int bufsize, int *outbuf) {
+__global__ void Count1D(CudaLaunchConfig config, int bufsize, int* outbuf) {
   CUDA_1D_KERNEL_LOOP(x, config.virtual_thread_count) {
-    if(x < 0) { // x might overflow when testing extreme case
+    if (x < 0) {  // x might overflow when testing extreme case
       break;
     }
     atomicAdd(&outbuf[x % bufsize], 1);
   }
 }
-__global__ void Count2D(Cuda2DLaunchConfig config, int bufsize, int *outbuf) {
+__global__ void Count2D(Cuda2DLaunchConfig config, int bufsize, int* outbuf) {
   CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
-    if(x < 0) { // x might overflow when testing extreme case
+    if (x < 0) {  // x might overflow when testing extreme case
       break;
     }
     CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
-      if(y < 0) { // y might overflow when testing extreme case
+      if (y < 0) {  // y might overflow when testing extreme case
         break;
       }
       int idx = x * config.virtual_thread_count.y + y;
@@ -67,38 +65,39 @@ __global__ void Count2D(Cuda2DLaunchConfig config, int bufsize, int *outbuf) {
     }
   }
 }
-__global__ void Count3D(Cuda3DLaunchConfig config, int bufsize, int *outbuf) {
+__global__ void Count3D(Cuda3DLaunchConfig config, int bufsize, int* outbuf) {
   CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
-    if(x < 0) { // x might overflow when testing extreme case
+    if (x < 0) {  // x might overflow when testing extreme case
       break;
     }
     CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
-      if(y < 0) { // y might overflow when testing extreme case
+      if (y < 0) {  // y might overflow when testing extreme case
         break;
       }
       CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count, z) {
-        if(z < 0) { // z might overflow when testing extreme case
+        if (z < 0) {  // z might overflow when testing extreme case
           break;
         }
-        int idx = x * config.virtual_thread_count.y * config.virtual_thread_count.z
-                + y * config.virtual_thread_count.z + z;
+        int idx =
+            x * config.virtual_thread_count.y * config.virtual_thread_count.z +
+            y * config.virtual_thread_count.z + z;
         atomicAdd(&outbuf[idx % bufsize], 1);
       }
     }
   }
 }
 
-} // namespace
+}  // namespace
 
 class CudaLaunchConfigTest : public ::testing::Test {
-protected:
+ protected:
   const int bufsize = 1024;
-  int *outbuf = nullptr;
+  int* outbuf = nullptr;
   Eigen::CudaStreamDevice stream;
   GPUDevice d = GPUDevice(&stream);
 
   virtual void SetUp() {
-    cudaError_t err = cudaMallocManaged(&outbuf, sizeof(int)*bufsize);
+    cudaError_t err = cudaMallocManaged(&outbuf, sizeof(int) * bufsize);
     ASSERT_EQ(cudaSuccess, err) << cudaGetErrorString(err);
   }
 
@@ -110,7 +109,6 @@ protected:
 };
 
 TEST_F(CudaLaunchConfigTest, GetCudaLaunchConfig) {
-
   CudaLaunchConfig cfg;
 
   // test invalid inputs
@@ -166,11 +164,11 @@ TEST_F(CudaLaunchConfigTest, GetCudaLaunchConfig) {
   TEST_LAUNCH_PARAMETER(8191);
   TEST_LAUNCH_PARAMETER(8192);
   TEST_LAUNCH_PARAMETER(123456);
-  TEST_LAUNCH_PARAMETER(1 << 31 - 1); // max value of int
+  TEST_LAUNCH_PARAMETER(1 << 31 - 1);  // max value of int
   #undef TEST_LAUNCH_PARAMETER
 }
 
-bool operator==(const Cuda2DLaunchConfig &a, const Cuda2DLaunchConfig &b) {
+bool operator==(const Cuda2DLaunchConfig& a, const Cuda2DLaunchConfig& b) {
   return a.thread_per_block.x == b.thread_per_block.x &&
          a.thread_per_block.y == b.thread_per_block.y &&
          a.thread_per_block.z == b.thread_per_block.z &&
@@ -183,7 +181,6 @@ bool operator==(const Cuda2DLaunchConfig &a, const Cuda2DLaunchConfig &b) {
 }
 
 TEST_F(CudaLaunchConfigTest, GetCuda2DLaunchConfig) {
-
   Cuda2DLaunchConfig cfg;
   CudaLaunchConfig cfg1d;
 
@@ -252,7 +249,6 @@ TEST_F(CudaLaunchConfigTest, GetCuda2DLaunchConfig) {
 }
 
 TEST_F(CudaLaunchConfigTest, GetCuda3DLaunchConfig) {
-
   Cuda3DLaunchConfig cfg;
   CudaLaunchConfig cfg1d;
 
@@ -302,6 +298,6 @@ TEST_F(CudaLaunchConfigTest, GetCuda3DLaunchConfig) {
   #undef TEST_LAUNCH_PARAMETER
 }
 
-} // namespace tensorflow
+}  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA
