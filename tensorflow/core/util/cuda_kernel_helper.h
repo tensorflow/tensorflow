@@ -23,9 +23,79 @@ limitations under the License.
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/platform/types.h"
 
+// Usage of GetCudaLaunchConfig, GetCuda2DLaunchConfig, and GetCuda3DLaunchConfig:
+//
+// There are two versions of GetCudaLaunchConfig and GetCuda2DLaunchConfig, one
+// version uses heuristics without any knowledge of the device kernel, the other
+// version uses cudaOccupancyMaxPotentialBlockSize to determine the theoretical
+// launch parameters that maximize occupancy. Currently, only the maximum occupancy
+// version of GetCuda3DLaunchConfig is available.
+//
+// For large number of work elements, the convention is that each kernel would
+// iterate through its assigned range. The return value of GetCudaLaunchConfig is
+// struct CudaLaunchConfig, which contains all the information needed for the kernel
+// launch, including: virtual number of threads, the number of threads per block and
+// number of threads per block used inside <<< >>> of a kernel launch.
+// GetCuda2DLaunchConfig and GetCuda3DLaunchConfig does the same thing as
+// CudaLaunchConfig. The only difference is the dimension. The macros
+// CUDA_1D_KERNEL_LOOP and CUDA_AXIS_KERNEL_LOOP might be used to do inner loop.
+//
+/* Sample code:
+
+__global__ void MyKernel1D(CudaLaunchConfig config, other_args...) {
+  CUDA_1D_KERNEL_LOOP(x, config.virtual_thread_count) {
+    do_your_job_here;
+  }
+}
+
+__global__ void MyKernel2D(Cuda2DLaunchConfig config, other_args...) {
+  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
+    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
+      do_your_job_here;
+    }
+  }
+}
+
+__global__ void MyKernel3D(Cuda3DLaunchConfig config, other_args...) {
+  CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {
+    CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {
+      CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count, z) {
+        do_your_job_here;
+      }
+    }
+  }
+}
+
+void MyDriverFunc(const GPUDevice &d) {
+  // use heuristics
+  CudaLaunchConfig cfg1 = GetCudaLaunchConfig(10240, d);
+  MyKernel1D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg1, other_args...);
+  Cuda2DLaunchConfig cfg2 = GetCuda2DLaunchConfig(10240, 10240, d);
+  MyKernel2D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg2, other_args...);
+  Cuda3DLaunchConfig cfg3 = GetCuda3DLaunchConfig(4096, 4096, 100, d);
+  MyKernel3D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg3, other_args...);
+
+  // maximize occupancy
+  CudaLaunchConfig cfg4 = GetCudaLaunchConfig(10240, d, MyKernel1D, 0 );
+  MyKernel1D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg4, other_args...);
+  Cuda2DLaunchConfig cfg5 = GetCuda2DLaunchConfig(10240, 10240, d, MyKernel1D, 0 );
+  MyKernel2D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg5, other_args...);
+  Cuda3DLaunchConfig cfg6 = GetCuda3DLaunchConfig(4096, 4096, 100, d, MyKernel1D, 0 );
+  MyKernel3D <<<config.block_count, config.thread_per_block, 0, d.stream()>>> (cfg6, other_args...);
+}
+
+// See the test for this for more example:
+// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/util/cuda_kernel_helper_test.cu.cc
+
+*/
+
 #define CUDA_1D_KERNEL_LOOP(i, n)                            \
   for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < n; \
        i += blockDim.x * gridDim.x)
+
+#define CUDA_AXIS_KERNEL_LOOP(i, n, axis)                      \
+  for (int i = blockIdx.axis * blockDim.axis + threadIdx.axis; \
+       i < n.axis; i += blockDim.axis * gridDim.axis)
 
 #define DIV_UP(a,b) ( ( (a) + (b) - 1 ) / (b) )
 
@@ -98,9 +168,9 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
 }
 
 struct Cuda2DLaunchConfig {
-  dim3 virtual_thread_count;
-  dim3 thread_per_block;
-  dim3 block_count;
+  dim3 virtual_thread_count = dim3(0,0,0);
+  dim3 thread_per_block = dim3(0,0,0);
+  dim3 block_count = dim3(0,0,0);
 };
 
 inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
@@ -128,7 +198,6 @@ inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
 
   config.block_count = dim3(
       grid_x, std::min(max_blocks / grid_x, std::max(ydim / block_rows, 1)), 1);
-
   return config;
 }
 
@@ -177,7 +246,6 @@ inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(int xdim, int ydim, int zdim,
   config.virtual_thread_count = dim3(xdim, ydim, zdim);
   config.thread_per_block = dim3(threadsx, threadsy, threadsz);
   config.block_count = dim3(blocksx, blocksy, blocksz);
-
   return config;
 }
 
