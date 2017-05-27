@@ -279,9 +279,9 @@ class DebugNumericSummaryOp : public BaseDebugOp {
     // Equal to negative_count + zero_count + positive_count.
     int64 non_inf_nan_count = 0;
 
+    const TensorShape& input_shape = input.shape();
     if (input.IsInitialized()) {
       is_initialized = 1;
-      const TensorShape& input_shape = input.shape();
       const T* input_flat = input.template flat<T>().data();
 
       element_count = input_shape.num_elements();
@@ -338,7 +338,7 @@ class DebugNumericSummaryOp : public BaseDebugOp {
       }
     }
 
-    TensorShape shape({12});
+    TensorShape shape({14 + input_shape.dims()});
     OP_REQUIRES_OK(context, context->allocate_output(0, shape, &output_tensor));
     output_tensor->vec<double>()(0) = static_cast<double>(is_initialized);
     output_tensor->vec<double>()(1) = static_cast<double>(element_count);
@@ -352,6 +352,13 @@ class DebugNumericSummaryOp : public BaseDebugOp {
     output_tensor->vec<double>()(9) = max;
     output_tensor->vec<double>()(10) = mean;
     output_tensor->vec<double>()(11) = variance;
+
+    output_tensor->vec<double>()(12) = static_cast<double>(input.dtype());
+    output_tensor->vec<double>()(13) = static_cast<double>(input_shape.dims());
+    for (size_t d = 0; d < input_shape.dims(); ++d) {
+      output_tensor->vec<double>()(14 + d) =
+          static_cast<double>(input_shape.dim_sizes()[d]);
+    }
 
     bool mute = mute_if_healthy_ && nan_count == 0 && negative_inf_count == 0 &&
                 positive_inf_count == 0;

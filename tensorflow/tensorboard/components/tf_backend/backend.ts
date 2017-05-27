@@ -87,6 +87,8 @@ export interface HealthPill {
   device_name: string;
   node_name: string;
   output_slot: number;
+  dtype: string;
+  shape: number[];
   value: number[];
 }
 

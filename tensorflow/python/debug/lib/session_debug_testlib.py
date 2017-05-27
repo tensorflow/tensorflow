@@ -1189,7 +1189,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       self.assertAllClose([[
           1.0, 18.0, 4.0, 2.0, 2.0, 3.0, 2.0, 5.0, -3.0, 7.0, 0.85714286,
-          8.97959184
+          8.97959184, 1.0, 1.0, 18.0
       ]], dump.get_tensors("numeric_summary/a/read", 0, "DebugNumericSummary"))
 
   def testDebugNumericSummaryOnUninitializedTensorGivesCorrectResult(self):
@@ -1217,6 +1217,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                                          "DebugNumericSummary")[0]
       self.assertAllClose([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                           numeric_summary[0:8])
+      # Check dtype (index 12), ndims (index 13) and dimension sizes (index
+      # 14+).
+      self.assertAllClose([1.0, 1.0, 1.0], numeric_summary[12:])
       self.assertTrue(np.isinf(numeric_summary[8]))
       self.assertGreater(numeric_summary[8], 0.0)
       self.assertTrue(np.isinf(numeric_summary[9]))
@@ -1349,14 +1352,14 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       #   debug ops with mute_if_healthy=false attribute during validation.
 
       self.assertEqual(2, dump.size)
-      self.assertAllClose(
-          [[1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, np.inf, -np.inf, np.nan,
-            np.nan]],
-          dump.get_tensors("x", 0, "DebugNumericSummary"))
-      self.assertAllClose(
-          [[1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.inf, -np.inf, np.nan,
-            np.nan]],
-          dump.get_tensors("y", 0, "DebugNumericSummary"))
+      self.assertAllClose([[
+          1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, np.inf, -np.inf, np.nan,
+          np.nan, 1.0, 0.0
+      ]], dump.get_tensors("x", 0, "DebugNumericSummary"))
+      self.assertAllClose([[
+          1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.inf, -np.inf, np.nan,
+          np.nan, 1.0, 0.0
+      ]], dump.get_tensors("y", 0, "DebugNumericSummary"))
 
       # Another run with the default mute_if_healthy (false) value should
       # dump all the tensors.
@@ -1402,9 +1405,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       #   debug ops with mute_if_healthy=false attribute during validation.
 
       self.assertEqual(1, dump.size)
-      self.assertAllClose(
-          [[1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 12.0, 20.0, 16.0, 16.0]],
-          dump.get_tensors("x", 0, "DebugNumericSummary"))
+      self.assertAllClose([[
+          1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 12.0, 20.0, 16.0, 16.0, 1.0,
+          1.0, 2.0]], dump.get_tensors("x", 0, "DebugNumericSummary"))
 
   def testDebugQueueOpsDoesNotoErrorOut(self):
     with session.Session() as sess:

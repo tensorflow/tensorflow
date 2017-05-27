@@ -26,6 +26,7 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
 from tensorflow.tensorboard.backend.event_processing import directory_watcher
 from tensorflow.tensorboard.backend.event_processing import event_file_loader
@@ -36,8 +37,8 @@ namedtuple = collections.namedtuple
 ScalarEvent = namedtuple('ScalarEvent', ['wall_time', 'step', 'value'])
 
 HealthPillEvent = namedtuple('HealthPillEvent', [
-    'wall_time', 'step', 'device_name', 'node_name', 'output_slot', 'value'
-])
+    'wall_time', 'step', 'device_name', 'node_name', 'output_slot', 'dtype',
+    'shape', 'value'])
 
 CompressedHistogramEvent = namedtuple('CompressedHistogramEvent',
                                       ['wall_time', 'step',
@@ -685,7 +686,7 @@ class EventAccumulator(object):
       device_name: The name of the node's device.
       node_name: The name of the node for this health pill.
       output_slot: The output slot for this health pill.
-      elements: An ND array of 12 floats. The elements of the health pill.
+      elements: An ND array of 20 floats. The elements of the health pill.
     """
     # Key by the node name for fast retrieval of health pills by node name. The
     # array is cast to a list so that it is JSON-able. The debugger data plugin
@@ -697,6 +698,8 @@ class EventAccumulator(object):
                                    device_name=device_name,
                                    node_name=node_name,
                                    output_slot=output_slot,
+                                   dtype=repr(dtypes.as_dtype(elements[12])),
+                                   shape=list(elements[14:]),
                                    value=list(elements)))
 
   def _Purge(self, event, by_tags):

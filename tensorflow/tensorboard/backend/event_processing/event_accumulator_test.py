@@ -281,10 +281,14 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """HealthPills should be properly inserted into EventAccumulator."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
+    health_pill_elements_1 = list(range(1, 13)) + [
+        float(types_pb2.DT_FLOAT), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
     gen.AddHealthPill(13371337, 41, '/job:localhost/replica:0/task:0/cpu:0',
-                      'Add', 0, range(1, 13))
+                      'Add', 0, health_pill_elements_1)
+    health_pill_elements_2 = list(range(42, 54)) + [
+        float(types_pb2.DT_DOUBLE), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
     gen.AddHealthPill(13381338, 42, '/job:localhost/replica:0/task:0/gpu:0',
-                      'Add', 1, range(42, 54))
+                      'Add', 1, health_pill_elements_2)
     acc.Reload()
 
     # Retrieve the health pills for each node name.
@@ -297,7 +301,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
             device_name='/job:localhost/replica:0/task:0/cpu:0',
             node_name='Add',
             output_slot=0,
-            value=range(1, 13)), gotten_events[0])
+            dtype='tf.float32',
+            shape=[1, 2],
+            value=health_pill_elements_1), gotten_events[0])
     self._compareHealthPills(
         ea.HealthPillEvent(
             wall_time=13381338,
@@ -305,15 +311,21 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
             step=42,
             node_name='Add',
             output_slot=1,
-            value=range(42, 54)), gotten_events[1])
+            dtype='tf.float64',
+            shape=[3, 4],
+            value=health_pill_elements_2), gotten_events[1])
 
   def testGetOpsWithHealthPills(self):
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
+    health_pill_elements_1 = list(range(1, 13)) + [
+        float(types_pb2.DT_FLOAT), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
     gen.AddHealthPill(13371337, 41, '/job:localhost/replica:0/task:0/cpu:0',
-                      'Add', 0, range(1, 13))
+                      'Add', 0, health_pill_elements_1)
+    health_pill_elements_2 = list(range(42, 54)) + [
+        float(types_pb2.DT_DOUBLE), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
     gen.AddHealthPill(13381338, 42, '/job:localhost/replica:0/task:0/cpu:0',
-                      'MatMul', 1, range(42, 54))
+                      'MatMul', 1, health_pill_elements_2)
     acc.Reload()
     self.assertItemsEqual(['Add', 'MatMul'], acc.GetOpsWithHealthPills())
 

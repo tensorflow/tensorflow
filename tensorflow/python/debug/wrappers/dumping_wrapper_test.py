@@ -208,7 +208,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     dump = debug_data.DebugDumpDir(dump_dirs[0])
 
     self.assertAllClose([10.0], dump.get_tensors("v", 0, "DebugIdentity"))
-    self.assertEqual(12,
+    self.assertEqual(14,
                      len(dump.get_tensors("v", 0, "DebugNumericSummary")[0]))
 
   def testDumpingWithWatchFnWithNonDefaultDebugOpsWorks(self):
@@ -235,7 +235,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     dump = debug_data.DebugDumpDir(dump_dirs[0])
 
     self.assertAllClose([10.0], dump.get_tensors("v", 0, "DebugIdentity"))
-    self.assertEqual(12,
+    self.assertEqual(14,
                      len(dump.get_tensors("v", 0, "DebugNumericSummary")[0]))
 
     dumped_nodes = [dump.node_name for dump in dump.dumped_tensor_data]
