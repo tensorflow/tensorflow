@@ -18,7 +18,7 @@ py_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard/backend:http_util",
         "//tensorflow/tensorboard/plugins:base_plugin",
         "@org_mozilla_bleach",
@@ -36,11 +36,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":text_plugin",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard/backend:application",
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
         "@org_pocoo_werkzeug//:werkzeug",

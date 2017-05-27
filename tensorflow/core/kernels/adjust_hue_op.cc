@@ -255,8 +255,8 @@ class AdjustHueOp<GPUDevice> : public AdjustHueOpBase {
   explicit AdjustHueOp(OpKernelConstruction* context)
       : AdjustHueOpBase(context) {}
 
-  virtual void DoCompute(OpKernelContext* context,
-                         const ComputeOptions& options) override {
+  void DoCompute(OpKernelContext* context,
+                 const ComputeOptions& options) override {
     const Tensor* input = options.input;
     const Tensor* delta = options.delta;
     Tensor* output = options.output;

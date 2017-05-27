@@ -108,3 +108,20 @@ cc_test(
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
+
+cc_test(
+    name = "grappler_item_builder_test",
+    srcs = ["grappler_item_builder_test.cc"],
+    deps = [
+        ":grappler_item_builder",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:functional_ops",
+        "//tensorflow/cc:grad_testutil",
+        "//tensorflow/cc:gradients",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+    ],
+)

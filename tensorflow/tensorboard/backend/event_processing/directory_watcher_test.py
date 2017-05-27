@@ -22,8 +22,8 @@ from __future__ import print_function
 import os
 import shutil
 
-from tensorflow.python.framework import test_util
-from tensorflow.python.platform import gfile
+import tensorflow as tf
+
 from tensorflow.python.platform import googletest
 from tensorflow.tensorboard.backend.event_processing import directory_watcher
 from tensorflow.tensorboard.backend.event_processing import io_wrapper
@@ -47,7 +47,7 @@ class _ByteLoader(object):
         return
 
 
-class DirectoryWatcherTest(test_util.TensorFlowTestCase):
+class DirectoryWatcherTest(tf.test.TestCase):
 
   def setUp(self):
     # Put everything in a directory so it's easier to delete.
@@ -198,12 +198,12 @@ class DirectoryWatcherTest(test_util.TensorFlowTestCase):
       self.stubs.Set(io_wrapper, stub_name,
                      FakeFactory(getattr(io_wrapper, stub_name)))
     for stub_name in ['IsDirectory', 'Exists', 'Stat']:
-      self.stubs.Set(gfile, stub_name,
-                     FakeFactory(getattr(gfile, stub_name)))
+      self.stubs.Set(tf.gfile, stub_name,
+                     FakeFactory(getattr(tf.gfile, stub_name)))
 
     with self.assertRaises((IOError, OSError)):
       self._LoadAllEvents()
 
 
 if __name__ == '__main__':
-  googletest.main()
+  tf.test.main()

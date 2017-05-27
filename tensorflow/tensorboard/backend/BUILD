@@ -16,7 +16,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":json_util",
-        "//tensorflow/python:util",
+        "//tensorflow:tensorflow_py",
         "@org_pocoo_werkzeug//:werkzeug",
         "@six_archive//:six",
     ],
@@ -29,7 +29,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":http_util",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow:tensorflow_py",
         "@org_pocoo_werkzeug//:werkzeug",
         "@six_archive//:six",
     ],
@@ -40,7 +40,9 @@ py_library(
     srcs = ["json_util.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python:util"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 py_test(
@@ -50,7 +52,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":json_util",
-        "//tensorflow/python:platform_test",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -62,7 +64,7 @@ py_library(
     deps = [
         ":http_util",
         ":process_graph",
-        "//tensorflow/python:platform",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard/backend/event_processing:event_accumulator",
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
         "@org_pocoo_werkzeug//:werkzeug",
@@ -78,13 +80,7 @@ py_test(
     tags = ["manual"],
     deps = [
         ":application",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
-        "//tensorflow/python:training",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard",
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
         "//tensorflow/tensorboard/plugins:base_plugin",
@@ -97,7 +93,9 @@ py_library(
     srcs = ["process_graph.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/python:util"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 filegroup(

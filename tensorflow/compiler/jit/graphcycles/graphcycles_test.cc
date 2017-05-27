@@ -230,7 +230,7 @@ TEST(GraphCycles, RandomizedTest) {
           int new_node = graph_cycles.NewNode();
           ASSERT_NE(-1, new_node);
           VLOG(1) << "adding node " << new_node;
-          ASSERT_EQ(0, graph_cycles.GetNodeData(new_node));
+          ASSERT_EQ(nullptr, graph_cycles.GetNodeData(new_node));
           graph_cycles.SetNodeData(
               new_node, reinterpret_cast<void *>(
                             static_cast<intptr_t>(new_node + kDataOffset)));
@@ -343,7 +343,7 @@ TEST(GraphCycles, RandomizedTest) {
         ASSERT_NE(-1, new_node);
         VLOG(1) << "adding node " << new_node;
         ASSERT_GE(new_node, 0);
-        ASSERT_EQ(0, graph_cycles.GetNodeData(new_node));
+        ASSERT_EQ(nullptr, graph_cycles.GetNodeData(new_node));
         graph_cycles.SetNodeData(
             new_node, reinterpret_cast<void *>(
                           static_cast<intptr_t>(new_node + kDataOffset)));

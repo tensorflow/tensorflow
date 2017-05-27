@@ -37,13 +37,8 @@
 
 namespace tensorflow {
 
-using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
-
-using tensorforest::CHILDREN_INDEX;
-using tensorforest::FEATURE_INDEX;
-using tensorforest::LEAF_NODE;
 
 using tensorforest::CheckTensorBounds;
 using tensorforest::LeftProbability;

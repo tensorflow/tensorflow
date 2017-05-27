@@ -23,21 +23,14 @@ import imghdr
 import math
 import os
 import numpy as np
-
 from six import BytesIO
+import tensorflow as tf
 from werkzeug import wrappers
+
 from google.protobuf import json_format
 from google.protobuf import text_format
-from tensorflow.python.client import session
-from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
-from tensorflow.python.ops import image_ops
-from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.pywrap_tensorflow import NewCheckpointReader
 from tensorflow.python.summary import plugin_asset
-from tensorflow.python.training.saver import checkpoint_exists
-from tensorflow.python.training.saver import latest_checkpoint
 from tensorflow.tensorboard.backend.http_util import Respond
 from tensorflow.tensorboard.plugins.base_plugin import TBPlugin
 from tensorflow.tensorboard.plugins.projector import projector_config_pb2
@@ -45,6 +38,10 @@ from tensorflow.tensorboard.plugins.projector import projector_config_pb2
 # The prefix of routes provided by this plugin.
 _PLUGIN_PREFIX_ROUTE = 'projector'
 
+# FYI - the PROJECTOR_FILENAME is hardcoded in the visualize_embeddings
+# method in tf.contrib.tensorboard.plugins.projector module.
+# TODO(dandelion): Fix duplication when we find a permanent home for the
+# projector module.
 PROJECTOR_FILENAME = 'projector_config.pbtxt'
 _PLUGIN_NAME = 'org_tensorflow_tensorboard_projector'
 _PLUGINS_DIR = 'plugins'
@@ -491,9 +488,9 @@ class ProjectorPlugin(TBPlugin):
 
       # Sanity check for the checkpoint file.
       if (config.model_checkpoint_path and
-          not checkpoint_exists(config.model_checkpoint_path)):
-        logging.warning('Checkpoint file "%s" not found',
-                        config.model_checkpoint_path)
+          not tf.train.checkpoint_exists(config.model_checkpoint_path)):
+        tf.logging.warning('Checkpoint file "%s" not found',
+                           config.model_checkpoint_path)
         continue
       configs[run_name] = config
       config_fpaths[run_name] = config_fpath
@@ -507,9 +504,10 @@ class ProjectorPlugin(TBPlugin):
     reader = None
     if config.model_checkpoint_path:
       try:
-        reader = NewCheckpointReader(config.model_checkpoint_path)
+        reader = tf.pywrap_tensorflow.NewCheckpointReader(
+            config.model_checkpoint_path)
       except Exception:  # pylint: disable=broad-except
-        logging.warning('Failed reading "%s"', config.model_checkpoint_path)
+        tf.logging.warning('Failed reading "%s"', config.model_checkpoint_path)
     self.readers[run] = reader
     return reader
 
@@ -655,7 +653,7 @@ class ProjectorPlugin(TBPlugin):
                          400)
         try:
           tensor = reader.get_tensor(name)
-        except errors.InvalidArgumentError as e:
+        except tf.errors.InvalidArgumentError as e:
           return Respond(request, str(e), 'text/plain', 400)
 
       self.tensor_cache.set(name, tensor)
@@ -738,12 +736,12 @@ class ProjectorPlugin(TBPlugin):
 
 def _find_latest_checkpoint(dir_path):
   try:
-    ckpt_path = latest_checkpoint(dir_path)
+    ckpt_path = tf.train.latest_checkpoint(dir_path)
     if not ckpt_path:
       # Check the parent directory.
-      ckpt_path = latest_checkpoint(os.path.join(dir_path, os.pardir))
+      ckpt_path = tf.train.latest_checkpoint(os.path.join(dir_path, os.pardir))
     return ckpt_path
-  except errors.NotFoundError:
+  except tf.errors.NotFoundError:
     return None
 
 
@@ -760,9 +758,9 @@ def _make_sprite_image(thumbnails, thumbnail_dim):
       raise ValueError('Each element of "thumbnails" must be a 3D `ndarray`')
     thumbnails = np.array(thumbnails)
 
-  with ops.Graph().as_default():
-    s = session.Session()
-    resized_images = image_ops.resize_images(thumbnails, thumbnail_dim).eval(
+  with tf.Graph().as_default():
+    s = tf.Session()
+    resized_images = tf.image.resize_images(thumbnails, thumbnail_dim).eval(
         session=s)
     images_per_row = int(math.ceil(math.sqrt(len(thumbnails))))
     thumb_height = thumbnail_dim[0]
@@ -780,4 +778,4 @@ def _make_sprite_image(thumbnails, thumbnail_dim):
       top_end = top_start + thumb_height
       master[top_start:top_end, left_start:left_end, :] = image
 
-    return image_ops.encode_png(master).eval(session=s)
+    return tf.image.encode_png(master).eval(session=s)

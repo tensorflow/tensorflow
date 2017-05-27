@@ -28,7 +28,6 @@ using ::tensorflow::protobuf::EnumDescriptor;
 using ::tensorflow::protobuf::FieldDescriptor;
 using ::tensorflow::protobuf::FieldOptions;
 using ::tensorflow::protobuf::FileDescriptor;
-using ::tensorflow::protobuf::OneofDescriptor;
 
 namespace tensorflow {
 

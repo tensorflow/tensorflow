@@ -1571,7 +1571,7 @@ class MetaGraphTest(test.TestCase):
       collection_def = meta_graph_def0.collection_def["savers"]
       kind = collection_def.WhichOneof("kind")
       self.assertEqual(kind, "bytes_list")
-      # Verifies that there are 3 entries in SAVERS collection.
+      # Verifies that there are 2 entries in SAVERS collection.
       savers = getattr(collection_def, kind)
       self.assertEqual(2, len(savers.value))
 
@@ -1606,6 +1606,60 @@ class MetaGraphTest(test.TestCase):
     test_dir = self._get_test_dir("saver_collection")
     self._testMultiSaverCollectionSave(test_dir)
     self._testMultiSaverCollectionRestore(test_dir)
+
+  def testClearExtraneousSavers(self):
+    test_dir = self._get_test_dir("clear_extraneous_savers")
+    filename = os.path.join(test_dir, "metafile")
+    saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
+    saver1_ckpt = os.path.join(test_dir, "saver1.ckpt")
+    with self.test_session(graph=ops_lib.Graph()) as sess:
+      # Creates a graph.
+      v0 = variables.Variable([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], name="v0")
+      v1 = variables.Variable(11.0, name="v1")
+
+      # Creates 2 savers.
+      saver0 = saver_module.Saver({"v0": v0}, name="saver0")
+      saver1 = saver_module.Saver({"v1": v1}, name="saver1")
+      ops_lib.add_to_collection("savers", saver0)
+      ops_lib.add_to_collection("savers", saver1)
+      variables.global_variables_initializer().run()
+
+      # Saves to different checkpoints.
+      saver0.save(sess, saver0_ckpt)
+      saver1.save(sess, saver1_ckpt)
+
+      # Generates MetaGraphDef.
+      meta_graph_def = saver_module.export_meta_graph(filename)
+      meta_graph_def0 = saver0.export_meta_graph()
+      meta_graph_def1 = saver1.export_meta_graph(clear_extraneous_savers=True)
+
+      # Verifies that there is no saver_def in meta_graph_def.
+      self.assertFalse(meta_graph_def.HasField("saver_def"))
+      # Verifies that there is saver_def in meta_graph_def0 and 1.
+      self.assertTrue(meta_graph_def0.HasField("saver_def"))
+      self.assertTrue(meta_graph_def1.HasField("saver_def"))
+
+      # Verifies SAVERS is saved as bytes_list for meta_graph_def.
+      collection_def = meta_graph_def.collection_def["savers"]
+      kind = collection_def.WhichOneof("kind")
+      self.assertEqual(kind, "bytes_list")
+
+      # Verifies that there are 2 entries in SAVERS collection.
+      savers = getattr(collection_def, kind)
+      self.assertEqual(2, len(savers.value))
+
+      # Verifies SAVERS collection is saved as bytes_list for meta_graph_def1.
+      collection_def = meta_graph_def1.collection_def["savers"]
+      kind = collection_def.WhichOneof("kind")
+      self.assertEqual(kind, "bytes_list")
+
+      # Verifies that there is 1 entry in SAVERS collection.
+      savers = getattr(collection_def, kind)
+      self.assertEqual(1, len(savers.value))
+
+      # Verifies that saver0 graph nodes are omitted from the saver1 export
+      self.assertEqual(29, len(meta_graph_def0.graph_def.node))
+      self.assertEqual(19, len(meta_graph_def1.graph_def.node))
 
   def testBinaryAndTextFormat(self):
     test_dir = self._get_test_dir("binary_and_text")
@@ -1981,14 +2035,13 @@ class WriteGraphTest(test.TestCase):
     self.assertEqual(path, truth)
     self.assertTrue(os.path.exists(path))
 
-
   def testRecursiveCreate(self):
     test_dir = self._get_test_dir("deep_dir")
     variables.Variable([[1, 2, 3], [4, 5, 6]], dtype=dtypes.float32, name="v0")
     path = graph_io.write_graph(ops_lib.get_default_graph().as_graph_def(),
                                 os.path.join(test_dir, "l1", "l2", "l3"),
                                 "graph.pbtxt")
-    truth = os.path.join(test_dir, 'l1', 'l2', 'l3', "graph.pbtxt")
+    truth = os.path.join(test_dir, "l1", "l2", "l3", "graph.pbtxt")
     self.assertEqual(path, truth)
     self.assertTrue(os.path.exists(path))
 
