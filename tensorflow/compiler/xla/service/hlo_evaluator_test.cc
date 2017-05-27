@@ -23,10 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -145,7 +143,7 @@ TEST_F(HloEvaluatorTest, DoesDivide) {
 // element-wise abs op with 1 operand.
 TEST_F(HloEvaluatorTest, DoesAbs) {
   auto operand = LiteralUtil::CreateR2<int64>({{1, -20}, {-100, 4}});
-  const Shape& shape = ShapeUtil::MakeShape(S64, {2, 2});
+  Shape shape = ShapeUtil::MakeShape(S64, {2, 2});
   auto c1 = HloInstruction::CreateConstant(std::move(operand));
   auto instruction =
       HloInstruction::CreateUnary(shape, HloOpcode::kAbs, c1.get());
@@ -156,29 +154,7 @@ TEST_F(HloEvaluatorTest, DoesAbs) {
   auto expected = LiteralUtil::CreateR2<int64>({{1, 20}, {100, 4}});
 
   EXPECT_TRUE(LiteralUtil::Equal(*result, *expected));
-
-  // For R0 literal.
-  const Shape& r0 = ShapeUtil::MakeShape(F32, {});
-  operand = LiteralUtil::CreateR0<float>(-1.0f);
-  c1 = HloInstruction::CreateConstant(std::move(operand));
-  instruction = HloInstruction::CreateUnary(r0, HloOpcode::kAbs, c1.get());
-  result = evaluator_->Evaluate(instruction.get()).ConsumeValueOrDie();
-  expected = LiteralUtil::CreateR0<float>(1.0f);
-
-  EXPECT_TRUE(LiteralUtil::Equal(*result, *expected));
-
-  // For R1 literal with dimension of size 0.
-  Shape empty_r1 = ShapeUtil::MakeShape(F32, {0});
-  operand = LiteralUtil::CreateR1<float>({});
-  c1 = HloInstruction::CreateConstant(std::move(operand));
-  instruction =
-      HloInstruction::CreateUnary(empty_r1, HloOpcode::kAbs, c1.get());
-
-  result = evaluator_->Evaluate(instruction.get()).ConsumeValueOrDie();
-  expected = LiteralUtil::CreateR1<float>({});
-
-  EXPECT_TRUE(LiteralUtil::Equal(*result, *expected));
-}  // namespace
+}
 
 // Verifies that HloEvaluator evaluates a HLO Computation with non-parameter nor
 // constant operands.
@@ -209,36 +185,6 @@ TEST_F(HloEvaluatorTest, DoesTraveseInstructions) {
   auto expected = LiteralUtil::CreateR2<int64>({{4, -16}, {-196, 12}});
 
   EXPECT_TRUE(LiteralUtil::Equal(*result, *expected));
-}
-
-// Verifies Reshape operation is correctly evaluated.
-TEST_F(HloEvaluatorTest, DoesReshape) {
-  HloComputation::Builder builder(
-      ::testing::UnitTest::GetInstance()->current_test_info()->name());
-
-  const int64 dimensions[] = {11, 8, 7, 5, 9};
-  TF_ASSIGN_OR_ASSERT_OK(auto literal,
-                         LiteralTestUtil::CreateRandomLiteral<F32>(
-                             ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
-  auto literal_clone = LiteralUtil::CloneToUnique(*literal);
-  HloInstruction* literal_instruction = builder.AddInstruction(
-      HloInstruction::CreateConstant(std::move(literal)));
-
-  Shape shape = ShapeUtil::MakeShape(F32, {8, 7, 11, 9, 5});
-  const int64 permutation[] = {1, 2, 0, 4, 3};
-  builder.AddInstruction(
-      HloInstruction::CreateTranspose(shape, literal_instruction, permutation));
-
-  std::unique_ptr<Literal> result =
-      evaluator_->Evaluate(builder.Build().get(), {}).ConsumeValueOrDie();
-
-  using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
-  LiteralUtil::EachCell<NativeT>(
-      *result, [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT value) {
-        std::vector<int64> rindexes = Permute(permutation, indices);
-        EXPECT_TRUE(value ==
-                    LiteralUtil::Get<NativeT>(*literal_clone, rindexes));
-      });
 }
 
 }  // namespace

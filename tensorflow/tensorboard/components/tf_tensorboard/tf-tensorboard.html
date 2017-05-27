@@ -316,7 +316,7 @@ allows the user to toggle between various dashboards.
         return dashboard;
       },
       ready: function() {
-        TF.Globals.USE_HASH = this.useHash;
+        TF.Globals.setUseHash(this.useHash);
 
         this._getModeFromHash();
         window.addEventListener('hashchange', function() {

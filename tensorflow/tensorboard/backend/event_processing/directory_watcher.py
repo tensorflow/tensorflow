@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import bisect
 
-from tensorflow.python.framework import errors
-from tensorflow.python.platform import gfile
-from tensorflow.python.platform import tf_logging as logging
+import tensorflow as tf
+
+
 from tensorflow.tensorboard.backend.event_processing import io_wrapper
 
 
@@ -87,8 +87,8 @@ class DirectoryWatcher(object):
     try:
       for event in self._LoadInternal():
         yield event
-    except errors.OpError:
-      if not gfile.Exists(self._directory):
+    except tf.errors.OpError:
+      if not tf.gfile.Exists(self._directory):
         raise DirectoryDeletedError(
             'Directory %s has been permanently deleted' % self._directory)
 
@@ -114,7 +114,7 @@ class DirectoryWatcher(object):
 
       next_path = self._GetNextPath()
       if not next_path:
-        logging.info('No path found after %s', self._path)
+        tf.logging.info('No path found after %s', self._path)
         # Current path is empty and there are no new paths, so we're done.
         return
 
@@ -137,8 +137,8 @@ class DirectoryWatcher(object):
       for event in self._loader.Load():
         yield event
 
-      logging.info('Directory watcher advancing from %s to %s', self._path,
-                   next_path)
+      tf.logging.info('Directory watcher advancing from %s to %s', self._path,
+                      next_path)
 
       # Advance to the next path and start over.
       self._SetPath(next_path)
@@ -181,11 +181,11 @@ class DirectoryWatcher(object):
     if old_path and not io_wrapper.IsGCSPath(old_path):
       try:
         # We're done with the path, so store its size.
-        size = gfile.Stat(old_path).length
-        logging.debug('Setting latest size of %s to %d', old_path, size)
+        size = tf.gfile.Stat(old_path).length
+        tf.logging.debug('Setting latest size of %s to %d', old_path, size)
         self._finalized_sizes[old_path] = size
-      except errors.OpError as e:
-        logging.error('Unable to get size of %s: %s', old_path, e)
+      except tf.errors.OpError as e:
+        tf.logging.error('Unable to get size of %s: %s', old_path, e)
 
     self._path = path
     self._loader = self._loader_factory(path)
@@ -230,15 +230,15 @@ class DirectoryWatcher(object):
   def _HasOOOWrite(self, path):
     """Returns whether the path has had an out-of-order write."""
     # Check the sizes of each path before the current one.
-    size = gfile.Stat(path).length
+    size = tf.gfile.Stat(path).length
     old_size = self._finalized_sizes.get(path, None)
     if size != old_size:
       if old_size is None:
-        logging.error('File %s created after file %s even though it\'s '
-                      'lexicographically earlier', path, self._path)
+        tf.logging.error('File %s created after file %s even though it\'s '
+                         'lexicographically earlier', path, self._path)
       else:
-        logging.error('File %s updated even though the current file is %s',
-                      path, self._path)
+        tf.logging.error('File %s updated even though the current file is %s',
+                         path, self._path)
       return True
     else:
       return False

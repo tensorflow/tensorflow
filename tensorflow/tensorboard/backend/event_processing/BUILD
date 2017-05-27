@@ -14,7 +14,7 @@ py_library(
     srcs = ["io_wrapper.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:platform",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -24,8 +24,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":io_wrapper",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -36,9 +35,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":directory_watcher",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -55,7 +52,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":reservoir",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -63,13 +60,7 @@ py_library(
     name = "event_file_loader",
     srcs = ["event_file_loader.py"],
     srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:pywrap_tensorflow",
-        "//tensorflow/python:util",
-    ],
+    deps = ["//tensorflow:tensorflow_py"],
 )
 
 py_test(
@@ -79,7 +70,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":event_file_loader",
-        "//tensorflow/python:client_testlib",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -93,10 +84,7 @@ py_library(
         ":event_file_loader",
         ":plugin_asset_util",
         ":reservoir",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -107,13 +95,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":event_accumulator",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
-        "//tensorflow/python:training",
-        "//tensorflow/python:util",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -126,9 +108,7 @@ py_library(
         ":directory_watcher",
         ":event_accumulator",
         ":io_wrapper",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow:tensorflow_py",
         "@six_archive//:six",
     ],
 )
@@ -141,9 +121,7 @@ py_test(
     deps = [
         ":event_accumulator",
         ":event_multiplexer",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -152,7 +130,7 @@ py_library(
     srcs = ["plugin_asset_util.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:platform",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -164,10 +142,7 @@ py_test(
     deps = [
         ":event_multiplexer",
         ":plugin_asset_util",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -178,10 +153,7 @@ py_library(
     deps = [
         ":event_accumulator",
         ":event_multiplexer",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:util",
+        "//tensorflow:tensorflow_py",
     ],
 )
 
@@ -192,11 +164,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":event_file_inspector",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:training",
+        "//tensorflow:tensorflow_py",
     ],
 )
 

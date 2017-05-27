@@ -24,18 +24,13 @@ import os.path
 
 from six import StringIO
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
 
-from tensorflow.python.client import session
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import test
-from tensorflow.python.summary import summary
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 from tensorflow.tensorboard.plugins.scalars import scalars_plugin
 
 
-class ScalarsPluginTest(test.TestCase):
+class ScalarsPluginTest(tf.test.TestCase):
 
   _STEPS = 99
 
@@ -62,18 +57,18 @@ class ScalarsPluginTest(test.TestCase):
       (use_scalars, use_histogram) = (False, True)
     else:
       assert False, 'Invalid run name: %r' % run_name
-    ops.reset_default_graph()
-    sess = session.Session()
+    tf.reset_default_graph()
+    sess = tf.Session()
     if use_scalars:
-      scalar_placeholder = array_ops.placeholder(dtypes.int64)
-      summary.scalar(self._SCALAR_TAG, scalar_placeholder)
+      scalar_placeholder = tf.placeholder(tf.int64)
+      tf.summary.scalar(self._SCALAR_TAG, scalar_placeholder)
     if use_histogram:
-      histogram_placeholder = array_ops.placeholder(dtypes.float32, shape=[3])
-      summary.histogram(self._HISTOGRAM_TAG, histogram_placeholder)
-    summ = summary.merge_all()
+      histogram_placeholder = tf.placeholder(tf.float32, shape=[3])
+      tf.summary.histogram(self._HISTOGRAM_TAG, histogram_placeholder)
+    summ = tf.summary.merge_all()
 
     subdir = os.path.join(self.logdir, run_name)
-    writer = summary.FileWriter(subdir)
+    writer = tf.summary.FileWriter(subdir)
     writer.add_graph(sess.graph)
     for step in xrange(self._STEPS):
       feed_dict = {}
@@ -145,4 +140,4 @@ class ScalarsPluginTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

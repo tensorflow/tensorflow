@@ -116,15 +116,13 @@ import collections
 import itertools
 import os
 
-from tensorflow.core.util.event_pb2 import SessionLog
-from tensorflow.python.platform import app
-from tensorflow.python.platform import flags
-from tensorflow.python.platform import gfile
+import tensorflow as tf
+
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_file_loader
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 
-FLAGS = flags.FLAGS
+FLAGS = tf.flags.FLAGS
 
 
 # Map of field names within summary.proto to the user-facing names that this
@@ -195,11 +193,11 @@ def get_field_to_observations_map(generator, query_for_tag=''):
       increment('graph', event)
     if event.HasField('session_log') and (not query_for_tag):
       status = event.session_log.status
-      if status == SessionLog.START:
+      if status == tf.SessionLog.START:
         increment('sessionlog:start', event)
-      elif status == SessionLog.STOP:
+      elif status == tf.SessionLog.STOP:
         increment('sessionlog:stop', event)
-      elif status == SessionLog.CHECKPOINT:
+      elif status == tf.SessionLog.CHECKPOINT:
         increment('sessionlog:checkpoint', event)
     elif event.HasField('summary'):
       for value in event.summary.value:
@@ -325,11 +323,13 @@ def generators_from_logdir(logdir):
     List of event generators for each subdirectory with event files.
   """
   subdirs = event_multiplexer.GetLogdirSubdirectories(logdir)
-  generators = [itertools.chain(*[
-      generator_from_event_file(os.path.join(subdir, f))
-      for f in gfile.ListDirectory(subdir)
-      if event_accumulator.IsTensorFlowEventsFile(os.path.join(subdir, f))
-  ]) for subdir in subdirs]
+  generators = [
+      itertools.chain(*[
+          generator_from_event_file(os.path.join(subdir, f))
+          for f in tf.gfile.ListDirectory(subdir)
+          if event_accumulator.IsTensorFlowEventsFile(os.path.join(subdir, f))
+      ]) for subdir in subdirs
+  ]
   return generators
 
 
@@ -360,7 +360,7 @@ def get_inspection_units(logdir='', event_file='', tag=''):
     for subdir in subdirs:
       generator = itertools.chain(*[
           generator_from_event_file(os.path.join(subdir, f))
-          for f in gfile.ListDirectory(subdir)
+          for f in tf.gfile.ListDirectory(subdir)
           if event_accumulator.IsTensorFlowEventsFile(os.path.join(subdir, f))
       ])
       inspection_units.append(InspectionUnit(
@@ -424,4 +424,4 @@ def inspect(logdir='', event_file='', tag=''):
 
 
 if __name__ == '__main__':
-  app.run()
+  tf.app.run()

@@ -54,19 +54,19 @@ namespace {
 class EmptyIterator : public Iterator {
  public:
   EmptyIterator(const Status& s) : status_(s) {}
-  virtual bool Valid() const { return false; }
-  virtual void Seek(const StringPiece& target) {}
-  virtual void SeekToFirst() {}
-  virtual void Next() { assert(false); }
-  StringPiece key() const {
+  bool Valid() const override { return false; }
+  void Seek(const StringPiece& target) override {}
+  void SeekToFirst() override {}
+  void Next() override { assert(false); }
+  StringPiece key() const override {
     assert(false);
     return StringPiece();
   }
-  StringPiece value() const {
+  StringPiece value() const override {
     assert(false);
     return StringPiece();
   }
-  virtual Status status() const { return status_; }
+  Status status() const override { return status_; }
 
  private:
   Status status_;

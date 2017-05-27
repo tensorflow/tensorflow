@@ -288,7 +288,7 @@ class GPUTracerImpl : public GPUTracer,
                       public port::Tracing::Engine {
  public:
   GPUTracerImpl();
-  ~GPUTracerImpl();
+  ~GPUTracerImpl() override;
 
   // GPUTracer interface:
   Status Start() override;
@@ -308,7 +308,7 @@ class GPUTracerImpl : public GPUTracer,
         // Remember the most recent ScopedAnnotation for each thread.
         tls_current_annotation.get() = annotation.c_str();
       }
-      ~Impl() { tls_current_annotation.get() = nullptr; }
+      ~Impl() override { tls_current_annotation.get() = nullptr; }
     };
     return new Impl(name);
   }
