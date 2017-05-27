@@ -22,25 +22,12 @@ import os
 import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
 
-from tensorflow.core.framework import graph_pb2
-from tensorflow.core.framework import summary_pb2
 from tensorflow.core.framework import types_pb2
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.util import event_pb2
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import gfile
 from tensorflow.python.platform import googletest
-from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.summary import summary as summary_lib
-from tensorflow.python.summary.writer import writer as writer_lib
 from tensorflow.python.summary.writer.writer import SummaryToEventTransformer
-from tensorflow.python.training import saver
 from tensorflow.tensorboard.backend.event_processing import event_accumulator as ea
 
 
@@ -63,17 +50,16 @@ class _EventGenerator(object):
       yield self.items.pop(0)
 
   def AddScalar(self, tag, wall_time=0, step=0, value=0):
-    event = event_pb2.Event(
+    event = tf.Event(
         wall_time=wall_time,
         step=step,
-        summary=summary_pb2.Summary(
-            value=[summary_pb2.Summary.Value(
-                tag=tag, simple_value=value)]))
+        summary=tf.Summary(
+            value=[tf.Summary.Value(tag=tag, simple_value=value)]))
     self.AddEvent(event)
 
   def AddHealthPill(self, wall_time, step, device_name, op_name, output_slot,
                     elements):
-    event = event_pb2.Event(step=step, wall_time=wall_time)
+    event = tf.Event(step=step, wall_time=wall_time)
     value = event.summary.value.add(
         tag=ea.HEALTH_PILL_EVENT_TAG_PREFIX + device_name,
         node_name='%s:%d:DebugNumericSummary' % (op_name, output_slot))
@@ -93,7 +79,7 @@ class _EventGenerator(object):
                    hsum_squares=5,
                    hbucket_limit=None,
                    hbucket=None):
-    histo = summary_pb2.HistogramProto(
+    histo = tf.HistogramProto(
         min=hmin,
         max=hmax,
         num=hnum,
@@ -101,12 +87,10 @@ class _EventGenerator(object):
         sum_squares=hsum_squares,
         bucket_limit=hbucket_limit,
         bucket=hbucket)
-    event = event_pb2.Event(
+    event = tf.Event(
         wall_time=wall_time,
         step=step,
-        summary=summary_pb2.Summary(
-            value=[summary_pb2.Summary.Value(
-                tag=tag, histo=histo)]))
+        summary=tf.Summary(value=[tf.Summary.Value(tag=tag, histo=histo)]))
     self.AddEvent(event)
 
   def AddImage(self,
@@ -116,14 +100,12 @@ class _EventGenerator(object):
                encoded_image_string=b'imgstr',
                width=150,
                height=100):
-    image = summary_pb2.Summary.Image(
+    image = tf.Summary.Image(
         encoded_image_string=encoded_image_string, width=width, height=height)
-    event = event_pb2.Event(
+    event = tf.Event(
         wall_time=wall_time,
         step=step,
-        summary=summary_pb2.Summary(
-            value=[summary_pb2.Summary.Value(
-                tag=tag, image=image)]))
+        summary=tf.Summary(value=[tf.Summary.Value(tag=tag, image=image)]))
     self.AddEvent(event)
 
   def AddAudio(self,
@@ -134,17 +116,15 @@ class _EventGenerator(object):
                content_type='audio/wav',
                sample_rate=44100,
                length_frames=22050):
-    audio = summary_pb2.Summary.Audio(
+    audio = tf.Summary.Audio(
         encoded_audio_string=encoded_audio_string,
         content_type=content_type,
         sample_rate=sample_rate,
         length_frames=length_frames)
-    event = event_pb2.Event(
+    event = tf.Event(
         wall_time=wall_time,
         step=step,
-        summary=summary_pb2.Summary(
-            value=[summary_pb2.Summary.Value(
-                tag=tag, audio=audio)]))
+        summary=tf.Summary(value=[tf.Summary.Value(tag=tag, audio=audio)]))
     self.AddEvent(event)
 
   def AddEvent(self, event):
@@ -161,7 +141,7 @@ class _EventGenerator(object):
     return self._testcase.get_temp_dir()
 
 
-class EventAccumulatorTest(test.TestCase):
+class EventAccumulatorTest(tf.test.TestCase):
 
   def assertTagsEqual(self, actual, expected):
     """Utility method for checking the return value of the Tags() call.
@@ -594,7 +574,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     gen.AddScalar('s1', wall_time=1, step=10, value=20)
-    gen.AddEvent(event_pb2.Event(wall_time=2, step=20, file_version='nots2'))
+    gen.AddEvent(tf.Event(wall_time=2, step=20, file_version='nots2'))
     gen.AddScalar('s3', wall_time=3, step=100, value=1)
     gen.AddHistogram('hst1')
     gen.AddImage('im1')
@@ -620,14 +600,12 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     discard events based on the step value of SessionLog.START.
     """
     warnings = []
-    self.stubs.Set(logging, 'warn', warnings.append)
+    self.stubs.Set(tf.logging, 'warn', warnings.append)
 
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
 
-    gen.AddEvent(
-        event_pb2.Event(
-            wall_time=0, step=0, file_version='brain.Event:1'))
+    gen.AddEvent(tf.Event(wall_time=0, step=0, file_version='brain.Event:1'))
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
     gen.AddScalar('s1', wall_time=1, step=200, value=20)
     gen.AddScalar('s1', wall_time=1, step=300, value=20)
@@ -648,9 +626,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen, purge_orphaned_data=False)
 
-    gen.AddEvent(
-        event_pb2.Event(
-            wall_time=0, step=0, file_version='brain.Event:1'))
+    gen.AddEvent(tf.Event(wall_time=0, step=0, file_version='brain.Event:1'))
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
     gen.AddScalar('s1', wall_time=1, step=200, value=20)
     gen.AddScalar('s1', wall_time=1, step=300, value=20)
@@ -677,14 +653,12 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     discard events based on the step value of SessionLog.START.
     """
     warnings = []
-    self.stubs.Set(logging, 'warn', warnings.append)
+    self.stubs.Set(tf.logging, 'warn', warnings.append)
 
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
 
-    gen.AddEvent(
-        event_pb2.Event(
-            wall_time=0, step=0, file_version='brain.Event:1'))
+    gen.AddEvent(tf.Event(wall_time=0, step=0, file_version='brain.Event:1'))
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
     gen.AddScalar('s1', wall_time=1, step=200, value=20)
     gen.AddScalar('s1', wall_time=1, step=300, value=20)
@@ -709,9 +683,9 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
-    ev1 = event_pb2.Event(wall_time=2, step=0, file_version='brain.Event:1')
-    graph_bytes = graph_pb2.GraphDef().SerializeToString()
-    ev2 = event_pb2.Event(wall_time=3, step=0, graph_def=graph_bytes)
+    ev1 = tf.Event(wall_time=2, step=0, file_version='brain.Event:1')
+    graph_bytes = tf.GraphDef().SerializeToString()
+    ev2 = tf.Event(wall_time=3, step=0, graph_def=graph_bytes)
     gen.AddEvent(ev1)
     gen.AddEvent(ev2)
     acc.Reload()
@@ -726,9 +700,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
-    gen.AddEvent(
-        event_pb2.Event(
-            wall_time=0, step=1, file_version='brain.Event:2'))
+    gen.AddEvent(tf.Event(wall_time=0, step=1, file_version='brain.Event:2'))
 
     gen.AddScalar('s1', wall_time=1, step=100, value=20)
     gen.AddScalar('s1', wall_time=1, step=200, value=20)
@@ -738,8 +710,8 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen.AddScalar('s2', wall_time=1, step=202, value=20)
     gen.AddScalar('s2', wall_time=1, step=203, value=20)
 
-    slog = event_pb2.SessionLog(status=event_pb2.SessionLog.START)
-    gen.AddEvent(event_pb2.Event(wall_time=2, step=201, session_log=slog))
+    slog = tf.SessionLog(status=tf.SessionLog.START)
+    gen.AddEvent(tf.Event(wall_time=2, step=201, session_log=slog))
     acc.Reload()
     self.assertEqual([x.step for x in acc.Scalars('s1')], [100, 200])
     self.assertEqual([x.step for x in acc.Scalars('s2')], [])
@@ -748,9 +720,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """Test that FirstEventTimestamp() returns wall_time of the first event."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
-    gen.AddEvent(
-        event_pb2.Event(
-            wall_time=10, step=20, file_version='brain.Event:2'))
+    gen.AddEvent(tf.Event(wall_time=10, step=20, file_version='brain.Event:2'))
     gen.AddScalar('s1', wall_time=30, step=40, value=20)
     self.assertEqual(acc.FirstEventTimestamp(), 10)
 
@@ -758,9 +728,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """Test that Reload() means FirstEventTimestamp() won't load events."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
-    gen.AddEvent(
-        event_pb2.Event(
-            wall_time=1, step=2, file_version='brain.Event:2'))
+    gen.AddEvent(tf.Event(wall_time=1, step=2, file_version='brain.Event:2'))
 
     acc.Reload()
 
@@ -774,9 +742,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     """Test that FirstEventTimestamp() doesn't discard the loaded event."""
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
-    gen.AddEvent(
-        event_pb2.Event(
-            wall_time=1, step=2, file_version='brain.Event:2'))
+    gen.AddEvent(tf.Event(wall_time=1, step=2, file_version='brain.Event:2'))
 
     self.assertEqual(acc.FirstEventTimestamp(), 1)
     acc.Reload()
@@ -787,10 +753,10 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     event_sink = _EventGenerator(self, zero_out_timestamps=True)
     writer = SummaryToEventTransformer(event_sink)
     with self.test_session() as sess:
-      ipt = array_ops.placeholder(dtypes.float32)
-      summary_lib.scalar('scalar1', ipt)
-      summary_lib.scalar('scalar2', ipt * ipt)
-      merged = summary_lib.merge_all()
+      ipt = tf.placeholder(tf.float32)
+      tf.summary.scalar('scalar1', ipt)
+      tf.summary.scalar('scalar2', ipt * ipt)
+      merged = tf.summary.merge_all()
       writer.add_graph(sess.graph)
       for i in xrange(10):
         summ = sess.run(merged, feed_dict={ipt: i})
@@ -821,18 +787,18 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     event_sink = _EventGenerator(self, zero_out_timestamps=True)
     writer = SummaryToEventTransformer(event_sink)
     with self.test_session() as sess:
-      ipt = array_ops.ones([10, 4, 4, 3], dtypes.uint8)
+      ipt = tf.ones([10, 4, 4, 3], tf.uint8)
       # This is an interesting example, because the old tf.image_summary op
       # would throw an error here, because it would be tag reuse.
       # Using the tf node name instead allows argument re-use to the image
       # summary.
-      with ops.name_scope('1'):
-        summary_lib.image('images', ipt, max_outputs=1)
-      with ops.name_scope('2'):
-        summary_lib.image('images', ipt, max_outputs=2)
-      with ops.name_scope('3'):
-        summary_lib.image('images', ipt, max_outputs=3)
-      merged = summary_lib.merge_all()
+      with tf.name_scope('1'):
+        tf.summary.image('images', ipt, max_outputs=1)
+      with tf.name_scope('2'):
+        tf.summary.image('images', ipt, max_outputs=2)
+      with tf.name_scope('3'):
+        tf.summary.image('images', ipt, max_outputs=3)
+      merged = tf.summary.merge_all()
       writer.add_graph(sess.graph)
       for i in xrange(10):
         summ = sess.run(merged)
@@ -857,12 +823,10 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     event_sink = _EventGenerator(self, zero_out_timestamps=True)
     writer = SummaryToEventTransformer(event_sink)
     with self.test_session() as sess:
-      summary_lib.tensor_summary('scalar', constant_op.constant(1.0))
-      summary_lib.tensor_summary('vector', constant_op.constant(
-          [1.0, 2.0, 3.0]))
-      summary_lib.tensor_summary('string',
-                                 constant_op.constant(six.b('foobar')))
-      merged = summary_lib.merge_all()
+      tf.summary.tensor_summary('scalar', tf.constant(1.0))
+      tf.summary.tensor_summary('vector', tf.constant([1.0, 2.0, 3.0]))
+      tf.summary.tensor_summary('string', tf.constant(six.b('foobar')))
+      merged = tf.summary.merge_all()
       summ = sess.run(merged)
       writer.add_summary(summ, 0)
 
@@ -894,26 +858,26 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
     """Test accumulator by writing values and then reading them."""
 
     def FakeScalarSummary(tag, value):
-      value = summary_pb2.Summary.Value(tag=tag, simple_value=value)
-      summary = summary_pb2.Summary(value=[value])
+      value = tf.Summary.Value(tag=tag, simple_value=value)
+      summary = tf.Summary(value=[value])
       return summary
 
     directory = os.path.join(self.get_temp_dir(), 'values_dir')
-    if gfile.IsDirectory(directory):
-      gfile.DeleteRecursively(directory)
-    gfile.MkDir(directory)
+    if tf.gfile.IsDirectory(directory):
+      tf.gfile.DeleteRecursively(directory)
+    tf.gfile.MkDir(directory)
 
-    writer = writer_lib.FileWriter(directory, max_queue=100)
+    writer = tf.summary.FileWriter(directory, max_queue=100)
 
-    with ops.Graph().as_default() as graph:
-      _ = constant_op.constant([2.0, 1.0])
+    with tf.Graph().as_default() as graph:
+      _ = tf.constant([2.0, 1.0])
     # Add a graph to the summary writer.
     writer.add_graph(graph)
-    meta_graph_def = saver.export_meta_graph(
-        graph_def=graph.as_graph_def(add_shapes=True))
+    meta_graph_def = tf.train.export_meta_graph(graph_def=graph.as_graph_def(
+        add_shapes=True))
     writer.add_meta_graph(meta_graph_def)
 
-    run_metadata = config_pb2.RunMetadata()
+    run_metadata = tf.RunMetadata()
     device_stats = run_metadata.step_stats.dev_stats.add()
     device_stats.device = 'test device'
     writer.add_run_metadata(run_metadata, 'test run')
@@ -971,17 +935,17 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
     """Test accumulator by writing values and then reading them."""
 
     directory = os.path.join(self.get_temp_dir(), 'metagraph_test_values_dir')
-    if gfile.IsDirectory(directory):
-      gfile.DeleteRecursively(directory)
-    gfile.MkDir(directory)
+    if tf.gfile.IsDirectory(directory):
+      tf.gfile.DeleteRecursively(directory)
+    tf.gfile.MkDir(directory)
 
-    writer = writer_lib.FileWriter(directory, max_queue=100)
+    writer = tf.summary.FileWriter(directory, max_queue=100)
 
-    with ops.Graph().as_default() as graph:
-      _ = constant_op.constant([2.0, 1.0])
+    with tf.Graph().as_default() as graph:
+      _ = tf.constant([2.0, 1.0])
     # Add a graph to the summary writer.
-    meta_graph_def = saver.export_meta_graph(
-        graph_def=graph.as_graph_def(add_shapes=True))
+    meta_graph_def = tf.train.export_meta_graph(graph_def=graph.as_graph_def(
+        add_shapes=True))
     writer.add_meta_graph(meta_graph_def)
 
     writer.flush()
@@ -998,4 +962,4 @@ class RealisticEventAccumulatorTest(EventAccumulatorTest):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

@@ -18,7 +18,7 @@ py_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard/backend:http_util",
         "//tensorflow/tensorboard/backend/event_processing:event_accumulator",
         "//tensorflow/tensorboard/plugins:base_plugin",
