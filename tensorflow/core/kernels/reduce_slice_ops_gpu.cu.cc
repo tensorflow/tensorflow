@@ -31,25 +31,23 @@ namespace functor {
 
 #define GPUReduceSliceFunctorReduceop(reduceop, beginning)                     \
   template <typename T, typename Index>                                        \
-  __global__ void ReduceSliceDeviceKernel##reduceop(Index sizex, Index sizey,  \
-      Index indices_width, Index sizez, Index jobsx, Index jobsy, Index jobsz, \
-      Index bound, const T begin, const Index *indices, const T *input, T *out)\
+  __global__ void ReduceSliceDeviceKernel##reduceop(Cuda3DLaunchConfig config, \
+      Index indices_width, Index bound, const T begin, const Index *indices,   \
+      const T *input, T *out)                                                  \
   {                                                                            \
-    Index _x = blockIdx.x * blockDim.x + threadIdx.x;                          \
-    Index _y = blockIdx.y * blockDim.y + threadIdx.y;                          \
-    Index _z = blockIdx.z * blockDim.z + threadIdx.z;                          \
-    for(Index x = _x * jobsx; x < jobsx * (_x + 1); ++x) {                     \
-      for(Index y = _y * jobsy; y < jobsy * (_y + 1); ++y) {                   \
-        for(Index z = _z * jobsz; z < jobsz * (_z + 1); ++z) {                 \
-          if( x < sizex && y < sizey && z < sizez ) {                          \
-            Index outidx = x * sizey * sizez + y * sizez + z;                  \
-            out[outidx] = begin;                                               \
-            Index start = indices[y*indices_width];                            \
-            Index end   = Min(bound, indices[y + 1]);                          \
-            for(Index yin = start; yin < end; yin++) {                         \
-              Index inidx = x * bound * sizez + yin * sizez + z;               \
-              out[outidx] = reduceop(out[outidx], input[inidx]);               \
-            }                                                                  \
+    CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count, x) {                 \
+      CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count, y) {               \
+        CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count, z) {             \
+          Index outidx = x * config.virtual_thread_count.y                     \
+                           * config.virtual_thread_count.z                     \
+                       + y * config.virtual_thread_count.z + z;                \
+          out[outidx] = begin;                                                 \
+          Index start = indices[y*indices_width];                              \
+          Index end   = Min(bound, indices[y*indices_width + 1]);              \
+          for(Index yin = start; yin < end; yin++) {                           \
+            Index inidx = x * bound * config.virtual_thread_count.z            \
+                        + yin * config.virtual_thread_count.z + z;             \
+            out[outidx] = reduceop(out[outidx], input[inidx]);                 \
           }                                                                    \
         }                                                                      \
       }                                                                        \
@@ -69,20 +67,15 @@ namespace functor {
       int sizex = output.dimension(0);                                         \
       int sizey = output.dimension(1);                                         \
       int sizez = output.dimension(2);                                         \
+      if (sizex * sizey * sizez == 0) {                                        \
+        return;                                                                \
+      }                                                                        \
       Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(sizex, sizey, sizez, d,\
                                ReduceSliceDeviceKernel##reduceop<T, Index>, 0);\
-      Index threadsx = config.thread_per_block.x * config.block_count.x;       \
-      Index threadsy = config.thread_per_block.y * config.block_count.y;       \
-      Index threadsz = config.thread_per_block.z * config.block_count.z;       \
-      Index jobsx = (sizex + threadsx - 1) / threadsx;                         \
-      Index jobsy = (sizey + threadsy - 1) / threadsy;                         \
-      Index jobsz = (sizez + threadsz - 1) / threadsz;                         \
                                                                                \
       ReduceSliceDeviceKernel##reduceop<T,Index> <<<config.block_count,        \
-        config.thread_per_block, 0, d.stream()>>> (sizex, sizey, sizez,        \
-                                   indices_width, jobsx, jobsy, jobsz, bound,  \
-                                   beginning<T>(), indices.data(), data.data(),\
-                                   output.data());                             \
+        config.thread_per_block, 0, d.stream()>>> (config, indices_width,      \
+            bound, beginning<T>(), indices.data(), data.data(), output.data());\
     }                                                                          \
   };
 
