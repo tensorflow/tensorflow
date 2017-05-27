@@ -448,7 +448,7 @@ Status PyArrayToTFTensor(PyObject* ndarray, Safe_TF_TensorPtr* out_tensor,
                                [](void* data, size_t len, void* arg) {
                                  delete[] reinterpret_cast<char*>(data);
                                },
-                               array));
+                               nullptr));
   }
   return Status::OK();
 }
