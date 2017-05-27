@@ -55,7 +55,6 @@ all of the data available from the TensorBoard server. Here is an example:
 
     {
       "train_run": {
-        "histograms": ["foo_histogram", "bar_histogram"],
         "compressedHistograms": ["foo_histogram", "bar_histogram"],
         "images": ["input"],
         "audio": ["input_audio"],
@@ -64,7 +63,6 @@ all of the data available from the TensorBoard server. Here is an example:
         "run_metadata": ["forward prop", "inference"]
       },
       "eval": {
-        "histograms": ["foo_histogram", "bar_histogram"],
         "compressedHistograms": ["foo_histogram", "bar_histogram"],
         "images": ["input"],
         "audio": ["input_audio"],
@@ -85,6 +83,7 @@ Each of the following tag types `<t>` has been migrated to `/data/plugin/<t>/tag
 and will not appear in the output from this route:
 
   - `scalars`
+  - `histograms`
 
 ## `/data/plugin/scalars/tags`
 
@@ -122,7 +121,21 @@ format:
     1443857105.704628,3438,0.5427092909812927
     1443857225.705133,5417,0.5457325577735901
 
-## '/data/histograms?run=foo&tag=bar'
+## `/data/plugin/histograms/tags`
+
+Returns a dictionary mapping from `run_name` (quoted string) to arrays of
+`tag_name` (quoted string), where each array contains the names of all
+histogram tags present in the corresponding run. Here is an example:
+
+    {
+      "train_run": ["foo_histogram", "bar_histogram"],
+      "eval": ["foo_histogram", "bar_histogram"]
+    }
+
+Note that runs without any histogram tags are included as keys with
+value the empty array.
+
+## `/data/plugin/histograms/histograms?run=foo&tag=bar`
 
 Returns an array of event_accumulator.HistogramEvents ([wall_time, step,
 HistogramValue]) for the given run and tag. A HistogramValue is [min, max, num,

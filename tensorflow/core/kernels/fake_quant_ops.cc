@@ -31,11 +31,9 @@ using tensorflow::DEVICE_CPU;
 #if GOOGLE_CUDA
 using tensorflow::DEVICE_GPU;
 #endif
-using tensorflow::DT_BOOL;
 using tensorflow::OpKernel;
 using tensorflow::OpKernelConstruction;
 using tensorflow::OpKernelContext;
-using tensorflow::PersistentTensor;
 using tensorflow::Tensor;
 using tensorflow::TensorShape;
 using tensorflow::TTypes;  // NOLINT This is needed in CUDA mode, do not remove.

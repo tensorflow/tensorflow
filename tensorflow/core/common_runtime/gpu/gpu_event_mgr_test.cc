@@ -83,7 +83,7 @@ class TestTensorBuffer : public TensorBuffer {
   TestTensorBuffer(size_t bytes) : bytes_(bytes) {
     live_tensor_bytes += bytes_;
   }
-  ~TestTensorBuffer() { live_tensor_bytes -= bytes_; }
+  ~TestTensorBuffer() override { live_tensor_bytes -= bytes_; }
 
   size_t size() const override { return bytes_; }
 

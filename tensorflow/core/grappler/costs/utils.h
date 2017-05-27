@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/graph/types.h"
@@ -55,6 +56,10 @@ OpInfo BuildOpInfo(
     const NodeDef& node, const string& device_str,
     const std::unordered_map<string, const NodeDef*>& name_to_node,
     const std::vector<OpInfo::TensorProperties>& inputs);
+
+// Gather performance data from a cost graph.
+OpPerformanceList CostGraphToOpPerformanceData(const CostGraphDef& cost_graph,
+                                               const GraphDef& graph);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

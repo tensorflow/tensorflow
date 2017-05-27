@@ -20,7 +20,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
@@ -321,6 +320,7 @@ REGISTER_OP("DecodeCSV")
     .Output("output: OUT_TYPE")
     .Attr("OUT_TYPE: list({float,int32,int64,string})")
     .Attr("field_delim: string = ','")
+    .Attr("use_quote_delim: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Validate the record_defaults inputs.
       for (int i = 1; i < c->num_inputs(); ++i) {
@@ -347,7 +347,10 @@ records: Each string is a record/row in the csv and all records should have
   the same format.
 record_defaults: One tensor per column of the input record, with either a
   scalar default value for that column or empty if the column is required.
-field_delim: delimiter to separate fields in a record.
+field_delim: char delimiter to separate fields in a record.
+use_quote_delim: If false, treats double quotation marks as regular
+  characters inside of the string fields (ignoring RFC 4180, Section 2,
+  Bullet 5).
 output: Each tensor will have the same shape as records.
 )doc");
 

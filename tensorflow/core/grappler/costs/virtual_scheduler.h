@@ -131,6 +131,8 @@ class VirtualScheduler {
   string ChannelDeviceName(const NodeDef* from, const NodeDef* to) const;
   Costs& FindOrCreateZero(const string& op_name,
                           std::map<string, Costs>* op_cost);
+
+  bool PopCurrNode();
   bool IsSendOp(const NodeDef* node) const;
   bool IsRecvOp(const NodeDef* node) const;
 

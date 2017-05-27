@@ -24,7 +24,15 @@ export const TABS = [
 // If true, TensorBoard stores its hash in the URI state.
 // If false, tab switching in TensorBoard will not update location hash,
 // because hash updates interfere with wct_tests.
-export let USE_HASH = false;
+let _useHash = false;
+
+export function setUseHash(shouldUseHash: boolean): void {
+  _useHash = shouldUseHash;
+}
+
+export function useHash(): boolean {
+  return _useHash;
+}
 
 let _fakeHash = '';
 
@@ -35,4 +43,3 @@ export function setFakeHash(h: string) {
 export function getFakeHash() {
   return _fakeHash;
 }
-

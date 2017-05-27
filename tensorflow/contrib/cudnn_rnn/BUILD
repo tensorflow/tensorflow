@@ -126,6 +126,9 @@ cuda_py_test(
     ],
     tags = [
         "manual",
+        "noasan",  # http://b/62067814
+        "nomsan",
+        "notsan",
         "requires_cudnn5",
     ],
 )

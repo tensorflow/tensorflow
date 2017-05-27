@@ -36,7 +36,6 @@ namespace xla {
 namespace {
 
 using ::testing::ContainsRegex;
-using ::testing::ElementsAre;
 using ::testing::HasSubstr;
 
 class DeconstructTupleTest : public ClientLibraryTestBase {

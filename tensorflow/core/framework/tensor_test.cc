@@ -211,7 +211,7 @@ class TensorReshapeTest : public ::testing::Test {
       : t(DT_FLOAT, TensorShape({2, 3, 4, 5})),
         zero_t(DT_FLOAT, TensorShape({3, 0, 2, 0, 5})) {}
 
-  virtual void SetUp() {
+  void SetUp() override {
     EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 3, 4, 5})));
     EXPECT_TRUE(zero_t.shape().IsSameSize(TensorShape({3, 0, 2, 0, 5})));
 

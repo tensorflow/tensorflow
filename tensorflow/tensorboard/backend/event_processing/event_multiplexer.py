@@ -22,9 +22,8 @@ import os
 import threading
 
 import six
+import tensorflow as tf
 
-from tensorflow.python.platform import gfile
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.tensorboard.backend.event_processing import directory_watcher
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import io_wrapper
@@ -84,7 +83,7 @@ class EventMultiplexer(object):
       purge_orphaned_data: Whether to discard any events that were "orphaned" by
         a TensorFlow restart.
     """
-    logging.info('Event Multiplexer initializing.')
+    tf.logging.info('Event Multiplexer initializing.')
     self._accumulators_mutex = threading.Lock()
     self._accumulators = {}
     self._paths = {}
@@ -92,11 +91,11 @@ class EventMultiplexer(object):
     self._size_guidance = size_guidance
     self.purge_orphaned_data = purge_orphaned_data
     if run_path_map is not None:
-      logging.info('Event Multplexer doing initialization load for %s',
-                   run_path_map)
+      tf.logging.info('Event Multplexer doing initialization load for %s',
+                      run_path_map)
       for (run, path) in six.iteritems(run_path_map):
         self.AddRun(path, run)
-    logging.info('Event Multiplexer done initializing')
+    tf.logging.info('Event Multiplexer done initializing')
 
   def AddRun(self, path, name=None):
     """Add a run to the multiplexer.
@@ -125,9 +124,9 @@ class EventMultiplexer(object):
         if name in self._paths and self._paths[name] != path:
           # TODO(danmane) - Make it impossible to overwrite an old path with
           # a new path (just give the new path a distinct name)
-          logging.warning('Conflict for name %s: old path %s, new path %s',
-                          name, self._paths[name], path)
-        logging.info('Constructing EventAccumulator for %s', path)
+          tf.logging.warning('Conflict for name %s: old path %s, new path %s',
+                             name, self._paths[name], path)
+        tf.logging.info('Constructing EventAccumulator for %s', path)
         accumulator = event_accumulator.EventAccumulator(
             path,
             size_guidance=self._size_guidance,
@@ -166,18 +165,18 @@ class EventMultiplexer(object):
     Returns:
       The `EventMultiplexer`.
     """
-    logging.info('Starting AddRunsFromDirectory: %s', path)
+    tf.logging.info('Starting AddRunsFromDirectory: %s', path)
     for subdir in GetLogdirSubdirectories(path):
-      logging.info('Adding events from directory %s', subdir)
+      tf.logging.info('Adding events from directory %s', subdir)
       rpath = os.path.relpath(subdir, path)
       subname = os.path.join(name, rpath) if name else rpath
       self.AddRun(subdir, name=subname)
-    logging.info('Done with AddRunsFromDirectory: %s', path)
+    tf.logging.info('Done with AddRunsFromDirectory: %s', path)
     return self
 
   def Reload(self):
     """Call `Reload` on every `EventAccumulator`."""
-    logging.info('Beginning EventMultiplexer.Reload()')
+    tf.logging.info('Beginning EventMultiplexer.Reload()')
     self._reload_called = True
     # Build a list so we're safe even if the list of accumulators is modified
     # even while we're reloading.
@@ -189,15 +188,15 @@ class EventMultiplexer(object):
       try:
         accumulator.Reload()
       except (OSError, IOError) as e:
-        logging.error("Unable to reload accumulator '%s': %s", name, e)
+        tf.logging.error("Unable to reload accumulator '%s': %s", name, e)
       except directory_watcher.DirectoryDeletedError:
         names_to_delete.add(name)
 
     with self._accumulators_mutex:
       for name in names_to_delete:
-        logging.warning("Deleting accumulator '%s'", name)
+        tf.logging.warning("Deleting accumulator '%s'", name)
         del self._accumulators[name]
-    logging.info('Finished with EventMultiplexer.Reload()')
+    tf.logging.info('Finished with EventMultiplexer.Reload()')
     return self
 
   def PluginAssets(self, plugin_name):
@@ -464,7 +463,7 @@ class EventMultiplexer(object):
 
 def GetLogdirSubdirectories(path):
   """Returns subdirectories with event files on path."""
-  if gfile.Exists(path) and not gfile.IsDirectory(path):
+  if tf.gfile.Exists(path) and not tf.gfile.IsDirectory(path):
     raise ValueError('GetLogdirSubdirectories: path exists and is not a '
                      'directory, %s' % path)
 

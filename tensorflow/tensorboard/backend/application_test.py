@@ -33,17 +33,12 @@ import threading
 
 from six import BytesIO
 from six.moves import http_client
+import tensorflow as tf
 
 from werkzeug import serving
 from google.protobuf import text_format
 
-from tensorflow.core.framework import graph_pb2
-from tensorflow.core.framework import summary_pb2
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.core.util import event_pb2
-from tensorflow.python.platform import test
-from tensorflow.python.summary.writer import writer as writer_lib
 from tensorflow.tensorboard import tensorboard
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
@@ -87,7 +82,7 @@ class FakePlugin(base_plugin.TBPlugin):
     return self._is_active_value
 
 
-class TensorboardServerTest(test.TestCase):
+class TensorboardServerTest(tf.test.TestCase):
   _only_use_meta_graph = False  # Server data contains only a GraphDef
 
   def setUp(self):
@@ -174,7 +169,6 @@ class TensorboardServerTest(test.TestCase):
         {
             'run1': {
                 'compressedHistograms': ['histogram'],
-                'histograms': ['histogram'],
                 'images': ['image'],
                 'audio': ['audio'],
                 # if only_use_meta_graph, the graph is from the metagraph
@@ -215,12 +209,6 @@ class TensorboardServerTest(test.TestCase):
       response.read()
       connection.close()
 
-  def testHistograms(self):
-    """Test the format of /data/histograms."""
-    self.assertEqual(
-        self._getJson('/data/histograms?tag=histogram&run=run1'),
-        [[0, 0, [0, 2.0, 3.0, 6.0, 5.0, [0.0, 1.0, 2.0], [1.0, 1.0, 1.0]]]])
-
   def testImages(self):
     """Test listing images and retrieving an individual image."""
     image_json = self._getJson('/data/images?tag=image&run=run1')
@@ -257,7 +245,7 @@ class TensorboardServerTest(test.TestCase):
     self.assertEqual(response.status, 200)
     graph_pbtxt = response.read()
     # Parse the graph from pbtxt into a graph message.
-    graph = graph_pb2.GraphDef()
+    graph = tf.GraphDef()
     graph = text_format.Parse(graph_pbtxt, graph)
     self.assertEqual(len(graph.node), 2)
     self.assertEqual(graph.node[0].name, 'a')
@@ -275,7 +263,7 @@ class TensorboardServerTest(test.TestCase):
     self.assertEqual(response.status, 200)
     self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
     pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
-    graph = text_format.Parse(pbtxt, graph_pb2.GraphDef())
+    graph = text_format.Parse(pbtxt, tf.GraphDef())
     self.assertEqual(len(graph.node), 2)
 
   def testAcceptAnyEncoding_compressesResponse(self):
@@ -285,7 +273,7 @@ class TensorboardServerTest(test.TestCase):
     self.assertEqual(response.status, 200)
     self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
     pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
-    graph = text_format.Parse(pbtxt, graph_pb2.GraphDef())
+    graph = text_format.Parse(pbtxt, tf.GraphDef())
     self.assertEqual(len(graph.node), 2)
 
   def testAcceptDoodleEncoding_doesNotCompressResponse(self):
@@ -294,7 +282,7 @@ class TensorboardServerTest(test.TestCase):
                          {'Accept-Encoding': 'doodle'})
     self.assertEqual(response.status, 200)
     self.assertIsNone(response.getheader('Content-Encoding'))
-    graph = text_format.Parse(response.read(), graph_pb2.GraphDef())
+    graph = text_format.Parse(response.read(), tf.GraphDef())
     self.assertEqual(len(graph.node), 2)
 
   def testAcceptGzip_doesNotCompressImage(self):
@@ -309,7 +297,7 @@ class TensorboardServerTest(test.TestCase):
     self.assertEqual(response.status, 200)
     run_metadata_pbtxt = response.read()
     # Parse from pbtxt into a message.
-    run_metadata = config_pb2.RunMetadata()
+    run_metadata = tf.RunMetadata()
     text_format.Parse(run_metadata_pbtxt, run_metadata)
     self.assertEqual(len(run_metadata.step_stats.dev_stats), 1)
     self.assertEqual(run_metadata.step_stats.dev_stats[0].device, 'test device')
@@ -318,9 +306,13 @@ class TensorboardServerTest(test.TestCase):
     """Generates the test data directory.
 
     The test data has a single run named run1 which contains:
-     - a histogram
+     - a histogram [1]
      - an image at timestamp and step 0
      - a graph definition
+
+    [1]: Histograms no longer appear in `/runs`, but compressed
+    histograms do, and they use the same test data. Thus, histograms are
+    still here for now.
 
     Returns:
       temp_dir: The directory the test data is generated under.
@@ -329,9 +321,9 @@ class TensorboardServerTest(test.TestCase):
     self.addCleanup(shutil.rmtree, temp_dir)
     run1_path = os.path.join(temp_dir, 'run1')
     os.makedirs(run1_path)
-    writer = writer_lib.FileWriter(run1_path)
+    writer = tf.summary.FileWriter(run1_path)
 
-    histogram_value = summary_pb2.HistogramProto(
+    histogram_value = tf.HistogramProto(
         min=0,
         max=2,
         num=3,
@@ -340,7 +332,7 @@ class TensorboardServerTest(test.TestCase):
         bucket_limit=[0, 1, 2],
         bucket=[1, 1, 1])
     # Add a simple graph event.
-    graph_def = graph_pb2.GraphDef()
+    graph_def = tf.GraphDef()
     node1 = graph_def.node.add()
     node1.name = 'a'
     node2 = graph_def.node.add()
@@ -355,7 +347,7 @@ class TensorboardServerTest(test.TestCase):
       writer.add_graph(graph_def)
 
     # Add a simple run metadata event.
-    run_metadata = config_pb2.RunMetadata()
+    run_metadata = tf.RunMetadata()
     device_stats = run_metadata.step_stats.dev_stats.add()
     device_stats.device = 'test device'
     writer.add_run_metadata(run_metadata, 'test run')
@@ -363,25 +355,23 @@ class TensorboardServerTest(test.TestCase):
     # 1x1 transparent GIF.
     encoded_image = base64.b64decode(
         'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7')
-    image_value = summary_pb2.Summary.Image(
+    image_value = tf.Summary.Image(
         height=1, width=1, colorspace=1, encoded_image_string=encoded_image)
 
-    audio_value = summary_pb2.Summary.Audio(
+    audio_value = tf.Summary.Audio(
         sample_rate=44100,
         length_frames=22050,
         num_channels=2,
         encoded_audio_string=b'',
         content_type='audio/wav')
     writer.add_event(
-        event_pb2.Event(
+        tf.Event(
             wall_time=0,
             step=0,
-            summary=summary_pb2.Summary(value=[
-                summary_pb2.Summary.Value(
-                    tag='histogram', histo=histogram_value),
-                summary_pb2.Summary.Value(
-                    tag='image', image=image_value), summary_pb2.Summary.Value(
-                        tag='audio', audio=audio_value)
+            summary=tf.Summary(value=[
+                tf.Summary.Value(tag='histogram', histo=histogram_value),
+                tf.Summary.Value(tag='image', image=image_value),
+                tf.Summary.Value(tag='audio', audio=audio_value)
             ])))
 
     writer.flush()
@@ -390,7 +380,7 @@ class TensorboardServerTest(test.TestCase):
     return temp_dir
 
 
-class TensorboardServerPluginNameTest(test.TestCase):
+class TensorboardServerPluginNameTest(tf.test.TestCase):
 
   def _test(self, name, should_be_okay):
     temp_dir = tempfile.mkdtemp(prefix=self.get_temp_dir())
@@ -427,7 +417,7 @@ class TensorboardServerPluginNameTest(test.TestCase):
     self._test('Scalar-Dashboard_3000.1', True)
 
 
-class TensorboardServerPluginRouteTest(test.TestCase):
+class TensorboardServerPluginRouteTest(tf.test.TestCase):
 
   def _test(self, route, should_be_okay):
     temp_dir = tempfile.mkdtemp(prefix=self.get_temp_dir())
@@ -464,7 +454,7 @@ class TensorboardServerUsingMetagraphOnlyTest(TensorboardServerTest):
   _only_use_meta_graph = True  # Server data contains only a MetaGraphDef
 
 
-class ParseEventFilesSpecTest(test.TestCase):
+class ParseEventFilesSpecTest(tf.test.TestCase):
 
   def testRunName(self):
     logdir = 'lol:/cat'
@@ -517,7 +507,7 @@ class ParseEventFilesSpecTest(test.TestCase):
     self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
 
-class TensorBoardAssetsTest(test.TestCase):
+class TensorBoardAssetsTest(tf.test.TestCase):
 
   def testTagFound(self):
     tag = application.get_tensorboard_tag()
@@ -526,7 +516,7 @@ class TensorBoardAssetsTest(test.TestCase):
     self.assertEqual(app.tag, tag)
 
 
-class TensorBoardPluginsTest(test.TestCase):
+class TensorBoardPluginsTest(tf.test.TestCase):
 
   def testPluginsAdded(self):
 
@@ -557,7 +547,7 @@ class TensorBoardPluginsTest(test.TestCase):
     }, app.data_applications)
 
 
-class TensorboardSimpleServerConstructionTest(test.TestCase):
+class TensorboardSimpleServerConstructionTest(tf.test.TestCase):
   """Tests that the default HTTP server is constructed without error.
 
   Mostly useful for IPv4/IPv6 testing. This test should run with only IPv4, only
@@ -601,7 +591,7 @@ class TensorboardSimpleServerConstructionTest(test.TestCase):
     self.assertTrue(one_passed)  # We expect either IPv4 or IPv6 to be supported
 
 
-class TensorBoardApplcationConstructionTest(test.TestCase):
+class TensorBoardApplcationConstructionTest(tf.test.TestCase):
 
   def testExceptions(self):
     logdir = '/fake/foo'
@@ -627,4 +617,4 @@ class TensorBoardApplcationConstructionTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

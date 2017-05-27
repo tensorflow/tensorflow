@@ -237,6 +237,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
     ],
 )

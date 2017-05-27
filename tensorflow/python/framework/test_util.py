@@ -227,6 +227,31 @@ def NCHWToNHWC(input_tensor):
     return [input_tensor[a] for a in new_axes[ndims]]
 
 
+# TODO(skyewm): remove this eventually
+def disable_c_api(fn):
+  """Decorator for disabling the C API on a test.
+
+  Note this disables the C API after running the test class's setup/teardown
+  methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+  # pylint: disable=protected-access
+  def disable_c_api_wrapper(*args, **kwargs):
+    prev_value = ops._USE_C_API
+    ops._USE_C_API = False
+    try:
+      fn(*args, **kwargs)
+    finally:
+      ops._USE_C_API = prev_value
+  # pylint: disable=protected-access
+  return disable_c_api_wrapper
+
+
 class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow.
   """
