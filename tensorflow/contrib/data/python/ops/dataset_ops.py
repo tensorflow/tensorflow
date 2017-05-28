@@ -629,6 +629,7 @@ class Dataset(object):
     # structure of elements in the resulting dataset.
     a.enumerate(start=5) == { (5, 1), (6, 2), (7, 3) }
     b.enumerate() == { (0, (7, 8)), (1, (9, 10)), (2, (11, 12)) }
+    ```
 
     Args:
       start: A `tf.int64` scalar `tf.Tensor`, representing the start
