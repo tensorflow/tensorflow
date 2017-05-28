@@ -258,15 +258,21 @@ tensorflow::Status ConvolutionThunk::Convolve(
 std::vector<se::dnn::AlgorithmType> ConvolutionThunk::GetAlgorithms(
     se::StreamExecutor* stream_exec) const {
   std::vector<se::dnn::AlgorithmType> algorithms;
+  // TODO(yangzihao): Currently disable the use of winograd nonfused in XLA
+  // by default. Should send in conv parameters and enable it when
+  // ShouldIncludeWinogradNonfusedAlgo() returns true.
   switch (convolution_kind_) {
     case ConvolutionKind::kBackwardFilter:
-      CHECK(stream_exec->GetConvolveBackwardFilterAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveBackwardFilterAlgorithms(
+          /*with_winograd_nonfused=*/false, &algorithms));
       break;
     case ConvolutionKind::kBackwardInput:
-      CHECK(stream_exec->GetConvolveBackwardDataAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveBackwardDataAlgorithms(
+          /*with_winograd_nonfused=*/false, &algorithms));
       break;
     case ConvolutionKind::kForward:
-      CHECK(stream_exec->GetConvolveAlgorithms(&algorithms));
+      CHECK(stream_exec->GetConvolveAlgorithms(/*with_winograd_nonfused=*/false,
+                                               &algorithms));
       break;
   }
   return algorithms;
