@@ -141,6 +141,7 @@ class TestBeamStep(test.TestCase):
     outputs, next_beam_state = beam_search_decoder._beam_search_step(
         time=2,
         logits=logits,
+        next_cell_state=dummy_cell_state,
         beam_state=beam_state,
         batch_size=ops.convert_to_tensor(self.batch_size),
         beam_width=self.beam_width,
@@ -195,6 +196,7 @@ class TestBeamStep(test.TestCase):
     outputs, next_beam_state = beam_search_decoder._beam_search_step(
         time=2,
         logits=logits,
+        next_cell_state=dummy_cell_state,
         beam_state=beam_state,
         batch_size=ops.convert_to_tensor(self.batch_size),
         beam_width=self.beam_width,
