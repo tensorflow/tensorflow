@@ -92,7 +92,7 @@ class KernelLinearClassifierTest(TensorFlowTestCase):
     # Since the data is linearly separable, the classifier should have small
     # loss and perfect accuracy.
     self.assertLess(metrics['loss'], 0.1)
-    self.assertAlmostEqual(metrics['accuracy'], 1.0, 7)
+    self.assertEqual(metrics['accuracy'], 1.0)
 
     # As a result, it should assign higher probability to class 1 for the 1st
     # and 3rd example and higher probability to class 0 for the second example.
