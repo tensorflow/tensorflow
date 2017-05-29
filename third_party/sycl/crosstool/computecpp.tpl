@@ -34,8 +34,8 @@ def main():
     compiled_file_name = compiler_flags[compiled_file_index]
     compiling_cpp = compiled_file_name.endswith(('.cc', '.c++', '.cpp', '.CPP', '.C', '.cxx'))
 
-  compiler_flags = compiler_flags + ['-D_GLIBCXX_USE_CXX11_ABI=0', '-DEIGEN_USE_SYCL=1',
-                                     '-DTENSORFLOW_USE_SYCL', '-DEIGEN_HAS_C99_MATH']
+  # add -D_GLIBCXX_USE_CXX11_ABI=0 to the command line if you have custom installation of GCC/Clang
+  compiler_flags = compiler_flags + ['-DEIGEN_USE_SYCL=1', '-DTENSORFLOW_USE_SYCL', '-DEIGEN_HAS_C99_MATH']
 
   if not compiling_cpp:
     # compile for C
