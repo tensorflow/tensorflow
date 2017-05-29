@@ -1366,6 +1366,66 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
           metric_keys.MetricKeys.LOSS_MEAN: 39.0769231,
       }, summary_str)
 
+  def test_with_one_dim_label_and_weight(self):
+    """1d label, 3 examples, 1 batch."""
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        weight_feature_key='label_weights')
+    self.assertEqual(1, head.logits_dimension)
+
+    # Create estimator spec.
+    logits = np.array(((45,), (41,), (44,)), dtype=np.float32)
+    expected_train_result = b'my_train_op'
+    # loss = 1*(35-45)^2 + .1*(42-41)^2 + 1.5*(45-44)^2 = 100+.1+1.5 = 101.6
+    expected_loss = 101.6
+    def _train_op_fn(loss):
+      with ops.control_dependencies((check_ops.assert_equal(
+          math_ops.to_float(expected_loss), math_ops.to_float(loss),
+          name='assert_loss'),)):
+        return constant_op.constant(expected_train_result)
+
+    x_feature_rank_1 = np.array((42., 43., 44.,), dtype=np.float32)
+    weight_rank_1 = np.array((1., .1, 1.5,), dtype=np.float64)
+    labels_rank_1 = np.array((35., 42., 45.,))
+    self.assertEqual((3,), x_feature_rank_1.shape)
+    self.assertEqual((3,), weight_rank_1.shape)
+    self.assertEqual((3,), labels_rank_1.shape)
+
+    spec = head.create_estimator_spec(
+        features={
+            'x': x_feature_rank_1,
+            'label_weights': weight_rank_1,
+        },
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels_rank_1,
+        train_op_fn=_train_op_fn)
+
+    # Assert spec contains expected tensors.
+    prediction_key = prediction_keys.PredictionKeys.PREDICTIONS
+    self.assertItemsEqual((prediction_key,), spec.predictions.keys())
+    self.assertEqual(dtypes.float32, spec.predictions[prediction_key].dtype)
+    self.assertEqual(dtypes.float32, spec.loss.dtype)
+    self.assertEqual({}, spec.eval_metric_ops)
+    self.assertIsNotNone(spec.train_op)
+    self.assertIsNone(spec.export_outputs)
+    _assert_no_hooks(self, spec)
+
+    # Assert predictions, loss, train_op, and summaries.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNotNone(spec.scaffold.summary_op)
+      predictions, loss, train_result, summary_str = sess.run((
+          spec.predictions[prediction_key], spec.loss, spec.train_op,
+          spec.scaffold.summary_op))
+      self.assertAllClose(logits, predictions)
+      self.assertAllClose(expected_loss, loss)
+      self.assertEqual(expected_train_result, train_result)
+      _assert_simple_summaries(self, {
+          metric_keys.MetricKeys.LOSS: expected_loss,
+          # loss_mean = loss/(1+.1+1.5) = 101.6/2.6 = 39.0769231
+          metric_keys.MetricKeys.LOSS_MEAN: 39.0769231,
+      }, summary_str)
+
   def test_weighted_multi_value_eval(self):
     """3d label, 1 example, 1 batch."""
     head = head_lib._regression_head_with_mean_squared_error_loss(

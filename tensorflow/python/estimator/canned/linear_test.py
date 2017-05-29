@@ -574,6 +574,46 @@ class LinearRegressorTrainingTest(test.TestCase):
         input_fn=lambda: ({'age': ((age,),)}, ((label,),)), steps=num_steps)
     self._assertCheckpoint(num_steps)
 
+  def testTrainWithOneDimLabel(self):
+    label_dimension = 1
+    batch_size = 20
+    feature_columns = [
+        feature_column_lib.numeric_column('age', shape=(1,))
+    ]
+    est = linear.LinearRegressor(
+        feature_columns=feature_columns, label_dimension=label_dimension,
+        model_dir=self._model_dir)
+    data_rank_1 = np.linspace(0., 2., batch_size, dtype=np.float32)
+    self.assertEqual((batch_size,), data_rank_1.shape)
+
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'age': data_rank_1}, y=data_rank_1,
+        batch_size=batch_size, num_epochs=None,
+        shuffle=True)
+    est.train(train_input_fn, steps=200)
+    self._assertCheckpoint(200)
+
+  def testTrainWithOneDimWeight(self):
+    label_dimension = 1
+    batch_size = 20
+    feature_columns = [
+        feature_column_lib.numeric_column('age', shape=(1,))
+    ]
+    est = linear.LinearRegressor(
+        feature_columns=feature_columns, label_dimension=label_dimension,
+        weight_feature_key='w',
+        model_dir=self._model_dir)
+
+    data_rank_1 = np.linspace(0., 2., batch_size, dtype=np.float32)
+    self.assertEqual((batch_size,), data_rank_1.shape)
+
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'age': data_rank_1, 'w': data_rank_1}, y=data_rank_1,
+        batch_size=batch_size, num_epochs=None,
+        shuffle=True)
+    est.train(train_input_fn, steps=200)
+    self._assertCheckpoint(200)
+
   def testFromScratch(self):
     # Create LinearRegressor.
     label = 5.
