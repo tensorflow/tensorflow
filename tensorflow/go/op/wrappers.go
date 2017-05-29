@@ -3204,8 +3204,8 @@ func CTCLossCtcMergeRepeated(value bool) CTCLossAttr {
 // CTCLossIgnoreLongerOutputsThanInputs sets the optional ignore_longer_outputs_than_inputs attribute to value.
 //
 // value: Scalar. If set to true, during CTC
-// calculation items have longer input sequences than output sequences
-// are ignored by returning zero-gradient for those items.
+// calculation, items that have longer output sequences than input sequences
+// are skipped: they don't contribute to the loss term and have zero-gradient.
 // If not specified, defaults to false
 func CTCLossIgnoreLongerOutputsThanInputs(value bool) CTCLossAttr {
 	return func(m optionalAttr) {
