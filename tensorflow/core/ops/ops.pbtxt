@@ -3889,7 +3889,7 @@ op {
     default_value {
       b: false
     }
-    description: "Scalar. If set to true, during CTC\ncalculation items have longer input sequences than output sequences\nare ignored by returning zero-gradient for those items."
+    description: "Scalar. If set to true, during CTC\ncalculation, items that have longer output sequences than input sequences\nare skipped: they don\'t contribute to the loss term and have zero-gradient."
   }
   summary: "Calculates the CTC Loss (log probability) for each batch entry.  Also calculates"
   description: "the gradient.  This class performs the softmax operation for you, so inputs\nshould be e.g. linear projections of outputs by an LSTM."
