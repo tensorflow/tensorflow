@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_COMMON_RUNTIME_SYCL_SYCL_ALLOCATOR_H_
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -28,7 +29,7 @@ namespace tensorflow {
 
 class SYCLAllocator : public Allocator {
  public:
-  SYCLAllocator(Eigen::QueueInterface *queue) : sycl_device_(new Eigen::SyclDevice(queue)) {}
+  SYCLAllocator(Eigen::QueueInterface *queue);
   virtual ~SYCLAllocator() override;
   string Name() override;
   void *AllocateRaw(size_t alignment, size_t num_bytes) override;
@@ -37,9 +38,13 @@ class SYCLAllocator : public Allocator {
   virtual bool ShouldAllocateEmptyTensors() override final { return true; }
   void Synchronize() { sycl_device_->synchronize(); }
   bool Ok() { return sycl_device_->ok(); }
+  void GetStats(AllocatorStats* stats) override;
   Eigen::SyclDevice* getSyclDevice() { return sycl_device_; }
  private:
   Eigen::SyclDevice *sycl_device_;  // owned
+
+  mutable mutex mu_;
+  AllocatorStats stats_ GUARDED_BY(mu_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(SYCLAllocator);
 };
