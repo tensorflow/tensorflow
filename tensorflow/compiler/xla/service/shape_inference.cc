@@ -547,7 +547,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InferDegenerateDimensionBroadcastShape(operation, lhs, rhs);
   } else {
     // Ranks do not match, so perform InDim broadcasting using
-    // broadcast_dimensions. Scalar broadcasting is a special case of this).
+    // broadcast_dimensions. Scalar broadcasting is a special case of this.
     const Shape& larger_shape =
         ShapeUtil::Rank(lhs) > ShapeUtil::Rank(rhs) ? lhs : rhs;
     const Shape& smaller_shape =
