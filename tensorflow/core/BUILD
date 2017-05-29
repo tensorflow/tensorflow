@@ -2880,6 +2880,7 @@ filegroup(
 
 filegroup(
     name = "lmdb_testdata",
+    testonly = 1,
     srcs = [
         # A simple key-value store:
         #   0 : 'a'
@@ -2888,7 +2889,6 @@ filegroup(
         #   9 : 'j'
         "lib/lmdb/testdata/data.mdb",
     ],
-    testonly = 1,
     visibility = ["//visibility:public"],
 )
 
