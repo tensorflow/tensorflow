@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""Computes a header file to be used with SELECTIVE_REGISTRATION.
+"""Computes a header file to be used with SELECTIVE_REGISTRATION.
 
 See the executable wrapper, print_selective_registration_header.py, for more
 information.

@@ -30,7 +30,7 @@ from tensorflow.python.ops import math_ops
 
 
 class OperatorPDSqrtVDVTUpdate(operator_pd.OperatorPDBase):
-  r"""Operator defined by `A=SS^T`, where `S = M + VDV^T` for `OperatorPD` `M`.
+  """Operator defined by `A=SS^T`, where `S = M + VDV^T` for `OperatorPD` `M`.
 
   This provides efficient low-rank updates of arbitrary `OperatorPD`.
 

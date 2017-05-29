@@ -941,7 +941,7 @@ def is_strictly_increasing(x, name=None):
 
 
 def _assert_same_base_type(items, expected_type=None):
-  r"""Asserts all items are of the same base type.
+  """Asserts all items are of the same base type.
 
   Args:
     items: List of graph items (e.g., `Variable`, `Tensor`, `SparseTensor`,

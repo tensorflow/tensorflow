@@ -773,7 +773,7 @@ def fused_batch_norm(
     data_format="NHWC",
     is_training=True,
     name=None):
-  r"""Batch normalization.
+  """Batch normalization.
 
   As described in http://arxiv.org/abs/1502.03167.
 
