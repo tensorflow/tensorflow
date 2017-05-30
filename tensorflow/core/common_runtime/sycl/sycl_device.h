@@ -31,7 +31,7 @@ namespace tensorflow {
 class GSYCLInterface
 {
     std::vector<Eigen::QueueInterface*>     m_queue_interface_;    // owned
-    std::vector<Allocator*>                 m_cpu_allocator_;      // owned
+    std::vector<Allocator*>                 m_cpu_allocator_;      // not owned
     std::vector<SYCLAllocator*>             m_sycl_allocator_;     // owned
     std::vector<SYCLDeviceContext*>         m_sycl_context_;       // owned
 
@@ -69,9 +69,6 @@ class GSYCLInterface
     }
 
     ~GSYCLInterface() {
-        for (auto p : m_cpu_allocator_) {
-          delete p;
-        }
         m_cpu_allocator_.clear();
 
         for (auto p : m_sycl_allocator_) {
@@ -112,8 +109,11 @@ class GSYCLInterface
 
     static void Reset()
     {
-      delete s_instance;
-      s_instance = NULL;
+      std::lock_guard<std::mutex> lock(mutex_);
+      if(s_instance) {
+        delete s_instance;
+        s_instance = NULL;
+      }
     }
 
     Eigen::QueueInterface * GetQueueInterface(size_t i = 0) {
