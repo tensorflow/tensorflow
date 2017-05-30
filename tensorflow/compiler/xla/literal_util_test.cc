@@ -31,7 +31,6 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
-using ::testing::ElementsAreArray;
 
 class LiteralUtilTest : public ::testing::Test {
  protected:

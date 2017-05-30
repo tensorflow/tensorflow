@@ -107,7 +107,6 @@ using perftools::gputools::DeviceMemory;
 using perftools::gputools::DeviceMemoryBase;
 using perftools::gputools::ScratchAllocator;
 using perftools::gputools::port::StatusOr;
-using strings::Printf;
 
 Status ParseRNNMode(const string& str, RnnMode* rnn_mode) {
   if (str == "rnn_relu") {
