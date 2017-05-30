@@ -12,13 +12,7 @@ py_binary(
     srcs = ["generate_testdata.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python",  # TODO(b/34059704): remove when fixed
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:logging_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
