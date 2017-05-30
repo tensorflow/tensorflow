@@ -77,16 +77,14 @@ class SplitOp : public XlaOpKernel {
 
     // The vectors we will use to define the slice. The entry for the
     // split dimensions varies for each output.
-    std::vector<int64> begin;
-    std::vector<int64> limits;
-    std::vector<int64> strides;
+    std::vector<int64> begin(input_shape.dims(), 0);
+    std::vector<int64> limits(input_shape.dims());
+    std::vector<int64> strides(input_shape.dims(), 1);
     for (int i = 0; i < input_shape.dims(); ++i) {
       // Initially set up the limits to be the full size of the input:
       // the split dimension is filled in below.
       int64 dim = input_shape.dim_size(i);
-      begin.push_back(0);
-      limits.push_back(dim);
-      strides.push_back(1);
+      limits[i] = dim;
     }
 
     auto input = ctx->Input(1);
