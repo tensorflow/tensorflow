@@ -417,7 +417,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
             })
 
       # Eval.
-      label_ids = self._label_ids(_check_labels(labels, 1))
+      label_ids = self._label_ids(_check_labels(_maybe_expand_dim(labels), 1))
 
       unweighted_loss = losses.sparse_softmax_cross_entropy(
           labels=label_ids, logits=logits, reduction=losses.Reduction.NONE)
@@ -426,7 +426,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
       weights = (
           1. if (self._weight_feature_key is None) else
           features[self._weight_feature_key])
-      weights = math_ops.to_float(weights, name='weights')
+      weights = _maybe_expand_dim(math_ops.to_float(weights, name='weights'))
       training_loss = losses.compute_weighted_loss(
           unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:
@@ -577,13 +577,14 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                 classes=string_ops.as_string(classes, name='str_classes'))})
 
       # Eval.
-      labels = _check_labels(math_ops.to_float(labels), self.logits_dimension)
+      labels = _check_labels(_maybe_expand_dim(math_ops.to_float(labels)),
+                             self.logits_dimension)
       unweighted_loss = nn.sigmoid_cross_entropy_with_logits(
           labels=labels, logits=logits, name='loss')
       weights = (
           1. if (self._weight_feature_key is None) else
           features[self._weight_feature_key])
-      weights = math_ops.to_float(weights, name='weights')
+      weights = _maybe_expand_dim(math_ops.to_float(weights, name='weights'))
       training_loss = losses.compute_weighted_loss(
           unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:

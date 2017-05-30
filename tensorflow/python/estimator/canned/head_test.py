@@ -531,6 +531,61 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
           metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
       }, summary_str, tol)
 
+  def test_train_with_one_dim_label_and_weights(self):
+    n_classes = 3
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes, weight_feature_key='label_weights')
+
+    logits = np.array(((10, 0, 0), (0, 10, 0), (0, 0, 10),), dtype=np.float32)
+    labels_rank_1 = np.array((1, 2, 2,), dtype=np.int64)
+    weights_rank_1 = np.array((1., 2., 3.,), dtype=np.float64)
+
+    self.assertEqual((3,), labels_rank_1.shape)
+    self.assertEqual((3,), weights_rank_1.shape)
+
+    expected_train_result = 'my_train_op'
+    # loss = sum(cross_entropy(labels, logits) * [1, 2, 3])
+    #      = sum([10, 10, 0] * [1, 2, 3]) = 30
+    expected_loss = 30.
+
+    def _train_op_fn(loss):
+      return string_ops.string_join(
+          [constant_op.constant(expected_train_result),
+           string_ops.as_string(loss, precision=2)])
+
+    spec = head.create_estimator_spec(
+        features={
+            'x': np.array(((42,),), dtype=np.float32),
+            'label_weights': weights_rank_1,
+        },
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels_rank_1,
+        train_op_fn=_train_op_fn)
+
+    self.assertIsNotNone(spec.loss)
+    self.assertEqual({}, spec.eval_metric_ops)
+    self.assertIsNotNone(spec.train_op)
+    self.assertIsNone(spec.export_outputs)
+    _assert_no_hooks(self, spec)
+
+    # Assert predictions, loss, train_op, and summaries.
+    tol = 1e-2
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNotNone(spec.scaffold.summary_op)
+      loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
+                                                  spec.scaffold.summary_op))
+      self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
+      self.assertEqual(
+          six.b('{0:s}{1:.2f}'.format(expected_train_result, expected_loss)),
+          train_result)
+      _assert_simple_summaries(self, {
+          metric_keys.MetricKeys.LOSS: expected_loss,
+          metric_keys.MetricKeys.LOSS_MEAN: (
+              expected_loss / np.sum(weights_rank_1)),
+      }, summary_str, tol)
+
   def test_train_with_vocabulary(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
@@ -988,6 +1043,57 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       self.assertAllClose(expected_metrics, metrics)
       self.assertAllClose(
           expected_metrics, {k: value_ops[k].eval() for k in value_ops})
+
+  def test_train_with_one_dim_labels_and_weights(self):
+    """3 examples, 1 batch."""
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        weight_feature_key='label_weights')
+
+    # Create estimator spec.
+    logits = np.array(((45,), (-41,), (44,)), dtype=np.float32)
+    labels_rank_1 = np.array((1., 1., 0.,))
+    weights_rank_1 = np.array(((1., .1, 1.5,)), dtype=np.float64)
+    self.assertEqual((3,), labels_rank_1.shape)
+    self.assertEqual((3,), weights_rank_1.shape)
+
+    expected_train_result = b'my_train_op'
+    # losses = label_weights*cross_entropy(labels, logits)
+    #        = (1*0 + .1*41 + 1.5*44) = (1, 4.1, 66)
+    # loss = sum(losses) = 1 + 4.1 + 66 = 70.1
+    expected_loss = 70.1
+    def _train_op_fn(loss):
+      with ops.control_dependencies((check_ops.assert_equal(
+          math_ops.to_float(expected_loss), math_ops.to_float(loss),
+          name='assert_loss'),)):
+        return constant_op.constant(expected_train_result)
+    spec = head.create_estimator_spec(
+        features={
+            'x': np.array(((42.,), (43.,), (44.,)), dtype=np.float32),
+            'label_weights': weights_rank_1,
+        },
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels_rank_1,
+        train_op_fn=_train_op_fn)
+
+    # Assert spec contains expected tensors.
+    self.assertIsNotNone(spec.loss)
+    self.assertIsNotNone(spec.train_op)
+
+    # Assert predictions, loss, and metrics.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNotNone(spec.scaffold.summary_op)
+      loss, train_result, summary_str = sess.run((
+          spec.loss, spec.train_op, spec.scaffold.summary_op))
+      self.assertAllClose(expected_loss, loss)
+      self.assertEqual(expected_train_result, train_result)
+      _assert_simple_summaries(self, {
+          metric_keys.MetricKeys.LOSS: expected_loss,
+          # loss_mean = loss/sum(label_weights) = 70.1/(1 + .1 + 1.5)
+          #           = 70.1/2.6 = 26.9615384615
+          metric_keys.MetricKeys.LOSS_MEAN: 26.9615384615,
+      }, summary_str)
 
   def test_weighted_multi_example_train(self):
     """3 examples, 1 batch."""
