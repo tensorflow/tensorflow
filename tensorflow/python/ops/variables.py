@@ -282,11 +282,20 @@ class Variable(object):
                 shape,
                 self._initial_value.dtype.base_dtype,
                 name=name)
+          # pylint: enable=protected-access
 
         # Or get the initial value from a Tensor or Python object.
         else:
           self._initial_value = ops.convert_to_tensor(
               initial_value, name="initial_value", dtype=dtype)
+          # pylint: disable=protected-access
+          if self._initial_value.op._get_control_flow_context() is not None:
+            raise ValueError(
+                "Initializer for variable %s is from inside a control-flow "
+                "construct, such as a loop or conditional. When creating a "
+                "variable inside a loop or conditional, use a lambda as the "
+                "initializer." % name)
+          # pylint: enable=protected-access
           shape = (self._initial_value.get_shape()
                    if validate_shape else tensor_shape.unknown_shape())
           # In this case, the variable op can't be created until after the
