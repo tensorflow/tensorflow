@@ -98,7 +98,6 @@ cc_test(
         ":test",
         ":test_helpers",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -235,7 +234,6 @@ cc_test(
         ":test",
         ":test_helpers",
         "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -246,7 +244,6 @@ cc_test(
     deps = [
         ":shape_util",
         ":test",
-        ":test_helpers",
         ":xla_data_proto",
         "//tensorflow/core:test_main",
     ],
@@ -469,7 +466,6 @@ cc_test(
         ":text_literal_writer",
         ":types",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )

@@ -201,7 +201,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:tensorflow",
     ],
 )
 
@@ -317,7 +316,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:protos_cc",
     ],
     alwayslink = 1,
 )
@@ -2603,9 +2601,6 @@ cc_library(
         ":py_func_lib",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
-        "//tensorflow/core:protos_cc",
-        "//third_party/py/numpy:headers",
-        "//util/python:python_headers",
     ],
 )
 
