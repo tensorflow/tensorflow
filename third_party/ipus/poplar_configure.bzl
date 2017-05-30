@@ -3,9 +3,6 @@
 def _poplar_autoconf_impl(repository_ctx):
   if "TF_POPLAR_BASE" in repository_ctx.os.environ:
 
-    if not "TF_POPLAR_BASE" in repository_ctx.os.environ:
-      fail("TF_POPNN_BASE is not set")
-
     poplar_base = repository_ctx.os.environ["TF_POPLAR_BASE"].strip()
 
     if poplar_base == "":
