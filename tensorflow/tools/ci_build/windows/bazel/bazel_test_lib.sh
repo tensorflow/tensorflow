@@ -118,7 +118,6 @@ function get_failing_cpu_py_tests() {
     //$1/tensorflow/python:quantized_conv_ops_test + \
     //$1/tensorflow/python:saver_large_variable_test + \
     //$1/tensorflow/python:saver_test + \
-    //$1/tensorflow/python:session_test + \
     //$1/tensorflow/python:supervisor_test + \
     //$1/tensorflow/python:sync_replicas_optimizer_test + \
     //$1/tensorflow/python/debug:curses_ui_test + \
