@@ -172,17 +172,14 @@ class DepthwiseConv2dNativeOp : public XlaOpKernel {
     } else {
       // These will be used to define the bounds of each slice.
       // Within the loop, the input_channel index will be modified.
-      gtl::InlinedVector<int64, 4> filter_begin;
-      gtl::InlinedVector<int64, 4> filter_limits;
-      gtl::InlinedVector<int64, 4> input_begin;
-      gtl::InlinedVector<int64, 4> input_limits;
-      gtl::InlinedVector<int64, 4> strides;
+      gtl::InlinedVector<int64, 4> filter_begin(4, 0);
+      gtl::InlinedVector<int64, 4> filter_limits(4);
+      gtl::InlinedVector<int64, 4> input_begin(4, 0);
+      gtl::InlinedVector<int64, 4> input_limits(4);
+      gtl::InlinedVector<int64, 4> strides(4, 1);
       for (int i = 0; i < 4; ++i) {
-        filter_begin.push_back(0);
-        filter_limits.push_back(filter_shape.dim_size(i));
-        input_begin.push_back(0);
-        input_limits.push_back(input_shape.dim_size(i));
-        strides.push_back(1);
+        filter_limits[i] = filter_shape.dim_size(i);
+        input_limits[i] = input_shape.dim_size(i);
       }
 
       std::vector<int64> strides_for_tla{strides_[1], strides_[2]};
