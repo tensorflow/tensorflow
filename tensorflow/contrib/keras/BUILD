@@ -432,6 +432,7 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/lstm_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # http://b/62189182
     deps = [
         ":keras",
         ":testing_utils",
