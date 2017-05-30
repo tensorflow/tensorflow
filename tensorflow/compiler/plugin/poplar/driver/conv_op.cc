@@ -62,7 +62,7 @@ CreateConv2D(poplar::Graph &graph,
             port::StrCat("Dilated convolution not supported on ", inst->name()));
   }
 
-  const std::string& dtype(graph.getTensorElementType(in));
+  const std::string& dtype(in.elementType());
 
   const std::vector<size_t> &input_dims = in.shape();
   const std::vector<size_t> &kernel_dims = kernel.shape();

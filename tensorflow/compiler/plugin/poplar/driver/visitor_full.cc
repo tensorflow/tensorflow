@@ -205,7 +205,26 @@ Status FullVisitor::HandleSlice(
           convert_array<std::vector<std::size_t>>(inst->slice_starts()));
   std::vector<std::size_t> end(
           convert_array<std::vector<std::size_t>>(inst->slice_limits()));
-  out = out.slice(begin, end);
+  std::vector<int64> strides(inst->slice_strides());
+  bool simple(true);
+  for (std::size_t s : strides) {
+    simple &= (s == 1);
+  }
+  if (simple) {
+    out = out.slice(begin, end);
+  } else {
+    for (int64 d = 0; d < strides.size(); d++) {
+      int64 s = strides[d];
+      if (s > 0) {
+        out = out.slice(begin[d], end[d], d);
+        out = out.subSample(strides[d], d);
+      } else {
+        out = out.slice(end[d]+1, begin[d]+1, d);
+        out = out.reverse(d);
+        out = out.subSample(-strides[d], d);
+      }
+    }
+  }
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
 }

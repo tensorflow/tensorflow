@@ -107,7 +107,7 @@ CreateCallOp(poplar::Graph &graph,
   for (size_t i=0; i<visitor->second.outputs().size(); i++) {
     // TODO use 'clone' when poplar supports it
     poplar::Tensor o = graph.addTensor(
-            graph.getTensorElementType(visitor->second.outputs()[i]),
+            visitor->second.outputs()[i].elementType(),
             visitor->second.outputs()[i].shape());
     popstd::mapTensor(graph, o);    
     seq.add(poplar::program::Copy(visitor->second.outputs()[i], o));
@@ -173,8 +173,8 @@ CreateWhileOp(poplar::Graph &graph,
   main_seq.add(repeat_while_true);
 
   // TODO use 'clone' when poplar supports it
-  poplar::Tensor o = graph.addTensor(
-          graph.getTensorElementType(body_output), body_output.shape());
+  poplar::Tensor o = graph.addTensor(body_output.elementType(),
+                                     body_output.shape());
   popstd::mapTensor(graph, o);
   main_seq.add(poplar::program::Copy(body_output, o));
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, o));

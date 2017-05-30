@@ -169,7 +169,7 @@ CreateSimpleReduction(poplar::Graph &graph,
   // Find the type and vertex
   HloInstruction* root(inst->to_apply()->root_instruction());
   std::string vertex_name = templateVertex(ReductionVertexBaseName(root),
-                                           graph.getTensorElementType(to_reduce));
+                                           to_reduce.elementType());
 
 
   // Convert the tensor into a NxM 2D tensor with the dimensions
@@ -244,7 +244,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
   // Find the type and vertex
   HloInstruction* root(inst->to_apply()->root_instruction());
   std::string vertex_name = templateVertex(ReductionVertexBaseName(root),
-                                           graph.getTensorElementType(to_reduce));
+                                           to_reduce.elementType());
 
   const Window& window(inst->window());
 
@@ -333,7 +333,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   HloInstruction* select_root(inst->select()->root_instruction());
   std::string select_vertex_name =
           templateVertex(SelectionVertexBaseName(select_root),
-                         graph.getTensorElementType(operand));
+                         operand.elementType());
 
   const Window& window(inst->window());
 
@@ -433,7 +433,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   HloInstruction* scatter_root(inst->scatter()->root_instruction());
   std::string scatter_vertex_name =
           templateVertex(ReductionVertexBaseName(scatter_root),
-                         graph.getTensorElementType(operand));
+                         operand.elementType());
 
   std::vector<size_t> reshaped(2);
   reshaped[0] = partial.numElements() / overlap_count;

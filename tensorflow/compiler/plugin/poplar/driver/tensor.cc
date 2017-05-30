@@ -197,11 +197,7 @@ ReverseTensor(const poplar::Tensor &in,
   poplar::Tensor out = in;
   if (in.numElements() > 0) {
     for (int64 d : dimensions) {
-      poplar::Tensor slice = out.slice(0, 1, d);
-      for (size_t s = 1; s < in.dim(d); s++) {
-        slice = poplar::concat(out.slice(s, s+1, d), slice, d);
-      }
-      out = slice;
+      out = out.reverse(d);
     }
   }
   return out;

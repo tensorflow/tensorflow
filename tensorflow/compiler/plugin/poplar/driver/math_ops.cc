@@ -162,7 +162,7 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
 
   if (IsInPlaceUpdate(inst) && (in0.shape() == in1.shape())) {
 
-    const std::string& poplar_data_type(graph.getTensorElementType(in0));
+    const std::string& poplar_data_type(in0.elementType());
 
     std::string vertex_name;
     switch (inst->opcode()) {
@@ -298,7 +298,7 @@ CreateSelectOp(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(in1, FindInstructionInput(tensor_map, inst, 2, 0));
   in1 = in1.flatten();
 
-  const std::string& poplar_data_type(graph.getTensorElementType(in0));
+  const std::string& poplar_data_type(in0.elementType());
 
   // Allocate the output tensor
   poplar::Tensor out;
