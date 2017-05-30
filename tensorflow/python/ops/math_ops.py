@@ -211,7 +211,7 @@ def abs(x, name=None):
   Given a tensor of real numbers `x`, this operation returns a tensor
   containing the absolute value of each element in `x`. For example, if x is
   an input element and y is an output element, this operation computes
-  \\\\(y = |x|\\\\).
+  \\(y = |x|\\).
 
   Args:
     x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
@@ -494,7 +494,7 @@ def scalar_mul(scalar, x):
 def pow(x, y, name=None):
   r"""Computes the power of one value to another.
 
-  Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for
+  Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
   corresponding elements in `x` and `y`. For example:
 
   ```
