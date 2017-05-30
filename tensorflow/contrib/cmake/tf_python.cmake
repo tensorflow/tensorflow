@@ -174,8 +174,15 @@ function(add_python_module MODULE_NAME)
     if(NOT ${ADD_PYTHON_MODULE_DONTCOPY})
         foreach(script ${module_python_srcs})
             get_filename_component(REL_DIR ${script} DIRECTORY)
-            add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
-              COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/${script} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/${script})
+            # NOTE(mrry): This rule may exclude modules that should be part of
+            # the distributed PIP package
+            # (e.g. tensorflow/contrib/testing/python/framework/util_test.py),
+            # so we currently add explicit commands to include those files
+            # later on in this script.
+            if (NOT "${script}" MATCHES "_test\.py$")
+	        add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
+                  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/${script} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/${script})
+            endif()
         endforeach()
     endif()
 endfunction()
@@ -863,9 +870,17 @@ add_dependencies(tf_python_build_pip_package
     tf_python_touchup_modules
     tf_python_ops
     tf_extension_ops)
+
+# Fix-up Python files that were not included by the add_python_module() macros.
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tools/pip_package/setup.py
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
+# This file is unfortunately excluded by the regex that excludes *_test.py
+# files, but it is imported into tf.contrib, so we add it explicitly.
+add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/testing/python/framework/util_test.py
+                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/testing/python/framework/)
+
 if(WIN32)
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.dll
