@@ -74,8 +74,8 @@ SimpleGraphExecutionState::~SimpleGraphExecutionState() {
   std::unique_ptr<SimpleGraphExecutionState> ret(
       new SimpleGraphExecutionState(graph_def, options));
 
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&ret->original_graph_def_,
-                                               *ret->flib_def_.get(), 0));
+  TF_RETURN_IF_ERROR(
+      AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
   // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
   // pass an empty BuildGraphOptions (that isn't going to be used when
   // place_pruned_graph is false).
@@ -103,8 +103,8 @@ SimpleGraphExecutionState::~SimpleGraphExecutionState() {
   GraphDef temp(graph_def);
   std::unique_ptr<SimpleGraphExecutionState> ret(
       new SimpleGraphExecutionState(&temp, options));
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&ret->original_graph_def_,
-                                               *ret->flib_def_.get(), 0));
+  TF_RETURN_IF_ERROR(
+      AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
   TF_RETURN_IF_ERROR(ret->InitBaseGraph(subgraph_options));
   TF_RETURN_IF_ERROR(ret->BuildGraph(subgraph_options, out_client_graph));
   *out_state = std::move(ret);
@@ -139,7 +139,7 @@ Status SimpleGraphExecutionState::Extend(
   int old_node_size = gdef.node_size();
   gdef.mutable_node()->MergeFrom(extension_def.node());
   TF_RETURN_IF_ERROR(
-      AddDefaultAttrsToGraphDef(&gdef, *flib_def_.get(), old_node_size));
+      AddDefaultAttrsToGraphDef(&gdef, *flib_def_, old_node_size));
   // Merge versions
   if (gdef.has_versions()) {
     if (gdef.versions().producer() != extension_def.versions().producer()) {
@@ -181,7 +181,7 @@ Status SimpleGraphExecutionState::Extend(
   if (gdef.versions().producer() >= 5) {
     // Validate the graph: we assume that merging two valid graphs
     // should maintain graph validity.
-    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(gdef, *flib_def_.get()));
+    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(gdef, *flib_def_));
   }
 
   // 6. Add the extension.
@@ -196,7 +196,7 @@ Status SimpleGraphExecutionState::Extend(
       new SimpleGraphExecutionState(&gdef, combined_options));
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(
-      &new_execution_state->original_graph_def_, *flib_def_.get(), 0));
+      &new_execution_state->original_graph_def_, *flib_def_, 0));
   if (!session_options_->config.graph_options().place_pruned_graph()) {
     // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
     // pass an empty BuildGraphOptions (that isn't going to be used
@@ -313,7 +313,7 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   CostModel costs(true /*is_global*/);
   {
     mutex_lock l(mu_);
-    costs_.InitFromGraph(*new_graph.get());
+    costs_.InitFromGraph(*new_graph);
     costs.MergeFromGlobal(costs_);
   }
 

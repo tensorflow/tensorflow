@@ -36,7 +36,7 @@ ZlibOutputBuffer::ZlibOutputBuffer(
       z_stream_(new z_stream) {}
 
 ZlibOutputBuffer::~ZlibOutputBuffer() {
-  if (z_stream_.get()) {
+  if (z_stream_) {
     LOG(WARNING) << "ZlibOutputBuffer::Close() not called. Possible data loss";
   }
 }

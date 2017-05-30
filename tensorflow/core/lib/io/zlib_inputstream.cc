@@ -37,7 +37,7 @@ ZlibInputStream::ZlibInputStream(
 }
 
 ZlibInputStream::~ZlibInputStream() {
-  if (z_stream_.get()) {
+  if (z_stream_) {
     inflateEnd(z_stream_.get());
   }
 }

@@ -71,17 +71,17 @@ void TestJPEG(Env* env, const string& jpegfile) {
   // Set min_acceptable_fraction to something insufficient
   flags.min_acceptable_fraction = 0.8;
   imgdata.reset(Uncompress(temp, fsize / 2, flags, &w, &h, &c, nullptr));
-  CHECK(imgdata.get() == nullptr);
+  CHECK(imgdata == nullptr);
 
   // Now, use a value that makes fsize/2 be enough for a black-filling
   flags.min_acceptable_fraction = 0.01;
   imgdata.reset(Uncompress(temp, fsize / 2, flags, &w, &h, &c, nullptr));
-  CHECK(imgdata.get() != nullptr);
+  CHECK(imgdata != nullptr);
 
   // Finally, uncompress the whole data
   flags.min_acceptable_fraction = 1.0;
   imgdata.reset(Uncompress(temp, fsize, flags, &w, &h, &c, nullptr));
-  CHECK(imgdata.get() != nullptr);
+  CHECK(imgdata != nullptr);
 }
 
 TEST(JpegMemTest, Jpeg) {
@@ -267,7 +267,7 @@ TEST(JpegMemTest, ChromaDownsampling) {
   int64 num_warnings;
   std::unique_ptr<uint8[]> uncompressed(Uncompress(
       jpeg.c_str(), jpeg.size(), unflags, &w, &h, &c, &num_warnings));
-  CHECK(uncompressed.get() != nullptr);
+  CHECK(uncompressed != nullptr);
   CHECK_EQ(num_warnings, 0);
 
   // Recompress the JPEG with and without chroma downsampling

@@ -41,7 +41,7 @@ limitations under the License.
 using tensorflow::str_util::Split;
 
 void completion(const char* buf, linenoiseCompletions* lc) {
-  tensorflow::string buf_str = tensorflow::string(buf);
+  tensorflow::string buf_str = buf;
   if (buf_str.find(" ") == buf_str.npos) {
     for (const char* opt : tensorflow::tfprof::kCmds) {
       if (tensorflow::string(opt).find(buf_str) == 0) {
@@ -246,7 +246,7 @@ int main(int argc, char** argv) {
   linenoiseHistoryLoad(".tfprof_history.txt");
 
   for (char* line = nullptr; (line = linenoise("tfprof> ")) != nullptr;) {
-    tensorflow::string line_s = tensorflow::string(line);
+    tensorflow::string line_s = line;
     free(line);
 
     if (line_s.empty()) {
