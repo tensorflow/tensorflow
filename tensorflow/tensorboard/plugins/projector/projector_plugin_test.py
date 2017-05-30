@@ -24,31 +24,21 @@ import io
 import json
 import os
 import numpy as np
+import tensorflow as tf
 
 from werkzeug import test as werkzeug_test
 from werkzeug import wrappers
+
 from google.protobuf import text_format
-from tensorflow.core.framework import summary_pb2
-from tensorflow.core.protobuf import saver_pb2
-from tensorflow.core.util import event_pb2
-from tensorflow.python.client import session
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import image_ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
-from tensorflow.python.platform import test
 from tensorflow.python.summary import plugin_asset
-from tensorflow.python.summary.writer import writer
-from tensorflow.python.training import saver as saver_lib
+
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 from tensorflow.tensorboard.plugins.projector import projector_config_pb2
 from tensorflow.tensorboard.plugins.projector import projector_plugin
 
 
-class ProjectorAppTest(test.TestCase):
+class ProjectorAppTest(tf.test.TestCase):
 
   def setUp(self):
     self.log_dir = self.get_temp_dir()
@@ -81,7 +71,7 @@ class ProjectorAppTest(test.TestCase):
     config.model_checkpoint_path = 'does_not_exist'
     embedding = config.embeddings.add()
     embedding.tensor_name = 'var1'
-    with gfile.GFile(config_path, 'w') as f:
+    with tf.gfile.GFile(config_path, 'w') as f:
       f.write(text_format.MessageToString(config))
     self._SetupWSGIApp()
 
@@ -179,11 +169,11 @@ class ProjectorAppTest(test.TestCase):
     self.assertEqual(bookmark, {'a': 'b'})
 
   def testEndpointsNoAssets(self):
-    g = ops.Graph()
+    g = tf.Graph()
     with g.as_default():
       plugin_asset.get_plugin_asset(projector_plugin.ProjectorPluginAsset)
 
-    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw = tf.summary.FileWriter(self.log_dir, graph=g)
     fw.close()
 
     self._SetupWSGIApp()
@@ -192,7 +182,7 @@ class ProjectorAppTest(test.TestCase):
 
   def testEndpointsMetadataForVariableAssets(self):
     self._GenerateProjectorTestData()
-    g = ops.Graph()
+    g = tf.Graph()
     with g.as_default():
       manager = plugin_asset.get_plugin_asset(
           projector_plugin.ProjectorPluginAsset)
@@ -201,7 +191,7 @@ class ProjectorAppTest(test.TestCase):
     metadata.add_column('labels', ['a', 'b', 'c'])
     manager.add_metadata_for_embedding_variable('test', metadata)
 
-    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw = tf.summary.FileWriter(self.log_dir, graph=g)
     fw.close()
 
     self._SetupWSGIApp()
@@ -223,7 +213,7 @@ class ProjectorAppTest(test.TestCase):
     self._AssertTensorResponse(tensor_bytes, expected_tensor)
 
   def testEndpointsMetadataForVariableAssetsButNoCheckpoint(self):
-    g = ops.Graph()
+    g = tf.Graph()
     with g.as_default():
       manager = plugin_asset.get_plugin_asset(
           projector_plugin.ProjectorPluginAsset)
@@ -232,7 +222,7 @@ class ProjectorAppTest(test.TestCase):
     metadata.add_column('labels', ['a', 'b', 'c'])
     manager.add_metadata_for_embedding_variable('test', metadata)
 
-    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw = tf.summary.FileWriter(self.log_dir, graph=g)
     fw.close()
 
     self._SetupWSGIApp()
@@ -240,7 +230,7 @@ class ProjectorAppTest(test.TestCase):
     self.assertEqual(run_json, [])
 
   def testEndpointsTensorAndMetadataAssets(self):
-    g = ops.Graph()
+    g = tf.Graph()
     with g.as_default():
       manager = plugin_asset.get_plugin_asset(
           projector_plugin.ProjectorPluginAsset)
@@ -256,7 +246,7 @@ class ProjectorAppTest(test.TestCase):
     manager.add_embedding('emb', expected_tensor, metadata, [image1, image2],
                           [2, 2])
 
-    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw = tf.summary.FileWriter(self.log_dir, graph=g)
     fw.close()
 
     self._SetupWSGIApp()
@@ -282,9 +272,9 @@ class ProjectorAppTest(test.TestCase):
 
     image_query = '/data/plugin/projector/sprite_image?run=%s&name=emb' % run
     image_bytes = self._Get(image_query).data
-    with ops.Graph().as_default():
-      s = session.Session()
-      image_array = image_ops.decode_png(image_bytes).eval(session=s).tolist()
+    with tf.Graph().as_default():
+      s = tf.Session()
+      image_array = tf.image.decode_png(image_bytes).eval(session=s).tolist()
     expected_sprite_image = [
         [[1, 2, 3], [4, 5, 6], [10, 20, 30], [40, 50, 60]],
         [[7, 8, 9], [10, 11, 12], [70, 80, 90], [100, 110, 120]],
@@ -313,7 +303,7 @@ class ProjectorAppTest(test.TestCase):
 
   def testSpriteImageUnknownRun(self):
     self._GenerateProjectorTestData()
-    g = ops.Graph()
+    g = tf.Graph()
     with g.as_default():
       manager = plugin_asset.get_plugin_asset(
           projector_plugin.ProjectorPluginAsset)
@@ -324,7 +314,7 @@ class ProjectorAppTest(test.TestCase):
     manager.add_metadata_for_embedding_variable('var1',
                                                 thumbnails=[image1, image2],
                                                 thumbnail_dim=[2, 2])
-    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw = tf.summary.FileWriter(self.log_dir, graph=g)
     fw.close()
     self._SetupWSGIApp()
 
@@ -334,7 +324,7 @@ class ProjectorAppTest(test.TestCase):
 
   def testSpriteImageUnknownName(self):
     self._GenerateProjectorTestData()
-    g = ops.Graph()
+    g = tf.Graph()
     with g.as_default():
       manager = plugin_asset.get_plugin_asset(
           projector_plugin.ProjectorPluginAsset)
@@ -345,7 +335,7 @@ class ProjectorAppTest(test.TestCase):
     manager.add_metadata_for_embedding_variable('var1',
                                                 thumbnails=[image1, image2],
                                                 thumbnail_dim=[2, 2])
-    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw = tf.summary.FileWriter(self.log_dir, graph=g)
     fw.close()
     self._SetupWSGIApp()
     q = '/data/plugin/projector/sprite_image?run=.&name=unknown'
@@ -354,7 +344,7 @@ class ProjectorAppTest(test.TestCase):
 
   def testEndpointsComboTensorAssetsAndCheckpoint(self):
     self._GenerateProjectorTestData()
-    g = ops.Graph()
+    g = tf.Graph()
     with g.as_default():
       manager = plugin_asset.get_plugin_asset(
           projector_plugin.ProjectorPluginAsset)
@@ -366,7 +356,7 @@ class ProjectorAppTest(test.TestCase):
     new_tensor_values = np.array([[1, 2], [3, 4], [5, 6]])
     manager.add_embedding('new_tensor', new_tensor_values)
 
-    fw = writer.FileWriter(self.log_dir, graph=g)
+    fw = tf.summary.FileWriter(self.log_dir, graph=g)
     fw.close()
 
     self._SetupWSGIApp()
@@ -425,13 +415,11 @@ class ProjectorAppTest(test.TestCase):
     return json.loads(data.decode('utf-8'))
 
   def _GenerateEventsData(self):
-    fw = writer.FileWriter(self.log_dir)
-    event = event_pb2.Event(
+    fw = tf.summary.FileWriter(self.log_dir)
+    event = tf.Event(
         wall_time=1,
         step=1,
-        summary=summary_pb2.Summary(
-            value=[summary_pb2.Summary.Value(
-                tag='s1', simple_value=0)]))
+        summary=tf.Summary(value=[tf.Summary.Value(tag='s1', simple_value=0)]))
     fw.add_event(event)
     fw.close()
 
@@ -442,28 +430,27 @@ class ProjectorAppTest(test.TestCase):
     # Add an embedding by its canonical tensor name.
     embedding.tensor_name = 'var1:0'
 
-    with gfile.GFile(os.path.join(self.log_dir, 'bookmarks.json'), 'w') as f:
+    with tf.gfile.GFile(os.path.join(self.log_dir, 'bookmarks.json'), 'w') as f:
       f.write('{"a": "b"}')
     embedding.bookmarks_path = 'bookmarks.json'
 
     config_pbtxt = text_format.MessageToString(config)
-    with gfile.GFile(config_path, 'w') as f:
+    with tf.gfile.GFile(config_path, 'w') as f:
       f.write(config_pbtxt)
 
     # Write a checkpoint with some dummy variables.
-    with ops.Graph().as_default():
-      sess = session.Session()
+    with tf.Graph().as_default():
+      sess = tf.Session()
       checkpoint_path = os.path.join(self.log_dir, 'model')
-      variable_scope.get_variable(
-          'var1', [1, 2], initializer=init_ops.constant_initializer(6.0))
-      variable_scope.get_variable('var2', [10, 10])
-      variable_scope.get_variable('var3', [100, 100])
-      sess.run(variables.global_variables_initializer())
-      saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
+      tf.get_variable('var1', [1, 2], initializer=tf.constant_initializer(6.0))
+      tf.get_variable('var2', [10, 10])
+      tf.get_variable('var3', [100, 100])
+      sess.run(tf.global_variables_initializer())
+      saver = tf.train.Saver(write_version=tf.train.SaverDef.V1)
       saver.save(sess, checkpoint_path)
 
 
-class MetadataColumnsTest(test.TestCase):
+class MetadataColumnsTest(tf.test.TestCase):
 
   def testLengthDoesNotMatch(self):
     metadata = projector_plugin.EmbeddingMetadata(10)
@@ -520,7 +507,7 @@ class MetadataColumnsTest(test.TestCase):
       metadata.add_column('Labels', np.array(['a', 'b']))
 
 
-class ProjectorPluginAssetTest(test.TestCase):
+class ProjectorPluginAssetTest(tf.test.TestCase):
 
   def testNoAssets(self):
     manager = plugin_asset.get_plugin_asset(
@@ -624,9 +611,9 @@ class ProjectorPluginAssetTest(test.TestCase):
     self.assertEqual(assets['test_values.tsv'], b'1\n2\n3\n')
 
     png_bytes = assets['test_sprite.png']
-    with ops.Graph().as_default():
-      s = session.Session()
-      image_array = image_ops.decode_png(png_bytes).eval(session=s).tolist()
+    with tf.Graph().as_default():
+      s = tf.Session()
+      image_array = tf.image.decode_png(png_bytes).eval(session=s).tolist()
     expected_master_image = [
         [[1, 2, 3], [4, 5, 6], [10, 20, 30], [40, 50, 60]],
         [[7, 8, 9], [10, 11, 12], [70, 80, 90], [100, 110, 120]],
@@ -733,33 +720,33 @@ class ProjectorPluginAssetTest(test.TestCase):
 
   def testNoAssetsProperSerializationOnDisk(self):
     logdir = self.get_temp_dir()
-    plugin_dir = os.path.join(logdir, writer._PLUGINS_DIR,
+    plugin_dir = os.path.join(logdir, 'plugins',
                               projector_plugin.ProjectorPluginAsset.plugin_name)
 
-    with ops.Graph().as_default() as g:
+    with tf.Graph().as_default() as g:
       plugin_asset.get_plugin_asset(projector_plugin.ProjectorPluginAsset)
-      fw = writer.FileWriter(logdir, graph=g)
+      fw = tf.summary.FileWriter(logdir, graph=g)
       fw.close()
 
-    with gfile.Open(os.path.join(plugin_dir, 'projector_config.pbtxt')) as f:
+    with tf.gfile.Open(os.path.join(plugin_dir, 'projector_config.pbtxt')) as f:
       content = f.read()
     self.assertEqual(content, '')
 
   def testNoReferenceToPluginNoSerializationOnDisk(self):
     logdir = self.get_temp_dir()
-    plugin_dir = os.path.join(logdir, writer._PLUGINS_DIR,
+    plugin_dir = os.path.join(logdir, 'plugins',
                               projector_plugin.ProjectorPluginAsset.plugin_name)
 
-    with ops.Graph().as_default() as g:
-      fw = writer.FileWriter(logdir, graph=g)
+    with tf.Graph().as_default() as g:
+      fw = tf.summary.FileWriter(logdir, graph=g)
       fw.close()
 
     self.assertFalse(
-        gfile.Exists(plugin_dir),
+        tf.gfile.Exists(plugin_dir),
         'The projector plugin directory should not exist.')
 
 
-class LRUCacheTest(test.TestCase):
+class LRUCacheTest(tf.test.TestCase):
 
   def testInvalidSize(self):
     with self.assertRaises(ValueError):
@@ -797,4 +784,4 @@ class LRUCacheTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

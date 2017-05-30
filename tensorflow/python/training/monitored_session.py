@@ -596,6 +596,7 @@ class MonitoredSession(_MonitoredSession):
   * initializes the model via initialization ops provided by `Scaffold`
   * restores variables if a checkpoint exists
   * launches queue runners
+  * calls `hook.after_create_session()`
 
   Run: When `run()` is called, the monitored session does following things:
 

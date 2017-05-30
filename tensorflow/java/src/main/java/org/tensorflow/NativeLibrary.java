@@ -159,4 +159,6 @@ final class NativeLibrary {
       src.close();
     }
   }
+
+  private NativeLibrary() {}
 }

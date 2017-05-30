@@ -2146,6 +2146,11 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:spectral_ops",
     ],
+    tags = [
+        "noasan",
+        "nomsan",
+        "notsan",  # http://b/62067589
+    ],
 )
 
 cuda_py_test(
@@ -2331,7 +2336,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "stage_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["stage_op_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
@@ -2341,6 +2346,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
+    shard_count = 2,
 )
 
 cuda_py_test(

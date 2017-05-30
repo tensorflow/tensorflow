@@ -90,15 +90,15 @@ struct STLLessThan {
 
 class StringSink : public WritableFile {
  public:
-  ~StringSink() {}
+  ~StringSink() override {}
 
   const string& contents() const { return contents_; }
 
-  virtual Status Close() { return Status::OK(); }
-  virtual Status Flush() { return Status::OK(); }
-  virtual Status Sync() { return Status::OK(); }
+  Status Close() override { return Status::OK(); }
+  Status Flush() override { return Status::OK(); }
+  Status Sync() override { return Status::OK(); }
 
-  virtual Status Append(const StringPiece& data) {
+  Status Append(const StringPiece& data) override {
     contents_.append(data.data(), data.size());
     return Status::OK();
   }
@@ -112,12 +112,12 @@ class StringSource : public RandomAccessFile {
   StringSource(const StringPiece& contents)
       : contents_(contents.data(), contents.size()), bytes_read_(0) {}
 
-  virtual ~StringSource() {}
+  ~StringSource() override {}
 
   uint64 Size() const { return contents_.size(); }
 
-  virtual Status Read(uint64 offset, size_t n, StringPiece* result,
-                      char* scratch) const {
+  Status Read(uint64 offset, size_t n, StringPiece* result,
+              char* scratch) const override {
     if (offset > contents_.size()) {
       return errors::InvalidArgument("invalid Read offset");
     }
@@ -178,8 +178,8 @@ class Constructor {
 class BlockConstructor : public Constructor {
  public:
   BlockConstructor() : block_(NULL) {}
-  ~BlockConstructor() { delete block_; }
-  virtual Status FinishImpl(const Options& options, const KVMap& data) {
+  ~BlockConstructor() override { delete block_; }
+  Status FinishImpl(const Options& options, const KVMap& data) override {
     delete block_;
     block_ = NULL;
     BlockBuilder builder(&options);
@@ -196,7 +196,7 @@ class BlockConstructor : public Constructor {
     block_ = new Block(contents);
     return Status::OK();
   }
-  virtual Iterator* NewIterator() const { return block_->NewIterator(); }
+  Iterator* NewIterator() const override { return block_->NewIterator(); }
 
  private:
   string data_;
@@ -206,8 +206,8 @@ class BlockConstructor : public Constructor {
 class TableConstructor : public Constructor {
  public:
   TableConstructor() : source_(NULL), table_(NULL) {}
-  ~TableConstructor() { Reset(); }
-  virtual Status FinishImpl(const Options& options, const KVMap& data) {
+  ~TableConstructor() override { Reset(); }
+  Status FinishImpl(const Options& options, const KVMap& data) override {
     Reset();
     StringSink sink;
     TableBuilder builder(options, &sink);
@@ -227,7 +227,7 @@ class TableConstructor : public Constructor {
     return Table::Open(table_options, source_, sink.contents().size(), &table_);
   }
 
-  virtual Iterator* NewIterator() const { return table_->NewIterator(); }
+  Iterator* NewIterator() const override { return table_->NewIterator(); }
 
   uint64 ApproximateOffsetOf(const StringPiece& key) const {
     return table_->ApproximateOffsetOf(key);
@@ -283,7 +283,7 @@ class Harness : public ::testing::Test {
     }
   }
 
-  ~Harness() { delete constructor_; }
+  ~Harness() override { delete constructor_; }
 
   void Add(const string& key, const string& value) {
     constructor_->Add(key, value);

@@ -27,21 +27,16 @@ import tempfile
 import numpy
 from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
 from werkzeug import test as werkzeug_test
 from werkzeug import wrappers
 
-from tensorflow.python.client import session
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import test
-from tensorflow.python.summary import summary
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 from tensorflow.tensorboard.plugins.images import images_plugin
 
 
-class ImagesPluginTest(test.TestCase):
+class ImagesPluginTest(tf.test.TestCase):
 
   def setUp(self):
     self.log_dir = tempfile.mkdtemp()
@@ -51,13 +46,13 @@ class ImagesPluginTest(test.TestCase):
     numpy.random.seed(42)
 
     # Create image summaries for run foo.
-    ops.reset_default_graph()
-    sess = session.Session()
-    placeholder = array_ops.placeholder(dtypes.uint8)
-    summary.image(name="baz", tensor=placeholder)
-    merged_summary_op = summary.merge_all()
+    tf.reset_default_graph()
+    sess = tf.Session()
+    placeholder = tf.placeholder(tf.uint8)
+    tf.summary.image(name="baz", tensor=placeholder)
+    merged_summary_op = tf.summary.merge_all()
     foo_directory = os.path.join(self.log_dir, "foo")
-    writer = summary.FileWriter(foo_directory)
+    writer = tf.summary.FileWriter(foo_directory)
     writer.add_graph(sess.graph)
     for step in xrange(2):
       writer.add_summary(sess.run(merged_summary_op, feed_dict={
@@ -67,13 +62,13 @@ class ImagesPluginTest(test.TestCase):
     writer.close()
 
     # Create image summaries for run bar.
-    ops.reset_default_graph()
-    sess = session.Session()
-    placeholder = array_ops.placeholder(dtypes.uint8)
-    summary.image(name="quux", tensor=placeholder)
-    merged_summary_op = summary.merge_all()
+    tf.reset_default_graph()
+    sess = tf.Session()
+    placeholder = tf.placeholder(tf.uint8)
+    tf.summary.image(name="quux", tensor=placeholder)
+    merged_summary_op = tf.summary.merge_all()
     bar_directory = os.path.join(self.log_dir, "bar")
-    writer = summary.FileWriter(bar_directory)
+    writer = tf.summary.FileWriter(bar_directory)
     writer.add_graph(sess.graph)
     for step in xrange(2):
       writer.add_summary(sess.run(merged_summary_op, feed_dict={
@@ -161,4 +156,4 @@ class ImagesPluginTest(test.TestCase):
 
 
 if __name__ == "__main__":
-  test.main()
+  tf.test.main()

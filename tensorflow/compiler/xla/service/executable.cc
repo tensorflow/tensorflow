@@ -95,7 +95,7 @@ Status Executable::DumpSessionModule() {
 // Removes illegal characters from filenames.
 static void SanitizeFilename(string* name) {
   for (char& c : *name) {
-    if (c == '/' || c == '\\') {
+    if (c == '/' || c == '\\' || c == '[' || c == ']') {
       c = '_';
     }
   }

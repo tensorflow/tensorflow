@@ -121,7 +121,9 @@ class PosixReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
  public:
   PosixReadOnlyMemoryRegion(const void* address, uint64 length)
       : address_(address), length_(length) {}
-  ~PosixReadOnlyMemoryRegion() { munmap(const_cast<void*>(address_), length_); }
+  ~PosixReadOnlyMemoryRegion() override {
+    munmap(const_cast<void*>(address_), length_);
+  }
   const void* data() override { return address_; }
   uint64 length() override { return length_; }
 

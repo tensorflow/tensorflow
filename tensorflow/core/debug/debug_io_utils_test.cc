@@ -54,15 +54,13 @@ TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
 
   // Append levels of nonexisting directories, to test that the function can
   // create directories.
-  const string kNodeName = "foo/bar/qux/tensor_a";
-  const string kDebugOpName = "DebugIdentity";
-  const int32 output_slot = 0;
   const uint64 wall_time = env_->NowMicros();
+  const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
+                                   "foo/bar/qux/tensor_a", 0, "DebugIdentity");
 
   string dump_file_path;
-  TF_ASSERT_OK(DebugFileIO::DumpTensorToDir(kNodeName, output_slot,
-                                            kDebugOpName, *tensor_a_, wall_time,
-                                            test_dir, &dump_file_path));
+  TF_ASSERT_OK(DebugFileIO::DumpTensorToDir(
+      kDebugNodeKey, *tensor_a_, wall_time, test_dir, &dump_file_path));
 
   // Read the file into a Event proto.
   Event event;
@@ -70,7 +68,7 @@ TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
 
   ASSERT_GE(wall_time, event.wall_time());
   ASSERT_EQ(1, event.summary().value().size());
-  ASSERT_EQ(strings::StrCat(kNodeName, ":", output_slot, ":", kDebugOpName),
+  ASSERT_EQ(kDebugNodeKey.debug_node_name,
             event.summary().value(0).node_name());
 
   Tensor a_prime(DT_FLOAT);
@@ -97,15 +95,13 @@ TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
 
   const string test_dir = testing::TmpDir();
 
-  const string kNodeName = "quux/grault/tensor_b";
-  const string kDebugOpName = "DebugIdentity";
-  const int32 output_slot = 1;
+  const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
+                                   "quux/grault/tensor_b", 1, "DebugIdentity");
   const uint64 wall_time = env_->NowMicros();
 
   string dump_file_name;
-  Status s = DebugFileIO::DumpTensorToDir(kNodeName, output_slot, kDebugOpName,
-                                          *tensor_b_, wall_time, test_dir,
-                                          &dump_file_name);
+  Status s = DebugFileIO::DumpTensorToDir(kDebugNodeKey, *tensor_b_, wall_time,
+                                          test_dir, &dump_file_name);
   ASSERT_TRUE(s.ok());
 
   // Read the file into a Event proto.
@@ -114,7 +110,8 @@ TEST_F(DebugIOUtilsTest, DumpStringTensorToFileSunnyDay) {
 
   ASSERT_GE(wall_time, event.wall_time());
   ASSERT_EQ(1, event.summary().value().size());
-  ASSERT_EQ(strings::StrCat(kNodeName, ":", output_slot, ":", kDebugOpName),
+  ASSERT_EQ(kDebugNodeKey.device_name, event.summary().value(0).tag());
+  ASSERT_EQ(kDebugNodeKey.debug_node_name,
             event.summary().value(0).node_name());
 
   Tensor b_prime(DT_STRING);
@@ -160,15 +157,13 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
 
   // Second, try to dump the tensor to a path that requires "baz" to be a
   // directory, which should lead to an error.
-  const string kNodeName = "baz/tensor_a";
-  const string kDebugOpName = "DebugIdentity";
-  const int32 output_slot = 0;
+  const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
+                                   "baz/tensor_a", 0, "DebugIdentity");
   const uint64 wall_time = env_->NowMicros();
 
   string dump_file_name;
-  Status s = DebugFileIO::DumpTensorToDir(kNodeName, output_slot, kDebugOpName,
-                                          *tensor_a_, wall_time, test_dir,
-                                          &dump_file_name);
+  Status s = DebugFileIO::DumpTensorToDir(kDebugNodeKey, *tensor_a_, wall_time,
+                                          test_dir, &dump_file_name);
   ASSERT_FALSE(s.ok());
 
   // Tear down temporary file and directories.
@@ -185,9 +180,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
   Initialize();
 
   const int kNumDumpRoots = 3;
-  const string kNodeName = "foo/bar/qux/tensor_a";
-  const string kDebugOpName = "DebugIdentity";
-  const int32 output_slot = 0;
+  const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
+                                   "foo/bar/qux/tensor_a", 0, "DebugIdentity");
   const uint64 wall_time = env_->NowMicros();
 
   std::vector<string> dump_roots;
@@ -197,8 +191,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
     string dump_root = strings::StrCat(testing::TmpDir(), "/", i);
 
     dump_roots.push_back(dump_root);
-    dump_file_paths.push_back(DebugFileIO::GetDumpFilePath(
-        dump_root, kNodeName, output_slot, kDebugOpName, wall_time));
+    dump_file_paths.push_back(
+        DebugFileIO::GetDumpFilePath(dump_root, kDebugNodeKey, wall_time));
     urls.push_back(strings::StrCat("file://", dump_root));
   }
 
@@ -206,12 +200,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
     ASSERT_NE(dump_roots[0], dump_roots[i]);
   }
 
-  const string tensor_name = strings::StrCat(kNodeName, ":", output_slot);
-  const string debug_node_name =
-      strings::StrCat(tensor_name, ":", kDebugOpName);
-
-  Status s = DebugIO::PublishDebugTensor(tensor_name, kDebugOpName, *tensor_a_,
-                                         wall_time, urls);
+  Status s =
+      DebugIO::PublishDebugTensor(kDebugNodeKey, *tensor_a_, wall_time, urls);
   ASSERT_TRUE(s.ok());
 
   // Try reading the file into a Event proto.
@@ -222,7 +212,9 @@ TEST_F(DebugIOUtilsTest, PublishTensorToMultipleFileURLs) {
 
     ASSERT_GE(wall_time, event.wall_time());
     ASSERT_EQ(1, event.summary().value().size());
-    ASSERT_EQ(debug_node_name, event.summary().value(0).node_name());
+    ASSERT_EQ(kDebugNodeKey.device_name, event.summary().value(0).tag());
+    ASSERT_EQ(kDebugNodeKey.debug_node_name,
+              event.summary().value(0).node_name());
 
     Tensor a_prime(DT_FLOAT);
     ASSERT_TRUE(a_prime.FromProto(event.summary().value(0).tensor()));
@@ -250,18 +242,13 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
   Initialize();
 
   const int kConcurrentPubs = 3;
-  const string kNodeName = "tensor_a";
-  const string kDebugOpName = "DebugIdentity";
-  const int32 kOutputSlot = 0;
+  const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
+                                   "tensor_a", 0, "DebugIdentity");
 
   thread::ThreadPool* tp =
       new thread::ThreadPool(Env::Default(), "test", kConcurrentPubs);
   const uint64 wall_time = env_->NowMicros();
-
   const string dump_root_base = testing::TmpDir();
-  const string tensor_name = strings::StrCat(kNodeName, ":", kOutputSlot);
-  const string debug_node_name =
-      strings::StrCat(tensor_name, ":", kDebugOpName);
 
   mutex mu;
   std::vector<string> dump_roots GUARDED_BY(mu);
@@ -272,8 +259,7 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
   Notification all_done;
 
   auto fn = [this, &dump_count, &done_count, &mu, &dump_root_base, &dump_roots,
-             &dump_file_paths, &wall_time, &tensor_name, &debug_node_name,
-             &kNodeName, &kDebugOpName, &kConcurrentPubs, &kOutputSlot,
+             &dump_file_paths, &wall_time, &kDebugNodeKey, &kConcurrentPubs,
              &all_done]() {
     // "gumpy" is the shared directory part of the path.
     string dump_root;
@@ -284,8 +270,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
           strings::StrCat(dump_root_base, "grumpy/", "dump_", dump_count++);
 
       dump_roots.push_back(dump_root);
-      dump_file_paths.push_back(DebugFileIO::GetDumpFilePath(
-          dump_root, kNodeName, kOutputSlot, kDebugOpName, wall_time));
+      dump_file_paths.push_back(
+          DebugFileIO::GetDumpFilePath(dump_root, kDebugNodeKey, wall_time));
 
       debug_url = strings::StrCat("file://", dump_root);
     }
@@ -293,8 +279,8 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
     std::vector<string> urls;
     urls.push_back(debug_url);
 
-    Status s = DebugIO::PublishDebugTensor(tensor_name, kDebugOpName,
-                                           *tensor_a_, wall_time, urls);
+    Status s =
+        DebugIO::PublishDebugTensor(kDebugNodeKey, *tensor_a_, wall_time, urls);
     ASSERT_TRUE(s.ok());
 
     {
@@ -330,7 +316,9 @@ TEST_F(DebugIOUtilsTest, PublishTensorConcurrentlyToPartiallyOverlappingPaths) {
 
       ASSERT_GE(wall_time, event.wall_time());
       ASSERT_EQ(1, event.summary().value().size());
-      ASSERT_EQ(debug_node_name, event.summary().value(0).node_name());
+      ASSERT_EQ(kDebugNodeKey.device_name, event.summary().value(0).tag());
+      ASSERT_EQ(kDebugNodeKey.debug_node_name,
+                event.summary().value(0).node_name());
 
       Tensor a_prime(DT_FLOAT);
       ASSERT_TRUE(a_prime.FromProto(event.summary().value(0).tensor()));

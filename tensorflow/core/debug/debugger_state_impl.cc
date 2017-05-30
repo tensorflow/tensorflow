@@ -36,12 +36,12 @@ DebuggerState::~DebuggerState() {
 }
 
 Status DebuggerState::PublishDebugMetadata(
-    const int64 global_step, const int64 session_run_count,
-    const int64 executor_step_count, const std::vector<string>& input_names,
+    const int64 global_step, const int64 session_run_index,
+    const int64 executor_step_index, const std::vector<string>& input_names,
     const std::vector<string>& output_names,
     const std::vector<string>& target_names) {
-  return DebugIO::PublishDebugMetadata(global_step, session_run_count,
-                                       executor_step_count, input_names,
+  return DebugIO::PublishDebugMetadata(global_step, session_run_index,
+                                       executor_step_index, input_names,
                                        output_names, target_names, debug_urls_);
 }
 
