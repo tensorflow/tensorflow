@@ -396,7 +396,7 @@ class Harness : public ::testing::Test {
           break;
         case 1: {
           // Attempt to return something smaller than an existing key
-          if (result.size() > 0 && result[result.size() - 1] > '\0') {
+          if (!result.empty() && result[result.size() - 1] > '\0') {
             result[result.size() - 1]--;
           }
           break;

@@ -935,8 +935,8 @@ Status FastParseExample(const Config& config,
     for (size_t e = start; e < end; ++e) {
       status_of_minibatch[minibatch] = FastParseSerializedExample(
           serialized[e],
-          (example_names.size() > 0 ? example_names[e] : "<unknown>"), e,
-          config, config_index, hasher, &fixed_dense_values,
+          (!example_names.empty() ? example_names[e] : "<unknown>"), e, config,
+          config_index, hasher, &fixed_dense_values,
           &varlen_dense_buffers[minibatch], &sparse_buffers[minibatch]);
       if (!status_of_minibatch[minibatch].ok()) break;
     }

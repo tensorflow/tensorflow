@@ -76,7 +76,7 @@ Status TypeForPlaceholder(const TransformFuncContext& context,
 
 // Takes a comma-separated string of numbers and parses them into a shape.
 bool TensorShapeFromString(const string& shape_string, TensorShape* result) {
-  if (shape_string == "") {
+  if (shape_string.empty()) {
     return false;
   }
   std::vector<int64> dims;

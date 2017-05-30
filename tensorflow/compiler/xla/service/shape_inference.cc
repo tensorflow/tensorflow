@@ -227,7 +227,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 /* static */ StatusOr<Shape> ShapeInference::InferConcatOpShape(
     tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
     const int64 dimension) {
-  if (arg_shapes.size() == 0) {
+  if (arg_shapes.empty()) {
     return InvalidArgument("Concatenate expects at least one argument");
   }
   if (dimension < 0 || dimension >= ShapeUtil::Rank(*arg_shapes[0])) {
@@ -679,7 +679,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 /* static */ StatusOr<Shape> ShapeInference::InferMapShape(
     tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
     const ProgramShape& to_apply) {
-  if (arg_shapes.size() == 0) {
+  if (arg_shapes.empty()) {
     return InvalidArgument("Map expects at least one argument");
   }
 

@@ -32,7 +32,7 @@ Status SetDevice(const GraphDef& input_graph_def,
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = output_graph_def->mutable_node()->Add();
     new_node->CopyFrom(node);
-    if (!if_default || (node.device() == "")) {
+    if (!if_default || (node.device().empty())) {
       new_node->set_device(new_device);
     }
   }

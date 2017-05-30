@@ -149,7 +149,7 @@ string UniqueNodeNameFromInput(const string& input_name) {
     result += "__hat__";
   }
   result += node_name;
-  if (suffix != "") {
+  if (!suffix.empty()) {
     result += "__port__" + suffix.substr(1, suffix.size() - 1);
   }
   return result;

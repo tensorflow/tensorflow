@@ -110,7 +110,7 @@ Status ZlibInputStream::ReadFromStream() {
   // possible that on the last read there isn't enough data in the stream to
   // fill up the buffer in which case input_stream_->ReadNBytes would return an
   // OutOfRange error.
-  if (data.size() == 0) {
+  if (data.empty()) {
     return errors::OutOfRange("EOF reached");
   }
   if (errors::IsOutOfRange(s)) {

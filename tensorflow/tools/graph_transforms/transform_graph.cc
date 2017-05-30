@@ -252,7 +252,7 @@ Status TransformGraph(const std::vector<string>& inputs,
   TransformRegistry* transform_registry = GetTransformRegistry();
   for (const auto& transform_info : transform_params) {
     const string& transform_name = transform_info.first;
-    if (transform_name == "") {
+    if (transform_name.empty()) {
       continue;
     }
     if (!transform_registry->count(transform_name)) {

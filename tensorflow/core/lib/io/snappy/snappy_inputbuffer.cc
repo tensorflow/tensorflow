@@ -183,7 +183,7 @@ Status SnappyInputBuffer::ReadFromFile() {
   // possible that on the last read there isn't enough data in the file to
   // fill up the buffer in which case file_->ReadNBytes would return an
   // OutOfRange error.
-  if (data.size() == 0) {
+  if (data.empty()) {
     return errors::OutOfRange("EOF reached");
   }
   if (errors::IsOutOfRange(s)) {

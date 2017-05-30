@@ -108,7 +108,7 @@ Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
   string min_max_log_file;
   TF_RETURN_IF_ERROR(
       context.GetOneStringParameter("min_max_log_file", "", &min_max_log_file));
-  if (min_max_log_file == "") {
+  if (min_max_log_file.empty()) {
     return errors::InvalidArgument(
         "You must pass a file name to min_max_log_file");
   }

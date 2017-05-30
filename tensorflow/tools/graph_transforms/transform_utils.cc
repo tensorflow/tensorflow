@@ -110,7 +110,7 @@ string CanonicalInputName(const string& input_name) {
   string node_name;
   string suffix;
   NodeNamePartsFromInput(input_name, &prefix, &node_name, &suffix);
-  if (suffix == "") {
+  if (suffix.empty()) {
     suffix = ":0";
   }
   return prefix + node_name + suffix;

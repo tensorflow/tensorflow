@@ -127,7 +127,7 @@ class ShuffleDatasetOp : public OpKernel {
           }
         }
 
-        if (buffer_.size() > 0) {
+        if (!buffer_.empty()) {
           *end_of_sequence = false;
           // Choose an element to produce uniformly at random, and
           // swap the last element into its place in the buffer.
