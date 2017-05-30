@@ -174,8 +174,10 @@ function(add_python_module MODULE_NAME)
     if(NOT ${ADD_PYTHON_MODULE_DONTCOPY})
         foreach(script ${module_python_srcs})
             get_filename_component(REL_DIR ${script} DIRECTORY)
-            add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
-              COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/${script} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/${script})
+	    if (NOT "${script}" MATCHES "_test\.py$")
+	        add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
+                  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/${script} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/${script})
+            endif()
         endforeach()
     endif()
 endfunction()
