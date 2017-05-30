@@ -175,10 +175,10 @@ function(add_python_module MODULE_NAME)
         foreach(script ${module_python_srcs})
             get_filename_component(REL_DIR ${script} DIRECTORY)
             # NOTE(mrry): This rule may exclude modules that should be part of
-	    # the distributed PIP package
-	    # (e.g. tensorflow/contrib/testing/python/framework/util_test.py),
-	    # so we currently add explicit commands to include those files
-	    # later on in this script.
+            # the distributed PIP package
+            # (e.g. tensorflow/contrib/testing/python/framework/util_test.py),
+            # so we currently add explicit commands to include those files
+            # later on in this script.
             if (NOT "${script}" MATCHES "_test\.py$")
 	        add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
                   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/${script} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/${script})
