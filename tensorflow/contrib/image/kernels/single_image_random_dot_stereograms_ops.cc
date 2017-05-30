@@ -57,8 +57,8 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
   ::tensorflow::TensorShapeProto output_image_shape;
   ::tensorflow::TensorShapeProto output_data_window;
 
-  uint8 Cblack = (uint8)0;
-  uint8 Cwhite = (uint8)255;
+  uint8 Cblack = 0;
+  uint8 Cwhite = 255;
 
   int indexMode = 0;  // 0 - truncate XY, 1 - round XY, 2 - Interpolate XY (not
                       // implemented yet, keep default of 0)

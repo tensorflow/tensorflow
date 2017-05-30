@@ -526,8 +526,9 @@ static bool Between(uint64 val, uint64 low, uint64 high) {
   bool result = (val >= low) && (val <= high);
   if (!result) {
     fprintf(stderr, "Value %llu is not in range [%llu, %llu]\n",
-            (unsigned long long)(val), (unsigned long long)(low),
-            (unsigned long long)(high));
+            static_cast<unsigned long long>(val),
+            static_cast<unsigned long long>(low),
+            static_cast<unsigned long long>(high));
   }
   return result;
 }

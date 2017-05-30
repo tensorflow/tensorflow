@@ -771,7 +771,7 @@ TEST_F(LiteralUtilTest, F16) {
   // TODO - modify if we make the data format machine endianess dependent
   auto m1 = LiteralUtil::CreateFromShape(ShapeUtil::MakeShape(F16, {2, 2}));
   Literal* l1 = m1.get();
-  const char* d1 = (const char*)LiteralUtil::InternalData(*l1);
+  const char* d1 = static_cast<const char*>(LiteralUtil::InternalData(*l1));
   EXPECT_EQ(d1[0], 0);
   EXPECT_EQ(d1[1], 0);
   EXPECT_EQ(d1[2], 0);
@@ -787,7 +787,7 @@ TEST_F(LiteralUtilTest, F16) {
   half h2(2.0f);
   auto m2 = LiteralUtil::CreateR2<half>({{h1, h2}, {h2, h1}});
   Literal* l2 = m2.get();
-  const char* d2 = (const char*)LiteralUtil::InternalData(*l2);
+  const char* d2 = static_cast<const char*>(LiteralUtil::InternalData(*l2));
   EXPECT_EQ(d2[0], 0);
   EXPECT_EQ(d2[1], 0x3C);
   EXPECT_EQ(d2[2], 0);

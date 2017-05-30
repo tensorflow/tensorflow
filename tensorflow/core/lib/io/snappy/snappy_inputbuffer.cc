@@ -106,7 +106,7 @@ Status SnappyInputBuffer::Inflate() {
 
   // Output buffer must be large enough to fit the uncompressed block.
   DCHECK_GE(output_buffer_capacity_, uncompressed_length);
-  next_out_ = (char*)output_buffer_.get();
+  next_out_ = output_buffer_.get();
 
   bool status = port::Snappy_Uncompress(next_in_, compressed_block_length,
                                         output_buffer_.get());

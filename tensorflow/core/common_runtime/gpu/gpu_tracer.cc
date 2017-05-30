@@ -398,8 +398,8 @@ Status GPUTracerImpl::Start() {
   // There can only be one CUPTI subscriber.  If we can't create one then
   // there is another trace in progress (possibly by external code).
   CUptiResult ret;
-  ret = cupti_wrapper_->Subscribe(&subscriber_, (CUpti_CallbackFunc)ApiCallback,
-                                  this);
+  ret = cupti_wrapper_->Subscribe(
+      &subscriber_, static_cast<CUpti_CallbackFunc>(ApiCallback), this);
   if (ret == CUPTI_ERROR_MAX_LIMIT_REACHED) {
     return errors::Unavailable("CUPTI subcriber limit reached.");
   } else if (ret != CUPTI_SUCCESS) {
