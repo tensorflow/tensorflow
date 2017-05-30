@@ -33,6 +33,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -261,16 +262,9 @@ def get_uid(prefix=''):
     2
   ```
   """
-  layer_name_uids_collection = ops.get_collection('LAYER_NAME_UIDS')
-  if not layer_name_uids_collection:
-    layer_name_uids = {}
-    ops.add_to_collection('LAYER_NAME_UIDS', layer_name_uids)
-  else:
-    layer_name_uids = layer_name_uids_collection[0]
-  if prefix not in layer_name_uids:
-    layer_name_uids[prefix] = 1
-  else:
-    layer_name_uids[prefix] += 1
+  graph = ops.get_default_graph()
+  layer_name_uids = tf_base_layers.PER_GRAPH_LAYER_NAME_UIDS[graph]
+  layer_name_uids[prefix] += 1
   return layer_name_uids[prefix]
 
 
