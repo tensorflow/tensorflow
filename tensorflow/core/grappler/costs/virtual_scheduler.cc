@@ -88,9 +88,14 @@ Status VirtualScheduler::Init() {
 
   // TODO(dyoon): this is a bit inefficient as name_to_node is already built in
   // ComputeTransitiveFanin().
+  //
+  // Once ComputeTransitiveFanin is complete, only the nodes that can be reached
+  // from the fetch nodes are scheduled. So the scheduled nodes should be
+  // exactly the same as those executed for real. One possible discrepancy could
+  // be the control flow nodes, where tf only executes one path.
   std::unordered_map<string, const NodeDef*> name_to_node;
-  for (const auto& node : graph.node()) {
-    name_to_node[node.name()] = &node;
+  for (const auto& node : nodes) {
+    name_to_node[node->name()] = node;
   }
 
   // Build node_map.
@@ -375,17 +380,6 @@ bool VirtualScheduler::PopCurrNode() {
 
   // Remove the current node; assume FIFO.
   ready_nodes_->RemoveCurrNode();
-
-  // Peek at the new node to see if we should skip it.
-  if (!ready_nodes_->Empty()) {
-    if (!use_static_shapes_ &&
-        !graph_properties_.HasInputProperties(GetCurrNodeInfo().name) &&
-        !IsSendOp(node) && !IsRecvOp(node)) {
-      // If infering shapes dynamically and node has no input properties,
-      // it's likely the node is not actually executed. Skip the node.
-      return PopCurrNode();
-    }
-  }
 
   return !ready_nodes_->Empty();
 }
