@@ -110,7 +110,7 @@ bool CaseEqual(StringPiece s1, StringPiece s2) {
 }
 
 bool StringToBool(StringPiece str, bool* value) {
-  CHECK(value != NULL) << "NULL output boolean given.";
+  CHECK(value != nullptr) << "NULL output boolean given.";
   if (CaseEqual(str, "true") || CaseEqual(str, "t") || CaseEqual(str, "yes") ||
       CaseEqual(str, "y") || CaseEqual(str, "1")) {
     *value = true;

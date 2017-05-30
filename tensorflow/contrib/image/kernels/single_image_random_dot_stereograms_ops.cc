@@ -151,7 +151,7 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
     BuildZBuffer(inputZ);
 
     // Output a scalar string.
-    Tensor* output_tensor = NULL;
+    Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
         context,
         context->allocate_output(

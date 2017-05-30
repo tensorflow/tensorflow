@@ -330,7 +330,7 @@ TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions* opt,
     return new TF_DeprecatedSession({session});
   } else {
     DCHECK_EQ(nullptr, session);
-    return NULL;
+    return nullptr;
   }
 }
 
@@ -504,7 +504,7 @@ static void TF_Run_Setup(int noutputs, TF_Tensor** c_outputs,
                          TF_Status* status) {
   status->status = Status::OK();
   for (int i = 0; i < noutputs; ++i) {
-    c_outputs[i] = NULL;
+    c_outputs[i] = nullptr;
   }
 }
 
@@ -2158,7 +2158,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     return new TF_Session(session, graph);
   } else {
     DCHECK_EQ(nullptr, session);
-    return NULL;
+    return nullptr;
   }
 }
 

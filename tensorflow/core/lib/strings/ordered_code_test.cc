@@ -102,7 +102,7 @@ static T TestRead(const string& a) {
   // gracefully reject any proper prefix of an encoding
   for (int i = 0; i < a.size() - 1; ++i) {
     StringPiece s(a.data(), i);
-    CHECK(!OCRead<T>(&s, NULL));
+    CHECK(!OCRead<T>(&s, nullptr));
     CHECK_EQ(s, a.substr(0, i));
   }
 
@@ -296,7 +296,7 @@ static inline string StrNot(const string& s) {
 template <typename T>
 static void TestInvalidEncoding(const string& s) {
   StringPiece p(s);
-  EXPECT_FALSE(OCRead<T>(&p, static_cast<T*>(NULL)));
+  EXPECT_FALSE(OCRead<T>(&p, static_cast<T*>(nullptr)));
   EXPECT_EQ(s, p);
 }
 
@@ -330,7 +330,8 @@ TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
     EXPECT_NE(OCWrite<uint64>(0), non_minimal);
 #ifndef NDEBUG
     StringPiece s(non_minimal);
-    EXPECT_DEATH(OrderedCode::ReadNumIncreasing(&s, NULL), "invalid encoding");
+    EXPECT_DEATH(OrderedCode::ReadNumIncreasing(&s, nullptr),
+                 "invalid encoding");
 #else
     TestRead<uint64>(non_minimal);
 #endif
@@ -348,7 +349,7 @@ TEST(OrderedCodeInvalidEncodingsDeathTest, NonCanonical) {
     EXPECT_NE(OCWrite<int64>(0), non_minimal);
 #ifndef NDEBUG
     StringPiece s(non_minimal);
-    EXPECT_DEATH(OrderedCode::ReadSignedNumIncreasing(&s, NULL),
+    EXPECT_DEATH(OrderedCode::ReadSignedNumIncreasing(&s, nullptr),
                  "invalid encoding")
         << n;
 #else
@@ -439,15 +440,15 @@ TEST(String, EncodeDecode) {
       StringPiece s = out;
       StringPiece s2 = out;
       CHECK(OCRead<string>(&s, &a2));
-      CHECK(OCRead<string>(&s2, NULL));
+      CHECK(OCRead<string>(&s2, nullptr));
       CHECK_EQ(s, s2);
 
       CHECK(OCRead<string>(&s, &b2));
-      CHECK(OCRead<string>(&s2, NULL));
+      CHECK(OCRead<string>(&s2, nullptr));
       CHECK_EQ(s, s2);
 
       CHECK(!OCRead<string>(&s, &dummy));
-      CHECK(!OCRead<string>(&s2, NULL));
+      CHECK(!OCRead<string>(&s2, nullptr));
       CHECK_EQ(a, a2);
       CHECK_EQ(b, b2);
       CHECK(s.empty());

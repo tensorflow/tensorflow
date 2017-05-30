@@ -82,7 +82,7 @@ class FactOpKernel : public OpKernel {
  protected:
   void Compute(OpKernelContext* context, const char* const facts[],
                uint64 count) {
-    Tensor* output_tensor = NULL;
+    Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(0, TensorShape({}), &output_tensor));
     auto output = output_tensor->template scalar<string>();

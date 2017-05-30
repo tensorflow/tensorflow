@@ -60,7 +60,7 @@ void ZlibInputStream::InitZlibBuffer() {
   int status = inflateInit2(z_stream_.get(), zlib_options_.window_bits);
   if (status != Z_OK) {
     LOG(FATAL) << "inflateInit failed with status " << status;
-    z_stream_.reset(NULL);
+    z_stream_.reset(nullptr);
   } else {
     z_stream_->next_in = z_stream_input_.get();
     z_stream_->next_out = z_stream_output_.get();
@@ -180,7 +180,7 @@ Status ZlibInputStream::Inflate() {
   if (error != Z_OK && error != Z_STREAM_END) {
     string error_string =
         strings::StrCat("inflate() failed with error ", error);
-    if (z_stream_->msg != NULL) {
+    if (z_stream_->msg != nullptr) {
       strings::StrAppend(&error_string, ": ", z_stream_->msg);
     }
     return errors::DataLoss(error_string);

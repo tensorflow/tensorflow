@@ -172,13 +172,13 @@ TEST(TopNTest, Ptr) {
   LOG(INFO) << "Testing 2-argument push()";
   TopN<string *> topn(3);
   for (int i = 0; i < 8; ++i) {
-    string *dropped = NULL;
+    string *dropped = nullptr;
     topn.push(new string(std::to_string(i)), &dropped);
     delete dropped;
   }
 
   for (int i = 8; i > 0; --i) {
-    string *dropped = NULL;
+    string *dropped = nullptr;
     topn.push(new string(std::to_string(i)), &dropped);
     delete dropped;
   }

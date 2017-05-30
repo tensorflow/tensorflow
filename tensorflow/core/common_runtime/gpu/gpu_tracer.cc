@@ -226,7 +226,7 @@ void CUPTIManager::InternalBufferCompleted(CUcontext ctx, uint32_t streamId,
                                            size_t validSize) {
   VLOG(2) << "BufferCompleted";
   CUptiResult status;
-  CUpti_Activity *record = NULL;
+  CUpti_Activity *record = nullptr;
   mutex_lock l(mu_);  // Hold mu_ while using client_.
   if (client_ && validSize > 0) {
     do {

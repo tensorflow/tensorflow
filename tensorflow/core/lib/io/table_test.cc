@@ -177,11 +177,11 @@ class Constructor {
 
 class BlockConstructor : public Constructor {
  public:
-  BlockConstructor() : block_(NULL) {}
+  BlockConstructor() : block_(nullptr) {}
   ~BlockConstructor() override { delete block_; }
   Status FinishImpl(const Options& options, const KVMap& data) override {
     delete block_;
-    block_ = NULL;
+    block_ = nullptr;
     BlockBuilder builder(&options);
 
     for (KVMap::const_iterator it = data.begin(); it != data.end(); ++it) {
@@ -205,7 +205,7 @@ class BlockConstructor : public Constructor {
 
 class TableConstructor : public Constructor {
  public:
-  TableConstructor() : source_(NULL), table_(NULL) {}
+  TableConstructor() : source_(nullptr), table_(nullptr) {}
   ~TableConstructor() override { Reset(); }
   Status FinishImpl(const Options& options, const KVMap& data) override {
     Reset();
@@ -239,8 +239,8 @@ class TableConstructor : public Constructor {
   void Reset() {
     delete table_;
     delete source_;
-    table_ = NULL;
-    source_ = NULL;
+    table_ = nullptr;
+    source_ = nullptr;
   }
 
   StringSource* source_;
@@ -262,11 +262,11 @@ static const int kNumTestArgs = sizeof(kTestArgList) / sizeof(kTestArgList[0]);
 
 class Harness : public ::testing::Test {
  public:
-  Harness() : constructor_(NULL) {}
+  Harness() : constructor_(nullptr) {}
 
   void Init(const TestArgs& args) {
     delete constructor_;
-    constructor_ = NULL;
+    constructor_ = nullptr;
     options_ = Options();
 
     options_.block_restart_interval = args.restart_interval;
