@@ -8949,6 +8949,9 @@ func SparseMatMulBIsSparse(value bool) SparseMatMulAttr {
 // match the outer dimension of "b". This op is optimized for the case where at
 // least one of "a" or "b" is sparse. The breakeven for using this versus a dense
 // matrix multiply on one platform was 30% zero values in the sparse matrix.
+//
+// The gradient computation of this operation will only take advantage of sparsity
+// in the input gradient when that gradient comes from a Relu.
 func SparseMatMul(scope *Scope, a tf.Output, b tf.Output, optional ...SparseMatMulAttr) (product tf.Output) {
 	if scope.Err() != nil {
 		return
