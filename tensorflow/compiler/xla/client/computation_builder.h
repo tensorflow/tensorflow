@@ -148,17 +148,6 @@ class ComputationBuilder {
   template <typename NativeT>
   ComputationDataHandle ConstantR4FromArray4D(const Array4D<NativeT>& values);
 
-  // Enqueues a constant onto the computation.  The templated parameter
-  // indicates the type of the constant value, while the primitive_type
-  // parameter indicates the type of the literal constant.  Useful for when the
-  // data type must be determined at runtime.
-  template <typename NativeT>
-  ComputationDataHandle ConstantR0(PrimitiveType type, NativeT value);
-  template <typename NativeT>
-  ComputationDataHandle ConstantR1(PrimitiveType type,
-                                   tensorflow::gtl::ArraySlice<NativeT> values);
-
-
   // Enqueues a rank one constant (vector) onto the computation. The vector has
   // size 'length' and every element has the value 'value'.
   template <typename NativeT>
@@ -794,38 +783,12 @@ ComputationDataHandle ComputationBuilder::ConstantR0(NativeT value) {
 }
 
 template <typename NativeT>
-ComputationDataHandle ComputationBuilder::ConstantR0(PrimitiveType type,
-                                                     NativeT value) {
-  return ConstantOp(
-          [value, type](Literal* literal) {
-            std::unique_ptr<Literal> l = LiteralUtil::ConvertIfSrcTypeMatches(
-                    *(LiteralUtil::CreateR0<NativeT>(value)), type)
-                    .ConsumeValueOrDie();
-            *literal = *l;
-          });
-}
-
-template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR1(
     tensorflow::gtl::ArraySlice<NativeT> values) {
   return ConstantOp([&values](Literal* literal) {
     LiteralUtil::PopulateR1(values, literal);
   });
 }
-
-template <typename NativeT>
-ComputationDataHandle ComputationBuilder::ConstantR1(
-        PrimitiveType type,
-        tensorflow::gtl::ArraySlice<NativeT> values) {
-  return ConstantOp(
-          [values, type](Literal* literal) {
-            std::unique_ptr<Literal> l = LiteralUtil::ConvertIfSrcTypeMatches(
-                    *(LiteralUtil::CreateR1<NativeT>(values)), type)
-                    .ConsumeValueOrDie();
-            *literal = *l;
-          });
-}
-
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR1(int64 length,
