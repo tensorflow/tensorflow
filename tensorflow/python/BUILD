@@ -1,11 +1,13 @@
 # Description:
 # Python support for TensorFlow.
 
-package(default_visibility = [
-    "//engedu/ml/tf_from_scratch:__pkg__",
-    "//tensorflow:internal",
-    "//tensorflow_models:__subpackages__",
-])
+package(
+    default_visibility = [
+        "//engedu/ml/tf_from_scratch:__pkg__",
+        "//tensorflow:internal",
+        "//tensorflow_models:__subpackages__",
+    ],
+)
 
 licenses(["notice"])  # Apache 2.0
 
@@ -160,11 +162,12 @@ cc_library(
     srcs = ["grappler/cost_analyzer.cc"],
     hdrs = ["grappler/cost_analyzer.h"],
     deps = [
-        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",
-        "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/costs:analytical_cost_estimator",
+        "//tensorflow/core/grappler/costs:cost_estimator",
         "//tensorflow/core/grappler/costs:measuring_cost_estimator",
         "//tensorflow/core/grappler/costs:op_performance_data_cc",
         "//tensorflow/core/grappler/costs:utils",
@@ -191,6 +194,7 @@ cc_library(
         ":numpy_lib",
         "//tensorflow/c:c_api",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -201,6 +205,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -227,6 +232,7 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -238,6 +244,7 @@ cc_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
@@ -315,7 +322,11 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:proto_text",
+        "//tensorflow/core:protos_all_cc",
     ],
     alwayslink = 1,
 )
@@ -324,7 +335,13 @@ cc_library(
     name = "python_op_gen_main",
     srcs = ["framework/python_op_gen_main.cc"],
     visibility = ["//visibility:public"],
-    deps = [":python_op_gen"],
+    deps = [
+        ":python_op_gen",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+    ],
 )
 
 py_library(
@@ -812,7 +829,11 @@ cc_library(
     name = "test_ops_kernels",
     srcs = ["framework/test_ops.cc"],
     linkstatic = 1,
-    deps = ["//tensorflow/core:framework"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
     alwayslink = 1,
 )
 
@@ -2601,6 +2622,8 @@ cc_library(
         ":py_func_lib",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -2632,8 +2655,10 @@ tf_cuda_library(
         "//tensorflow/core",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_cc",
+        "//tensorflow/core:protos_all_cc",
         "//third_party/py/numpy:headers",
         "//util/python:python_headers",
     ],
@@ -2689,6 +2714,7 @@ tf_py_wrap_cc(
         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:grappler_item_builder",
+        "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/optimizers:meta_optimizer",
         "//tensorflow/core:lib",
         "//tensorflow/core:reader_base",
@@ -2909,6 +2935,7 @@ tf_cuda_library(
     srcs = ["client/test_construction_fails_op.cc"],
     deps = [
         "//tensorflow/core",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_cc",
     ],
