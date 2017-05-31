@@ -1836,6 +1836,7 @@ cc_library(
     hdrs = if_not_windows([
         "common_runtime/sycl/sycl_allocator.h",
         "common_runtime/sycl/sycl_device.h",
+        "common_runtime/sycl/sycl_util.h",
         "common_runtime/sycl/sycl_device_context.h",
     ]),
     copts = tf_copts(),
