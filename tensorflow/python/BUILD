@@ -2945,7 +2945,7 @@ tf_cuda_library(
 # Disabled due to http://b/62145493
 # py_test(
 #     name = "session_test",
-#     size = "medium",  # http://62144199
+#     size = "medium",  # http://b/62144199
 #     srcs = ["client/session_test.py"],
 #     srcs_version = "PY2AND3",
 #     tags = [
@@ -2974,6 +2974,25 @@ tf_cuda_library(
 #         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
 #     ],
 # )
+
+py_test(
+    name = "session_list_devices_test",
+    size = "small",
+    srcs = ["client/session_list_devices_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_gpu",
+    ],
+    deps = [
+        ":client",
+        ":framework",
+        ":framework_test_lib",
+        ":platform_test",
+        ":training",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+    ],
+)
 
 cuda_py_test(
     name = "timeline_test",

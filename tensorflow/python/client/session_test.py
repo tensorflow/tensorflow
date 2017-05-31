@@ -1970,43 +1970,6 @@ class SessionTest(test_util.TensorFlowTestCase):
     str_repr = '%s' % attrs
     self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
 
-  @test_util.disable_c_api  # list_devices doesn't work with C API
-  def testListDevices(self):
-    with session.Session() as sess:
-      devices = sess.list_devices()
-      self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:0' in set(
-          [d.name for d in devices]), devices)
-      self.assertGreaterEqual(1, len(devices), devices)
-
-  @test_util.disable_c_api  # list_devices doesn't work with C API
-  def testListDevicesGrpcSession(self):
-    server = server_lib.Server.create_local_server()
-    with session.Session(server.target) as sess:
-      devices = sess.list_devices()
-      self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in set(
-          [d.name for d in devices]), devices)
-      self.assertGreaterEqual(1, len(devices), devices)
-
-  @test_util.disable_c_api  # list_devices doesn't work with C API
-  def testListDevicesClusterSpecPropagation(self):
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-
-    cluster_def = cluster_pb2.ClusterDef()
-    job = cluster_def.job.add()
-    job.name = 'worker'
-    job.tasks[0] = server1.target[len('grpc://'):]
-    job.tasks[1] = server2.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
-    with session.Session(server1.target, config=config) as sess:
-      devices = sess.list_devices()
-      device_names = set([d.name for d in devices])
-      self.assertTrue(
-          '/job:worker/replica:0/task:0/device:CPU:0' in device_names)
-      self.assertTrue(
-          '/job:worker/replica:0/task:1/device:CPU:0' in device_names)
-      self.assertGreaterEqual(2, len(devices), devices)
-
 
 class PartialRunTest(test_util.TensorFlowTestCase):
 
