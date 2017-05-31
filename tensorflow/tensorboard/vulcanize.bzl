@@ -16,11 +16,14 @@ load("@io_bazel_rules_closure//closure/private:defs.bzl", "unfurl", "long_path")
 
 def _tensorboard_html_binary(ctx):
   deps = unfurl(ctx.attr.deps, provider="webfiles")
-  manifests = set(order="link")
+  manifests = set()
   files = set()
+  webpaths = set()
   for dep in deps:
     manifests += dep.webfiles.manifests
+    webpaths += dep.webfiles.webpaths
     files += dep.data_runfiles.files
+  webpaths += [ctx.attr.output_path]
 
   # vulcanize
   ctx.action(
@@ -69,6 +72,11 @@ def _tensorboard_html_binary(ctx):
     transitive_runfiles += dep.data_runfiles.files
   return struct(
       files=set([ctx.outputs.html]),
+      webfiles=struct(
+          manifest=manifest,
+          manifests=manifests,
+          webpaths=webpaths,
+          dummy=ctx.outputs.html),
       runfiles=ctx.runfiles(
           files=ctx.files.data + [manifest,
                                   params_file,
