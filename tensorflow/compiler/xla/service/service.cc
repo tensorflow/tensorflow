@@ -323,6 +323,7 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
   module_config->set_replica_count(backend->Replicas().size());
   module_config->set_fast_math_disabled(execution_options.disable_fast_math());
   module_config->set_seed(execution_options.seed());
+  module_config->set_debug_options(execution_options.debug_options());
 
   return std::move(module_config);
 }
