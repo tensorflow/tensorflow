@@ -123,6 +123,7 @@ py_library(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
