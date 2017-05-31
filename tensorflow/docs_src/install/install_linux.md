@@ -116,12 +116,12 @@ Take the following steps to install TensorFlow with Virtualenv:
   1. Install pip and virtualenv by issuing one of the following commands:
 
      <pre>$ <b>sudo apt-get install python-pip python-dev python-virtualenv</b> # for Python 2.7
-    $ <b>sudo apt-get install python3-pip python3-dev python-virtualenv</b> # for Python 3.n</pre>
+     $ <b>sudo apt-get install python3-pip python3-dev python-virtualenv</b> # for Python 3.n</pre>
 
   2. Create a virtualenv environment by issuing one of the following commands:
 
      <pre>$ <b>virtualenv --system-site-packages</b> <i>targetDirectory</i> # for Python 2.7
-    $ <b>virtualenv --system-site-packages -p python3</b> <i>targetDirectory</i> # for Python 3.n</pre>
+     $ <b>virtualenv --system-site-packages -p python3</b> <i>targetDirectory</i> # for Python 3.n</pre>
 
      where <code><em>targetDirectory</em></code> specifies the top of the
      virtualenv tree.  Our instructions assume that
@@ -131,22 +131,22 @@ Take the following steps to install TensorFlow with Virtualenv:
   3. Activate the virtualenv environment by issuing one of the following
      commands:
 
-     <pre> $ <b>source ~/tensorflow/bin/activate</b> # bash, sh, ksh, or zsh
+     <pre>$ <b>source ~/tensorflow/bin/activate</b> # bash, sh, ksh, or zsh
      $ <b>source ~/tensorflow/bin/activate.csh</b>  # csh or tcsh</pre>
 
      The preceding <tt>source</tt> command should change your prompt
      to the following:
 
-     <pre> (tensorflow)$ </pre>
+     <pre>(tensorflow)$ </pre>
 
   4. Ensure pip ≥8.1 is installed:
 
-     <pre> (tensorflow)$ <b>easy_install -U pip</b></pre>
+     <pre>(tensorflow)$ <b>easy_install -U pip</b></pre>
 
   5. Issue one of the following commands to install TensorFlow in the active
      virtualenv environment:
 
-     <pre> (tensorflow)$ <b>pip install --upgrade tensorflow</b>      # for Python 2.7
+     <pre>(tensorflow)$ <b>pip install --upgrade tensorflow</b>      # for Python 2.7
      (tensorflow)$ <b>pip3 install --upgrade tensorflow</b>     # for Python 3.n
      (tensorflow)$ <b>pip install --upgrade tensorflow-gpu</b>  # for Python 2.7 and GPU
      (tensorflow)$ <b>pip3 install --upgrade tensorflow-gpu</b> # for Python 3.n and GPU</pre>
@@ -158,7 +158,7 @@ Take the following steps to install TensorFlow with Virtualenv:
      lower than 8.1), install TensorFlow in the active virtualenv environment
      by issuing a command of the following format:
 
-     <pre> (tensorflow)$ <b>pip install --upgrade</b> <i>tfBinaryURL</i>   # Python 2.7
+     <pre>(tensorflow)$ <b>pip install --upgrade</b> <i>tfBinaryURL</i>   # Python 2.7
      (tensorflow)$ <b>pip3 install --upgrade</b> <i>tfBinaryURL</i>  # Python 3.n </pre>
 
      where <code><em>tfBinaryURL</em></code> identifies the URL of the
@@ -252,7 +252,7 @@ take the following steps:
 
   1. Install TensorFlow by invoking **one** of the following commands:
 
-     <pre> $ <b>pip install tensorflow</b>      # Python 2.7; CPU support (no GPU support)
+     <pre>$ <b>pip install tensorflow</b>      # Python 2.7; CPU support (no GPU support)
      $ <b>pip3 install tensorflow</b>     # Python 3.n; CPU support (no GPU support)
      $ <b>pip install tensorflow-gpu</b>  # Python 2.7;  GPU support
      $ <b>pip3 install tensorflow-gpu</b> # Python 3.n; GPU support </pre>
@@ -263,7 +263,7 @@ take the following steps:
   2. (Optional.) If Step 1 failed, install the latest version of TensorFlow
      by issuing a command of the following format:
 
-     <pre> $ <b>sudo pip  install --upgrade</b> <i>tfBinaryURL</i>   # Python 2.7
+     <pre>$ <b>sudo pip  install --upgrade</b> <i>tfBinaryURL</i>   # Python 2.7
      $ <b>sudo pip3 install --upgrade</b> <i>tfBinaryURL</i>   # Python 3.n </pre>
 
      where <code><em>tfBinaryURL</em></code> identifies the URL of the
@@ -449,13 +449,13 @@ Take the following steps to install TensorFlow in an Anaconda environment:
 
   3. Activate the conda environment by issuing the following command:
 
-     <pre> $ <b>source activate tensorflow</b>
+     <pre>$ <b>source activate tensorflow</b>
      (tensorflow)$  # Your prompt should change </pre>
 
   4. Issue a command of the following format to install
      TensorFlow inside your conda environment:
 
-     <pre> (tensorflow)$ <b>pip install --ignore-installed --upgrade</b> <i>tfBinaryURL</i></pre>
+     <pre>(tensorflow)$ <b>pip install --ignore-installed --upgrade</b> <i>tfBinaryURL</i></pre>
 
      where <code><em>tfBinaryURL</em></code> is the
      [URL of the TensorFlow Python package](#the_url_of_the_tensorflow_python_package).
