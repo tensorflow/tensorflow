@@ -120,7 +120,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "cholesky_op_test",
     size = "small",
     srcs = ["cholesky_op_test.py"],
