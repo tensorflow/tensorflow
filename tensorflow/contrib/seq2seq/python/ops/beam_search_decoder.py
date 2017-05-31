@@ -287,7 +287,7 @@ class BeamSearchDecoder(decoder.Decoder):
       A reshaped version of t with dimension [batch_size * beam_width, s].
     """
     if isinstance(s, ops.Tensor):
-      s = tensor_util.constant_value_as_shape(s)
+      s = tensor_shape.as_shape(tensor_util.constant_value(s))
     else:
       s = tensor_shape.TensorShape(s)
     t_shape = array_ops.shape(t)
@@ -321,7 +321,7 @@ class BeamSearchDecoder(decoder.Decoder):
         are known statically).
     """
     if isinstance(s, ops.Tensor):
-      s = tensor_util.constant_value_as_shape(s)
+      s = tensor_shape.TensorShape(tensor_util.constant_value(s))
     else:
       s = tensor_shape.TensorShape(s)
     t_shape = array_ops.shape(t)
@@ -518,7 +518,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   next_beam_probs = _tensor_gather_helper(
       gather_indices=word_indices,
       gather_from=total_probs,
-      range_input=batch_size,
+      batch_size=batch_size,
       range_size=beam_width * vocab_size,
       gather_shape=[-1])
   next_word_ids = math_ops.to_int32(word_indices % vocab_size)
@@ -528,7 +528,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   previously_finished = _tensor_gather_helper(
       gather_indices=next_beam_ids,
       gather_from=previously_finished,
-      range_input=batch_size,
+      batch_size=batch_size,
       range_size=beam_width,
       gather_shape=[-1])
   next_finished = math_ops.logical_or(previously_finished,
@@ -544,7 +544,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   next_prediction_len = _tensor_gather_helper(
       gather_indices=next_beam_ids,
       gather_from=beam_state.lengths,
-      range_input=batch_size,
+      batch_size=batch_size,
       range_size=beam_width,
       gather_shape=[-1])
   next_prediction_len += lengths_to_add
@@ -558,7 +558,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       lambda gather_from: _maybe_tensor_gather_helper(
           gather_indices=next_beam_ids,
           gather_from=gather_from,
-          range_input=batch_size,
+          batch_size=batch_size,
           range_size=beam_width,
           gather_shape=[batch_size * beam_width, -1]),
       next_cell_state)
@@ -651,7 +651,7 @@ def _mask_probs(probs, eos_token, finished):
   return finished_examples + non_finished_examples
 
 
-def _maybe_tensor_gather_helper(gather_indices, gather_from, range_input,
+def _maybe_tensor_gather_helper(gather_indices, gather_from, batch_size,
                                 range_size, gather_shape):
   """Maybe applies _tensor_gather_helper.
 
@@ -662,7 +662,7 @@ def _maybe_tensor_gather_helper(gather_indices, gather_from, range_input,
   Args:
     gather_indices: The tensor indices that we use to gather.
     gather_from: The tensor that we are gathering from.
-    range_input: The input range to use. Likely equal to batch_size.
+    batch_size: The batch size.
     range_size: The number of values in each range. Likely equal to beam_width.
     gather_shape: What we should reshape gather_from to in order to preserve the
       correct values. An example is when gather_from is the attention from an
@@ -677,14 +677,18 @@ def _maybe_tensor_gather_helper(gather_indices, gather_from, range_input,
   """
   _check_maybe(gather_from)
   if gather_from.shape.ndims >= len(gather_shape):
-    return _tensor_gather_helper(gather_indices, gather_from, range_input,
-                                 range_size, gather_shape)
+    return _tensor_gather_helper(
+        gather_indices=gather_indices,
+        gather_from=gather_from,
+        batch_size=batch_size,
+        range_size=range_size,
+        gather_shape=gather_shape)
   else:
     return gather_from
 
 
-def _tensor_gather_helper(gather_indices, gather_from, range_input, range_size,
-                          gather_shape):
+def _tensor_gather_helper(gather_indices, gather_from, batch_size,
+                          range_size, gather_shape):
   """Helper for gathering the right indices from the tensor.
 
   This works by reshaping gather_from to gather_shape (e.g. [-1]) and then
@@ -694,7 +698,7 @@ def _tensor_gather_helper(gather_indices, gather_from, range_input, range_size,
   Args:
     gather_indices: The tensor indices that we use to gather.
     gather_from: The tensor that we are gathering from.
-    range_input: The input range to use. Likely equal to batch_size.
+    batch_size: The input batch size.
     range_size: The number of values in each range. Likely equal to beam_width.
     gather_shape: What we should reshape gather_from to in order to preserve the
       correct values. An example is when gather_from is the attention from an
@@ -706,12 +710,15 @@ def _tensor_gather_helper(gather_indices, gather_from, range_input, range_size,
   Returns:
     output: Gathered tensor of shape tf.shape(gather_from)[:1+len(gather_shape)]
   """
-  range_ = array_ops.expand_dims(math_ops.range(range_input) * range_size, 1)
+  range_ = array_ops.expand_dims(math_ops.range(batch_size) * range_size, 1)
   gather_indices = array_ops.reshape(gather_indices + range_, [-1])
   output = array_ops.gather(
       array_ops.reshape(gather_from, gather_shape), gather_indices)
   final_shape = array_ops.shape(gather_from)[:1 + len(gather_shape)]
-  final_static_shape = gather_from.shape[:1 + len(gather_shape)]
+  static_batch_size = tensor_util.constant_value(batch_size)
+  final_static_shape = (tensor_shape.TensorShape([static_batch_size])
+                        .concatenate(
+                            gather_from.shape[1:1 + len(gather_shape)]))
   output = array_ops.reshape(output, final_shape)
   output.set_shape(final_static_shape)
   return output

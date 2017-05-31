@@ -242,11 +242,14 @@ class BeamSearchDecoderTest(test.TestCase):
     beam_width = 3
 
     with self.test_session() as sess:
+      batch_size_tensor = constant_op.constant(batch_size)
       embedding = np.random.randn(vocab_size, embedding_dim).astype(np.float32)
       cell = rnn_cell.LSTMCell(cell_depth)
       if has_attention:
-        inputs = np.random.randn(batch_size, decoder_max_time,
-                                 input_depth).astype(np.float32)
+        inputs = array_ops.placeholder_with_default(
+            np.random.randn(batch_size, decoder_max_time,
+                            input_depth).astype(np.float32),
+            shape=(None, None, input_depth))
         tiled_inputs = beam_search_decoder.tile_batch(
             inputs, multiplier=beam_width)
         tiled_sequence_length = beam_search_decoder.tile_batch(
@@ -261,11 +264,11 @@ class BeamSearchDecoderTest(test.TestCase):
             attention_layer_size=attention_depth,
             alignment_history=False)
       cell_state = cell.zero_state(
-          dtype=dtypes.float32, batch_size=batch_size * beam_width)
+          dtype=dtypes.float32, batch_size=batch_size_tensor * beam_width)
       bsd = beam_search_decoder.BeamSearchDecoder(
           cell=cell,
           embedding=embedding,
-          start_tokens=batch_size * [start_token],
+          start_tokens=array_ops.fill([batch_size_tensor], start_token),
           end_token=end_token,
           initial_state=cell_state,
           beam_width=beam_width,
