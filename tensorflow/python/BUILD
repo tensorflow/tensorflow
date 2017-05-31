@@ -2941,6 +2941,7 @@ tf_cuda_library(
 #     tags = [
 #         "no_gpu",
 #         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
+#         "no_windows",
 #     ],
 #     deps = [
 #         ":array_ops",
