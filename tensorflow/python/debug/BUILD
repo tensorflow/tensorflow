@@ -472,6 +472,7 @@ py_test(
         "cli/curses_ui_test.py",
     ],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":curses_ui",
         ":debugger_cli_common",
