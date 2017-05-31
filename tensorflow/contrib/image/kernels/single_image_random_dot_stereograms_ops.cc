@@ -180,8 +180,8 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
       // Init Min/Max to first value
       if (normalize_max < normalize_min)  // Autoscale if MIN>MAX
       {
-        MaxValue = (double)*Z;
-        MinValue = (double)*Z;
+        MaxValue = *Z;
+        MinValue = *Z;
 
         for (int y = 0; y < input_Yvalue; ++y)
           for (int x = 0; x < input_Xvalue; ++x) {
@@ -213,10 +213,7 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
   //***************************************************************************
   //***************************************************************************
   double getZfromInputImage(const T* Z, int x, int y) {
-    double return_val;
-
-    return_val = (double)*(Z + input_Xvalue * y + x);  // Get value
-    return return_val;
+    return *(Z + input_Xvalue * y + x);
   }
 
   //***************************************************************************
@@ -271,31 +268,20 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
   //***************************************************************************
 
   double getZFromOutputPixel(int x, int y) {
-    double xofz, yofz, returnval;
-
     // Convert pixel units to Z units, do this as "double"
-
-    xofz =
-        (double)input_Xvalue * (x - data_box_left) / ((double)data_box_width);
-    yofz =
-        (double)input_Yvalue * (y - data_box_top) / ((double)data_box_height);
+    double xofz = static_cast<double>(input_Xvalue) * (x - data_box_left) /
+                  (static_cast<double>(data_box_width));
+    double yofz = static_cast<double>(input_Yvalue) * (y - data_box_top) /
+                  (static_cast<double>(data_box_height));
 
     if ((xofz < 0) || (yofz < 0) || (yofz >= input_Yvalue) ||
-        (xofz >= input_Xvalue)) {  // Top of left side border hit or  Right
-                                   // side or bottom border hit
-                                   // Send BORDER Z value
-      return (border_level);
+        (xofz >= input_Xvalue)) {  // Top of left side border hit or Right
+                                   // side or bottom border hit,
+                                   // send BORDER Z value
+      return border_level;
+    } else {
+      return getZfromZbuffer(xofz, yofz);
     }
-
-    {  // in data set Z interpolate if need
-      double gz;
-
-      gz = getZfromZbuffer(xofz, yofz);
-
-      returnval = gz;
-    }
-
-    return (returnval);
   }
 
   //***************************************************************************
