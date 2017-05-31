@@ -198,7 +198,7 @@ Status FreezeRequantizationRanges(const GraphDef& input_graph_def,
       inputs_to_rename[node.name() + ":1"] = max_node->name() + ":0";
     } else {
       NodeDef* new_node = frozen_graph_def.mutable_node()->Add();
-      new_node->CopyFrom(node);
+      *new_node = node;
     }
   }
   return RenameNodeInputs(frozen_graph_def, inputs_to_rename,

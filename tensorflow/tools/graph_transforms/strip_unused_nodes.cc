@@ -190,7 +190,7 @@ Status StripUnusedNodes(const GraphDef& input_graph_def,
     if (input_nodes.count(node.name())) {
       NodeDef placeholder_node;
       if (node.op() == "Placeholder") {
-        placeholder_node.CopyFrom(node);
+        placeholder_node = node;
       } else {
         placeholder_node.set_op("Placeholder");
         placeholder_node.set_name(node.name());
