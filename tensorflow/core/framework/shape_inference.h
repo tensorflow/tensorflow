@@ -401,10 +401,23 @@ class InferenceContext {
 
   inline DimensionHandle UnknownDim() { return MakeDim(kUnknownDim); }
 
+  // Returns in <val> a scalar value from an input tensor <t>.  The input tensor
+  // must be a 1-dimensional int32 or int64 tensor.  Caller must ensure that the
+  // input tensor is not NULL.
+  Status GetScalarFromTensor(const Tensor* t, int64* val);
+
   // Returns a new dimension whose value is given by a scalar input tensor.
   // The input tensor must be in host memory, since it is dereferenced to get
   // the value.
   Status MakeDimForScalarInput(int idx, DimensionHandle* out);
+
+  // Returns a new dimension whose value is given by a scalar input tensor.
+  // This allows for a negative input dimension given the rank of a separate
+  // tensor.  This rank can be negative if unknown.
+  // The input tensor must be in host memory, since it is dereferenced to get
+  // the value.
+  Status MakeDimForScalarInputWithNegativeIndexing(int idx, int input_rank,
+                                                   DimensionHandle* out);
 
   // Look up the attr for the NodeDef being evaluated with name attr_name and
   // set *value to its value.  If no attr with attr_name is found in def(), or

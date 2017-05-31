@@ -456,9 +456,10 @@ REGISTER_OP("Split")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
       DimensionHandle split_dimension;
-      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(0, &split_dimension));
-      int num_split = c->num_outputs();
       ShapeHandle input = c->input(1);
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInputWithNegativeIndexing(
+          0, c->Rank(input), &split_dimension));
+      int num_split = c->num_outputs();
       ShapeHandle out;
       if (!c->ValueKnown(split_dimension)) {
         if (c->RankKnown(input)) {
@@ -484,7 +485,7 @@ REGISTER_OP("Split")
 Splits a tensor into `num_split` tensors along one dimension.
 
 split_dim: 0-D.  The dimension along which to split.  Must be in the range
-  `[0, rank(value))`.
+  `[-rank(value), rank(value))`.
 num_split: The number of ways to split.  Must evenly divide
   `value.shape[split_dim]`.
 value: The tensor to split.
@@ -503,9 +504,10 @@ REGISTER_OP("SplitV")
     .Attr("Tlen: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       DimensionHandle split_dimension;
-      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &split_dimension));
-      int32 num_outputs = c->num_outputs();
       ShapeHandle input = c->input(0);
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInputWithNegativeIndexing(
+          2, c->Rank(input), &split_dimension));
+      int32 num_outputs = c->num_outputs();
       int32 rank = c->Rank(input);
       ShapeHandle output_shape;
       const Tensor* size_splits = c->input_tensor(1);
@@ -594,7 +596,7 @@ size_splits: list containing the sizes of each output tensor along the split
              dimension. Must sum to the dimension of value along split_dim.
              Can contain one -1 indicating that dimension is to be inferred.
 split_dim: 0-D.  The dimension along which to split.  Must be in the range
-  `[0, rank(value))`.
+  `[-rank(value), rank(value))`.
 output: Tensors whose shape matches that of `value`
   except along `split_dim`, where their sizes are
   `size_splits[i]`.
