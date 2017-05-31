@@ -42,7 +42,7 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
-  bool IsConst(const NodeDef& node) const;
+  Status MaterializeShapes(const GrapplerItem& item);
 
   bool IsFoldable(const NodeDef& node) const;
 

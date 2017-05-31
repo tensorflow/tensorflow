@@ -193,6 +193,58 @@ TEST_F(ConstantFoldingTest, ControlDependencies) {
   EXPECT_EQ(2, found);
 }
 
+TEST_F(ConstantFoldingTest, ShapeMaterialization) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output v1 = ops::Variable(scope.WithOpName("v1"), {3}, DT_FLOAT);
+  Output v2 = ops::Variable(scope.WithOpName("v2"), {5, 7}, DT_FLOAT);
+  Output v3 = ops::Variable(scope.WithOpName("v3"), {11, 13}, DT_FLOAT);
+  Output rank = ops::Rank(scope.WithOpName("rank"), v1);
+  Output shape = ops::Shape(scope.WithOpName("shape"), v2);
+  Output size = ops::Size(scope.WithOpName("size"), v3);
+  Output p1 = ops::Multiply(scope.WithOpName("p1"), size, rank);
+  Output p2 = ops::Multiply(scope.WithOpName("p2"), p1, shape);
+
+  GrapplerItem item;
+  item.fetch.push_back("p2");
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding fold;
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  int found = 0;
+  for (const auto& node : output.node()) {
+    if (node.name() == "size") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^v3", node.input(0));
+      Tensor value;
+      CHECK(value.FromProto(node.attr().at("value").tensor()));
+      EXPECT_EQ(11 * 13, value.flat<int>()(0));
+    } else if (node.name() == "rank") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^v1", node.input(0));
+      Tensor value;
+      CHECK(value.FromProto(node.attr().at("value").tensor()));
+      EXPECT_EQ(1, value.flat<int>()(0));
+    } else if (node.name() == "shape") {
+      ++found;
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^v2", node.input(0));
+      Tensor value;
+      CHECK(value.FromProto(node.attr().at("value").tensor()));
+      EXPECT_EQ(5, value.flat<int>()(0));
+      EXPECT_EQ(7, value.flat<int>()(1));
+    }
+  }
+  EXPECT_EQ(3, found);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow
