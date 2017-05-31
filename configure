@@ -229,6 +229,8 @@ if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
     if [ -z "$MKL_INSTALL_PATH" ]; then
       read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
       fromuser="1"
+    fi
+    if [ -z "$MKL_INSTALL_PATH" ]; then
       MKL_INSTALL_PATH=$default_mkl_path
     fi
     # Result returned from "read" will be used unexpanded. That make "~" unusable.
