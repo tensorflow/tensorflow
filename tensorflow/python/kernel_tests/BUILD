@@ -122,7 +122,7 @@ tf_py_test(
 
 cuda_py_test(
     name = "cholesky_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["cholesky_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -133,7 +133,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
     ],
-    shard_count = 4,
+    shard_count = 5,
 )
 
 tf_py_test(
