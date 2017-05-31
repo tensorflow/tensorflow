@@ -13,32 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
 
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace xla {
-
-class HloModule;
-
 namespace poplarplugin {
 
-class Outliner : public HloPassInterface {
-public:
-  Outliner(int32 max_outlined) : max_outlined_instructions_(max_outlined) {}
+bool FuseOps::ShouldFuse(HloInstruction* consumer, int64 operand_index) {
+  HloInstruction* producer = consumer->mutable_operand(operand_index);
+  if (producer->IsConstant() &&
+      consumer->opcode() == HloOpcode::kDynamicUpdateSlice) {
+    return true;
+  }
+  return false;
+}
 
-  ~Outliner() override = default;
-
-  tensorflow::StringPiece name() const override { return "outline"; }
-
-  StatusOr<bool> Run(HloModule *module) override;
-
-private:
-  uint32 max_outlined_instructions_ = 1;
-};
+HloInstruction::FusionKind
+FuseOps::ChooseKind(const HloInstruction* producer,
+                    const HloInstruction* consumer) {
+  return HloInstruction::FusionKind::kCustom;
+}
 
 }
 }
-
-#endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OUTLINER_H_
