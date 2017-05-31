@@ -109,7 +109,7 @@ class StringSink : public WritableFile {
 
 class StringSource : public RandomAccessFile {
  public:
-  StringSource(const StringPiece& contents)
+  explicit StringSource(const StringPiece& contents)
       : contents_(contents.data(), contents.size()), bytes_read_(0) {}
 
   ~StringSource() override {}

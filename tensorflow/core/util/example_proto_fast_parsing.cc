@@ -66,7 +66,7 @@ namespace parsed {
 class Feature {
  public:
   Feature() {}
-  Feature(StringPiece serialized) : serialized_(serialized) {}
+  explicit Feature(StringPiece serialized) : serialized_(serialized) {}
 
   Status ParseDataType(DataType* dtype) {
     DCHECK(dtype != nullptr);

@@ -53,7 +53,7 @@ void Iterator::RegisterCleanup(CleanupFunction func, void* arg1, void* arg2) {
 namespace {
 class EmptyIterator : public Iterator {
  public:
-  EmptyIterator(const Status& s) : status_(s) {}
+  explicit EmptyIterator(const Status& s) : status_(s) {}
   bool Valid() const override { return false; }
   void Seek(const StringPiece& target) override {}
   void SeekToFirst() override {}

@@ -95,7 +95,8 @@ class FactOpKernel : public OpKernel {
 
 class FactOpKernel1 : public FactOpKernel {
  public:
-  FactOpKernel1(OpKernelConstruction* context) : FactOpKernel(context) {}
+  explicit FactOpKernel1(OpKernelConstruction* context)
+      : FactOpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     FactOpKernel::Compute(context, kFacts1, kNum1);
@@ -104,7 +105,8 @@ class FactOpKernel1 : public FactOpKernel {
 
 class FactOpKernel2 : public FactOpKernel {
  public:
-  FactOpKernel2(OpKernelConstruction* context) : FactOpKernel(context) {}
+  explicit FactOpKernel2(OpKernelConstruction* context)
+      : FactOpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     FactOpKernel::Compute(context, kFacts2, kNum2);

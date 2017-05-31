@@ -41,7 +41,7 @@ using sparse::SparseTensor;
 
 class SparseTensorsMap : public ResourceBase {
  public:
-  SparseTensorsMap(const string& name) : name_(name), counter_(0) {}
+  explicit SparseTensorsMap(const string& name) : name_(name), counter_(0) {}
 
   string DebugString() override { return "A SparseTensorsMap"; }
 
@@ -116,7 +116,7 @@ class SparseTensorAccessingOp : public OpKernel {
  public:
   typedef std::function<Status(SparseTensorsMap**)> CreatorCallback;
 
-  SparseTensorAccessingOp(OpKernelConstruction* context)
+  explicit SparseTensorAccessingOp(OpKernelConstruction* context)
       : OpKernel(context), sparse_tensors_map_(nullptr) {}
 
  protected:
