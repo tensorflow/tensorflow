@@ -36,7 +36,7 @@ REGISTER_KERNEL_BUILDER(Name("CopyHost")
                             .HostMemory("input")
                             .HostMemory("output"),
                         CopyOp);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("Copy").Device(DEVICE_SYCL), CopyOp);
