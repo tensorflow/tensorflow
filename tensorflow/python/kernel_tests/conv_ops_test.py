@@ -1464,9 +1464,9 @@ if __name__ == "__main__":
   # in such case, winograd nonfused algorithm is added as one option of the
   # conv autotune, and cuDNN version is smaller than 7, the following tests
   # will fail.
-  ishape = [1, 400, 400, 128]
-  fshape = [3, 3, 128, 768]
-  oshape = [1, 400, 400, 768]
+  ishape = [1, 400, 400, 1]
+  fshape = [1, 1, 1, 256]
+  oshape = [1, 400, 400, 256]
   setattr(Conv2DTest, "testInceptionFwd_No_Winograd_Nonfused",
           GetInceptionFwdTest(ishape, fshape, 1, "SAME", gpu_only=True))
   setattr(Conv2DTest, "testInceptionBackInput_No_Winograd_Nonfused",
