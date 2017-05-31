@@ -63,7 +63,7 @@ if(WIN32)
   add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
   add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH)
   add_definitions(-DTF_COMPILE_LIBRARY)
-  add_definitions(/bigobj /nologo /EHsc /GF /FC /MP /Gm-)
+  add_definitions(/bigobj /nologo /EHsc /GF /MP /Gm-)
   # Suppress warnings to reduce build log size.
   add_definitions(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
   add_definitions(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
