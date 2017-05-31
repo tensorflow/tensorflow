@@ -25,6 +25,7 @@ cc_library(
         "driver/random_op.cc",
         "driver/reduction_ops.cc",
         "driver/tensor.cc",
+        "driver/tensor_ops.cc",
         "driver/transfer_manager.cc",
         "driver/visitor_base.cc",
         "driver/visitor_call.cc",
