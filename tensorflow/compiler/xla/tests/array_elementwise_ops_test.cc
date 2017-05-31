@@ -1788,7 +1788,7 @@ TEST_F(ArrayElementwiseOpTest, R4PlusR1InDim1) {
   ComputeAndCompareR4<float>(&builder, *expected_4d, {}, error_spec_);
 }
 
-TEST_F(ArrayElementwiseOpTest, R4_32x64x2x2_Plus_R1_64) {
+TEST_F(ArrayElementwiseOpTest, R4_16x16x2x2_Plus_R1_16) {
   constexpr int d0 = 16;
   constexpr int d1 = 16;
   constexpr int d2 = 2;
