@@ -2989,8 +2989,29 @@ py_test(
         ":framework_test_lib",
         ":platform_test",
         ":training",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+    ],
+)
+
+py_test(
+    name = "session_partial_run_test",
+    size = "small",
+    srcs = ["client/session_partial_run_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_gpu",
+    ],
+    deps = [
+        ":array_ops",
+        ":client",
+        ":errors",
+        ":framework",
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":math_ops",
+        ":platform_test",
+        ":training",
+        ":util",
+        "@six_archive//:six",
     ],
 )
 
