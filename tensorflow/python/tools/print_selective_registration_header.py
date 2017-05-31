@@ -14,13 +14,19 @@
 # ==============================================================================
 r"""Prints a header file to be used with SELECTIVE_REGISTRATION.
 
-Example usage:
-  print_selective_registration_header \
-      --graphs=path/to/graph.pb > ops_to_register.h
+An example of command-line usage is:
+  bazel build tensorflow/python/tools:print_selective_registration_header && \
+  bazel-bin/tensorflow/python/tools:print_selective_registration_header \
+    --graphs=path/to/graph.pb > ops_to_register.h
 
-  Then when compiling tensorflow, include ops_to_register.h in the include
-  search path and pass -DSELECTIVE_REGISTRATION  - see
-  core/framework/selective_registration.h for more details.
+Then when compiling tensorflow, include ops_to_register.h in the include
+search path and pass -DSELECTIVE_REGISTRATION  - see
+core/framework/selective_registration.h for more details.
+
+When compiling for Android:
+  bazel build -c opt --copt="-DSELECTIVE_REGISTRATION" \
+    //tensorflow/contrib/android:libtensorflow_inference.so \
+    --config=android_arm
 """
 
 from __future__ import absolute_import
