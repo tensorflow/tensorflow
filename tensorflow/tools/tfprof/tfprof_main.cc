@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
   tensorflow::tfprof::TFStats tf_stat(
       std::move(graph), nullptr, std::move(op_log), std::move(ckpt_reader));
 
-  std::vector<string> run_meta_files =
+  std::vector<tensorflow::string> run_meta_files =
       Split(FLAGS_run_meta_path, ',', tensorflow::str_util::SkipEmpty());
   for (int i = 0; i < run_meta_files.size(); ++i) {
     std::unique_ptr<tensorflow::RunMetadata> run_meta(
