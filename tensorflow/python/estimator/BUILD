@@ -378,6 +378,7 @@ py_test(
         ":linear",
         ":metric_keys",
         ":numpy_io",
+        ":pandas_io",
         ":run_config",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:client",
