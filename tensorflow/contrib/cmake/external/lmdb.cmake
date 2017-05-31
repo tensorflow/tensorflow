@@ -36,20 +36,9 @@ ExternalProject_Add(lmdb
 )
 
 if(WIN32)
-
     set(lmdb_STATIC_LIBRARIES ${lmdb_INSTALL}/lib/liblmdb.lib)
-
-    ExternalProject_Add_Step(lmdb copy_unistd
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${CMAKE_SOURCE_DIR}/patches/lmdb/unistd.h ${lmdb_BUILD}/unistd.h
-        DEPENDEES patch
-        DEPENDERS build
-    )
-
 else()
-
     set(lmdb_STATIC_LIBRARIES ${lmdb_INSTALL}/lib/liblmdb.a)
-
 endif()
 
 set(lmdb_HEADERS

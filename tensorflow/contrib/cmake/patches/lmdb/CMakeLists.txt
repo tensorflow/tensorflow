@@ -4,10 +4,6 @@ project(liblmdb)
 
 set(LIBLMDB_SRCS
     "libraries/liblmdb/mdb.c"
-    "libraries/liblmdb/mdb_copy.c"
-    "libraries/liblmdb/mdb_dump.c"
-    "libraries/liblmdb/mdb_load.c"
-    "libraries/liblmdb/mdb_stat.c"
     "libraries/liblmdb/midl.c"
 )
 
