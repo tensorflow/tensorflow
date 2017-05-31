@@ -46,6 +46,8 @@ class SessionDebugMinusAXTest : public ::testing::Test {
 
 #if GOOGLE_CUDA
     const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
+#elif defined(TENSORFLOW_USE_SYCL)
+    const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
     const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
 #endif
@@ -303,6 +305,8 @@ TEST_F(SessionDebugMinusAXTest, RunSimpleNetworkWithTwoDebugNodesInserted) {
 // through RunMetadata, given whether GPU is involved.
 #if GOOGLE_CUDA
   ASSERT_EQ(2, run_metadata.partition_graphs().size());
+#elif defined(TENSORFLOW_USE_SYCL)
+  ASSERT_EQ(2, run_metadata.partition_graphs().size());
 #else
   ASSERT_EQ(1, run_metadata.partition_graphs().size());
 #endif
@@ -337,7 +341,7 @@ TEST_F(SessionDebugMinusAXTest, RunSimpleNetworkWithTwoDebugNodesInserted) {
   ASSERT_EQ(1, debug_nan_count_tensor_vals[0].scalar<int64>()());
 }
 
-#ifndef GOOGLE_CUDA
+#if !defined(GOOGLE_CUDA) && !defined(TENSORFLOW_USE_SYCL)
 // TODO(cais): Reinstate the following test for concurrent debugged runs on
 //   a GPU once the root cause of the ~0.5% flakiness has been addressed.
 //   (b/34081273)
@@ -500,6 +504,8 @@ class SessionDebugOutputSlotWithoutOngoingEdgeTest : public ::testing::Test {
 
 #if GOOGLE_CUDA
     const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
+#elif defined(TENSORFLOW_USE_SYCL)
+    const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
     const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
 #endif
@@ -600,6 +606,8 @@ class SessionDebugVariableTest : public ::testing::Test {
 
 #if GOOGLE_CUDA
     const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
+#elif defined(TENSORFLOW_USE_SYCL)
+    const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
     const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
 #endif
@@ -823,6 +831,8 @@ TEST_F(SessionDebugVariableTest, VariableAssignWithDebugOps) {
 
 #if GOOGLE_CUDA
   ASSERT_EQ(2, run_metadata.partition_graphs().size());
+#elif defined(TENSORFLOW_USE_SYCL)
+  ASSERT_EQ(2, run_metadata.partition_graphs().size());
 #else
   ASSERT_EQ(1, run_metadata.partition_graphs().size());
 #endif
@@ -860,13 +870,17 @@ TEST_F(SessionDebugVariableTest, VariableAssignWithDebugOps) {
   ASSERT_EQ(2, debug_nan_count_tensor_vals[0].scalar<int64>()());
 }
 
-#if GOOGLE_CUDA
+#if defined(GOOGLE_CUDA) || defined(TENSORFLOW_USE_SYCL)
 class SessionDebugGPUSwitchTest : public ::testing::Test {
  public:
   void Initialize() {
     Graph graph(OpRegistry::Global());
 
+#ifdef GOOGLE_CUDA
     const string kDeviceName = "/job:localhost/replica:0/task:0/gpu:0";
+#elif TENSORFLOW_USE_SYCL
+    const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
+#endif
 
     Tensor vb(DT_BOOL, TensorShape({}));
     vb.scalar<bool>()() = true;
