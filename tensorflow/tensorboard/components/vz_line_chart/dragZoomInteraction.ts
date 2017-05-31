@@ -16,7 +16,6 @@ limitations under the License.
 export class DragZoomLayer extends Plottable.Components.SelectionBoxLayer {
   private _dragInteraction: Plottable.Interactions.Drag;
   private _doubleClickInteraction: Plottable.Interactions.Click;
-  private isZoomed = false;
   private easeFn: (t: number) => number = d3.easeCubicInOut;
   private _animationTime = 750;
   private onStart: Function;
@@ -136,18 +135,13 @@ export class DragZoomLayer extends Plottable.Components.SelectionBoxLayer {
       return;
     }
 
-    if (!this.isZoomed) {
-      this.isZoomed = true;
-    }
     this.interpolateZoom(x0, x1, y0, y1);
   }
 
   // Restore the scales to their state before any zoom
   private unzoom() {
-    if (!this.isZoomed) {
-      return;
-    }
-    this.isZoomed = false;
+    // We need to reset the zoom domain unconditionally, as the data or the
+    // smoothing may have updated, such that we are not longer fully zoomed out.
     let xScale = this.xScale() as any;
     xScale._domainMin = null;
     xScale._domainMax = null;

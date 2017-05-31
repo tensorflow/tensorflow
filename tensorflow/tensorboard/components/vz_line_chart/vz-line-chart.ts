@@ -306,7 +306,7 @@ class LineChart {
     this.yAxis.usesTextWidthApproximation(true);
 
     this.dzl = new DragZoomLayer(
-        this.xScale, this.yScale, this.updateSpecialDatasets.bind(this));
+        this.xScale, this.yScale, this.resetYDomain.bind(this));
 
     let center = this.buildPlot(this.xAccessor, this.xScale, this.yScale);
 
@@ -386,14 +386,7 @@ class LineChart {
     if (ignoreYOutliers !== this._ignoreYOutliers) {
       this._ignoreYOutliers = ignoreYOutliers;
       this.updateSpecialDatasets();
-    }
-  }
-
-  private updateSpecialDatasets() {
-    if (this.smoothingEnabled) {
-      this.updateSpecialDatasetsWithAccessor(this.smoothedAccessor);
-    } else {
-      this.updateSpecialDatasetsWithAccessor(this.scalarAccessor);
+      this.resetYDomain();
     }
   }
 
@@ -401,10 +394,10 @@ class LineChart {
    * values from all of the regular datasets, e.g. last points in series, or
    * NaN values. Those points will have a `name` and `relative` property added
    * (since usually those are context in the surrounding dataset).
-   * The accessor will point to the correct data to access.
    */
-  private updateSpecialDatasetsWithAccessor(accessor:
-                                                Plottable.IAccessor<number>) {
+  private updateSpecialDatasets() {
+    const accessor = this.getAccessor();
+
     let lastPointsData =
         this.datasets
             .map((d) => {
@@ -454,7 +447,10 @@ class LineChart {
     };
     let nanData = _.flatten(this.datasets.map(datasetToNaNData));
     this.nanDataset.data(nanData);
+  }
 
+  private resetYDomain() {
+    const accessor = this.getAccessor();
     let datasetToValues: (d: Plottable.Dataset) => number[] = (d) => {
       return d.data().map((x) => accessor(x, -1, d));
     };
@@ -462,6 +458,10 @@ class LineChart {
     vals = vals.filter((x) => x === x && x !== Infinity && x !== -Infinity);
     let domain = ChartHelpers.computeDomain(vals, this._ignoreYOutliers);
     this.yScale.domain(domain);
+  }
+
+  private getAccessor(): Plottable.IAccessor<number> {
+    return this.smoothingEnabled ? this.smoothedAccessor : this.scalarAccessor;
   }
 
   private setupTooltips(plot: Plottable.XYPlot<number|Date, number>):
@@ -737,7 +737,7 @@ class LineChart {
       this.smoothLinePlot.datasets(this.datasets);
     }
 
-    this.updateSpecialDatasetsWithAccessor(this.smoothedAccessor);
+    this.updateSpecialDatasets();
   }
 
   public smoothingDisable() {
@@ -746,7 +746,7 @@ class LineChart {
       this.scatterPlot.y(this.scalarAccessor, this.yScale);
       this.smoothLinePlot.datasets([]);
       this.smoothingEnabled = false;
-      this.updateSpecialDatasetsWithAccessor(this.scalarAccessor);
+      this.updateSpecialDatasets();
     }
   }
 
