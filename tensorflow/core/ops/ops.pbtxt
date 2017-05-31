@@ -24774,7 +24774,7 @@ op {
   name: "Split"
   input_arg {
     name: "split_dim"
-    description: "0-D.  The dimension along which to split.  Must be in the range\n`[0, rank(value))`."
+    description: "0-D.  The dimension along which to split.  Must be in the range\n`[-rank(value), rank(value))`."
     type: DT_INT32
   }
   input_arg {
@@ -24815,7 +24815,7 @@ op {
   }
   input_arg {
     name: "split_dim"
-    description: "0-D.  The dimension along which to split.  Must be in the range\n`[0, rank(value))`."
+    description: "0-D.  The dimension along which to split.  Must be in the range\n`[-rank(value), rank(value))`."
     type: DT_INT32
   }
   output_arg {
