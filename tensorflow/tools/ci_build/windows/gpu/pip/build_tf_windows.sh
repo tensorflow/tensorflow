@@ -60,8 +60,9 @@ reinstall_tensorflow_pip ${PIP_NAME}
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-# GPU tests are very flaky when running concurently, so set local_test_jobs=2
-bazel test -c opt --config=win-cuda $BUILD_OPTS -k --define=no_tensorflow_py_deps=true \
-  --test_output=errors --test_tag_filters=-no_pip,-no_windows,-no_windows_gpu \
-  --local_test_jobs=1 --build_tests_only \
-  //${PY_TEST_DIR}/tensorflow/python/...
+# GPU tests are very flaky when running concurently, so set local_test_jobs=1
+bazel test -c opt --config=win-cuda $BUILD_OPTS -k --test_output=errors \
+  --define=no_tensorflow_py_deps=true --test_lang_filters=py \
+  --test_tag_filters=-no_pip,-no_windows,-no_windows_gpu \
+  --build_tag_filters=-no_pip,-no_windows,-no_windows_gpu \
+  --local_test_jobs=1 --build_tests_only //${PY_TEST_DIR}/tensorflow/python/...
