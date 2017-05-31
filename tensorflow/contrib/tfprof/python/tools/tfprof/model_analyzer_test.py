@@ -199,6 +199,7 @@ class PrintModelAnalysisTest(test.TestCase):
     opts['output'] = 'timeline:outfile=' + outfile
     opts['account_type_regexes'] = ['.*']
     opts['max_depth'] = 100000
+    opts['step'] = 0
 
     with session.Session() as sess, ops.device('/cpu:0'):
       x = lib.BuildFullModel()

@@ -112,6 +112,181 @@ PRINT_ALL_TIMING_MEMORY = {
 # pylint: enable=bad-continuation
 
 
+def _build_options(tfprof_options):
+  """Build tfprof.OptionsProto.
+
+  Args:
+    tfprof_options: A dictionary of options.
+  Returns:
+    tfprof.OptionsProto.
+  """
+  opts = tfprof_options_pb2.OptionsProto()
+  opts.max_depth = tfprof_options.get('max_depth', 10)
+  opts.min_bytes = tfprof_options.get('min_bytes', 0)
+  opts.min_micros = tfprof_options.get('min_micros', 0)
+  opts.min_params = tfprof_options.get('min_params', 0)
+  opts.min_float_ops = tfprof_options.get('min_float_ops', 0)
+  opts.min_occurrence = tfprof_options.get('min_occurrence', 0)
+
+  opts.step = tfprof_options.get('step', -1)
+
+  opts.order_by = tfprof_options.get('order_by', 'name')
+
+  for p in tfprof_options.get('account_type_regexes', []):
+    opts.account_type_regexes.append(p)
+  for p in tfprof_options.get('start_name_regexes', []):
+    opts.start_name_regexes.append(p)
+  for p in tfprof_options.get('trim_name_regexes', []):
+    opts.trim_name_regexes.append(p)
+  for p in tfprof_options.get('show_name_regexes', []):
+    opts.show_name_regexes.append(p)
+  for p in tfprof_options.get('hide_name_regexes', []):
+    opts.hide_name_regexes.append(p)
+  opts.account_displayed_op_only = tfprof_options.get(
+      'account_displayed_op_only', False)
+
+  for p in tfprof_options.get('select', []):
+    opts.select.append(p)
+
+  opts.output = tfprof_options.get('output', 'stdout')
+  opts.dump_to_file = tfprof_options.get('dump_to_file', '')
+
+  return opts
+
+
+class Profiler(object):
+  """TensorFlow multi-step profiler.
+
+  See go/tfprof or README for details.
+
+  Typical use case:
+    # Currently we are only allowed to create 1 profiler per process.
+    profiler = Profile(sess.graph)
+
+    for i in xrange(total_steps):
+      if i % 10000 == 0:
+        run_meta = tf.RunMetadata()
+        _ = sess.run(...,
+                     options=tf.RunOptions(
+                         trace_level=tf.RunOptions.FULL_TRACE),
+                     run_metadata=run_meta)
+        profiler.add_step(i, run_meta)
+
+        # Profile the parameters of your model.
+        profiler.profile_name_scope(options=TRAINABLE_VARS_PARAMS_STAT_OPTIONS)
+
+        # Or profile the timing of your model operations.
+        opts = PRINT_ALL_TIMING_MEMORY.copy()
+        opts['order_by'] = 'micros'
+        opts['select'] = ['micros', 'occurrence']
+        opts['max_depth'] = 20
+        profiler.profile_operations(options=opts)
+
+        # Or you can generate a timeline:
+        opts = PRINT_ALL_TIMING_MEMORY.copy()
+        opts['output'] = 'timeline:outfile=' + filename
+        opts['step'] = i
+        profiler.profile_graph(options=opts)
+      else:
+        _ = sess.run(...)
+  """
+
+  def __init__(self, graph, op_log=None):
+    """Constructor.
+
+    Args:
+      graph: tf.Graph.
+      op_log: optional. tensorflow::tfprof::OpLog proto. Used to define
+          extra op types.
+    """
+    self._graph = graph
+    # pylint: disable=protected-access
+    op_log = tfprof_logger._merge_default_with_oplog(
+        self._graph, op_log=op_log)
+    # pylint: enable=protected-access
+
+    print_mdl.NewProfiler(
+        self._graph.as_graph_def().SerializeToString(),
+        op_log.SerializeToString())
+
+  def __del__(self):
+    print_mdl.DeleteProfiler()
+
+  def add_step(self, step, run_meta):
+    """Add statistics of a step.
+
+    Args:
+      step: A step uint64 used to identify the RunMetadata. Must be different
+         across different AddStep() calls.
+      run_meta: RunMetadata proto that contains statistics of a session run.
+    """
+    # pylint: disable=protected-access
+    op_log = tfprof_logger._merge_default_with_oplog(
+        self._graph, run_meta=run_meta, add_trace=False,
+        add_trainable_var=False)
+    # pylint: enable=protected-access
+    print_mdl.AddStep(
+        step, run_meta.SerializeToString(), op_log.SerializeToString())
+
+  def profile_python_codes(self, options):
+    """Profile the statistics of the Python codes.
+
+      Hint: set options['show_name_regexes'] = ['.*my_code.py.*']
+
+    Args:
+      options: A dict of profiler options.
+    Returns:
+      a TFMultiGraphNodeProto that records the results.
+    """
+    opts = _build_options(options)
+    tfprof_node = tfprof_output_pb2.TFMultiGraphNodeProto()
+    tfprof_node.ParseFromString(
+        print_mdl.Profile('code'.encode('utf-8'), opts.SerializeToString()))
+    return tfprof_node
+
+  def profile_operations(self, options):
+    """Profile the statistics of the Operation types (e.g. MatMul, Conv2D).
+
+    Args:
+      options: A dict of profiler options.
+    Returns:
+      a TFMultiGraphNodeProto that records the results.
+    """
+    opts = _build_options(options)
+    tfprof_node = tfprof_output_pb2.TFMultiGraphNodeProto()
+    tfprof_node.ParseFromString(
+        print_mdl.Profile('op'.encode('utf-8'), opts.SerializeToString()))
+    return tfprof_node
+
+  def profile_name_scope(self, options):
+    """Profile the statistics of graph nodes, organized by name scope.
+
+    Args:
+      options: A dict of profiler options.
+    Returns:
+      a TFGraphNodeProto that records the results.
+    """
+    opts = _build_options(options)
+    tfprof_node = tfprof_output_pb2.TFGraphNodeProto()
+    tfprof_node.ParseFromString(
+        print_mdl.Profile('scope'.encode('utf-8'), opts.SerializeToString()))
+    return tfprof_node
+
+  def profile_graph(self, options):
+    """Profile the statistics of graph nodes, organized by dataflow graph.
+
+    Args:
+      options: A dict of profiler options.
+    Returns:
+      a TFGraphNodeProto that records the results.
+    """
+    opts = _build_options(options)
+    tfprof_node = tfprof_output_pb2.TFGraphNodeProto()
+    tfprof_node.ParseFromString(
+        print_mdl.Profile('graph'.encode('utf-8'), opts.SerializeToString()))
+    return tfprof_node
+
+
 def print_model_analysis(graph,
                          run_meta=None,
                          op_log=None,
@@ -145,33 +320,8 @@ def print_model_analysis(graph,
   op_log = tfprof_logger._merge_default_with_oplog(
       graph, op_log, run_meta, add_trace=tfprof_cmd == 'code')
   # pylint: enable=protected-access
-  opts = tfprof_options_pb2.OptionsProto()
-  opts.max_depth = tfprof_options['max_depth']
-  opts.min_bytes = tfprof_options['min_bytes']
-  opts.min_micros = tfprof_options['min_micros']
-  opts.min_params = tfprof_options['min_params']
-  opts.min_float_ops = tfprof_options['min_float_ops']
-  if 'min_occurrence' in tfprof_options:
-    opts.min_occurrence = tfprof_options['min_occurrence']
-  else:
-    opts.min_occurrence = 0
 
-  opts.order_by = tfprof_options['order_by']
-  for p in tfprof_options['account_type_regexes']:
-    opts.account_type_regexes.append(p)
-  for p in tfprof_options['start_name_regexes']:
-    opts.start_name_regexes.append(p)
-  for p in tfprof_options['trim_name_regexes']:
-    opts.trim_name_regexes.append(p)
-  for p in tfprof_options['show_name_regexes']:
-    opts.show_name_regexes.append(p)
-  for p in tfprof_options['hide_name_regexes']:
-    opts.hide_name_regexes.append(p)
-  opts.account_displayed_op_only = tfprof_options['account_displayed_op_only']
-  for p in tfprof_options['select']:
-    opts.select.append(p)
-  opts.output = tfprof_options['output']
-  opts.dump_to_file = tfprof_options['dump_to_file']
+  opts = _build_options(tfprof_options)
 
   run_meta_str = run_meta.SerializeToString() if run_meta else b''
 

@@ -176,6 +176,12 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       }
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[6]) {
+      if (pieces.size() <= i + 1 ||
+          !strings::safe_strto64(pieces[i + 1], &opts->step)) {
+        return ReturnError(pieces, i);
+      }
+      ++i;
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[7]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
@@ -187,42 +193,42 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       }
       opts->order_by = *order_by;
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[7]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[8]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->account_type_regexes = str_util::Split(StripQuote(pieces[i + 1]),
                                                    ',', str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[8]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[9]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->start_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                  str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[9]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[10]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->trim_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                 str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[10]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[11]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->show_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                 str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[11]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[12]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->hide_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                 str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[12]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[13]) {
       if ((pieces.size() > i + 1 && pieces[i + 1].find("-") == 0) ||
           pieces.size() == i + 1) {
         opts->account_displayed_op_only = true;
@@ -232,7 +238,7 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       } else {
         ++i;
       }
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[13]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[14]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
@@ -249,7 +255,7 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       }
       opts->select = requested_set;
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[14]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[15]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
@@ -291,6 +297,10 @@ void PrintHelp() {
       "float operations. Only available if an op has "
       "op.RegisterStatistics() defined and OpLog is "
       "provided\n\n"
+      "  -min_occurrence: Show the op types that are at least used this number "
+      "of times. Only available in op view.\n\n"
+      "  -step: Show the stats of a step when multiple steps of "
+      "RunMetadata were added. By default (-1), show the average of all steps."
       "  -order_by: Order the results by [name|depth|bytes|micros|params|"
       "float_ops]\n\n"
       "  -account_type_regexes: Account and display the ops whose types match "

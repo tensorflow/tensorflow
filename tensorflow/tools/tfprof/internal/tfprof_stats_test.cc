@@ -71,7 +71,7 @@ class TFProfStatsTest : public ::testing::Test {
 };
 
 TEST_F(TFProfStatsTest, CustomOpType) {
-  Options opts(3, 0, 0, 0, 0, 0, "name",
+  Options opts(3, 0, 0, 0, 0, 0, -1, "name",
                {kTrainableVarType},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops"}, "", {});
@@ -113,7 +113,8 @@ TEST_F(TFProfStatsTest, CustomOpType) {
 }
 
 TEST_F(TFProfStatsTest, CheckPointOpType) {
-  Options opts(3, 0, 0, 0, 0, 0, "name", {kCkptVarType},  // accout_type_regexes
+  Options opts(3, 0, 0, 0, 0, 0, -1, "name",
+               {kCkptVarType},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops"}, "", {});
   const TFGraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
@@ -154,7 +155,7 @@ TEST_F(TFProfStatsTest, CheckPointOpType) {
 }
 
 TEST_F(TFProfStatsTest, TestGraph) {
-  Options opts(100, 0, 10000, 0, 0, 0, "name", {".*"},
+  Options opts(100, 0, 10000, 0, 0, 0, -1, "name", {".*"},
                {"cost.*"},  // start_name_regexes
                {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops"}, "", {});
@@ -171,8 +172,8 @@ TEST_F(TFProfStatsTest, TestGraph) {
 }
 
 TEST_F(TFProfStatsTest, TestFloatOps) {
-  Options opts(10, 0, 0, 0, 1, 0, "name", {".*"}, {".*"}, {""}, {".*"}, {""},
-               false, {"float_ops"}, "", {});
+  Options opts(10, 0, 0, 0, 1, 0, -1, "name", {".*"}, {".*"}, {""}, {".*"},
+               {""}, false, {"float_ops"}, "", {});
   const TFGraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
 
   TFGraphNodeProto expected;
@@ -201,7 +202,7 @@ TEST_F(TFProfStatsTest, TestFloatOps) {
 }
 
 TEST_F(TFProfStatsTest, TestAccountShownNameOnly) {
-  Options opts(100, 0, 0, 0, 0, 0, "name", {".*"}, {".*"}, {""},
+  Options opts(100, 0, 0, 0, 0, 0, -1, "name", {".*"}, {".*"}, {""},
                {"unit_2_1.*DW"},  // show_name_regexes.
                {""}, true,        // account_displayed_op_only.
                {"params"}, "", {});
@@ -217,7 +218,7 @@ TEST_F(TFProfStatsTest, TestAccountShownNameOnly) {
 }
 
 TEST_F(TFProfStatsTest, TestShowTensorValue) {
-  Options opts(10, 0, 0, 0, 0, 0, "name", {".*"}, {".*"}, {""},
+  Options opts(10, 0, 0, 0, 0, 0, -1, "name", {".*"}, {".*"}, {""},
                {"unit_1_0.*gamma"}, {""}, false,
                {"tensor_value"},  // Show tensor value from checkpoint.
                "", {});
