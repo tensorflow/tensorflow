@@ -1634,6 +1634,8 @@ class CondContext(ControlFlowContext):
           # pylint: disable=protected-access
           op._update_input(index, real_x)
           # pylint: enable=protected-access
+      # Remove any external control dependency on this op.
+      self._RemoveExternalControlEdges(op)
       for x in op.outputs:
         self._values.add(x.name)
       # pylint: disable=protected-access
