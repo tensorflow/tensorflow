@@ -74,7 +74,7 @@ static StringPiece CompressibleString(random::SimplePhilox* rnd,
   dst->resize(len);
   return StringPiece(*dst);
 }
-}
+}  // namespace test
 
 static void Increment(string* key) { key->push_back('\0'); }
 
