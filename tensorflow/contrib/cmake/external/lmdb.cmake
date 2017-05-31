@@ -36,7 +36,7 @@ ExternalProject_Add(lmdb
 )
 
 if(WIN32)
-    set(lmdb_STATIC_LIBRARIES ${lmdb_INSTALL}/lib/liblmdb.lib)
+    set(lmdb_STATIC_LIBRARIES ${lmdb_INSTALL}/lib/lmdb.lib)
 else()
     set(lmdb_STATIC_LIBRARIES ${lmdb_INSTALL}/lib/liblmdb.a)
 endif()
