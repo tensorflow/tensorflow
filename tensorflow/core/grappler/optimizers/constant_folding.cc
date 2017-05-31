@@ -152,6 +152,9 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   }
 
   for (const auto& input : node.input()) {
+    if (input[0] == '^') {
+      continue;
+    }
     bool is_const = IsConst(*node_map_->GetNode(input));
     if (!is_const) {
       return false;
@@ -216,6 +219,9 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                                             std::vector<NodeDef>* outputs) {
   TensorVector inputs;
   for (const auto& input : node.input()) {
+    if (input[0] == '^') {
+      break;
+    }
     TensorVector output;
     TF_RETURN_IF_ERROR(
         EvaluateNode(*node_map_->GetNode(input), TensorVector(), &output));
@@ -245,12 +251,26 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
   std::vector<NodeDef> const_nodes;
   TF_RETURN_IF_ERROR(EvaluateOneFoldable(node, &const_nodes));
 
-  auto outputs = node_map_->GetOutputs(node.name());
   for (const auto& const_node : const_nodes) {
     NodeDef* added_node = output->add_node();
     *added_node = const_node;
     node_map_->AddNode(added_node->name(), added_node);
+
+    for (const auto& input : node.input()) {
+      if (input[0] == '^') {
+        *added_node->add_input() = input;
+      } else {
+        NodeDef* input_node = node_map_->GetNode(input);
+        for (const auto& fanin_of_input : input_node->input()) {
+          if (fanin_of_input[0] == '^') {
+            *added_node->add_input() = fanin_of_input;
+          }
+        }
+      }
+    }
   }
+
+  auto outputs = node_map_->GetOutputs(node.name());
   for (const auto& output : outputs) {
     for (int i = 0; i < output->input_size(); i++) {
       int position;
