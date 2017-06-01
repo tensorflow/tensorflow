@@ -32,7 +32,7 @@ __global__ void SparseTensorDenseMatMulKernel(int nnz, int m, int b_rows,
                                               int b_cols, int p,
                                               const Tindices* a_indices,
                                               const T* a_values, const T* b,
-                                              T* out, const int* skips) {
+                                              const int* skips, T* out) {
   // out_{ij} = sum_k {a_ik b_kj}
   // out = A * B', out_{ij} = sum_k {a_ik (b')_kj}; b'_{kj} = b_{jk}
   const int n = (ADJ_B) ? b_cols : b_rows;
@@ -105,7 +105,7 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B, NDIM
     SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B, NDIM>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
             nnz, m, b_rows, b_cols, p, a_indices.data(), a_values.data(),
-            b.data(), out.data(), skips);
+            b.data(), skips, out.data());
             
     delete [] skips;
 
@@ -115,7 +115,7 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B, NDIM
 
 }  // namespace functor
 
-#define DEFINE(T, Tindices, NDIM)                                              \
+#define INSTANTIATE_FUNCTORS(T, Tindices, NDIM)                                \
   template struct functor::SparseTensorDenseMatMulFunctor<                     \
       GPUDevice, T, Tindices, false, false, NDIM>;                             \
   template struct functor::SparseTensorDenseMatMulFunctor<                     \
@@ -125,9 +125,9 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B, NDIM
   template struct functor::SparseTensorDenseMatMulFunctor<                     \
       GPUDevice, T, Tindices, true, true, NDIM>;
 
-#define HANDLE_DIM(NDIM)       \
-  DEFINE(float, int32, NDIM);  \
-  DEFINE(float, int64, NDIM);
+#define HANDLE_DIM(NDIM)                    \
+  INSTANTIATE_FUNCTORS(float, int32, NDIM); \
+  INSTANTIATE_FUNCTORS(float, int64, NDIM);
   
 HANDLE_DIM(2);
 HANDLE_DIM(3);
@@ -135,7 +135,7 @@ HANDLE_DIM(4);
 HANDLE_DIM(5);
 
 #undef HANDLE_DIM
-#undef DEFINE
+#undef INSTANTIATE_FUNCTORS
 
 }  // end namespace tensorflow
 
