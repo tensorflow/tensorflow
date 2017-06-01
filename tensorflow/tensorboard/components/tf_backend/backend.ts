@@ -100,6 +100,20 @@ export type HealthPillDatum = Datum & HealthPill;
 // data entries.
 export interface HealthPillsResponse { [key: string]: HealthPillDatum[]; }
 
+// An object that encapsulates an alert issued by the debugger. This alert is
+// sent by debugging libraries after bad values (NaN, +/- Inf) are encountered.
+export interface DebuggerNumericsAlertReport {
+  device_name: string;
+  tensor_name: string;
+  first_timestamp: number;
+  nan_event_count: number;
+  neg_inf_event_count: number;
+  pos_inf_event_count: number;
+}
+// A DebuggerNumericsAlertReportResponse contains alerts issued by the debugger
+// in ascending order of timestamp. This helps the user identify for instance
+// when bad values first appeared in the model.
+export type DebuggerNumericsAlertReportResponse = DebuggerNumericsAlertReport[];
 
 export const TYPES = [
   'scalar', 'histogram', 'compressedHistogram', 'graph', 'image', 'audio',
@@ -240,7 +254,8 @@ export class Backend {
   }
 
   /**
-   * Returns a promise for requesting the health pills for a list of nodes.
+   * Returns a promise for requesting the health pills for a list of nodes. This
+   * route is used by the debugger plugin.
    */
   public healthPills(nodeNames: string[], step?: number):
       Promise<HealthPillsResponse> {
@@ -256,6 +271,16 @@ export class Backend {
       postData['step'] = step;
     }
     return this.requestManager.request(this.router.healthPills(), postData);
+  }
+
+  /**
+   * Returns a promise for alerts for bad values (detected by the debugger).
+   * This route is used by the debugger plugin.
+   */
+  public debuggerNumericsAlerts():
+      Promise<DebuggerNumericsAlertReportResponse> {
+    return this.requestManager.request(
+        this.router.pluginRoute('debugger', '/numerics_alert_report'));
   }
 
   /**
