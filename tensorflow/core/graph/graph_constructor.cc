@@ -496,6 +496,7 @@ Status GraphConstructor::ModifyNodeDefForImport(NodeDef* node_def) {
 void RemoveInputs(NodeDef* node_def, const std::vector<int>& inputs_to_remove) {
   // TODO(skyewm): is there a better way to do this?
   std::vector<string> inputs;
+  inputs.reserve(node_def->input_size());
   for (int i = 0; i < node_def->input_size(); ++i) {
     inputs.push_back(node_def->input(i));
   }

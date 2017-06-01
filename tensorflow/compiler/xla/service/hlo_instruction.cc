@@ -1484,6 +1484,7 @@ string HloInstruction::ToString(bool compact_operands,
   }
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
+    bounds.reserve(slice_starts_.size());
     for (int i = 0; i < slice_starts_.size(); ++i) {
       bounds.push_back(
           StrCat("[", slice_starts_[i], ":", slice_limits_[i], "]"));

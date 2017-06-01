@@ -2942,6 +2942,7 @@ bool CudnnSupport::DoMatMul(Stream* stream,
     }
     const auto toPtrs = [](std::vector<DeviceMemory<float>>& v) {
       std::vector<DeviceMemory<float>*> ptrs;
+      ptrs.reserve(v.size());
       for (auto& mem : v) {
         ptrs.push_back(&mem);
       }

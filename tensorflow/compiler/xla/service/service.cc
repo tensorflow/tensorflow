@@ -649,6 +649,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
         ResolveAndValidateArguments(request.arguments(), execute_backend_.get(),
                                     executor->device_ordinal()));
     std::vector<se::DeviceMemoryBase> arguments;
+    arguments.reserve(arg_allocations.size());
     for (const Allocation* allocation : arg_allocations) {
       arguments.push_back(allocation->device_memory());
     }
@@ -677,6 +678,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
       BuildExecutables(versioned_handles, std::move(module_configs),
                        execute_backend_.get(), executors));
   std::vector<Executable*> executable_ptrs;
+  executable_ptrs.reserve(executables.size());
   for (const auto& executable : executables) {
     executable_ptrs.push_back(executable.get());
   }
@@ -752,6 +754,7 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
           << module_config->entry_computation_layout().ToString();
 
   std::vector<se::DeviceMemoryBase> arguments;
+  arguments.reserve(arg_allocations.size());
   for (const Allocation* allocation : arg_allocations) {
     arguments.push_back(allocation->device_memory());
   }
@@ -820,6 +823,7 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
           << module_config->entry_computation_layout().ToString();
 
   std::vector<se::DeviceMemoryBase> arguments;
+  arguments.reserve(arg_allocations.size());
   for (const Allocation* allocation : arg_allocations) {
     arguments.push_back(allocation->device_memory());
   }

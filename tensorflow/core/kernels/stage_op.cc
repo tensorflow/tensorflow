@@ -88,6 +88,7 @@ class StageOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetBuffer(ctx, def(), &buf));
     core::ScopedUnref scope(buf);
     Buffer::Tuple tuple;
+    tuple.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       tuple.push_back(ctx->input(i));
     }

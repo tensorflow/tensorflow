@@ -182,6 +182,7 @@ std::vector<string> RunCppShapeInference(
 
   std::vector<PyObject*> input_constant_tensor_values_v;
   int cnt = PyList_Size(input_constant_tensor_values);
+  input_constant_tensor_values_v.reserve(cnt);
   for (int i = 0; i < cnt; ++i) {
     input_constant_tensor_values_v.push_back(
         PyList_GetItem(input_constant_tensor_values, i));

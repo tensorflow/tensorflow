@@ -74,6 +74,7 @@ StatusOr<std::unique_ptr<Literal>> ReplayComputation(
   }
 
   std::vector<GlobalData*> execute_arguments;
+  execute_arguments.reserve(arguments.size());
   for (auto& argument : arguments) {
     execute_arguments.push_back(argument.get());
   }

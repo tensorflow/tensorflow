@@ -463,6 +463,7 @@ class TakeManySparseFromTensorsMapOp : public SparseTensorAccessingOp {
     std::iota(std_order.begin(), std_order.end(), 0);
 
     std::vector<SparseTensor> tensors_to_concat;
+    tensors_to_concat.reserve(N);
     for (int i = 0; i < N; ++i) {
       tensors_to_concat.emplace_back(std::move(indices_to_concat[i]),
                                      std::move(values_to_concat[i]),
