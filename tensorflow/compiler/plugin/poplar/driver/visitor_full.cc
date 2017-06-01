@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -183,6 +184,29 @@ Status FullVisitor::HandleTranspose(HloInstruction* inst) {
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
   return Status::OK();
 }
+
+Status FullVisitor::HandleFusion(HloInstruction* inst) {
+  if (inst->fusion_kind() == HloInstruction::FusionKind::kCustom) {
+    switch (inst->fused_expression_root()->opcode()) {
+      case HloOpcode::kDynamicUpdateSlice:
+      {
+        poplar::program::Program prog;
+        TF_ASSIGN_OR_RETURN(prog,
+                            CreateSliceUpdateOp(*graph_,
+                                                resources_,
+                                                inst,
+                                                GetOutputShape(inst),
+                                                tensor_map));
+        sequence.add(prog);
+        return Status::OK();
+      }
+      default:
+        return Unimplemented(inst);
+    }
+  } else {
+    return Unimplemented(inst);
+  }
+};
 
 Status FullVisitor::HandleCall(HloInstruction* inst) {
   poplar::program::Program prog;

@@ -15,60 +15,48 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
 
-#include <memory>
-#include <string>
-
-#include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_query.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace xla {
+namespace poplarplugin {
 
 class OutlineCandidateFinder : public DfsHloVisitorWithDefault {
- public:
+public:
   explicit OutlineCandidateFinder() {}
 
-  Status DefaultAction(HloInstruction*) override {
+  Status DefaultAction(HloInstruction *) override {
     return Status::OK();
   }
 
   Status HandleConvolution(
-          HloInstruction* convolution,
-          HloInstruction* lhs_instruction,
-          HloInstruction* rhs_instruction,
-          const Window& window) override {
+          HloInstruction *convolution,
+          HloInstruction *lhs_instruction,
+          HloInstruction *rhs_instruction,
+          const Window &window) override {
     candidates_.push_back(convolution);
     return Status::OK();
   }
 
-  Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
-                   HloInstruction* rhs) override {
+  Status HandleDot(HloInstruction *dot, HloInstruction *lhs,
+                   HloInstruction *rhs) override {
     candidates_.push_back(dot);
     return Status::OK();
   }
 
-  std::vector<HloInstruction*> candidates_;
+  std::vector<HloInstruction *> candidates_;
 };
 
-StatusOr<bool> Outliner::Run(HloModule* module) {
+StatusOr<bool> Outliner::Run(HloModule *module) {
   OutlineCandidateFinder visitor;
   TF_RETURN_IF_ERROR(
           module->entry_computation()->root_instruction()->Accept(&visitor));
 
-  for (HloInstruction* top : visitor.candidates_) {
-    std::vector<HloInstruction*> to_replace;
+  for (HloInstruction *top : visitor.candidates_) {
+    std::vector < HloInstruction * > to_replace;
     to_replace.push_back(top);
     if (top->user_count() == 1) {
-      for (HloInstruction* inst = top->users()[0];
+      for (HloInstruction *inst = top->users()[0];
            inst->user_count() == 1 && inst->IsElementwise() &&
            to_replace.size() < max_outlined_instructions_;
            inst = inst->users()[0]) {
@@ -83,4 +71,5 @@ StatusOr<bool> Outliner::Run(HloModule* module) {
   return visitor.candidates_.size() > 0;
 }
 
-}  // namespace xla
+}
+}

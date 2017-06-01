@@ -15,24 +15,11 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
 
-#include <memory>
-#include <utility>
-
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_matchers.h"
-#include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
-#include "tensorflow/compiler/xla/tests/literal_test_util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-
-namespace op = xla::testing::opcode_matchers;
 
 namespace xla {
+namespace poplarplugin {
 namespace {
 
 using OutlinerTest = HloTestBase;
@@ -115,5 +102,6 @@ TEST_F(OutlinerTest, Convolution) {
 }
 
 
-}  // namespace
-}  // namespace xla
+}
+}
+}

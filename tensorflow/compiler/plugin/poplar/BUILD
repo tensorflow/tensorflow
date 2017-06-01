@@ -25,6 +25,7 @@ cc_library(
         "driver/random_op.cc",
         "driver/reduction_ops.cc",
         "driver/tensor.cc",
+        "driver/tensor_ops.cc",
         "driver/transfer_manager.cc",
         "driver/visitor_base.cc",
         "driver/visitor_call.cc",
@@ -78,9 +79,11 @@ cc_library(
 cc_library(
     name = "optimizers",
     srcs = [
+        "driver/fuse_ops.cc",
         "driver/outliner.cc",
     ],
     hdrs = [
+        "driver/fuse_ops.h",
         "driver/outliner.h",
     ],
     deps = [
@@ -115,6 +118,17 @@ cc_library(
 cc_test(
     name = "outliner_test",
     srcs = ["tests/outliner_test.cc"],
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "fuse_ops_test",
+    srcs = ["tests/fuse_ops_test.cc"],
     deps = [
         ":optimizers",
         "//tensorflow/compiler/xla/service:hlo_matchers",

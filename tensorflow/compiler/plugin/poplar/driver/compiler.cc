@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitor_full.h"
 #include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
+#include "tensorflow/compiler/plugin/poplar/driver/fuse_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/stream_executor/executor.h"
 
@@ -136,6 +137,7 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
   HloPassPipeline pipeline("IPU", dump_hlo);
   pipeline.AddPass<Inliner>();
   pipeline.AddPass<Outliner>(2);
+  pipeline.AddPass<FuseOps>();
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<HloCSE>(false);
 

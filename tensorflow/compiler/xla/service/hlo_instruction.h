@@ -62,6 +62,8 @@ class HloInstruction {
     kTransposeDot,        // Fused into a dot with transposed operands.
     kConvBackwardFilter,  // Fused into a backward filter convolution.
     kConvBackwardInput,   // Fused into a backward input convolution.
+
+    kCustom,              // Custom fusions.
   };
 
   ~HloInstruction();
