@@ -6,8 +6,10 @@
 import tensorflow as tf
 import numpy as np
 
-def _get_variable(name, shape, init, dtype=tf.float32):
-  return tf.get_variable(name, shape, initializer=init, dtype=dtype)
+datatype = tf.float16
+
+def _get_variable(name, shape, init):
+  return tf.get_variable(name, shape, initializer=init, dtype=datatype)
 
 def inference(x):
 
@@ -88,8 +90,8 @@ def max_pool(x, ksize=3, stride=2):
 #
 
 # Inputs
-x = tf.placeholder(tf.float32, shape=[2, 224, 224, 4])
-y_ = tf.placeholder(tf.float32, shape=[2, 1000])
+x = tf.placeholder(datatype, shape=[2, 224, 224, 4])
+y_ = tf.placeholder(datatype, shape=[2, 1000])
 
 # Inference
 logits = inference(x)
