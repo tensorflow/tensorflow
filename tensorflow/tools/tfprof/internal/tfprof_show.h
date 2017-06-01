@@ -63,7 +63,7 @@ class TFShow {
 
   bool ShouldTrim(ShowNode* node, const std::vector<string>& regexes);
 
-  bool ShouldAccount(ShowNode* node, const Options& opts);
+  bool ReAccount(ShowNode* node, const Options& opts);
 
   string FormatNode(ShowNode* node, const Options& opts);
 

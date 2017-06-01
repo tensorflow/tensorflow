@@ -95,4 +95,4 @@ TEST(MemoryTypeChecker, MemoryTypeForOutput) {
   delete g;
 }
 
-}  // namespace
+}  // namespace tensorflow

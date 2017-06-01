@@ -21,7 +21,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
 import gzip
 import json
 import numbers
@@ -169,7 +168,6 @@ class TensorboardServerTest(tf.test.TestCase):
         {
             'run1': {
                 'compressedHistograms': ['histogram'],
-                'images': ['image'],
                 'audio': ['audio'],
                 # if only_use_meta_graph, the graph is from the metagraph
                 'graph': True,
@@ -195,10 +193,7 @@ class TensorboardServerTest(tf.test.TestCase):
 
   def testDataPaths_disableAllCaching(self):
     """Test the format of the /data/runs endpoint."""
-    for path in ('/data/runs', '/data/logdir',
-                 '/data/images?run=run1&tag=image',
-                 '/data/individualImage?run=run1&tag=image&index=0',
-                 '/data/audio?run=run1&tag=audio',
+    for path in ('/data/runs', '/data/logdir', '/data/audio?run=run1&tag=audio',
                  '/data/run_metadata?run=run1&tag=test%20run'):
       connection = http_client.HTTPConnection('localhost',
                                               self._server.server_address[1])
@@ -208,21 +203,6 @@ class TensorboardServerTest(tf.test.TestCase):
       self.assertEqual(response.getheader('Expires'), '0', msg=path)
       response.read()
       connection.close()
-
-  def testImages(self):
-    """Test listing images and retrieving an individual image."""
-    image_json = self._getJson('/data/images?tag=image&run=run1')
-    image_query = image_json[0]['query']
-    # We don't care about the format of the image query.
-    del image_json[0]['query']
-    self.assertEqual(image_json, [{
-        'wall_time': 0,
-        'step': 0,
-        'height': 1,
-        'width': 1
-    }])
-    response = self._get('/data/individualImage?%s' % image_query)
-    self.assertEqual(response.status, 200)
 
   def testAudio(self):
     """Test listing audio and retrieving an individual audio clip."""
@@ -285,12 +265,6 @@ class TensorboardServerTest(tf.test.TestCase):
     graph = text_format.Parse(response.read(), tf.GraphDef())
     self.assertEqual(len(graph.node), 2)
 
-  def testAcceptGzip_doesNotCompressImage(self):
-    response = self._get('/data/individualImage?run=run1&tag=image&index=0',
-                         {'Accept-Encoding': 'gzip'})
-    self.assertEqual(response.status, 200)
-    self.assertEqual(response.getheader('Content-Encoding'), None)
-
   def testRunMetadata(self):
     """Test retrieving the run metadata information."""
     response = self._get('/data/run_metadata?run=run1&tag=test%20run')
@@ -307,7 +281,6 @@ class TensorboardServerTest(tf.test.TestCase):
 
     The test data has a single run named run1 which contains:
      - a histogram [1]
-     - an image at timestamp and step 0
      - a graph definition
 
     [1]: Histograms no longer appear in `/runs`, but compressed
@@ -352,12 +325,6 @@ class TensorboardServerTest(tf.test.TestCase):
     device_stats.device = 'test device'
     writer.add_run_metadata(run_metadata, 'test run')
 
-    # 1x1 transparent GIF.
-    encoded_image = base64.b64decode(
-        'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7')
-    image_value = tf.Summary.Image(
-        height=1, width=1, colorspace=1, encoded_image_string=encoded_image)
-
     audio_value = tf.Summary.Audio(
         sample_rate=44100,
         length_frames=22050,
@@ -370,7 +337,6 @@ class TensorboardServerTest(tf.test.TestCase):
             step=0,
             summary=tf.Summary(value=[
                 tf.Summary.Value(tag='histogram', histo=histogram_value),
-                tf.Summary.Value(tag='image', image=image_value),
                 tf.Summary.Value(tag='audio', audio=audio_value)
             ])))
 

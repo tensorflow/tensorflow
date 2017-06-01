@@ -111,14 +111,14 @@ class FFTCPU : public FFTBase {
     auto device = ctx->eigen_device<CPUDevice>();
 
     if (!IsReal()) {
-      auto input = ((Tensor)in).flat_inner_dims<complex64, FFTRank + 1>();
+      auto input = (Tensor(in)).flat_inner_dims<complex64, FFTRank + 1>();
       // Compute the FFT using eigen.
       auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
       output.device(device) = input.template fft < Eigen::BothParts,
       Forward ? Eigen::FFT_FORWARD : Eigen::FFT_REVERSE > (axes);
     } else {
       if (IsForward()) {
-        auto input = ((Tensor)in).flat_inner_dims<float, FFTRank + 1>();
+        auto input = (Tensor(in)).flat_inner_dims<float, FFTRank + 1>();
         auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
         Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> startIndices;
 

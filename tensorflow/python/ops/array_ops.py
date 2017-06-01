@@ -1196,7 +1196,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
       evenly divide `value.shape[axis]`; otherwise the sum of sizes along the
       split dimension must match that of the `value`.
     axis: A 0-D `int32` `Tensor`. The dimension along which to split.
-      Must be in the range `[0, rank(value))`. Defaults to 0.
+      Must be in the range `[-rank(value), rank(value))`. Defaults to 0.
     num: Optional, used to specify the number of outputs when it cannot be
       inferred from the shape of `size_splits`.
     name: A name for the operation (optional).
@@ -1887,22 +1887,36 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
 def _FakeQuantWithMinMaxArgsGradient(op, grad):
   """Gradient for FakeQuantWithMinMaxArgs op."""
   return fake_quant_with_min_max_args_gradient(
-      grad, op.inputs[0], min=op.get_attr("min"), max=op.get_attr("max"))
+      grad,
+      op.inputs[0],
+      min=op.get_attr("min"),
+      max=op.get_attr("max"),
+      num_bits=op.get_attr("num_bits"),
+      narrow_range=op.get_attr("narrow_range"))
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxVars")
 def _FakeQuantWithMinMaxVarsGradient(op, grad):
   """Gradient for FakeQuantWithMinMaxVars op."""
-  return fake_quant_with_min_max_vars_gradient(grad, op.inputs[0], op.inputs[1],
-                                               op.inputs[2])
+  return fake_quant_with_min_max_vars_gradient(
+      grad,
+      op.inputs[0],
+      op.inputs[1],
+      op.inputs[2],
+      num_bits=op.get_attr("num_bits"),
+      narrow_range=op.get_attr("narrow_range"))
 
 
 @ops.RegisterGradient("FakeQuantWithMinMaxVarsPerChannel")
 def _FakeQuantWithMinMaxVarsPerChannelGradient(op, grad):
   """Gradient for FakeQuantWithMinMaxVarsPerChannel op."""
-  return fake_quant_with_min_max_vars_per_channel_gradient(grad, op.inputs[0],
-                                                           op.inputs[1],
-                                                           op.inputs[2])
+  return fake_quant_with_min_max_vars_per_channel_gradient(
+      grad,
+      op.inputs[0],
+      op.inputs[1],
+      op.inputs[2],
+      num_bits=op.get_attr("num_bits"),
+      narrow_range=op.get_attr("narrow_range"))
 
 
 def required_space_to_batch_paddings(input_shape,

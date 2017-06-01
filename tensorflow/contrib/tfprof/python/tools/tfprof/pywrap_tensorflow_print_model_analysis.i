@@ -19,6 +19,8 @@ limitations under the License.
 %{
 #include "tensorflow/tools/tfprof/internal/print_model_analysis.h"
 #include "tensorflow/core/framework/types.h"
+
+using tensorflow::int64;
 %}
 
 %typemap(typecheck) const string & = char *;
@@ -37,6 +39,10 @@ limitations under the License.
 %unignore tensorflow;
 %unignore tensorflow::tfprof;
 %unignore tensorflow::tfprof::PrintModelAnalysis;
+%unignore tensorflow::tfprof::NewProfiler;
+%unignore tensorflow::tfprof::DeleteProfiler;
+%unignore tensorflow::tfprof::AddStep;
+%unignore tensorflow::tfprof::Profile;
 
 %include "tensorflow/tools/tfprof/internal/print_model_analysis.h"
 

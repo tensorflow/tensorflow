@@ -11,7 +11,6 @@ py_binary(
     data = [":assets"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:platform",
         "//tensorflow/tensorboard/backend:application",
         "//tensorflow/tensorboard/backend/event_processing:event_file_inspector",
         "//tensorflow/tensorboard/plugins/histograms:histograms_plugin",

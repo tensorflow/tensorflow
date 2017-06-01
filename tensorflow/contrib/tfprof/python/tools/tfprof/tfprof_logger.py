@@ -62,13 +62,16 @@ def _fill_missing_graph_shape(graph, run_meta):
   return graph
 
 
-def _get_logged_ops(graph, run_meta=None, add_trace=True):
+def _get_logged_ops(graph, run_meta=None, add_trace=True,
+                    add_trainable_var=True):
   """Extract trainable model parameters and FLOPs for ops from a Graph.
 
   Args:
     graph: tf.Graph.
     run_meta: RunMetadata proto used to complete shape information.
     add_trace: Whether to add op trace information.
+    add_trainable_var: Whether to assign tf.trainable_variables() op type
+      '_trainable_variables'.
   Returns:
     logged_ops: dict mapping from op_name to OpLogEntry.
   """
@@ -77,6 +80,7 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True):
 
   op_missing_shape = 0
   logged_ops = {}
+  # TODO(xpan): Work with Profiler more efficiently.
   for op in graph.get_operations():
     try:
       stats = ops.get_stats_for_node_def(
@@ -105,23 +109,24 @@ def _get_logged_ops(graph, run_meta=None, add_trace=True):
     if add_entry:
       logged_ops[entry.name] = entry
 
-  for v in graph.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES):
-    if v.op.name not in logged_ops:
-      entry = tfprof_log_pb2.OpLogEntry()
-      entry.name = v.op.name
-      entry.types.append(TRAINABLE_VARIABLES)
-      logged_ops[entry.name] = entry
-    else:
-      logged_ops[v.op.name].types.append(TRAINABLE_VARIABLES)
+  if add_trainable_var:
+    for v in graph.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES):
+      if v.op.name not in logged_ops:
+        entry = tfprof_log_pb2.OpLogEntry()
+        entry.name = v.op.name
+        entry.types.append(TRAINABLE_VARIABLES)
+        logged_ops[entry.name] = entry
+      else:
+        logged_ops[v.op.name].types.append(TRAINABLE_VARIABLES)
+
   if op_missing_shape > 0 and not run_meta:
-    sys.stderr.write('%d ops no flops stats due to incomplete shapes. '
-                     'Consider passing run_meta to use run_time shapes.\n' %
+    sys.stderr.write('%d ops no flops stats due to incomplete shapes.\n' %
                      op_missing_shape)
   return logged_ops
 
 
 def _merge_default_with_oplog(graph, op_log=None, run_meta=None,
-                              add_trace=True):
+                              add_trace=True, add_trainable_var=True):
   """Merge the tfprof default extra info with caller's op_log.
 
   Args:
@@ -129,11 +134,15 @@ def _merge_default_with_oplog(graph, op_log=None, run_meta=None,
     op_log: OpLog proto.
     run_meta: RunMetadata proto used to complete shape information.
     add_trace: Whether to add op trace information.
+    add_trainable_var: Whether to assign tf.trainable_variables() op type
+      '_trainable_variables'.
   Returns:
     tmp_op_log: Merged OpLog proto.
   """
   tmp_op_log = tfprof_log_pb2.OpLog()
-  logged_ops = _get_logged_ops(graph, run_meta, add_trace=add_trace)
+  logged_ops = _get_logged_ops(
+      graph, run_meta, add_trace=add_trace, add_trainable_var=add_trainable_var)
+
   if not op_log:
     tmp_op_log.log_entries.extend(logged_ops.values())
   else:

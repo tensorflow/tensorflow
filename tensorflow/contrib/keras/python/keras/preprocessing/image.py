@@ -24,12 +24,12 @@ from __future__ import print_function
 import os
 import re
 import threading
-import warnings
 
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.keras.python.keras import backend as K
+from tensorflow.python.platform import tf_logging as logging
 
 
 # pylint: disable=g-import-not-at-top
@@ -368,9 +368,9 @@ def load_img(path, grayscale=False, target_size=None):
     if img.mode != 'RGB':
       img = img.convert('RGB')
   if target_size:
-    wh_tuple = (target_size[1], target_size[0])
-    if img.size != wh_tuple:
-      img = img.resize(wh_tuple)
+    hw_tuple = (target_size[1], target_size[0])
+    if img.size != hw_tuple:
+      img = img.resize(hw_tuple)
   return img
 
 
@@ -391,6 +391,7 @@ class ImageDataGenerator(object):
       featurewise_std_normalization: divide inputs by std of the dataset.
       samplewise_std_normalization: divide each input by its std.
       zca_whitening: apply ZCA whitening.
+      zca_epsilon: epsilon for ZCA whitening. Default is 1e-6.
       rotation_range: degrees (0 to 180).
       width_shift_range: fraction of total width.
       height_shift_range: fraction of total height.
@@ -428,6 +429,7 @@ class ImageDataGenerator(object):
                featurewise_std_normalization=False,
                samplewise_std_normalization=False,
                zca_whitening=False,
+               zca_epsilon=1e-6,
                rotation_range=0.,
                width_shift_range=0.,
                height_shift_range=0.,
@@ -448,6 +450,7 @@ class ImageDataGenerator(object):
     self.featurewise_std_normalization = featurewise_std_normalization
     self.samplewise_std_normalization = samplewise_std_normalization
     self.zca_whitening = zca_whitening
+    self.zca_epsilon = zca_epsilon
     self.rotation_range = rotation_range
     self.width_shift_range = width_shift_range
     self.height_shift_range = height_shift_range
@@ -497,7 +500,7 @@ class ImageDataGenerator(object):
            seed=None,
            save_to_dir=None,
            save_prefix='',
-           save_format='jpeg'):
+           save_format='png'):
     return NumpyArrayIterator(
         x,
         y,
@@ -521,7 +524,7 @@ class ImageDataGenerator(object):
                           seed=None,
                           save_to_dir=None,
                           save_prefix='',
-                          save_format='jpeg',
+                          save_format='png',
                           follow_links=False):
     return DirectoryIterator(
         directory,
@@ -563,28 +566,28 @@ class ImageDataGenerator(object):
       if self.mean is not None:
         x -= self.mean
       else:
-        warnings.warn('This ImageDataGenerator specifies '
-                      '`featurewise_center`, but it hasn\'t'
-                      'been fit on any training data. Fit it '
-                      'first by calling `.fit(numpy_data)`.')
+        logging.warning('This ImageDataGenerator specifies '
+                        '`featurewise_center`, but it hasn\'t'
+                        'been fit on any training data. Fit it '
+                        'first by calling `.fit(numpy_data)`.')
     if self.featurewise_std_normalization:
       if self.std is not None:
         x /= (self.std + 1e-7)
       else:
-        warnings.warn('This ImageDataGenerator specifies '
-                      '`featurewise_std_normalization`, but it hasn\'t'
-                      'been fit on any training data. Fit it '
-                      'first by calling `.fit(numpy_data)`.')
+        logging.warning('This ImageDataGenerator specifies '
+                        '`featurewise_std_normalization`, but it hasn\'t'
+                        'been fit on any training data. Fit it '
+                        'first by calling `.fit(numpy_data)`.')
     if self.zca_whitening:
       if self.principal_components is not None:
         flatx = np.reshape(x, (x.size))
         whitex = np.dot(flatx, self.principal_components)
         x = np.reshape(whitex, (x.shape[0], x.shape[1], x.shape[2]))
       else:
-        warnings.warn('This ImageDataGenerator specifies '
-                      '`zca_whitening`, but it hasn\'t'
-                      'been fit on any training data. Fit it '
-                      'first by calling `.fit(numpy_data)`.')
+        logging.warning('This ImageDataGenerator specifies '
+                        '`zca_whitening`, but it hasn\'t'
+                        'been fit on any training data. Fit it '
+                        'first by calling `.fit(numpy_data)`.')
     return x
 
   def random_transform(self, x):
@@ -640,7 +643,8 @@ class ImageDataGenerator(object):
     transform_matrix = None
     if theta != 0:
       rotation_matrix = np.array([[np.cos(theta), -np.sin(theta), 0],
-                                  [np.sin(theta), np.cos(theta), 0], [0, 0, 1]])
+                                  [np.sin(theta),
+                                   np.cos(theta), 0], [0, 0, 1]])
       transform_matrix = rotation_matrix
 
     if tx != 0 or ty != 0:
@@ -748,7 +752,7 @@ class ImageDataGenerator(object):
       sigma = np.dot(flat_x.T, flat_x) / flat_x.shape[0]
       u, s, _ = linalg.svd(sigma)
       self.principal_components = np.dot(
-          np.dot(u, np.diag(1. / np.sqrt(s + 10e-7))), u.T)
+          np.dot(u, np.diag(1. / np.sqrt(s + self.zca_epsilon))), u.T)
 
 
 class Iterator(object):
@@ -836,7 +840,7 @@ class NumpyArrayIterator(Iterator):
                data_format=None,
                save_to_dir=None,
                save_prefix='',
-               save_format='jpeg'):
+               save_format='png'):
     if y is not None and len(x) != len(y):
       raise ValueError('X (images tensor) and y (labels) '
                        'should have the same length. '
@@ -927,6 +931,8 @@ class DirectoryIterator(Iterator):
           `"binary"`: binary targets (if there are only two classes),
           `"categorical"`: categorical targets,
           `"sparse"`: integer targets,
+          `"input"`: targets are images identical to input images (mainly
+              used to work with autoencoders),
           `None`: no targets get yielded (only input images are yielded).
       batch_size: Integer, size of a batch.
       shuffle: Boolean, whether to shuffle the data between epochs.
@@ -955,7 +961,7 @@ class DirectoryIterator(Iterator):
                data_format=None,
                save_to_dir=None,
                save_prefix='',
-               save_format='jpeg',
+               save_format='png',
                follow_links=False):
     if data_format is None:
       data_format = K.image_data_format()
@@ -978,10 +984,11 @@ class DirectoryIterator(Iterator):
       else:
         self.image_shape = (1,) + self.target_size
     self.classes = classes
-    if class_mode not in {'categorical', 'binary', 'sparse', None}:
+    if class_mode not in {'categorical', 'binary', 'sparse', 'input', None}:
       raise ValueError('Invalid class_mode:', class_mode,
                        '; expected one of "categorical", '
-                       '"binary", "sparse", or None.')
+                       '"binary", "sparse", "input"'
+                       ' or None.')
     self.class_mode = class_mode
     self.save_to_dir = save_to_dir
     self.save_prefix = save_prefix
@@ -1076,7 +1083,9 @@ class DirectoryIterator(Iterator):
             format=self.save_format)
         img.save(os.path.join(self.save_to_dir, fname))
     # build batch of labels
-    if self.class_mode == 'sparse':
+    if self.class_mode == 'input':
+      batch_y = batch_x.copy()
+    elif self.class_mode == 'sparse':
       batch_y = self.classes[index_array]
     elif self.class_mode == 'binary':
       batch_y = self.classes[index_array].astype(K.floatx())

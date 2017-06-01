@@ -35,6 +35,6 @@ from tensorflow.contrib.keras.python.keras import preprocessing
 from tensorflow.contrib.keras.python.keras import regularizers
 from tensorflow.contrib.keras.python.keras import utils
 from tensorflow.contrib.keras.python.keras import wrappers
+from tensorflow.contrib.keras.python.keras.layers import Input
 
-
-__version__ = '2.0.2-tf'
+__version__ = '2.0.4-tf'

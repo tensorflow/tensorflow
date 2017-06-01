@@ -252,7 +252,7 @@ Status TransformGraph(const std::vector<string>& inputs,
   TransformRegistry* transform_registry = GetTransformRegistry();
   for (const auto& transform_info : transform_params) {
     const string& transform_name = transform_info.first;
-    if (transform_name == "") {
+    if (transform_name.empty()) {
       continue;
     }
     if (!transform_registry->count(transform_name)) {
@@ -282,7 +282,7 @@ Status TransformGraph(const std::vector<string>& inputs,
       }
     }
     // Copy over the library from the original input graph.
-    transformed_graph_def.mutable_library()->CopyFrom(graph_def->library());
+    *transformed_graph_def.mutable_library() = graph_def->library();
     TF_RETURN_IF_ERROR(IsGraphValid(transformed_graph_def));
 
     *graph_def = transformed_graph_def;

@@ -952,7 +952,7 @@ class DnnSupport {
 
   // Return a list of algorithms supported by the forward convolution pass.
   virtual bool GetConvolveAlgorithms(
-      std::vector<AlgorithmType>* out_algorithms);
+      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
 
   // Enqueues a double-precision convolution operation onto the stream.
   // See DoConvolve above for argument details.
@@ -1056,7 +1056,7 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      std::vector<AlgorithmType>* out_algorithms);
+      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
 
   virtual bool DoConvolveBackwardData(
       Stream* stream, const FilterDescriptor& filter_descriptor,
@@ -1104,7 +1104,7 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      std::vector<AlgorithmType>* out_algorithms);
+      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
 
   virtual bool DoConvolveBackwardFilter(
       Stream* stream, const BatchDescriptor& input_descriptor,

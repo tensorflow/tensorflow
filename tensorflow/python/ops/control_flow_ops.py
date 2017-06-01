@@ -437,10 +437,14 @@ def _convert_tensorarray_to_flow(tensor_or_tensor_array):
 
 
 def _make_tensor_array(ta, t_or_flow):
+  # pylint: disable=protected-access
   new_ta = tensor_array_ops.TensorArray(
       dtype=ta.dtype, handle=ta.handle, flow=t_or_flow,
-      infer_shape=ta._infer_shape)
-  new_ta._element_shape = ta._element_shape  # pylint: disable=protected-access
+      infer_shape=ta._infer_shape,
+      colocate_with_first_write_call=ta._colocate_with_first_write_call)
+  new_ta._colocate_with = ta._colocate_with
+  new_ta._element_shape = ta._element_shape
+  # pylint: enable=protected-access
   return new_ta
 
 
@@ -1634,6 +1638,8 @@ class CondContext(ControlFlowContext):
           # pylint: disable=protected-access
           op._update_input(index, real_x)
           # pylint: enable=protected-access
+      # Remove any external control dependency on this op.
+      self._RemoveExternalControlEdges(op)
       for x in op.outputs:
         self._values.add(x.name)
       # pylint: disable=protected-access
