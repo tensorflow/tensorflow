@@ -30,8 +30,8 @@ bool IsConstant(const NodeDef& node) {
 
 bool IsDequeueOp(const NodeDef& node) {
   static const std::set<std::string> dequeue_ops = {
-      "QueueDequeueManyV2", "QueueDequeueMany", "QueueDequeueV2",
-      "QueueDequeue"};
+      "QueueDequeueManyV2", "QueueDequeueMany",   "QueueDequeueV2",
+      "QueueDequeue",       "QueueDequeueUpToV2", "QueueDequeueUpTo"};
   return dequeue_ops.count(node.op()) > 0;
 }
 
