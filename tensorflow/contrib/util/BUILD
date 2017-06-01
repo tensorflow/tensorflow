@@ -73,7 +73,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
     ],
-    visibility = ["visibility:public"], 
+    visibility = ["//visibility:public"], 
 )
 
 filegroup(
