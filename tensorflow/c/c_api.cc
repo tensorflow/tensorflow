@@ -71,7 +71,6 @@ using tensorflow::NodeBuilder;
 using tensorflow::OpDef;
 using tensorflow::OpRegistry;
 using tensorflow::PartialTensorShape;
-using tensorflow::Reset;
 using tensorflow::RunMetadata;
 using tensorflow::RunOptions;
 using tensorflow::Session;
@@ -330,7 +329,7 @@ TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions* opt,
     return new TF_DeprecatedSession({session});
   } else {
     DCHECK_EQ(nullptr, session);
-    return NULL;
+    return nullptr;
   }
 }
 
@@ -504,7 +503,7 @@ static void TF_Run_Setup(int noutputs, TF_Tensor** c_outputs,
                          TF_Status* status) {
   status->status = Status::OK();
   for (int i = 0; i < noutputs; ++i) {
-    c_outputs[i] = NULL;
+    c_outputs[i] = nullptr;
   }
 }
 
@@ -2158,7 +2157,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     return new TF_Session(session, graph);
   } else {
     DCHECK_EQ(nullptr, session);
-    return NULL;
+    return nullptr;
   }
 }
 
@@ -2254,7 +2253,7 @@ static bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
     const auto num_nodes = graph.num_node_ids();
     if (session->last_num_graph_nodes < num_nodes) {
       GraphDef graph_def;
-      graph_def.mutable_versions()->CopyFrom(graph.versions());
+      *graph_def.mutable_versions() = graph.versions();
       // Fill graph_def with nodes with ids in the range
       // [session->last_num_graph_nodes, num_nodes), that is the nodes
       // added since the last TF_SessionRun() call.

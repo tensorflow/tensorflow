@@ -24,8 +24,6 @@ import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.core.framework import types_pb2
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import googletest
 from tensorflow.python.summary.writer.writer import SummaryToEventTransformer
 from tensorflow.tensorboard.backend.event_processing import event_accumulator as ea
@@ -64,7 +62,7 @@ class _EventGenerator(object):
         tag=ea.HEALTH_PILL_EVENT_TAG_PREFIX + device_name,
         node_name='%s:%d:DebugNumericSummary' % (op_name, output_slot))
     value.tensor.tensor_shape.dim.add(size=len(elements))
-    value.tensor.dtype = types_pb2.DT_DOUBLE
+    value.tensor.dtype = 2  # DT_DOUBLE
     value.tensor.tensor_content = np.array(elements, dtype=np.float64).tobytes()
     self.AddEvent(event)
 
@@ -282,11 +280,11 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     health_pill_elements_1 = list(range(1, 13)) + [
-        float(types_pb2.DT_FLOAT), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
+        float(1), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
     gen.AddHealthPill(13371337, 41, '/job:localhost/replica:0/task:0/cpu:0',
                       'Add', 0, health_pill_elements_1)
     health_pill_elements_2 = list(range(42, 54)) + [
-        float(types_pb2.DT_DOUBLE), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
+        float(2), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
     gen.AddHealthPill(13381338, 42, '/job:localhost/replica:0/task:0/gpu:0',
                       'Add', 1, health_pill_elements_2)
     acc.Reload()
@@ -319,11 +317,11 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     gen = _EventGenerator(self)
     acc = ea.EventAccumulator(gen)
     health_pill_elements_1 = list(range(1, 13)) + [
-        float(types_pb2.DT_FLOAT), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
+        float(1), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
     gen.AddHealthPill(13371337, 41, '/job:localhost/replica:0/task:0/cpu:0',
                       'Add', 0, health_pill_elements_1)
     health_pill_elements_2 = list(range(42, 54)) + [
-        float(types_pb2.DT_DOUBLE), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
+        float(2), 2.0, 1.0, 2.0, 0.0, 0.0, 0.0, 0.0]
     gen.AddHealthPill(13381338, 42, '/job:localhost/replica:0/task:0/cpu:0',
                       'MatMul', 1, health_pill_elements_2)
     acc.Reload()
@@ -850,11 +848,11 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     })
 
     scalar_proto = accumulator.Tensors('scalar')[0].tensor_proto
-    scalar = tensor_util.MakeNdarray(scalar_proto)
+    scalar = tf.make_ndarray(scalar_proto)
     vector_proto = accumulator.Tensors('vector')[0].tensor_proto
-    vector = tensor_util.MakeNdarray(vector_proto)
+    vector = tf.make_ndarray(vector_proto)
     string_proto = accumulator.Tensors('string')[0].tensor_proto
-    string = tensor_util.MakeNdarray(string_proto)
+    string = tf.make_ndarray(string_proto)
 
     self.assertTrue(np.array_equal(scalar, 1.0))
     self.assertTrue(np.array_equal(vector, [1.0, 2.0, 3.0]))

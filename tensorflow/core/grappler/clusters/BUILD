@@ -63,7 +63,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",
-        ":utils",
         "//tensorflow/core:protos_all_cc",
     ],
 )

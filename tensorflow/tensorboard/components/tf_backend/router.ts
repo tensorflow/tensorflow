@@ -20,9 +20,8 @@ export type RunTagUrlFn = (tag: string, run: string) => string;
 export interface Router {
   logdir: () => string;
   runs: () => string;
+  isDemoMode: () => boolean;
   compressedHistograms: RunTagUrlFn;
-  images: RunTagUrlFn;
-  individualImage: (query: string, wallTime: number) => string;
   audio: RunTagUrlFn;
   individualAudio: (query: string) => string;
   graph:
@@ -57,14 +56,6 @@ export function router(dataDir = 'data', demoMode = false): Router {
       }
       return url;
     };
-  }
-  function individualImageUrl(query: string, wallTime: number) {
-    var url = dataDir + '/' + clean('individualImage?' + query);
-    // Include wall_time just to disambiguate the URL and force the browser
-    // to reload the image when the URL changes. The backend doesn't care
-    // about the value.
-    url += demoMode ? '.png' : '&ts=' + wallTime;
-    return url;
   }
   function individualAudioUrl(query: string) {
     var url = dataDir + '/' + clean('individualAudio?' + query);
@@ -104,11 +95,10 @@ export function router(dataDir = 'data', demoMode = false): Router {
   return {
     logdir: () => dataDir + '/logdir',
     runs: () => dataDir + '/runs' + (demoMode ? '.json' : ''),
-    individualImage: individualImageUrl,
+    isDemoMode: () => demoMode,
     individualAudio: individualAudioUrl,
     graph: graphUrl,
     compressedHistograms: standardRoute('compressedHistograms'),
-    images: standardRoute('images'),
     audio: standardRoute('audio'),
     runMetadata: standardRoute('run_metadata', '.pbtxt'),
     healthPills: () => dataDir + '/plugin/debugger/health_pills',

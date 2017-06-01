@@ -32,15 +32,15 @@ static void TestGradAndIndicesErrorHandling(const ShapeInferenceTestOp& op,
 
   // mismatch between grad[1] and var[1].
   INFER_ERROR("Dimension 1 in both shapes must be equal", op,
-              shape_spec("[?,1]", "[?,2];[?]").c_str());
+              shape_spec("[?,1]", "[?,2];[?]"));
   // grad[0] and indices[0] must match.
   INFER_ERROR("Dimensions must be equal, but are 1 and 2", op,
-              shape_spec("?", "[2,?];[1]").c_str());
+              shape_spec("?", "[2,?];[1]"));
   // grad is wrong rank.
-  INFER_ERROR("must be equal rank", op, shape_spec("[1]", "[?,2];[?]").c_str());
+  INFER_ERROR("must be equal rank", op, shape_spec("[1]", "[?,2];[?]"));
   // indices is wrong rank.
   INFER_ERROR("Shape must be rank 1 but is rank 2", op,
-              shape_spec("[?]", "[?];[1,2]").c_str());
+              shape_spec("[?]", "[?];[1,2]"));
 }
 
 TEST(TrainingOpsTest, ApplyGradientDescent_ShapeFn) {

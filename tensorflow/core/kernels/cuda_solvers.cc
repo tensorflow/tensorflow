@@ -268,9 +268,8 @@ static inline Status GetrfBatchedImpl(
   using CudaScalar = typename CUDAComplexT<Scalar>::type;
   ScratchSpace<uint8> dev_a_dev_ptrs(context, sizeof(CudaScalar*) * batch_size,
                                      /* on_host */ false);
-  if (!CopyHostToDevice(
-          context, (void*)dev_a_dev_ptrs.mutable_data() /* dest */,
-          (const void*)host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes())) {
+  if (!CopyHostToDevice(context, dev_a_dev_ptrs.mutable_data() /* dest */,
+                        host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes())) {
     return errors::Internal("GetrfBatched: failed to copy pointers to device");
   }
   TF_RETURN_IF_CUBLAS_ERROR(
@@ -302,12 +301,10 @@ static inline Status GetriBatchedImpl(
                                      /* on_host */ false);
   ScratchSpace<uint8> dev_a_inv_dev_ptrs(
       context, sizeof(CudaScalar*) * batch_size, /* on_host */ false);
-  if (!CopyHostToDevice(
-          context, (void*)dev_a_dev_ptrs.mutable_data() /* dest */,
-          (const void*)host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes()) ||
-      !CopyHostToDevice(context, (void*)dev_a_inv_dev_ptrs.mutable_data(),
-                        (const void*)host_a_inv_dev_ptrs,
-                        dev_a_inv_dev_ptrs.bytes())) {
+  if (!CopyHostToDevice(context, dev_a_dev_ptrs.mutable_data() /* dest */,
+                        host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes()) ||
+      !CopyHostToDevice(context, dev_a_inv_dev_ptrs.mutable_data(),
+                        host_a_inv_dev_ptrs, dev_a_inv_dev_ptrs.bytes())) {
     return errors::Internal("GetriBatched: failed to copy pointers to device");
   }
   TF_RETURN_IF_CUBLAS_ERROR(

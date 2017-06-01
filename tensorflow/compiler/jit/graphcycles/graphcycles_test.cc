@@ -243,7 +243,7 @@ TEST(GraphCycles, RandomizedTest) {
         break;
 
       case 1:  // Remove a node
-        if (nodes.size() > 0) {
+        if (!nodes.empty()) {
           int node_index = RandomNode(&rnd, &nodes);
           int node = nodes[node_index];
           nodes[node_index] = nodes.back();
@@ -263,7 +263,7 @@ TEST(GraphCycles, RandomizedTest) {
         break;
 
       case 2:  // Add an edge
-        if (nodes.size() > 0) {
+        if (!nodes.empty()) {
           int from = RandomNode(&rnd, &nodes);
           int to = RandomNode(&rnd, &nodes);
           if (EdgeIndex(&edges, nodes[from], nodes[to]) == -1) {
@@ -282,7 +282,7 @@ TEST(GraphCycles, RandomizedTest) {
         break;
 
       case 3:  // Remove an edge
-        if (edges.size() > 0) {
+        if (!edges.empty()) {
           int i = RandomEdge(&rnd, &edges);
           int from = edges[i].from;
           int to = edges[i].to;
@@ -296,7 +296,7 @@ TEST(GraphCycles, RandomizedTest) {
         break;
 
       case 4:  // Check a path
-        if (nodes.size() > 0) {
+        if (!nodes.empty()) {
           int from = RandomNode(&rnd, &nodes);
           int to = RandomNode(&rnd, &nodes);
           int32 path[2 * kMaxNodes];

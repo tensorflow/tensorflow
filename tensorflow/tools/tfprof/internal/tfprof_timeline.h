@@ -101,9 +101,9 @@ class MemoryTracker {
     std::map<int64, int64> allocator_stats;
   };
 
-  void TrackNode(GraphNode* node);
+  void TrackNode(int64 step, GraphNode* node);
 
-  void TrackNodeConnection(GraphNode* node, GraphNode* src);
+  void TrackNodeConnection(int64 step, GraphNode* node, GraphNode* src);
 
   const std::map<string, Device>& devices() const { return devices_; }
 
@@ -113,15 +113,24 @@ class MemoryTracker {
 
 class Timeline {
  public:
-  Timeline(const string& outfile) : outfile_(outfile) {}
+  Timeline(int64 step, const string& outfile)
+      : step_(step), outfile_(outfile) {}
   ~Timeline() {}
 
-  void GenerateGraphTimeline(const GraphNode* gnode,
-                             const MemoryTracker& memory_tracker);
+  int64 step() const { return step_; }
+  void SetStep(int64 step) { step_ = step; }
+
+  void GenerateGraphTimeline(const GraphNode* gnode);
 
   void GenerateScopeTimeline(const ScopeNode* node);
 
   void GenerateCodeTimeline(const CodeNode* node);
+
+  void TrackNode(GraphNode* node) { mem_tracker_.TrackNode(step_, node); }
+
+  void TrackNodeConnection(GraphNode* node, GraphNode* src) {
+    mem_tracker_.TrackNodeConnection(step_, node, src);
+  }
 
  private:
   void OutputTimeline();
@@ -162,9 +171,11 @@ class Timeline {
 
   int64 AllocatePID();
 
+  int64 step_;
   const string outfile_;
   int64 next_pid_ = 0;
   int64 allocator_pid_ = -1;
+  MemoryTracker mem_tracker_;
   ChromeTraceFormatter chrome_formatter_;
   std::map<string, int64> device_pids_;
 
