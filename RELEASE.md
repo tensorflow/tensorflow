@@ -1,6 +1,7 @@
 # Release 1.2.0
 
 ## Major Features and Improvements
+* Python 3.6 support on Windows.
 * Added `tf.layers.conv3d_transpose` layer for spatio temporal deconvolution.
 * Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
 * Added ibverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
