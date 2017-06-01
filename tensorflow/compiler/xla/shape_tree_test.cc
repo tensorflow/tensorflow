@@ -245,5 +245,139 @@ TEST_F(ShapeTreeTest, InvalidIndexingNestedTuple) {
   EXPECT_DEATH(shape_tree.element({0, 0}), "");
 }
 
+TEST_F(ShapeTreeTest, ShapeTreeOfNonCopyableType) {
+  ShapeTree<std::unique_ptr<int>> shape_tree{tuple_shape_};
+  EXPECT_EQ(shape_tree.element({2}).get(), nullptr);
+  *shape_tree.mutable_element({2}) = MakeUnique<int>(42);
+  EXPECT_EQ(*shape_tree.element({2}), 42);
+}
+
+TEST_F(ShapeTreeTest, CopySubtreeFromArrayShape) {
+  // Test CopySubtreeFrom method for a single value copied between array-shaped
+  // ShapeTrees.
+  ShapeTree<int> source(array_shape_);
+  *source.mutable_element(/*index=*/{}) = 42;
+  ShapeTree<int> destination(array_shape_, 123);
+
+  EXPECT_EQ(destination.element(/*index=*/{}), 123);
+  destination.CopySubtreeFrom(source, /*source_base_index=*/{},
+                              /*target_base_index=*/{});
+  EXPECT_EQ(destination.element(/*index=*/{}), 42);
+}
+
+TEST_F(ShapeTreeTest, FullCopySubtreeFromTupleShape) {
+  // Test CopySubtreeFrom method for a copy of all elements from one
+  // tuple-shaped ShapeTree to another.
+  ShapeTree<int> source(tuple_shape_);
+  *source.mutable_element(/*index=*/{}) = 10;
+  *source.mutable_element(/*index=*/{0}) = 11;
+  *source.mutable_element(/*index=*/{1}) = 12;
+  *source.mutable_element(/*index=*/{2}) = 13;
+
+  ShapeTree<int> destination(tuple_shape_, 0);
+
+  destination.CopySubtreeFrom(source, /*source_base_index=*/{},
+                              /*target_base_index=*/{});
+  EXPECT_EQ(destination.element(/*index=*/{}), 10);
+  EXPECT_EQ(destination.element(/*index=*/{0}), 11);
+  EXPECT_EQ(destination.element(/*index=*/{1}), 12);
+  EXPECT_EQ(destination.element(/*index=*/{2}), 13);
+}
+
+TEST_F(ShapeTreeTest, SingleElementCopySubtreeFromTupleShape) {
+  // Test CopySubtreeFrom method for a copy of a single element from one
+  // tuple-shaped ShapeTree to another.
+  ShapeTree<int> source(tuple_shape_);
+  *source.mutable_element(/*index=*/{}) = 10;
+  *source.mutable_element(/*index=*/{0}) = 11;
+  *source.mutable_element(/*index=*/{1}) = 12;
+  *source.mutable_element(/*index=*/{2}) = 13;
+
+  ShapeTree<int> destination(tuple_shape_, 0);
+
+  destination.CopySubtreeFrom(source, /*source_base_index=*/{0},
+                              /*target_base_index=*/{1});
+  EXPECT_EQ(destination.element(/*index=*/{}), 0);
+  EXPECT_EQ(destination.element(/*index=*/{0}), 0);
+  EXPECT_EQ(destination.element(/*index=*/{1}), 11);
+  EXPECT_EQ(destination.element(/*index=*/{2}), 0);
+}
+
+TEST_F(ShapeTreeTest, CopySubtreeIntoNestedShape) {
+  // Test CopySubtreeFrom method for a copy of a tuple-shaped ShapeTree into a
+  // nested-tuple-shaped ShapeTree.
+  ShapeTree<int> source(
+      ShapeUtil::MakeTupleShape({array_shape_, array_shape_}));
+  *source.mutable_element(/*index=*/{}) = 10;
+  *source.mutable_element(/*index=*/{0}) = 11;
+  *source.mutable_element(/*index=*/{1}) = 12;
+
+  ShapeTree<int> destination(nested_tuple_shape_, 0);
+
+  destination.CopySubtreeFrom(source, /*source_base_index=*/{},
+                              /*target_base_index=*/{2, 0});
+
+  EXPECT_EQ(destination.element(/*index=*/{}), 0);
+  EXPECT_EQ(destination.element(/*index=*/{0}), 0);
+  EXPECT_EQ(destination.element(/*index=*/{1}), 0);
+  EXPECT_EQ(destination.element(/*index=*/{1, 0}), 0);
+  EXPECT_EQ(destination.element(/*index=*/{1, 1}), 0);
+  EXPECT_EQ(destination.element(/*index=*/{2}), 0);
+  EXPECT_EQ(destination.element(/*index=*/{2, 0}), 10);
+  EXPECT_EQ(destination.element(/*index=*/{2, 0, 0}), 11);
+  EXPECT_EQ(destination.element(/*index=*/{2, 0, 1}), 12);
+  EXPECT_EQ(destination.element(/*index=*/{2, 1}), 0);
+}
+
+TEST_F(ShapeTreeTest, CopySubtreeFromNestedShape) {
+  // Test CopySubtreeFrom method for a copy from a nested-tuple-shape.
+  ShapeTree<int> source(nested_tuple_shape_, 42);
+  *source.mutable_element(/*index=*/{1}) = 10;
+  *source.mutable_element(/*index=*/{1, 0}) = 11;
+  *source.mutable_element(/*index=*/{1, 1}) = 12;
+
+  ShapeTree<int> destination(
+      ShapeUtil::MakeTupleShape({array_shape_, array_shape_}), 0);
+
+  destination.CopySubtreeFrom(source, /*source_base_index=*/{1},
+                              /*target_base_index=*/{});
+
+  EXPECT_EQ(destination.element(/*index=*/{}), 10);
+  EXPECT_EQ(destination.element(/*index=*/{0}), 11);
+  EXPECT_EQ(destination.element(/*index=*/{1}), 12);
+}
+
+TEST_F(ShapeTreeTest, OperatorEquals) {
+  {
+    ShapeTree<int> a(array_shape_, 123);
+    ShapeTree<int> b(array_shape_, 42);
+    ShapeTree<int> c(array_shape_, 42);
+    EXPECT_FALSE(a == b);
+    EXPECT_TRUE(a != b);
+    EXPECT_TRUE(b == c);
+  }
+  {
+    ShapeTree<int> a(tuple_shape_);
+    *a.mutable_element(/*index=*/{}) = 10;
+    *a.mutable_element(/*index=*/{0}) = 11;
+    *a.mutable_element(/*index=*/{1}) = 12;
+
+    ShapeTree<int> b(tuple_shape_);
+    *b.mutable_element(/*index=*/{}) = 10;
+    *b.mutable_element(/*index=*/{0}) = 42;
+    *b.mutable_element(/*index=*/{1}) = 11;
+
+    ShapeTree<int> c(tuple_shape_);
+    *c.mutable_element(/*index=*/{}) = 10;
+    *c.mutable_element(/*index=*/{0}) = 42;
+    *c.mutable_element(/*index=*/{1}) = 11;
+
+    EXPECT_FALSE(a == b);
+    EXPECT_TRUE(a != b);
+    EXPECT_TRUE(b == c);
+    EXPECT_FALSE(b != c);
+  }
+}
+
 }  // namespace
 }  // namespace xla
