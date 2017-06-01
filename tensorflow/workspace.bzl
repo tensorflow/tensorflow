@@ -703,16 +703,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       licenses = ["notice"],  # Apache 2.0
       sha256_urls = {
           "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/LICENSE.txt",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/LICENSE.txt",
+              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/LICENSE.txt",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/LICENSE.txt",
           ],
-          "8465342c318f9c4cf0a29b109fa63ee3742dd4dc7080d05d9fd8f604814d04cf": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/tsc.js",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/tsc.js",
+          "b8d68724e111d3fd9516255733d1e9469de72e1cc4733c33702f260a011ab117": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/lib/tsc.js",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/lib/tsc.js",
           ],
           "a67e36da3029d232e4e938e61a0a3302f516d71e7100d54dbf5362ad8618e994": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/lib.es6.d.ts",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/lib.es6.d.ts",
+              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/lib/lib.es6.d.ts",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/lib/lib.es6.d.ts",
           ],
       },
       extra_build_file_content = "\n".join([
