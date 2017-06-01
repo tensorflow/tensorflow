@@ -92,8 +92,8 @@ class SparseTensorDenseMatMulOp : public OpKernel {
       OP_REQUIRES(
           ctx, b->dim_size(i) == a_shape_t(i),
           errors::InvalidArgument(
-              "Cannot multiply A and B because dimension ", i, " does not match: ",
-              b->dim_size(i), " vs. ", a_shape_t(i)));
+              "Cannot multiply A and B because (batch) dimension ", i,
+              " does not match: ", b->dim_size(i), " vs. ", a_shape_t(i)));
     }
 
     OP_REQUIRES(
@@ -301,8 +301,12 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B, NDIM
       auto maybe_adjoint_b = MaybeAdjoint<decltype(b), ADJ_B, NDIM>(b);
 
       for (std::size_t i = 0; i < nnz; ++i) {
-        const Tindices m = internal::SubtleMustCopy(a_indices(i, lhs_index_a));
-        const Tindices k = internal::SubtleMustCopy(a_indices(i, rhs_index_a));
+        Eigen::array<Eigen::Index, NDIM> indices;
+        for (int j = 0; j < NDIM; ++j) {
+          indices[j] = internal::SubtleMustCopy(a_indices(i, j));
+        }
+        const Tindices m = indices[lhs_index_a];
+        const Tindices k = indices[rhs_index_a];
         if (!FastBoundsCheck(k, lhs_right)) {
           return KOutOfBoundsError(k, i, rhs_index_a, lhs_right);
         }
@@ -310,10 +314,6 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B, NDIM
           return MOutOfBoundsError(m, i, lhs_index_a, out.dimension(NDIM - 2));
         }
         const T a_value = ADJ_A ? MaybeConj(a_values(i)) : a_values(i);
-        Eigen::array<Eigen::Index, NDIM> indices;
-        for (int j = 0; j < NDIM - 2; ++j) {
-          indices[j] = a_indices(i, j);
-        }
         for (std::size_t n = 0; n < rhs_right; ++n) {
           indices[NDIM - 2] = k;
           indices[NDIM - 1] = n;
@@ -325,24 +325,24 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B, NDIM
     } else {
       // Vectorization via Eigen.
       for (std::size_t i = 0; i < nnz; ++i) {
-        const Tindices m = internal::SubtleMustCopy(a_indices(i, lhs_index_a));
-        const Tindices k = internal::SubtleMustCopy(a_indices(i, rhs_index_a));
+        Eigen::array<Eigen::Index, NDIM> out_offsets;
+        Eigen::array<Eigen::Index, NDIM> out_extends;
+        Eigen::array<Eigen::Index, NDIM> b_offsets;
+        Eigen::array<Eigen::Index, NDIM> b_extends;
+        for (int j = 0; j < NDIM; ++j) {
+          out_offsets[j] = internal::SubtleMustCopy(a_indices(i, j));
+          out_extends[j] = 1;
+          b_offsets[j] = internal::SubtleMustCopy(a_indices(i, j));
+          b_extends[j] = 1;
+        }
+        const Tindices m = out_offsets[lhs_index_a];
+        const Tindices k = out_offsets[rhs_index_a];
         const T a_value = (ADJ_A) ? MaybeConj(a_values(i)) : a_values(i);
         if (!FastBoundsCheck(k, lhs_right)) {
           return KOutOfBoundsError(k, i, rhs_index_a, lhs_right);
         }
         if (!FastBoundsCheck(m, out.dimension(NDIM - 2))) {
           return MOutOfBoundsError(m, i, lhs_index_a, out.dimension(NDIM - 2));
-        }
-        Eigen::array<Eigen::Index, NDIM> out_offsets;
-        Eigen::array<Eigen::Index, NDIM> out_extends;
-        Eigen::array<Eigen::Index, NDIM> b_offsets;
-        Eigen::array<Eigen::Index, NDIM> b_extends;
-        for (int j = 0; j < NDIM - 2; ++j) {
-          out_offsets[j] = a_indices(i, j);
-          out_extends[j] = 1;
-          b_offsets[j] = a_indices(i, j);
-          b_extends[j] = 1;
         }
         out_offsets[NDIM - 2] = m;
         out_offsets[NDIM - 1] = 0;
