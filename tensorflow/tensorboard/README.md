@@ -330,7 +330,9 @@ TensorBoard uses [reservoir
 sampling](https://en.wikipedia.org/wiki/Reservoir_sampling) to downsample your
 data so that it can be loaded into RAM. You can modify the number of elements it
 will keep per tag in
-[tensorboard/backend/server.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/backend/server.py).
+[tensorboard/backend/application.py](https://www.github.com/tensorflow/tensorflow/blob/r1.1/tensorflow/tensorboard/backend/application.py).
+See this [StackOverflow question](http://stackoverflow.com/questions/43702546/tensorboard-doesnt-show-all-data-points/)
+for some more information.
 
 ### I get a network security popup every time I run TensorBoard on a mac!
 
