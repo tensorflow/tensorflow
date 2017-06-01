@@ -55,6 +55,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
+ops._USE_C_API = True
 
 # NOTE(mrry): Dummy shape registration for ops used in the tests, since they
 # don't have C++ op registrations on which to attach C++ shape fns.
@@ -63,6 +64,7 @@ ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 class SessionTest(test_util.TensorFlowTestCase):
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testUseExistingGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
       a = constant_op.constant(6.0, shape=[1, 1])
@@ -72,6 +74,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       result = c.eval()
       self.assertAllEqual(result, [[42.0]])
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testUseDefaultGraph(self):
     with ops.Graph().as_default(), ops.device('/cpu:0'):
       a = constant_op.constant(6.0, shape=[1, 1])
@@ -138,6 +141,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(lambda e: e.op == a.op):
         a.eval()
 
+  @test_util.disable_c_api  # Partial runs don't work with C API
   def testErrorCodeWithNoNodeDef(self):
     with session.Session() as s:
       a = array_ops.placeholder(dtypes.float32, shape=[])
@@ -151,6 +155,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         # Run with a bogus handle.
         s.partial_run('foo', r1, feed_dict={a: 1, b: 2})
 
+  @test_util.disable_c_api  # No shape registration for 'ConstructionFails'
   def testOpConstructionErrorPayload(self):
     with session.Session():
       failing_op = ops.get_default_graph().create_op(
@@ -193,6 +198,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaises(TypeError):
         s.run({'a': a, 'b': None})
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchSingleton(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
@@ -215,6 +221,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       res = sess.run(a.op)  # An op, not a tensor.
       self.assertEqual(None, res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchList(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
@@ -230,6 +237,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertTrue(isinstance(res, list))
       self.assertEqual([42.0, None, 44.0, 42.0, None], res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchTuple(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
@@ -243,6 +251,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertTrue(isinstance(res, tuple))
       self.assertEqual((42.0, None, 44.0, 42.0), res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchNamedTuple(self):
     # pylint: disable=invalid-name
     ABC = collections.namedtuple('ABC', ['a', 'b', 'c'])
@@ -860,6 +869,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       v_val = v.eval()
       self.assertAllEqual([[6.0, 6.0, 6.0]], v_val)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testExtendWithGroupBy(self):
     with session.Session() as s:
       a = constant_op.constant(1.0, shape=[1, 2])
@@ -1071,6 +1081,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
         sess.run({})
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testNotEntered(self):
     # pylint: disable=protected-access
     self.assertEqual(ops._default_session_stack.get_default(), None)
@@ -1086,6 +1097,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           ValueError, lambda e: 'No default session is registered.' in str(e)):
         c_2.eval()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInteractive(self):
     with ops.device('/cpu:0'):
       sess = session.InteractiveSession()
@@ -1098,6 +1110,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[24.0]], e.eval())
       sess.close()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInteractivePlacePrunedGraph(self):
     sess = session.InteractiveSession()
 
@@ -1119,6 +1132,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       a.eval()
     sess.close()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testDefaultSessionPlacePrunedGraph(self):
     sess = session.Session()
 
@@ -1140,6 +1154,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
     sess.close()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testSharedGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
       a = constant_op.constant(1.0, shape=[1, 2])
@@ -1159,6 +1174,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(b_val, [[2.0, 2.0, 2.0]])
       self.assertAllEqual(a2_val, [[1.0, 1.0]])
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFeedAndFetch(self):
     with session.Session() as sess:
       for dtype in [dtypes.float16,
@@ -1346,6 +1362,662 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         sess_2.run(c_1.op)
       self.assertEqual(2.0, sess_2.run(c_2))
+
+  def testFeedDictKeyException(self):
+    with session.Session() as sess:
+      a = constant_op.constant(1.0, dtypes.float32, name='a')
+      with self.assertRaisesRegexp(TypeError, 'Cannot interpret feed_dict'):
+        sess.run(a, feed_dict={'a': [2.0]})
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testPerStepTrace(self):
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+
+    with ops.device('/cpu:0'):
+      with session.Session() as sess:
+        sess.run(constant_op.constant(1.0))
+        self.assertTrue(not run_metadata.HasField('step_stats'))
+
+        sess.run(constant_op.constant(1.0), run_metadata=run_metadata)
+        self.assertTrue(not run_metadata.HasField('step_stats'))
+
+        sess.run(constant_op.constant(1.0),
+                 options=run_options,
+                 run_metadata=run_metadata)
+
+        self.assertTrue(run_metadata.HasField('step_stats'))
+        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testRunOptionsRunMetadata(self):
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+
+    with ops.device('/cpu:0'):
+      with session.Session() as sess:
+        # all combinations are valid
+        sess.run(constant_op.constant(1.0), options=None, run_metadata=None)
+        sess.run(constant_op.constant(1.0), options=None,
+                 run_metadata=run_metadata)
+        self.assertTrue(not run_metadata.HasField('step_stats'))
+
+        sess.run(constant_op.constant(1.0), options=run_options,
+                 run_metadata=None)
+        self.assertTrue(not run_metadata.HasField('step_stats'))
+
+        sess.run(constant_op.constant(1.0), options=run_options,
+                 run_metadata=run_metadata)
+
+        self.assertTrue(run_metadata.HasField('step_stats'))
+        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
+
+  def testFeedShapeCompatibility(self):
+    with session.Session() as sess:
+      some_tensor = constant_op.constant([2.0, 2.0, 2.0, 2.0])
+      new_shape = constant_op.constant([2, 2])
+      reshaped_tensor = array_ops.reshape(some_tensor, new_shape)
+
+      with self.assertRaisesRegexp(ValueError, 'Cannot feed value of shape'):
+        sess.run(reshaped_tensor, feed_dict={some_tensor: [1.0, 2.0, 3.0]})
+
+      with self.assertRaisesRegexp(ValueError, 'may not be fed'):
+        sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testInferShapesFalse(self):
+    with ops.Graph().as_default(), ops.device('/cpu:0'):
+      a = constant_op.constant([[1, 2]])
+      sess = session.Session()
+      self.assertFalse('_output_shapes' in sess.graph_def.node[0].attr)
+      # Avoid lint error regarding 'unused' var a.
+      self.assertTrue(a == a)
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testInferShapesTrue(self):
+    config = config_pb2.ConfigProto(
+        graph_options=config_pb2.GraphOptions(infer_shapes=True))
+    with ops.Graph().as_default(), ops.device('/cpu:0'):
+      a = constant_op.constant([[1, 2]])
+      sess = session.Session(config=config)
+      self.assertTrue('_output_shapes' in sess.graph_def.node[0].attr)
+      # Avoid lint error regarding 'unused' var a.
+      self.assertTrue(a == a)
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testBuildCostModel(self):
+    run_options = config_pb2.RunOptions()
+    config = config_pb2.ConfigProto(
+        allow_soft_placement=True,
+        graph_options=config_pb2.GraphOptions(build_cost_model=100))
+    with session.Session(config=config) as sess:
+      with ops.device('/gpu:0'):
+        a = array_ops.placeholder(dtypes.float32, shape=[])
+        b = math_ops.add(a, a)
+        c = array_ops.identity(b)
+        d = math_ops.multiply(c, c)
+      for step in xrange(120):
+        run_metadata = config_pb2.RunMetadata()
+        sess.run(d, feed_dict={a: 1.0},
+                 options=run_options, run_metadata=run_metadata)
+        if step == 99:
+          self.assertTrue(run_metadata.HasField('cost_graph'))
+        else:
+          self.assertFalse(run_metadata.HasField('cost_graph'))
+
+  def testNonInteractiveSessionNesting(self):
+    sess1 = session.Session()
+    sess1_controller = sess1.as_default()
+    sess1_controller.__enter__()
+
+    sess2 = session.Session()
+    sess2_controller = sess2.as_default()
+    sess2_controller.__enter__()
+
+    with self.assertRaisesRegexp(AssertionError, 'Nesting violated'):
+      sess1_controller.__exit__(None, None, None)
+
+    ops._default_session_stack.reset()
+
+  def testInteractiveSessionNesting(self):
+    sess1 = session.InteractiveSession()
+    sess2 = session.InteractiveSession()
+    del sess1
+    del sess2
+
+  def testAsDefault(self):
+    c = constant_op.constant(37)
+    sess = session.Session()
+    with sess.as_default():
+      self.assertEqual(37, c.eval())
+
+    # Ensure that the session remains valid even when it is not captured.
+    with session.Session().as_default():
+      self.assertEqual(37, c.eval())
+
+  def testReentry(self):
+    sess = session.Session()
+    with self.assertRaisesRegexp(RuntimeError, 'not re-entrant'):
+      with sess:
+        with sess:
+          pass
+
+  def testInvalidArgument(self):
+    with self.assertRaisesRegexp(TypeError, 'target must be a string'):
+      session.Session(37)
+    with self.assertRaisesRegexp(TypeError, 'config must be a tf.ConfigProto'):
+      session.Session(config=37)
+    with self.assertRaisesRegexp(TypeError, 'graph must be a tf.Graph'):
+      session.Session(graph=37)
+
+  def testTimeoutWithShortOperations(self):
+    num_epochs = 5
+    q = data_flow_ops.FIFOQueue(
+        capacity=50, dtypes=[dtypes.int32], shapes=[()])
+    enqueue_op = q.enqueue_many(constant_op.constant([1, 2]))
+
+    # Use a 10-second timeout, which should be longer than any
+    # non-blocking enqueue_many op.
+    config = config_pb2.ConfigProto(operation_timeout_in_ms=10000)
+    with session.Session(config=config) as sess:
+      for _ in range(num_epochs):
+        sess.run(enqueue_op)
+      self.assertEqual(sess.run(q.size()), num_epochs * 2)
+
+  @test_util.disable_c_api  # Partial runs don't work with C API
+  def testRegisterFetchAndFeedConversionFunctions(self):
+    class SquaredTensor(object):
+      def __init__(self, tensor):
+        self.sq = math_ops.square(tensor)
+
+    fetch_fn = lambda squared_tensor: ([squared_tensor.sq], lambda val: val[0])
+    feed_fn1 = lambda feed, feed_val: [(feed.sq, feed_val)]
+    feed_fn2 = lambda feed: [feed.sq]
+
+    session.register_session_run_conversion_functions(SquaredTensor, fetch_fn,
+        feed_fn1, feed_fn2)
+    with self.assertRaises(ValueError):
+      session.register_session_run_conversion_functions(SquaredTensor,
+          fetch_fn, feed_fn1, feed_fn2)
+    with self.test_session() as sess:
+      np1 = np.array([1.0, 1.5, 2.0, 2.5])
+      np2 = np.array([3.0, 3.5, 4.0, 4.5])
+      squared_tensor = SquaredTensor(np2)
+      squared_eval = sess.run(squared_tensor)
+      self.assertAllClose(np2 * np2, squared_eval)
+      squared_eval = sess.run(squared_tensor, feed_dict={
+        squared_tensor : np1 * np1})
+      self.assertAllClose(np1 * np1, squared_eval)
+      partial_run = sess.partial_run_setup([squared_tensor], [])
+      squared_eval = sess.partial_run(partial_run, squared_tensor)
+      self.assertAllClose(np2 * np2, squared_eval)
+
+  def testDefaultLogDevicePlacement(self):
+    class CaptureStderr(str):
+      """Class to capture stderr from C++ shared library."""
+
+      def __enter__(self):
+        self._esc = compat.as_str('\b')
+        self._output = compat.as_str('')
+        self._stderr = sys.stderr
+        self._fd = self._stderr.fileno()
+        self._out_pipe, in_pipe = os.pipe()
+        # Save the original io stream.
+        self._dup_fd = os.dup(self._fd)
+        # Replace the original io stream with in pipe.
+        os.dup2(in_pipe, self._fd)
+        return self
+
+      def __exit__(self, *args):
+        self._stderr.write(self._esc)
+        self._stderr.flush()
+        self.read()
+        os.close(self._out_pipe)
+        # Restore the original io stream.
+        os.dup2(self._dup_fd, self._fd)
+
+      def read(self):
+        while True:
+          data = os.read(self._out_pipe, 1)
+          if not data or compat.as_str(data) == self._esc:
+            break
+          self._output += compat.as_str(data)
+
+      def __str__(self):
+        return self._output
+
+    # Passing the config to the server, but not the session should still result
+    # in logging device placement.
+    config = config_pb2.ConfigProto(log_device_placement=True)
+    server = server_lib.Server.create_local_server(config=config)
+    a = constant_op.constant(1)
+    b = constant_op.constant(2)
+    c = a + b
+    with session.Session(server.target) as sess:
+      with CaptureStderr() as log:
+        sess.run(c)
+      # Ensure that we did log device placement.
+      self.assertTrue('/job:local/replica:0/task:0/cpu:0' in str(log), str(log))
+
+  def testLocalMasterSessionTimeout(self):
+    # Test that the timeout passed in a config to the session works correctly.
+    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
+    server = server_lib.Server.create_local_server()
+    q = data_flow_ops.FIFOQueue(1, dtypes.float32)
+    dequeued_t = q.dequeue()
+
+    with session.Session(server.target, config=config) as sess:
+      # Intentionally do not run any enqueue_ops so that dequeue will block
+      # until operation_timeout_in_ms.
+      with self.assertRaises(errors.DeadlineExceededError):
+        sess.run(dequeued_t)
+
+  def testDefaultServerTimeout(self):
+    # Test that the default server config timeout gets used when no Session
+    # config is provided.
+    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
+    server = server_lib.Server.create_local_server(config=config)
+    q = data_flow_ops.FIFOQueue(1, dtypes.float32)
+    dequeued_t = q.dequeue()
+
+    with session.Session(server.target) as sess:
+      # Intentionally do not run any enqueue_ops so that dequeue will block
+      # until operation_timeout_in_ms.
+      with self.assertRaises(errors.DeadlineExceededError):
+        sess.run(dequeued_t)
+
+  def runTestBuildGraphError(self, sess):
+    # Ensure that errors from building the graph get propagated.
+    data = array_ops.placeholder(dtypes.float32, shape=[])
+    enter_1 = control_flow_ops.enter(data, 'foo_1', False)
+    enter_2 = control_flow_ops.enter(data, 'foo_2', False)
+    res = math_ops.add(enter_1, enter_2)
+    with self.assertRaisesOpError('has inputs from different frames'):
+      sess.run(res, feed_dict={data: 1.0})
+
+  def testBuildGraphErrorDirect(self):
+    self.runTestBuildGraphError(session.Session())
+
+  def testBuildGraphErrorDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestBuildGraphError(session.Session(server.target))
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testClusterSpecPropagationSimple(self):
+    server1 = server_lib.Server.create_local_server()
+    server2 = server_lib.Server.create_local_server()
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server1.target[len('grpc://'):]
+    job.tasks[1] = server2.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+
+    const = constant_op.constant(17)
+    sess = session.Session(server1.target, config=config)
+    output = sess.run(const)
+    self.assertEqual(17, output)
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testClusterSpecPropagationWorker2Placement(self):
+    server1 = server_lib.Server.create_local_server()
+    server2 = server_lib.Server.create_local_server()
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server1.target[len('grpc://'):]
+    job.tasks[1] = server2.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+
+    with ops.Graph().as_default() as g, ops.device('/job:worker/task:1'):
+      const = constant_op.constant(17)
+    sess = session.Session(server1.target, config=config, graph=g)
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+    output = sess.run(const, options=run_options, run_metadata=run_metadata)
+    self.assertEqual(17, output)
+    self.assertEqual(1,
+                     len([
+                         node_stats
+                         for dev_stats in run_metadata.step_stats.dev_stats
+                         for node_stats in dev_stats.node_stats
+                         if '/job:worker/replica:0/task:1/device:CPU:0' ==
+                         dev_stats.device and 'Const' == node_stats.node_name
+                     ]))
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testClusterSpecPropagationWorker1Placement(self):
+    server1 = server_lib.Server.create_local_server()
+    server2 = server_lib.Server.create_local_server()
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server1.target[len('grpc://'):]
+    job.tasks[1] = server2.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+
+    with ops.Graph().as_default() as g, ops.device('/job:worker/task:0'):
+      const = constant_op.constant(17)
+    sess = session.Session(server1.target, config=config, graph=g)
+    output = sess.run(const)
+    self.assertEqual(17, output)
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testClusterSpecPropagationThreeServers2Graphs(self):
+    """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
+
+    We create 2 clusterspecs:
+     1. server2 as the master, server1 as a worker
+     2. server2 as the master, server3 as a worker
+
+    We ensure that variables on the workers are independent.
+    """
+    server1 = server_lib.Server.create_local_server()
+    server2 = server_lib.Server.create_local_server()
+    server3 = server_lib.Server.create_local_server()
+    cluster_def1 = cluster_pb2.ClusterDef()
+    job1 = cluster_def1.job.add()
+    job1.name = 'worker1'
+    job1.tasks[0] = server2.target[len('grpc://'):]
+    job1.tasks[1] = server1.target[len('grpc://'):]
+
+    cluster_def2 = cluster_pb2.ClusterDef()
+    job2 = cluster_def2.job.add()
+    job2.name = 'worker2'
+    job2.tasks[0] = server2.target[len('grpc://'):]
+    job2.tasks[1] = server3.target[len('grpc://'):]
+
+    config1 = config_pb2.ConfigProto(cluster_def=cluster_def1)
+    config2 = config_pb2.ConfigProto(cluster_def=cluster_def2)
+
+    with ops.Graph().as_default() as g1:
+      with ops.device('/job:worker1/task:1'):
+        var1 = variables.Variable(array_ops.zeros([2]), name='var1')
+        update_op1 = state_ops.assign_add(
+            var1, array_ops.ones([2]), name='var1_assign_add')
+        init1 = variables.global_variables_initializer()
+
+    with ops.Graph().as_default() as g2:
+      with ops.device('/job:worker2/task:1'):
+        var2 = variables.Variable(array_ops.zeros([2]), name='var2')
+        update_op2 = state_ops.assign_add(
+            var2, array_ops.ones([2]), name='var2_assign_add')
+        init2 = variables.global_variables_initializer()
+
+    sess1 = session.Session(server2.target, graph=g1, config=config1)
+    sess2 = session.Session(server2.target, graph=g2, config=config2)
+
+    init1.run(session=sess1)
+    init2.run(session=sess2)
+
+    expected_zeros = np.zeros([2])
+    expected_ones = np.ones([2])
+
+    self.assertAllEqual(expected_zeros, sess1.run(var1))
+    self.assertAllEqual(expected_zeros, sess2.run(var2))
+
+    self.assertAllEqual(expected_ones, sess1.run(update_op1))
+    self.assertAllEqual(expected_ones, sess1.run(var1))
+    self.assertAllEqual(expected_zeros, sess2.run(var2))
+    self.assertAllEqual(expected_ones, sess2.run(update_op2))
+    self.assertAllEqual(expected_ones + expected_ones, sess1.run(update_op1))
+    self.assertAllEqual(expected_ones, sess2.run(var2))
+    self.assertAllEqual(expected_ones + expected_ones, sess1.run(var1))
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testClusterSpecPropagationThreeServers(self):
+    """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
+
+    We create 2 clusterspecs:
+     1. server2 as the master, server1 as a worker
+     2. server2 as the master, server3 as a worker
+
+    We ensure that variables on the workers are independent.
+    """
+    server1 = server_lib.Server.create_local_server()
+    server2 = server_lib.Server.create_local_server()
+    server3 = server_lib.Server.create_local_server()
+    cluster_def1 = cluster_pb2.ClusterDef()
+    job1 = cluster_def1.job.add()
+    job1.name = 'worker'
+    job1.tasks[0] = server2.target[len('grpc://'):]
+    job1.tasks[1] = server1.target[len('grpc://'):]
+
+    cluster_def2 = cluster_pb2.ClusterDef()
+    job2 = cluster_def2.job.add()
+    job2.name = 'worker'
+    job2.tasks[0] = server2.target[len('grpc://'):]
+    job2.tasks[1] = server3.target[len('grpc://'):]
+
+    config1 = config_pb2.ConfigProto(cluster_def=cluster_def1)
+    config2 = config_pb2.ConfigProto(cluster_def=cluster_def2)
+
+    with ops.device('/job:worker/task:1'):
+      var = variables.Variable(array_ops.zeros([2]), name='var')
+      feed = array_ops.placeholder(dtypes.float32, shape=(2))
+      update_op = var.assign_add(feed)
+
+    sess1 = session.Session(server2.target, config=config1)
+    sess2 = session.Session(server2.target, config=config2)
+
+    variables.global_variables_initializer().run(session=sess1)
+    variables.global_variables_initializer().run(session=sess2)
+
+    expected_zeros = np.zeros([2])
+    expected_ones = np.ones([2])
+
+    self.assertAllEqual(expected_zeros, sess1.run(var))
+    self.assertAllEqual(expected_zeros, sess2.run(var))
+    self.assertAllEqual(expected_ones,
+                        sess1.run(update_op, feed_dict={feed: expected_ones}))
+    self.assertAllEqual(expected_ones, sess1.run(var))
+    self.assertAllEqual(expected_zeros, sess2.run(var))
+    self.assertAllEqual(expected_ones,
+                        sess2.run(update_op, feed_dict={feed: expected_ones}))
+    self.assertAllEqual(expected_ones + expected_ones,
+                        sess1.run(update_op, feed_dict={feed: expected_ones}))
+    self.assertAllEqual(expected_ones, sess2.run(var))
+    self.assertAllEqual(expected_ones + expected_ones, sess1.run(var))
+
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
+  def testClusterSpecPropagationThreeServersOneCluster(self):
+    """Boots 3 servers, ensures appropriate communication across workers.
+
+    Additionally, in this cluster, we ensure the master is not the 0-th worker.
+
+    Note: this test only uses one session.
+    """
+    server1 = server_lib.Server.create_local_server()
+    server2 = server_lib.Server.create_local_server()
+    server3 = server_lib.Server.create_local_server()
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server3.target[len('grpc://'):]
+    job.tasks[1] = server2.target[len('grpc://'):]
+    job.tasks[2] = server1.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+
+    # Add ops to the devices in non-linear order.
+
+    with ops.device('/job:worker/task:1'):
+      feed1 = array_ops.placeholder(dtypes.float32, shape=(2))
+      const1 = constant_op.constant(2.0)
+      mul1 = const1 * feed1
+
+    with ops.device('/job:worker/task:2'):
+      feed2 = array_ops.placeholder(dtypes.float32, shape=(2))
+      const2 = constant_op.constant(2.0)
+      mul2 = const2 * feed2
+
+    with ops.device('/job:worker/task:0'):
+      feed0 = array_ops.placeholder(dtypes.float32, shape=(2))
+      const0 = constant_op.constant(2.0)
+      mul0 = const0 * feed0
+
+    sum_op = mul0 + mul1 + mul2
+
+    ones = np.ones([2])
+    run_options = config_pb2.RunOptions(
+        trace_level=config_pb2.RunOptions.FULL_TRACE)
+    run_metadata = config_pb2.RunMetadata()
+
+    # Run!
+    with session.Session(server1.target, config=config) as sess:
+      output = sess.run(
+          sum_op,
+          options=run_options,
+          run_metadata=run_metadata,
+          feed_dict={feed1: ones,
+                     feed2: ones,
+                     feed0: ones})
+      self.assertAllEqual(6 * ones, output)
+
+      self.assertEqual(
+          3,
+          len([
+              dev_stats.device
+              for dev_stats in run_metadata.step_stats.dev_stats
+              for node_stats in dev_stats.node_stats
+              if '/job:worker/replica:0/task:' in dev_stats.device and
+              node_stats.node_name.startswith('Const')
+          ]), run_metadata)
+
+  @test_util.disable_c_api  # Partial runs don't work with C API
+  def testClusterSpecPropagationPartialRun(self):
+    """Test successful partial run with ClusterSpec propagation."""
+    server1 = server_lib.Server.create_local_server()
+    server2 = server_lib.Server.create_local_server()
+
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server1.target[len('grpc://'):]
+    job.tasks[1] = server2.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+
+    with ops.device('/job:worker/task:0'):
+      a = array_ops.placeholder(dtypes.float32, shape=[])
+    with ops.device('/job:worker/task:1'):
+      b = array_ops.placeholder(dtypes.float32, shape=[])
+      c = array_ops.placeholder(dtypes.float32, shape=[])
+      r1 = math_ops.add(a, b)
+    with ops.device('/job:worker/task:0'):
+      r2 = math_ops.multiply(r1, c)
+
+    with session.Session(server1.target, config=config) as sess:
+      h = sess.partial_run_setup([r1, r2], [a, b, c])
+      res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
+      self.assertEqual(3, res)
+      res = sess.partial_run(h, r2, feed_dict={c: 3})
+      self.assertEqual(9, res)
+
+  def testGraphOptimizer(self):
+    rewrite_options = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=False, constant_folding=True)
+    graph_options = config_pb2.GraphOptions(
+        rewrite_options=rewrite_options, build_cost_model=1)
+    config = config_pb2.ConfigProto(graph_options=graph_options)
+
+    with ops.Graph().as_default() as g:
+      r1 = random_ops.random_normal(shape=[2, 3], name='R1')
+      r2 = random_ops.random_normal(shape=[2, 3], name='R2')
+      copy1 = array_ops.stop_gradient(r1)
+      copy2 = array_ops.identity(r2)
+      result = copy1 + copy2
+
+      with session.Session(graph=g, config=config) as sess:
+        metadata = config_pb2.RunMetadata()
+        sess.run(result, run_metadata=metadata)
+
+    # Check that we optimized the graph by looking at the cost model: the add
+    # node should have been reconnected directly to the R1 and R2 nodes.
+    found_valid_nodes = 0
+    for node in metadata.cost_graph.node:
+      if node.name == 'R1':
+        r1_cost_id = node.id
+        found_valid_nodes += 1
+      if node.name == 'R2':
+        r2_cost_id = node.id
+        found_valid_nodes += 1
+      if node.name == 'add':
+        if node.input_info[0].preceding_node == r1_cost_id:
+          self.assertEqual(node.input_info[1].preceding_node, r2_cost_id)
+          found_valid_nodes += 1
+        elif node.input_info[0].preceding_node == r2_cost_id:
+          self.assertEqual(node.input_info[1].preceding_node, r1_cost_id)
+          found_valid_nodes += 1
+    self.assertEqual(3, found_valid_nodes)
+
+  def testDeviceAttributes(self):
+    attrs = session._DeviceAttributes(
+        '/job:worker/replica:0/task:3/device:CPU:2', 'TYPE', 1337)
+    self.assertEqual(1337, attrs.memory_limit_bytes)
+    self.assertEqual('/job:worker/replica:0/task:3/device:CPU:2', attrs.name)
+    self.assertEqual('TYPE', attrs.device_type)
+    str_repr = '%s' % attrs
+    self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
+
+  def testDeviceAttributesCanonicalization(self):
+    attrs = session._DeviceAttributes('/job:worker/replica:0/task:3/cpu:1',
+                                      'TYPE', 1337)
+    self.assertEqual(1337, attrs.memory_limit_bytes)
+    self.assertEqual('/job:worker/replica:0/task:3/device:CPU:1', attrs.name)
+    self.assertEqual('TYPE', attrs.device_type)
+    str_repr = '%s' % attrs
+    self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
+
+  @test_util.disable_c_api  # list_devices doesn't work with C API
+  def testListDevices(self):
+    with session.Session() as sess:
+      devices = sess.list_devices()
+      self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:0' in set(
+          [d.name for d in devices]), devices)
+      self.assertGreaterEqual(1, len(devices), devices)
+
+  @test_util.disable_c_api  # list_devices doesn't work with C API
+  def testListDevicesGrpcSession(self):
+    server = server_lib.Server.create_local_server()
+    with session.Session(server.target) as sess:
+      devices = sess.list_devices()
+      self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in set(
+          [d.name for d in devices]), devices)
+      self.assertGreaterEqual(1, len(devices), devices)
+
+  @test_util.disable_c_api  # list_devices doesn't work with C API
+  def testListDevicesClusterSpecPropagation(self):
+    server1 = server_lib.Server.create_local_server()
+    server2 = server_lib.Server.create_local_server()
+
+    cluster_def = cluster_pb2.ClusterDef()
+    job = cluster_def.job.add()
+    job.name = 'worker'
+    job.tasks[0] = server1.target[len('grpc://'):]
+    job.tasks[1] = server2.target[len('grpc://'):]
+    config = config_pb2.ConfigProto(cluster_def=cluster_def)
+    with session.Session(server1.target, config=config) as sess:
+      devices = sess.list_devices()
+      device_names = set([d.name for d in devices])
+      self.assertTrue(
+          '/job:worker/replica:0/task:0/device:CPU:0' in device_names)
+      self.assertTrue(
+          '/job:worker/replica:0/task:1/device:CPU:0' in device_names)
+      self.assertGreaterEqual(2, len(devices), devices)
+
+
+class PartialRunTest(test_util.TensorFlowTestCase):
+
+  def setUp(self):
+    # Partial runs don't work with C API
+    ops._USE_C_API = False
+    super(PartialRunTest, self).setUp()
+
+  def tearDown(self):
+    ops._USE_C_API = True
+    super(PartialRunTest, self).tearDown()
 
   def runTestPartialRun(self, sess):
     a = array_ops.placeholder(dtypes.float32, shape=[])
@@ -1579,582 +2251,6 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testPartialRunEmptyFetchesDist(self):
     server = server_lib.Server.create_local_server()
     self.runTestPartialRunEmptyFetches(session.Session(server.target))
-
-  def testFeedDictKeyException(self):
-    with session.Session() as sess:
-      a = constant_op.constant(1.0, dtypes.float32, name='a')
-      with self.assertRaisesRegexp(TypeError, 'Cannot interpret feed_dict'):
-        sess.run(a, feed_dict={'a': [2.0]})
-
-  def testPerStepTrace(self):
-    run_options = config_pb2.RunOptions(
-        trace_level=config_pb2.RunOptions.FULL_TRACE)
-    run_metadata = config_pb2.RunMetadata()
-
-    with ops.device('/cpu:0'):
-      with session.Session() as sess:
-        sess.run(constant_op.constant(1.0))
-        self.assertTrue(not run_metadata.HasField('step_stats'))
-
-        sess.run(constant_op.constant(1.0), run_metadata=run_metadata)
-        self.assertTrue(not run_metadata.HasField('step_stats'))
-
-        sess.run(constant_op.constant(1.0),
-                 options=run_options,
-                 run_metadata=run_metadata)
-
-        self.assertTrue(run_metadata.HasField('step_stats'))
-        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
-
-  def testRunOptionsRunMetadata(self):
-    run_options = config_pb2.RunOptions(
-        trace_level=config_pb2.RunOptions.FULL_TRACE)
-    run_metadata = config_pb2.RunMetadata()
-
-    with ops.device('/cpu:0'):
-      with session.Session() as sess:
-        # all combinations are valid
-        sess.run(constant_op.constant(1.0), options=None, run_metadata=None)
-        sess.run(constant_op.constant(1.0), options=None,
-                 run_metadata=run_metadata)
-        self.assertTrue(not run_metadata.HasField('step_stats'))
-
-        sess.run(constant_op.constant(1.0), options=run_options,
-                 run_metadata=None)
-        self.assertTrue(not run_metadata.HasField('step_stats'))
-
-        sess.run(constant_op.constant(1.0), options=run_options,
-                 run_metadata=run_metadata)
-
-        self.assertTrue(run_metadata.HasField('step_stats'))
-        self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
-
-  def testFeedShapeCompatibility(self):
-    with session.Session() as sess:
-      some_tensor = constant_op.constant([2.0, 2.0, 2.0, 2.0])
-      new_shape = constant_op.constant([2, 2])
-      reshaped_tensor = array_ops.reshape(some_tensor, new_shape)
-
-      with self.assertRaisesRegexp(ValueError, 'Cannot feed value of shape'):
-        sess.run(reshaped_tensor, feed_dict={some_tensor: [1.0, 2.0, 3.0]})
-
-      with self.assertRaisesRegexp(ValueError, 'may not be fed'):
-        sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
-
-  def testInferShapesFalse(self):
-    with ops.Graph().as_default(), ops.device('/cpu:0'):
-      a = constant_op.constant([[1, 2]])
-      sess = session.Session()
-      self.assertFalse('_output_shapes' in sess.graph_def.node[0].attr)
-      # Avoid lint error regarding 'unused' var a.
-      self.assertTrue(a == a)
-
-  def testInferShapesTrue(self):
-    config = config_pb2.ConfigProto(
-        graph_options=config_pb2.GraphOptions(infer_shapes=True))
-    with ops.Graph().as_default(), ops.device('/cpu:0'):
-      a = constant_op.constant([[1, 2]])
-      sess = session.Session(config=config)
-      self.assertTrue('_output_shapes' in sess.graph_def.node[0].attr)
-      # Avoid lint error regarding 'unused' var a.
-      self.assertTrue(a == a)
-
-  def testBuildCostModel(self):
-    run_options = config_pb2.RunOptions()
-    config = config_pb2.ConfigProto(
-        allow_soft_placement=True,
-        graph_options=config_pb2.GraphOptions(build_cost_model=100))
-    with session.Session(config=config) as sess:
-      with ops.device('/gpu:0'):
-        a = array_ops.placeholder(dtypes.float32, shape=[])
-        b = math_ops.add(a, a)
-        c = array_ops.identity(b)
-        d = math_ops.multiply(c, c)
-      for step in xrange(120):
-        run_metadata = config_pb2.RunMetadata()
-        sess.run(d, feed_dict={a: 1.0},
-                 options=run_options, run_metadata=run_metadata)
-        if step == 99:
-          self.assertTrue(run_metadata.HasField('cost_graph'))
-        else:
-          self.assertFalse(run_metadata.HasField('cost_graph'))
-
-  def testNonInteractiveSessionNesting(self):
-    sess1 = session.Session()
-    sess1_controller = sess1.as_default()
-    sess1_controller.__enter__()
-
-    sess2 = session.Session()
-    sess2_controller = sess2.as_default()
-    sess2_controller.__enter__()
-
-    with self.assertRaisesRegexp(AssertionError, 'Nesting violated'):
-      sess1_controller.__exit__(None, None, None)
-
-    ops._default_session_stack.reset()
-
-  def testInteractiveSessionNesting(self):
-    sess1 = session.InteractiveSession()
-    sess2 = session.InteractiveSession()
-    del sess1
-    del sess2
-
-  def testAsDefault(self):
-    c = constant_op.constant(37)
-    sess = session.Session()
-    with sess.as_default():
-      self.assertEqual(37, c.eval())
-
-    # Ensure that the session remains valid even when it is not captured.
-    with session.Session().as_default():
-      self.assertEqual(37, c.eval())
-
-  def testReentry(self):
-    sess = session.Session()
-    with self.assertRaisesRegexp(RuntimeError, 'not re-entrant'):
-      with sess:
-        with sess:
-          pass
-
-  def testInvalidArgument(self):
-    with self.assertRaisesRegexp(TypeError, 'target must be a string'):
-      session.Session(37)
-    with self.assertRaisesRegexp(TypeError, 'config must be a tf.ConfigProto'):
-      session.Session(config=37)
-    with self.assertRaisesRegexp(TypeError, 'graph must be a tf.Graph'):
-      session.Session(graph=37)
-
-  def testTimeoutWithShortOperations(self):
-    num_epochs = 5
-    q = data_flow_ops.FIFOQueue(
-        capacity=50, dtypes=[dtypes.int32], shapes=[()])
-    enqueue_op = q.enqueue_many(constant_op.constant([1, 2]))
-
-    # Use a 10-second timeout, which should be longer than any
-    # non-blocking enqueue_many op.
-    config = config_pb2.ConfigProto(operation_timeout_in_ms=10000)
-    with session.Session(config=config) as sess:
-      for _ in range(num_epochs):
-        sess.run(enqueue_op)
-      self.assertEqual(sess.run(q.size()), num_epochs * 2)
-
-  def testRegisterFetchAndFeedConversionFunctions(self):
-    class SquaredTensor(object):
-      def __init__(self, tensor):
-        self.sq = math_ops.square(tensor)
-
-    fetch_fn = lambda squared_tensor: ([squared_tensor.sq], lambda val: val[0])
-    feed_fn1 = lambda feed, feed_val: [(feed.sq, feed_val)]
-    feed_fn2 = lambda feed: [feed.sq]
-
-    session.register_session_run_conversion_functions(SquaredTensor, fetch_fn,
-        feed_fn1, feed_fn2)
-    with self.assertRaises(ValueError):
-      session.register_session_run_conversion_functions(SquaredTensor,
-          fetch_fn, feed_fn1, feed_fn2)
-    with self.test_session() as sess:
-      np1 = np.array([1.0, 1.5, 2.0, 2.5])
-      np2 = np.array([3.0, 3.5, 4.0, 4.5])
-      squared_tensor = SquaredTensor(np2)
-      squared_eval = sess.run(squared_tensor)
-      self.assertAllClose(np2 * np2, squared_eval)
-      squared_eval = sess.run(squared_tensor, feed_dict={
-        squared_tensor : np1 * np1})
-      self.assertAllClose(np1 * np1, squared_eval)
-      partial_run = sess.partial_run_setup([squared_tensor], [])
-      squared_eval = sess.partial_run(partial_run, squared_tensor)
-      self.assertAllClose(np2 * np2, squared_eval)
-
-  def testDefaultLogDevicePlacement(self):
-    class CaptureStderr(str):
-      """Class to capture stderr from C++ shared library."""
-
-      def __enter__(self):
-        self._esc = compat.as_str('\b')
-        self._output = compat.as_str('')
-        self._stderr = sys.stderr
-        self._fd = self._stderr.fileno()
-        self._out_pipe, in_pipe = os.pipe()
-        # Save the original io stream.
-        self._dup_fd = os.dup(self._fd)
-        # Replace the original io stream with in pipe.
-        os.dup2(in_pipe, self._fd)
-        return self
-
-      def __exit__(self, *args):
-        self._stderr.write(self._esc)
-        self._stderr.flush()
-        self.read()
-        os.close(self._out_pipe)
-        # Restore the original io stream.
-        os.dup2(self._dup_fd, self._fd)
-
-      def read(self):
-        while True:
-          data = os.read(self._out_pipe, 1)
-          if not data or compat.as_str(data) == self._esc:
-            break
-          self._output += compat.as_str(data)
-
-      def __str__(self):
-        return self._output
-
-    # Passing the config to the server, but not the session should still result
-    # in logging device placement.
-    config = config_pb2.ConfigProto(log_device_placement=True)
-    server = server_lib.Server.create_local_server(config=config)
-    a = constant_op.constant(1)
-    b = constant_op.constant(2)
-    c = a + b
-    with session.Session(server.target) as sess:
-      with CaptureStderr() as log:
-        sess.run(c)
-      # Ensure that we did log device placement.
-      self.assertTrue('/job:local/replica:0/task:0/cpu:0' in str(log), str(log))
-
-  def testLocalMasterSessionTimeout(self):
-    # Test that the timeout passed in a config to the session works correctly.
-    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
-    server = server_lib.Server.create_local_server()
-    q = data_flow_ops.FIFOQueue(1, dtypes.float32)
-    dequeued_t = q.dequeue()
-
-    with session.Session(server.target, config=config) as sess:
-      # Intentionally do not run any enqueue_ops so that dequeue will block
-      # until operation_timeout_in_ms.
-      with self.assertRaises(errors.DeadlineExceededError):
-        sess.run(dequeued_t)
-
-  def testDefaultServerTimeout(self):
-    # Test that the default server config timeout gets used when no Session
-    # config is provided.
-    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
-    server = server_lib.Server.create_local_server(config=config)
-    q = data_flow_ops.FIFOQueue(1, dtypes.float32)
-    dequeued_t = q.dequeue()
-
-    with session.Session(server.target) as sess:
-      # Intentionally do not run any enqueue_ops so that dequeue will block
-      # until operation_timeout_in_ms.
-      with self.assertRaises(errors.DeadlineExceededError):
-        sess.run(dequeued_t)
-
-  def runTestBuildGraphError(self, sess):
-    # Ensure that errors from building the graph get propagated.
-    data = array_ops.placeholder(dtypes.float32, shape=[])
-    enter_1 = control_flow_ops.enter(data, 'foo_1', False)
-    enter_2 = control_flow_ops.enter(data, 'foo_2', False)
-    res = math_ops.add(enter_1, enter_2)
-    with self.assertRaisesOpError('has inputs from different frames'):
-      sess.run(res, feed_dict={data: 1.0})
-
-  def testBuildGraphErrorDirect(self):
-    self.runTestBuildGraphError(session.Session())
-
-  def testBuildGraphErrorDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestBuildGraphError(session.Session(server.target))
-
-  def testClusterSpecPropagationSimple(self):
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    cluster_def = cluster_pb2.ClusterDef()
-    job = cluster_def.job.add()
-    job.name = 'worker'
-    job.tasks[0] = server1.target[len('grpc://'):]
-    job.tasks[1] = server2.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
-
-    const = constant_op.constant(17)
-    sess = session.Session(server1.target, config=config)
-    output = sess.run(const)
-    self.assertEqual(17, output)
-
-  def testClusterSpecPropagationWorker2Placement(self):
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    cluster_def = cluster_pb2.ClusterDef()
-    job = cluster_def.job.add()
-    job.name = 'worker'
-    job.tasks[0] = server1.target[len('grpc://'):]
-    job.tasks[1] = server2.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
-
-    with ops.Graph().as_default() as g, ops.device('/job:worker/task:1'):
-      const = constant_op.constant(17)
-    sess = session.Session(server1.target, config=config, graph=g)
-    run_options = config_pb2.RunOptions(
-        trace_level=config_pb2.RunOptions.FULL_TRACE)
-    run_metadata = config_pb2.RunMetadata()
-    output = sess.run(const, options=run_options, run_metadata=run_metadata)
-    self.assertEqual(17, output)
-    self.assertEqual(1,
-                     len([
-                         node_stats
-                         for dev_stats in run_metadata.step_stats.dev_stats
-                         for node_stats in dev_stats.node_stats
-                         if '/job:worker/replica:0/task:1/device:CPU:0' ==
-                         dev_stats.device and 'Const' == node_stats.node_name
-                     ]))
-
-  def testClusterSpecPropagationWorker1Placement(self):
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    cluster_def = cluster_pb2.ClusterDef()
-    job = cluster_def.job.add()
-    job.name = 'worker'
-    job.tasks[0] = server1.target[len('grpc://'):]
-    job.tasks[1] = server2.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
-
-    with ops.Graph().as_default() as g, ops.device('/job:worker/task:0'):
-      const = constant_op.constant(17)
-    sess = session.Session(server1.target, config=config, graph=g)
-    output = sess.run(const)
-    self.assertEqual(17, output)
-
-  def testClusterSpecPropagationThreeServers2Graphs(self):
-    """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
-
-    We create 2 clusterspecs:
-     1. server2 as the master, server1 as a worker
-     2. server2 as the master, server3 as a worker
-
-    We ensure that variables on the workers are independent.
-    """
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    server3 = server_lib.Server.create_local_server()
-    cluster_def1 = cluster_pb2.ClusterDef()
-    job1 = cluster_def1.job.add()
-    job1.name = 'worker1'
-    job1.tasks[0] = server2.target[len('grpc://'):]
-    job1.tasks[1] = server1.target[len('grpc://'):]
-
-    cluster_def2 = cluster_pb2.ClusterDef()
-    job2 = cluster_def2.job.add()
-    job2.name = 'worker2'
-    job2.tasks[0] = server2.target[len('grpc://'):]
-    job2.tasks[1] = server3.target[len('grpc://'):]
-
-    config1 = config_pb2.ConfigProto(cluster_def=cluster_def1)
-    config2 = config_pb2.ConfigProto(cluster_def=cluster_def2)
-
-    with ops.Graph().as_default() as g1:
-      with ops.device('/job:worker1/task:1'):
-        var1 = variables.Variable(array_ops.zeros([2]), name='var1')
-        update_op1 = state_ops.assign_add(
-            var1, array_ops.ones([2]), name='var1_assign_add')
-        init1 = variables.global_variables_initializer()
-
-    with ops.Graph().as_default() as g2:
-      with ops.device('/job:worker2/task:1'):
-        var2 = variables.Variable(array_ops.zeros([2]), name='var2')
-        update_op2 = state_ops.assign_add(
-            var2, array_ops.ones([2]), name='var2_assign_add')
-        init2 = variables.global_variables_initializer()
-
-    sess1 = session.Session(server2.target, graph=g1, config=config1)
-    sess2 = session.Session(server2.target, graph=g2, config=config2)
-
-    init1.run(session=sess1)
-    init2.run(session=sess2)
-
-    expected_zeros = np.zeros([2])
-    expected_ones = np.ones([2])
-
-    self.assertAllEqual(expected_zeros, sess1.run(var1))
-    self.assertAllEqual(expected_zeros, sess2.run(var2))
-
-    self.assertAllEqual(expected_ones, sess1.run(update_op1))
-    self.assertAllEqual(expected_ones, sess1.run(var1))
-    self.assertAllEqual(expected_zeros, sess2.run(var2))
-    self.assertAllEqual(expected_ones, sess2.run(update_op2))
-    self.assertAllEqual(expected_ones + expected_ones, sess1.run(update_op1))
-    self.assertAllEqual(expected_ones, sess2.run(var2))
-    self.assertAllEqual(expected_ones + expected_ones, sess1.run(var1))
-
-  def testClusterSpecPropagationThreeServers(self):
-    """Boots 3 servers, creates 2 sessions, ensures appropriate operations.
-
-    We create 2 clusterspecs:
-     1. server2 as the master, server1 as a worker
-     2. server2 as the master, server3 as a worker
-
-    We ensure that variables on the workers are independent.
-    """
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    server3 = server_lib.Server.create_local_server()
-    cluster_def1 = cluster_pb2.ClusterDef()
-    job1 = cluster_def1.job.add()
-    job1.name = 'worker'
-    job1.tasks[0] = server2.target[len('grpc://'):]
-    job1.tasks[1] = server1.target[len('grpc://'):]
-
-    cluster_def2 = cluster_pb2.ClusterDef()
-    job2 = cluster_def2.job.add()
-    job2.name = 'worker'
-    job2.tasks[0] = server2.target[len('grpc://'):]
-    job2.tasks[1] = server3.target[len('grpc://'):]
-
-    config1 = config_pb2.ConfigProto(cluster_def=cluster_def1)
-    config2 = config_pb2.ConfigProto(cluster_def=cluster_def2)
-
-    with ops.device('/job:worker/task:1'):
-      var = variables.Variable(array_ops.zeros([2]), name='var')
-      feed = array_ops.placeholder(dtypes.float32, shape=(2))
-      update_op = var.assign_add(feed)
-
-    sess1 = session.Session(server2.target, config=config1)
-    sess2 = session.Session(server2.target, config=config2)
-
-    variables.global_variables_initializer().run(session=sess1)
-    variables.global_variables_initializer().run(session=sess2)
-
-    expected_zeros = np.zeros([2])
-    expected_ones = np.ones([2])
-
-    self.assertAllEqual(expected_zeros, sess1.run(var))
-    self.assertAllEqual(expected_zeros, sess2.run(var))
-    self.assertAllEqual(expected_ones,
-                        sess1.run(update_op, feed_dict={feed: expected_ones}))
-    self.assertAllEqual(expected_ones, sess1.run(var))
-    self.assertAllEqual(expected_zeros, sess2.run(var))
-    self.assertAllEqual(expected_ones,
-                        sess2.run(update_op, feed_dict={feed: expected_ones}))
-    self.assertAllEqual(expected_ones + expected_ones,
-                        sess1.run(update_op, feed_dict={feed: expected_ones}))
-    self.assertAllEqual(expected_ones, sess2.run(var))
-    self.assertAllEqual(expected_ones + expected_ones, sess1.run(var))
-
-  def testClusterSpecPropagationThreeServersOneCluster(self):
-    """Boots 3 servers, ensures appropriate communication across workers.
-
-    Additionally, in this cluster, we ensure the master is not the 0-th worker.
-
-    Note: this test only uses one session.
-    """
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-    server3 = server_lib.Server.create_local_server()
-    cluster_def = cluster_pb2.ClusterDef()
-    job = cluster_def.job.add()
-    job.name = 'worker'
-    job.tasks[0] = server3.target[len('grpc://'):]
-    job.tasks[1] = server2.target[len('grpc://'):]
-    job.tasks[2] = server1.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
-
-    # Add ops to the devices in non-linear order.
-
-    with ops.device('/job:worker/task:1'):
-      feed1 = array_ops.placeholder(dtypes.float32, shape=(2))
-      const1 = constant_op.constant(2.0)
-      mul1 = const1 * feed1
-
-    with ops.device('/job:worker/task:2'):
-      feed2 = array_ops.placeholder(dtypes.float32, shape=(2))
-      const2 = constant_op.constant(2.0)
-      mul2 = const2 * feed2
-
-    with ops.device('/job:worker/task:0'):
-      feed0 = array_ops.placeholder(dtypes.float32, shape=(2))
-      const0 = constant_op.constant(2.0)
-      mul0 = const0 * feed0
-
-    sum_op = mul0 + mul1 + mul2
-
-    ones = np.ones([2])
-    run_options = config_pb2.RunOptions(
-        trace_level=config_pb2.RunOptions.FULL_TRACE)
-    run_metadata = config_pb2.RunMetadata()
-
-    # Run!
-    with session.Session(server1.target, config=config) as sess:
-      output = sess.run(
-          sum_op,
-          options=run_options,
-          run_metadata=run_metadata,
-          feed_dict={feed1: ones,
-                     feed2: ones,
-                     feed0: ones})
-      self.assertAllEqual(6 * ones, output)
-
-      self.assertEqual(
-          3,
-          len([
-              dev_stats.device
-              for dev_stats in run_metadata.step_stats.dev_stats
-              for node_stats in dev_stats.node_stats
-              if '/job:worker/replica:0/task:' in dev_stats.device and
-              node_stats.node_name.startswith('Const')
-          ]), run_metadata)
-
-  def testClusterSpecPropagationPartialRun(self):
-    """Test successful partial run with ClusterSpec propagation."""
-    server1 = server_lib.Server.create_local_server()
-    server2 = server_lib.Server.create_local_server()
-
-    cluster_def = cluster_pb2.ClusterDef()
-    job = cluster_def.job.add()
-    job.name = 'worker'
-    job.tasks[0] = server1.target[len('grpc://'):]
-    job.tasks[1] = server2.target[len('grpc://'):]
-    config = config_pb2.ConfigProto(cluster_def=cluster_def)
-
-    with ops.device('/job:worker/task:0'):
-      a = array_ops.placeholder(dtypes.float32, shape=[])
-    with ops.device('/job:worker/task:1'):
-      b = array_ops.placeholder(dtypes.float32, shape=[])
-      c = array_ops.placeholder(dtypes.float32, shape=[])
-      r1 = math_ops.add(a, b)
-    with ops.device('/job:worker/task:0'):
-      r2 = math_ops.multiply(r1, c)
-
-    with session.Session(server1.target, config=config) as sess:
-      h = sess.partial_run_setup([r1, r2], [a, b, c])
-      res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
-      self.assertEqual(3, res)
-      res = sess.partial_run(h, r2, feed_dict={c: 3})
-      self.assertEqual(9, res)
-
-  def testGraphOptimizer(self):
-    rewrite_options = rewriter_config_pb2.RewriterConfig(
-        disable_model_pruning=False, constant_folding=True)
-    graph_options = config_pb2.GraphOptions(
-        rewrite_options=rewrite_options, build_cost_model=1)
-    config = config_pb2.ConfigProto(graph_options=graph_options)
-
-    with ops.Graph().as_default() as g:
-      r1 = random_ops.random_normal(shape=[2, 3], name='R1')
-      r2 = random_ops.random_normal(shape=[2, 3], name='R2')
-      copy1 = array_ops.stop_gradient(r1)
-      copy2 = array_ops.identity(r2)
-      result = copy1 + copy2
-
-      with session.Session(graph=g, config=config) as sess:
-        metadata = config_pb2.RunMetadata()
-        sess.run(result, run_metadata=metadata)
-
-    # Check that we optimized the graph by looking at the cost model: the add
-    # node should have been reconnected directly to the R1 and R2 nodes.
-    found_valid_nodes = 0
-    for node in metadata.cost_graph.node:
-      if node.name == 'R1':
-        r1_cost_id = node.id
-        found_valid_nodes += 1
-      if node.name == 'R2':
-        r2_cost_id = node.id
-        found_valid_nodes += 1
-      if node.name == 'add':
-        if node.input_info[0].preceding_node == r1_cost_id:
-          self.assertEqual(node.input_info[1].preceding_node, r2_cost_id)
-          found_valid_nodes += 1
-        elif node.input_info[0].preceding_node == r2_cost_id:
-          self.assertEqual(node.input_info[1].preceding_node, r1_cost_id)
-          found_valid_nodes += 1
-    self.assertEqual(3, found_valid_nodes)
 
 
 if __name__ == '__main__':

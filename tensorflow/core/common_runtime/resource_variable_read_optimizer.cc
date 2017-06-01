@@ -39,7 +39,7 @@ class ResourceVariableReadPass : public GraphOptimizationPass {
           "and a graph should be available.");
     }
     gtl::InlinedVector<Node*, 2> matches;
-    for (Node* n : g->nodes()) {
+    for (Node* n : g->op_nodes()) {
       if (n->type_string() == "ReadVariableOp") {
         bool skip = false;
         for (const Edge* e : n->out_edges()) {

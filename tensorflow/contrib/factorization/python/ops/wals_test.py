@@ -39,7 +39,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import input as input_lib
-from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import monitored_session
 
 
 class WALSMatrixFactorizationTest(test.TestCase):
@@ -191,7 +191,7 @@ class WALSMatrixFactorizationTest(test.TestCase):
 
   @property
   def batch_size(self):
-    return 2
+    return 5
 
   @property
   def use_cache(self):
@@ -363,13 +363,6 @@ class WALSMatrixFactorizationTestCached(WALSMatrixFactorizationTest):
     return True
 
 
-class WALSMatrixFactorizationTestFullBatch(WALSMatrixFactorizationTest):
-
-  @property
-  def batch_size(self):
-    return 100
-
-
 class WALSMatrixFactorizaiontTestPaddedInput(WALSMatrixFactorizationTest):
   PADDED_INPUT_MATRIX = np.pad(
       WALSMatrixFactorizationTest.INPUT_MATRIX,
@@ -419,24 +412,13 @@ class SweepHookTest(test.TestCase):
     self._input_row_indices_ph = array_ops.placeholder(dtypes.int64)
     self._input_col_indices_ph = array_ops.placeholder(dtypes.int64)
 
-  def run_hook_with_indices(self, sweep_hook, row_indices, col_indices):
-    with self.test_session() as sess:
-      # Before run.
-      run_context = session_run_hook.SessionRunContext(
-          original_args=None, session=sess)
-      sess_run_args = sweep_hook.before_run(run_context)
-      feed_dict = {
+  def test_sweeps(self):
+    def ind_feed(row_indices, col_indices):
+      return {
           self._input_row_indices_ph: row_indices,
           self._input_col_indices_ph: col_indices
       }
-      # Run.
-      run_results = sess.run(sess_run_args.fetches, feed_dict=feed_dict)
-      run_values = session_run_hook.SessionRunValues(
-          results=run_results, options=None, run_metadata=None)
-      # After run.
-      sweep_hook.after_run(run_context, run_values)
 
-  def test_row_sweep(self):
     with self.test_session() as sess:
       is_row_sweep_var = variables.Variable(True)
       sweep_hook = wals_lib._SweepHook(
@@ -449,52 +431,35 @@ class SweepHookTest(test.TestCase):
           self._row_prep_ops,
           self._col_prep_ops,
           self._init_ops)
-
-      # Initialize variables.
+      mon_sess = monitored_session._HookedSession(sess, [sweep_hook])
       sess.run([variables.global_variables_initializer()])
-      # Row sweep.
-      self.run_hook_with_indices(sweep_hook, [], [])
+
+      # Init ops should run before the first run. Row sweep not completed.
+      mon_sess.run(self._train_op, ind_feed([0, 1, 2], []))
       self.assertTrue(sess.run(self._init_done),
                       msg='init ops not run by the sweep_hook')
       self.assertTrue(sess.run(self._row_prep_done),
                       msg='row_prep not run by the sweep_hook')
-      self.run_hook_with_indices(sweep_hook, [0, 1, 2], [])
       self.assertTrue(sess.run(is_row_sweep_var),
                       msg='Row sweep is not complete but is_row_sweep is '
                       'False.')
-      self.run_hook_with_indices(sweep_hook, [3, 4], [0, 1, 2, 3, 4, 5, 6])
+      # Row sweep completed.
+      mon_sess.run(self._train_op, ind_feed([3, 4], [0, 1, 2, 3, 4, 5, 6]))
       self.assertFalse(sess.run(is_row_sweep_var),
                        msg='Row sweep is complete but is_row_sweep is True.')
       self.assertTrue(sweep_hook._is_sweep_done,
                       msg='Sweep is complete but is_sweep_done is False.')
-
-  def test_col_sweep(self):
-    with self.test_session() as sess:
-      is_row_sweep_var = variables.Variable(False)
-      sweep_hook = wals_lib._SweepHook(
-          is_row_sweep_var,
-          self._train_op,
-          self._num_rows,
-          self._num_cols,
-          self._input_row_indices_ph,
-          self._input_col_indices_ph,
-          self._row_prep_ops,
-          self._col_prep_ops,
-          self._init_ops)
-
-      # Initialize variables
-      sess.run([variables.global_variables_initializer()])
-      # Col sweep
-      self.run_hook_with_indices(sweep_hook, [], [])
+      # Col init ops should run. Col sweep not completed.
+      mon_sess.run(self._train_op, ind_feed([], [0, 1, 2, 3, 4]))
       self.assertTrue(sess.run(self._col_prep_done),
                       msg='col_prep not run by the sweep_hook')
-      self.run_hook_with_indices(sweep_hook, [], [0, 1, 2, 3, 4])
       self.assertFalse(sess.run(is_row_sweep_var),
                        msg='Col sweep is not complete but is_row_sweep is '
                        'True.')
       self.assertFalse(sweep_hook._is_sweep_done,
                        msg='Sweep is not complete but is_sweep_done is True.')
-      self.run_hook_with_indices(sweep_hook, [], [4, 5, 6])
+      # Col sweep completed.
+      mon_sess.run(self._train_op, ind_feed([], [4, 5, 6]))
       self.assertTrue(sess.run(is_row_sweep_var),
                       msg='Col sweep is complete but is_row_sweep is False')
       self.assertTrue(sweep_hook._is_sweep_done,

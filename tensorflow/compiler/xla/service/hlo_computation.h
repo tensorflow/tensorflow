@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -140,6 +141,9 @@ class HloComputation {
 
   // Return a string representation of the computation.
   string ToString(int nested_level = 0) const;
+
+  // Returns a serialized representation of this computation.
+  HloComputationProto ToProto() const;
 
   const std::list<std::unique_ptr<HloInstruction>>& instructions() const {
     return instructions_;

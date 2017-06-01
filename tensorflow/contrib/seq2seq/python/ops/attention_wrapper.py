@@ -21,7 +21,6 @@ from __future__ import print_function
 import collections
 import math
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -113,6 +112,18 @@ def _prepare_memory(memory, memory_sequence_length, check_inner_dims_defined):
   return nest.map_structure(lambda m: _maybe_mask(m, seq_len_mask), memory)
 
 
+def _maybe_mask_score(score, memory_sequence_length, score_mask_value):
+  if memory_sequence_length is None:
+    return score
+  message = ("All values in memory_sequence_length must greater than zero.")
+  with ops.control_dependencies(
+      [check_ops.assert_positive(memory_sequence_length, message=message)]):
+    score_mask = array_ops.sequence_mask(
+        memory_sequence_length, maxlen=array_ops.shape(score)[1])
+    score_mask_values = score_mask_value * array_ops.ones_like(score)
+    return array_ops.where(score_mask, score, score_mask_values)
+
+
 class _BaseAttentionMechanism(AttentionMechanism):
   """A base AttentionMechanism class providing common functionality.
 
@@ -128,6 +139,7 @@ class _BaseAttentionMechanism(AttentionMechanism):
                memory_sequence_length=None,
                memory_layer=None,
                check_inner_dims_defined=True,
+               score_mask_value=float("-inf"),
                name=None):
     """Construct base AttentionMechanism class.
 
@@ -150,6 +162,9 @@ class _BaseAttentionMechanism(AttentionMechanism):
       check_inner_dims_defined: Python boolean.  If `True`, the `memory`
         argument's shape is checked to ensure all but the two outermost
         dimensions are fully defined.
+      score_mask_value: (optional): The mask value for score before passing into
+        `probability_fn`. The default is -inf. Only used if
+        `memory_sequence_length` is not None.
       name: Name to use when creating ops.
     """
     if (query_layer is not None
@@ -165,7 +180,10 @@ class _BaseAttentionMechanism(AttentionMechanism):
     if not callable(probability_fn):
       raise TypeError("probability_fn must be callable, saw type: %s" %
                       type(probability_fn).__name__)
-    self._probability_fn = probability_fn
+    self._probability_fn = lambda score, prev: (  # pylint:disable=g-long-lambda
+        probability_fn(
+            _maybe_mask_score(score, memory_sequence_length, score_mask_value),
+            prev))
     with ops.name_scope(
         name, "BaseAttentionMechanismInit", nest.flatten(memory)):
       self._values = _prepare_memory(
@@ -246,6 +264,7 @@ class LuongAttention(_BaseAttentionMechanism):
                memory_sequence_length=None,
                scale=False,
                probability_fn=None,
+               score_mask_value=float("-inf"),
                name="LuongAttention"):
     """Construct the AttentionMechanism mechanism.
 
@@ -261,6 +280,9 @@ class LuongAttention(_BaseAttentionMechanism):
         probabilities.  The default is @{tf.nn.softmax}. Other options include
         @{tf.contrib.seq2seq.hardmax} and @{tf.contrib.sparsemax.sparsemax}.
         Its signature should be: `probabilities = probability_fn(score)`.
+      score_mask_value: (optional): The mask value for score before passing into
+        `probability_fn`. The default is -inf. Only used if
+        `memory_sequence_length` is not None.
       name: Name to use when creating ops.
     """
     # For LuongAttention, we only transform the memory layer; thus
@@ -275,6 +297,7 @@ class LuongAttention(_BaseAttentionMechanism):
         memory=memory,
         probability_fn=wrapped_probability_fn,
         memory_sequence_length=memory_sequence_length,
+        score_mask_value=score_mask_value,
         name=name)
     self._num_units = num_units
     self._scale = scale
@@ -363,6 +386,7 @@ class BahdanauAttention(_BaseAttentionMechanism):
                memory_sequence_length=None,
                normalize=False,
                probability_fn=None,
+               score_mask_value=float("-inf"),
                name="BahdanauAttention"):
     """Construct the Attention mechanism.
 
@@ -378,6 +402,9 @@ class BahdanauAttention(_BaseAttentionMechanism):
         probabilities.  The default is @{tf.nn.softmax}. Other options include
         @{tf.contrib.seq2seq.hardmax} and @{tf.contrib.sparsemax.sparsemax}.
         Its signature should be: `probabilities = probability_fn(score)`.
+      score_mask_value: (optional): The mask value for score before passing into
+        `probability_fn`. The default is -inf. Only used if
+        `memory_sequence_length` is not None.
       name: Name to use when creating ops.
     """
     if probability_fn is None:
@@ -391,6 +418,7 @@ class BahdanauAttention(_BaseAttentionMechanism):
         memory=memory,
         probability_fn=wrapped_probability_fn,
         memory_sequence_length=memory_sequence_length,
+        score_mask_value=score_mask_value,
         name=name)
     self._num_units = num_units
     self._normalize = normalize
@@ -500,7 +528,7 @@ def hardmax(logits, name=None):
         math_ops.argmax(logits, -1), depth, dtype=logits.dtype)
 
 
-class AttentionWrapper(core_rnn_cell.RNNCell):
+class AttentionWrapper(rnn_cell_impl.RNNCell):
   """Wraps another `RNNCell` with attention.
   """
 
@@ -562,10 +590,11 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     if attention_layer_size is not None:
       self._attention_layer = layers_core.Dense(
           attention_layer_size, name="attention_layer", use_bias=False)
-      self._attention_size = attention_layer_size
+      self._attention_layer_size = attention_layer_size
     else:
       self._attention_layer = None
-      self._attention_size = attention_mechanism.values.get_shape()[-1].value
+      self._attention_layer_size = attention_mechanism.values.get_shape()[
+          -1].value
 
     self._cell = cell
     self._attention_mechanism = attention_mechanism
@@ -598,7 +627,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
   @property
   def output_size(self):
     if self._output_attention:
-      return self._attention_size
+      return self._attention_layer_size
     else:
       return self._cell.output_size
 
@@ -607,7 +636,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
     return AttentionWrapperState(
         cell_state=self._cell.state_size,
         time=tensor_shape.TensorShape([]),
-        attention=self._attention_size,
+        attention=self._attention_layer_size,
         alignments=self._attention_mechanism.alignments_size,
         alignment_history=())  # alignment_history is sometimes a TensorArray
 
@@ -640,7 +669,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       return AttentionWrapperState(
           cell_state=cell_state,
           time=array_ops.zeros([], dtype=dtypes.int32),
-          attention=_zero_state_tensors(self._attention_size, batch_size,
+          attention=_zero_state_tensors(self._attention_layer_size, batch_size,
                                         dtype),
           alignments=self._attention_mechanism.initial_alignments(
               batch_size, dtype),
@@ -659,7 +688,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       alignments and the attention_mechanism's values (memory).
     - Step 6: Calculate the attention output by concatenating the cell output
       and context through the attention layer (a linear layer with
-      `attention_size` outputs).
+      `attention_layer_size` outputs).
 
     Args:
       inputs: (Possibly nested tuple of) Tensor, the input at this time step.
@@ -670,7 +699,7 @@ class AttentionWrapper(core_rnn_cell.RNNCell):
       A tuple `(attention_or_cell_output, next_state)`, where:
 
       - `attention_or_cell_output` depending on `output_attention`.
-      - `next_state` is an instance of `DynamicAttentionWrapperState`
+      - `next_state` is an instance of `AttentionWrapperState`
          containing the state calculated at this time step.
     """
     # Step 1: Calculate the true inputs to the cell based on the

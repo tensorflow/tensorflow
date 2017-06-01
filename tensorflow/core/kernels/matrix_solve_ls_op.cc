@@ -47,7 +47,7 @@ class MatrixSolveLsOp : public LinearAlgebraOp<Scalar> {
   // in context->input(2).
   int NumMatrixInputs(const OpKernelContext* context) const final { return 2; }
 
-  virtual void ValidateInputMatrixShapes(
+  void ValidateInputMatrixShapes(
       OpKernelContext* context,
       const TensorShapes& input_matrix_shapes) const final {
     Base::ValidateSolver(context, input_matrix_shapes);

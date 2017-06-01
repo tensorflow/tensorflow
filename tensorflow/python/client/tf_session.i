@@ -24,6 +24,8 @@ limitations under the License.
 
 %}
 
+%include "tensorflow/python/client/tf_sessionrun_wrapper.i"
+
 // Required to use PyArray_* functions.
 %init %{
 tensorflow::ImportNumpy();
@@ -199,6 +201,16 @@ void PyTensorListToVector(PyObject* py_tensor_list,
 %ignore TF_Run;
 %ignore TF_PRun;
 %ignore TF_PRunSetup;
+
+// We use TF_SessionRun_wrapper instead of TF_SessionRun
+%ignore TF_SessionRun;
+%unignore TF_SessionRun_wrapper;
+// The %exception block above releases the Python GIL for the length of each
+// wrapped method. We disable this behavior for TF_SessionRun_wrapper because it
+// uses Python method(s) that expect the GIL to be held (at least
+// PyArray_Return, maybe others).
+%noexception TF_SessionRun_wrapper;
+
 
 %rename("_TF_SetTarget") TF_SetTarget;
 %rename("_TF_SetConfig") TF_SetConfig;

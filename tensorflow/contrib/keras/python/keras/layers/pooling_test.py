@@ -26,14 +26,14 @@ from tensorflow.python.platform import test
 class GlobalPoolingTest(test.TestCase):
 
   def test_globalpooling_1d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(keras.layers.pooling.GlobalMaxPooling1D,
                                input_shape=(3, 4, 5))
       testing_utils.layer_test(
           keras.layers.pooling.GlobalAveragePooling1D, input_shape=(3, 4, 5))
 
   def test_globalpooling_2d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.pooling.GlobalMaxPooling2D,
           kwargs={'data_format': 'channels_first'},
@@ -52,7 +52,7 @@ class GlobalPoolingTest(test.TestCase):
           input_shape=(3, 5, 6, 4))
 
   def test_globalpooling_3d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.pooling.GlobalMaxPooling3D,
           kwargs={'data_format': 'channels_first'},
@@ -75,7 +75,7 @@ class Pooling2DTest(test.TestCase):
 
   def test_maxpooling_2d(self):
     pool_size = (3, 3)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for strides in [(1, 1), (2, 2)]:
         testing_utils.layer_test(
             keras.layers.MaxPooling2D,
@@ -115,7 +115,7 @@ class Pooling3DTest(test.TestCase):
 
   def test_maxpooling_3d(self):
     pool_size = (3, 3, 3)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.MaxPooling3D,
           kwargs={'strides': 2,
@@ -134,7 +134,7 @@ class Pooling3DTest(test.TestCase):
 
   def test_averagepooling_3d(self):
     pool_size = (3, 3, 3)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       testing_utils.layer_test(
           keras.layers.AveragePooling3D,
           kwargs={'strides': 2,
@@ -155,7 +155,7 @@ class Pooling3DTest(test.TestCase):
 class Pooling1DTest(test.TestCase):
 
   def test_maxpooling_1d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for padding in ['valid', 'same']:
         for stride in [1, 2]:
           testing_utils.layer_test(
@@ -165,7 +165,7 @@ class Pooling1DTest(test.TestCase):
               input_shape=(3, 5, 4))
 
   def test_averagepooling_1d(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for padding in ['valid', 'same']:
         for stride in [1, 2]:
           testing_utils.layer_test(

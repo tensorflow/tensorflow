@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -52,15 +51,6 @@ class HloTestBase : public ::testing::Test {
           arguments,
       Shape* result_shape);
 
-  // Variation of Execute which takes a custom module_config instead of creating
-  // a default one.
-  StatusOr<perftools::gputools::DeviceMemoryBase> Execute(
-      std::unique_ptr<HloModule> module,
-      std::unique_ptr<HloModuleConfig> module_config,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      Shape* result_shape);
-
   // Transfers the given literal to the device and returns the data handle.
   perftools::gputools::DeviceMemoryBase TransferToDevice(
       const Literal& literal);
@@ -76,13 +66,33 @@ class HloTestBase : public ::testing::Test {
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments);
 
-  // Variation of ExecuteAndTransfer which takes a custom module_config instead
-  // of creating a default one.
-  std::unique_ptr<Literal> ExecuteAndTransfer(
-      std::unique_ptr<HloModule> module,
-      std::unique_ptr<HloModuleConfig> module_config,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments);
+  // Convenience method to force the layout of a given parameter in a module.
+  // The layout of parameter number 'param_no' in the 'module' is set to
+  // 'layout'.
+  void ForceParameterLayout(HloModule* module, int64 param_no,
+                            const Layout& layout) {
+    ASSERT_LT(param_no,
+              module->mutable_entry_computation_layout()->parameter_count());
+    module->mutable_entry_computation_layout()
+        ->mutable_parameter_layout(param_no)
+        ->ResetLayout(layout);
+  }
+
+  // Convenience method to force the layout of the computation result in a
+  // module. The result layout of 'module' is set to 'layout'.
+  void ForceResultLayout(HloModule* module, const Layout& layout) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->ResetLayout(layout);
+  }
+
+  // Convenience method to clear the layout of the computation result in
+  // 'module'.
+  void ForceClearResultLayout(HloModule* module) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->Clear();
+  }
 
   string TestName() const;
 

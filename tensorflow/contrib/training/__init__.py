@@ -52,8 +52,6 @@ from tensorflow.contrib.training.python.training.evaluation import get_or_create
 from tensorflow.contrib.training.python.training.evaluation import StopAfterNEvalsHook
 from tensorflow.contrib.training.python.training.evaluation import SummaryAtEndHook
 from tensorflow.contrib.training.python.training.evaluation import wait_for_new_checkpoint
-from tensorflow.contrib.training.python.training.failure_tolerator import *
-from tensorflow.contrib.training.python.training.feeder import *
 from tensorflow.contrib.training.python.training.feeding_queue_runner import FeedingQueueRunner
 from tensorflow.contrib.training.python.training.hparam import *
 from tensorflow.contrib.training.python.training.python_input import python_input

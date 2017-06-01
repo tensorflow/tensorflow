@@ -108,7 +108,7 @@ int32 GraphCycles::NewNode() {
   if (rep_->free_nodes_.empty()) {
     Node* n = new Node;
     n->visited = false;
-    n->data = NULL;
+    n->data = nullptr;
     n->rank = rep_->nodes_.size();
     rep_->nodes_.push_back(n);
     return n->rank;
@@ -116,7 +116,7 @@ int32 GraphCycles::NewNode() {
     // Preserve preceding rank since the set of ranks in use must be
     // a permutation of [0,rep_->nodes_.size()-1].
     int32 r = rep_->free_nodes_.back();
-    rep_->nodes_[r]->data = NULL;
+    rep_->nodes_[r]->data = nullptr;
     rep_->free_nodes_.pop_back();
     return r;
   }
@@ -332,7 +332,7 @@ int GraphCycles::FindPath(int32 x, int32 y, int max_path_len,
 }
 
 bool GraphCycles::IsReachable(int32 x, int32 y) const {
-  return FindPath(x, y, 0, NULL) > 0;
+  return FindPath(x, y, 0, nullptr) > 0;
 }
 
 bool GraphCycles::IsReachableNonConst(int32 x, int32 y) {

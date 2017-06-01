@@ -43,6 +43,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import saver
@@ -92,6 +93,7 @@ class LinearRegressorPartitionerTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def testPartitioner(self):
@@ -125,7 +127,9 @@ class LinearRegressorPartitionerTest(test.TestCase):
 
   def testDefaultPartitionerWithMultiplePsReplicas(self):
     partitions = 2
-    x_dim = 4 * 64 << 20
+    # This results in weights larger than the default partition size of 64M,
+    # so partitioned weights are created (each weight uses 4 bytes).
+    x_dim = 32 << 20
 
     class FakeRunConfig(run_config.RunConfig):
 
@@ -166,6 +170,7 @@ class LinearRegressorEvaluationTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_evaluation_for_simple_data(self):
@@ -336,6 +341,7 @@ class LinearRegressorPredictTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_1d(self):
@@ -426,6 +432,7 @@ class LinearRegressorIntegrationTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_complete_flow(self):
@@ -499,6 +506,7 @@ class LinearRegressorTrainingTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def _mockOptimizer(self, expected_loss=None):

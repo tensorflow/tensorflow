@@ -703,7 +703,7 @@ def _SliceHelperVar(var, slice_spec):
   operation for grouping or passing to `sess.run()`.
   For example,
 
-  ```prettyprint
+  ```python
   import tensorflow as tf
   A = tf.Variable([[1,2,3], [4,5,6], [7,8,9]], dtype=tf.float32)
   with tf.Session() as sess:
@@ -749,11 +749,11 @@ def parallel_stack(values, name="parallel_stack"):
 
   For example:
 
-  ```prettyprint
+  ```python
   # 'x' is [1, 4]
   # 'y' is [2, 5]
   # 'z' is [3, 6]
-  parallel_stack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]
+  parallel_stack([x, y, z])  # => [[1, 4], [2, 5], [3, 6]]
   ```
 
   The difference between stack and parallel_stack is that stack requires all
@@ -783,6 +783,7 @@ def parallel_stack(values, name="parallel_stack"):
     return gen_array_ops._parallel_concat(
         [expand_dims(value, 0) for value in values], shape=output_shape)
 
+
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
@@ -796,12 +797,12 @@ def stack(values, axis=0, name="stack"):
 
   For example:
 
-  ```prettyprint
+  ```python
   # 'x' is [1, 4]
   # 'y' is [2, 5]
   # 'z' is [3, 6]
-  stack([x, y, z]) => [[1, 4], [2, 5], [3, 6]]  # Pack along first dim.
-  stack([x, y, z], axis=1) => [[1, 2, 3], [4, 5, 6]]
+  stack([x, y, z])  # => [[1, 4], [2, 5], [3, 6]] (Pack along first dim.)
+  stack([x, y, z], axis=1)  # => [[1, 2, 3], [4, 5, 6]]
   ```
 
   This is the opposite of unstack.  The numpy equivalent is
@@ -944,7 +945,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
     `value[:, i, :, :]` and each tensor in `output` will have shape `(A, C, D)`.
   Etc.
 
-  This is the opposite of pack.  The numpy equivalent is
+  This is the opposite of stack.  The numpy equivalent is
 
       tf.unstack(x, n) = list(x)
 
@@ -1682,14 +1683,14 @@ def meshgrid(*args, **kwargs):
 
   Calling `X, Y = meshgrid(x, y)` with the tensors
 
-  ```prettyprint
+  ```python
     x = [1, 2, 3]
     y = [4, 5, 6]
   ```
 
   results in
 
-  ```prettyprint
+  ```python
     X = [[1, 2, 3],
          [1, 2, 3],
          [1, 2, 3]]
@@ -2245,16 +2246,16 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
 
   For example:
 
-  ```prettyprint
+  ```python
   # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
-  shape(squeeze(t)) ==> [2, 3]
+  shape(squeeze(t))  # => [2, 3]
   ```
 
   Or, to remove specific size 1 dimensions:
 
-  ```prettyprint
+  ```python
   # 't' is a tensor of shape [1, 2, 1, 3, 1, 1]
-  shape(squeeze(t, [2, 4])) ==> [1, 2, 3, 1]
+  shape(squeeze(t, [2, 4]))  # => [1, 2, 3, 1]
   ```
 
   Args:

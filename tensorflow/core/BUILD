@@ -109,6 +109,7 @@ load(
     "tf_additional_cloud_kernel_deps",
     "tf_lib_proto_parsing_deps",
     "tf_additional_verbs_lib_defines",
+    "tf_additional_mpi_lib_defines",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -1072,6 +1073,7 @@ filegroup(
         ":framework/shape_inference_testutil.h",
         ":framework/tensor_testutil.cc",
         ":framework/tensor_testutil.h",
+        ":platform/test.cc",
         ":platform/test.h",
         ":util/reporter.cc",
         ":util/reporter.h",
@@ -1308,8 +1310,9 @@ cc_library(
     ],
     copts = tf_copts(),
     defines = tf_additional_lib_defines() + [
-        "SNAPPY",
-    ] + tf_additional_verbs_lib_defines(),
+                  "SNAPPY",
+              ] + tf_additional_verbs_lib_defines() +
+              tf_additional_mpi_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": [
@@ -1833,6 +1836,7 @@ cc_library(
     hdrs = if_not_windows([
         "common_runtime/sycl/sycl_allocator.h",
         "common_runtime/sycl/sycl_device.h",
+        "common_runtime/sycl/sycl_util.h",
         "common_runtime/sycl/sycl_device_context.h",
     ]),
     copts = tf_copts(),

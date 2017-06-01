@@ -1187,7 +1187,7 @@ def initialize_variables(var_list, name="init"):
 def global_variables_initializer():
   """Returns an Op that initializes global variables.
 
-  This is just a shortcut for `variable_initializer(global_variables())`
+  This is just a shortcut for `variables_initializer(global_variables())`
 
   Returns:
     An Op that initializes global variables in the graph.
@@ -1205,7 +1205,7 @@ def initialize_all_variables():
 def local_variables_initializer():
   """Returns an Op that initializes all local variables.
 
-  This is just a shortcut for `variable_initializer(local_variables())`
+  This is just a shortcut for `variables_initializer(local_variables())`
 
   Returns:
     An Op that initializes all local variables in the graph.

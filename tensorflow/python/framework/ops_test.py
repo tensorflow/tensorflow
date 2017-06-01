@@ -893,6 +893,15 @@ class ObjectWithName(object):
 
 class CollectionTest(test_util.TensorFlowTestCase):
 
+  def test_get_collections(self):
+    g = ops.Graph()
+    self.assertSequenceEqual(g.collections, [])
+    g.add_to_collection("key", 12)
+    g.add_to_collection("key", 15)
+    self.assertSequenceEqual(g.collections, ["key"])
+    g.add_to_collection("other", "foo")
+    self.assertSequenceEqual(sorted(g.collections), ["key", "other"])
+
   def test_add_to_collection(self):
     g = ops.Graph()
     g.add_to_collection("key", 12)

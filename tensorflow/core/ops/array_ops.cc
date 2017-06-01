@@ -1534,8 +1534,10 @@ REGISTER_OP("Identity")
     .Attr("T: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      c->set_output_handle_dtype(0, c->input_handle_dtype(0));
-      c->set_output_handle_shape(0, c->input_handle_shape(0));
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr) {
+        c->set_output_handle_shapes_and_types(0, *handle_data);
+      }
       return Status::OK();
     })
     .Doc(R"Doc(
@@ -1551,8 +1553,10 @@ REGISTER_OP("_MklIdentity")
     .Attr("T: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->input(0));
-      c->set_output_handle_dtype(0, c->input_handle_dtype(0));
-      c->set_output_handle_shape(0, c->input_handle_shape(0));
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data != nullptr) {
+        c->set_output_handle_shapes_and_types(0, *handle_data);
+      }
       return Status::OK();
     })
     .Doc(R"Doc( Mkl implementation of IdentityOp

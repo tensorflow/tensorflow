@@ -5277,7 +5277,7 @@ op {
     }
   }
   summary: "Compute the cumulative product of the tensor `x` along `axis`."
-  description: "By default, this op performs an inclusive cumprod, which means that the first\nelement of the input is identical to the first element of the output:\n```prettyprint\ntf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumprod is\nperformed instead:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumprod is performed in the\nopposite direction:\n```prettyprint\ntf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]\n```\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]\n```"
+  description: "By default, this op performs an inclusive cumprod, which means that the first\nelement of the input is identical to the first element of the output:\n\n```python\ntf.cumprod([a, b, c])  # => [a, a * b, a * b * c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumprod is\nperformed instead:\n\n```python\ntf.cumprod([a, b, c], exclusive=True)  # => [1, a, a * b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumprod is performed in the\nopposite direction:\n\n```python\ntf.cumprod([a, b, c], reverse=True)  # => [a * b * c, b * c, c]\n```\n\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n\n```python\ntf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]\n```"
 }
 op {
   name: "Cumsum"
@@ -5343,7 +5343,7 @@ op {
     }
   }
   summary: "Compute the cumulative sum of the tensor `x` along `axis`."
-  description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n```prettyprint\ntf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n```prettyprint\ntf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n```prettyprint\ntf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]\n```\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n```prettyprint\ntf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]\n```"
+  description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n\n```python\ntf.cumsum([a, b, c])  # => [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n\n```python\ntf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n\n```python\ntf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]\n```\n\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n\n```python\ntf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]\n```"
 }
 op {
   name: "DebugIdentity"
@@ -5360,6 +5360,13 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "device_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   attr {
     name: "tensor_name"
@@ -5407,6 +5414,13 @@ op {
     type: "type"
   }
   attr {
+    name: "device_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
     name: "tensor_name"
     type: "string"
     default_value {
@@ -5444,12 +5458,19 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: NaN element count\n  [3]: generalized -inf count: elements <= lower_bound. lower_bound is -inf by\n    default.\n  [4]: negative element count (excluding -inf), if lower_bound is the default\n    -inf. Otherwise, this is the count of elements > lower_bound and < 0.\n  [5]: zero element count\n  [6]: positive element count (excluding +inf), if upper_bound is the default\n    -inf. Otherwise, this is the count of elements < upper_bound and > 0.\n  [7]: generalized +inf count, elements >= upper_bound. upper_bound is +inf by\n    default.\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
+    description: "A double tensor of shape [14 + nDimensions], where nDimensions is the\n  the number of dimensions of the tensor\'s shape. The elements of output are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: NaN element count\n  [3]: generalized -inf count: elements <= lower_bound. lower_bound is -inf by\n    default.\n  [4]: negative element count (excluding -inf), if lower_bound is the default\n    -inf. Otherwise, this is the count of elements > lower_bound and < 0.\n  [5]: zero element count\n  [6]: positive element count (excluding +inf), if upper_bound is the default\n    -inf. Otherwise, this is the count of elements < upper_bound and > 0.\n  [7]: generalized +inf count, elements >= upper_bound. upper_bound is +inf by\n    default.\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [12]: Data type of the tensor encoded as an enum integer. See the DataType\n        proto for more details.\n  [13]: Number of dimensions of the tensor (ndims).\n  [14+]: Sizes of the dimensions."
     type: DT_DOUBLE
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "device_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   attr {
     name: "tensor_name"
@@ -5578,7 +5599,15 @@ op {
     default_value {
       s: ","
     }
-    description: "delimiter to separate fields in a record."
+    description: "char delimiter to separate fields in a record."
+  }
+  attr {
+    name: "use_quote_delim"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If false, treats double quotation marks as regular\ncharacters inside of the string fields (ignoring RFC 4180, Section 2,\nBullet 5)."
   }
   summary: "Convert CSV records to tensors. Each column maps to one tensor."
   description: "RFC 4180 format is expected for the CSV records.\n(https://tools.ietf.org/html/rfc4180)\nNote that we allow leading and trailing spaces with int or float field."
@@ -11039,6 +11068,8 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -14305,7 +14336,7 @@ op {
     }
   }
   summary: "Computes the QR decompositions of one or more matrices."
-  description: "Computes the QR decomposition of each inner matrix in `tensor` such that\n`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`\n\n```prettyprint\n# a is a tensor.\n# q is a tensor of orthonormal matrices.\n# r is a tensor of upper triangular matrices.\nq, r = qr(a)\nq_full, r_full = qr(a, full_matrices=True)\n```"
+  description: "Computes the QR decomposition of each inner matrix in `tensor` such that\n`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`\n\n```python\n# a is a tensor.\n# q is a tensor of orthonormal matrices.\n# r is a tensor of upper triangular matrices.\nq, r = qr(a)\nq_full, r_full = qr(a, full_matrices=True)\n```"
 }
 op {
   name: "QuantizeAndDequantize"
@@ -14546,6 +14577,95 @@ op {
   }
   summary: "Quantize the \'input\' tensor of type float to \'output\' tensor of type \'T\'."
   description: "[min_range, max_range] are scalar floats that specify the range for\nthe \'input\' data. The \'mode\' attribute controls exactly which calculations are\nused to convert the float values to their quantized equivalents.\n\nIn \'MIN_COMBINED\' mode, each value of the tensor will undergo the following:\n\n```\nout[i] = (in[i] - min_range) * range(T) / (max_range - min_range)\nif T == qint8, out[i] -= (range(T) + 1) / 2.0\n```\nhere `range(T) = numeric_limits<T>::max() - numeric_limits<T>::min()`\n\n*MIN_COMBINED Mode Example*\n\nAssume the input is type float and has a possible range of [0.0, 6.0] and the\noutput type is quint8 ([0, 255]). The min_range and max_range values should be\nspecified as 0.0 and 6.0. Quantizing from float to quint8 will multiply each\nvalue of the input by 255/6 and cast to quint8.\n\nIf the output type was qint8 ([-128, 127]), the operation will additionally\nsubtract each value by 128 prior to casting, so that the range of values aligns\nwith the range of qint8.\n\nIf the mode is \'MIN_FIRST\', then this approach is used:\n\n```\nnumber_of_steps = 1 << (# of bits in T)\nrange_adjust = number_of_steps / (number_of_steps - 1)\nrange = (range_max - range_min) * range_adjust\nrange_scale = number_of_steps / range\nquantized = round(input * range_scale) - round(range_min * range_scale) +\n  numeric_limits<T>::min()\nquantized = max(quantized, numeric_limits<T>::min())\nquantized = min(quantized, numeric_limits<T>::max())\n```\n\nThe biggest difference between this and MIN_COMBINED is that the minimum range\nis rounded first, before it\'s subtracted from the rounded value. With\nMIN_COMBINED, a small bias is introduced where repeated iterations of quantizing\nand dequantizing will introduce a larger and larger error.\n\nOne thing to watch out for is that the operator may choose to adjust the\nrequested minimum and maximum values slightly during the quantization process,\nso you should always use the output ports as the range for further calculations.\nFor example, if the requested minimum and maximum values are close to equal,\nthey will be separated by a small epsilon value to prevent ill-formed quantized\nbuffers from being created. Otherwise, you can end up with buffers where all the\nquantized values map to the same float value, which causes problems for\noperations that have to perform further calculations on them."
+}
+op {
+  name: "QuantizedAdd"
+  input_arg {
+    name: "x"
+    type_attr: "T1"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T2"
+  }
+  input_arg {
+    name: "min_x"
+    description: "The float value that the lowest quantized `x` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_x"
+    description: "The float value that the highest quantized `x` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_y"
+    description: "The float value that the lowest quantized `y` value represents."
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max_y"
+    description: "The float value that the highest quantized `y` value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "z"
+    type_attr: "Toutput"
+  }
+  output_arg {
+    name: "min_z"
+    description: "The float value that the lowest quantized output value represents."
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "max_z"
+    description: "The float value that the highest quantized output value represents.\n\n*NOTE*: `QuantizedAdd` supports limited forms of broadcasting. More about\nbroadcasting [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  attr {
+    name: "Toutput"
+    type: "type"
+    default_value {
+      type: DT_QINT32
+    }
+    allowed_values {
+      list {
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT16
+        type: DT_QUINT16
+        type: DT_QINT32
+      }
+    }
+  }
+  summary: "Returns x + y element-wise, working on quantized buffers."
+  is_commutative: true
 }
 op {
   name: "QuantizedAvgPool"
@@ -16286,7 +16406,7 @@ op {
     type: "type"
   }
   summary: "Randomly shuffles a tensor along its first dimension."
-  description: "  The tensor is shuffled along dimension 0, such that each `value[j]` is mapped\n  to one and only one `output[i]`. For example, a mapping that might occur for a\n  3x2 tensor is:\n\n```prettyprint\n[[1, 2],       [[5, 6],\n [3, 4],  ==>   [1, 2],\n [5, 6]]        [3, 4]]\n```"
+  description: "  The tensor is shuffled along dimension 0, such that each `value[j]` is mapped\n  to one and only one `output[i]`. For example, a mapping that might occur for a\n  3x2 tensor is:\n\n```\n[[1, 2],       [[5, 6],\n [3, 4],  ==>   [1, 2],\n [5, 6]]        [3, 4]]\n```"
   is_stateful: true
 }
 op {
@@ -21138,7 +21258,7 @@ op {
     type: "type"
   }
   summary: "Selects elements from `t` or `e`, depending on `condition`."
-  description: "The `t`, and `e` tensors must all have the same shape, and the\noutput will also have that shape.\n\nThe `condition` tensor must be a scalar if `t` and `e` are scalars.\nIf `t` and `e` are vectors or higher rank, then `condition` must be either a\nscalar, a vector with size matching the first dimension of `t`, or must have\nthe same shape as `t`.\n\nThe `condition` tensor acts as a mask that chooses, based on the value at each\nelement, whether the corresponding element / row in the output should be\ntaken from `t` (if true) or `e` (if false).\n\nIf `condition` is a vector and `t` and `e` are higher rank matrices, then\nit chooses which row (outer dimension) to copy from `t` and `e`.\nIf `condition` has the same shape as `t` and `e`, then it chooses which\nelement to copy from `t` and `e`.\n\nFor example:\n\n```prettyprint\n# \'condition\' tensor is [[True,  False]\n#                        [False, True]]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 6],\n                             [7, 4]]\n\n\n# \'condition\' tensor is [True, False]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 2],\n                             [7, 8]]\n\n```"
+  description: "The `t`, and `e` tensors must all have the same shape, and the\noutput will also have that shape.\n\nThe `condition` tensor must be a scalar if `t` and `e` are scalars.\nIf `t` and `e` are vectors or higher rank, then `condition` must be either a\nscalar, a vector with size matching the first dimension of `t`, or must have\nthe same shape as `t`.\n\nThe `condition` tensor acts as a mask that chooses, based on the value at each\nelement, whether the corresponding element / row in the output should be\ntaken from `t` (if true) or `e` (if false).\n\nIf `condition` is a vector and `t` and `e` are higher rank matrices, then\nit chooses which row (outer dimension) to copy from `t` and `e`.\nIf `condition` has the same shape as `t` and `e`, then it chooses which\nelement to copy from `t` and `e`.\n\nFor example:\n\n```python\n# \'condition\' tensor is [[True,  False]\n#                        [False, True]]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e)  # => [[1, 6], [7, 4]]\n\n\n# \'condition\' tensor is [True, False]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 2],\n                             [7, 8]]\n\n```"
 }
 op {
   name: "SelfAdjointEig"
@@ -21207,7 +21327,7 @@ op {
     }
   }
   summary: "Computes the eigen decomposition of one or more square self-adjoint matrices."
-  description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```prettyprint\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
+  description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```python\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
 }
 op {
   name: "SerializeManySparse"
@@ -23514,6 +23634,83 @@ op {
   description: "The output locations corresponding to the implicitly zero elements in the sparse\ntensor will be zero (i.e., will not take up storage space), regardless of the\ncontents of the dense tensor (even if it\'s +/-INF and that INF*0 == NaN).\n\n*Limitation*: this Op only broadcasts the dense side to the sparse side, but not\nthe other direction."
 }
 op {
+  name: "SparseFillEmptyRows"
+  input_arg {
+    name: "indices"
+    description: "2-D. the indices of the sparse tensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "values"
+    description: "1-D. the values of the sparse tensor."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "dense_shape"
+    description: "1-D. the shape of the sparse tensor."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "default_value"
+    description: "0-D. default value to insert into location `[row, 0, ..., 0]`\n  for rows missing from the input sparse tensor.\noutput indices: 2-D. the indices of the filled sparse tensor."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_indices"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "output_values"
+    description: "1-D. the values of the filled sparse tensor."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "empty_row_indicator"
+    description: "1-D. whether the dense row was missing in the\ninput sparse tensor."
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "reverse_index_map"
+    description: "1-D. a map from the input indices to the output indices."
+    type: DT_INT64
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Fills empty rows in the input 2-D `SparseTensor` with a default value."
+  description: "The input `SparseTensor` is represented via the tuple of inputs\n(`indices`, `values`, `dense_shape`).  The output `SparseTensor` has the\nsame `dense_shape` but with indices `output_indices` and values\n`output_values`.\n\nThis op inserts a single entry for every row that doesn\'t have any values.\nThe index is created as `[row, 0, ..., 0]` and the inserted value\nis `default_value`.\n\nFor example, suppose `sp_input` has shape `[5, 6]` and non-empty values:\n\n    [0, 1]: a\n    [0, 3]: b\n    [2, 0]: c\n    [3, 1]: d\n\nRows 1 and 4 are empty, so the output will be of shape `[5, 6]` with values:\n\n    [0, 1]: a\n    [0, 3]: b\n    [1, 0]: default_value\n    [2, 0]: c\n    [3, 1]: d\n    [4, 0]: default_value\n\nThe output `SparseTensor` will be in row-major order and will have the\nsame shape as the input.\n\nThis op also returns an indicator vector shaped `[dense_shape[0]]` such that\n\n    empty_row_indicator[i] = True iff row i was an empty row.\n\nAnd a reverse index map vector shaped `[indices.shape[0]]` that is used during\nbackpropagation,\n\n    reverse_index_map[j] = out_j s.t. indices[j, :] == output_indices[out_j, :]"
+}
+op {
+  name: "SparseFillEmptyRowsGrad"
+  input_arg {
+    name: "reverse_index_map"
+    description: "1-D.  The reverse index map from SparseFillEmptyRows."
+    type: DT_INT64
+  }
+  input_arg {
+    name: "grad_values"
+    description: "1-D.  The gradients from backprop."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "d_values"
+    description: "1-D.  The backprop into values."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "d_default_value"
+    description: "0-D.  The backprop into default_value."
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "The gradient of SparseFillEmptyRows."
+  description: "Takes vectors reverse_index_map, shaped `[N]`, and grad_values,\nshaped `[N_full]`, where `N_full >= N` and copies data into either\n`d_values` or `d_default_value`.  Here `d_values` is shaped `[N]` and\n`d_default_value` is a scalar.\n\n  d_values[j] = grad_values[reverse_index_map[j]]\n  d_default_value = sum_{k : 0 .. N_full - 1} (\n     grad_values[k] * 1{k not in reverse_index_map})"
+}
+op {
   name: "SparseMatMul"
   input_arg {
     name: "a"
@@ -24025,7 +24222,7 @@ op {
     }
   }
   summary: "Computes the sum along sparse segments of a tensor."
-  description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```prettyprint\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n  ==> [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n  ==> [[ 1  2  3  4]\n       [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n  ==> [[0 0 0 0]\n       [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
+  description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```python\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n# => [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n# => [[ 1  2  3  4]\n#     [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n# => [[0 0 0 0]\n#     [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
 }
 op {
   name: "SparseSoftmax"
@@ -24491,7 +24688,7 @@ op {
     }
   }
   summary: "Converts a sparse representation into a dense tensor."
-  description: "Builds an array `dense` with shape `output_shape` such that\n\n```prettyprint\n# If sparse_indices is scalar\ndense[i] = (i == sparse_indices ? sparse_values : default_value)\n\n# If sparse_indices is a vector, then for each i\ndense[sparse_indices[i]] = sparse_values[i]\n\n# If sparse_indices is an n by d matrix, then for each i in [0, n)\ndense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]\n```\n\nAll other values in `dense` are set to `default_value`.  If `sparse_values` is a\nscalar, all sparse indices are set to this single value.\n\nIndices should be sorted in lexicographic order, and indices must not\ncontain any repeats. If `validate_indices` is true, these properties\nare checked during execution."
+  description: "Builds an array `dense` with shape `output_shape` such that\n\n```\n# If sparse_indices is scalar\ndense[i] = (i == sparse_indices ? sparse_values : default_value)\n\n# If sparse_indices is a vector, then for each i\ndense[sparse_indices[i]] = sparse_values[i]\n\n# If sparse_indices is an n by d matrix, then for each i in [0, n)\ndense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]\n```\n\nAll other values in `dense` are set to `default_value`.  If `sparse_values` is a\nscalar, all sparse indices are set to this single value.\n\nIndices should be sorted in lexicographic order, and indices must not\ncontain any repeats. If `validate_indices` is true, these properties\nare checked during execution."
 }
 op {
   name: "SparseToSparseSetOperation"
@@ -25654,7 +25851,7 @@ op {
     }
   }
   summary: "Computes the singular value decompositions of one or more matrices."
-  description: "Computes the SVD of each inner matrix in `input` such that\n`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`\n\n```prettyprint\n# a is a tensor containing a batch of matrices.\n# s is a tensor of singular values for each matrix.\n# u is the tensor containing of left singular vectors for each matrix.\n# v is the tensor containing of right singular vectors for each matrix.\ns, u, v = svd(a)\ns, _, _ = svd(a, compute_uv=False)\n```"
+  description: "Computes the SVD of each inner matrix in `input` such that\n`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`\n\n```python\n# a is a tensor containing a batch of matrices.\n# s is a tensor of singular values for each matrix.\n# u is the tensor containing of left singular vectors for each matrix.\n# v is the tensor containing of right singular vectors for each matrix.\ns, u, v = svd(a)\ns, _, _ = svd(a, compute_uv=False)\n```"
 }
 op {
   name: "Switch"

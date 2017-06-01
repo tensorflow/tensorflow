@@ -174,8 +174,15 @@ function(add_python_module MODULE_NAME)
     if(NOT ${ADD_PYTHON_MODULE_DONTCOPY})
         foreach(script ${module_python_srcs})
             get_filename_component(REL_DIR ${script} DIRECTORY)
-            add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
-              COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/${script} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/${script})
+            # NOTE(mrry): This rule may exclude modules that should be part of
+            # the distributed PIP package
+            # (e.g. tensorflow/contrib/testing/python/framework/util_test.py),
+            # so we currently add explicit commands to include those files
+            # later on in this script.
+            if (NOT "${script}" MATCHES "_test\.py$")
+	        add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
+                  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/${script} ${CMAKE_CURRENT_BINARY_DIR}/tf_python/${script})
+            endif()
         endforeach()
     endif()
 endfunction()
@@ -229,7 +236,10 @@ add_python_module("tensorflow/tensorboard")
 add_python_module("tensorflow/tensorboard/backend")
 add_python_module("tensorflow/tensorboard/backend/event_processing")
 add_python_module("tensorflow/tensorboard/plugins")
+add_python_module("tensorflow/tensorboard/plugins/histograms")
+add_python_module("tensorflow/tensorboard/plugins/images")
 add_python_module("tensorflow/tensorboard/plugins/projector")
+add_python_module("tensorflow/tensorboard/plugins/scalars")
 add_python_module("tensorflow/tensorboard/plugins/text")
 add_python_module("tensorflow/tensorboard/scripts")
 add_python_module("tensorflow/contrib")
@@ -317,7 +327,6 @@ add_python_module("tensorflow/contrib/ios_examples/benchmark/benchmark.xcodeproj
 add_python_module("tensorflow/contrib/ios_examples/benchmark/data")
 add_python_module("tensorflow/contrib/ios_examples/camera")
 add_python_module("tensorflow/contrib/ios_examples/camera/camera_example.xcodeproj")
-add_python_module("tensorflow/contrib/ios_examples/camera/data")
 add_python_module("tensorflow/contrib/ios_examples/camera/en.lproj")
 add_python_module("tensorflow/contrib/ios_examples/simple")
 add_python_module("tensorflow/contrib/ios_examples/simple/data")
@@ -463,8 +472,9 @@ add_python_module("tensorflow/contrib/seq2seq/python/ops")
 add_python_module("tensorflow/contrib/session_bundle")
 add_python_module("tensorflow/contrib/session_bundle/example")
 add_python_module("tensorflow/contrib/session_bundle/testdata")
-add_python_module("tensorflow/contrib/session_bundle/testdata/saved_model_half_plus_two")
-add_python_module("tensorflow/contrib/session_bundle/testdata/saved_model_half_plus_two/variables")
+add_python_module("tensorflow/contrib/signal")
+add_python_module("tensorflow/contrib/signal/python")
+add_python_module("tensorflow/contrib/signal/python/ops")
 add_python_module("tensorflow/contrib/slim")
 add_python_module("tensorflow/contrib/slim/python")
 add_python_module("tensorflow/contrib/slim/python/slim")
@@ -617,6 +627,8 @@ GENERATE_PYTHON_OP_LIB("contrib_factorization_clustering_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_clustering_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_factorization_factorization_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/factorization/python/ops/gen_factorization_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_framework_checkpoint_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_checkpoint_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_framework_variable_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/framework/python/ops/gen_variable_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_input_pipeline_ops"
@@ -717,13 +729,14 @@ if(WIN32)
         $<TARGET_OBJECTS:tf_cc_ops>
         $<TARGET_OBJECTS:tf_core_ops>
         $<TARGET_OBJECTS:tf_core_direct_session>
+        $<TARGET_OBJECTS:tf_grappler>
         $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
         $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
         $<TARGET_OBJECTS:tf_core_kernels>
         $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_core_kernels_cpu_only>>
         $<$<BOOL:${tensorflow_ENABLE_GPU}>:$<TARGET_OBJECTS:tf_stream_executor>>
     )
-    
+
     target_include_directories(pywrap_tensorflow_internal_static PUBLIC
         ${PYTHON_INCLUDE_DIR}
         ${NUMPY_INCLUDE_DIR}
@@ -731,14 +744,14 @@ if(WIN32)
     #target_link_libraries(pywrap_tensorflow_internal_static
     #	tf_protos_cc
     #	tf_python_protos_cc
-    #)  
+    #)
     add_dependencies(pywrap_tensorflow_internal_static tf_protos_cc tf_python_protos_cc)
     set(pywrap_tensorflow_internal_static_dependencies
         $<TARGET_FILE:pywrap_tensorflow_internal_static>
         $<TARGET_FILE:tf_protos_cc>
         $<TARGET_FILE:tf_python_protos_cc>
     )
-    
+
     set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")
     set_source_files_properties(${pywrap_tensorflow_deffile} PROPERTIES GENERATED TRUE)
 
@@ -763,6 +776,7 @@ add_library(pywrap_tensorflow_internal SHARED
     $<TARGET_OBJECTS:tf_cc_ops>
     $<TARGET_OBJECTS:tf_core_ops>
     $<TARGET_OBJECTS:tf_core_direct_session>
+    $<TARGET_OBJECTS:tf_grappler>
     $<TARGET_OBJECTS:tf_tools_transform_graph_lib>
     $<$<BOOL:${tensorflow_ENABLE_GRPC_SUPPORT}>:$<TARGET_OBJECTS:tf_core_distributed_runtime>>
     $<TARGET_OBJECTS:tf_core_kernels>
@@ -856,9 +870,17 @@ add_dependencies(tf_python_build_pip_package
     tf_python_touchup_modules
     tf_python_ops
     tf_extension_ops)
+
+# Fix-up Python files that were not included by the add_python_module() macros.
 add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/tools/pip_package/setup.py
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/)
+# This file is unfortunately excluded by the regex that excludes *_test.py
+# files, but it is imported into tf.contrib, so we add it explicitly.
+add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy ${tensorflow_source_dir}/tensorflow/contrib/testing/python/framework/util_test.py
+                                   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/testing/python/framework/)
+
 if(WIN32)
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.dll

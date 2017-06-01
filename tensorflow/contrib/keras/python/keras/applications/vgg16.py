@@ -77,7 +77,7 @@ def VGG16(include_top=True,
       input_shape: optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` (with `channels_last` data format)
-          or `(3, 224, 244)` (with `channels_first` data format).
+          or `(3, 224, 224)` (with `channels_first` data format).
           It should have exactly 3 inputs channels,
           and width and height should be no smaller than 48.
           E.g. `(200, 200, 3)` would be one valid value.

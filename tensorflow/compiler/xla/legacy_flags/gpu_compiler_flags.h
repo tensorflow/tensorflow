@@ -41,6 +41,7 @@ typedef struct {
                              // directories.
   string xla_ptxas_path;     // The path to ptxas.  Required to log stats of
                              // the ptx.
+  string xla_gpu_dump_debug_json_to;  // Dump debug JSON to this directory.
 } GpuCompilerFlags;
 
 // Return a pointer to the GpuCompilerFlags struct;

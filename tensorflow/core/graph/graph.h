@@ -417,6 +417,12 @@ class Graph {
   // array's size.
   int num_nodes() const { return num_nodes_; }
 
+  // The number of live nodes in the graph, excluding the Source and Sink nodes.
+  int num_op_nodes() const {
+    DCHECK_GE(num_nodes_, 2);
+    return num_nodes_ - 2;
+  }
+
   // The number of live edges in the graph.
   //
   // Because edges can be removed from the graph, num_edges() is often
@@ -438,6 +444,9 @@ class Graph {
   // Access to the list of all nodes.  Example usage:
   //   for (Node* node : graph.nodes()) { ... }
   gtl::iterator_range<NodeIter> nodes() const;
+
+  // Access to the list of all nodes, excluding the Source and Sink nodes.
+  gtl::iterator_range<NodeIter> op_nodes() const;
 
   // Returns one more than the maximum id assigned to any node.
   int num_node_ids() const { return nodes_.size(); }
@@ -631,6 +640,30 @@ inline bool Edge::IsControlEdge() const {
   // Note that if either src_output_ or dst_input_ is kControlSlot,
   // so is the other one (AddEdge checks this).
   return src_output_ == Graph::kControlSlot;
+}
+
+inline gtl::iterator_range<NodeIter> Graph::nodes() const {
+  // Note that NodeId 0 is always valid since we don't let the source
+  // node be removed from the graph.
+  return gtl::make_range(NodeIter(this, 0), NodeIter(this, num_node_ids()));
+}
+
+inline gtl::iterator_range<NodeIter> Graph::op_nodes() const {
+  // Note that NodeId 0 is always valid since we don't let the source
+  // node be removed from the graph.
+  //
+  // The current implementation of Graph maintains the invariant that the
+  // first two nodes are the source and sink nodes, and all other nodes are op
+  // nodes. This method (op_nodes()) relies on this invariant.
+  NodeIter begin(this, 0);
+  NodeIter end(this, num_node_ids());
+  if (begin != end) {
+    ++begin;
+  }
+  if (begin != end) {
+    ++begin;
+  }
+  return gtl::make_range(begin, end);
 }
 
 }  // namespace tensorflow

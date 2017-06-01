@@ -120,7 +120,7 @@ class SparseTensorAccessingOp : public OpKernel {
       : OpKernel(context), sparse_tensors_map_(nullptr) {}
 
  protected:
-  ~SparseTensorAccessingOp() {
+  ~SparseTensorAccessingOp() override {
     if (sparse_tensors_map_) sparse_tensors_map_->Unref();
   }
 

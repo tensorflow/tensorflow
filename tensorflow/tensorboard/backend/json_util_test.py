@@ -17,13 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.platform import googletest
+import tensorflow as tf
+
+
 from tensorflow.tensorboard.backend import json_util
 
 _INFINITY = float('inf')
 
 
-class FloatWrapperTest(googletest.TestCase):
+class FloatWrapperTest(tf.test.TestCase):
 
   def _assertWrapsAs(self, to_wrap, expected):
     """Asserts that |to_wrap| becomes |expected| when wrapped."""
@@ -61,4 +63,4 @@ class FloatWrapperTest(googletest.TestCase):
 
 
 if __name__ == '__main__':
-  googletest.main()
+  tf.test.main()

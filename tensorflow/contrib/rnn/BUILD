@@ -83,6 +83,7 @@ cuda_py_tests(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["notsan"],  # http://b/62135981
     xla_enabled = True,
 )
 

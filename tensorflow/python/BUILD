@@ -26,6 +26,7 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_d
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
 
 py_library(
     name = "python",
@@ -156,6 +157,22 @@ tf_py_test(
 )
 
 cc_library(
+    name = "cost_analyzer_lib",
+    srcs = ["grappler/cost_analyzer.cc"],
+    hdrs = ["grappler/cost_analyzer.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/clusters:single_machine",
+        "//tensorflow/core/grappler/costs:analytical_cost_estimator",
+        "//tensorflow/core/grappler/costs:measuring_cost_estimator",
+        "//tensorflow/core/grappler/costs:op_performance_data_cc",
+        "//tensorflow/core/grappler/costs:utils",
+    ],
+)
+
+cc_library(
     name = "numpy_lib",
     srcs = ["lib/core/numpy.cc"],
     hdrs = ["lib/core/numpy.h"],
@@ -250,6 +267,7 @@ py_test(
     data = [":framework/test_file_system.so"],
     main = "framework/file_system_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":client_testlib",
         ":data_flow_ops",
@@ -661,6 +679,7 @@ py_test(
     srcs = ["framework/contrib_test.py"],
     main = "framework/contrib_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
@@ -772,6 +791,7 @@ py_test(
     srcs = ["framework/meta_graph_test.py"],
     main = "framework/meta_graph_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -934,6 +954,7 @@ py_test(
     srcs = ["framework/tensor_util_test.py"],
     main = "framework/tensor_util_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -951,6 +972,7 @@ py_test(
     srcs = ["framework/test_util_test.py"],
     main = "framework/test_util_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":control_flow_ops",
         ":errors",
@@ -1709,14 +1731,23 @@ py_library(
 py_library(
     name = "rnn_cell",
     srcs = [
+        "ops/rnn_cell.py",
         "ops/rnn_cell_impl.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":clip_ops",
         ":framework_for_generated_wrappers",
+        ":init_ops",
         ":layers_base",
+        ":math_ops",
+        ":nn_ops",
+        ":partitioned_variables",
+        ":random_ops",
         ":util",
+        ":variable_scope",
+        ":variables",
     ],
 )
 
@@ -2128,6 +2159,7 @@ cuda_py_test(
         ":test_ops",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2181,6 +2213,7 @@ cuda_py_test(
     ],
     data = ["//tensorflow/core:image_testdata"],
     shard_count = 5,
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2228,6 +2261,7 @@ cuda_py_test(
         ":nn_ops_gen",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2633,8 +2667,10 @@ tf_py_wrap_cc(
         "client/device_lib.i",
         "client/events_writer.i",
         "client/tf_session.i",
+        "client/tf_sessionrun_wrapper.i",
         "framework/cpp_shape_inference.i",
         "framework/python_op_gen.i",
+        "grappler/cost_analyzer.i",
         "grappler/tf_optimizer.i",
         "lib/core/py_func.i",
         "lib/core/strings.i",
@@ -2651,6 +2687,7 @@ tf_py_wrap_cc(
         "util/transform_graph.i",
     ],
     deps = [
+        ":cost_analyzer_lib",
         ":cpp_shape_inference",
         ":kernel_registry",
         ":numpy_lib",
@@ -2676,7 +2713,8 @@ tf_py_wrap_cc(
         "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
-         tf_additional_verbs_deps()),
+         tf_additional_verbs_deps() +
+         tf_additional_mpi_deps()),
 )
 
 py_library(
@@ -2854,6 +2892,7 @@ cuda_py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -2868,6 +2907,7 @@ tf_py_test(
         ":training",
         ":variables",
     ],
+    tags = ["no_windows"],
 )
 
 py_library(
@@ -2892,34 +2932,39 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-py_test(
-    name = "session_test",
-    size = "small",
-    srcs = ["client/session_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_gpu",
-        "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
-    ],
-    deps = [
-        ":array_ops",
-        ":client",
-        ":control_flow_ops",
-        ":data_flow_ops",
-        ":errors",
-        ":framework",
-        ":framework_for_generated_wrappers",
-        ":framework_test_lib",
-        ":math_ops",
-        ":platform_test",
-        ":state_ops",
-        ":training",
-        ":util",
-        ":variables",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
-    ],
-)
+# Disabled due to http://b/62145493
+# py_test(
+#     name = "session_test",
+#     size = "medium",  # http://62144199
+#     srcs = ["client/session_test.py"],
+#     srcs_version = "PY2AND3",
+#     tags = [
+#         "no_gpu",
+#         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
+#         "no_windows",
+#     ],
+#     deps = [
+#         ":array_ops",
+#         ":client",
+#         ":construction_fails_op",
+#         ":control_flow_ops",
+#         ":data_flow_ops",
+#         ":errors",
+#         ":framework",
+#         ":framework_for_generated_wrappers",
+#         ":framework_test_lib",
+#         ":math_ops",
+#         ":platform_test",
+#         ":state_ops",
+#         ":training",
+#         ":util",
+#         ":variables",
+#         "//third_party/py/numpy",
+#         "@six_archive//:six",
+#         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+#         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
+#     ],
+# )
 
 cuda_py_test(
     name = "timeline_test",
@@ -2956,6 +3001,7 @@ py_test(
     size = "small",
     srcs = ["lib/io/file_io_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":client_testlib",
         ":errors",
@@ -3105,6 +3151,7 @@ cuda_py_test(
         "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
     ],
+    tags = ["no_windows"],
 )
 
 py_test(
@@ -3113,6 +3160,7 @@ py_test(
     srcs = ["training/saver_large_variable_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
         "noasan",  # http://b/30379628
         "notsan",  # http://b/30379628
     ],
@@ -3168,6 +3216,7 @@ py_test(
     size = "small",
     srcs = ["training/supervisor_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -3190,6 +3239,7 @@ py_test(
     size = "small",
     srcs = ["training/basic_session_run_hooks_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":client",
         ":client_testlib",
@@ -3213,6 +3263,7 @@ py_test(
     size = "small",
     srcs = ["training/monitored_session_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":array_ops",
         ":client",
@@ -3464,6 +3515,7 @@ py_test(
     size = "small",
     srcs = ["ops/dequantize_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -3477,6 +3529,7 @@ py_test(
     size = "small",
     srcs = ["ops/quantized_conv_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -3643,6 +3696,48 @@ py_test(
         ":framework_for_generated_wrappers",
         ":math_ops",
         ":tf_optimizer",
+        "//tensorflow/core:protos_all_py",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
+    name = "layout_optimizer_test",
+    size = "medium",
+    srcs = [
+        "grappler/layout_optimizer_test.py",
+    ],
+    additional_deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":array_ops",
+        ":nn",
+        ":random_ops",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "cost_analyzer",
+    srcs = [
+        "grappler/cost_analyzer.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [":pywrap_tensorflow_internal"],
+)
+
+py_test(
+    name = "cost_analyzer_test",
+    size = "small",
+    srcs = ["grappler/cost_analyzer_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":client_testlib",
+        ":cost_analyzer",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
         "//tensorflow/core:protos_all_py",
         "//third_party/py/numpy",
     ],

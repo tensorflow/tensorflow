@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -67,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/inliner.h"
@@ -241,7 +243,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, HloDumper dump_hlo) {
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
   pipeline.AddPass<CpuInstructionFusion>();
   pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_config()->mutable_entry_computation_layout());
+      module->mutable_entry_computation_layout());
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
@@ -278,9 +280,11 @@ namespace {
 constexpr int64 kMemoryAlignment = 16;
 
 llvm::TargetOptions CompilerTargetOptions(
-    const HloModuleConfig& execution_options) {
+    const HloModuleConfig& module_config) {
   llvm::TargetOptions target_options;
-  llvm_ir::SetTargetOptions(execution_options, &target_options);
+  llvm_ir::SetTargetOptions(
+      /*fast_math_enabled=*/!module_config.fast_math_disabled(),
+      &target_options);
   return target_options;
 }
 
@@ -339,10 +343,13 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(module.get(),
                             MakeUnique<DependencyHloOrdering>(module.get()),
-                            [this](const LogicalBuffer& buffer) {
-                              return ShapeSizeBytes(buffer.shape());
-                            },
-                            kMemoryAlignment));
+                            BufferSizeBytesFunction(), kMemoryAlignment));
+
+    if (!flags->xla_cpu_dump_debug_json_to.empty()) {
+      HloProto proto = MakeHloProto(*module, *assignment);
+      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
+          proto, flags->xla_cpu_dump_debug_json_to, module->name()));
+    }
 
     // If we are using the parallel CPU backend, we need to create map from
     // HloInstruction to the corresponding generated function name.
@@ -358,7 +365,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         // Copy the constant out of the ProtocolBuffer so that we can give it a
         // higher alignment.
         const void* data = LiteralUtil::InternalData(instruction->literal());
-        int64 size = ShapeSizeBytes(instruction->shape());
+        int64 size = CpuExecutable::ShapeSizeBytes(instruction->shape());
         auto iter = aligned_constants.emplace(
             instruction, MakeUnique<unsigned char[]>(size));
         CHECK_EQ(iter.second, true);
@@ -423,10 +430,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // and reduced memory usage (as compared to using DependencyHloOrdering).
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
-        CreateMemoryMinimizingSequence(*module,
-                                       [this](const LogicalBuffer& buffer) {
-                                         return ShapeSizeBytes(buffer.shape());
-                                       }));
+        CreateMemoryMinimizingSequence(*module, BufferSizeBytesFunction()));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
@@ -435,10 +439,13 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         BufferAssigner::Run(
             module.get(),
             MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
-            [this](const LogicalBuffer& buffer) {
-              return ShapeSizeBytes(buffer.shape());
-            },
-            kMemoryAlignment));
+            BufferSizeBytesFunction(), kMemoryAlignment));
+
+    if (!flags->xla_cpu_dump_debug_json_to.empty()) {
+      HloProto proto = MakeHloProto(*module, *assignment);
+      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
+          proto, flags->xla_cpu_dump_debug_json_to, module->name()));
+    }
 
     // Each computation is a single function.  Emit all embedded computations
     // before the entry computation. The order of computations returned from
@@ -584,10 +591,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
 
     TF_ASSIGN_OR_RETURN(
         SequentialHloOrdering::HloModuleSequence module_sequence,
-        CreateMemoryMinimizingSequence(*module,
-                                       [this](const LogicalBuffer& buffer) {
-                                         return ShapeSizeBytes(buffer.shape());
-                                       }));
+        CreateMemoryMinimizingSequence(*module, BufferSizeBytesFunction()));
 
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
@@ -595,10 +599,14 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         std::unique_ptr<BufferAssignment> assignment,
         BufferAssigner::Run(
             module, MakeUnique<SequentialHloOrdering>(module, module_sequence),
-            [this](const LogicalBuffer& buffer) {
-              return ShapeSizeBytes(buffer.shape());
-            },
-            kMemoryAlignment));
+            BufferSizeBytesFunction(), kMemoryAlignment));
+
+    legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
+    if (!flags->xla_cpu_dump_debug_json_to.empty()) {
+      HloProto proto = MakeHloProto(*module, *assignment);
+      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
+          proto, flags->xla_cpu_dump_debug_json_to, module->name()));
+    }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
                          /*hlo_to_profile_idx=*/nullptr);
@@ -661,12 +669,8 @@ se::Platform::Id CpuCompiler::PlatformId() const {
   return se::host::kHostPlatformId;
 }
 
-int64 CpuCompiler::ShapeSizeBytes(const Shape& shape) const {
-  // On the cpu, opaques are pointers.
-  if (ShapeUtil::IsOpaque(shape)) {
-    return sizeof(void*);
-  }
-  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
+HloCostAnalysis::ShapeSizeFunction CpuCompiler::ShapeSizeBytesFunction() const {
+  return CpuExecutable::ShapeSizeBytes;
 }
 
 }  // namespace cpu

@@ -75,7 +75,7 @@ static void ExtractExtraProperties(
     std::vector<OpInfo::TensorProperties>* extra_inputs,
     protobuf::Map<string, AttrValue>* attr_map) {
   OpRegistry* op_registry = OpRegistry::Global();
-  const OpDef* op_def;
+  const OpDef* op_def = nullptr;
   auto s = op_registry->LookUpOpDef(node.op(), &op_def);
   if (!s.ok()) {
     op_def = nullptr;
@@ -108,27 +108,33 @@ static void ExtractExtraProperties(
       extra_inputs->push_back(input);
 
       // For filename input, the file size can also be useful.
-      if (op_def &&
+      if (op_def && i < op_def->input_arg_size() &&
           op_def->input_arg(i).name().find("filename") != std::string::npos) {
         Tensor tensor;
-        CHECK(tensor.FromProto(t));
+        if (!tensor.FromProto(t)) {
+          continue;
+        }
+        if (tensor.NumElements() != 1) {
+          continue;
+        }
         const string filename = tensor.scalar<string>()();
 
         Env* env = Env::Default();
         FileStatistics stat;
         Status s = env->Stat(filename, &stat);
-        if (s.ok()) {
-          AttrValue attr;
-          attr.set_i(stat.length);
-          string attr_key = strings::StrCat("input_", i, "_filesize");
-          (*attr_map)[attr_key] = attr;
+        if (!s.ok()) {
+          continue;
         }
+        AttrValue attr;
+        attr.set_i(stat.length);
+        string attr_key = strings::StrCat("input_", i, "_filesize");
+        (*attr_map)[attr_key] = attr;
       }
     }
 
     // When the input is a handle (e.g. look up table handle), the information
     // in the op itself is not sufficient to predict the op memory.
-    if (op_def &&
+    if (op_def && i < op_def->input_arg_size() &&
         op_def->input_arg(i).name().find("handle") != std::string::npos) {
       string new_key = strings::StrCat("parent_", i, "_op");
       AttrValue attr;
@@ -211,6 +217,72 @@ OpInfo BuildOpInfo(
   }
 
   return op_info;
+}
+
+string GetOpDescription(const OpInfo& op_info) {
+  string description = "[";
+  description += "Op=" + op_info.op() + ", ";
+  description += "input_shapes=[";
+  for (auto const& input : op_info.inputs()) {
+    description += PartialTensorShape::DebugString(input.shape());
+  }
+  description += "]";
+  return description;
+}
+
+OpPerformanceList CostGraphToOpPerformanceData(const CostGraphDef& cost_graph,
+                                               const GraphDef& graph) {
+  OpPerformanceList ret;
+  std::unordered_map<string, const CostGraphDef::Node*> name_to_cost;
+  std::unordered_map<string, const NodeDef*> name_to_node;
+  for (auto& node : cost_graph.node()) {
+    name_to_cost[node.name()] = &node;
+  }
+  for (auto& node : graph.node()) {
+    name_to_node[node.name()] = &node;
+  }
+
+  for (const auto& node : graph.node()) {
+    // Skip the nodes that are not in the cost graph: these are nodes that
+    // aren't run, because they aren't in the intersection of transitive
+    // fan-in of a fetch node and the transitive fan-out of an input, or nodes
+    // that were optimized away by the optimizer. Since they don't contribute
+    // to the execution time we simply discard them.
+    auto it = name_to_cost.find(node.name());
+    if (it == name_to_cost.end()) {
+      continue;
+    }
+    const CostGraphDef::Node* cost_node = it->second;
+
+    OpPerformance* perf = ret.add_op_performance();
+    perf->set_node(node.name());
+
+    std::vector<OpInfo::TensorProperties> inputs =
+        FindInputFeatures(node, name_to_cost, name_to_node);
+    (*perf->mutable_op()) =
+        BuildOpInfo(node, cost_node->device(), name_to_node, inputs);
+
+    perf->set_temporary_memory_size(cost_node->temporary_memory_size());
+    // Note that CostGraphDef::Node::compute_cost is microseconds, while
+    // OpPerformance.compute_cost is nanoseconds.
+    perf->set_compute_cost(cost_node->compute_cost() * 1000);
+    perf->set_compute_time(cost_node->compute_time() * 1000);
+    perf->set_memory_time(cost_node->memory_time() * 1000);
+
+    for (const auto& output_info : cost_node->output_info()) {
+      perf->mutable_op_memory()->add_output_memory(output_info.size());
+    }
+
+    perf->mutable_op_memory()->set_host_temp_memory(
+        cost_node->host_temp_memory_size());
+    perf->mutable_op_memory()->set_device_temp_memory(
+        cost_node->device_temp_memory_size());
+    perf->mutable_op_memory()->set_host_persistent_memory(
+        cost_node->host_persistent_memory_size());
+    perf->mutable_op_memory()->set_device_persistent_memory(
+        cost_node->device_persistent_memory_size());
+  }
+  return ret;
 }
 
 }  // end namespace grappler
