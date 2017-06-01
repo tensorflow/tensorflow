@@ -11,6 +11,7 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "py_test",
     "tf_custom_op_library",
     "tf_custom_op_py_library",
     "tf_gen_op_libs",
