@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_GRAPPLER_OPTIMIZERS_AUTO_PARALLEL_H_
 
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/framework/variable.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -44,6 +45,7 @@ class AutoParallel : public GraphOptimizer {
   std::set<string> apply_gradients_nodes_;
   std::set<string> replica_nodes_;
   std::set<string> shared_nodes_;
+  std::map<string, VariableDef> variables_;
   const GrapplerItem* item_;
   int num_replicas_;
   int num_gpus_;

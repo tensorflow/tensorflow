@@ -261,6 +261,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       if (!var.initializer_name().empty()) {
         new_item->init_ops.push_back(var.initializer_name());
       }
+      new_item->variables.push_back(var);
     }
   }
 

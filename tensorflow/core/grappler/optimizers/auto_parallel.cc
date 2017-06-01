@@ -97,6 +97,10 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
     VLOG(2) << "Variable: " << var->name();
   }
 
+  for (const auto& var : item.variables) {
+    variables_.insert(std::make_pair(var.variable_name(), var));
+  }
+
   const std::set<string> apply_gradients_ops = {"ApplyGradientDescent",
                                                 "ApplyProximalGradientDescent",
                                                 "ApplyAdadelta",
@@ -166,7 +170,17 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
   std::set<string> dont_replicate_nodes;
   for (const auto& variable : item.MainVariables()) {
     dont_replicate_nodes.insert(variable->name());
+    VariableDef var = variables_[strings::StrCat(variable->name(), ":0")];
+    if (!var.initializer_name().empty()) {
+      dont_replicate_nodes.insert(
+        var.initializer_name().substr(0, var.initializer_name().size() - 2));
+    }
+    if (!var.snapshot_name().empty()) {
+      dont_replicate_nodes.insert(
+        var.snapshot_name().substr(0, var.snapshot_name().size() - 2));
+    }
   }
+
   // Don't replicate all input nodes, except the dequeue node.
   for (const auto& input_node : input_nodes) {
     if (input_node->name() != dequeue_node->name()) {
