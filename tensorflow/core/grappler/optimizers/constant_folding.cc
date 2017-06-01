@@ -118,10 +118,10 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
     std::vector<OpInfo::TensorProperties> input =
         properties.GetInputProperties(node.name());
     CHECK_EQ(1, input.size());
-    const TensorShapeProto shape = input[0].shape();
 
+    const TensorShapeProto shape = input[0].shape();
     // Materialize the shapes using constants whenever possible.
-    TensorShape shp(shape);
+    PartialTensorShape shp(shape);
     if (shp.IsFullyDefined() || (!shp.unknown_rank() && op == "Rank")) {
       bool valid = true;
       Tensor value(type);

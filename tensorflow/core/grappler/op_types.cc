@@ -42,7 +42,8 @@ bool IsMerge(const NodeDef& node) {
 
 bool IsPlaceholder(const NodeDef& node) {
   const auto op = node.op();
-  return op == "Placeholder" || op == "PlaceholderV2";
+  return op == "Placeholder" || op == "PlaceholderV2" ||
+         op == "PlaceholderWithDefault";
 }
 
 bool IsTranspose(const NodeDef& node) {
