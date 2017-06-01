@@ -1,5 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -108,25 +110,21 @@ cc_test(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
-    defines = if_cuda(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":op_performance_data_cc",
-        "//third_party/eigen3",
-        "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
-    ] + if_cuda([
-        "//tensorflow/core:cuda",
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+        "//tensorflow/core/grappler/clusters:utils",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
