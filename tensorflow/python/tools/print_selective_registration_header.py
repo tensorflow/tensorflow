@@ -25,7 +25,9 @@ core/framework/selective_registration.h for more details.
 
 When compiling for Android:
   bazel build -c opt --copt="-DSELECTIVE_REGISTRATION" \
+    --copt="-DSUPPORT_SELECTIVE_REGISTRATION" \
     //tensorflow/contrib/android:libtensorflow_inference.so \
+    --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
     --config=android_arm
 """
 
