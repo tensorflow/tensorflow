@@ -318,7 +318,10 @@ py_test(
 cc_library(
     name = "python_op_gen",
     srcs = ["framework/python_op_gen.cc"],
-    hdrs = ["framework/python_op_gen.h"],
+    hdrs = [
+        "framework/python_op_gen.h",
+        "framework/python_op_gen_internal.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:framework",
