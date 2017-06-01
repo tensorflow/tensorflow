@@ -44,9 +44,43 @@
 * Support client-provided ClusterSpec's and propagate them to all workers to enable the creation of dynamic TensorFlow clusters.
 * TensorFlow C library now available for Windows.
 * We released a new open-source version of TensorBoard.
+* [`SavedModel CLI`](https://www.tensorflow.org/versions/master/programmers_guide/saved_model_cli) tool available to inspect and execute MetaGraph in SavedModel
+* Android releases of TensorFlow are now pushed to jcenter for easier
+  integration into apps. See
+  https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/android/README.md
+  for more details.
+* RNNCells' variable names have been renamed for consistency with Keras layers.
+  Specifically, the previous variable names "weights" and "biases" have
+  been changed to "kernel" and "bias", respectively.
+  This may cause backward incompatibility with regard to your old
+  checkpoints containing such RNN cells, in which case you can use the tool
+  [checkpoint_convert script](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/rnn/python/tools/checkpoint_convert.py)
+  to convert the variable names in your old checkpoints.
+* Many of the RNN functions and classes that were in the `tf.nn` namespace
+  before the 1.0 release and which were moved to `tf.contrib.rnn` have now
+  been moved back to the core namespace.  This includes
+  `RNNCell`, `LSTMCell`, `GRUCell`, and a number of other cells.  These
+  now reside in `tf.nn.rnn_cell` (with aliases in `tf.contrib.rnn` for backwards
+  compatibility).  The original `tf.nn.rnn` function is now `tf.nn.static_rnn`,
+  and the bidirectional static and state saving static rnn functions are also
+  now back in the `tf.nn` namespace.
+
+  Notable exceptions are the `EmbeddingWrapper`, `InputProjectionWrapper` and
+  `OutputProjectionWrapper`,  which will slowly be moved to deprecation
+  in `tf.contrib.rnn`.  These are inefficient wrappers that should often
+  be replaced by calling `embedding_lookup` or `layers.dense` as pre- or post-
+  processing of the rnn.  For RNN decoding, this functionality has been replaced
+  with an alternative API in `tf.contrib.seq2seq`.
+
+## Deprecations
+
+* TensorFlow 1.2 may be the last time we build with cuDNN 5.1. Starting with
+  TensorFlow 1.3, we will try to build all our prebuilt binaries with cuDNN 6.0.
+  While we will try to keep our source code compatible with cuDNN 5.1, it will
+  be best effort.
 
 ## Breaking Changes to the API
-* `org.tensorflow.contrib.android.TensorFlowInferenceInterface` now throws exceptions where possible and and has simplified method signatures.
+* `org.tensorflow.contrib.android.TensorFlowInferenceInterface` now throws exceptions where possible and has simplified method signatures.
 
 ## Changes to contrib APIs
 * Added `tf.contrib.util.create_example`.
@@ -98,7 +132,6 @@
 * Add `tf.summary.text` for outputting text to TensorBoard.
 * The "run" command of tfdbg's command-line interface now supports filtering of tensors by node name, op type and tensor dtype.
 * `tf.string_to_number` now supports int64 and float64 outputs.
-* `SavedModel CLI` tool available to inspect and execute MetaGraph in SavedModel
 
 ## Thanks to our Contributors
 

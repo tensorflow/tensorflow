@@ -183,12 +183,14 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/string_to_number_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/clip_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/tensor_array_ops_test.py"  # Needs portpicker.
+      # Matrix_set_diag failing on GPU on windows.
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg_ops_test.py"
       # misc
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/variable_scope_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/reshape_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/training/evaluation_test.py"
       "${tensorflow_source_dir}/tensorflow/tensorboard/backend/server_test.py"
-      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"  # Silently failing with GPU kernel disabled.
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/neon_depthwise_conv_op_test.py"  # Depends on gemmlowp -> pthread.
       # int32/int64 mixup
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/functional_ops_test.py"

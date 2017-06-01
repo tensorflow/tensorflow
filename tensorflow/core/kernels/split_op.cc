@@ -247,7 +247,6 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-
 template <typename T>
 class SplitOpSYCL : public SplitOpBase<SYCLDevice, T> {
  public:
@@ -312,8 +311,7 @@ class SplitOpSYCL : public SplitOpBase<SYCLDevice, T> {
     }
   }
 };
-
-#endif  // TENSORFLOW_USE_SYCL
+#endif // TENSORFLOW_USE_SYCL
 
 #define REGISTER_SPLIT(type)                             \
   REGISTER_KERNEL_BUILDER(Name("Split")                  \
@@ -351,7 +349,7 @@ TF_CALL_complex128(REGISTER_GPU);
                               .HostMemory("split_dim"),   \
                           SplitOpSYCL<type>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
 #undef REGISTER_SYCL
 
 #endif  // TENSORFLOW_USE_SYCL
