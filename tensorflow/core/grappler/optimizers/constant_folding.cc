@@ -176,7 +176,7 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
 
         // Turn the inputs into control dependencies.
         CHECK_EQ(1, node.input_size());
-        node.set_input(0, strings::StrCat("^", node.input(0)));
+        node.set_input(0, strings::StrCat("^", NodeName(node.input(0))));
       }
     }
   }
