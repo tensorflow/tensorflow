@@ -2976,6 +2976,30 @@ tf_cuda_library(
 # )
 
 py_test(
+    name = "session_clusterspec_prop_test",
+    size = "small",
+    srcs = ["client/session_clusterspec_prop_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_gpu",
+    ],
+    deps = [
+        ":array_ops",
+        ":client",
+        ":framework",
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":math_ops",
+        ":platform_test",
+        ":state_ops",
+        ":training",
+        ":util",
+        ":variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "session_list_devices_test",
     size = "small",
     srcs = ["client/session_list_devices_test.py"],
