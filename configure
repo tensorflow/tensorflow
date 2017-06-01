@@ -686,7 +686,7 @@ if [ "$TF_NEED_OPENCL" == "1" ]; then
 while true; do
   fromuser=""
   if [ -z "$HOST_CXX_COMPILER" ]; then
-    default_cxx_host_compiler=$(which clang++-3.6 || true)
+    default_cxx_host_compiler=$(which g++ || true)
     read -p "Please specify which C++ compiler should be used as the host C++ compiler. [Default is $default_cxx_host_compiler]: " HOST_CXX_COMPILER
     fromuser="1"
     if [ -z "$HOST_CXX_COMPILER" ]; then
@@ -710,7 +710,7 @@ done
 while true; do
   fromuser=""
   if [ -z "$HOST_C_COMPILER" ]; then
-    default_c_host_compiler=$(which clang-3.6 || true)
+    default_c_host_compiler=$(which gcc || true)
     read -p "Please specify which C compiler should be used as the host C compiler. [Default is $default_c_host_compiler]: " HOST_C_COMPILER
     fromuser="1"
     if [ -z "$HOST_C_COMPILER" ]; then

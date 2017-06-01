@@ -19,6 +19,9 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #endif
+#ifdef TENSORFLOW_USE_SYCL
+#include "tensorflow/core/common_runtime/sycl/sycl_util.h"
+#endif // TENSORFLOW_USE_SYCL
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -82,6 +85,22 @@ class CopyOp : public OpKernel {
         done_copy.WaitForNotification();
       } else {
         // The input tensor is on the host (CPU): deep-copy from CPU to CPU.
+        *copied_tensor = tensor::DeepCopy(src_tensor);
+      }
+#elif defined(TENSORFLOW_USE_SYCL)
+      Device* device = static_cast<Device*>(context->device());
+      // Determine if the input tensor is not on CPU (e.g., on GPU).
+      const bool off_host_input = device->device_type() == DEVICE_SYCL &&
+                            !context->input_alloc_attr(0).on_host();
+
+      if (off_host_input) {
+        auto size = src_tensor.NumElements() * sizeof(src_tensor.dtype());
+        auto dst_ptr = GetBase(copied_tensor);
+        auto src_ptr = GetBase(&src_tensor);
+        typedef decltype(src_tensor.dtype()) ttype;
+        context->eigen_sycl_device().memcpy(
+            dst_ptr, static_cast<const ttype*>(src_ptr), size);
+      } else {
         *copied_tensor = tensor::DeepCopy(src_tensor);
       }
 #else

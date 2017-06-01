@@ -29,6 +29,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:string_ops",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -93,6 +94,7 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:platform_benchmark",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -144,6 +146,7 @@ tf_py_test(
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -240,6 +243,7 @@ tf_py_test(
         "//tensorflow/python:nn_grad",
     ],
     data = ["//tensorflow/core:image_testdata"],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -794,6 +798,7 @@ tf_py_test(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:summary",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -872,6 +877,7 @@ tf_py_test(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -919,7 +925,10 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
-    tags = ["noasan"],
+    tags = [
+        "no_windows",
+        "noasan",
+    ],
 )
 
 cuda_py_test(
@@ -950,6 +959,7 @@ tf_py_test(
         "//tensorflow/python:platform",
     ],
     shard_count = 2,
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
@@ -1311,6 +1321,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -1474,6 +1485,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -1529,6 +1541,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:script_ops",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -1869,6 +1882,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:parsing_ops",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -1932,6 +1946,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:math_ops",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2091,6 +2106,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2106,6 +2122,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -2121,6 +2138,7 @@ tf_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2239,6 +2257,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 10,
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2278,6 +2297,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2589,6 +2609,7 @@ tf_py_test(
         "//tensorflow/python:sets",
         "//tensorflow/python:sparse_ops",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
