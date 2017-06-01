@@ -329,3 +329,5 @@ from tensorflow.contrib.learn.python.learn.estimators.run_config import Environm
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig
 from tensorflow.contrib.learn.python.learn.estimators.run_config import TaskType
 from tensorflow.contrib.learn.python.learn.estimators.svm import SVM
+from tensorflow.contrib.factorization.python.ops.kmeans import KMeansClustering
+from tensorflow.contrib.factorization.python.ops.gmm import GMM
