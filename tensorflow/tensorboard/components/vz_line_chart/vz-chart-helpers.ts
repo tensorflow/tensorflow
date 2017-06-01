@@ -77,6 +77,9 @@ export function multiscaleFormatter(digits: number): ((v: number) => string) {
  * sort the data.
  */
 export function computeDomain(values: number[], ignoreOutliers: boolean) {
+  // Don't include infinities and NaNs in the domain computation.
+  values = values.filter(z => isFinite(z));
+
   if (values.length === 0) {
     return [-0.1, 1.1];
   }

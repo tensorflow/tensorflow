@@ -96,9 +96,6 @@ describe('backend tests', () => {
       assertIsDatum(image);
       chai.assert.isNumber(image.width);
       chai.assert.isNumber(image.height);
-      const nonDemoQuery = 'index=0&tag=im1&run=run1';
-      const expectedUrl = demoRouter.individualImage(nonDemoQuery, 10.0);
-      chai.assert.equal(image.url, expectedUrl);
       done();
     });
   });
@@ -137,7 +134,7 @@ describe('backend tests', () => {
       chai.assert.deepEqual(x, scalar);
       next();
     });
-    backend.imageRuns().then((x) => {
+    backend.imageTags().then((x) => {
       chai.assert.deepEqual(x, image);
       next();
     });

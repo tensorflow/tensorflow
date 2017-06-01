@@ -189,17 +189,18 @@ class LinearClassifier(estimator.Estimator):
     Raises:
       ValueError: if n_classes < 2.
     """
+    if n_classes == 2:
+      head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
+          weight_feature_key=weight_feature_key)
+    else:
+      head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
+          n_classes, weight_feature_key=weight_feature_key)
     super(LinearClassifier, self).__init__(
         model_fn=_linear_model_fn,
         model_dir=model_dir,
         config=config,
         params={
-            # pylint: disable=protected-access
-            # TODO(xiejw): Switch to the classifier head.
-            'head': head_lib._regression_head_with_mean_squared_error_loss(
-                label_dimension=n_classes,
-                weight_feature_key=weight_feature_key),
-            # pylint: enable=protected-access
+            'head': head,
             'feature_columns': feature_columns,
             'optimizer': optimizer,
             'partitioner': partitioner,

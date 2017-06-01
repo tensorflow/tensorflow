@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/user_computation_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -1787,7 +1788,7 @@ TEST_F(ArrayElementwiseOpTest, R4PlusR1InDim1) {
   ComputeAndCompareR4<float>(&builder, *expected_4d, {}, error_spec_);
 }
 
-TEST_F(ArrayElementwiseOpTest, R4_32x64x2x2_Plus_R1_64) {
+TEST_F(ArrayElementwiseOpTest, R4_16x16x2x2_Plus_R1_16) {
   constexpr int d0 = 16;
   constexpr int d1 = 16;
   constexpr int d2 = 2;
@@ -1858,6 +1859,7 @@ INSTANTIATE_TEST_CASE_P(ArrayElementwiseOpTestParamCount,
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
+  xla::legacy_flags::AppendUserComputationFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

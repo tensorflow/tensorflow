@@ -131,8 +131,18 @@ def run_and_gather_logs(name, test_name, test_args,
     # Hopefully running in sandboxed mode
     test_executable = os.path.join(".", test_executable)
 
+  test_adjusted_name = name
+  gpu_config = gpu_info_lib.gather_gpu_devices()
+  if gpu_config:
+    gpu_name = gpu_config[0].model
+    gpu_short_name_match = re.search(r"Tesla [KP][4,8]0", gpu_name)
+    if gpu_short_name_match:
+      gpu_short_name = gpu_short_name_match.group(0)
+      test_adjusted_name = name + "|" + gpu_short_name.replace(" ", "_")
+
   temp_directory = tempfile.mkdtemp(prefix="run_and_gather_logs")
-  mangled_test_name = name.strip("/").replace("/", "_").replace(":", "_")
+  mangled_test_name = (test_adjusted_name.strip("/")
+                       .replace("|", "_").replace("/", "_").replace(":", "_"))
   test_file_prefix = os.path.join(temp_directory, mangled_test_name)
   test_file_prefix = "%s." % test_file_prefix
 
@@ -150,15 +160,6 @@ def run_and_gather_logs(name, test_name, test_args,
     log_files = gfile.Glob("{}*".format(test_file_prefix))
     if not log_files:
       raise MissingLogsError("No log files found at %s." % test_file_prefix)
-
-    test_adjusted_name = name
-    gpu_config = gpu_info_lib.gather_gpu_devices()
-    if gpu_config:
-      gpu_name = gpu_config[0].model
-      gpu_short_name_match = re.search(r"Tesla [KP][4,8]0", gpu_name)
-      if gpu_short_name_match:
-        gpu_short_name = gpu_short_name_match.group(0)
-        test_adjusted_name = name + "|" + gpu_short_name.replace(" ", "_")
 
     return (process_test_logs(
         test_adjusted_name,

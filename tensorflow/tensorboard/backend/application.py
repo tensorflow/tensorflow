@@ -23,7 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 import csv
-import imghdr
 import os
 import re
 import threading
@@ -60,8 +59,9 @@ DEFAULT_SIZE_GUIDANCE = {
 # Once everything has been migrated, we should be able to delete
 # /data/runs entirely.
 _MIGRATED_DATA_KEYS = frozenset((
-    'scalars',
     'histograms',
+    'images',
+    'scalars',
 ))
 
 DATA_PREFIX = '/data'
@@ -69,32 +69,17 @@ LOGDIR_ROUTE = '/logdir'
 RUNS_ROUTE = '/runs'
 PLUGIN_PREFIX = '/plugin'
 PLUGINS_LISTING_ROUTE = '/plugins_listing'
-IMAGES_ROUTE = '/' + event_accumulator.IMAGES
 AUDIO_ROUTE = '/' + event_accumulator.AUDIO
 COMPRESSED_HISTOGRAMS_ROUTE = '/' + event_accumulator.COMPRESSED_HISTOGRAMS
-INDIVIDUAL_IMAGE_ROUTE = '/individualImage'
 INDIVIDUAL_AUDIO_ROUTE = '/individualAudio'
 GRAPH_ROUTE = '/' + event_accumulator.GRAPH
 RUN_METADATA_ROUTE = '/' + event_accumulator.RUN_METADATA
 TAB_ROUTES = ['', '/events', '/images', '/audio', '/graphs', '/histograms']
 
-_IMGHDR_TO_MIMETYPE = {
-    'bmp': 'image/bmp',
-    'gif': 'image/gif',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png'
-}
-_DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
-
 # Slashes in a plugin name could throw the router for a loop. An empty
 # name would be confusing, too. To be safe, let's restrict the valid
 # names as follows.
 _VALID_PLUGIN_RE = re.compile(r'^[A-Za-z0-9_.-]+$')
-
-
-def _content_type_for_image(encoded_image_string):
-  image_type = imghdr.what(None, encoded_image_string)
-  return _IMGHDR_TO_MIMETYPE.get(image_type, _DEFAULT_IMAGE_MIMETYPE)
 
 
 class _OutputFormat(object):
@@ -182,12 +167,8 @@ class TensorBoardWSGIApp(object):
             self._serve_compressed_histograms,
         DATA_PREFIX + GRAPH_ROUTE:
             self._serve_graph,
-        DATA_PREFIX + IMAGES_ROUTE:
-            self._serve_images,
         DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE:
             self._serve_individual_audio,
-        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE:
-            self._serve_image,
         DATA_PREFIX + LOGDIR_ROUTE:
             self._serve_logdir,
         # TODO(chizeng): Delete this RPC once we have skylark rules that obviate
@@ -230,38 +211,13 @@ class TensorBoardWSGIApp(object):
 
   # We use underscore_names for consistency with inherited methods.
 
-  def _image_response_for_run(self, run_images, run, tag):
-    """Builds a JSON-serializable object with information about run_images.
-
-    Args:
-      run_images: A list of event_accumulator.ImageValueEvent objects.
-      run: The name of the run.
-      tag: The name of the tag the images all belong to.
-
-    Returns:
-      A list of dictionaries containing the wall time, step, URL, width, and
-      height for each image.
-    """
-    response = []
-    for index, run_image in enumerate(run_images):
-      response.append({
-          'wall_time': run_image.wall_time,
-          'step': run_image.step,
-          # We include the size so that the frontend can add that to the <img>
-          # tag so that the page layout doesn't change when the image loads.
-          'width': run_image.width,
-          'height': run_image.height,
-          'query': self._query_for_individual_image(run, tag, index)
-      })
-    return response
-
   def _audio_response_for_run(self, run_audio, run, tag):
     """Builds a JSON-serializable object with information about run_audio.
 
     Args:
       run_audio: A list of event_accumulator.AudioValueEvent objects.
       run: The name of the run.
-      tag: The name of the tag the images all belong to.
+      tag: The name of the tag the audio files all belong to.
 
     Returns:
       A list of dictionaries containing the wall time, step, URL, and
@@ -382,62 +338,6 @@ class TensorBoardWSGIApp(object):
           request, compressed_histograms, 'application/json')
 
   @wrappers.Request.application
-  def _serve_images(self, request):
-    """Given a tag and list of runs, serve a list of images.
-
-    Note that the images themselves are not sent; instead, we respond with URLs
-    to the images. The frontend should treat these URLs as opaque and should not
-    try to parse information about them or generate them itself, as the format
-    may change.
-
-    Args:
-      request: A werkzeug.wrappers.Request object.
-
-    Returns:
-      A werkzeug.Response application.
-    """
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-
-    images = self._multiplexer.Images(run, tag)
-    response = self._image_response_for_run(images, run, tag)
-    return http_util.Respond(request, response, 'application/json')
-
-  @wrappers.Request.application
-  def _serve_image(self, request):
-    """Serves an individual image."""
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-    index = int(request.args.get('index'))
-    image = self._multiplexer.Images(run, tag)[index]
-    encoded_image_string = image.encoded_image_string
-    content_type = _content_type_for_image(encoded_image_string)
-    return http_util.Respond(request, encoded_image_string, content_type)
-
-  def _query_for_individual_image(self, run, tag, index):
-    """Builds a URL for accessing the specified image.
-
-    This should be kept in sync with _serve_image. Note that the URL is *not*
-    guaranteed to always return the same image, since images may be unloaded
-    from the reservoir as new images come in.
-
-    Args:
-      run: The name of the run.
-      tag: The tag.
-      index: The index of the image. Negative values are OK.
-
-    Returns:
-      A string representation of a URL that will load the index-th
-      sampled image in the given run with the given tag.
-    """
-    query_string = urllib.parse.urlencode({
-        'run': run,
-        'tag': tag,
-        'index': index
-    })
-    return query_string
-
-  @wrappers.Request.application
   def _serve_audio(self, request):
     """Given a tag and list of runs, serve a list of audio.
 
@@ -518,8 +418,7 @@ class TensorBoardWSGIApp(object):
 
     Returns:
       A werkzeug Response with the following content:
-      {runName: {images: [tag1, tag2, tag3],
-                 audio: [tag4, tag5, tag6],
+      {runName: {audio: [tag4, tag5, tag6],
                  firstEventTimestamp: 123456.789}}
     """
     runs = self._multiplexer.Runs()

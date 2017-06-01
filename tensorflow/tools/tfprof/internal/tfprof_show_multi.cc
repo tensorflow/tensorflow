@@ -29,7 +29,7 @@ namespace tfprof {
 
 const TFMultiGraphNodeProto& TFMultiShow::Show(const Options& opts) {
   if (opts.output_type == kOutput[0]) {
-    Timeline timeline(opts.output_options.at(kTimelineOpts[0]));
+    Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
   } else if (opts.output_type == kOutput[2]) {
     const ShowMultiNode* root = ShowInternal(opts, nullptr);
@@ -99,7 +99,7 @@ bool TFMultiShow::ShouldTrim(ShowMultiNode* node,
 }
 
 bool TFMultiShow::ReAccount(ShowMultiNode* node, const Options& opts) {
-  return node->ReInit(opts.account_type_regexes);
+  return node->ReInit(opts.step, opts.account_type_regexes);
 }
 
 string TFMultiShow::FormatLegend(const Options& opts) {

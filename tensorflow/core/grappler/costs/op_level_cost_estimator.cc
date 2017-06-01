@@ -30,6 +30,7 @@ constexpr char kIdentity[] = "Identity";
 constexpr char kNoOp[] = "NoOp";
 constexpr char kReshape[] = "Reshape";
 constexpr char kRecv[] = "_Recv";
+constexpr char kBatchMatMul[] = "BatchMatMul";
 
 OpLevelCostEstimator::OpLevelCostEstimator() {
   // Syntactic sugar to build and return a lambda that takes an OpInfo and
@@ -51,7 +52,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kReshape, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)}};
+      {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)}};
 }
 
 Costs OpLevelCostEstimator::PredictCosts(const OpInfo& op_features) const {
@@ -388,6 +390,112 @@ int64 OpLevelCostEstimator::CountMatMulOperations(
   return ops;
 }
 
+int64 OpLevelCostEstimator::CountBatchMatMulOperations(
+    const OpInfo& op_features, bool* found_unknown_shapes) const {
+  if (op_features.op() != kBatchMatMul) {
+    LOG(ERROR) << "Invalid Operation: " << op_features.op();
+    *found_unknown_shapes = true;
+    return 0;
+  }
+  if (op_features.inputs_size() != 2) {
+    LOG(ERROR) << "Expected 2 inputs but got " << op_features.inputs_size();
+    *found_unknown_shapes = true;
+    return 0;
+  }
+
+  double ops = 0;
+  auto& a_input = op_features.inputs(0);
+  auto& b_input = op_features.inputs(1);
+
+  // BatchMatMul requires inputs of at least matrix shape (rank 2).
+  // The two most minor dimensions of each input are matrices that
+  // need to be multiplied together. The other dimensions determine
+  // the number of such MatMuls.  For example, if the BatchMatMul has
+  // inputs of shape:
+  //   a_input_shape = [2, 3, 4, 5]
+  //   b_input_shape = [2, 3, 5, 6]
+  // then there are 2*3 = 6 MatMuls of dimensions m = 4, k = 5, n = 6
+  // in this BatchMatMul.
+  const int matrix_rank = 2;
+
+  bool a_input_shape_unknown = false;
+  bool b_input_shape_unknown = false;
+
+  TensorShapeProto a_input_shape = MaybeGetMinimumShape(
+      a_input.shape(), std::max(matrix_rank, a_input.shape().dim_size()),
+      &a_input_shape_unknown);
+  TensorShapeProto b_input_shape = MaybeGetMinimumShape(
+      b_input.shape(), std::max(matrix_rank, b_input.shape().dim_size()),
+      &b_input_shape_unknown);
+
+  *found_unknown_shapes = a_input_shape_unknown || b_input_shape_unknown ||
+                          (a_input.shape().dim_size() < matrix_rank) ||
+                          (b_input.shape().dim_size() < matrix_rank);
+
+  // Compute the number of matmuls as the max indicated at each dimension
+  // by either input. Note that the shapes do not have to have
+  // the same rank due to incompleteness.
+  TensorShapeProto* bigger_rank_shape = &a_input_shape;
+  TensorShapeProto* smaller_rank_shape = &b_input_shape;
+  if (b_input_shape.dim_size() > a_input_shape.dim_size()) {
+    bigger_rank_shape = &b_input_shape;
+    smaller_rank_shape = &a_input_shape;
+  }
+  int num_matmuls = 1;
+  for (int b_i = 0,
+           s_i = smaller_rank_shape->dim_size() - bigger_rank_shape->dim_size();
+       b_i < bigger_rank_shape->dim_size() - matrix_rank; ++b_i, ++s_i) {
+    int b_dim = bigger_rank_shape->dim(b_i).size();
+    int s_dim = 1;
+    if (s_i >= 0) {
+      s_dim = smaller_rank_shape->dim(s_i).size();
+    }
+    num_matmuls *= std::max(b_dim, s_dim);
+  }
+
+  // Build the MatMul. Note that values are ignored here since we are just
+  // counting ops (e.g. only shapes matter).
+  OpInfo matmul_op_features;
+  matmul_op_features.set_op("MatMul");
+
+  AttrValue transpose_a;
+  transpose_a.set_b(false);
+  if (op_features.attr().find("adj_x") != op_features.attr().end()) {
+    transpose_a.set_b(op_features.attr().at("adj_x").b());
+  }
+  (*matmul_op_features.mutable_attr())["transpose_a"] = transpose_a;
+
+  AttrValue transpose_b;
+  transpose_b.set_b(false);
+  if (op_features.attr().find("adj_y") != op_features.attr().end()) {
+    transpose_b.set_b(op_features.attr().at("adj_y").b());
+  }
+  (*matmul_op_features.mutable_attr())["transpose_b"] = transpose_b;
+
+  OpInfo::TensorProperties* a_matrix = matmul_op_features.add_inputs();
+  a_matrix->set_dtype(a_input.dtype());
+  TensorShapeProto* a_matrix_shape = a_matrix->mutable_shape();
+  for (int i = a_input_shape.dim_size() - matrix_rank;
+       i < a_input_shape.dim_size(); ++i) {
+    *(a_matrix_shape->add_dim()) = a_input_shape.dim(i);
+  }
+
+  OpInfo::TensorProperties* b_matrix = matmul_op_features.add_inputs();
+  b_matrix->set_dtype(b_input.dtype());
+  TensorShapeProto* b_matrix_shape = b_matrix->mutable_shape();
+  for (int i = b_input_shape.dim_size() - matrix_rank;
+       i < b_input_shape.dim_size(); ++i) {
+    *(b_matrix_shape->add_dim()) = b_input_shape.dim(i);
+  }
+
+  for (int i = 0; i < num_matmuls; ++i) {
+    bool matmul_unknown_shapes = false;
+    ops += CountMatMulOperations(matmul_op_features, &matmul_unknown_shapes);
+    CHECK_EQ(false, matmul_unknown_shapes);
+  }
+  return ops;
+}
+
 // TODO(cliffy): Dedup this method and CountConv2DBackPropFilterOperations.
 int64 OpLevelCostEstimator::CountConv2DBackPropInputOperations(
     const OpInfo& op_features, ConvolutionDimensions* returned_conv_dims,
@@ -557,6 +665,16 @@ Costs OpLevelCostEstimator::PredictMatMul(const OpInfo& op_features) const {
 Costs OpLevelCostEstimator::PredictNoOp(const OpInfo& op_features) const {
   VLOG(1) << "Op:" << op_features.op() << " Execution Time 0 (ns)";
   return Costs::ZeroCosts();
+}
+
+Costs OpLevelCostEstimator::PredictBatchMatMul(
+    const OpInfo& op_features) const {
+  bool found_unknown_shapes = false;
+  Costs costs = PredictOpCountBasedCost(
+      CountBatchMatMulOperations(op_features, &found_unknown_shapes),
+      op_features);
+  costs.inaccurate = found_unknown_shapes;
+  return costs;
 }
 
 }  // end namespace grappler

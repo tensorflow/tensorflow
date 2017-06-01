@@ -253,8 +253,8 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   return Status::OK();
 }
 
-bool GraphProperties::HasInputProperties(const string& name) const {
-  return input_properties_.find(name) != input_properties_.end();
+bool GraphProperties::HasOutputProperties(const string& name) const {
+  return output_properties_.find(name) != output_properties_.end();
 }
 
 std::vector<OpInfo::TensorProperties> GraphProperties::GetInputProperties(

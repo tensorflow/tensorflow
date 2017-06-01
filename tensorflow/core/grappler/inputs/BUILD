@@ -64,8 +64,6 @@ cc_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
         "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/kernels:aggregate_ops",
-        "//tensorflow/core/kernels:array",
     ],
 )

@@ -33,6 +33,7 @@ static const char* const kOptions[] = {
     "-min_params",
     "-min_float_ops",
     "-min_occurrence",
+    "-step",
     "-order_by",
     "-account_type_regexes",
     "-start_name_regexes",
@@ -81,12 +82,13 @@ struct Options {
 
   virtual ~Options() {}
   Options()
-      : Options(0, 0, 0, 0, 0, 0, "", {}, {}, {}, {}, {}, false, {}, "", {}) {}
+      : Options(0, 0, 0, 0, 0, 0, 0, "", {}, {}, {}, {}, {}, false, {}, "",
+                {}) {}
 
   Options(int max_depth, tensorflow::int64 min_bytes,
           tensorflow::int64 min_micros, tensorflow::int64 min_params,
           tensorflow::int64 min_float_ops, tensorflow::int64 min_occurrence,
-          const string& order_by,
+          tensorflow::int64 step, const string& order_by,
           const std::vector<string>& account_type_regexes,
           const std::vector<string>& start_name_regexes,
           const std::vector<string>& trim_name_regexes,
@@ -101,6 +103,7 @@ struct Options {
         min_params(min_params),
         min_float_ops(min_float_ops),
         min_occurrence(min_occurrence),
+        step(step),
         order_by(order_by),
         account_type_regexes(account_type_regexes),
         start_name_regexes(start_name_regexes),
@@ -120,6 +123,7 @@ struct Options {
   tensorflow::int64 min_params;
   tensorflow::int64 min_float_ops;
   tensorflow::int64 min_occurrence;
+  tensorflow::int64 step;
   string order_by;
 
   std::vector<string> account_type_regexes;

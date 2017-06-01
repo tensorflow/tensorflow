@@ -3889,7 +3889,7 @@ op {
     default_value {
       b: false
     }
-    description: "Scalar. If set to true, during CTC\ncalculation items have longer input sequences than output sequences\nare ignored by returning zero-gradient for those items."
+    description: "Scalar. If set to true, during CTC\ncalculation, items that have longer output sequences than input sequences\nare skipped: they don\'t contribute to the loss term and have zero-gradient."
   }
   summary: "Calculates the CTC Loss (log probability) for each batch entry.  Also calculates"
   description: "the gradient.  This class performs the softmax operation for you, so inputs\nshould be e.g. linear projections of outputs by an LSTM."
@@ -3985,11 +3985,13 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
   summary: "Computes the Cholesky decomposition of one or more square matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix Cholesky\ndecomposition above. The output is a tensor of the same shape as the input\ncontaining the Cholesky decompositions for all input submatrices `[..., :, :]`."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices.\n\nThe input has to be symmetric and positive definite. Only the lower-triangular\npart of the input will be used for this operation. The upper-triangular part\nwill not be read.\n\nThe output is a tensor of the same shape as the input\ncontaining the Cholesky decompositions for all input submatrices `[..., :, :]`.\n\n**Note**: The gradient computation on GPU is faster for large matrices but\nnot for large batch dimensions when the submatrices are small. In this\ncase it might be faster to use the CPU."
 }
 op {
   name: "CholeskyGrad"
@@ -7511,8 +7513,15 @@ op {
       i: 8
     }
   }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   summary: "Fake-quantize the \'inputs\' tensor, type float to \'outputs\' tensor of same type."
-  description: "Attributes [min; max] define the clamping range for the \'inputs\' data.  Op\ndivides this range into 255 steps (total of 256 values), then replaces each\n\'inputs\' value with the closest of the quantized step values.\n\'num_bits\' is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nQuantization is called fake since the output is still in floating point."
+  description: "Attributes `[min; max]` define the clamping range for the `inputs` data.\n`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`\nwhen `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and\nthen de-quantized and output as floats in `[min; max]` interval.\n`num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nQuantization is called fake since the output is still in floating point."
 }
 op {
   name: "FakeQuantWithMinMaxArgsGradient"
@@ -7552,6 +7561,13 @@ op {
       i: 8
     }
   }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   summary: "Compute gradients for a FakeQuantWithMinMaxArgs operation."
 }
 op {
@@ -7579,8 +7595,15 @@ op {
       i: 8
     }
   }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   summary: "Fake-quantize the \'inputs\' tensor of type float via global float scalars `min`"
-  description: "and `max` to \'outputs\' tensor of same shape as `inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data.  Op divides this range\ninto 255 steps (total of 256 values), then replaces each \'inputs\' value with the\nclosest of the quantized step values.\n\'num_bits\' is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
+  description: "and `max` to \'outputs\' tensor of same shape as `inputs`.\n\n`[min; max]` define the clamping range for the `inputs` data.\n`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`\nwhen `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and\nthen de-quantized and output as floats in `[min; max]` interval.\n`num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nThis operation has a gradient and thus allows for training `min` and `max`\nvalues."
 }
 op {
   name: "FakeQuantWithMinMaxVarsGradient"
@@ -7625,6 +7648,14 @@ op {
     }
     description: "The bitwidth of the quantization; between 2 and 8, inclusive."
   }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Whether to quantize into 2^num_bits - 1 distinct values."
+  }
   summary: "Compute gradients for a FakeQuantWithMinMaxVars operation."
 }
 op {
@@ -7652,8 +7683,15 @@ op {
       i: 8
     }
   }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   summary: "Fake-quantize the \'inputs\' tensor of type float and one of the shapes: `[d]`,"
-  description: "`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`\nto \'outputs\' tensor of same shape as `inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data in the corresponding\ndepth channel.  Op divides this range into 255 steps (total of 256 values), then\nreplaces each \'inputs\' value with the closest of the quantized step values.\n\'num_bits\' is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
+  description: "`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`\nto \'outputs\' tensor of same shape as `inputs`.\n\n`[min; max]` define the clamping range for the `inputs` data.\n`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`\nwhen `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and\nthen de-quantized and output as floats in `[min; max]` interval.\n`num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nThis operation has a gradient and thus allows for training `min` and `max`\nvalues."
 }
 op {
   name: "FakeQuantWithMinMaxVarsPerChannelGradient"
@@ -7697,6 +7735,14 @@ op {
       i: 8
     }
     description: "The bitwidth of the quantization; between 2 and 8, inclusive."
+  }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Whether to quantize into 2^num_bits - 1 distinct values."
   }
   summary: "Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation."
 }
@@ -11222,6 +11268,8 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -23779,7 +23827,7 @@ op {
     }
   }
   summary: "Multiply matrix \"a\" by matrix \"b\"."
-  description: "The inputs must be two-dimensional matrices and the inner dimension of \"a\" must\nmatch the outer dimension of \"b\". This op is optimized for the case where at\nleast one of \"a\" or \"b\" is sparse. The breakeven for using this versus a dense\nmatrix multiply on one platform was 30% zero values in the sparse matrix."
+  description: "The inputs must be two-dimensional matrices and the inner dimension of \"a\" must\nmatch the outer dimension of \"b\". This op is optimized for the case where at\nleast one of \"a\" or \"b\" is sparse. The breakeven for using this versus a dense\nmatrix multiply on one platform was 30% zero values in the sparse matrix.\n\nThe gradient computation of this operation will only take advantage of sparsity\nin the input gradient when that gradient comes from a Relu."
 }
 op {
   name: "SparseReduceSum"
@@ -24770,7 +24818,7 @@ op {
   name: "Split"
   input_arg {
     name: "split_dim"
-    description: "0-D.  The dimension along which to split.  Must be in the range\n`[0, rank(value))`."
+    description: "0-D.  The dimension along which to split.  Must be in the range\n`[-rank(value), rank(value))`."
     type: DT_INT32
   }
   input_arg {
@@ -24811,7 +24859,7 @@ op {
   }
   input_arg {
     name: "split_dim"
-    description: "0-D.  The dimension along which to split.  Must be in the range\n`[0, rank(value))`."
+    description: "0-D.  The dimension along which to split.  Must be in the range\n`[-rank(value), rank(value))`."
     type: DT_INT32
   }
   output_arg {

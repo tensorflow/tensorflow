@@ -524,7 +524,7 @@ namespace {
 template <typename Device, typename T>
 class SliceHelper {
  public:
-  SliceHelper(OpKernelContext* ctx)
+  explicit SliceHelper(OpKernelContext* ctx)
       : ctx_(ctx), device_(ctx_->eigen_device<Device>()) {}
 
   ~SliceHelper() {
