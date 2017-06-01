@@ -92,11 +92,11 @@ message TransferToClientRequest {
 }
 
 message TransferToClientResponse {
-  Literal literal = 1;
+  LiteralProto literal = 1;
 }
 
 message TransferToServerRequest {
-  Literal literal = 1;
+  LiteralProto literal = 1;
   DeviceHandle device_handle = 2;
 }
 
@@ -105,7 +105,7 @@ message TransferToServerResponse {
 }
 
 message TransferToInfeedRequest {
-  Literal literal = 1;
+  LiteralProto literal = 1;
   int64 replica_id = 2;
   DeviceHandle device_handle = 3;
 }
@@ -123,7 +123,7 @@ message TransferFromOutfeedRequest {
 }
 
 message TransferFromOutfeedResponse {
-  Literal literal = 1;
+  LiteralProto literal = 1;
 }
 
 message ResetDeviceRequest {
