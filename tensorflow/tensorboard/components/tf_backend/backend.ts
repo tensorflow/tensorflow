@@ -170,8 +170,9 @@ export class Backend {
   /**
    * Return a promise showing the Run-to-Tag mapping for audio data.
    */
-  public audioRuns(): Promise<RunToTag> {
-    return this.runs().then((x) => _.mapValues(x, 'audio'));
+  public audioTags(): Promise<RunToTag> {
+    return this.requestManager.request(
+        this.router.pluginRoute('audio', '/tags'));
   }
 
   /**
@@ -296,7 +297,7 @@ export class Backend {
    * Return a promise containing AudioDatums for given run and tag.
    */
   public audio(tag: string, run: string): Promise<Array<AudioDatum>> {
-    const url = this.router.audio(tag, run);
+    const url = (this.router.pluginRunTagRoute('audio', '/audio')(tag, run));
     let p: Promise<AudioMetadata[]>;
     p = this.requestManager.request(url);
     return p.then(map(this.createAudio.bind(this)));
@@ -356,11 +357,33 @@ export class Backend {
   }
 
   private createAudio(x: AudioMetadata): Audio&Datum {
+    const pluginRoute = this.router.pluginRoute('audio', '/individualAudio');
+
+    let query = x.query;
+    if (pluginRoute.indexOf('?') > -1) {
+      // The route already has GET parameters. Append our parameters to them.
+      query = '&' + query;
+    } else {
+      // The route lacks GET parameters. We append them.
+      query = '?' + query;
+    }
+
+    if (this.router.isDemoMode()) {
+      query = demoify(query);
+    }
+
+    let individualAudioUrl = pluginRoute + query;
+    // Include wall_time just to disambiguate the URL and force the browser
+    // to reload the audio when the URL changes. The backend doesn't care
+    // about the value.
+    individualAudioUrl +=
+        this.router.isDemoMode() ? '.wav' : '&ts=' + x.wall_time;
+
     return {
       content_type: x.content_type,
       wall_time: timeToDate(x.wall_time),
       step: x.step,
-      url: this.router.individualAudio(x.query),
+      url: individualAudioUrl,
     };
   }
 }

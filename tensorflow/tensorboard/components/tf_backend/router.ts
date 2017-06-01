@@ -22,8 +22,6 @@ export interface Router {
   runs: () => string;
   isDemoMode: () => boolean;
   compressedHistograms: RunTagUrlFn;
-  audio: RunTagUrlFn;
-  individualAudio: (query: string) => string;
   graph:
       (run: string, limit_attr_size?: number,
        large_attrs_key?: string) => string;
@@ -57,13 +55,6 @@ export function router(dataDir = 'data', demoMode = false): Router {
       return url;
     };
   }
-  function individualAudioUrl(query: string) {
-    var url = dataDir + '/' + clean('individualAudio?' + query);
-    if (demoMode) {
-      url += '.wav';
-    }
-    return url;
-  }
   function graphUrl(
       run: string, limit_attr_size?: number, large_attrs_key?: string) {
     let query_params = [['run', clean(run)]];
@@ -96,10 +87,8 @@ export function router(dataDir = 'data', demoMode = false): Router {
     logdir: () => dataDir + '/logdir',
     runs: () => dataDir + '/runs' + (demoMode ? '.json' : ''),
     isDemoMode: () => demoMode,
-    individualAudio: individualAudioUrl,
     graph: graphUrl,
     compressedHistograms: standardRoute('compressedHistograms'),
-    audio: standardRoute('audio'),
     runMetadata: standardRoute('run_metadata', '.pbtxt'),
     healthPills: () => dataDir + '/plugin/debugger/health_pills',
     textRuns: () => dataDir + '/plugin/text/runs' + (demoMode ? '.json' : ''),

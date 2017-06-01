@@ -30,7 +30,6 @@ import time
 
 import six
 from six import StringIO
-from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves.urllib import parse as urlparse
 import tensorflow as tf
@@ -59,6 +58,7 @@ DEFAULT_SIZE_GUIDANCE = {
 # Once everything has been migrated, we should be able to delete
 # /data/runs entirely.
 _MIGRATED_DATA_KEYS = frozenset((
+    'audio',
     'histograms',
     'images',
     'scalars',
@@ -69,9 +69,7 @@ LOGDIR_ROUTE = '/logdir'
 RUNS_ROUTE = '/runs'
 PLUGIN_PREFIX = '/plugin'
 PLUGINS_LISTING_ROUTE = '/plugins_listing'
-AUDIO_ROUTE = '/' + event_accumulator.AUDIO
 COMPRESSED_HISTOGRAMS_ROUTE = '/' + event_accumulator.COMPRESSED_HISTOGRAMS
-INDIVIDUAL_AUDIO_ROUTE = '/individualAudio'
 GRAPH_ROUTE = '/' + event_accumulator.GRAPH
 RUN_METADATA_ROUTE = '/' + event_accumulator.RUN_METADATA
 TAB_ROUTES = ['', '/events', '/images', '/audio', '/graphs', '/histograms']
@@ -161,14 +159,10 @@ class TensorBoardWSGIApp(object):
       reload_multiplexer(self._multiplexer, path_to_run)
 
     self.data_applications = {
-        DATA_PREFIX + AUDIO_ROUTE:
-            self._serve_audio,
         DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
             self._serve_compressed_histograms,
         DATA_PREFIX + GRAPH_ROUTE:
             self._serve_graph,
-        DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE:
-            self._serve_individual_audio,
         DATA_PREFIX + LOGDIR_ROUTE:
             self._serve_logdir,
         # TODO(chizeng): Delete this RPC once we have skylark rules that obviate
@@ -208,30 +202,6 @@ class TensorBoardWSGIApp(object):
                            (plugin.plugin_name, route))
         path = DATA_PREFIX + PLUGIN_PREFIX + '/' + plugin.plugin_name + route
         self.data_applications[path] = app
-
-  # We use underscore_names for consistency with inherited methods.
-
-  def _audio_response_for_run(self, run_audio, run, tag):
-    """Builds a JSON-serializable object with information about run_audio.
-
-    Args:
-      run_audio: A list of event_accumulator.AudioValueEvent objects.
-      run: The name of the run.
-      tag: The name of the tag the audio files all belong to.
-
-    Returns:
-      A list of dictionaries containing the wall time, step, URL, and
-      content_type for each audio clip.
-    """
-    response = []
-    for index, run_audio_clip in enumerate(run_audio):
-      response.append({
-          'wall_time': run_audio_clip.wall_time,
-          'step': run_audio_clip.step,
-          'content_type': run_audio_clip.content_type,
-          'query': self._query_for_individual_audio(run, tag, index)
-      })
-    return response
 
   def _path_is_safe(self, path):
     """Check path is safe (stays within current directory).
@@ -338,61 +308,6 @@ class TensorBoardWSGIApp(object):
           request, compressed_histograms, 'application/json')
 
   @wrappers.Request.application
-  def _serve_audio(self, request):
-    """Given a tag and list of runs, serve a list of audio.
-
-    Note that the audio clips themselves are not sent; instead, we respond with
-    URLs to the audio. The frontend should treat these URLs as opaque and should
-    not try to parse information about them or generate them itself, as the
-    format may change.
-
-    Args:
-      request: A werkzeug.wrappers.Request object.
-
-    Returns:
-      A werkzeug.Response application.
-    """
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-
-    audio_list = self._multiplexer.Audio(run, tag)
-    response = self._audio_response_for_run(audio_list, run, tag)
-    return http_util.Respond(request, response, 'application/json')
-
-  @wrappers.Request.application
-  def _serve_individual_audio(self, request):
-    """Serves an individual audio clip."""
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-    index = int(request.args.get('index'))
-    audio = self._multiplexer.Audio(run, tag)[index]
-    return http_util.Respond(
-        request, audio.encoded_audio_string, audio.content_type)
-
-  def _query_for_individual_audio(self, run, tag, index):
-    """Builds a URL for accessing the specified audio.
-
-    This should be kept in sync with _serve_individual_audio. Note that the URL
-    is *not* guaranteed to always return the same audio, since audio may be
-    unloaded from the reservoir as new audio comes in.
-
-    Args:
-      run: The name of the run.
-      tag: The tag.
-      index: The index of the audio. Negative values are OK.
-
-    Returns:
-      A string representation of a URL that will load the index-th
-      sampled audio in the given run with the given tag.
-    """
-    query_string = urllib.parse.urlencode({
-        'run': run,
-        'tag': tag,
-        'index': index
-    })
-    return query_string
-
-  @wrappers.Request.application
   def _serve_plugins_listing(self, request):
     """Serves an object mapping plugin name to whether it is enabled.
 
@@ -418,8 +333,7 @@ class TensorBoardWSGIApp(object):
 
     Returns:
       A werkzeug Response with the following content:
-      {runName: {audio: [tag4, tag5, tag6],
-                 firstEventTimestamp: 123456.789}}
+      {runName: {firstEventTimestamp: 123456.789}}
     """
     runs = self._multiplexer.Runs()
     for run_name, run_data in runs.items():
