@@ -181,6 +181,28 @@ cc_library(
     ],
 )
 
+cc_test(
+    name = "virtual_scheduler_test",
+    srcs = ["virtual_scheduler_test.cc"],
+    deps = [
+        ":graph_properties",
+        ":utils",
+        ":virtual_placer",
+        ":virtual_scheduler",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:utils",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/costs:cost_estimator",
+    ],
+)
+
 cc_library(
     name = "measuring_cost_estimator",
     srcs = ["measuring_cost_estimator.cc"],
