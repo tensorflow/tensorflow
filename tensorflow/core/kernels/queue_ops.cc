@@ -425,12 +425,6 @@ class QueueSizeOp : public QueueOpKernel {
 REGISTER_KERNEL_BUILDER(Name("QueueSize").Device(DEVICE_CPU), QueueSizeOp);
 REGISTER_KERNEL_BUILDER(Name("QueueSizeV2").Device(DEVICE_CPU), QueueSizeOp);
 
-// Defines a QueueIsClosedOp, which returns true if a given queue is closed
-// and false if it is open.
-//
-// The op has one input, which is the handle of the appropriate Queue;
-// and one output, which is a scalar boolean value of showing whether
-// the queue is closed.
 class QueueIsClosedOp : public QueueOpKernel {
  public:
   explicit QueueIsClosedOp(OpKernelConstruction* context)
