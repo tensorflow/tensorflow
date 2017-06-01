@@ -228,13 +228,13 @@ class Literal {
   int u8s_size() const { return u8s().size(); }
   const std::vector<uint8>& u8s() const { return u8s_; }
   void set_u8s(const std::vector<uint8>& value) { u8s_ = value; }
-  void set_u8s(absl::string_view value) {
+  void set_u8s(tensorflow::StringPiece value) {
     u8s_ = std::vector<uint8>(value.size());
     u8s_.clear();
     append_u8s(value);
   }
 
-  void append_u8s(absl::string_view value) {
+  void append_u8s(tensorflow::StringPiece value) {
     u8s_.insert(u8s_.end(), value.begin(), value.end());
   }
 
