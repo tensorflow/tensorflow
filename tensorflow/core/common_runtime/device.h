@@ -60,7 +60,9 @@ class Device : public DeviceBase {
   const string& name() const { return device_attributes_.name(); }
 
   // Parsed name of this device
-  const DeviceNameUtils::ParsedName parsed_name() const { return parsed_name_; }
+  const DeviceNameUtils::ParsedName& parsed_name() const {
+    return parsed_name_;
+  }
 
   // Describes what kind of device this is.  This is intended to be
   // human-readable and not computer-parsed, except that two devices

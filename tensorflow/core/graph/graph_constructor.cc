@@ -612,6 +612,9 @@ Status GraphConstructor::Convert() {
 
   std::vector<InputInfo> inputs;
   int processed = 0;
+
+  std::vector<bool> input_already_exists;
+
   // Process the NodeDefs in topological order.
   // (InitFromEdges() sets this up by filling in ready_ with nodes that have no
   // inputs, pending_counts_ with the number of inputs for each node and
@@ -631,8 +634,8 @@ Status GraphConstructor::Convert() {
     // importing refers to a preexisting node in g_ (i.e. input[i] existed prior
     // to importing gdef_).  Conversely, input_already_exists[i] is false iff
     // the input refers to a node in gdef_.
-    std::vector<bool> input_already_exists(original_node_def.input_size(),
-                                           false);
+    input_already_exists.clear();
+    input_already_exists.resize(original_node_def.input_size(), false);
 
     if (opts_.importing) {
       // TODO(ashankar): The line below means an additional copy of the NodeDef,
