@@ -62,8 +62,6 @@ cc_binary(
     ],
 )
 
-# //tensorflow:__subpackages__ isn't working on contrib/text for some reason,
-# otherwise this should be default visibility.
 py_library(
     name = "util_py",
     srcs = glob(["**/*.py"]),
@@ -73,7 +71,6 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
     ],
-    visibility = ["//visibility:public"], 
 )
 
 filegroup(
