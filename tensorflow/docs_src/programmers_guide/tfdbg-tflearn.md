@@ -106,7 +106,7 @@ hooks = [tf_debug.DumpingDebugHook("/shared/storage/location/tfdbg_dumps_1")]
 ```
 
 Then this `hook` can be used in the same way as the `LocalCLIDebugHook` examples
-above. As the training and/or evalution of `Estimator` or `Experiment`
+above. As the training and/or evaluation of `Estimator` or `Experiment`
 happens, directories of the naming pattern
 `/shared/storage/location/tfdbg_dumps_1/run_<epoch_timestamp_microsec>_<uuid>`
 will appear. Each directory corresponds to a `Session.run()` call that underlies

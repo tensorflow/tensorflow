@@ -54,7 +54,7 @@ the following:
 ### Create a `tf.train.ClusterSpec` to describe the cluster
 
 The cluster specification dictionary maps job names to lists of network
-adresses. Pass this dictionary to
+addresses. Pass this dictionary to
 the @{tf.train.ClusterSpec}
 constructor.  For example:
 
