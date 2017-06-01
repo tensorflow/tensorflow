@@ -336,6 +336,12 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add,
 
 Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy,
                                               HloInstruction* operand) {
+  // If a copy feeds a copy, make it a single copy.
+  if (operand->opcode() == HloOpcode::kCopy) {
+    return ReplaceWithNewInstruction(
+        copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy,
+                                          operand->operands()[0]));
+  }
   // All copies can be eliminated (assuming layout constraints are satisified).
   ReplaceInstructionIfSameShape(copy, operand);
   return Status::OK();

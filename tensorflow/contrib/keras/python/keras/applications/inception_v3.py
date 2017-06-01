@@ -29,8 +29,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
-
 from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras import layers
 from tensorflow.contrib.keras.python.keras.applications.imagenet_utils import _obtain_input_shape
@@ -47,7 +45,6 @@ from tensorflow.contrib.keras.python.keras.layers import Input
 from tensorflow.contrib.keras.python.keras.layers import MaxPooling2D
 from tensorflow.contrib.keras.python.keras.models import Model
 from tensorflow.contrib.keras.python.keras.utils.data_utils import get_file
-from tensorflow.contrib.keras.python.keras.utils.layer_utils import convert_all_kernels_in_model
 
 
 WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.5/inception_v3_weights_tf_dim_ordering_tf_kernels.h5'
@@ -371,16 +368,6 @@ def InceptionV3(include_top=True,
 
   # load weights
   if weights == 'imagenet':
-    if K.image_data_format() == 'channels_first':
-      if K.backend() == 'tensorflow':
-        warnings.warn('You are using the TensorFlow backend, yet you '
-                      'are using the Theano '
-                      'image data format convention '
-                      '(`image_data_format="channels_first"`). '
-                      'For best performance, set '
-                      '`image_data_format="channels_last"` in '
-                      'your Keras config '
-                      'at ~/.keras/keras.json.')
     if include_top:
       weights_path = get_file(
           'inception_v3_weights_tf_dim_ordering_tf_kernels.h5',
@@ -394,8 +381,6 @@ def InceptionV3(include_top=True,
           cache_subdir='models',
           md5_hash='bcbd6486424b2319ff4ef7d526e38f63')
     model.load_weights(weights_path)
-    if K.backend() == 'theano':
-      convert_all_kernels_in_model(model)
   return model
 
 

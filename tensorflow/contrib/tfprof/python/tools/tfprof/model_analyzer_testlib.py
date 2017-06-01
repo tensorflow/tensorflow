@@ -65,3 +65,33 @@ def BuildFullModel():
   loss = nn_ops.l2_loss(math_ops.reduce_mean(target - out))
   sgd_op = gradient_descent.GradientDescentOptimizer(1e-2)
   return sgd_op.minimize(loss)
+
+
+def BuildSplitableModel():
+  """Build a small model that can be run partially in each step."""
+  image = array_ops.zeros([2, 6, 6, 3])
+
+  kernel1 = variable_scope.get_variable(
+      'DW', [3, 3, 3, 6],
+      dtypes.float32,
+      initializer=init_ops.random_normal_initializer(stddev=0.001))
+  r1 = nn_ops.conv2d(image, kernel1, [1, 2, 2, 1], padding='SAME')
+
+  kernel2 = variable_scope.get_variable(
+      'DW2', [2, 3, 3, 6],
+      dtypes.float32,
+      initializer=init_ops.random_normal_initializer(stddev=0.001))
+  r2 = nn_ops.conv2d(image, kernel2, [1, 2, 2, 1], padding='SAME')
+
+  r3 = r1 + r2
+  return r1, r2, r3
+
+
+def SearchTFProfNode(node, name):
+  """Search a node in the tree."""
+  if node.name == name:
+    return node
+  for c in node.children:
+    r = SearchTFProfNode(c, name)
+    if r: return r
+  return None

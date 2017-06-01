@@ -825,7 +825,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       licenses = ["notice"],  # MIT
       sha256_urls = {
           "633f2861a9a862b9cd7967e841e14dd3527912f209d6563595774fa31e3d84cb": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/LICENSES",
+              "http://mirror.bazel.build/raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/LICENSE",
               "https://raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/LICENSE",
           ],
           "f138fce57f673ca8a633f4aee5ae5b6fcb6ad0de59069a42a74e996fd04d8fcc": [

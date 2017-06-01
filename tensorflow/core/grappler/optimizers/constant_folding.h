@@ -42,7 +42,7 @@ class ConstantFolding : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override;
 
  private:
-  bool IsConst(const NodeDef& node) const;
+  Status MaterializeShapes(const GrapplerItem& item);
 
   bool IsFoldable(const NodeDef& node) const;
 
@@ -63,8 +63,14 @@ class ConstantFolding : public GraphOptimizer {
   GraphDef graph_;
   std::unique_ptr<NodeMap> node_map_;
   std::set<string> nodes_to_preserve_;
-  std::set<string> ops_to_preserve_ = {"Save",    "SaveV2",    "SaveSlices",
-                                       "Restore", "RestoreV2", "RestoreSlice"};
+  std::set<string> ops_to_preserve_ = {"Save",
+                                       "SaveV2",
+                                       "SaveSlices",
+                                       "Restore",
+                                       "RestoreV2",
+                                       "RestoreSlice",
+                                       "PlaceholderWithDefault",
+                                       "Const"};
 };
 
 }  // end namespace grappler

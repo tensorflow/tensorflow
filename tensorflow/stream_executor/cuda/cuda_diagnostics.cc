@@ -369,7 +369,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
     LOG(INFO) << "driver version file contents: \"\"\"" << contents.begin()
               << "\"\"\"";
     fclose(driver_version_file);
-    return FindKernelModuleVersion(string{contents.begin()});
+    return FindKernelModuleVersion(contents.begin());
   }
 
   auto status =

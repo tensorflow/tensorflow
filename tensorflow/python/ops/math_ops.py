@@ -208,11 +208,6 @@ argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace("dimensions",
 def abs(x, name=None):
   r"""Computes the absolute value of a tensor.
 
-  Given a tensor of real numbers `x`, this operation returns a tensor
-  containing the absolute value of each element in `x`. For example, if x is
-  an input element and y is an output element, this operation computes
-  \\(y = |x|\\).
-
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
   `float32` or `float64` that is the absolute value of each element in `x`. All
   elements in `x` must be complex numbers of the form \\(a + bj\\). The
@@ -505,7 +500,7 @@ def scalar_mul(scalar, x):
 def pow(x, y, name=None):
   r"""Computes the power of one value to another.
 
-  Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for
+  Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
   corresponding elements in `x` and `y`. For example:
 
   ```

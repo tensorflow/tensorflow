@@ -456,9 +456,10 @@ REGISTER_OP("Split")
     .Attr("T: type")
     .SetShapeFn([](InferenceContext* c) {
       DimensionHandle split_dimension;
-      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(0, &split_dimension));
-      int num_split = c->num_outputs();
       ShapeHandle input = c->input(1);
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInputWithNegativeIndexing(
+          0, c->Rank(input), &split_dimension));
+      int num_split = c->num_outputs();
       ShapeHandle out;
       if (!c->ValueKnown(split_dimension)) {
         if (c->RankKnown(input)) {
@@ -484,7 +485,7 @@ REGISTER_OP("Split")
 Splits a tensor into `num_split` tensors along one dimension.
 
 split_dim: 0-D.  The dimension along which to split.  Must be in the range
-  `[0, rank(value))`.
+  `[-rank(value), rank(value))`.
 num_split: The number of ways to split.  Must evenly divide
   `value.shape[split_dim]`.
 value: The tensor to split.
@@ -503,9 +504,10 @@ REGISTER_OP("SplitV")
     .Attr("Tlen: {int32, int64} = DT_INT64")
     .SetShapeFn([](InferenceContext* c) {
       DimensionHandle split_dimension;
-      TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &split_dimension));
-      int32 num_outputs = c->num_outputs();
       ShapeHandle input = c->input(0);
+      TF_RETURN_IF_ERROR(c->MakeDimForScalarInputWithNegativeIndexing(
+          2, c->Rank(input), &split_dimension));
+      int32 num_outputs = c->num_outputs();
       int32 rank = c->Rank(input);
       ShapeHandle output_shape;
       const Tensor* size_splits = c->input_tensor(1);
@@ -594,7 +596,7 @@ size_splits: list containing the sizes of each output tensor along the split
              dimension. Must sum to the dimension of value along split_dim.
              Can contain one -1 indicating that dimension is to be inferred.
 split_dim: 0-D.  The dimension along which to split.  Must be in the range
-  `[0, rank(value))`.
+  `[-rank(value), rank(value))`.
 output: Tensors whose shape matches that of `value`
   except along `split_dim`, where their sizes are
   `size_splits[i]`.
@@ -4916,16 +4918,18 @@ REGISTER_OP("FakeQuantWithMinMaxArgs")
     .Attr("min: float = -6.0")
     .Attr("max: float = 6.0")
     .Attr("num_bits: int = 8")
+    .Attr("narrow_range: bool = false")
     .Input("inputs: float")
     .Output("outputs: float")
     .SetShapeFn(shape_inference::UnchangedShape)
     .Doc(R"doc(
 Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
 
-Attributes [min; max] define the clamping range for the 'inputs' data.  Op
-divides this range into 255 steps (total of 256 values), then replaces each
-'inputs' value with the closest of the quantized step values.
-'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
+Attributes `[min; max]` define the clamping range for the `inputs` data.
+`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
+when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
+then de-quantized and output as floats in `[min; max]` interval.
+`num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.
 
 Quantization is called fake since the output is still in floating point.
 )doc");
@@ -4934,6 +4938,7 @@ REGISTER_OP("FakeQuantWithMinMaxArgsGradient")
     .Attr("min: float = -6.0")
     .Attr("max: float = 6.0")
     .Attr("num_bits: int = 8")
+    .Attr("narrow_range: bool = false")
     .Input("gradients: float")
     .Input("inputs: float")
     .Output("backprops: float")
@@ -4949,6 +4954,7 @@ backprops: Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
 
 REGISTER_OP("FakeQuantWithMinMaxVars")
     .Attr("num_bits: int = 8")
+    .Attr("narrow_range: bool = false")
     .Input("inputs: float")
     .Input("min: float")
     .Input("max: float")
@@ -4964,16 +4970,19 @@ REGISTER_OP("FakeQuantWithMinMaxVars")
 Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
 and `max` to 'outputs' tensor of same shape as `inputs`.
 
-[min; max] is the clamping range for the 'inputs' data.  Op divides this range
-into 255 steps (total of 256 values), then replaces each 'inputs' value with the
-closest of the quantized step values.
-'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
+`[min; max]` define the clamping range for the `inputs` data.
+`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
+when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
+then de-quantized and output as floats in `[min; max]` interval.
+`num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.
 
-This operation has a gradient and thus allows for training `min` and `max` values.
+This operation has a gradient and thus allows for training `min` and `max`
+values.
 )doc");
 
 REGISTER_OP("FakeQuantWithMinMaxVarsGradient")
     .Attr("num_bits: int = 8")
+    .Attr("narrow_range: bool = false")
     .Input("gradients: float")
     .Input("inputs: float")
     .Input("min: float")
@@ -5003,6 +5012,7 @@ gradients: Backpropagated gradients above the FakeQuantWithMinMaxVars operation.
 inputs: Values passed as inputs to the FakeQuantWithMinMaxVars operation.
 min, max: Quantization interval, scalar floats.
 num_bits: The bitwidth of the quantization; between 2 and 8, inclusive.
+narrow_range: Whether to quantize into 2^num_bits - 1 distinct values.
 backprops_wrt_input: Backpropagated gradients w.r.t. inputs:
   `gradients * (inputs >= min && inputs <= max)`.
 backprop_wrt_min: Backpropagated gradients w.r.t. min parameter:
@@ -5013,6 +5023,7 @@ backprop_wrt_max: Backpropagated gradients w.r.t. max parameter:
 
 REGISTER_OP("FakeQuantWithMinMaxVarsPerChannel")
     .Attr("num_bits: int = 8")
+    .Attr("narrow_range: bool = false")
     .Input("inputs: float")
     .Input("min: float")
     .Input("max: float")
@@ -5036,16 +5047,19 @@ Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
 `[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
 to 'outputs' tensor of same shape as `inputs`.
 
-[min; max] is the clamping range for the 'inputs' data in the corresponding
-depth channel.  Op divides this range into 255 steps (total of 256 values), then
-replaces each 'inputs' value with the closest of the quantized step values.
-'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
+`[min; max]` define the clamping range for the `inputs` data.
+`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
+when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
+then de-quantized and output as floats in `[min; max]` interval.
+`num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.
 
-This operation has a gradient and thus allows for training `min` and `max` values.
+This operation has a gradient and thus allows for training `min` and `max`
+values.
 )doc");
 
 REGISTER_OP("FakeQuantWithMinMaxVarsPerChannelGradient")
     .Attr("num_bits: int = 8")
+    .Attr("narrow_range: bool = false")
     .Input("gradients: float")
     .Input("inputs: float")
     .Input("min: float")
@@ -5080,6 +5094,7 @@ inputs: Values passed as inputs to the FakeQuantWithMinMaxVars operation, shape
   same as `gradients`.
 min, max: Quantization interval, floats of shape `[d]`.
 num_bits: The bitwidth of the quantization; between 2 and 8, inclusive.
+narrow_range: Whether to quantize into 2^num_bits - 1 distinct values.
 backprops_wrt_input: Backpropagated gradients w.r.t. inputs, shape same as
   `inputs`:
     `gradients * (inputs >= min && inputs <= max)`.

@@ -184,7 +184,7 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
         ++control_edge_count;
       }
     }
-    if (node.device() != "") {
+    if (!node.device().empty()) {
       ++device_counts[node.device()];
     }
     if ((node.op() == "Const") || (node.op() == "Variable") ||

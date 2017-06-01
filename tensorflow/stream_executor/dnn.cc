@@ -23,17 +23,17 @@ namespace gputools {
 namespace dnn {
 
 bool DnnSupport::GetConvolveAlgorithms(
-    std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
   return false;
 }
 

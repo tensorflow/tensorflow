@@ -76,6 +76,9 @@ class ProjectiveGenerator {
         return bilinear_interpolation(coords[0], input_y, input_x, coords[3],
                                       fill_value);
     }
+    // Unreachable; ImageProjectiveTransform only uses INTERPOLATION_NEAREST
+    // or INTERPOLATION_BILINEAR.
+    return T(0);
   }
 
  private:

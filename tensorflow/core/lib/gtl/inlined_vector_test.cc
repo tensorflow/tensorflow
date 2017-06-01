@@ -65,7 +65,7 @@ class RefCounted {
 
   ~RefCounted() {
     Unref();
-    count_ = NULL;
+    count_ = nullptr;
   }
 
   friend void swap(RefCounted& a, RefCounted& b) {
@@ -81,7 +81,7 @@ class RefCounted {
   }
 
   void Ref() const {
-    CHECK(count_ != NULL);
+    CHECK(count_ != nullptr);
     ++(*count_);
     VLOG(5) << "[Ref: refcount " << *count_ << " on count @" << count_ << "]";
   }

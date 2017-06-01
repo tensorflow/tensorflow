@@ -147,8 +147,6 @@ cc_library(
         "concat_lib_cpu.h",
     ],
     deps = [
-        ":eigen_helpers",
-        ":ops_util_hdrs",
         "//third_party/eigen3",
     ],
 )
@@ -247,7 +245,6 @@ cc_library(
     name = "ops_util_hdrs",
     hdrs = ["ops_util.h"],
     deps = [
-        ":eigen_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -324,7 +321,6 @@ cc_library(
     hdrs = ["priority_queue.h"],
     deps = [
         ":queue_base",
-        ":queue_op",
         ":typed_queue",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -379,8 +375,6 @@ cc_library(
         "split_lib.h",
     ],
     deps = [
-        ":eigen_helpers",
-        ":ops_util_hdrs",
         "//third_party/eigen3",
     ],
 )
@@ -3599,6 +3593,7 @@ tf_kernel_library(
     name = "multinomial_op",
     prefix = "multinomial_op",
     deps = [
+        ":random_op",
         ":random_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -5011,7 +5006,6 @@ cc_library(
         ":remote_fused_graph_execute_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:remote_fused_graph_ops",
-        "//tensorflow/core",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ],
     alwayslink = 1,

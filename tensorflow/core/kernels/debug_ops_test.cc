@@ -97,7 +97,7 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
     DIR* dir = opendir(dump_roots[i].c_str());
     struct dirent* ent;
     int dump_files_found = 0;
-    while ((ent = readdir(dir)) != NULL) {
+    while ((ent = readdir(dir)) != nullptr) {
       if (strcmp(ent->d_name, ".") && strcmp(ent->d_name, "..")) {
         dump_files_found++;
 

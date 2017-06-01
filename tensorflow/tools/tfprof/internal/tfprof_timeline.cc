@@ -114,34 +114,42 @@ string ChromeTraceFormatter::Format() {
   return trace_str;
 }
 
-void MemoryTracker::TrackNode(GraphNode* node) {
+void MemoryTracker::TrackNode(int64 step, GraphNode* node) {
+  if (!node->Trackable(step)) {
+    return;
+  }
   Device& dev = devices_[node->node->canonical_device()];
-  int64 end_micros =
-      node->node->all_start_micros() + node->node->latest_end_rel_micros();
-  if (node->node->accelerator_persistent_bytes() != 0) {
+  int64 end_micros = node->node->all_start_micros(step) +
+                     node->node->latest_end_rel_micros(step);
+  if (node->node->accelerator_persistent_bytes(step) != 0) {
     string tensor_name = strings::StrCat(node->name(), ":", -1);
-    dev.earliest_ref[tensor_name] = node->node->all_start_micros();
-    dev.tensor_size[tensor_name] = node->node->accelerator_persistent_bytes();
+    dev.earliest_ref[tensor_name] = node->node->all_start_micros(step);
+    dev.tensor_size[tensor_name] =
+        node->node->accelerator_persistent_bytes(step);
     // TODO(xpan): Need latest_ref?
   }
-  if (node->node->accelerator_temp_bytes()) {
+  if (node->node->accelerator_temp_bytes(step)) {
     string tensor_name = strings::StrCat(node->name(), ":", -2);
-    dev.earliest_ref[tensor_name] = node->node->all_start_micros();
+    dev.earliest_ref[tensor_name] = node->node->all_start_micros(step);
     dev.latest_ref[tensor_name] = end_micros;
-    dev.tensor_size[tensor_name] = node->node->accelerator_temp_bytes();
+    dev.tensor_size[tensor_name] = node->node->accelerator_temp_bytes(step);
   }
-  if (node->node->allocator_bytes_in_use() > 0) {
-    dev.allocator_stats[end_micros] = node->node->allocator_bytes_in_use();
+  if (node->node->allocator_bytes_in_use(step) > 0) {
+    dev.allocator_stats[end_micros] = node->node->allocator_bytes_in_use(step);
   }
 }
 
-void MemoryTracker::TrackNodeConnection(GraphNode* node, GraphNode* src) {
+void MemoryTracker::TrackNodeConnection(int64 step, GraphNode* node,
+                                        GraphNode* src) {
+  if (!node->Trackable(step) || !src->Trackable(step)) {
+    return;
+  }
   const auto& output_idx = node->node->output_idx().find(src->name());
   if (output_idx == node->node->output_idx().end()) {
     return;
   }
-  const auto& output = src->node->output_bytes().find(output_idx->second);
-  if (output == src->node->output_bytes().end()) {
+  const auto& output = src->node->output_bytes(step).find(output_idx->second);
+  if (output == src->node->output_bytes(step).end()) {
     return;
   }
   int64 output_bytes = output->second.first;
@@ -155,14 +163,14 @@ void MemoryTracker::TrackNodeConnection(GraphNode* node, GraphNode* src) {
   }
 
   src_dev.tensor_size[tensor_name] = output_bytes;
-  src_dev.earliest_ref[tensor_name] = src->node->all_start_micros();
+  src_dev.earliest_ref[tensor_name] = src->node->all_start_micros(step);
 
-  int64 src_end_micros =
-      src->node->all_start_micros() + src->node->latest_end_rel_micros();
+  int64 src_end_micros = src->node->all_start_micros(step) +
+                         src->node->latest_end_rel_micros(step);
 
   if (src->node->canonical_device() != node->node->canonical_device()) {
     int64 transfer_micros =
-        (src_end_micros + node->node->all_start_micros()) / 2;
+        (src_end_micros + node->node->all_start_micros(step)) / 2;
     src_dev.latest_ref[tensor_name] =
         std::max(src_dev.latest_ref[tensor_name], transfer_micros);
 
@@ -171,18 +179,19 @@ void MemoryTracker::TrackNodeConnection(GraphNode* node, GraphNode* src) {
         strings::StrCat(tensor_name, node->node->canonical_device());
     dest_dev.tensor_size[dest_tensor_name] = output_bytes;
     dest_dev.earliest_ref[dest_tensor_name] = transfer_micros;
-    dest_dev.latest_ref[dest_tensor_name] = std::max(
-        dest_dev.latest_ref[dest_tensor_name],
-        node->node->all_start_micros() + node->node->latest_end_rel_micros());
+    dest_dev.latest_ref[dest_tensor_name] =
+        std::max(dest_dev.latest_ref[dest_tensor_name],
+                 node->node->all_start_micros(step) +
+                     node->node->latest_end_rel_micros(step));
   } else {
-    src_dev.latest_ref[tensor_name] = std::max(
-        src_dev.latest_ref[tensor_name],
-        node->node->all_start_micros() + node->node->latest_end_rel_micros());
+    src_dev.latest_ref[tensor_name] =
+        std::max(src_dev.latest_ref[tensor_name],
+                 node->node->all_start_micros(step) +
+                     node->node->latest_end_rel_micros(step));
   }
 }
 
-void Timeline::GenerateGraphTimeline(const GraphNode* gnode,
-                                     const MemoryTracker& memory_tracker) {
+void Timeline::GenerateGraphTimeline(const GraphNode* gnode) {
   AddGraphNode(gnode);
   AllocateLanes();
   fprintf(stdout, "generating trace file.\n");
@@ -215,7 +224,7 @@ void Timeline::GenerateGraphTimeline(const GraphNode* gnode,
       }
     }
   }
-  for (const auto& dev : memory_tracker.devices()) {
+  for (const auto& dev : mem_tracker_.devices()) {
     int64 pid = AllocatePID();
     chrome_formatter_.EmitPID(GetMemoryLaneName(dev.first), pid);
     const MemoryTracker::Device& device = dev.second;
@@ -268,12 +277,12 @@ std::vector<TimeNode*> Timeline::AddGraphNode(const GraphNode* gnode) {
     std::vector<TimeNode*> inputs = AddGraphNode(schild);
     shown_cinputs.insert(shown_cinputs.end(), inputs.begin(), inputs.end());
   }
-  if (!gnode->node->step_stats()) {
+  if (!gnode->node->trackable(step_)) {
     return shown_cinputs;
   }
 
   const TFGraphNode* node = gnode->node;
-  for (const auto& kernel_execs : node->op_execs()) {
+  for (const auto& kernel_execs : node->op_execs(step_)) {
     const string& device = kernel_execs.first;
     const std::vector<std::pair<int64, int64>>& execs = kernel_execs.second;
 

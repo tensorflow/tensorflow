@@ -95,17 +95,13 @@ class Executable {
 
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
-  // given ExecutionProfile if non-null. The given execute_func should be a
-  // function which calls the desired ExecuteOnStream overload with the supplied
-  // arguments. The ExecuteOnStream overloads return different types so this
-  // method is templated on return-type of the execute function.
-  template <typename ReturnT>
-  ReturnT ExecuteOnStreamWrapper(
+  // given ExecutionProfile if non-null.  The ExecuteOnStream overloads have
+  // different argument types and return types, so this method is templated on
+  // argument type and return type of the execute function.
+  template <typename ReturnT, typename ArgT>
+  StatusOr<ReturnT> ExecuteOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
-      std::function<ReturnT(Executable* executable,
-                            const ServiceExecutableRunOptions* run_options,
-                            HloExecutionProfile* hlo_execution_profile)>
-          execute_func);
+      const ArgT& arguments);
 
   // Returns the ExecutionProfile from executing on the device. This includes
   // the number of cycles taken for the computation or the compilation time.
@@ -180,13 +176,10 @@ class Executable {
   int64 execution_count_ = 0;
 };
 
-template <typename ReturnT>
-ReturnT Executable::ExecuteOnStreamWrapper(
+template <typename ReturnT, typename ArgT>
+StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
     const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
-    std::function<ReturnT(Executable* executable,
-                          const ServiceExecutableRunOptions* run_options,
-                          HloExecutionProfile* hlo_execution_profile)>
-        execute_func) {
+    const ArgT& arguments) {
   perftools::gputools::Stream* stream = run_options->stream();
   std::unique_ptr<perftools::gputools::Timer> timer;
   if (profile != nullptr) {
@@ -203,7 +196,7 @@ ReturnT Executable::ExecuteOnStreamWrapper(
       flags->xla_hlo_profile && hlo_profiling_enabled() ? &hlo_execution_profile
                                                         : nullptr;
 
-  auto return_value = execute_func(this, run_options, profile_ptr);
+  auto return_value = ExecuteOnStream(run_options, arguments, profile_ptr);
 
   if (profile != nullptr) {
     VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
