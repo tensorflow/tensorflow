@@ -78,7 +78,7 @@ class QueueInterface : public ResourceBase {
                      DoneCallback callback) = 0;
 
   // Returns true if a given queue is closed and false if it is open.
-  virtual bool closed() = 0;
+  virtual const bool closed() = 0;
 
   // Assuming *this represents a shared queue, verify that it matches
   // another instantiation indicated by node_def.
