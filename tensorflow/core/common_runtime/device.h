@@ -151,6 +151,12 @@ class Device : public DeviceBase {
     return BuildDeviceAttributes(name, device, memory_limit, locality, "");
   }
 
+ protected:
+  void DeleteResourceMgr() {
+    delete rmgr_;
+    rmgr_ = nullptr;
+  }
+
  private:
   const DeviceAttributes device_attributes_;
   DeviceNameUtils::ParsedName parsed_name_;
