@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 
 #include <unordered_map>
@@ -70,7 +69,8 @@ void InitializeTensor(DataType type, Tensor* tensor) {
 // of the cluster type (E.g: single cpu, multiple gpu, etc)  being simulated in
 // order to get the correct session options and environment, and performing the
 // correct optimizations.
-Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def) {
+Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
+                     const ItemConfig& cfg) {
   // Create a session option for a single GPU device.
   SessionOptions options;
 
@@ -94,7 +94,12 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def) {
   // Optimizer options: L1 and inlining. L1 is default.
   OptimizerOptions* optimizer_opts =
       options.config.mutable_graph_options()->mutable_optimizer_options();
-  optimizer_opts->set_do_function_inlining(true);
+  if (cfg.apply_optimizations) {
+    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L1);
+  } else {
+    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L0);
+  }
+  optimizer_opts->set_do_function_inlining(cfg.inline_functions);
 
   // Create the function library runtime.
   std::unique_ptr<FunctionLibraryRuntime> flib(NewFunctionLibraryRuntime(
@@ -130,13 +135,11 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   new_item->graph = meta_graph.graph_def();
 
   // Optimize the graph (function inlining, l1 optimizations, etc).
-  if (cfg.apply_optimizations) {
-    Status optimize_status =
-        OptimizeGraph(meta_graph.graph_def(), &new_item->graph);
-    if (!optimize_status.ok()) {
-      LOG(ERROR) << "Function optimization failed: " << optimize_status;
-      return nullptr;
-    }
+  Status optimize_status =
+      OptimizeGraph(meta_graph.graph_def(), &new_item->graph, cfg);
+  if (!optimize_status.ok()) {
+    LOG(ERROR) << "Function optimization failed: " << optimize_status;
+    return nullptr;
   }
 
   // Attempt to detect the fetch node(s).
