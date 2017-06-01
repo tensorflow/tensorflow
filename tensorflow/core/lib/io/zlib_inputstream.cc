@@ -37,7 +37,7 @@ ZlibInputStream::ZlibInputStream(
 }
 
 ZlibInputStream::~ZlibInputStream() {
-  if (z_stream_.get()) {
+  if (z_stream_) {
     inflateEnd(z_stream_.get());
   }
 }
@@ -60,7 +60,7 @@ void ZlibInputStream::InitZlibBuffer() {
   int status = inflateInit2(z_stream_.get(), zlib_options_.window_bits);
   if (status != Z_OK) {
     LOG(FATAL) << "inflateInit failed with status " << status;
-    z_stream_.reset(NULL);
+    z_stream_.reset(nullptr);
   } else {
     z_stream_->next_in = z_stream_input_.get();
     z_stream_->next_out = z_stream_output_.get();
@@ -110,7 +110,7 @@ Status ZlibInputStream::ReadFromStream() {
   // possible that on the last read there isn't enough data in the stream to
   // fill up the buffer in which case input_stream_->ReadNBytes would return an
   // OutOfRange error.
-  if (data.size() == 0) {
+  if (data.empty()) {
     return errors::OutOfRange("EOF reached");
   }
   if (errors::IsOutOfRange(s)) {
@@ -180,7 +180,7 @@ Status ZlibInputStream::Inflate() {
   if (error != Z_OK && error != Z_STREAM_END) {
     string error_string =
         strings::StrCat("inflate() failed with error ", error);
-    if (z_stream_->msg != NULL) {
+    if (z_stream_->msg != nullptr) {
       strings::StrAppend(&error_string, ": ", z_stream_->msg);
     }
     return errors::DataLoss(error_string);

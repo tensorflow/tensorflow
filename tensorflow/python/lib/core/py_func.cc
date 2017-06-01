@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <array>
 
-#include <Python.h>
 #include "numpy/arrayobject.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -27,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
+#include <Python.h>
 
 namespace tensorflow {
 namespace {

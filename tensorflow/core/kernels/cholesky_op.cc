@@ -14,8 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // See docs in ../ops/linalg_ops.cc.
-// TODO(konstantinos): Enable complex inputs. This will require additional tests
-//                     and OP_REQUIRES.
+
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
@@ -85,8 +84,10 @@ namespace functor {
       typename TTypes<T, 3>::Tensor output);                                 \
   extern template struct MatrixBandPart<GPUDevice, T>;
 
-TF_CALL_float(DECLARE_GPU_SPEC);
-TF_CALL_double(DECLARE_GPU_SPEC);
+TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+TF_CALL_complex64(DECLARE_GPU_SPEC);
+TF_CALL_complex128(DECLARE_GPU_SPEC);
+
 }  // namespace functor
 
 template <class Scalar>
@@ -171,11 +172,15 @@ class CholeskyOpGpu : public AsyncOpKernel {
 
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<float>), float);
 REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<double>), double);
+REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<complex64>), complex64);
+REGISTER_LINALG_OP_GPU("Cholesky", (CholeskyOpGpu<complex128>), complex128);
 
 #endif  // GOOGLE_CUDA
 
 REGISTER_LINALG_OP("Cholesky", (CholeskyOp<float>), float);
 REGISTER_LINALG_OP("Cholesky", (CholeskyOp<double>), double);
+REGISTER_LINALG_OP("Cholesky", (CholeskyOp<complex64>), complex64);
+REGISTER_LINALG_OP("Cholesky", (CholeskyOp<complex128>), complex128);
 REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<float>), float);
 REGISTER_LINALG_OP("BatchCholesky", (CholeskyOp<double>), double);
 

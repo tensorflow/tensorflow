@@ -25,9 +25,6 @@ import threading
 import numpy as np
 import tensorflow as tf
 
-from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_util
 from tensorflow.tensorboard.backend.event_processing import directory_watcher
 from tensorflow.tensorboard.backend.event_processing import event_file_loader
 from tensorflow.tensorboard.backend.event_processing import plugin_asset_util
@@ -329,7 +326,7 @@ class EventAccumulator(object):
       if self._graph is None or self._graph_from_metagraph:
         # We may have a graph_def in the metagraph.  If so, and no
         # graph_def is directly available, use this one instead.
-        meta_graph = meta_graph_pb2.MetaGraphDef()
+        meta_graph = tf.MetaGraphDef()
         meta_graph.ParseFromString(self._meta_graph)
         if meta_graph.graph_def:
           if self._graph is not None:
@@ -371,7 +368,7 @@ class EventAccumulator(object):
       value: A tf.Summary.Value with a Tensor field.
       event: The tf.Event containing that value.
     """
-    elements = tensor_util.MakeNdarray(value.tensor)
+    elements = tf.make_ndarray(value.tensor)
 
     # The node_name property of the value object is actually a watch key: a
     # combination of node name, output slot, and a suffix. We capture the
@@ -475,7 +472,7 @@ class EventAccumulator(object):
     """
     if self._meta_graph is None:
       raise ValueError('There is no metagraph in this EventAccumulator')
-    meta_graph = meta_graph_pb2.MetaGraphDef()
+    meta_graph = tf.MetaGraphDef()
     meta_graph.ParseFromString(self._meta_graph)
     return meta_graph
 
@@ -698,7 +695,7 @@ class EventAccumulator(object):
                                    device_name=device_name,
                                    node_name=node_name,
                                    output_slot=output_slot,
-                                   dtype=repr(dtypes.as_dtype(elements[12])),
+                                   dtype=repr(tf.as_dtype(elements[12])),
                                    shape=list(elements[14:]),
                                    value=list(elements)))
 

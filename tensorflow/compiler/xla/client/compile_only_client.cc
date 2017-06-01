@@ -20,8 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>

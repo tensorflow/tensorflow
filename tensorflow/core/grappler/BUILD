@@ -101,7 +101,6 @@ cc_test(
     srcs = ["grappler_item_test.cc"],
     deps = [
         ":grappler_item",
-        ":grappler_item_builder",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

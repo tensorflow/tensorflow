@@ -30,8 +30,15 @@ namespace xla {
     const HloExecutionProfile* profile) {
   VLOG(2) << "module name = " << module.name();
   legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  if (!flags->xla_generate_hlo_graph.empty() &&
-      RE2::PartialMatch(module.name(), flags->xla_generate_hlo_graph)) {
+  string generate_hlo_graph_regex;
+  if (!flags->xla_generate_hlo_graph.empty()) {
+    generate_hlo_graph_regex = flags->xla_generate_hlo_graph;
+  } else {
+    generate_hlo_graph_regex =
+        module.config().debug_options().xla_generate_hlo_graph();
+  }
+  if (!generate_hlo_graph_regex.empty() &&
+      RE2::PartialMatch(module.name(), generate_hlo_graph_regex)) {
     hlo_graph_dumper::DumpGraph(*module.entry_computation(), label,
                                 flags->xla_hlo_graph_addresses,
                                 flags->xla_hlo_graph_layout, profile);

@@ -137,6 +137,20 @@ class _Head(object):
     raise NotImplementedError('Calling an abstract method.')
 
 
+def _maybe_expand_dim(tensor):
+  """Expand the dim of `tensor` with static rank 1."""
+  with ops.name_scope(None, 'maybe_expand_dim', (tensor,)):
+    tensor = sparse_tensor.convert_to_tensor_or_sparse_tensor(tensor)
+    if isinstance(tensor, sparse_tensor.SparseTensor):
+      raise ValueError('SparseTensor labels are not supported.')
+    static_shape = tensor.shape
+    if static_shape is None:
+      return tensor
+
+    return (array_ops.expand_dims(tensor, -1) if static_shape.ndims == 1
+            else tensor)
+
+
 def _check_labels(labels, expected_labels_dimension):
   """Check labels type and shape."""
   with ops.name_scope(None, 'labels', (labels,)) as scope:
@@ -403,7 +417,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
             })
 
       # Eval.
-      label_ids = self._label_ids(_check_labels(labels, 1))
+      label_ids = self._label_ids(_check_labels(_maybe_expand_dim(labels), 1))
 
       unweighted_loss = losses.sparse_softmax_cross_entropy(
           labels=label_ids, logits=logits, reduction=losses.Reduction.NONE)
@@ -412,7 +426,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
       weights = (
           1. if (self._weight_feature_key is None) else
           features[self._weight_feature_key])
-      weights = math_ops.to_float(weights, name='weights')
+      weights = _maybe_expand_dim(math_ops.to_float(weights, name='weights'))
       training_loss = losses.compute_weighted_loss(
           unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:
@@ -563,13 +577,14 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                 classes=string_ops.as_string(classes, name='str_classes'))})
 
       # Eval.
-      labels = _check_labels(math_ops.to_float(labels), self.logits_dimension)
+      labels = _check_labels(_maybe_expand_dim(math_ops.to_float(labels)),
+                             self.logits_dimension)
       unweighted_loss = nn.sigmoid_cross_entropy_with_logits(
           labels=labels, logits=logits, name='loss')
       weights = (
           1. if (self._weight_feature_key is None) else
           features[self._weight_feature_key])
-      weights = math_ops.to_float(weights, name='weights')
+      weights = _maybe_expand_dim(math_ops.to_float(weights, name='weights'))
       training_loss = losses.compute_weighted_loss(
           unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:
@@ -669,13 +684,14 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
             export_outputs={'': export_output.RegressionOutput(value=logits)})
 
       # Eval.
-      labels = _check_labels(math_ops.to_float(labels), self._logits_dimension)
+      labels = _check_labels(_maybe_expand_dim(math_ops.to_float(labels)),
+                             self._logits_dimension)
       unweighted_loss = losses.mean_squared_error(
           labels=labels, predictions=logits, reduction=losses.Reduction.NONE)
       weights = (
           1. if (self._weight_feature_key is None) else
           features[self._weight_feature_key])
-      weights = math_ops.to_float(weights, name='weights')
+      weights = _maybe_expand_dim(math_ops.to_float(weights, name='weights'))
       training_loss = losses.compute_weighted_loss(
           unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:

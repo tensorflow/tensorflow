@@ -48,7 +48,7 @@ class ShowNode {
   TFGraphNodeProto* mutable_proto();
   const TFGraphNodeProto& proto() const;
 
-  void ReInit();
+  void ReInit(int64 step);
 
   void AggregateTotalStats(ShowNode* node);
 
@@ -66,24 +66,10 @@ class ShowNode {
 
 class GraphNode : public ShowNode {
  public:
-  explicit GraphNode(TFGraphNode* node) : ShowNode(node) {
-    trackable = Trackable();
-  }
+  explicit GraphNode(TFGraphNode* node) : ShowNode(node) {}
 
-  void ReInit() {
-    ShowNode::ReInit();
-  }
+  bool Trackable(int64 step) { return node->trackable(step); }
 
-  bool Trackable() {
-    if (!node->step_stats()) return false;
-    if (node->all_start_micros() == 0) return false;
-    if (node->canonical_device().empty() || node->host_device().empty()) {
-      return false;
-    }
-    return true;
-  }
-
-  bool trackable;
   std::vector<GraphNode*> children;
   std::vector<GraphNode*> show_children;
 };
@@ -102,7 +88,7 @@ class ShowMultiNode {
   explicit ShowMultiNode(TFMultiGraphNode* node);
   virtual ~ShowMultiNode() {}
 
-  bool ReInit(const std::vector<string>& type_regexes);
+  bool ReInit(int64 step, const std::vector<string>& type_regexes);
 
   const string& name() const { return node->name(); }
   TFMultiGraphNodeProto* mutable_proto();

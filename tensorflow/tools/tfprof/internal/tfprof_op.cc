@@ -177,10 +177,11 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) {
           root->proto().total_exec_micros();
     }
 
-    attrs.push_back(strings::Printf("%30s", strings::Printf(
-        "%s (%.2f%%, %.2f%%)",
-        FormatTime(node->proto().exec_micros()).c_str(),
-        accu_pct, pct).c_str()).c_str());
+    attrs.push_back(strings::Printf(
+        "%30s", strings::Printf("%s (%.2f%%, %.2f%%)",
+                                FormatTime(node->proto().exec_micros()).c_str(),
+                                accu_pct, pct)
+                    .c_str()));
   }
 
   if (opts.select.find(kShown[2]) != opts.select.end()) {
@@ -192,10 +193,12 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) {
       pct = 100.0 * node->proto().parameters() /
           root->proto().total_parameters();
     }
-    attrs.push_back(strings::Printf("%30s", strings::Printf(
-        "%s params (%.2f%%, %.2f%%)",
-        FormatNumber(node->proto().parameters()).c_str(),
-        accu_pct, pct).c_str()).c_str());
+    attrs.push_back(strings::Printf(
+        "%30s",
+        strings::Printf("%s params (%.2f%%, %.2f%%)",
+                        FormatNumber(node->proto().parameters()).c_str(),
+                        accu_pct, pct)
+            .c_str()));
   }
 
   if (opts.select.find(kShown[3]) != opts.select.end()) {

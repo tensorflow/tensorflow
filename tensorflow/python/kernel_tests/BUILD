@@ -122,9 +122,9 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "cholesky_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["cholesky_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -135,6 +135,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
     ],
+    shard_count = 5,
 )
 
 tf_py_test(
@@ -1461,6 +1462,25 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "multinomial_op_big_test",
+    size = "medium",
+    srcs = ["multinomial_op_big_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+    ],
+    shard_count = 3,
+)
+
+cuda_py_test(
     name = "numerics_test",
     size = "small",
     srcs = ["numerics_test.py"],
@@ -2088,7 +2108,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "conv_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["conv_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2106,6 +2126,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
+    shard_count = 4,
     tags = ["no_windows"],
 )
 

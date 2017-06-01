@@ -19,6 +19,7 @@ import {compareTagNames} from '../vz_sorting/sorting';
 
 import {RequestManager} from './requestManager';
 import {Router} from './router';
+import {demoify} from './urlPathHelpers';
 
 export interface RunEnumeration {
   histograms: string[];
@@ -161,8 +162,9 @@ export class Backend {
   /**
    * Return a promise showing the Run-to-Tag mapping for image data.
    */
-  public imageRuns(): Promise<RunToTag> {
-    return this.runs().then((x) => _.mapValues(x, 'images'));
+  public imageTags(): Promise<RunToTag> {
+    return this.requestManager.request(
+        this.router.pluginRoute('images', '/tags'));
   }
 
   /**
@@ -284,7 +286,7 @@ export class Backend {
    * Return a promise containing ImageDatums for given run and tag.
    */
   public image(tag: string, run: string): Promise<Array<ImageDatum>> {
-    const url = this.router.images(tag, run);
+    const url = (this.router.pluginRunTagRoute('images', '/images')(tag, run));
     let p: Promise<ImageMetadata[]>;
     p = this.requestManager.request(url);
     return p.then(map(this.createImage.bind(this)));
@@ -322,12 +324,34 @@ export class Backend {
   }
 
   private createImage(x: ImageMetadata): Image&Datum {
+    const pluginRoute = this.router.pluginRoute('images', '/individualImage');
+
+    let query = x.query;
+    if (pluginRoute.indexOf('?') > -1) {
+      // The route already has GET parameters. Append our parameters to them.
+      query = '&' + query;
+    } else {
+      // The route lacks GET parameters. We append them.
+      query = '?' + query;
+    }
+
+    if (this.router.isDemoMode()) {
+      query = demoify(query);
+    }
+
+    let individualImageUrl = pluginRoute + query;
+    // Include wall_time just to disambiguate the URL and force the browser
+    // to reload the image when the URL changes. The backend doesn't care
+    // about the value.
+    individualImageUrl +=
+        this.router.isDemoMode() ? '.png' : '&ts=' + x.wall_time;
+
     return {
       width: x.width,
       height: x.height,
       wall_time: timeToDate(x.wall_time),
       step: x.step,
-      url: this.router.individualImage(x.query, x.wall_time),
+      url: individualImageUrl,
     };
   }
 

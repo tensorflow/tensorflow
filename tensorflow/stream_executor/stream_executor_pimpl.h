@@ -342,15 +342,18 @@ class StreamExecutor {
   bool SupportsDnn() const;
 
   // Get the list of supported algorithms for the forward convolution opeartion.
-  bool GetConvolveAlgorithms(std::vector<dnn::AlgorithmType> *out_algorithms);
+  bool GetConvolveAlgorithms(bool with_winograd_nonfused,
+                             std::vector<dnn::AlgorithmType> *out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on data.
   bool GetConvolveBackwardDataAlgorithms(
+      bool with_winograd_nonfused,
       std::vector<dnn::AlgorithmType> *out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on the
   // filter.
   bool GetConvolveBackwardFilterAlgorithms(
+      bool with_winograd_nonfused,
       std::vector<dnn::AlgorithmType> *out_algorithms);
 
   // Get the list of supported algorithms for BLAS gemm.

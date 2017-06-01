@@ -200,7 +200,9 @@ TEST(ContainerInfo, Error) {
 // handles.
 class StubDevice : public DeviceBase {
  public:
-  StubDevice(const string& name) : DeviceBase(nullptr) { attr_.set_name(name); }
+  explicit StubDevice(const string& name) : DeviceBase(nullptr) {
+    attr_.set_name(name);
+  }
 
   Allocator* GetAllocator(AllocatorAttributes) override {
     return cpu_allocator();

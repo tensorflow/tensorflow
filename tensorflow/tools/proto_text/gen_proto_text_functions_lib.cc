@@ -58,7 +58,7 @@ string StrAppend(string* to_append, const Args&... args) {
 // the field names (it's a loop over all names), and tracking of has_seen.
 class Generator {
  public:
-  Generator(const string& tf_header_prefix)
+  explicit Generator(const string& tf_header_prefix)
       : tf_header_prefix_(tf_header_prefix),
         header_(&code_.header),
         header_impl_(&code_.header_impl),
@@ -71,7 +71,7 @@ class Generator {
 
  private:
   struct Section {
-    Section(string* str) : str(str) {}
+    explicit Section(string* str) : str(str) {}
     string* str;
     string indent;
   };

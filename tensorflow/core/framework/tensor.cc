@@ -51,7 +51,7 @@ namespace {
 // An un-templated base class for Buffer.
 class BufferBase : public TensorBuffer {
  public:
-  BufferBase(Allocator* alloc) : alloc_(alloc) {}
+  explicit BufferBase(Allocator* alloc) : alloc_(alloc) {}
 
   TensorBuffer* root_buffer() override { return this; }
   void FillAllocationDescription(AllocationDescription* proto) const override {

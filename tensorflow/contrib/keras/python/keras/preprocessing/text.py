@@ -20,14 +20,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from collections import OrderedDict
 import string
 import sys
-import warnings
 
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
 from six.moves import zip  # pylint: disable=redefined-builtin
-
 
 if sys.version_info < (3,):
   maketrans = string.maketrans
@@ -39,7 +38,7 @@ def text_to_word_sequence(text,
                           filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
                           lower=True,
                           split=' '):
-  """Converts a text to a sequence of word indices.
+  """Converts a text to a sequence of words (or tokens).
 
   Arguments:
       text: Input text (string).
@@ -48,7 +47,7 @@ def text_to_word_sequence(text,
       split: Sentence split marker (string).
 
   Returns:
-      A list of integer word indices.
+      A list of words (or tokens).
   """
   if lower:
     text = text.lower()
@@ -83,7 +82,7 @@ class Tokenizer(object):
           tabs and line breaks, minus the `'` character.
       lower: boolean. Whether to convert the texts to lowercase.
       split: character or string to use for token splitting.
-      char_level: if True, every character will be treated as a word.
+      char_level: if True, every character will be treated as a token.
 
   By default, all punctuation is removed, turning the texts into
   space-separated sequences of words
@@ -98,17 +97,8 @@ class Tokenizer(object):
                filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
                lower=True,
                split=' ',
-               char_level=False,
-               **kwargs):
-    # Legacy support
-    if 'nb_words' in kwargs:
-      warnings.warn('The `nb_words` argument in `Tokenizer` '
-                    'has been renamed `num_words`.')
-      num_words = kwargs.pop('nb_words')
-    if kwargs:
-      raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
-
-    self.word_counts = {}
+               char_level=False):
+    self.word_counts = OrderedDict()
     self.word_docs = {}
     self.filters = filters
     self.split = split

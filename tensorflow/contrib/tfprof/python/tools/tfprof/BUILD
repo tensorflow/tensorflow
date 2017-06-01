@@ -33,6 +33,22 @@ py_test(
     ],
 )
 
+py_test(
+    name = "profiler_test",
+    srcs = ["profiler_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":model_analyzer",
+        ":model_analyzer_testlib",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:variables",
+    ],
+)
+
 py_library(
     name = "model_analyzer_testlib",
     srcs = ["model_analyzer_testlib.py"],
