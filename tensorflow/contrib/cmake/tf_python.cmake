@@ -507,6 +507,11 @@ add_python_module("tensorflow/contrib/tensor_forest/python/ops")
 add_python_module("tensorflow/contrib/testing")
 add_python_module("tensorflow/contrib/testing/python")
 add_python_module("tensorflow/contrib/testing/python/framework")
+add_python_module("tensorflow/contrib/text")
+add_python_module("tensorflow/contrib/text/kernels")
+add_python_module("tensorflow/contrib/text/ops")
+add_python_module("tensorflow/contrib/text/python")
+add_python_module("tensorflow/contrib/text/python/ops")
 add_python_module("tensorflow/contrib/tfprof" DONTCOPY)  # SWIG wrapper not implemented.
 #add_python_module("tensorflow/contrib/tfprof/python")
 #add_python_module("tensorflow/contrib/tfprof/python/tools")
@@ -644,6 +649,8 @@ GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/python/ops/gen_tensor_forest_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_tensor_forest_hybrid_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/tensor_forest/hybrid/ops/gen_training_ops.py)
+GENERATE_PYTHON_OP_LIB("contrib_text_skip_gram_ops"
+  DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/text/python/ops/gen_skip_gram_ops.py)
 GENERATE_PYTHON_OP_LIB("contrib_bigquery_reader_ops"
   DESTINATION ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/cloud/python/ops/gen_bigquery_reader_ops.py)
 GENERATE_PYTHON_OP_LIB("stateless_random_ops"
