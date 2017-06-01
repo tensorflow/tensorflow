@@ -2126,8 +2126,8 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
-    tags = ["no_windows"],
     shard_count = 4,
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
