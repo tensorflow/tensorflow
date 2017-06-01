@@ -24,16 +24,10 @@ limitations under the License.
 
 namespace tensorflow {
 
-bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
-                   string* diff, const EqualGraphDefOptions& options) {
-  // Intentionally do not check that versions match so that this routine can
-  // be used for less brittle golden file tests.
-  return EqualRepeatedNodeDef(actual.node(), expected.node(), diff, options);
-}
-
-bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
-                          const protobuf::RepeatedPtrField<NodeDef>& expected,
-                          string* diff, const EqualGraphDefOptions& options) {
+template <class NodeDefs>
+static bool EqualNodeDefsHelper(
+    const NodeDefs& actual, const protobuf::RepeatedPtrField<NodeDef>& expected,
+    string* diff, const EqualGraphDefOptions& options) {
   std::unordered_map<string, const NodeDef*> actual_index;
   for (const NodeDef& node : actual) {
     actual_index[node.name()] = &node;
@@ -66,6 +60,24 @@ bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
   }
 
   return true;
+}
+
+bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
+                   string* diff, const EqualGraphDefOptions& options) {
+  // Intentionally do not check that versions match so that this routine can
+  // be used for less brittle golden file tests.
+  return EqualNodeDefsHelper(actual.node(), expected.node(), diff, options);
+}
+
+bool EqualGraphDef(gtl::ArraySlice<NodeDef> actual, const GraphDef& expected,
+                   string* diff, const EqualGraphDefOptions& options) {
+  return EqualNodeDefsHelper(actual, expected.node(), diff, options);
+}
+
+bool EqualRepeatedNodeDef(const protobuf::RepeatedPtrField<NodeDef>& actual,
+                          const protobuf::RepeatedPtrField<NodeDef>& expected,
+                          string* diff, const EqualGraphDefOptions& options) {
+  return EqualNodeDefsHelper(actual, expected, diff, options);
 }
 
 namespace {

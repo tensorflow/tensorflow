@@ -46,6 +46,12 @@ struct GraphConstructorOptions {
 extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                      const GraphDef& gdef, Graph* g);
 
+// Same as ConvertGraphDefToGraph, but takes just nodes.  Used by function
+// instantiation.
+// TODO(irving): This will turn into std::vector<NodeInfoPtr> soon.
+extern Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
+                                     gtl::ArraySlice<NodeDef> nodes, Graph* g);
+
 // Add the graph in GraphDef gdef into an existing Graph *g.
 //
 // On error, returns non-OK and leaves *g unmodified.
