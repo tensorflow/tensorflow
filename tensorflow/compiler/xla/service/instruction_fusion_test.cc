@@ -156,18 +156,64 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfParameterUnfused) {
 
 TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusable) {
   HloComputation::Builder builder(TestName());
-  auto param0 = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {16, 16}), "0"));
-  HloInstruction* unary1 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {}), HloOpcode::kFloor, param0));
+  auto shape = ShapeUtil::MakeShape(F32, {16, 16});
+  auto param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "0"));
+  auto param1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "1"));
+  HloInstruction* binary1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
+  builder.AddInstruction(HloInstruction::CreateSend(binary1, 0));
+  HloInstruction* unary = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(unary, computation->root_instruction());
+  EXPECT_FALSE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie());
+}
+
+TEST_F(InstructionFusionTest, AllowUnaryDuplication) {
+  HloComputation::Builder builder(TestName());
+  auto shape = ShapeUtil::MakeShape(F32, {16, 16});
+  auto param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "0"));
+  HloInstruction* unary1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kFloor, param0));
   builder.AddInstruction(HloInstruction::CreateSend(unary1, 0));
-  HloInstruction* unary2 = builder.AddInstruction(HloInstruction::CreateUnary(
-      ShapeUtil::MakeShape(S32, {}), HloOpcode::kAbs, unary1));
+  HloInstruction* unary2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kAbs, unary1));
 
   auto module = MakeUnique<HloModule>(TestName());
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_EQ(unary2, computation->root_instruction());
-  EXPECT_FALSE(
+  EXPECT_TRUE(
+      InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
+          .Run(module.get())
+          .ValueOrDie());
+}
+
+TEST_F(InstructionFusionTest, AllowEffectiveUnaryDuplication) {
+  auto shape = ShapeUtil::MakeShape(F32, {16, 16});
+  auto small_shape = ShapeUtil::MakeShape(F32, {16});
+  HloComputation::Builder builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, small_shape, "0"));
+  auto param1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "1"));
+  HloInstruction* binary1 = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, param0, param1));
+  builder.AddInstruction(HloInstruction::CreateSend(binary1, 0));
+  HloInstruction* unary = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kAbs, binary1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+  EXPECT_EQ(unary, computation->root_instruction());
+  EXPECT_TRUE(
       InstructionFusion(InstructionFusion::IsExpensive, /*may_duplicate=*/true)
           .Run(module.get())
           .ValueOrDie());
