@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/user_computation_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -1887,6 +1888,12 @@ class ComputationLowerer {
       const ComputationHandle& handle,
       VersionedComputationHandle::Version version);
 
+  // This function takes an input value which is being implicitly broadcast into
+  // an output shape and figures out the right kBroadcast instruction(s)
+  // necessary to replicate the implicit broadcast semantics explicitly.
+  HloInstruction* ImplicitBroadcastToExplicitBroadcast(
+      HloInstruction* operand, const Shape& output_shape);
+
   HloComputation::Builder hlo_builder_;
   const SessionComputation& session_computation_;
   const VersionedComputationHandle::Version version_;
@@ -2202,6 +2209,37 @@ HloComputation* ComputationLowerer::ResolveComputation(
     VersionedComputationHandle::Version version) {
   const VersionedComputationHandle checked_handle = {handle, version};
   return hlo_resolver_(checked_handle);
+}
+
+HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
+    HloInstruction* operand, const Shape& output_shape) {
+  CHECK(ShapeUtil::IsScalar(operand->shape()) ||
+        ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(output_shape));
+  Shape broadcast_shape = ShapeUtil::MakeShape(
+      operand->shape().element_type(), AsInt64Slice(output_shape.dimensions()));
+  // Do explicit broadcast for scalar.
+  if (ShapeUtil::IsScalar(operand->shape())) {
+    return hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
+        broadcast_shape, operand, AsInt64Slice(broadcast_shape.dimensions())));
+  }
+  // Do explicit broadcast for degenerate broadcast.
+  std::vector<int64> broadcast_dimensions;
+  std::vector<int64> reshaped_dimensions;
+  for (int i = 0; i < ShapeUtil::Rank(operand->shape()); i++) {
+    if (operand->shape().dimensions(i) > 1) {
+      broadcast_dimensions.push_back(i);
+      reshaped_dimensions.push_back(operand->shape().dimensions(i));
+    }
+  }
+  // Eliminate the size one dimensions.
+  HloInstruction* reshaped_operand =
+      hlo_builder_.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(operand->shape().element_type(),
+                               reshaped_dimensions),
+          operand));
+  // Broadcast 'reshape' up to the larger size.
+  return hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
+      broadcast_shape, reshaped_operand, broadcast_dimensions));
 }
 
 void ComputationLowerer::Visit(
@@ -2628,6 +2666,19 @@ void ComputationLowerer::Visit(
 
         lhs = (lhs == operand_to_broadcast) ? broadcasted_operand : lhs;
         rhs = (rhs == operand_to_broadcast) ? broadcasted_operand : rhs;
+      }
+      if (legacy_flags::GetUserComputationFlags()
+              ->xla_eliminate_hlo_implicit_broadcast) {
+        if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
+          // lhs side is being implicitly broadcast. Change to explicit.
+          lhs =
+              ImplicitBroadcastToExplicitBroadcast(lhs, request.output_shape());
+        }
+
+        if (!ShapeUtil::SameDimensions(request.output_shape(), rhs->shape())) {
+          rhs =
+              ImplicitBroadcastToExplicitBroadcast(rhs, request.output_shape());
+        }
       }
       hlo_instruction = add_instruction(HloInstruction::CreateBinary(
           request.output_shape(), hlo_opcode, lhs, rhs));

@@ -240,6 +240,7 @@ def _build_estimator_for_resource_export_test():
     const = constant_op.constant(-1, dtype=dtypes.int64)
     table = lookup.MutableHashTable(
         dtypes.string, dtypes.int64, const, name='LookupTableModel')
+    update_global_step = variables.get_global_step().assign_add(1)
     if mode in (model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL):
       key = constant_op.constant(['key'])
       value = constant_op.constant([42], dtype=dtypes.int64)
@@ -247,11 +248,13 @@ def _build_estimator_for_resource_export_test():
       training_state = lookup.MutableHashTable(
           dtypes.string, dtypes.int64, const, name='LookupTableTrainingState')
       training_op_2 = training_state.insert(key, value)
-      return const, const, control_flow_ops.group(train_op_1, training_op_2)
+      return (const, const,
+              control_flow_ops.group(train_op_1, training_op_2,
+                                     update_global_step))
     if mode == model_fn.ModeKeys.INFER:
       key = constant_op.constant(['key'])
       prediction = table.lookup(key)
-      return prediction, const, control_flow_ops.no_op()
+      return prediction, const, update_global_step
 
   est = estimator.Estimator(model_fn=resource_constant_model_fn)
   est.fit(input_fn=_input_fn, steps=1)
@@ -302,7 +305,7 @@ def _model_fn_ops(
         mode=mode,
         predictions=constant_op.constant(0.),
         loss=constant_op.constant(0.),
-        train_op=constant_op.constant(0.))
+        train_op=variables.get_global_step().assign_add(1))
 
 
 def _make_input_fn(features, labels):
@@ -384,8 +387,8 @@ class EstimatorModelFnTest(test.TestCase):
       self.assertEqual(model_fn.ModeKeys.TRAIN, mode)
       self.assertEqual(expected_param, params)
       self.assertEqual(model_dir, expected_model_dir)
-      return constant_op.constant(0.), constant_op.constant(
-          0.), constant_op.constant(0.)
+      return (constant_op.constant(0.), constant_op.constant(0.),
+              variables.get_global_step().assign_add(1))
     est = estimator.Estimator(model_fn=_argument_checker,
                               params=expected_param,
                               model_dir=expected_model_dir)
@@ -397,7 +400,7 @@ class EstimatorModelFnTest(test.TestCase):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
       update_global_step = variables.get_global_step().assign_add(1)
-      with control_flow_ops.control_dependencies([update_global_step]):
+      with ops.control_dependencies([update_global_step]):
         loss = 100.0 - w
       return None, loss, None
 
@@ -412,7 +415,7 @@ class EstimatorModelFnTest(test.TestCase):
       w = variables_lib.Variable(42.0, 'weight')
       loss = 100.0 - w
       update_global_step = variables.get_global_step().assign_add(1)
-      with control_flow_ops.control_dependencies([update_global_step]):
+      with ops.control_dependencies([update_global_step]):
         train_op = w.assign_add(loss / 100.0)
       predictions = loss
       if mode == model_fn.ModeKeys.EVAL:
@@ -431,7 +434,7 @@ class EstimatorModelFnTest(test.TestCase):
       w = variables_lib.Variable(42.0, 'weight')
       loss = 100.0 - w
       update_global_step = variables.get_global_step().assign_add(1)
-      with control_flow_ops.control_dependencies([update_global_step]):
+      with ops.control_dependencies([update_global_step]):
         train_op = w.assign_add(loss / 100.0)
       return None, loss, train_op
 
@@ -460,7 +463,7 @@ class EstimatorModelFnTest(test.TestCase):
           mode=mode,
           predictions=constant_op.constant(0.),
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=variables.get_global_step().assign_add(1),
           scaffold=monitored_session.Scaffold(init_fn=_init_fn))
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
@@ -479,7 +482,7 @@ class EstimatorModelFnTest(test.TestCase):
           mode=mode,
           predictions=constant_op.constant([[1.]]),
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=variables.get_global_step().assign_add(1),
           scaffold=monitored_session.Scaffold(saver=self.mock_saver))
 
     def input_fn():

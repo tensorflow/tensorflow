@@ -17,7 +17,7 @@ limitations under the License.
 // libxsmm is not available.
 
 #ifndef TENSORFLOW_USE_LIBXSMM
-void dummy_xsmm_conv2d_ensure_file_is_not_empty(void);
+void dummy_xsmm_conv2d_ensure_file_is_not_empty();
 #else
 
 #define USE_EIGEN_TENSOR

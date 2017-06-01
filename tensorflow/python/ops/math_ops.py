@@ -505,7 +505,7 @@ def scalar_mul(scalar, x):
 def pow(x, y, name=None):
   r"""Computes the power of one value to another.
 
-  Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for
+  Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
   corresponding elements in `x` and `y`. For example:
 
   ```

@@ -17,6 +17,18 @@ java_binary(
     ],
 )
 
+java_binary(
+    name = "Zipper",
+    srcs = ["Zipper.java"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_guava",
+        "@com_google_protobuf_java",
+        "@io_bazel_rules_closure//java/io/bazel/rules/closure/webfiles",
+        "@io_bazel_rules_closure//java/io/bazel/rules/closure/webfiles:build_info_java_proto",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(["**"]),

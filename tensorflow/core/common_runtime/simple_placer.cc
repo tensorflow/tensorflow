@@ -244,7 +244,7 @@ class ColocationGraph {
       // members_[old_root].supported_device_types.
       MergeSupportedDevices(&members_[new_root].supported_device_types,
                             members_[old_root].supported_device_types);
-      if (members_[new_root].supported_device_types.size() == 0) {
+      if (members_[new_root].supported_device_types.empty()) {
         string debug_info;
         AddDebugInfo(x_root, &debug_info);
         AddDebugInfo(y_root, &debug_info);

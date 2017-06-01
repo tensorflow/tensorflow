@@ -156,7 +156,7 @@ class TensorArrayOp : public TensorArrayCreationOp {
                    context->GetAttr("clear_after_read", &clear_after_read_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("tensor_array_name", &tensor_array_name_));
-    if (tensor_array_name_ == "") tensor_array_name_ = name();
+    if (tensor_array_name_.empty()) tensor_array_name_ = name();
   }
 
   Status CreateTensorArray(OpKernelContext* ctx, ResourceMgr* rm,

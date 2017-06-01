@@ -30,8 +30,6 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace gpu = ::perftools::gputools;
-
 namespace tensorflow {
 namespace {
 

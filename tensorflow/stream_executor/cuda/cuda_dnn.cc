@@ -1966,12 +1966,12 @@ bool CudnnSupport::DoConvolveImpl(
 }
 
 // A helper class to decide whether to enable the WINOGRAD_NONFUSED algorithms.
-// Doing so by default make a few TensorFlow test cases to fail. Users can
-// explicitly enable them through an env-var "TF_ENABLE_WINOGRAD_NONFUSED=1".
+// By default it is turned on, users can explicitly disable them through an
+// env-var "TF_ENABLE_WINOGRAD_NONFUSED=0".
 // https://github.com/tensorflow/tensorflow/pull/4901
-// TODO(yangzihao): for certain shapes, setting default flag to be true will
-// cause bug and return negative tensor shapes. Will flip the default flag when
-// the bug is fixed.
+// TODO(yangzihao): winograd_nonfused bug will only be fixed in cuDNNv7, for
+// cuDNN with smaller versions, we have added code to avoid using winograd
+// nonfused for certain input parameter set.
 template <bool DefaultFlag>
 class WinogradNonfused {
  public:
@@ -1997,6 +1997,7 @@ class WinogradNonfused {
 };
 
 bool CudnnSupport::GetConvolveAlgorithms(
+    bool with_winograd_nonfused,
     std::vector<dnn::AlgorithmType>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
@@ -2012,7 +2013,7 @@ bool CudnnSupport::GetConvolveAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused<false>::IsEnabled()) {
+  if (WinogradNonfused<true>::IsEnabled() && with_winograd_nonfused) {
     out_algorithms->push_back(CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED);
   }
 #endif
@@ -2020,6 +2021,7 @@ bool CudnnSupport::GetConvolveAlgorithms(
 }
 
 bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
+    bool with_winograd_nonfused,
     std::vector<dnn::AlgorithmType>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
@@ -2033,7 +2035,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
       // clang-format on
   });
 #if CUDNN_VERSION >= 5100
-  if (WinogradNonfused<false>::IsEnabled()) {
+  if (WinogradNonfused<true>::IsEnabled() && with_winograd_nonfused) {
     out_algorithms->push_back(
         CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED);
   }
@@ -2042,6 +2044,7 @@ bool CudnnSupport::GetConvolveBackwardDataAlgorithms(
 }
 
 bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
+    bool with_winograd_nonfused,
     std::vector<dnn::AlgorithmType>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
@@ -2053,11 +2056,12 @@ bool CudnnSupport::GetConvolveBackwardFilterAlgorithms(
   });
 #if CUDNN_VERSION >= 5100
 #if CUDNN_VERSION >= 5110
-  static constexpr bool kDefaultFlagWinogradNonfused = false;
+  static constexpr bool kDefaultFlagWinogradNonfused = true;
 #else
   static constexpr bool kDefaultFlagWinogradNonfused = false;
 #endif
-  if (WinogradNonfused<kDefaultFlagWinogradNonfused>::IsEnabled()) {
+  if (WinogradNonfused<kDefaultFlagWinogradNonfused>::IsEnabled() &&
+      with_winograd_nonfused) {
     out_algorithms->push_back(
         // Based on cudnn.h, the following is not implemented.
         // CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD,

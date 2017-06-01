@@ -198,16 +198,8 @@ StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::Run(
   if (executable_->dumping()) {
     return ExecuteAndDump(&service_options, arguments);
   }
-  return Service::ExecuteOnStreamWrapper<
-      StatusOr<std::unique_ptr<ShapedBuffer>>>(
-      executable_.get(), &service_options, options.execution_profile(),
-      backend_,
-      [&arguments](Executable* executable,
-                   const ServiceExecutableRunOptions* run_options,
-                   HloExecutionProfile* hlo_execution_profile) {
-        return executable->ExecuteOnStream(run_options, arguments,
-                                           hlo_execution_profile);
-      });
+  return executable_->ExecuteOnStreamWrapper<std::unique_ptr<ShapedBuffer>>(
+      &service_options, options.execution_profile(), arguments);
 }
 
 StatusOr<std::unique_ptr<ShapedBuffer>> LocalExecutable::ExecuteAndDump(

@@ -60,6 +60,17 @@ def _assert_float32(tensors):
       raise TypeError('Expected dtype=float32, %s.' % tensor)
 
 
+class TensorForestRunOpAtEndHook(session_run_hook.SessionRunHook):
+
+  def __init__(self, op_dict):
+    """Ops is a dict of {name: op} to run before the session is destroyed."""
+    self._ops = op_dict
+
+  def end(self, session):
+    for name, op in self._ops.iteritems():
+      logging.info('{0}: {1}'.format(name, session.run(op)))
+
+
 class TensorForestLossHook(session_run_hook.SessionRunHook):
   """Monitor to request stop when loss stops decreasing."""
 
@@ -170,10 +181,6 @@ def get_model_fn(params,
         output_alternatives = {
             None: (constants.ProblemType.CLASSIFICATION, predictions)}
 
-      if report_feature_importances:
-        inference[eval_metrics.FEATURE_IMPORTANCE_NAME] = (
-            graph_builder.feature_importances())
-
       if keys is not None:
         inference[keys_name] = keys
 
@@ -214,6 +221,10 @@ def get_model_fn(params,
 
     if early_stopping_rounds:
       training_hooks.append(TensorForestLossHook(early_stopping_rounds))
+
+    if report_feature_importances:
+      training_hooks.append(TensorForestRunOpAtEndHook(
+          {'feature_importances': graph_builder.feature_importances()}))
 
     return model_fn_lib.ModelFnOps(
         mode=mode,

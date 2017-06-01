@@ -24,7 +24,9 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -99,8 +101,86 @@ Status NumOutputs(const NodeDef& node, int* num_outputs) {
 }
 }  // namespace
 
-bool ConstantFolding::IsConst(const NodeDef& node) const {
-  return node.op() == "Const";
+Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
+  GraphProperties properties(item);
+  TF_RETURN_IF_ERROR(properties.InferStatically());
+  for (NodeDef& node : *graph_.mutable_node()) {
+    const string op = node.op();
+    if (op != "Shape" && op != "Size" && op != "Rank") {
+      continue;
+    }
+    std::vector<OpInfo::TensorProperties> output =
+        properties.GetOutputProperties(node.name());
+    CHECK_EQ(1, output.size());
+    const DataType type = output[0].dtype();
+    CHECK(type == DT_INT32 || type == DT_INT64);
+
+    std::vector<OpInfo::TensorProperties> input =
+        properties.GetInputProperties(node.name());
+    CHECK_EQ(1, input.size());
+
+    const TensorShapeProto shape = input[0].shape();
+    // Materialize the shapes using constants whenever possible.
+    PartialTensorShape shp(shape);
+    if (shp.IsFullyDefined() || (!shp.unknown_rank() && op == "Rank")) {
+      bool valid = true;
+      Tensor value(type);
+      if (op == "Shape") {
+        value = Tensor(type, TensorShape({shp.dims()}));
+        for (int i = 0; i < shp.dims(); ++i) {
+          if (type == DT_INT32) {
+            if (shp.dim_size(i) >= INT_MAX) {
+              valid = false;
+              break;
+            }
+            value.flat<int32>()(i) = shp.dim_size(i);
+          } else {
+            value.flat<int64>()(i) = shp.dim_size(i);
+          }
+        }
+      } else if (op == "Size") {
+        int64 size = 1;
+        for (int i = 0; i < shp.dims(); ++i) {
+          size *= shp.dim_size(i);
+        }
+        value = Tensor(type, TensorShape({}));
+        if (type == DT_INT32) {
+          if (size >= INT_MAX) {
+            valid = false;
+          } else {
+            value.flat<int32>()(0) = size;
+          }
+        } else {
+          value.flat<int64>()(0) = size;
+        }
+      } else {
+        value = Tensor(type, TensorShape({}));
+        if (type == DT_INT32) {
+          if (shp.dims() >= INT_MAX) {
+            valid = false;
+          } else {
+            value.flat<int32>()(0) = shp.dims();
+          }
+        } else {
+          value.flat<int64>()(0) = shp.dims();
+        }
+      }
+
+      if (valid) {
+        // Replace the node with the corresponding constant.
+        node.set_op("Const");
+        node.clear_attr();
+        (*node.mutable_attr())["dtype"].set_type(type);
+        value.AsProtoTensorContent(
+            (*node.mutable_attr())["value"].mutable_tensor());
+
+        // Turn the inputs into control dependencies.
+        CHECK_EQ(1, node.input_size());
+        node.set_input(0, strings::StrCat("^", node.input(0)));
+      }
+    }
+  }
+  return Status::OK();
 }
 
 bool ConstantFolding::IsFoldable(const NodeDef& node) const {
@@ -152,7 +232,10 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   }
 
   for (const auto& input : node.input()) {
-    bool is_const = IsConst(*node_map_->GetNode(input));
+    if (input[0] == '^') {
+      continue;
+    }
+    bool is_const = IsConstant(*node_map_->GetNode(input));
     if (!is_const) {
       return false;
     }
@@ -216,6 +299,9 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                                             std::vector<NodeDef>* outputs) {
   TensorVector inputs;
   for (const auto& input : node.input()) {
+    if (input[0] == '^') {
+      break;
+    }
     TensorVector output;
     TF_RETURN_IF_ERROR(
         EvaluateNode(*node_map_->GetNode(input), TensorVector(), &output));
@@ -245,12 +331,26 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
   std::vector<NodeDef> const_nodes;
   TF_RETURN_IF_ERROR(EvaluateOneFoldable(node, &const_nodes));
 
-  auto outputs = node_map_->GetOutputs(node.name());
   for (const auto& const_node : const_nodes) {
     NodeDef* added_node = output->add_node();
     *added_node = const_node;
     node_map_->AddNode(added_node->name(), added_node);
+
+    for (const auto& input : node.input()) {
+      if (input[0] == '^') {
+        *added_node->add_input() = input;
+      } else {
+        NodeDef* input_node = node_map_->GetNode(input);
+        for (const auto& fanin_of_input : input_node->input()) {
+          if (fanin_of_input[0] == '^') {
+            *added_node->add_input() = fanin_of_input;
+          }
+        }
+      }
+    }
   }
+
+  auto outputs = node_map_->GetOutputs(node.name());
   for (const auto& output : outputs) {
     for (int i = 0; i < output->input_size(); i++) {
       int position;
@@ -306,6 +406,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
   device_.reset(new DeviceSimple());
   *output = GraphDef();
+  TF_RETURN_IF_ERROR(MaterializeShapes(item));
   TF_RETURN_IF_ERROR(FoldGraph(output));
   LOG(INFO) << "Optimized graph size: " << output->node_size();
   return Status::OK();

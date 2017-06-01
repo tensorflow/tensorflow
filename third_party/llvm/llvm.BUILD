@@ -436,6 +436,7 @@ llvm_target_list = [
             "include/llvm/IR/Intrinsics*.td",
             "include/llvm/TableGen/*.td",
             "include/llvm/Target/*.td",
+            "include/llvm/Target/GlobalISel/*.td",
         ]),
     )
     for target in llvm_target_list
