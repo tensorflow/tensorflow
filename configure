@@ -522,6 +522,12 @@ while true; do
   CUDA_TOOLKIT_PATH=""
 done
 
+# Set default CUDA version if not set
+if [ -z "$TF_CUDA_VERSION" ]; then
+  TF_CUDA_VERSION="8.0"
+  export TF_CUDA_VERSION
+fi
+
 # Set up which gcc nvcc should use as the host compiler
 # No need to set this on Windows
 while [[ "$TF_CUDA_CLANG" != "1" ]] && ! is_windows && true; do
@@ -625,6 +631,12 @@ while true; do
   TF_CUDNN_VERSION=""
   CUDNN_INSTALL_PATH=""
 done
+
+# Set default CUDNN version if not set
+if [ -z "$TF_CUDNN_VERSION" ]; then
+  TF_CUDNN_VERSION="6"
+  export TF_CUDNN_VERSION
+fi
 
 # Configure the compute capabilities that TensorFlow builds for.
 # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
@@ -845,5 +857,5 @@ fi
 
 
 # TODO(gunan): Remove once bazel correctly handles changes in remote repositories.
-bazel clean --expunge
+bazel clean
 echo "Configuration finished"
