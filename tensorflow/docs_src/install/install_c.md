@@ -73,7 +73,7 @@ After installing TensorFlow for C, enter the following code into a file named
 #include <tensorflow/c/c_api.h>
 
 int main() {
-  printf(“Hello from TensorFlow C library version %s\n”, TF_Version());
+  printf("Hello from TensorFlow C library version %s\n", TF_Version());
   return 0;
 }
 ```
