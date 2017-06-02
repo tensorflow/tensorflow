@@ -181,18 +181,20 @@ public final class Vulcanize {
       return node;
     }
     if (node instanceof Element) {
-      if (node.nodeName().equals("link") && node.attr("rel").equals("import")) {
-        // Inline HTML.
-        node = visitHtmlImport(node);
-      } else if (node.nodeName().equals("script")
-          && !shouldIgnoreUri(node.attr("src"))
-          && !node.hasAttr("jscomp-ignore")) {
-        node = visitScript(node);
-      } else if (node.nodeName().equals("link")
-          && node.attr("rel").equals("stylesheet")
-          && !node.attr("href").isEmpty()
-          && !shouldIgnoreUri(node.attr("href"))) {
-        node = visitStylesheet(node);
+      if (!getAttrTransitive(node, "vulcanize-noinline").isPresent()) {
+        if (node.nodeName().equals("link") && node.attr("rel").equals("import")) {
+          // Inline HTML.
+          node = visitHtmlImport(node);
+        } else if (node.nodeName().equals("script")
+            && !shouldIgnoreUri(node.attr("src"))
+            && !node.hasAttr("jscomp-ignore")) {
+          node = visitScript(node);
+        } else if (node.nodeName().equals("link")
+            && node.attr("rel").equals("stylesheet")
+            && !node.attr("href").isEmpty()
+            && !shouldIgnoreUri(node.attr("href"))) {
+          node = visitStylesheet(node);
+        }
       }
       rootifyAttribute(node, "href");
       rootifyAttribute(node, "src");

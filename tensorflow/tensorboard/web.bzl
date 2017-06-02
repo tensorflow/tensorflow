@@ -362,7 +362,7 @@ ts_web_library = rule(
     attrs={
         "path": attr.string(),
         "srcs": attr.label_list(allow_files=True),
-        "deps": attr.label_list(aspects=[web_aspect], providers=["webfiles"]),
+        "deps": attr.label_list(aspects=[web_aspect]),
         "exports": attr.label_list(),
         "data": attr.label_list(cfg="data", allow_files=True),
         "suppress": attr.string_list(),

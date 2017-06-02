@@ -17,10 +17,10 @@ load("//tensorflow/tensorboard:web.bzl", "web_aspect")
 
 def _tensorboard_html_binary(ctx):
   deps = unfurl(ctx.attr.deps, provider="webfiles")
-  manifests = set()
-  files = set()
-  jslibs = set(ctx.files._jslibs)
-  webpaths = set()
+  manifests = depset(order="topological")
+  files = depset()
+  jslibs = depset(ctx.files._jslibs)
+  webpaths = depset()
   for dep in deps:
     manifests += dep.webfiles.manifests
     webpaths += dep.webfiles.webpaths
@@ -75,12 +75,12 @@ def _tensorboard_html_binary(ctx):
           ctx.executable._WebfilesServer.short_path,
           long_path(ctx, params_file)))
 
-  transitive_runfiles = set()
+  transitive_runfiles = depset()
   transitive_runfiles += ctx.attr._WebfilesServer.data_runfiles.files
   for dep in deps:
     transitive_runfiles += dep.data_runfiles.files
   return struct(
-      files=set([ctx.outputs.html]),
+      files=depset([ctx.outputs.html]),
       webfiles=struct(
           manifest=manifest,
           manifests=manifests,
@@ -101,8 +101,7 @@ tensorboard_html_binary = rule(
         "input_path": attr.string(mandatory=True),
         "output_path": attr.string(mandatory=True),
         "data": attr.label_list(cfg="data", allow_files=True),
-        "deps": attr.label_list(
-            aspects=[web_aspect], providers=["webfiles"], mandatory=True),
+        "deps": attr.label_list(aspects=[web_aspect], mandatory=True),
         "external_assets": attr.string_dict(default={"/_/runfiles": "."}),
         "_jslibs": attr.label(
             default=Label("//tensorflow/tensorboard/java/org/tensorflow/tensorboard/vulcanize:jslibs"),
