@@ -624,7 +624,7 @@ def _assert_close(expected, actual, rtol=1e-04, name='assert_close'):
   with ops.name_scope(name, 'assert_close', (expected, actual, rtol)) as scope:
     expected = ops.convert_to_tensor(expected, name='expected')
     actual = ops.convert_to_tensor(actual, name='actual')
-    rdiff = math_ops.abs(expected - actual, 'diff') / expected
+    rdiff = math_ops.abs(expected - actual, 'diff') / math_ops.abs(expected)
     rtol = ops.convert_to_tensor(rtol, name='rtol')
     return check_ops.assert_less(
         rdiff,
@@ -838,6 +838,276 @@ class LinearRegressorTrainingTest(test.TestCase):
     num_steps = 10
     linear_regressor.train(
         input_fn=lambda: ({'age': ((17,), (15,))}, ((5.,), (3.,))),
+        steps=num_steps)
+    self.assertEqual(1, mock_optimizer.minimize.call_count)
+    self._assertCheckpoint(
+        expected_global_step=initial_global_step + num_steps,
+        expected_age_weight=age_weight,
+        expected_bias=bias)
+
+
+class LinearClassiferWithBinaryClassesTrainingTest(test.TestCase):
+
+  def setUp(self):
+    self._model_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    if self._model_dir:
+      shutil.rmtree(self._model_dir)
+
+  def _mockOptimizer(self, expected_loss=None):
+    expected_var_names = [
+        '%s/part_0:0' % _AGE_WEIGHT_NAME,
+        '%s/part_0:0' % _BIAS_NAME
+    ]
+
+    def _minimize(loss, global_step):
+      trainable_vars = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+      self.assertItemsEqual(
+          expected_var_names,
+          [var.name for var in trainable_vars])
+
+      # Verify loss. We can't check the value directly, so we add an assert op.
+      self.assertEquals(0, loss.shape.ndims)
+      if expected_loss is None:
+        return state_ops.assign_add(global_step, 1).op
+      assert_loss = _assert_close(
+          math_ops.to_float(expected_loss, name='expected'), loss,
+          name='assert_loss')
+      with ops.control_dependencies((assert_loss,)):
+        return state_ops.assign_add(global_step, 1).op
+
+    mock_optimizer = test.mock.NonCallableMock(
+        spec=optimizer.Optimizer,
+        wraps=optimizer.Optimizer(use_locking=False, name='my_optimizer'))
+    mock_optimizer.minimize = test.mock.MagicMock(wraps=_minimize)
+
+    # NOTE: Estimator.params performs a deepcopy, which wreaks havoc with mocks.
+    # So, return mock_optimizer itself for deepcopy.
+    mock_optimizer.__deepcopy__ = lambda _: mock_optimizer
+    return mock_optimizer
+
+  def _assertCheckpoint(
+      self, expected_global_step, expected_age_weight=None, expected_bias=None):
+    shapes = {
+        name: shape for (name, shape) in
+        checkpoint_utils.list_variables(self._model_dir)
+    }
+
+    self.assertEqual([], shapes[ops.GraphKeys.GLOBAL_STEP])
+    self.assertEqual(
+        expected_global_step,
+        checkpoint_utils.load_variable(
+            self._model_dir, ops.GraphKeys.GLOBAL_STEP))
+
+    self.assertEqual([1, 1], shapes[_AGE_WEIGHT_NAME])
+    if expected_age_weight is not None:
+      self.assertEqual(
+          expected_age_weight,
+          checkpoint_utils.load_variable(self._model_dir, _AGE_WEIGHT_NAME))
+
+    self.assertEqual([1], shapes[_BIAS_NAME])
+    if expected_bias is not None:
+      self.assertEqual(
+          expected_bias,
+          checkpoint_utils.load_variable(self._model_dir, _BIAS_NAME))
+
+  def testFromScratchWithDefaultOptimizer(self):
+    n_classes = 2
+    label = 0
+    age = 17
+    est = linear.LinearClassifier(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        n_classes=n_classes,
+        model_dir=self._model_dir)
+
+    # Train for a few steps, and validate final checkpoint.
+    num_steps = 10
+    est.train(
+        input_fn=lambda: ({'age': ((age,),)}, ((label,),)), steps=num_steps)
+    self._assertCheckpoint(num_steps)
+
+  def testTrainWithTwoDimsLabel(self):
+    n_classes = 2
+    batch_size = 20
+
+    est = linear.LinearClassifier(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        n_classes=n_classes,
+        model_dir=self._model_dir)
+    data_rank_1 = np.array([0, 1])
+    data_rank_2 = np.array([[0], [1]])
+    self.assertEqual((2,), data_rank_1.shape)
+    self.assertEqual((2, 1), data_rank_2.shape)
+
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'age': data_rank_1},
+        y=data_rank_2,
+        batch_size=batch_size,
+        num_epochs=None,
+        shuffle=True)
+    est.train(train_input_fn, steps=200)
+    self._assertCheckpoint(200)
+
+  def testTrainWithOneDimLabel(self):
+    n_classes = 2
+    batch_size = 20
+
+    est = linear.LinearClassifier(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        n_classes=n_classes,
+        model_dir=self._model_dir)
+    data_rank_1 = np.array([0, 1])
+    self.assertEqual((2,), data_rank_1.shape)
+
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'age': data_rank_1},
+        y=data_rank_1,
+        batch_size=batch_size,
+        num_epochs=None,
+        shuffle=True)
+    est.train(train_input_fn, steps=200)
+    self._assertCheckpoint(200)
+
+  def testTrainWithTwoDimsWeight(self):
+    n_classes = 2
+    batch_size = 20
+
+    est = linear.LinearClassifier(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        weight_feature_key='w',
+        n_classes=n_classes,
+        model_dir=self._model_dir)
+    data_rank_1 = np.array([0, 1])
+    data_rank_2 = np.array([[0], [1]])
+    self.assertEqual((2,), data_rank_1.shape)
+    self.assertEqual((2, 1), data_rank_2.shape)
+
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'age': data_rank_1, 'w': data_rank_2}, y=data_rank_1,
+        batch_size=batch_size, num_epochs=None,
+        shuffle=True)
+    est.train(train_input_fn, steps=200)
+    self._assertCheckpoint(200)
+
+  def testTrainWithOneDimWeight(self):
+    n_classes = 2
+    batch_size = 20
+
+    est = linear.LinearClassifier(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        weight_feature_key='w',
+        n_classes=n_classes,
+        model_dir=self._model_dir)
+    data_rank_1 = np.array([0, 1])
+    self.assertEqual((2,), data_rank_1.shape)
+
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'age': data_rank_1, 'w': data_rank_1}, y=data_rank_1,
+        batch_size=batch_size, num_epochs=None,
+        shuffle=True)
+    est.train(train_input_fn, steps=200)
+    self._assertCheckpoint(200)
+
+  def testFromScratch(self):
+    n_classes = 2
+    label = 1
+    age = 17
+    # loss = sigmoid_cross_entropy(logits, label) where logits = 0 (weights are
+    # all zero initially) and label = 1 so,
+    #    loss = 1 * -log ( sigmoid(logits) ) = 0.69315
+    mock_optimizer = self._mockOptimizer(expected_loss=0.69315)
+
+    est = linear.LinearClassifier(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        n_classes=n_classes,
+        optimizer=mock_optimizer,
+        model_dir=self._model_dir)
+    self.assertEqual(0, mock_optimizer.minimize.call_count)
+
+    # Train for a few steps, and validate optimizer and final checkpoint.
+    num_steps = 10
+    est.train(
+        input_fn=lambda: ({'age': ((age,),)}, ((label,),)), steps=num_steps)
+    self.assertEqual(1, mock_optimizer.minimize.call_count)
+    self._assertCheckpoint(
+        expected_global_step=num_steps,
+        expected_age_weight=0.,
+        expected_bias=0.)
+
+  def testFromCheckpoint(self):
+    # Create initial checkpoint.
+    n_classes = 2
+    label = 1
+    age = 17
+    age_weight = 2.0
+    bias = -35.0
+    initial_global_step = 100
+    with ops.Graph().as_default():
+      variables.Variable([[age_weight]], name=_AGE_WEIGHT_NAME)
+      variables.Variable([bias], name=_BIAS_NAME)
+      variables.Variable(
+          initial_global_step, name=ops.GraphKeys.GLOBAL_STEP,
+          dtype=dtypes.int64)
+      _save_variables_to_ckpt(self._model_dir)
+
+    # logits = age * age_weight + bias = 17 * 2. - 35. = -1.
+    # loss = sigmoid_cross_entropy(logits, label)
+    # so, loss = 1 * -log ( sigmoid(-1) ) = 1.3133
+    mock_optimizer = self._mockOptimizer(expected_loss=1.3133)
+
+    est = linear.LinearClassifier(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        n_classes=n_classes,
+        optimizer=mock_optimizer,
+        model_dir=self._model_dir)
+    self.assertEqual(0, mock_optimizer.minimize.call_count)
+
+    # Train for a few steps, and validate optimizer and final checkpoint.
+    num_steps = 10
+    est.train(
+        input_fn=lambda: ({'age': ((age,),)}, ((label,),)), steps=num_steps)
+    self.assertEqual(1, mock_optimizer.minimize.call_count)
+    self._assertCheckpoint(
+        expected_global_step=initial_global_step + num_steps,
+        expected_age_weight=age_weight,
+        expected_bias=bias)
+
+  def testFromCheckpointMultiBatch(self):
+    # Create initial checkpoint.
+    n_classes = 2
+    label = [1, 0]
+    age = [17, 18.5]
+    age_weight = 2.0
+    bias = -35.0
+    initial_global_step = 100
+    with ops.Graph().as_default():
+      variables.Variable([[age_weight]], name=_AGE_WEIGHT_NAME)
+      variables.Variable([bias], name=_BIAS_NAME)
+      variables.Variable(
+          initial_global_step, name=ops.GraphKeys.GLOBAL_STEP,
+          dtype=dtypes.int64)
+      _save_variables_to_ckpt(self._model_dir)
+
+    # logits = age * age_weight + bias
+    # logits[0] = 17 * 2. - 35. = -1.
+    # logits[1] = 18.5 * 2. - 35. = 2.
+    # loss = sigmoid_cross_entropy(logits, label)
+    # so, loss[0] = 1 * -log ( sigmoid(-1) ) = 1.3133
+    #     loss[1] = (1 - 0) * -log ( 1- sigmoid(2) ) = 2.1269
+    mock_optimizer = self._mockOptimizer(expected_loss=1.3133 + 2.1269)
+
+    est = linear.LinearClassifier(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        n_classes=n_classes,
+        optimizer=mock_optimizer,
+        model_dir=self._model_dir)
+    self.assertEqual(0, mock_optimizer.minimize.call_count)
+
+    # Train for a few steps, and validate optimizer and final checkpoint.
+    num_steps = 10
+    est.train(
+        input_fn=lambda: ({'age': (age)}, (label)),
         steps=num_steps)
     self.assertEqual(1, mock_optimizer.minimize.call_count)
     self._assertCheckpoint(
