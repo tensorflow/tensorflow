@@ -1683,10 +1683,8 @@ cc_library(
     deps = [
         ":buffer_assignment",
         ":hlo",
-        ":hlo_ordering",
         ":hlo_proto",
         "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
 )
