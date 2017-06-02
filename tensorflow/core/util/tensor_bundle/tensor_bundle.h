@@ -273,6 +273,7 @@ class BundleReader {
   RandomAccessFile* metadata_;  // Owned.
   table::Table* table_;
   table::Iterator* iter_;
+  // Owned the InputBuffer objects and their underlying RandomAccessFile's.
   std::unordered_map<int32, io::InputBuffer*> data_;
 
   // Maps each partitioned tensor's key to its stored slices (represented in a
