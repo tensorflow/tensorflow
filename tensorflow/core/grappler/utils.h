@@ -46,6 +46,10 @@ class NodeMap {
   std::unordered_map<string, std::set<NodeDef*>> outputs_;
 };
 
+// True iff 'name' refers to a control inputs, i.e. a node name prefixed with
+// the ^ character.
+bool IsControlInput(const string& name);
+
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.
 string NodeName(const string& name);

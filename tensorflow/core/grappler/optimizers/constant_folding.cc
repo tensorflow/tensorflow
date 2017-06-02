@@ -232,7 +232,7 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   }
 
   for (const auto& input : node.input()) {
-    if (input[0] == '^') {
+    if (IsControlInput(input)) {
       continue;
     }
     bool is_const = IsConstant(*node_map_->GetNode(input));
@@ -267,7 +267,7 @@ NodeDef ConstantFolding::CreateNodeDef(const string& name,
 
 Status ConstantFolding::EvaluateNode(const NodeDef& node,
                                      const TensorVector& inputs,
-                                     TensorVector* output) {
+                                     TensorVector* output) const {
   Status status;
   auto op_kernel =
       CreateOpKernel("CPU", device_.get(), device_->GetAllocator({}), node,
@@ -299,7 +299,7 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
                                             std::vector<NodeDef>* outputs) {
   TensorVector inputs;
   for (const auto& input : node.input()) {
-    if (input[0] == '^') {
+    if (IsControlInput(input)) {
       break;
     }
     TensorVector output;
@@ -337,12 +337,12 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
     node_map_->AddNode(added_node->name(), added_node);
 
     for (const auto& input : node.input()) {
-      if (input[0] == '^') {
+      if (IsControlInput(input)) {
         *added_node->add_input() = input;
       } else {
         NodeDef* input_node = node_map_->GetNode(input);
         for (const auto& fanin_of_input : input_node->input()) {
-          if (fanin_of_input[0] == '^') {
+          if (IsControlInput(fanin_of_input)) {
             *added_node->add_input() = fanin_of_input;
           }
         }
@@ -396,6 +396,60 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
   return Status::OK();
 }
 
+// Returns true iff this reduction can be reduced to an identity (i.e if the set
+// of dimensions to reduce along is empty). This happens often in the gradient
+// graphs.
+bool ConstantFolding::IsSimplifiableReduction(const NodeDef& node) const {
+  if (IsReduction(node)) {
+    CHECK_LE(2, node.input_size());
+    const NodeDef* reductions_indices = node_map_->GetNode(node.input(1));
+    if (IsConstant(*reductions_indices)) {
+      TensorVector output;
+      Status s = EvaluateNode(*reductions_indices, TensorVector(), &output);
+      if (!s.ok()) {
+        return false;
+      }
+      CHECK_EQ(1, output.size());
+      int output_size = output[0]->NumElements();
+      delete output[0].tensor;
+      if (output_size == 0) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+Status ConstantFolding::SimplifyGraph(GraphDef* output) {
+  for (auto& node : *output->mutable_node()) {
+    if (IsSimplifiableReduction(node)) {
+      // Replace the reduction node with an identity node, that can be further
+      // optimized by the model pruner.
+      const NodeDef* reductions_indices = node_map_->GetNode(node.input(1));
+      DataType output_type;
+      if (node.attr().count("T") > 0) {
+        output_type = node.attr().at("T").type();
+      } else {
+        // This is an 'any' or 'all' reduction. The output is always boolean.
+        output_type = DT_BOOL;
+      }
+      node.set_op("Identity");
+      node.clear_attr();
+      (*node.mutable_attr())["T"].set_type(output_type);
+      if (node.input_size() > 2) {
+        node.mutable_input()->SwapElements(1, node.input_size() - 1);
+      }
+      node.mutable_input()->RemoveLast();
+      for (const auto& input : reductions_indices->input()) {
+        if (IsControlInput(input)) {
+          *node.add_input() = input;
+        }
+      }
+    }
+  }
+  return Status::OK();
+}
+
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
   graph_ = item.graph;
@@ -404,10 +458,14 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   for (const auto& node : item.fetch) {
     nodes_to_preserve_.insert(NodeName(node));
   }
+  for (const auto& node : item.feed) {
+    nodes_to_preserve_.insert(NodeName(node.first));
+  }
   device_.reset(new DeviceSimple());
   *output = GraphDef();
   TF_RETURN_IF_ERROR(MaterializeShapes(item));
   TF_RETURN_IF_ERROR(FoldGraph(output));
+  TF_RETURN_IF_ERROR(SimplifyGraph(output));
   LOG(INFO) << "Optimized graph size: " << output->node_size();
   return Status::OK();
 }

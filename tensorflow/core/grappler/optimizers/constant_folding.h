@@ -50,7 +50,7 @@ class ConstantFolding : public GraphOptimizer {
 
   Status EvaluateNode(const NodeDef& node,
                       const gtl::InlinedVector<TensorValue, 4>& inputs,
-                      gtl::InlinedVector<TensorValue, 4>* output);
+                      gtl::InlinedVector<TensorValue, 4>* output) const;
 
   Status EvaluateOneFoldable(const NodeDef& node,
                              std::vector<NodeDef>* outputs);
@@ -58,6 +58,9 @@ class ConstantFolding : public GraphOptimizer {
   Status FoldNode(const NodeDef& node, GraphDef* output);
 
   Status FoldGraph(GraphDef* output);
+
+  bool IsSimplifiableReduction(const NodeDef& node) const;
+  Status SimplifyGraph(GraphDef* output);
 
   std::unique_ptr<DeviceBase> device_;
   GraphDef graph_;
