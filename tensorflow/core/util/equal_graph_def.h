@@ -36,8 +36,6 @@ struct EqualGraphDefOptions {
 // nodes must be consistent.
 bool EqualGraphDef(const GraphDef& actual, const GraphDef& expected,
                    string* diff, const EqualGraphDefOptions& options = {});
-bool EqualGraphDef(gtl::ArraySlice<NodeDef> actual, const GraphDef& expected,
-                   string* diff, const EqualGraphDefOptions& options = {});
 
 // Determines if actual and expected are equal, ignoring: ordering of
 // attrs, internal attributes (if set in `options`), and control inputs.

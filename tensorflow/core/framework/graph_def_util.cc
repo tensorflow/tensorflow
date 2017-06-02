@@ -39,14 +39,6 @@ string SummarizeGraphDef(const GraphDef& graph_def) {
   return ret;
 }
 
-string SummarizeGraphDef(gtl::ArraySlice<NodeDef> node_defs) {
-  string ret;
-  for (const NodeDef& node : node_defs) {
-    strings::StrAppend(&ret, SummarizeNodeDef(node), ";\n");
-  }
-  return ret;
-}
-
 Status ValidateExternalGraphDefSyntax(const GraphDef& graph_def) {
   for (const NodeDef& node : graph_def.node()) {
     TF_RETURN_IF_ERROR(ValidateExternalNodeDefSyntax(node));

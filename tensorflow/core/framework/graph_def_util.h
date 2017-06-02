@@ -27,7 +27,6 @@ namespace tensorflow {
 // Produce a human-readable version of a GraphDef that is more concise
 // than a text-format proto.
 string SummarizeGraphDef(const GraphDef& graph_def);
-string SummarizeGraphDef(gtl::ArraySlice<NodeDef> node_defs);
 
 // Validates the syntax of a GraphDef provided externally.
 //
