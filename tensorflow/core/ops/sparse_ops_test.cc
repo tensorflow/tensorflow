@@ -183,20 +183,23 @@ TEST(SparseOpsTest, SparseTensorDenseMatMul_ShapeFn) {
   INFER_ERROR("must be rank 2", op, "[1];?;?;?");
   INFER_ERROR("must be rank 1", op, "?;[];?;?");
   INFER_ERROR("must be rank 1", op, "?;?;[];?");
-  INFER_ERROR("must be rank 2", op, "?;?;[3];?");
-  INFER_ERROR("must be rank 2", op, "?;?;?;[]");
+  INFER_ERROR("must be at least rank 2", op, "?;?;[1];?");
+  INFER_ERROR("must be at least rank 2", op, "?;?;?;[]");
+  INFER_ERROR("must be equal", op, "?;?;[3];[?;?]");
 
-  // second output dim comes from b, depending on adjoint_b value.
-  INFER_OK(op, "?;?;?;?", "[?,?]");
+  // last output dim comes from b, depending on adjoint_b value.
+  INFER_OK(op, "?;?;?;?", "?");
   INFER_OK(op, "?;?;?;[?,?]", "[?,d3_1]");  // use d3_1, !adjoint_b.
   INFER_OK(op, "?;?;?;[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
   INFER_OK(op, "?;?;[2];[1,2]", "[?,d3_1]");  // use d3_1, !adjoint_b.
+  INFER_OK(op, "?;?;?;[?,?,?,?]", "[?,d3_3]"); // use d3_3, !adjoint_b.
 
   set_adjoints(false, true);
   INFER_OK(op, "?;?;?;[?,?]", "[?,d3_0]");  // use d3_0, adjoint_b.
   INFER_OK(op, "?;?;?;[1,2]", "[?,d3_0]");  // use d3_0, adjoint_b.
+  INFER_OK(op, "?;?;?;[?,?,?,?]", "[?,d3_2]"); // use d3_2, adjoint_b.
 
-  // first output comes from a, depending on adjoint_a value.
+  // second to last output comes from a, depending on adjoint_a value.
   // When input tensor is known, its values determine output shape.
   Tensor a_shape_t = test::AsTensor<int64>(std::vector<int64>{3, 1});
   op.input_tensors.resize(4);
@@ -213,7 +216,8 @@ TEST(SparseOpsTest, SparseTensorDenseMatMul_ShapeFn) {
 
   // Try with shape tensor describing shape of rank 3.
   a_shape_t = test::AsTensor<int64>(std::vector<int64>{3, 1, 2});
-  INFER_ERROR("must be rank 2 but is rank 3", op, "?;?;[3];[1,2]");
+  INFER_ERROR("must be equal", op, "?;?;[3];[1,2]");
+  INFER_OK(op, "?;?;[3];[3,2,4]", "[3,1,d3_2]"); // use d3_2, !adjoint_b.
 }
 
 TEST(SparseOpsTest, SparseSoftmax_ShapeFn) {
