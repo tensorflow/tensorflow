@@ -744,6 +744,29 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   ##############################################################################
   # TensorBoard JavaScript Production Dependencies
 
+  filegroup_external(
+      name = "com_google_javascript_closure_compiler_externs",
+      licenses = ["notice"],  # Apache 2.0
+      sha256_urls_extract = {
+          "0ee7b88ed2955b622eaa038bece283e28d0fb5abebfbb80871fc3d0353f0000b": [
+              "http://mirror.bazel.build/github.com/google/closure-compiler/archive/v20170423.tar.gz",
+              "https://github.com/google/closure-compiler/archive/v20170423.tar.gz",
+          ],
+      },
+      strip_prefix = {"v20170423.tar.gz": "closure-compiler-20170423/externs"},
+  )
+
+  filegroup_external(
+      name = "com_google_javascript_closure_compiler_externs_polymer",
+      licenses = ["notice"],  # Apache 2.0
+      sha256_urls = {
+          "23baad9a200a717a821c6df504c84d3a893d7ea9102b14876eb80097e3b94292": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/google/closure-compiler/0e8dc5597a295ee259e3fecd98d6535dc621232f/contrib/externs/polymer-1.0.js",
+              "https://raw.githubusercontent.com/google/closure-compiler/0e8dc5597a295ee259e3fecd98d6535dc621232f/contrib/externs/polymer-1.0.js",
+          ],
+      },
+  )
+
   web_library_external(
       name = "com_lodash",
       licenses = ["notice"],  # MIT
@@ -754,7 +777,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       strip_prefix = "lodash-3.10.1",
       path = "/lodash",
-      srcs = ["lodash.js"],
+      srcs = [
+          "lodash.js",
+          "lodash.min.js",
+      ],
   )
 
   filegroup_external(
@@ -786,6 +812,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
               "https://registry.npmjs.org/plottable/-/plottable-3.1.0.tgz",
           ],
       },
+      strip_prefix = {"plottable-3.1.0.tgz": "package"},
   )
 
   filegroup_external(
@@ -797,9 +824,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
               "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/dagre/v0.7.4/LICENSE",
               "https://raw.githubusercontent.com/cpettitt/dagre/v0.7.4/LICENSE",
           ],
-          "7323829ddd77924a69e2b1235ded3eac30acd990da0f037e0fbd3c8e9035b50d": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.js",
-              "https://raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.js",
+          "6132f5c009a3a72ebced7263ae5d4da48dc513f314a645876293bb658d3631d2": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.min.js",
+              "https://raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.min.js",
           ],
       },
   )
@@ -812,9 +839,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
               "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/LICENSE",
               "https://raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/LICENSE",
           ],
-          "772045d412b1513b549be991c2e1846c38019429d43974efcae943fbe83489bf": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.js",
-              "https://raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.js",
+          "af1db00d36f9a68a6a1981d65997448baa0463a1f5d8bf1f54ff67bcc2e76498": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.min.js",
+              "https://raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.min.js",
           ],
       },
   )
@@ -845,14 +872,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
               "https://github.com/d3/d3/releases/download/v4.8.0/d3.zip",
           ],
       },
-      # TODO(jart): Use srcs=["d3.js"] instead of this once supported.
-      generated_rule_name = "all_files",
-      extra_build_file_content = "\n".join([
-          "filegroup(",
-          "    name = \"org_d3js\",",
-          "    srcs = [\"d3.js\"],",
-          ")",
-      ]),
   )
 
   filegroup_external(
@@ -1795,12 +1814,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   web_library_external(
       name = "org_polymer_neon_animation",
       licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "8800c314a76b2da190a2b203259c1091f6d38e0057ed37c2a3d0b734980fa9a5",
+      sha256 = "a104bb02db956e0e34d3eefcd07f3f6919d137af27d8139879a227ecfdc7d8a4",
       urls = [
-          "http://mirror.bazel.build/github.com/PolymerElements/neon-animation/archive/v1.2.2.tar.gz",
-          "https://github.com/PolymerElements/neon-animation/archive/v1.2.2.tar.gz",
+          "http://mirror.bazel.build/github.com/PolymerElements/neon-animation/archive/v1.2.5.tar.gz",
+          "https://github.com/PolymerElements/neon-animation/archive/v1.2.5.tar.gz",
       ],
-      strip_prefix = "neon-animation-1.2.2",
+      strip_prefix = "neon-animation-1.2.5",
       path = "/neon-animation",
       srcs = [
           "animations/cascaded-animation.html",
@@ -2502,12 +2521,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   web_library_external(
       name = "org_polymer_web_animations_js",
       licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "f8bd760cbdeba131f6790bd5abe170bcbf7b1755ff58ed16d0b82fa8a7f34a7f",
+      sha256 = "84273610f15d5061a320b1dd0f4c3233d0bdf874798a60837b7de7110e086d7e",
       urls = [
-          "http://mirror.bazel.build/github.com/web-animations/web-animations-js/archive/2.2.1.tar.gz",
-          "https://github.com/web-animations/web-animations-js/archive/2.2.1.tar.gz",
+          "http://mirror.bazel.build/github.com/web-animations/web-animations-js/archive/2.2.5.tar.gz",
+          "https://github.com/web-animations/web-animations-js/archive/2.2.5.tar.gz",
       ],
-      strip_prefix = "web-animations-js-2.2.1",
+      strip_prefix = "web-animations-js-2.2.5",
       path = "/web-animations-js",
       srcs = ["web-animations-next-lite.min.js"],
   )

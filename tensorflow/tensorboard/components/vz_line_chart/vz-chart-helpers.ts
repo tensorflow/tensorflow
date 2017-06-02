@@ -12,12 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/* tslint:disable:no-namespace variable-name */
-
-
-import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
-import * as Plottable from 'Plottable/plottable';  // from //third_party/javascript/plottable
-import {Dataset} from 'Plottable/plottable';
 
 export interface Datum {
   wall_time: Date;
@@ -123,6 +117,7 @@ export function computeDomain(values: number[], ignoreOutliers: boolean) {
 }
 
 export function accessorize(key: string): Plottable.IAccessor<number> {
+  // tslint:disable-next-line:no-any be quiet tsc
   return (d: any, index: number, dataset: Plottable.Dataset) => d[key];
 }
 
@@ -157,19 +152,21 @@ export function wallX(): XComponents {
     accessor: (d: Datum) => d.wall_time,
   };
 }
-export let relativeAccessor = (d: any, index: number, dataset: Dataset) => {
-  // We may be rendering the final-point datum for scatterplot.
-  // If so, we will have already provided the 'relative' property
-  if (d.relative != null) {
-    return d.relative;
-  }
-  let data = dataset.data();
-  // I can't imagine how this function would be called when the data is
-  // empty (after all, it iterates over the data), but lets guard just
-  // to be safe.
-  let first = data.length > 0 ? +data[0].wall_time : 0;
-  return (+d.wall_time - first) / (60 * 60 * 1000);  // ms to hours
-};
+export let relativeAccessor =
+    // tslint:disable-next-line:no-any be quiet tsc
+    (d: any, index: number, dataset: Plottable.Dataset) => {
+      // We may be rendering the final-point datum for scatterplot.
+      // If so, we will have already provided the 'relative' property
+      if (d.relative != null) {
+        return d.relative;
+      }
+      let data = dataset.data();
+      // I can't imagine how this function would be called when the data is
+      // empty (after all, it iterates over the data), but lets guard just
+      // to be safe.
+      let first = data.length > 0 ? +data[0].wall_time : 0;
+      return (+d.wall_time - first) / (60 * 60 * 1000);  // ms to hours
+    };
 
 export let relativeFormatter = (n: number) => {
   // we will always show 2 units of precision, e.g days and hours, or

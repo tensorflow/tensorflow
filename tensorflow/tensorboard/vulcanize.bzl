@@ -13,27 +13,36 @@
 # limitations under the License.
 
 load("@io_bazel_rules_closure//closure/private:defs.bzl", "unfurl", "long_path")
+load("//tensorflow/tensorboard:web.bzl", "web_aspect")
 
 def _tensorboard_html_binary(ctx):
   deps = unfurl(ctx.attr.deps, provider="webfiles")
   manifests = set()
   files = set()
+  jslibs = set(ctx.files._jslibs)
   webpaths = set()
   for dep in deps:
     manifests += dep.webfiles.manifests
     webpaths += dep.webfiles.webpaths
     files += dep.data_runfiles.files
+    if hasattr(dep.webfiles, "jslibs"):
+      jslibs += dep.webfiles.jslibs
+    if hasattr(dep, "closure_js_library"):
+      jslibs += getattr(dep.closure_js_library, "srcs", [])
   webpaths += [ctx.attr.output_path]
 
   # vulcanize
   ctx.action(
-      inputs=list(manifests + files),
+      inputs=list(manifests | files | jslibs),
       outputs=[ctx.outputs.html],
       executable=ctx.executable._Vulcanize,
-      arguments=([ctx.attr.input_path,
+      arguments=([ctx.attr.compilation_level,
+                  "true" if ctx.attr.testonly else "false",
+                  ctx.attr.input_path,
                   ctx.attr.output_path,
                   ctx.outputs.html.path] +
-                 [m.path for m in manifests]),
+                 [f.path for f in jslibs] +
+                 [f.path for f in manifests]),
       progress_message="Vulcanizing %s" % ctx.attr.input_path)
 
   # webfiles manifest
@@ -88,11 +97,16 @@ tensorboard_html_binary = rule(
     implementation=_tensorboard_html_binary,
     executable=True,
     attrs={
+        "compilation_level": attr.string(default="ADVANCED"),
         "input_path": attr.string(mandatory=True),
         "output_path": attr.string(mandatory=True),
         "data": attr.label_list(cfg="data", allow_files=True),
-        "deps": attr.label_list(providers=["webfiles"], mandatory=True),
+        "deps": attr.label_list(
+            aspects=[web_aspect], providers=["webfiles"], mandatory=True),
         "external_assets": attr.string_dict(default={"/_/runfiles": "."}),
+        "_jslibs": attr.label(
+            default=Label("//tensorflow/tensorboard/java/org/tensorflow/tensorboard/vulcanize:jslibs"),
+            allow_files=True),
         "_Vulcanize": attr.label(
             default=Label("//tensorflow/tensorboard/java/org/tensorflow/tensorboard/vulcanize:Vulcanize"),
             executable=True,

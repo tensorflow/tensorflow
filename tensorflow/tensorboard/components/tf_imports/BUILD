@@ -1,28 +1,47 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 load("//tensorflow/tensorboard:hacks.bzl", "tensorboard_typescript_bundle")
+load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-web_library(
+ts_web_library(
+    name = "webcomponentsjs",
+    srcs = ["@org_definitelytyped//:webcomponents.js.d.ts"],
+    path = "/webcomponentsjs",
+    exports = ["@org_polymer_webcomponentsjs"],
+)
+
+ts_web_library(
+    name = "polymer",
+    srcs = ["@org_definitelytyped//:polymer.d.ts"],
+    path = "/polymer",
+    exports = ["@org_polymer"],
+    deps = [":webcomponentsjs"],
+)
+
+ts_web_library(
     name = "lodash",
-    srcs = ["lodash.html"],
+    srcs = [
+        "lodash.html",
+        "@org_definitelytyped//:lodash.d.ts",
+    ],
     path = "/tf-imports",
     deps = ["@com_lodash"],
 )
 
-web_library(
+ts_web_library(
     name = "threejs",
     srcs = [
         "threejs.html",
+        "@org_definitelytyped//:three.d.ts",
         "@org_threejs//:OrbitControls.js",
         "@org_threejs//:three.js",
     ],
     path = "/tf-imports",
 )
 
-web_library(
+ts_web_library(
     name = "numericjs",
     srcs = [
         "numericjs.html",
@@ -31,7 +50,7 @@ web_library(
     path = "/tf-imports",
 )
 
-web_library(
+ts_web_library(
     name = "weblas",
     srcs = [
         "weblas.html",
@@ -40,21 +59,21 @@ web_library(
     path = "/tf-imports",
 )
 
-web_library(
+ts_web_library(
     name = "graphlib",
     srcs = [
         "graphlib.html",
-        "@io_github_cpettitt_graphlib//:graphlib.core.js",
+        "@io_github_cpettitt_graphlib//:graphlib.core.min.js",
     ],
     path = "/tf-imports",
     deps = [":lodash"],
 )
 
-web_library(
+ts_web_library(
     name = "dagre",
     srcs = [
         "dagre.html",
-        "@io_github_cpettitt_dagre//:dagre.core.js",
+        "@io_github_cpettitt_dagre//:dagre.core.min.js",
     ],
     path = "/tf-imports",
     deps = [
@@ -63,33 +82,60 @@ web_library(
     ],
 )
 
-web_library(
+ts_web_library(
     name = "d3",
     srcs = [
+        "d3.d.ts",
         "d3.html",
-        "@org_d3js//:d3.js",
+        "@org_d3js//:d3.min.js",
     ],
     path = "/tf-imports",
 )
 
-web_library(
+ts_web_library(
     name = "plottable",
-    srcs = ["plottable.html"],
+    srcs = [
+        "plottable.d.ts",
+        "plottable.html",
+        "@com_palantir_plottable//:plottable.css",
+        "@com_palantir_plottable//:plottable.js",
+    ],
     path = "/tf-imports",
-    deps = [
-        ":d3",
-        ":plottable_js_css",
+    deps = [":d3"],
+)
+
+ts_web_library(
+    name = "web_component_tester",
+    testonly = 1,
+    exports = [
+        ":chai_typings",
+        ":mocha_typings",
+        ":sinon_typings",
+        "@org_npmjs_registry_web_component_tester",
     ],
 )
 
-web_library(
-    name = "plottable_js_css",
-    srcs = [
-        "@com_palantir_plottable//:package/plottable.css",
-        "@com_palantir_plottable//:package/plottable.js",
-    ],
-    path = "/tf-imports",
-    strip_prefix = "package",
+ts_web_library(
+    name = "chai_typings",
+    testonly = 1,
+    srcs = ["@org_definitelytyped//:chai.d.ts"],
+    path = "/chai",
+    visibility = ["//visibility:private"],
+)
+
+ts_web_library(
+    name = "mocha_typings",
+    testonly = 1,
+    srcs = ["@org_definitelytyped//:mocha.d.ts"],
+    path = "/mocha",
+    visibility = ["//visibility:private"],
+)
+
+ts_web_library(
+    name = "sinon_typings",
+    testonly = 1,
+    srcs = ["@org_definitelytyped//:sinon.d.ts"],
+    path = "/sinonjs",
     visibility = ["//visibility:private"],
 )
 
@@ -141,139 +187,139 @@ tensorboard_typescript_bundle(
     out = "plottable.d.ts",
     namespace_srcs = {
         "Plottable": [
-            "@com_palantir_plottable//:package/build/src/core/dataset.d.ts",
-            "@com_palantir_plottable//:package/build/src/core/interfaces.d.ts",
-            "@com_palantir_plottable//:package/build/src/core/version.d.ts",
+            "@com_palantir_plottable//:build/src/core/dataset.d.ts",
+            "@com_palantir_plottable//:build/src/core/interfaces.d.ts",
+            "@com_palantir_plottable//:build/src/core/version.d.ts",
         ],
         "Plottable.Animators": [
-            "@com_palantir_plottable//:package/build/src/animators/animator.d.ts",
-            "@com_palantir_plottable//:package/build/src/animators/easingAnimator.d.ts",
-            "@com_palantir_plottable//:package/build/src/animators/nullAnimator.d.ts",
+            "@com_palantir_plottable//:build/src/animators/animator.d.ts",
+            "@com_palantir_plottable//:build/src/animators/easingAnimator.d.ts",
+            "@com_palantir_plottable//:build/src/animators/nullAnimator.d.ts",
         ],
         "Plottable.Axes": [
-            "@com_palantir_plottable//:package/build/src/axes/axis.d.ts",
-            "@com_palantir_plottable//:package/build/src/axes/categoryAxis.d.ts",
-            "@com_palantir_plottable//:package/build/src/axes/numericAxis.d.ts",
-            "@com_palantir_plottable//:package/build/src/axes/timeAxis.d.ts",
+            "@com_palantir_plottable//:build/src/axes/axis.d.ts",
+            "@com_palantir_plottable//:build/src/axes/categoryAxis.d.ts",
+            "@com_palantir_plottable//:build/src/axes/numericAxis.d.ts",
+            "@com_palantir_plottable//:build/src/axes/timeAxis.d.ts",
         ],
         "Plottable.Components": [
-            "@com_palantir_plottable//:package/build/src/components/component.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/componentContainer.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/dragBoxLayer.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/dragLineLayer.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/gridlines.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/group.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/guideLineLayer.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/interpolatedColorLegend.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/label.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/legend.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/plotGroup.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/selectionBoxLayer.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/table.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/xDragBoxLayer.d.ts",
-            "@com_palantir_plottable//:package/build/src/components/yDragBoxLayer.d.ts",
+            "@com_palantir_plottable//:build/src/components/component.d.ts",
+            "@com_palantir_plottable//:build/src/components/componentContainer.d.ts",
+            "@com_palantir_plottable//:build/src/components/dragBoxLayer.d.ts",
+            "@com_palantir_plottable//:build/src/components/dragLineLayer.d.ts",
+            "@com_palantir_plottable//:build/src/components/gridlines.d.ts",
+            "@com_palantir_plottable//:build/src/components/group.d.ts",
+            "@com_palantir_plottable//:build/src/components/guideLineLayer.d.ts",
+            "@com_palantir_plottable//:build/src/components/interpolatedColorLegend.d.ts",
+            "@com_palantir_plottable//:build/src/components/label.d.ts",
+            "@com_palantir_plottable//:build/src/components/legend.d.ts",
+            "@com_palantir_plottable//:build/src/components/plotGroup.d.ts",
+            "@com_palantir_plottable//:build/src/components/selectionBoxLayer.d.ts",
+            "@com_palantir_plottable//:build/src/components/table.d.ts",
+            "@com_palantir_plottable//:build/src/components/xDragBoxLayer.d.ts",
+            "@com_palantir_plottable//:build/src/components/yDragBoxLayer.d.ts",
         ],
         "Plottable.Configs": [
-            "@com_palantir_plottable//:package/build/src/core/config.d.ts",
+            "@com_palantir_plottable//:build/src/core/config.d.ts",
         ],
         "Plottable.Formatters": [
-            "@com_palantir_plottable//:package/build/src/core/formatters.d.ts",
+            "@com_palantir_plottable//:build/src/core/formatters.d.ts",
         ],
         "Plottable.RenderController": [
-            "@com_palantir_plottable//:package/build/src/core/renderController.d.ts",
+            "@com_palantir_plottable//:build/src/core/renderController.d.ts",
         ],
         "Plottable.RenderPolicies": [
-            "@com_palantir_plottable//:package/build/src/core/renderPolicy.d.ts",
+            "@com_palantir_plottable//:build/src/core/renderPolicy.d.ts",
         ],
         "Plottable.SymbolFactories": [
-            "@com_palantir_plottable//:package/build/src/core/symbolFactories.d.ts",
+            "@com_palantir_plottable//:build/src/core/symbolFactories.d.ts",
         ],
         "Plottable.Dispatchers": [
-            "@com_palantir_plottable//:package/build/src/dispatchers/dispatcher.d.ts",
-            "@com_palantir_plottable//:package/build/src/dispatchers/keyDispatcher.d.ts",
-            "@com_palantir_plottable//:package/build/src/dispatchers/mouseDispatcher.d.ts",
-            "@com_palantir_plottable//:package/build/src/dispatchers/touchDispatcher.d.ts",
+            "@com_palantir_plottable//:build/src/dispatchers/dispatcher.d.ts",
+            "@com_palantir_plottable//:build/src/dispatchers/keyDispatcher.d.ts",
+            "@com_palantir_plottable//:build/src/dispatchers/mouseDispatcher.d.ts",
+            "@com_palantir_plottable//:build/src/dispatchers/touchDispatcher.d.ts",
         ],
         "Plottable.Drawers": [
-            "@com_palantir_plottable//:package/build/src/drawers/arcDrawer.d.ts",
-            "@com_palantir_plottable//:package/build/src/drawers/arcOutlineDrawer.d.ts",
-            "@com_palantir_plottable//:package/build/src/drawers/areaDrawer.d.ts",
-            "@com_palantir_plottable//:package/build/src/drawers/canvasBuffer.d.ts",
-            "@com_palantir_plottable//:package/build/src/drawers/canvasDrawer.d.ts",
-            "@com_palantir_plottable//:package/build/src/drawers/drawStep.d.ts",
-            "@com_palantir_plottable//:package/build/src/drawers/drawer.d.ts",
-            "@com_palantir_plottable//:package/build/src/drawers/lineDrawer.d.ts",
-            "@com_palantir_plottable//:package/build/src/drawers/rectangleDrawer.d.ts",
-            "@com_palantir_plottable//:package/build/src/drawers/segmentDrawer.d.ts",
-            "@com_palantir_plottable//:package/build/src/drawers/svgDrawer.d.ts",
-            "@com_palantir_plottable//:package/build/src/drawers/symbolDrawer.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/arcDrawer.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/arcOutlineDrawer.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/areaDrawer.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/canvasBuffer.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/canvasDrawer.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/drawStep.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/drawer.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/lineDrawer.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/rectangleDrawer.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/segmentDrawer.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/svgDrawer.d.ts",
+            "@com_palantir_plottable//:build/src/drawers/symbolDrawer.d.ts",
         ],
         "Plottable.Interactions": [
-            "@com_palantir_plottable//:package/build/src/interactions/clickInteraction.d.ts",
-            "@com_palantir_plottable//:package/build/src/interactions/dragInteraction.d.ts",
-            "@com_palantir_plottable//:package/build/src/interactions/interaction.d.ts",
-            "@com_palantir_plottable//:package/build/src/interactions/keyInteraction.d.ts",
-            "@com_palantir_plottable//:package/build/src/interactions/panZoomInteraction.d.ts",
-            "@com_palantir_plottable//:package/build/src/interactions/pointerInteraction.d.ts",
+            "@com_palantir_plottable//:build/src/interactions/clickInteraction.d.ts",
+            "@com_palantir_plottable//:build/src/interactions/dragInteraction.d.ts",
+            "@com_palantir_plottable//:build/src/interactions/interaction.d.ts",
+            "@com_palantir_plottable//:build/src/interactions/keyInteraction.d.ts",
+            "@com_palantir_plottable//:build/src/interactions/panZoomInteraction.d.ts",
+            "@com_palantir_plottable//:build/src/interactions/pointerInteraction.d.ts",
         ],
         "Plottable.Plots": [
-            "@com_palantir_plottable//:package/build/src/plots/areaPlot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/barPlot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/clusteredBarPlot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/commons.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/linePlot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/piePlot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/plot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/rectanglePlot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/scatterPlot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/segmentPlot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/stackedAreaPlot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/stackedBarPlot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/waterfallPlot.d.ts",
-            "@com_palantir_plottable//:package/build/src/plots/xyPlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/areaPlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/barPlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/clusteredBarPlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/commons.d.ts",
+            "@com_palantir_plottable//:build/src/plots/linePlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/piePlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/plot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/rectanglePlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/scatterPlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/segmentPlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/stackedAreaPlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/stackedBarPlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/waterfallPlot.d.ts",
+            "@com_palantir_plottable//:build/src/plots/xyPlot.d.ts",
         ],
         "Plottable.Scales": [
-            "@com_palantir_plottable//:package/build/src/scales/index.d.ts",
-            "@com_palantir_plottable//:package/build/src/scales/categoryScale.d.ts",
-            "@com_palantir_plottable//:package/build/src/scales/colorScale.d.ts",
-            "@com_palantir_plottable//:package/build/src/scales/interpolatedColorScale.d.ts",
-            "@com_palantir_plottable//:package/build/src/scales/linearScale.d.ts",
-            "@com_palantir_plottable//:package/build/src/scales/modifiedLogScale.d.ts",
-            "@com_palantir_plottable//:package/build/src/scales/quantitativeScale.d.ts",
-            "@com_palantir_plottable//:package/build/src/scales/scale.d.ts",
-            "@com_palantir_plottable//:package/build/src/scales/timeScale.d.ts",
+            "@com_palantir_plottable//:build/src/scales/index.d.ts",
+            "@com_palantir_plottable//:build/src/scales/categoryScale.d.ts",
+            "@com_palantir_plottable//:build/src/scales/colorScale.d.ts",
+            "@com_palantir_plottable//:build/src/scales/interpolatedColorScale.d.ts",
+            "@com_palantir_plottable//:build/src/scales/linearScale.d.ts",
+            "@com_palantir_plottable//:build/src/scales/modifiedLogScale.d.ts",
+            "@com_palantir_plottable//:build/src/scales/quantitativeScale.d.ts",
+            "@com_palantir_plottable//:build/src/scales/scale.d.ts",
+            "@com_palantir_plottable//:build/src/scales/timeScale.d.ts",
         ],
         "Plottable.Scales.TickGenerators": [
-            "@com_palantir_plottable//:package/build/src/scales/tickGenerators.d.ts",
+            "@com_palantir_plottable//:build/src/scales/tickGenerators.d.ts",
         ],
         "Plottable.Utils": [
-            "@com_palantir_plottable//:package/build/src/utils/addD3SelectionMulti.d.ts",
-            "@com_palantir_plottable//:package/build/src/utils/bucket.d.ts",
-            "@com_palantir_plottable//:package/build/src/utils/callbackSet.d.ts",
-            "@com_palantir_plottable//:package/build/src/utils/coerceD3.d.ts",
-            "@com_palantir_plottable//:package/build/src/utils/entityStore.d.ts",
-            "@com_palantir_plottable//:package/build/src/utils/makeEnum.d.ts",
-            "@com_palantir_plottable//:package/build/src/utils/map.d.ts",
-            "@com_palantir_plottable//:package/build/src/utils/set.d.ts",
-            "@com_palantir_plottable//:package/build/src/utils/transformAwareTranslator.d.ts",
+            "@com_palantir_plottable//:build/src/utils/addD3SelectionMulti.d.ts",
+            "@com_palantir_plottable//:build/src/utils/bucket.d.ts",
+            "@com_palantir_plottable//:build/src/utils/callbackSet.d.ts",
+            "@com_palantir_plottable//:build/src/utils/coerceD3.d.ts",
+            "@com_palantir_plottable//:build/src/utils/entityStore.d.ts",
+            "@com_palantir_plottable//:build/src/utils/makeEnum.d.ts",
+            "@com_palantir_plottable//:build/src/utils/map.d.ts",
+            "@com_palantir_plottable//:build/src/utils/set.d.ts",
+            "@com_palantir_plottable//:build/src/utils/transformAwareTranslator.d.ts",
         ],
         "Plottable.Utils.Array": [
-            "@com_palantir_plottable//:package/build/src/utils/arrayUtils.d.ts",
+            "@com_palantir_plottable//:build/src/utils/arrayUtils.d.ts",
         ],
         "Plottable.Utils.Color": [
-            "@com_palantir_plottable//:package/build/src/utils/colorUtils.d.ts",
+            "@com_palantir_plottable//:build/src/utils/colorUtils.d.ts",
         ],
         "Plottable.Utils.DOM": [
-            "@com_palantir_plottable//:package/build/src/utils/domUtils.d.ts",
+            "@com_palantir_plottable//:build/src/utils/domUtils.d.ts",
         ],
         "Plottable.Utils.Math": [
-            "@com_palantir_plottable//:package/build/src/utils/mathUtils.d.ts",
+            "@com_palantir_plottable//:build/src/utils/mathUtils.d.ts",
         ],
         "Plottable.Utils.Stacking": [
-            "@com_palantir_plottable//:package/build/src/utils/stackingUtils.d.ts",
+            "@com_palantir_plottable//:build/src/utils/stackingUtils.d.ts",
         ],
         "Plottable.Utils.Window": [
-            "@com_palantir_plottable//:package/build/src/utils/windowUtils.d.ts",
+            "@com_palantir_plottable//:build/src/utils/windowUtils.d.ts",
         ],
     },
     namespace_symbol_aliases = {
