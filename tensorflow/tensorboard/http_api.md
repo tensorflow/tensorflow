@@ -55,13 +55,11 @@ all of the data available from the TensorBoard server. Here is an example:
 
     {
       "train_run": {
-        "compressedHistograms": ["foo_histogram", "bar_histogram"],
         "graph": true,
         "firstEventTimestamp": 123456.789
         "run_metadata": ["forward prop", "inference"]
       },
       "eval": {
-        "compressedHistograms": ["foo_histogram", "bar_histogram"],
         "graph": false,
         "run_metadata": []
       }
@@ -81,6 +79,7 @@ and will not appear in the output from this route:
   - `audio`
   - `images`
   - `scalars`
+  - `compressedHistograms`, moved to `distributions`
   - `histograms`
 
 ## `/data/plugin/scalars/tags`
@@ -160,7 +159,21 @@ Annotated Example: (note - real data is higher precision)
       ]
     ]
 
-## '/data/compressedHistograms?run=foo&tag=bar'
+## `/data/plugin/distributions/tags`
+
+Returns a dictionary mapping from `run_name` (quoted string) to arrays of
+`tag_name` (quoted string), where each array contains the names of all
+distribution tags present in the corresponding run. Here is an example:
+
+    {
+      "train_run": ["foo_histogram", "bar_histogram"],
+      "eval": ["foo_histogram", "bar_histogram"]
+    }
+
+Note that runs without any distribution tags are included as keys with
+value the empty array.
+
+## `/data/plugin/distributions/distributions?run=foo&tag=bar`
 
 Returns an array of event_accumulator.CompressedHistogramEvents ([wall_time,
 step, CompressedHistogramValues]) for the given run and tag.
@@ -180,8 +193,8 @@ Annotated Example: (note - real data is higher precision)
       [
         1441154832.580509,   # wall_time
         5,                   # step
-        [  [0, -3.67],       # CompressedHistogramValue for 0th percentile
-          [2500, -4.19],    # CompressedHistogramValue for 25th percentile
+        [ [0, -3.67],        # CompressedHistogramValue for 0th percentile
+          [2500, -4.19],     # CompressedHistogramValue for 25th percentile
           [5000, 6.29],
           [7500, 1.64],
           [10000, 3.67]

@@ -21,7 +21,6 @@ export interface Router {
   logdir: () => string;
   runs: () => string;
   isDemoMode: () => boolean;
-  compressedHistograms: RunTagUrlFn;
   graph:
       (run: string, limit_attr_size?: number,
        large_attrs_key?: string) => string;
@@ -88,7 +87,6 @@ export function router(dataDir = 'data', demoMode = false): Router {
     runs: () => dataDir + '/runs' + (demoMode ? '.json' : ''),
     isDemoMode: () => demoMode,
     graph: graphUrl,
-    compressedHistograms: standardRoute('compressedHistograms'),
     runMetadata: standardRoute('run_metadata', '.pbtxt'),
     healthPills: () => dataDir + '/plugin/debugger/health_pills',
     textRuns: () => dataDir + '/plugin/text/runs' + (demoMode ? '.json' : ''),

@@ -193,8 +193,9 @@ export class Backend {
    * Return a promise showing the Run-to-Tag mapping for compressedHistogram
    * data.
    */
-  public compressedHistogramRuns(): Promise<RunToTag> {
-    return this.runs().then((x) => _.mapValues(x, 'compressedHistograms'));
+  public compressedHistogramTags(): Promise<RunToTag> {
+    return this.requestManager.request(
+        this.router.pluginRoute('distributions', '/tags'));
   }
 
   /**
@@ -343,7 +344,8 @@ export class Backend {
    */
   private compressedHistogram(tag: string, run: string):
       Promise<Array<Datum&CompressedHistogramTuple>> {
-    const url = this.router.compressedHistograms(tag, run);
+    const url = (this.router.pluginRunTagRoute(
+        'distributions', '/distributions')(tag, run));
     let p: Promise<TupleData<CompressedHistogramTuple>[]>;
     p = this.requestManager.request(url);
     return p.then(map(detupler((x) => x)));

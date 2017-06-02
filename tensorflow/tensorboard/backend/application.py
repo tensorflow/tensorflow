@@ -22,15 +22,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import csv
 import os
 import re
 import threading
 import time
 
 import six
-from six import StringIO
-from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves.urllib import parse as urlparse
 import tensorflow as tf
 from werkzeug import wrappers
@@ -59,6 +56,7 @@ DEFAULT_SIZE_GUIDANCE = {
 # /data/runs entirely.
 _MIGRATED_DATA_KEYS = frozenset((
     'audio',
+    'distributions',
     'histograms',
     'images',
     'scalars',
@@ -69,7 +67,6 @@ LOGDIR_ROUTE = '/logdir'
 RUNS_ROUTE = '/runs'
 PLUGIN_PREFIX = '/plugin'
 PLUGINS_LISTING_ROUTE = '/plugins_listing'
-COMPRESSED_HISTOGRAMS_ROUTE = '/' + event_accumulator.COMPRESSED_HISTOGRAMS
 GRAPH_ROUTE = '/' + event_accumulator.GRAPH
 RUN_METADATA_ROUTE = '/' + event_accumulator.RUN_METADATA
 TAB_ROUTES = ['', '/events', '/images', '/audio', '/graphs', '/histograms']
@@ -78,16 +75,6 @@ TAB_ROUTES = ['', '/events', '/images', '/audio', '/graphs', '/histograms']
 # name would be confusing, too. To be safe, let's restrict the valid
 # names as follows.
 _VALID_PLUGIN_RE = re.compile(r'^[A-Za-z0-9_.-]+$')
-
-
-class _OutputFormat(object):
-  """An enum used to list the valid output formats for API calls.
-
-  Not all API calls support all formats (for example, only scalars and
-  compressed histograms support CSV).
-  """
-  JSON = 'json'
-  CSV = 'csv'
 
 
 def standard_tensorboard_wsgi(
@@ -159,8 +146,6 @@ class TensorBoardWSGIApp(object):
       reload_multiplexer(self._multiplexer, path_to_run)
 
     self.data_applications = {
-        DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
-            self._serve_compressed_histograms,
         DATA_PREFIX + GRAPH_ROUTE:
             self._serve_graph,
         DATA_PREFIX + LOGDIR_ROUTE:
@@ -277,35 +262,6 @@ class TensorBoardWSGIApp(object):
           request, '404 Not Found', 'text/plain; charset=UTF-8', code=404)
     return http_util.Respond(
         request, str(run_metadata), 'text/x-protobuf')  # pbtxt
-
-  @wrappers.Request.application
-  def _serve_compressed_histograms(self, request):
-    """Given a tag and single run, return an array of compressed histograms."""
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-    compressed_histograms = self._multiplexer.CompressedHistograms(run, tag)
-    if request.args.get('format') == _OutputFormat.CSV:
-      string_io = StringIO()
-      writer = csv.writer(string_io)
-
-      # Build the headers; we have two columns for timing and two columns for
-      # each compressed histogram bucket.
-      headers = ['Wall time', 'Step']
-      if compressed_histograms:
-        bucket_count = len(compressed_histograms[0].compressed_histogram_values)
-        for i in xrange(bucket_count):
-          headers += ['Edge %d basis points' % i, 'Edge %d value' % i]
-      writer.writerow(headers)
-
-      for compressed_histogram in compressed_histograms:
-        row = [compressed_histogram.wall_time, compressed_histogram.step]
-        for value in compressed_histogram.compressed_histogram_values:
-          row += [value.rank_in_bps, value.value]
-        writer.writerow(row)
-      return http_util.Respond(request, string_io.getvalue(), 'text/csv')
-    else:
-      return http_util.Respond(
-          request, compressed_histograms, 'application/json')
 
   @wrappers.Request.application
   def _serve_plugins_listing(self, request):

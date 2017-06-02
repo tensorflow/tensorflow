@@ -167,7 +167,6 @@ class TensorboardServerTest(tf.test.TestCase):
         run_json,
         {
             'run1': {
-                'compressedHistograms': ['histogram'],
                 # if only_use_meta_graph, the graph is from the metagraph
                 'graph': True,
                 'meta_graph': self._only_use_meta_graph,
@@ -265,12 +264,7 @@ class TensorboardServerTest(tf.test.TestCase):
     """Generates the test data directory.
 
     The test data has a single run named run1 which contains:
-     - a histogram [1]
      - a graph definition
-
-    [1]: Histograms no longer appear in `/runs`, but compressed
-    histograms do, and they use the same test data. Thus, histograms are
-    still here for now.
 
     Returns:
       temp_dir: The directory the test data is generated under.
@@ -281,14 +275,6 @@ class TensorboardServerTest(tf.test.TestCase):
     os.makedirs(run1_path)
     writer = tf.summary.FileWriter(run1_path)
 
-    histogram_value = tf.HistogramProto(
-        min=0,
-        max=2,
-        num=3,
-        sum=6,
-        sum_squares=5,
-        bucket_limit=[0, 1, 2],
-        bucket=[1, 1, 1])
     # Add a simple graph event.
     graph_def = tf.GraphDef()
     node1 = graph_def.node.add()
@@ -309,13 +295,6 @@ class TensorboardServerTest(tf.test.TestCase):
     device_stats = run_metadata.step_stats.dev_stats.add()
     device_stats.device = 'test device'
     writer.add_run_metadata(run_metadata, 'test run')
-    writer.add_event(
-        tf.Event(
-            wall_time=0,
-            step=0,
-            summary=tf.Summary(value=[
-                tf.Summary.Value(tag='histogram', histo=histogram_value),
-            ])))
 
     writer.flush()
     writer.close()
