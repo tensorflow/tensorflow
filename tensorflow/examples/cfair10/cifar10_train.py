@@ -86,7 +86,7 @@ def train():
         summary_op = tf.summary.merge_all()
 
         # Build an initialization operation to run below.
-        init = tf.initialize_all_variables()
+        init = tf.global_variables_initializer()
 
         # Start running operations on the Graph.
         sess = tf.Session(config=tf.ConfigProto(
