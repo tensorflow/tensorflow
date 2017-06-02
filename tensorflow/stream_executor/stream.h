@@ -245,6 +245,16 @@ class Stream {
                        const dnn::FilterDescriptor &filter_descriptor,
                        const DeviceMemory<float> &filter_data,
                        const dnn::ConvolutionDescriptor &convolution_descriptor,
+                       const DeviceMemory<float> &biases,
+                       dnn::ActivationMode activation_mode,
+                       const dnn::BatchDescriptor &output_descriptor,
+                       DeviceMemory<float> *output);
+
+  Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
+                       const DeviceMemory<float> &input_data,
+                       const dnn::FilterDescriptor &filter_descriptor,
+                       const DeviceMemory<float> &filter_data,
+                       const dnn::ConvolutionDescriptor &convolution_descriptor,
                        const dnn::BatchDescriptor &output_descriptor,
                        DeviceMemory<float> *output);
 
@@ -274,6 +284,27 @@ class Stream {
       const dnn::FilterDescriptor &filter_descriptor,
       const DeviceMemory<Eigen::half> &filter_data,
       const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const DeviceMemory<Eigen::half> &biases,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator);
+
+  Stream &ThenConvolveWithScratch(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator);
+
+  Stream &ThenConvolveWithScratch(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<Eigen::half> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<Eigen::half> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator);
 
@@ -285,6 +316,31 @@ class Stream {
       const dnn::ConvolutionDescriptor &convolution_descriptor,
       const dnn::BatchDescriptor &output_descriptor,
       DeviceMemory<float> *output, ScratchAllocator *scratch_allocator);
+
+  Stream &ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<float> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<float> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const DeviceMemory<float> &biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<float> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
+
+  Stream &ThenConvolveWithAlgorithm(
+      const dnn::BatchDescriptor &input_descriptor,
+      const DeviceMemory<Eigen::half> &input_data,
+      const dnn::FilterDescriptor &filter_descriptor,
+      const DeviceMemory<Eigen::half> &filter_data,
+      const dnn::ConvolutionDescriptor &convolution_descriptor,
+      const DeviceMemory<Eigen::half> &biases,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor &output_descriptor,
+      DeviceMemory<Eigen::half> *output, ScratchAllocator *scratch_allocator,
+      const dnn::AlgorithmConfig &algorithm_config,
+      dnn::ProfileResult *output_profile_result);
 
   Stream &ThenConvolveWithAlgorithm(
       const dnn::BatchDescriptor &input_descriptor,
