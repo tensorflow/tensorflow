@@ -139,7 +139,7 @@ describe('backend tests', () => {
       chai.assert.deepEqual(x, audio);
       next();
     });
-    backend.runMetadataRuns().then((x) => {
+    backend.runMetadataTags().then((x) => {
       chai.assert.deepEqual(x, runMetadata);
       next();
     });

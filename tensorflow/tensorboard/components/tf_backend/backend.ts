@@ -16,7 +16,7 @@ limitations under the License.
 import {compareTagNames} from '../vz-sorting/sorting';
 import {RequestManager} from './requestManager';
 import {Router} from './router';
-import {demoify} from './urlPathHelpers';
+import {demoify, queryEncoder} from './urlPathHelpers';
 
 export interface RunEnumeration {
   histograms: string[];
@@ -199,16 +199,16 @@ export class Backend {
    * Return a promise showing list of runs that contain graphs.
    */
   public graphRuns(): Promise<string[]> {
-    return this.runs().then((x) => {
-      return _.keys(x).filter((k) => x[k].graph);
-    });
+    return this.requestManager.request(
+        this.router.pluginRoute('graphs', '/runs'));
   }
 
   /**
    * Return a promise showing the Run-to-Tag mapping for run_metadata objects.
    */
-  public runMetadataRuns(): Promise<RunToTag> {
-    return this.runs().then((x) => _.mapValues(x, 'run_metadata'));
+  public runMetadataTags(): Promise<RunToTag> {
+    return this.requestManager.request(
+        this.router.pluginRoute('graphs', '/run_metadata_tags'));
   }
 
 
@@ -233,11 +233,25 @@ export class Backend {
   }
 
   /**
-   * Return a promise of a graph string from the backend.
+   * Return a URL to fetch a graph (cf. method 'graph').
    */
-  public graph(tag: string, limitAttrSize?: number, largeAttrKeys?: string):
+  public graphUrl(run: string, limitAttrSize?: number, largeAttrsKey?: string):
+      string {
+    const demoMode = this.router.isDemoMode();
+    const base = this.router.pluginRoute('graphs', '/graph');
+    const optional = (p) => (p != null && !demoMode || undefined) && p;
+    const parameters = {
+      'run': run,
+      'limit_attr_size': optional(limitAttrSize),
+      'large_attrs_key': optional(largeAttrsKey),
+    };
+    const extension = demoMode ? '.pbtxt' : '';
+    return base + queryEncoder(parameters) + extension;
+  }
+
+  public graph(run: string, limitAttrSize?: number, largeAttrsKey?: string):
       Promise<string> {
-    const url = this.router.graph(tag, limitAttrSize, largeAttrKeys);
+    const url = this.graphUrl(run, limitAttrSize, largeAttrsKey);
     return this.requestManager.request(url);
   }
 
@@ -288,7 +302,7 @@ export class Backend {
       Promise<Array<HistogramSeriesDatum>> {
     let p: Promise<TupleData<HistogramTuple>[]>;
     const url =
-        (this.router.pluginRunTagRoute('histograms', '/histograms')(tag, run));
+        this.router.pluginRunTagRoute('histograms', '/histograms')(tag, run);
     p = this.requestManager.request(url);
     return p.then(map(detupler(createHistogram))).then(function(histos) {
       // Get the minimum and maximum values across all histograms so that the
@@ -327,10 +341,17 @@ export class Backend {
   }
 
   /**
+   * Returns the url for the RunMetadata for the given run/tag.
+   */
+  public runMetadataUrl(tag: string, run: string): string {
+    return this.router.pluginRunTagRoute('graphs', '/run_metadata')(tag, run);
+  }
+
+  /**
    * Returns a promise to load the string RunMetadata for given run/tag.
    */
   public runMetadata(tag: string, run: string): Promise<string> {
-    const url = this.router.runMetadata(tag, run);
+    const url = this.runMetadataUrl(tag, run);
     return this.requestManager.request(url);
   }
 

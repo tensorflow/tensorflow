@@ -55,13 +55,9 @@ all of the data available from the TensorBoard server. Here is an example:
 
     {
       "train_run": {
-        "graph": true,
         "firstEventTimestamp": 123456.789
-        "run_metadata": ["forward prop", "inference"]
       },
       "eval": {
-        "graph": false,
-        "run_metadata": []
       }
     }
 
@@ -81,6 +77,8 @@ and will not appear in the output from this route:
   - `scalars`
   - `compressedHistograms`, moved to `distributions`
   - `histograms`
+  - `graph`, as `/data/plugin/graphs/runs`
+  - `run_metadata`, as `/data/plugin/graphs/run_metadata_tags`
 
 ## `/data/plugin/scalars/tags`
 
@@ -296,11 +294,19 @@ tags present in the corresponding run. Here is an example:
 Note that runs without any audio tags are included as keys with value the empty
 array.
 
-## `/data/graph?run=foo&limit_attr_size=1024&large_attrs_key=key`
+## `/data/plugin/graphs/runs`
 
-Returns the graph definition for the given run in gzipped pbtxt format. The
-graph is composed of a list of nodes, where each node is a specific TensorFlow
-operation which takes as inputs other nodes (operations).
+Returns a list of runs that have associated graphs.
+
+For example:
+
+    ["train"]
+
+## `/data/plugin/graphs/graph?run=foo&limit_attr_size=1024&large_attrs_key=key`
+
+Returns the graph definition for the given run in pbtxt format. The
+graph is composed of a list of nodes, where each node is a specific
+TensorFlow operation which takes as inputs other nodes (operations).
 
 The query parameters `limit_attr_size` and `large_attrs_key` are optional.
 
@@ -313,7 +319,10 @@ attributes that are too large. The value of this key (list of strings)
 should be used by the client in order to determine which attributes
 have been filtered. Must be specified if `limit_attr_size` is specified.
 
-For the query `/graph?run=foo&limit_attr_size=1024&large_attrs_key=_too_large`,
+For the query
+
+    /data/plugin/graphs/graph?run=foo&limit_attr_size=1024&large_attrs_key=_too_large,
+
 here is an example pbtxt response of a graph with 3 nodes, where the second
 node had two large attributes "a" and "b" that were filtered out (size > 1024):
 

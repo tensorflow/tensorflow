@@ -35,7 +35,6 @@ from six.moves import http_client
 import tensorflow as tf
 
 from werkzeug import serving
-from google.protobuf import text_format
 
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.tensorboard import tensorboard
@@ -168,9 +167,7 @@ class TensorboardServerTest(tf.test.TestCase):
         {
             'run1': {
                 # if only_use_meta_graph, the graph is from the metagraph
-                'graph': True,
                 'meta_graph': self._only_use_meta_graph,
-                'run_metadata': ['test run'],
                 'tensors': [],
             }
         })
@@ -191,8 +188,7 @@ class TensorboardServerTest(tf.test.TestCase):
 
   def testDataPaths_disableAllCaching(self):
     """Test the format of the /data/runs endpoint."""
-    for path in ('/data/runs', '/data/logdir',
-                 '/data/run_metadata?run=run1&tag=test%20run'):
+    for path in ('/data/runs', '/data/logdir'):
       connection = http_client.HTTPConnection('localhost',
                                               self._server.server_address[1])
       connection.request('GET', path)
@@ -202,69 +198,11 @@ class TensorboardServerTest(tf.test.TestCase):
       response.read()
       connection.close()
 
-  def testGraph(self):
-    """Test retrieving the graph definition."""
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs')
-    self.assertEqual(response.status, 200)
-    graph_pbtxt = response.read()
-    # Parse the graph from pbtxt into a graph message.
-    graph = tf.GraphDef()
-    graph = text_format.Parse(graph_pbtxt, graph)
-    self.assertEqual(len(graph.node), 2)
-    self.assertEqual(graph.node[0].name, 'a')
-    self.assertEqual(graph.node[1].name, 'b')
-    # Make sure the second node has an attribute that was filtered out because
-    # it was too large and was added to the "too large" attributes list.
-    self.assertEqual(list(graph.node[1].attr.keys()), ['_very_large_attrs'])
-    self.assertEqual(graph.node[1].attr['_very_large_attrs'].list.s,
-                     [b'very_large_attr'])
-
-  def testAcceptGzip_compressesResponse(self):
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs',
-                         {'Accept-Encoding': 'gzip'})
-    self.assertEqual(response.status, 200)
-    self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
-    pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
-    graph = text_format.Parse(pbtxt, tf.GraphDef())
-    self.assertEqual(len(graph.node), 2)
-
-  def testAcceptAnyEncoding_compressesResponse(self):
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs',
-                         {'Accept-Encoding': '*'})
-    self.assertEqual(response.status, 200)
-    self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
-    pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
-    graph = text_format.Parse(pbtxt, tf.GraphDef())
-    self.assertEqual(len(graph.node), 2)
-
-  def testAcceptDoodleEncoding_doesNotCompressResponse(self):
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs',
-                         {'Accept-Encoding': 'doodle'})
-    self.assertEqual(response.status, 200)
-    self.assertIsNone(response.getheader('Content-Encoding'))
-    graph = text_format.Parse(response.read(), tf.GraphDef())
-    self.assertEqual(len(graph.node), 2)
-
-  def testRunMetadata(self):
-    """Test retrieving the run metadata information."""
-    response = self._get('/data/run_metadata?run=run1&tag=test%20run')
-    self.assertEqual(response.status, 200)
-    run_metadata_pbtxt = response.read()
-    # Parse from pbtxt into a message.
-    run_metadata = tf.RunMetadata()
-    text_format.Parse(run_metadata_pbtxt, run_metadata)
-    self.assertEqual(len(run_metadata.step_stats.dev_stats), 1)
-    self.assertEqual(run_metadata.step_stats.dev_stats[0].device, 'test device')
-
   def _GenerateTestData(self):
     """Generates the test data directory.
 
     The test data has a single run named run1 which contains:
-     - a graph definition
+     - a graph definition and metagraph definition
 
     Returns:
       temp_dir: The directory the test data is generated under.
@@ -289,12 +227,6 @@ class TensorboardServerTest(tf.test.TestCase):
       writer.add_meta_graph(meta_graph_def)
     else:
       writer.add_graph(graph_def)
-
-    # Add a simple run metadata event.
-    run_metadata = tf.RunMetadata()
-    device_stats = run_metadata.step_stats.dev_stats.add()
-    device_stats.device = 'test device'
-    writer.add_run_metadata(run_metadata, 'test run')
 
     writer.flush()
     writer.close()

@@ -21,10 +21,6 @@ export interface Router {
   logdir: () => string;
   runs: () => string;
   isDemoMode: () => boolean;
-  graph:
-      (run: string, limit_attr_size?: number,
-       large_attrs_key?: string) => string;
-  runMetadata: RunTagUrlFn;
   textRuns: () => string;
   text: RunTagUrlFn;
   healthPills: () => string;
@@ -54,26 +50,6 @@ export function router(dataDir = 'data', demoMode = false): Router {
       return url;
     };
   }
-  function graphUrl(
-      run: string, limit_attr_size?: number, large_attrs_key?: string) {
-    let query_params = [['run', clean(run)]];
-    if (limit_attr_size != null && !demoMode) {
-      query_params.push(['limit_attr_size', String(limit_attr_size)]);
-    }
-    if (large_attrs_key != null && !demoMode) {
-      query_params.push(['large_attrs_key', large_attrs_key]);
-    }
-    let query = query_params
-                    .map(param => {
-                      return param[0] + '=' + encodeURIComponent(param[1]);
-                    })
-                    .join('&');
-    var url = dataDir + '/graph' + clean('?' + query);
-    if (demoMode) {
-      url += '.pbtxt';
-    }
-    return url;
-  }
   function pluginRoute(pluginName: string, route: string): string {
     return `${dataDir}/plugin/${pluginName}${route}`;
   }
@@ -86,8 +62,6 @@ export function router(dataDir = 'data', demoMode = false): Router {
     logdir: () => dataDir + '/logdir',
     runs: () => dataDir + '/runs' + (demoMode ? '.json' : ''),
     isDemoMode: () => demoMode,
-    graph: graphUrl,
-    runMetadata: standardRoute('run_metadata', '.pbtxt'),
     healthPills: () => dataDir + '/plugin/debugger/health_pills',
     textRuns: () => dataDir + '/plugin/text/runs' + (demoMode ? '.json' : ''),
     text: standardRoute('plugin/text/text'),

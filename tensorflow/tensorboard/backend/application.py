@@ -33,7 +33,6 @@ import tensorflow as tf
 from werkzeug import wrappers
 
 from tensorflow.tensorboard.backend import http_util
-from tensorflow.tensorboard.backend import process_graph
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 
@@ -57,8 +56,10 @@ DEFAULT_SIZE_GUIDANCE = {
 _MIGRATED_DATA_KEYS = frozenset((
     'audio',
     'distributions',
+    'graph',
     'histograms',
     'images',
+    'run_metadata',
     'scalars',
 ))
 
@@ -67,8 +68,6 @@ LOGDIR_ROUTE = '/logdir'
 RUNS_ROUTE = '/runs'
 PLUGIN_PREFIX = '/plugin'
 PLUGINS_LISTING_ROUTE = '/plugins_listing'
-GRAPH_ROUTE = '/' + event_accumulator.GRAPH
-RUN_METADATA_ROUTE = '/' + event_accumulator.RUN_METADATA
 TAB_ROUTES = ['', '/events', '/images', '/audio', '/graphs', '/histograms']
 
 # Slashes in a plugin name could throw the router for a loop. An empty
@@ -146,16 +145,12 @@ class TensorBoardWSGIApp(object):
       reload_multiplexer(self._multiplexer, path_to_run)
 
     self.data_applications = {
-        DATA_PREFIX + GRAPH_ROUTE:
-            self._serve_graph,
         DATA_PREFIX + LOGDIR_ROUTE:
             self._serve_logdir,
         # TODO(chizeng): Delete this RPC once we have skylark rules that obviate
         # the need for the frontend to determine which plugins are active.
         DATA_PREFIX + PLUGINS_LISTING_ROUTE:
             self._serve_plugins_listing,
-        DATA_PREFIX + RUN_METADATA_ROUTE:
-            self._serve_run_metadata,
         DATA_PREFIX + RUNS_ROUTE:
             self._serve_runs,
     }
@@ -211,57 +206,6 @@ class TensorBoardWSGIApp(object):
     """Respond with a JSON object containing this TensorBoard's logdir."""
     return http_util.Respond(
         request, {'logdir': self._logdir}, 'application/json')
-
-  @wrappers.Request.application
-  def _serve_graph(self, request):
-    """Given a single run, return the graph definition in json format."""
-    run = request.args.get('run', None)
-    if run is None:
-      return http_util.Respond(
-          request, 'query parameter "run" is required', 'text/plain', 400)
-
-    try:
-      graph = self._multiplexer.Graph(run)
-    except ValueError:
-      return http_util.Respond(
-          request, '404 Not Found', 'text/plain; charset=UTF-8', code=404)
-
-    limit_attr_size = request.args.get('limit_attr_size', None)
-    if limit_attr_size is not None:
-      try:
-        limit_attr_size = int(limit_attr_size)
-      except ValueError:
-        return http_util.Respond(
-            request, 'query parameter `limit_attr_size` must be integer',
-            'text/plain', 400)
-
-    large_attrs_key = request.args.get('large_attrs_key', None)
-    try:
-      process_graph.prepare_graph_for_ui(graph, limit_attr_size,
-                                         large_attrs_key)
-    except ValueError as e:
-      return http_util.Respond(request, e.message, 'text/plain', 400)
-
-    return http_util.Respond(request, str(graph), 'text/x-protobuf')  # pbtxt
-
-  @wrappers.Request.application
-  def _serve_run_metadata(self, request):
-    """Given a tag and a TensorFlow run, return the session.run() metadata."""
-    tag = request.args.get('tag', None)
-    run = request.args.get('run', None)
-    if tag is None:
-      return http_util.Respond(
-          request, 'query parameter "tag" is required', 'text/plain', 400)
-    if run is None:
-      return http_util.Respond(
-          request, 'query parameter "run" is required', 'text/plain', 400)
-    try:
-      run_metadata = self._multiplexer.RunMetadata(run, tag)
-    except ValueError:
-      return http_util.Respond(
-          request, '404 Not Found', 'text/plain; charset=UTF-8', code=404)
-    return http_util.Respond(
-        request, str(run_metadata), 'text/x-protobuf')  # pbtxt
 
   @wrappers.Request.application
   def _serve_plugins_listing(self, request):

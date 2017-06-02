@@ -189,20 +189,20 @@ Polymer({
     }
     // Set this to true so we only initialize once.
     this._initialized = true;
-    Promise.all([backend.graphRuns(), backend.runMetadataRuns()])
+    Promise.all([backend.graphRuns(), backend.runMetadataTags()])
       .then(function(result) {
         var runsWithGraph = result[0].sort(compareTagNames);
         var runToMetadata = result[1];
         var datasets = _.map(runsWithGraph, function(runName) {
           return {
             name: runName,
-            path: backend.router.graph(
+            path: backend.graphUrl(
                 runName, tf.graph.LIMIT_ATTR_SIZE, tf.graph.LARGE_ATTRS_KEY),
             runMetadata: runToMetadata[runName] ? _.map(
               runToMetadata[runName].sort(compareTagNames), function(tag) {
                 return {
                   tag: tag,
-                  path: backend.router.runMetadata(tag, runName)
+                  path: backend.runMetadataUrl(tag, runName)
                 };
               }, this) : []
           };
