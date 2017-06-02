@@ -29,10 +29,10 @@ bool IsConstant(const NodeDef& node) {
 }
 
 bool IsDequeueOp(const NodeDef& node) {
-  static const std::set<std::string> dequeue_ops = {
-      "QueueDequeueManyV2", "QueueDequeueMany", "QueueDequeueV2",
-      "QueueDequeue"};
-  return dequeue_ops.count(node.op()) > 0;
+  const auto& op = node.op();
+  return op == "QueueDequeueManyV2" || op == "QueueDequeueMany" ||
+         op == "QueueDequeueV2" || op == "QueueDequeue" ||
+         op == "QueueDequeueUpToV2" || op == "QueueDequeueUpTo";
 }
 
 bool IsMerge(const NodeDef& node) {
@@ -44,6 +44,12 @@ bool IsPlaceholder(const NodeDef& node) {
   const auto op = node.op();
   return op == "Placeholder" || op == "PlaceholderV2" ||
          op == "PlaceholderWithDefault";
+}
+
+bool IsReduction(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Sum" || op == "Prod" || op == "Min" || op == "Max" ||
+         op == "Mean" || op == "Any" || op == "All";
 }
 
 bool IsTranspose(const NodeDef& node) {

@@ -375,8 +375,8 @@ class NearestNeighborsOp : public OpKernel {
       const Eigen::Ref<const Eigen::VectorXf>& points_half_squared_norm,
       const Eigen::Ref<const MatrixXfRowMajor>& centers,
       const Eigen::Ref<const Eigen::VectorXf>& centers_half_squared_norm,
-      Eigen::Ref<MatrixXi64RowMajor> nearest_center_indices,
-      Eigen::Ref<MatrixXfRowMajor> nearest_center_distances) {
+      const Eigen::Ref<MatrixXi64RowMajor>& nearest_center_indices,
+      const Eigen::Ref<MatrixXfRowMajor>& nearest_center_distances) {
     CHECK_LE(k, centers.rows());
     if (centers.rows() <= kNearestNeighborsCentersMaxBlockSize) {
       FindKNearestCentersOneBlock(k, points, points_half_squared_norm, centers,

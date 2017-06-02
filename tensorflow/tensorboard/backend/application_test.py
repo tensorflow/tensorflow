@@ -167,8 +167,6 @@ class TensorboardServerTest(tf.test.TestCase):
         run_json,
         {
             'run1': {
-                'compressedHistograms': ['histogram'],
-                'audio': ['audio'],
                 # if only_use_meta_graph, the graph is from the metagraph
                 'graph': True,
                 'meta_graph': self._only_use_meta_graph,
@@ -193,7 +191,7 @@ class TensorboardServerTest(tf.test.TestCase):
 
   def testDataPaths_disableAllCaching(self):
     """Test the format of the /data/runs endpoint."""
-    for path in ('/data/runs', '/data/logdir', '/data/audio?run=run1&tag=audio',
+    for path in ('/data/runs', '/data/logdir',
                  '/data/run_metadata?run=run1&tag=test%20run'):
       connection = http_client.HTTPConnection('localhost',
                                               self._server.server_address[1])
@@ -203,20 +201,6 @@ class TensorboardServerTest(tf.test.TestCase):
       self.assertEqual(response.getheader('Expires'), '0', msg=path)
       response.read()
       connection.close()
-
-  def testAudio(self):
-    """Test listing audio and retrieving an individual audio clip."""
-    audio_json = self._getJson('/data/audio?tag=audio&run=run1')
-    audio_query = audio_json[0]['query']
-    # We don't care about the format of the audio query.
-    del audio_json[0]['query']
-    self.assertEqual(audio_json, [{
-        'wall_time': 0,
-        'step': 0,
-        'content_type': 'audio/wav'
-    }])
-    response = self._get('/data/individualAudio?%s' % audio_query)
-    self.assertEqual(response.status, 200)
 
   def testGraph(self):
     """Test retrieving the graph definition."""
@@ -280,12 +264,7 @@ class TensorboardServerTest(tf.test.TestCase):
     """Generates the test data directory.
 
     The test data has a single run named run1 which contains:
-     - a histogram [1]
      - a graph definition
-
-    [1]: Histograms no longer appear in `/runs`, but compressed
-    histograms do, and they use the same test data. Thus, histograms are
-    still here for now.
 
     Returns:
       temp_dir: The directory the test data is generated under.
@@ -296,14 +275,6 @@ class TensorboardServerTest(tf.test.TestCase):
     os.makedirs(run1_path)
     writer = tf.summary.FileWriter(run1_path)
 
-    histogram_value = tf.HistogramProto(
-        min=0,
-        max=2,
-        num=3,
-        sum=6,
-        sum_squares=5,
-        bucket_limit=[0, 1, 2],
-        bucket=[1, 1, 1])
     # Add a simple graph event.
     graph_def = tf.GraphDef()
     node1 = graph_def.node.add()
@@ -324,21 +295,6 @@ class TensorboardServerTest(tf.test.TestCase):
     device_stats = run_metadata.step_stats.dev_stats.add()
     device_stats.device = 'test device'
     writer.add_run_metadata(run_metadata, 'test run')
-
-    audio_value = tf.Summary.Audio(
-        sample_rate=44100,
-        length_frames=22050,
-        num_channels=2,
-        encoded_audio_string=b'',
-        content_type='audio/wav')
-    writer.add_event(
-        tf.Event(
-            wall_time=0,
-            step=0,
-            summary=tf.Summary(value=[
-                tf.Summary.Value(tag='histogram', histo=histogram_value),
-                tf.Summary.Value(tag='audio', audio=audio_value)
-            ])))
 
     writer.flush()
     writer.close()

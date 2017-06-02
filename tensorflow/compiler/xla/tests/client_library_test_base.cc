@@ -179,7 +179,7 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   VLOG(1) << "expected: " << LiteralUtil::ToString(*expected_literal);
   VLOG(1) << "actual:   " << LiteralUtil::ToString(*actual);
 
-  EXPECT_EQ(expected, actual->u8s());
+  EXPECT_EQ(expected, actual->u8s_string());
 }
 
 void ClientLibraryTestBase::ComputeAndCompareTuple(

@@ -29,6 +29,8 @@ class MetricKeys(object):
   LOSS_MEAN = model_fn.MetricKeys.AVERAGE_LOSS
 
   ACCURACY = 'accuracy'
+  # This is the best the model could do by always predicting one class.
+  # Should be < ACCURACY in a trained model.
   ACCURACY_BASELINE = 'accuracy_baseline'
   AUC = 'auc'
   AUC_PR = 'auc_precision_recall'

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/core/framework/memory_types.h"
@@ -392,7 +393,8 @@ Node* AddControlMerge(const string& in_name1, const string& in_name2, Graph* g,
 Node* AddControlSwitch(NodeBuilder::NodeOut input1, NodeBuilder::NodeOut input2,
                        const string& device_name,
                        const GraphDefBuilder::Options& bopts) {
-  Node* res_node = ops::BinaryOp("Switch", input1, input2, bopts);
+  Node* res_node =
+      ops::BinaryOp("Switch", std::move(input1), std::move(input2), bopts);
   if (bopts.HaveError()) return nullptr;
   res_node->set_assigned_device_name(device_name);
   return res_node;
@@ -401,7 +403,7 @@ Node* AddControlSwitch(NodeBuilder::NodeOut input1, NodeBuilder::NodeOut input2,
 // A next_iteration node for control flow.
 Node* AddControlNext(NodeBuilder::NodeOut input, const string& device_name,
                      const GraphDefBuilder::Options& bopts) {
-  Node* res_node = ops::UnaryOp("NextIteration", input, bopts);
+  Node* res_node = ops::UnaryOp("NextIteration", std::move(input), bopts);
   if (bopts.HaveError()) return nullptr;
   res_node->set_assigned_device_name(device_name);
   return res_node;

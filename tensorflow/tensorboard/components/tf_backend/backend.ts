@@ -13,10 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
-
-import {compareTagNames} from '../vz_sorting/sorting';
-
+import {compareTagNames} from '../vz-sorting/sorting';
 import {RequestManager} from './requestManager';
 import {Router} from './router';
 import {demoify} from './urlPathHelpers';
@@ -100,6 +97,20 @@ export type HealthPillDatum = Datum & HealthPill;
 // data entries.
 export interface HealthPillsResponse { [key: string]: HealthPillDatum[]; }
 
+// An object that encapsulates an alert issued by the debugger. This alert is
+// sent by debugging libraries after bad values (NaN, +/- Inf) are encountered.
+export interface DebuggerNumericsAlertReport {
+  device_name: string;
+  tensor_name: string;
+  first_timestamp: number;
+  nan_event_count: number;
+  neg_inf_event_count: number;
+  pos_inf_event_count: number;
+}
+// A DebuggerNumericsAlertReportResponse contains alerts issued by the debugger
+// in ascending order of timestamp. This helps the user identify for instance
+// when bad values first appeared in the model.
+export type DebuggerNumericsAlertReportResponse = DebuggerNumericsAlertReport[];
 
 export const TYPES = [
   'scalar', 'histogram', 'compressedHistogram', 'graph', 'image', 'audio',
@@ -170,16 +181,18 @@ export class Backend {
   /**
    * Return a promise showing the Run-to-Tag mapping for audio data.
    */
-  public audioRuns(): Promise<RunToTag> {
-    return this.runs().then((x) => _.mapValues(x, 'audio'));
+  public audioTags(): Promise<RunToTag> {
+    return this.requestManager.request(
+        this.router.pluginRoute('audio', '/tags'));
   }
 
   /**
    * Return a promise showing the Run-to-Tag mapping for compressedHistogram
    * data.
    */
-  public compressedHistogramRuns(): Promise<RunToTag> {
-    return this.runs().then((x) => _.mapValues(x, 'compressedHistograms'));
+  public compressedHistogramTags(): Promise<RunToTag> {
+    return this.requestManager.request(
+        this.router.pluginRoute('distributions', '/tags'));
   }
 
   /**
@@ -239,7 +252,8 @@ export class Backend {
   }
 
   /**
-   * Returns a promise for requesting the health pills for a list of nodes.
+   * Returns a promise for requesting the health pills for a list of nodes. This
+   * route is used by the debugger plugin.
    */
   public healthPills(nodeNames: string[], step?: number):
       Promise<HealthPillsResponse> {
@@ -255,6 +269,16 @@ export class Backend {
       postData['step'] = step;
     }
     return this.requestManager.request(this.router.healthPills(), postData);
+  }
+
+  /**
+   * Returns a promise for alerts for bad values (detected by the debugger).
+   * This route is used by the debugger plugin.
+   */
+  public debuggerNumericsAlerts():
+      Promise<DebuggerNumericsAlertReportResponse> {
+    return this.requestManager.request(
+        this.router.pluginRoute('debugger', '/numerics_alert_report'));
   }
 
   /**
@@ -296,7 +320,7 @@ export class Backend {
    * Return a promise containing AudioDatums for given run and tag.
    */
   public audio(tag: string, run: string): Promise<Array<AudioDatum>> {
-    const url = this.router.audio(tag, run);
+    const url = (this.router.pluginRunTagRoute('audio', '/audio')(tag, run));
     let p: Promise<AudioMetadata[]>;
     p = this.requestManager.request(url);
     return p.then(map(this.createAudio.bind(this)));
@@ -317,7 +341,8 @@ export class Backend {
    */
   private compressedHistogram(tag: string, run: string):
       Promise<Array<Datum&CompressedHistogramTuple>> {
-    const url = this.router.compressedHistograms(tag, run);
+    const url = (this.router.pluginRunTagRoute(
+        'distributions', '/distributions')(tag, run));
     let p: Promise<TupleData<CompressedHistogramTuple>[]>;
     p = this.requestManager.request(url);
     return p.then(map(detupler((x) => x)));
@@ -356,11 +381,33 @@ export class Backend {
   }
 
   private createAudio(x: AudioMetadata): Audio&Datum {
+    const pluginRoute = this.router.pluginRoute('audio', '/individualAudio');
+
+    let query = x.query;
+    if (pluginRoute.indexOf('?') > -1) {
+      // The route already has GET parameters. Append our parameters to them.
+      query = '&' + query;
+    } else {
+      // The route lacks GET parameters. We append them.
+      query = '?' + query;
+    }
+
+    if (this.router.isDemoMode()) {
+      query = demoify(query);
+    }
+
+    let individualAudioUrl = pluginRoute + query;
+    // Include wall_time just to disambiguate the URL and force the browser
+    // to reload the audio when the URL changes. The backend doesn't care
+    // about the value.
+    individualAudioUrl +=
+        this.router.isDemoMode() ? '.wav' : '&ts=' + x.wall_time;
+
     return {
       content_type: x.content_type,
       wall_time: timeToDate(x.wall_time),
       step: x.step,
-      url: this.router.individualAudio(x.query),
+      url: individualAudioUrl,
     };
   }
 }

@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
-
 import {DataSet, DistanceFunction, Projection, ProjectionComponents3D, State} from './data';
 import {NearestEntry} from './knn';
 import {ProjectorEventContext} from './projectorEventContext';

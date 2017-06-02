@@ -27,6 +27,7 @@ TEST(StringOpsTest, StringJoin_ShapeFn) {
   ShapeInferenceTestOp op("StringJoin");
   int n = 3;
   std::vector<NodeDefBuilder::NodeOut> src_list;
+  src_list.reserve(n);
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_STRING);
   TF_ASSERT_OK(NodeDefBuilder("test", "StringJoin")
                    .Input(src_list)

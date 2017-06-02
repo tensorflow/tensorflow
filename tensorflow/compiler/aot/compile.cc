@@ -350,6 +350,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
   compile_result->program_shape = *pshape_or.ValueOrDie();
   xla::ProgramShape* pshape = &compile_result->program_shape;
   std::vector<const xla::Shape*> arg_layouts;
+  arg_layouts.reserve(pshape->parameters_size());
   for (int i = 0; i < pshape->parameters_size(); ++i) {
     arg_layouts.push_back(pshape->mutable_parameters(i));
   }
