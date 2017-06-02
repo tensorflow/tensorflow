@@ -215,7 +215,7 @@ TEST(CtcBeamSearch, AllBeamElementsHaveFiniteScores) {
   // Make sure all scores are finite.
   for (int path = 0; path < top_paths; ++path) {
     LOG(INFO) << "path " << path;
-    EXPECT_FALSE(isinf(score[0][path]));
+    EXPECT_FALSE(std::isinf(score[0][path]));
   }
 }
 
