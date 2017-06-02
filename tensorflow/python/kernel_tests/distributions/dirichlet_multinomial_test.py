@@ -252,7 +252,6 @@ class DirichletMultinomialTest(test.TestCase):
       ])
       self.assertAllClose(sample_mean_, analytic_mean, atol=0., rtol=0.04)
       self.assertAllClose(sample_cov_, analytic_cov, atol=0., rtol=0.05)
-      # TODO(cwhipkey): reduce tolerance (b/62216354)
       self.assertAllClose(sample_var_, analytic_var, atol=0., rtol=0.05)
       self.assertAllClose(sample_stddev_, analytic_stddev, atol=0., rtol=0.02)
 
