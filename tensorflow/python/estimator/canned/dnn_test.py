@@ -707,6 +707,7 @@ class DNNClassifierIntegrationTest(test.TestCase):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def _test_complete_flow(
