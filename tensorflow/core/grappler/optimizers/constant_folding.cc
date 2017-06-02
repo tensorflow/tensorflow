@@ -101,6 +101,11 @@ Status NumOutputs(const NodeDef& node, int* num_outputs) {
 }
 }  // namespace
 
+ConstantFolding::ConstantFolding() {
+  ops_to_preserve_ =
+      std::regex("Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader");
+}
+
 Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
   GraphProperties properties(item);
   TF_RETURN_IF_ERROR(properties.InferStatically());
@@ -184,28 +189,19 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
 }
 
 bool ConstantFolding::IsFoldable(const NodeDef& node) const {
-  DeviceTypeVector device_types;
-  auto status = SupportedDeviceTypesForNode({DeviceType(DEVICE_CPU)}, node,
-                                            &device_types);
-  if (!status.ok()) {
-    return false;
-  }
-  // Only fold ops with a CPU implementation available.
-  if (device_types[0] != DeviceType(DEVICE_CPU)) {
-    return false;
-  }
-
+  // Skips nodes that must be preserved, and op_types that don't benefit from
+  // folding
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
   }
-
-  if (ops_to_preserve_.find(node.op()) != ops_to_preserve_.end()) {
+  std::cmatch match;
+  if (std::regex_match(node.op().c_str(), match, ops_to_preserve_)) {
     return false;
   }
 
   // Don't fold stateful ops such as TruncatedNormal.
   const OpDef* op_def = nullptr;
-  status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+  Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
   if (!status.ok()) {
     return false;
   }
@@ -214,6 +210,17 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
   }
 
   if (op_def->output_arg_size() == 0) {
+    return false;
+  }
+
+  DeviceTypeVector device_types;
+  status = SupportedDeviceTypesForNode({DeviceType(DEVICE_CPU)}, node,
+                                       &device_types);
+  if (!status.ok()) {
+    return false;
+  }
+  // Only fold ops with a CPU implementation available.
+  if (device_types[0] != DeviceType(DEVICE_CPU)) {
     return false;
   }
 
