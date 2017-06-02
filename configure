@@ -845,5 +845,5 @@ fi
 
 
 # TODO(gunan): Remove once bazel correctly handles changes in remote repositories.
-bazel clean
+bazel clean --expunge
 echo "Configuration finished"
