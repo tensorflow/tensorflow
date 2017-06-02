@@ -62,7 +62,7 @@ class BoolVector {
   BoolVector(const_iterator other_begin, const_iterator other_end)
       : bits_(nullptr), size_(0), capacity_(0) {
     if (other_begin && other_end) {
-      resize(other_end - other_begin + 1);
+      resize(other_end - other_begin);
       memcpy(begin(), other_begin, size());
     }
   }

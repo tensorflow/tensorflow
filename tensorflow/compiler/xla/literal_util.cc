@@ -1204,6 +1204,7 @@ void Literal::CopyFromProto(const LiteralProto& literal_proto) {
   *mutable_shape() = literal_proto.shape();
   switch (shape().element_type()) {
     case PRED:
+      LOG(INFO) << literal_proto.ShortDebugString();
       *mutable_preds() = BoolVector(literal_proto.preds().begin(),
                                     literal_proto.preds().end());
       break;
