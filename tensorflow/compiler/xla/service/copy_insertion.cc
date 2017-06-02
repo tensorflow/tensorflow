@@ -229,25 +229,26 @@ Status InstructionCopier::RecordAmbiguousOrNonDistinctIndices(
   // Mapping from LogicalBuffer to index (used to detect non-distinct indices).
   FlatMap<const LogicalBuffer*, std::vector<ShapeIndex>>
       buffer_to_source_indices;
-  TF_RETURN_IF_ERROR(points_to.ForEachElement([this, &buffer_to_source_indices](
-      const ShapeIndex& index, bool /*is_leaf*/,
-      const std::vector<const LogicalBuffer*>& buffers) {
-    if (buffers.size() > 1) {
-      // Record ambiguous points-to set at 'index'.
-      if (!indices_to_copy_.element(index)) {
-        VLOG(2) << "Adding copy of buffer for instruction: "
-                << instruction_->name()
-                << " at index: " << tensorflow::str_util::Join(index, ",")
-                << " with ambiguous points-to set.";
-        RecordIndex(index);
-      }
-    }
-    // For each 'buffer': record a mapping from 'buffer' to 'index'.
-    for (const LogicalBuffer* buffer : buffers) {
-      buffer_to_source_indices[buffer].push_back(index);
-    }
-    return Status::OK();
-  }));
+  TF_RETURN_IF_ERROR(points_to.ForEachElement(
+      [this, &buffer_to_source_indices](
+          const ShapeIndex& index, bool /*is_leaf*/,
+          const std::vector<const LogicalBuffer*>& buffers) {
+        if (buffers.size() > 1) {
+          // Record ambiguous points-to set at 'index'.
+          if (!indices_to_copy_.element(index)) {
+            VLOG(2) << "Adding copy of buffer for instruction: "
+                    << instruction_->name()
+                    << " at index: " << tensorflow::str_util::Join(index, ",")
+                    << " with ambiguous points-to set.";
+            RecordIndex(index);
+          }
+        }
+        // For each 'buffer': record a mapping from 'buffer' to 'index'.
+        for (const LogicalBuffer* buffer : buffers) {
+          buffer_to_source_indices[buffer].push_back(index);
+        }
+        return Status::OK();
+      }));
 
   // Record all non-distinct indices detected in 'buffer_to_source_indices'.
   for (const auto& buff_to_src : buffer_to_source_indices) {
@@ -449,11 +450,15 @@ RevertReadOnlyIndicesForEntryParamsAndConstants(
     FlatMap<const HloInstruction*, HloInstruction*>* shared_copies) {
   const HloInstruction* init_hlo = while_hlo->operand(0);
   const PointsToSet& points_to = points_to_analysis.GetPointsToSet(init_hlo);
+
+  // Mapping from LogicalBuffer to index (used to detect non-distinct indices).
+  FlatSet<const LogicalBuffer*> buffer_set;
+
   ShapeTree<HloInstruction*> copy_overrides(init_hlo->shape());
   TF_RETURN_IF_ERROR(points_to.ForEachElement(
-      [init_hlo, read_only_indices, shared_copies, &copy_overrides](
-          const ShapeIndex& index, bool /*is_leaf*/,
-          const std::vector<const LogicalBuffer*>& buffers) {
+      [init_hlo, read_only_indices, shared_copies, &buffer_set,
+       &copy_overrides](const ShapeIndex& index, bool /*is_leaf*/,
+                        const std::vector<const LogicalBuffer*>& buffers) {
         // Look for read-only entry parameters.
         if (!read_only_indices->element(index)) {
           return Status::OK();
@@ -468,6 +473,7 @@ RevertReadOnlyIndicesForEntryParamsAndConstants(
           if (!is_entry_parameter && !is_constant) {
             continue;
           }
+
           // We have found an entry parameter or constant that is read-only in
           // the while body. These buffers are managed by the caller, and cannot
           // be aliased with non-parameter buffers. Revert this read-only index,
@@ -476,16 +482,17 @@ RevertReadOnlyIndicesForEntryParamsAndConstants(
 
           // Optimization to allow multiple while loops that share the same
           // read-only entry parameters (or constants) to share a single copy.
-          // Only unambiguous array-shaped buffers are allowed, to reduce code
-          // complexity. The shape of the entry parameter must be identical to
-          // the shape of the init_hlo at this index, to ensure there were no
-          // intervening bitcast or GTE instructions, which are also hard to
-          // handle.
+          // Only unambiguous and distinct array-shaped buffers are allowed, to
+          // reduce code complexity. The shape of the entry parameter must be
+          // identical to the shape of the init_hlo at this index, to ensure
+          // there were no intervening bitcast or GTE instructions, which are
+          // also hard to handle.
           const Shape& pointee_shape = pointee->shape();
           const Shape& init_shape =
               ShapeUtil::GetSubshape(init_hlo->shape(), index);
           if (buffers.size() == 1 && ShapeUtil::IsArray(pointee_shape) &&
-              ShapeUtil::Equal(pointee_shape, init_shape)) {
+              ShapeUtil::Equal(pointee_shape, init_shape) &&
+              buffer_set.count(buffer) < 1) {
             HloInstruction** copy = &(*shared_copies)[pointee];
             if (*copy == nullptr) {
               *copy =
@@ -495,6 +502,9 @@ RevertReadOnlyIndicesForEntryParamsAndConstants(
             // Add the copy as an override.
             *copy_overrides.mutable_element(index) = *copy;
           }
+
+          // Tracks whether this current buffer is distinct.
+          buffer_set.insert(buffer);
 
           // We've already reverted the read-only index and handled the
           // single-copy optimization above, so there's nothing more to do.
