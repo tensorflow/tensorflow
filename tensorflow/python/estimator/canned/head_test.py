@@ -845,7 +845,6 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         prediction_keys.PredictionKeys.CLASS_IDS:
             np.array(((1,), (0,)), dtype=np.int64),
     }
-    default_threshold = .5
     keys = metric_keys.MetricKeys
     expected_metrics = {
         # loss = sum(cross_entropy(labels, logits)) = sum(0, 41) = 41
@@ -857,9 +856,6 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.ACCURACY_BASELINE: 2./2,
         keys.AUC: 0.,
         keys.AUC_PR: 1.,
-        keys.ACCURACY_AT_THRESHOLD % default_threshold: 1./2,
-        keys.PRECISION_AT_THRESHOLD % default_threshold: 2./2,
-        keys.RECALL_AT_THRESHOLD % default_threshold: 1./2,
     }
 
     # Assert spec contains expected tensors.
@@ -887,6 +883,44 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       self.assertAllClose(expected_metrics, metrics)
       self.assertAllClose(
           expected_metrics, {k: value_ops[k].eval() for k in value_ops})
+
+  def test_eval_with_thresholds(self):
+    thresholds = [0.25, 0.5, 0.75]
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        thresholds=thresholds)
+
+    # Create estimator spec.
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.float32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=np.array(((-1,), (1,),), dtype=np.float32),
+        labels=np.array(((1,), (1,),), dtype=np.int32))
+
+    # probabilities[i] = 1/(1 + exp(-logits[i])) =>
+    # probabilities = [1/(1 + exp(1)), 1/(1 + exp(-1))] = [0.269, 0.731]
+    # loss = -sum(ln(probabilities[label[i]])) = -ln(0.269) -ln(0.731)
+    #      = 1.62652338
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        keys.LOSS_MEAN: 1.62652338 / 2.,
+        keys.ACCURACY: 1./2,
+        keys.PREDICTION_MEAN: 1./2,
+        keys.LABEL_MEAN: 2./2,
+        keys.ACCURACY_BASELINE: 2./2,
+        keys.AUC: 0.,
+        keys.AUC_PR: 1.,
+        keys.ACCURACY_AT_THRESHOLD % thresholds[0]: 1.,
+        keys.PRECISION_AT_THRESHOLD % thresholds[0]: 1.,
+        keys.RECALL_AT_THRESHOLD % thresholds[0]: 1.,
+        keys.ACCURACY_AT_THRESHOLD % thresholds[1]: .5,
+        keys.PRECISION_AT_THRESHOLD % thresholds[1]: 1.,
+        keys.RECALL_AT_THRESHOLD % thresholds[1]: .5,
+        keys.ACCURACY_AT_THRESHOLD % thresholds[2]: 0.,
+        keys.PRECISION_AT_THRESHOLD % thresholds[2]: 0.,
+        keys.RECALL_AT_THRESHOLD % thresholds[2]: 0.,
+    }
+
+    self.assertItemsEqual(expected_metrics.keys(), spec.eval_metric_ops.keys())
 
   def test_train(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
@@ -1000,7 +1034,6 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         logits=logits,
         labels=np.array(((1,), (1,), (0,)), dtype=np.int32))
 
-    default_threshold = .5
     # label_mean = (1*1 + .1*1 + 1.5*0)/(1 + .1 + 1.5) = 1.1/2.6
     #            = .42307692307
     expected_label_mean = .42307692307
@@ -1021,11 +1054,6 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         keys.ACCURACY_BASELINE: 1 - expected_label_mean,
         keys.AUC: .45454565,
         keys.AUC_PR: .6737757325172424,
-        keys.ACCURACY_AT_THRESHOLD % default_threshold: .38461538461,
-        # precision = (1*1 + 1.5*0)/(1 + 1.5) = 1/2.5 = .4
-        keys.PRECISION_AT_THRESHOLD % default_threshold: .4,
-        # recall = (1*1 + .1*0)/(1 + .1) = 1/1.1 = .90909090909
-        keys.RECALL_AT_THRESHOLD % default_threshold: .90909090909,
     }
 
     # Assert spec contains expected tensors.
