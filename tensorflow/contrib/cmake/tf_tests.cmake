@@ -184,6 +184,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/clip_ops_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/tensor_array_ops_test.py"  # Needs portpicker.
       # Matrix_set_diag failing on GPU on windows.
+      "${tensorflow_source_dir}/tensorflow/python/kernel_tests/cholesky_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/diag_op_test.py"
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/linalg_ops_test.py"
       # misc
