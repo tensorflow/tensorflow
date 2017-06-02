@@ -2945,38 +2945,34 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-# Disabled due to http://b/62145493
-# py_test(
-#     name = "session_test",
-#     size = "medium",  # http://b/62144199
-#     srcs = ["client/session_test.py"],
-#     srcs_version = "PY2AND3",
-#     tags = [
-#         "no_gpu",
-#         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
-#     ],
-#     deps = [
-#         ":array_ops",
-#         ":client",
-#         ":construction_fails_op",
-#         ":control_flow_ops",
-#         ":data_flow_ops",
-#         ":errors",
-#         ":framework",
-#         ":framework_for_generated_wrappers",
-#         ":framework_test_lib",
-#         ":math_ops",
-#         ":platform_test",
-#         ":state_ops",
-#         ":training",
-#         ":util",
-#         ":variables",
-#         "//third_party/py/numpy",
-#         "@six_archive//:six",
-#         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
-#         "//tensorflow/core/distributed_runtime/rpc:grpc_session",
-#     ],
-# )
+py_test(
+    name = "session_test",
+    size = "small",
+    srcs = ["client/session_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_gpu",
+        "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
+    ],
+    deps = [
+        ":array_ops",
+        ":client",
+        ":control_flow_ops",
+        ":data_flow_ops",
+        ":errors",
+        ":framework",
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":math_ops",
+        ":platform_test",
+        ":state_ops",
+        ":training",
+        ":util",
+        ":variables",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
 
 py_test(
     name = "session_clusterspec_prop_test",
