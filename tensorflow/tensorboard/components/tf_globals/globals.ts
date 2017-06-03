@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
-
 // The names of TensorBoard tabs.
 export const TABS = [
   'scalars', 'images', 'audio', 'graphs', 'distributions', 'histograms',

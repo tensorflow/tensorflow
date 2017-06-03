@@ -44,6 +44,7 @@ Status ComputeTheoreticalJacobianTranspose(
   size_t x_num = x_shapes.size();
   // Call AddSymbolicGradients to get 'dxs' (we will feed 'dys').
   OutputList dys;
+  dys.reserve(y_shapes.size());
   for (const auto& y_shape : y_shapes) {
     // TODO(suharshs): This currently assumes that all x's are the same type.
     dys.push_back(Cast(scope, Const(scope, 1.0, y_shape), xs[0].type()));

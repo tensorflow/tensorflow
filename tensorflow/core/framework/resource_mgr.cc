@@ -124,6 +124,7 @@ string ResourceMgr::DebugString() const {
     }
   }
   std::vector<string> text;
+  text.reserve(lines.size());
   for (const Line& line : lines) {
     text.push_back(strings::Printf(
         "%-20s | %-40s | %-40s | %-s", line.container->c_str(),

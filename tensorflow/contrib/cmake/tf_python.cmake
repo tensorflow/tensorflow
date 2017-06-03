@@ -236,6 +236,9 @@ add_python_module("tensorflow/tensorboard")
 add_python_module("tensorflow/tensorboard/backend")
 add_python_module("tensorflow/tensorboard/backend/event_processing")
 add_python_module("tensorflow/tensorboard/plugins")
+add_python_module("tensorflow/tensorboard/plugins/audio")
+add_python_module("tensorflow/tensorboard/plugins/distributions")
+add_python_module("tensorflow/tensorboard/plugins/graphs")
 add_python_module("tensorflow/tensorboard/plugins/histograms")
 add_python_module("tensorflow/tensorboard/plugins/images")
 add_python_module("tensorflow/tensorboard/plugins/projector")
@@ -536,6 +539,7 @@ set(tf_python_op_gen_main_srcs
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_main.cc"
     "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen.h"
+    "${tensorflow_source_dir}/tensorflow/python/framework/python_op_gen_internal.h"
 )
 
 add_library(tf_python_op_gen_main OBJECT ${tf_python_op_gen_main_srcs})

@@ -122,7 +122,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   for (const auto& shape : parameters) {
     *program_shape.add_parameters() = shape;
   }
-  *program_shape.mutable_result() = result;
+  *program_shape.mutable_result() = std::move(result);
   return program_shape;
 }
 

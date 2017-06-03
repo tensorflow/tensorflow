@@ -569,6 +569,7 @@ Status InferenceContext::MakeShapeFromTensor(const Tensor* t,
     }
     const auto num_dims = Value(shape_dim);
     std::vector<DimensionHandle> dims;
+    dims.reserve(num_dims);
     for (int i = 0; i < num_dims; i++) dims.push_back(UnknownDim());
     return ReturnCreatedShape(dims, out);
   }

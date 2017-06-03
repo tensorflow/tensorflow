@@ -44,6 +44,9 @@ limitations under the License.
             </tf-text-dashboard>
           </template>
           <script>
+            import * as backend_backend from '../tf-backend/backend';
+            import * as backend_router from '../tf-backend/router';
+
             Polymer({
               is: "text-dash-demo",
               properties: {
@@ -51,8 +54,8 @@ limitations under the License.
                   type: Object,
                   value: function() {
                     var path = "data";
-                    var router = new TF.Backend.router(path, true);
-                    return new TF.Backend.Backend(router);
+                    var router = new backend_backend.router(path, true);
+                    return new backend_backend.Backend(router);
                   },
                 },
               },

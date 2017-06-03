@@ -2275,7 +2275,7 @@ void ComputationLowerer::Visit(
       const ConstantRequest& constant_request =
           request.request().constant_request();
       hlo_instruction = add_instruction(HloInstruction::CreateConstant(
-          LiteralUtil::CloneToUnique(constant_request.literal())));
+          LiteralUtil::CloneToUnique(Literal(constant_request.literal()))));
       break;
     }
 
@@ -2467,6 +2467,7 @@ void ComputationLowerer::Visit(
       // to append dimensions on the left the broadcast_dimensions should just
       // be the n highest dimension numbers of the output shape where n is
       // the number of input dimensions.
+      broadcast_dimensions.reserve(ShapeUtil::Rank(operand->shape()));
       for (int i = 0; i < ShapeUtil::Rank(operand->shape()); ++i) {
         broadcast_dimensions.push_back(i +
                                        ShapeUtil::Rank(request.output_shape()) -

@@ -76,32 +76,21 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
     const DeviceProperties& device) const {
   double gflops = -1;
   double bandwidth = -1;
-  if (device.bandwidth() > 0) {
-    bandwidth = device.bandwidth() / 1e6;
-  }
 
   if (device.type() == "CPU") {
-    DeviceProperties local_cpu;
-    if (device.num_cores() <= 0 || device.frequency() <= 0) {
-      local_cpu = GetLocalCPUInfo();
-    } else {
-      local_cpu = device;
-    }
-
     // Check if vector instructions are available, and refine performance
     // prediction based on this.
     // Frequencies are stored in MHz in the DeviceProperties.
-    gflops = local_cpu.num_cores() * local_cpu.frequency() * 1e-3;
+    gflops = device.num_cores() * device.frequency() * 1e-3;
     if (bandwidth < 0) {
-      if (local_cpu.bandwidth() > 0) {
-        bandwidth = local_cpu.bandwidth() / 1e6;
+      if (device.bandwidth() > 0) {
+        bandwidth = device.bandwidth() / 1e6;
       } else {
         bandwidth = 32;
       }
     }
   } else if (device.type() == "GPU") {
-    const DeviceProperties local_gpu = GetLocalGPUInfo(0);
-    const string architecture = local_gpu.environment().at("architecture");
+    const string architecture = device.environment().at("architecture");
     int cores_per_multiprocessor;
     if (architecture < "3") {
       // Fermi
@@ -110,17 +99,18 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
       // Kepler
       cores_per_multiprocessor = 192;
     } else if (architecture < "6") {
-      //  Maxwell
+      // Maxwell
       cores_per_multiprocessor = 128;
     } else {
-      // Pascal.
+      // Pascal
       cores_per_multiprocessor = 64;
     }
-    gflops = local_gpu.num_cores() * local_gpu.frequency() * 1e-3 *
+    gflops = device.num_cores() * device.frequency() * 1e-3 *
              cores_per_multiprocessor * kOpsPerMac;
-    if (bandwidth < 0) {
-      CHECK(local_gpu.bandwidth() > 0);
-      bandwidth = local_gpu.bandwidth() / 1e6;
+    if (device.bandwidth() > 0) {
+      bandwidth = device.bandwidth() / 1e6;
+    } else {
+      bandwidth = 100;
     }
   }
 
@@ -507,14 +497,13 @@ int64 OpLevelCostEstimator::CountConv2DBackPropInputOperations(
     return ops;
   }
 
-  if (op_features.attr().find("_output_shapes") == op_features.attr().end()) {
+  if (op_features.outputs_size() != 1) {
     // Need _output_shapes for input shape.
-    LOG(ERROR) << "No output shape in Conv2DBackPropInput op feaure.";
+    LOG(ERROR) << "No output shape in Conv2DBackPropInput op.";
     return ops;
   }
 
-  const auto& input_shape =
-      op_features.attr().at("_output_shapes").list().shape(0);
+  const auto& input_shape = op_features.outputs(0).shape();
   ConvolutionDimensions conv_dims = ConvolutionDimensionsFromInputs(
       input_shape, op_features.inputs(1).shape(), op_features,
       found_unknown_shapes);
@@ -542,14 +531,13 @@ int64 OpLevelCostEstimator::CountConv2DBackPropFilterOperations(
     return ops;
   }
 
-  if (op_features.attr().find("_output_shapes") == op_features.attr().end()) {
-    // Need _output_shapes for filter shape.
-    LOG(ERROR) << "No output shape in Conv2DBackPropFilter op feaure.";
+  if (op_features.outputs_size() != 1) {
+    // Need _output_shapes for input shape.
+    LOG(ERROR) << "No output shape in Conv2DBackPropFilter op.";
     return ops;
   }
 
-  const auto& filter_shape =
-      op_features.attr().at("_output_shapes").list().shape(0);
+  const auto& filter_shape = op_features.outputs(0).shape();
   ConvolutionDimensions conv_dims = ConvolutionDimensionsFromInputs(
       op_features.inputs(0).shape(), filter_shape, op_features,
       found_unknown_shapes);
@@ -598,28 +586,19 @@ int64 OpLevelCostEstimator::CalculateOutputSize(
     const OpInfo& op_features, bool* found_unknown_shapes) const {
   int64 total_output_size = 0;
   // use float as default for calculations
-  DataType dt = DT_FLOAT;
-  for (const auto& item : op_features.attr()) {
-    VLOG(1) << "Key:" << item.first
-            << " Value:" << SummarizeAttrValue(item.second);
-    if (item.first == "_output_shapes") {
-      for (const auto& original_output_shape : item.second.list().shape()) {
-        int64 output_size = 1;
-        int num_dims = std::max(1, original_output_shape.dim_size());
-        auto output_shape = MaybeGetMinimumShape(
-            original_output_shape, num_dims, found_unknown_shapes);
-        for (const auto& dim : output_shape.dim()) {
-          output_size *= dim.size();
-        }
-        output_size *= DataTypeSize(dt);
-        total_output_size += output_size;
-        VLOG(1) << "Output Size: " << output_size
-                << " Total Output Size:" << total_output_size;
-      }
+  for (const auto& output : op_features.outputs()) {
+    DataType dt = output.dtype();
+    const auto& original_output_shape = output.shape();
+    int64 output_size = DataTypeSize(dt);
+    int num_dims = std::max(1, original_output_shape.dim_size());
+    auto output_shape = MaybeGetMinimumShape(original_output_shape, num_dims,
+                                             found_unknown_shapes);
+    for (const auto& dim : output_shape.dim()) {
+      output_size *= dim.size();
     }
-    if (item.first == "T") {
-      dt = item.second.type();
-    }
+    total_output_size += output_size;
+    VLOG(1) << "Output Size: " << output_size
+            << " Total Output Size:" << total_output_size;
   }
   return total_output_size;
 }

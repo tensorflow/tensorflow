@@ -48,7 +48,7 @@ OpRegistry::~OpRegistry() {
   for (const auto& e : registry_) delete e.second;
 }
 
-void OpRegistry::Register(OpRegistrationDataFactory op_data_factory) {
+void OpRegistry::Register(const OpRegistrationDataFactory& op_data_factory) {
   mutex_lock lock(mu_);
   if (initialized_) {
     TF_QCHECK_OK(RegisterAlreadyLocked(op_data_factory));
@@ -181,7 +181,7 @@ Status OpRegistry::CallDeferred() const {
 }
 
 Status OpRegistry::RegisterAlreadyLocked(
-    OpRegistrationDataFactory op_data_factory) const {
+    const OpRegistrationDataFactory& op_data_factory) const {
   std::unique_ptr<OpRegistrationData> op_reg_data(new OpRegistrationData);
   Status s = op_data_factory(op_reg_data.get());
   if (s.ok()) {

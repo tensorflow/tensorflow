@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -303,7 +304,7 @@ class CholeskyBenchmark(test.Benchmark):
           ops.device("/cpu:0"):
         l = linalg_ops.cholesky(data)
         self.run_op_benchmark(
-            sess, l,
+            sess, control_flow_ops.group(l,),
             min_iters=25,
             name="cholesky_cpu_{size}".format(size=size))
 
@@ -328,7 +329,7 @@ class CholeskyBenchmark(test.Benchmark):
             ops.device(device):
           grad = grad_fn(l, grad_data)
           self.run_op_benchmark(
-              sess, grad,
+              sess, control_flow_ops.group(grad,),
               min_iters=25,
               name="{name}_{dev}_{size}".format(
                   name=name, dev=grad.device, size=size))

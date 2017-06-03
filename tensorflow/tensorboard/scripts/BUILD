@@ -18,6 +18,13 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "execrooter",
+    srcs = ["execrooter.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(["*"]),

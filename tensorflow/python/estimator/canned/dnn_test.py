@@ -462,6 +462,86 @@ class DNNRegressorEvaluateTest(test.TestCase):
     }, dnn_regressor.evaluate(input_fn=_input_fn, steps=1))
 
 
+class DNNClassifierEvaluateTest(test.TestCase):
+
+  def setUp(self):
+    self._model_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    if self._model_dir:
+      shutil.rmtree(self._model_dir)
+
+  def test_one_dim(self):
+    """Asserts evaluation metrics for one-dimensional input and logits."""
+    global_step = 100
+    _create_checkpoint((
+        ([[.6, .5]], [.1, -.1]),
+        ([[1., .8], [-.8, -1.]], [.2, -.2]),
+        ([[-1.], [1.]], [.3]),
+    ), global_step, self._model_dir)
+
+    dnn_classifier = dnn.DNNClassifier(
+        hidden_units=(2, 2),
+        feature_columns=[feature_column.numeric_column('age')],
+        model_dir=self._model_dir)
+    def _input_fn():
+      # batch_size = 2, one false label, and one true.
+      return {'age': [[10.], [10.]]}, [[1], [0]]
+    # Uses identical numbers as DNNModelTest.test_one_dim_logits.
+    # See that test for calculation of logits.
+    # logits = [[-2.08], [-2.08]] =>
+    # logistic = 1/(1 + exp(-logits)) = [[0.11105597], [0.11105597]]
+    # loss = -1. * log(0.111) -1. * log(0.889) = 2.31544200
+    expected_loss = 2.31544200
+    self.assertAllClose({
+        metric_keys.MetricKeys.LOSS: expected_loss,
+        metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2.,
+        metric_keys.MetricKeys.ACCURACY: 0.5,
+        metric_keys.MetricKeys.PREDICTION_MEAN: 0.11105597,
+        metric_keys.MetricKeys.LABEL_MEAN: 0.5,
+        metric_keys.MetricKeys.ACCURACY_BASELINE: 0.5,
+        # There is no good way to calculate AUC for only two data points. But
+        # that is what the algorithm returns.
+        metric_keys.MetricKeys.AUC: 0.5,
+        metric_keys.MetricKeys.AUC_PR: 0.75,
+        ops.GraphKeys.GLOBAL_STEP: global_step
+    }, dnn_classifier.evaluate(input_fn=_input_fn, steps=1))
+
+  def test_multi_dim(self):
+    """Asserts evaluation metrics for multi-dimensional input and logits."""
+    global_step = 100
+    _create_checkpoint((
+        ([[.6, .5], [-.6, -.5]], [.1, -.1]),
+        ([[1., .8], [-.8, -1.]], [.2, -.2]),
+        ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3, .0]),
+    ), global_step, self._model_dir)
+    n_classes = 3
+
+    dnn_classifier = dnn.DNNClassifier(
+        hidden_units=(2, 2),
+        feature_columns=[feature_column.numeric_column('age', shape=[2])],
+        n_classes=n_classes,
+        model_dir=self._model_dir)
+    def _input_fn():
+      # batch_size = 2, one false label, and one true.
+      return {'age': [[10., 8.], [10., 8.]]}, [[1], [0]]
+    # Uses identical numbers as
+    # DNNModelFnTest.test_multi_dim_input_multi_dim_logits.
+    # See that test for calculation of logits.
+    # logits = [[-0.48, 0.48, 0.39], [-0.48, 0.48, 0.39]]
+    # probabilities = exp(logits)/sum(exp(logits))
+    #               = [[0.16670536, 0.43538380, 0.39791084],
+    #                  [0.16670536, 0.43538380, 0.39791084]]
+    # loss = -log(0.43538380) - log(0.16670536)
+    expected_loss = 2.62305466
+    self.assertAllClose({
+        metric_keys.MetricKeys.LOSS: expected_loss,
+        metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 2,
+        metric_keys.MetricKeys.ACCURACY: 0.5,
+        ops.GraphKeys.GLOBAL_STEP: global_step
+    }, dnn_classifier.evaluate(input_fn=_input_fn, steps=1))
+
+
 class DNNRegressorPredictTest(test.TestCase):
 
   def setUp(self):
@@ -522,6 +602,85 @@ class DNNRegressorPredictTest(test.TestCase):
     self.assertAllClose({
         prediction_keys.PredictionKeys.PREDICTIONS: [-0.48, 0.48, 0.39],
     }, next(dnn_regressor.predict(input_fn=input_fn)))
+
+
+class DNNClassifierPredictTest(test.TestCase):
+
+  def setUp(self):
+    self._model_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    if self._model_dir:
+      shutil.rmtree(self._model_dir)
+
+  def test_one_dim(self):
+    """Asserts predictions for one-dimensional input and logits."""
+    _create_checkpoint((
+        ([[.6, .5]], [.1, -.1]),
+        ([[1., .8], [-.8, -1.]], [.2, -.2]),
+        ([[-1.], [1.]], [.3]),
+    ), global_step=0, model_dir=self._model_dir)
+
+    dnn_classifier = dnn.DNNClassifier(
+        hidden_units=(2, 2),
+        feature_columns=(feature_column.numeric_column('x'),),
+        model_dir=self._model_dir)
+    input_fn = numpy_io.numpy_input_fn(
+        x={'x': np.array([[10.]])}, batch_size=1, shuffle=False)
+    # Uses identical numbers as DNNModelTest.test_one_dim_logits.
+    # See that test for calculation of logits.
+    # logits = [-2.08] =>
+    # logistic = exp(-2.08)/(1 + exp(-2.08)) = 0.11105597
+    # probabilities = [1-logistic, logistic] = [0.88894403, 0.11105597]
+    # class_ids = argmax(probabilities) = [0]
+    self.assertAllClose({
+        prediction_keys.PredictionKeys.LOGITS: [-2.08],
+        prediction_keys.PredictionKeys.LOGISTIC: [0.11105597],
+        prediction_keys.PredictionKeys.PROBABILITIES: [0.88894403, 0.11105597],
+        prediction_keys.PredictionKeys.CLASS_IDS: [0],
+    }, next(dnn_classifier.predict(input_fn=input_fn)))
+
+  def test_multi_dim(self):
+    """Asserts predictions for multi-dimensional input and logits."""
+    _create_checkpoint((
+        ([[.6, .5], [-.6, -.5]], [.1, -.1]),
+        ([[1., .8], [-.8, -1.]], [.2, -.2]),
+        ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3, .0]),
+    ), global_step=0, model_dir=self._model_dir)
+
+    dnn_classifier = dnn.DNNClassifier(
+        hidden_units=(2, 2),
+        feature_columns=(feature_column.numeric_column('x', shape=(2,)),),
+        n_classes=3,
+        model_dir=self._model_dir)
+    input_fn = numpy_io.numpy_input_fn(
+        # Inputs shape is (batch_size, num_inputs).
+        x={'x': np.array([[10., 8.]])},
+        batch_size=1,
+        shuffle=False)
+    # Uses identical numbers as
+    # DNNModelFnTest.test_multi_dim_input_multi_dim_logits.
+    # See that test for calculation of logits.
+    # logits = [-0.48, 0.48, 0.39] =>
+    # probabilities[i] = exp(logits[i]) / sum_j exp(logits[j]) =>
+    # probabilities = [0.16670536, 0.43538380, 0.39791084]
+    # class_ids = argmax(probabilities) = [1]
+    predictions = next(dnn_classifier.predict(input_fn=input_fn))
+    self.assertItemsEqual(
+        [prediction_keys.PredictionKeys.LOGITS,
+         prediction_keys.PredictionKeys.PROBABILITIES,
+         prediction_keys.PredictionKeys.CLASS_IDS,
+         prediction_keys.PredictionKeys.CLASSES],
+        six.iterkeys(predictions))
+    self.assertAllClose(
+        [-0.48, 0.48, 0.39], predictions[prediction_keys.PredictionKeys.LOGITS])
+    self.assertAllClose(
+        [0.16670536, 0.43538380, 0.39791084],
+        predictions[prediction_keys.PredictionKeys.PROBABILITIES])
+    self.assertAllEqual(
+        [1], predictions[prediction_keys.PredictionKeys.CLASS_IDS])
+    self.assertAllEqual(
+        [b'1'], predictions[prediction_keys.PredictionKeys.CLASSES])
 
 
 def _queue_parsed_features(feature_map):

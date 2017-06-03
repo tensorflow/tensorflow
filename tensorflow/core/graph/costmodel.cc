@@ -476,6 +476,14 @@ static void EstimateComputationCosts(const Graph& g, CostModel* cost_model) {
 }  // namespace
 
 void CostModel::InitFromGraph(const Graph& g) {
+  const int num_node_ids = g.num_node_ids();
+  slot_bytes_.reserve(num_node_ids);
+  count_.reserve(num_node_ids);
+  time_.reserve(num_node_ids);
+  max_mem_usage_.reserve(num_node_ids);
+  max_exec_time_.reserve(num_node_ids);
+  output_port_alloc_ids_.reserve(num_node_ids);
+
   AddNodesToCostModel(g, this);
   AssignSizes(g, this);
   EstimateComputationCosts(g, this);

@@ -13,13 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
-
-import {compareTagNames} from '../vz_sorting/sorting';
-
+import {compareTagNames} from '../vz-sorting/sorting';
 import {RequestManager} from './requestManager';
 import {Router} from './router';
-import {demoify} from './urlPathHelpers';
+import {demoify, queryEncoder} from './urlPathHelpers';
 
 export interface RunEnumeration {
   histograms: string[];
@@ -100,6 +97,20 @@ export type HealthPillDatum = Datum & HealthPill;
 // data entries.
 export interface HealthPillsResponse { [key: string]: HealthPillDatum[]; }
 
+// An object that encapsulates an alert issued by the debugger. This alert is
+// sent by debugging libraries after bad values (NaN, +/- Inf) are encountered.
+export interface DebuggerNumericsAlertReport {
+  device_name: string;
+  tensor_name: string;
+  first_timestamp: number;
+  nan_event_count: number;
+  neg_inf_event_count: number;
+  pos_inf_event_count: number;
+}
+// A DebuggerNumericsAlertReportResponse contains alerts issued by the debugger
+// in ascending order of timestamp. This helps the user identify for instance
+// when bad values first appeared in the model.
+export type DebuggerNumericsAlertReportResponse = DebuggerNumericsAlertReport[];
 
 export const TYPES = [
   'scalar', 'histogram', 'compressedHistogram', 'graph', 'image', 'audio',
@@ -170,32 +181,34 @@ export class Backend {
   /**
    * Return a promise showing the Run-to-Tag mapping for audio data.
    */
-  public audioRuns(): Promise<RunToTag> {
-    return this.runs().then((x) => _.mapValues(x, 'audio'));
+  public audioTags(): Promise<RunToTag> {
+    return this.requestManager.request(
+        this.router.pluginRoute('audio', '/tags'));
   }
 
   /**
    * Return a promise showing the Run-to-Tag mapping for compressedHistogram
    * data.
    */
-  public compressedHistogramRuns(): Promise<RunToTag> {
-    return this.runs().then((x) => _.mapValues(x, 'compressedHistograms'));
+  public compressedHistogramTags(): Promise<RunToTag> {
+    return this.requestManager.request(
+        this.router.pluginRoute('distributions', '/tags'));
   }
 
   /**
    * Return a promise showing list of runs that contain graphs.
    */
   public graphRuns(): Promise<string[]> {
-    return this.runs().then((x) => {
-      return _.keys(x).filter((k) => x[k].graph);
-    });
+    return this.requestManager.request(
+        this.router.pluginRoute('graphs', '/runs'));
   }
 
   /**
    * Return a promise showing the Run-to-Tag mapping for run_metadata objects.
    */
-  public runMetadataRuns(): Promise<RunToTag> {
-    return this.runs().then((x) => _.mapValues(x, 'run_metadata'));
+  public runMetadataTags(): Promise<RunToTag> {
+    return this.requestManager.request(
+        this.router.pluginRoute('graphs', '/run_metadata_tags'));
   }
 
 
@@ -220,11 +233,25 @@ export class Backend {
   }
 
   /**
-   * Return a promise of a graph string from the backend.
+   * Return a URL to fetch a graph (cf. method 'graph').
    */
-  public graph(tag: string, limitAttrSize?: number, largeAttrKeys?: string):
+  public graphUrl(run: string, limitAttrSize?: number, largeAttrsKey?: string):
+      string {
+    const demoMode = this.router.isDemoMode();
+    const base = this.router.pluginRoute('graphs', '/graph');
+    const optional = (p) => (p != null && !demoMode || undefined) && p;
+    const parameters = {
+      'run': run,
+      'limit_attr_size': optional(limitAttrSize),
+      'large_attrs_key': optional(largeAttrsKey),
+    };
+    const extension = demoMode ? '.pbtxt' : '';
+    return base + queryEncoder(parameters) + extension;
+  }
+
+  public graph(run: string, limitAttrSize?: number, largeAttrsKey?: string):
       Promise<string> {
-    const url = this.router.graph(tag, limitAttrSize, largeAttrKeys);
+    const url = this.graphUrl(run, limitAttrSize, largeAttrsKey);
     return this.requestManager.request(url);
   }
 
@@ -239,7 +266,8 @@ export class Backend {
   }
 
   /**
-   * Returns a promise for requesting the health pills for a list of nodes.
+   * Returns a promise for requesting the health pills for a list of nodes. This
+   * route is used by the debugger plugin.
    */
   public healthPills(nodeNames: string[], step?: number):
       Promise<HealthPillsResponse> {
@@ -258,13 +286,23 @@ export class Backend {
   }
 
   /**
+   * Returns a promise for alerts for bad values (detected by the debugger).
+   * This route is used by the debugger plugin.
+   */
+  public debuggerNumericsAlerts():
+      Promise<DebuggerNumericsAlertReportResponse> {
+    return this.requestManager.request(
+        this.router.pluginRoute('debugger', '/numerics_alert_report'));
+  }
+
+  /**
    * Return a promise containing HistogramDatums for given run and tag.
    */
   public histogram(tag: string, run: string):
       Promise<Array<HistogramSeriesDatum>> {
     let p: Promise<TupleData<HistogramTuple>[]>;
     const url =
-        (this.router.pluginRunTagRoute('histograms', '/histograms')(tag, run));
+        this.router.pluginRunTagRoute('histograms', '/histograms')(tag, run);
     p = this.requestManager.request(url);
     return p.then(map(detupler(createHistogram))).then(function(histos) {
       // Get the minimum and maximum values across all histograms so that the
@@ -296,17 +334,24 @@ export class Backend {
    * Return a promise containing AudioDatums for given run and tag.
    */
   public audio(tag: string, run: string): Promise<Array<AudioDatum>> {
-    const url = this.router.audio(tag, run);
+    const url = (this.router.pluginRunTagRoute('audio', '/audio')(tag, run));
     let p: Promise<AudioMetadata[]>;
     p = this.requestManager.request(url);
     return p.then(map(this.createAudio.bind(this)));
   }
 
   /**
+   * Returns the url for the RunMetadata for the given run/tag.
+   */
+  public runMetadataUrl(tag: string, run: string): string {
+    return this.router.pluginRunTagRoute('graphs', '/run_metadata')(tag, run);
+  }
+
+  /**
    * Returns a promise to load the string RunMetadata for given run/tag.
    */
   public runMetadata(tag: string, run: string): Promise<string> {
-    const url = this.router.runMetadata(tag, run);
+    const url = this.runMetadataUrl(tag, run);
     return this.requestManager.request(url);
   }
 
@@ -317,7 +362,8 @@ export class Backend {
    */
   private compressedHistogram(tag: string, run: string):
       Promise<Array<Datum&CompressedHistogramTuple>> {
-    const url = this.router.compressedHistograms(tag, run);
+    const url = (this.router.pluginRunTagRoute(
+        'distributions', '/distributions')(tag, run));
     let p: Promise<TupleData<CompressedHistogramTuple>[]>;
     p = this.requestManager.request(url);
     return p.then(map(detupler((x) => x)));
@@ -356,11 +402,33 @@ export class Backend {
   }
 
   private createAudio(x: AudioMetadata): Audio&Datum {
+    const pluginRoute = this.router.pluginRoute('audio', '/individualAudio');
+
+    let query = x.query;
+    if (pluginRoute.indexOf('?') > -1) {
+      // The route already has GET parameters. Append our parameters to them.
+      query = '&' + query;
+    } else {
+      // The route lacks GET parameters. We append them.
+      query = '?' + query;
+    }
+
+    if (this.router.isDemoMode()) {
+      query = demoify(query);
+    }
+
+    let individualAudioUrl = pluginRoute + query;
+    // Include wall_time just to disambiguate the URL and force the browser
+    // to reload the audio when the URL changes. The backend doesn't care
+    // about the value.
+    individualAudioUrl +=
+        this.router.isDemoMode() ? '.wav' : '&ts=' + x.wall_time;
+
     return {
       content_type: x.content_type,
       wall_time: timeToDate(x.wall_time),
       step: x.step,
-      url: this.router.individualAudio(x.query),
+      url: individualAudioUrl,
     };
   }
 }

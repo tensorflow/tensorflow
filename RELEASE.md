@@ -41,6 +41,15 @@
   be replaced by calling `embedding_lookup` or `layers.dense` as pre- or post-
   processing of the rnn.  For RNN decoding, this functionality has been replaced
   with an alternative API in `tf.contrib.seq2seq`.
+* Intel MKL Integration (https://software.intel.com/en-us/articles/tensorflow-optimizations-on-modern-intel-architecture). Intel developed a number of
+  optimized deep learning primitives: In addition to matrix multiplication and
+  convolution, these building blocks include:
+  Direct batched convolution
+  Pooling: maximum, minimum, average
+  Normalization: LRN, batch normalization
+  Activation: rectified linear unit (ReLU)
+  Data manipulation: multi-dimensional transposition (conversion), split,
+  concat, sum and scale.
 * TensorForest Estimator now supports SavedModel export for serving.
 * Support client-provided ClusterSpec's and propagate them to all workers to enable the creation of dynamic TensorFlow clusters.
 * TensorFlow C library now available for Windows.

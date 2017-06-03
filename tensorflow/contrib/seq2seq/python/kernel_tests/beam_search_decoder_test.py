@@ -226,8 +226,8 @@ class TestBeamStep(test.TestCase):
 class BeamSearchDecoderTest(test.TestCase):
 
   def _testDynamicDecodeRNN(self, time_major, has_attention):
-    encoder_sequence_length = [3, 2, 3, 1, 1]
-    decoder_sequence_length = [2, 0, 1, 2, 3]
+    encoder_sequence_length = np.array([3, 2, 3, 1, 1])
+    decoder_sequence_length = np.array([2, 0, 1, 2, 3])
     batch_size = 5
     decoder_max_time = 4
     input_depth = 7
@@ -245,6 +245,7 @@ class BeamSearchDecoderTest(test.TestCase):
       batch_size_tensor = constant_op.constant(batch_size)
       embedding = np.random.randn(vocab_size, embedding_dim).astype(np.float32)
       cell = rnn_cell.LSTMCell(cell_depth)
+      initial_state = cell.zero_state(batch_size, dtypes.float32)
       if has_attention:
         inputs = array_ops.placeholder_with_default(
             np.random.randn(batch_size, decoder_max_time,
@@ -258,6 +259,8 @@ class BeamSearchDecoderTest(test.TestCase):
             num_units=attention_depth,
             memory=tiled_inputs,
             memory_sequence_length=tiled_sequence_length)
+        initial_state = beam_search_decoder.tile_batch(
+            initial_state, multiplier=beam_width)
         cell = attention_wrapper.AttentionWrapper(
             cell=cell,
             attention_mechanism=attention_mechanism,
@@ -265,6 +268,9 @@ class BeamSearchDecoderTest(test.TestCase):
             alignment_history=False)
       cell_state = cell.zero_state(
           dtype=dtypes.float32, batch_size=batch_size_tensor * beam_width)
+      if has_attention:
+        cell_state = cell_state.clone(
+            cell_state=initial_state)
       bsd = beam_search_decoder.BeamSearchDecoder(
           cell=cell,
           embedding=embedding,

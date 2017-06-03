@@ -25,6 +25,7 @@ typedef std::vector<std::tuple<string, Status>> ExpectedCalls;
 
 ExpectedCalls CreateRetriableErrors(const string& method, int n) {
   ExpectedCalls expected_calls;
+  expected_calls.reserve(n);
   for (int i = 0; i < n; i++) {
     expected_calls.emplace_back(std::make_tuple(
         method, errors::Unavailable(strings::StrCat("Retriable error #", i))));

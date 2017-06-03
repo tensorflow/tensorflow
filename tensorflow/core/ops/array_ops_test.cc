@@ -31,6 +31,7 @@ TEST(ArrayOpsTest, Pack_ShapeFn) {
   auto set_axis = [&op](int axis) {
     int n = 3;
     std::vector<NodeDefBuilder::NodeOut> src_list;
+    src_list.reserve(n);
     for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
     TF_ASSERT_OK(NodeDefBuilder("test", "Pack")
                      .Input(src_list)
@@ -281,6 +282,7 @@ TEST(ArrayOpsTest, ShapeN_ShapeFn) {
   ShapeInferenceTestOp op("ShapeN");
   int n = 3;
   std::vector<NodeDefBuilder::NodeOut> src_list;
+  src_list.reserve(n);
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
   TF_ASSERT_OK(NodeDefBuilder("test", "ShapeN")
                    .Input(src_list)
@@ -546,6 +548,7 @@ TEST(ArrayOpsTest, Concat_ShapeFn) {
   ShapeInferenceTestOp op("Concat");
   auto set_n = [&op](int n) {
     std::vector<NodeDefBuilder::NodeOut> src_list;
+    src_list.reserve(n);
     for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
     TF_ASSERT_OK(NodeDefBuilder("test", "Concat")
                      .Input({"concat_dim", 0, DT_INT32})
@@ -619,6 +622,7 @@ TEST(ArrayOpsTest, ConcatV2_ShapeFn) {
   ShapeInferenceTestOp op("ConcatV2");
   auto set_n = [&op](int n) {
     std::vector<NodeDefBuilder::NodeOut> src_list;
+    src_list.reserve(n);
     for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
     TF_ASSERT_OK(NodeDefBuilder("test", "ConcatV2")
                      .Input(src_list)
@@ -695,6 +699,7 @@ TEST(ArrayOpsTest, ConcatOffset_ShapeFn) {
 
   const int n = 4;
   std::vector<NodeDefBuilder::NodeOut> src_list;
+  src_list.reserve(n);
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_INT32);
   TF_ASSERT_OK(NodeDefBuilder("test", "ConcatOffset")
                    .Input({"concat_dim", 0, DT_INT32})
