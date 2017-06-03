@@ -3555,13 +3555,11 @@ py_test(
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "layers_normalization_test",
     size = "small",
     srcs = ["layers/normalization_test.py"],
-    main = "layers/normalization_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":array_ops",
         ":client_testlib",
         ":framework_for_generated_wrappers",
@@ -3571,6 +3569,7 @@ py_test(
         ":variables",
         "//third_party/py/numpy",
     ],
+    main = "layers/normalization_test.py",
 )
 
 # -----------------------------------------------------------------------------
