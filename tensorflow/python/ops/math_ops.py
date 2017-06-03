@@ -45,6 +45,8 @@ See the @{$python/math_ops} guide.
 @@expm1
 @@log
 @@log1p
+@@sinh
+@@cosh
 @@ceil
 @@floor
 @@maximum
