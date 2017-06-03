@@ -20,6 +20,8 @@ limitations under the License.
  * and call a `reload` method on that child.
  * May later extend it so it has more sophisticated logic, e.g. reloading
  * only tags that are in view.
+ *
+ * @polymerBehavior
  */
 export function ReloadBehavior(tagName) {
   return {

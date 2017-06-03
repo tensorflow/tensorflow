@@ -262,6 +262,87 @@ class BNTest(test.TestCase):
       self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
       self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
 
+  def test4DInputAxis3Fused(self):
+    epsilon = 1e-3
+    bn = normalization_layers.BatchNormalization(
+        axis=3, epsilon=epsilon, momentum=0.9, fused=True)
+    inputs = variables.Variable(
+        np.random.random((5, 4, 3, 6)) + 100, dtype=dtypes.float32)
+    training = array_ops.placeholder(dtype='bool')
+    outputs = bn.apply(inputs, training=training)
+
+    with self.test_session() as sess:
+      # Test training with placeholder learning phase.
+      sess.run(variables.global_variables_initializer())
+      np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+      np_gamma = np.reshape(np_gamma, (1, 1, 1, 6))
+      np_beta = np.reshape(np_beta, (1, 1, 1, 6))
+      for _ in range(100):
+        np_output, _, _ = sess.run(
+            [outputs] + bn.updates, feed_dict={training: True})
+        # Verify that the axis is normalized during training.
+        normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+
+      # Verify that the statistics are updated during training.
+      moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+      np_inputs = sess.run(inputs)
+      mean = np.mean(np_inputs, axis=(0, 1, 2))
+      std = np.std(np_inputs, axis=(0, 1, 2))
+      variance = np.square(std)
+      self.assertAllClose(mean, moving_mean, atol=1e-2)
+      self.assertAllClose(variance, moving_var, atol=1e-2)
+
+      # Test inference with placeholder learning phase.
+      np_output = sess.run(outputs, feed_dict={training: False})
+
+      # Verify that the axis is normalized during inference.
+      normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
+      self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
+      self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+
+  def test4DInputAxis1Fused(self):
+    if test.is_gpu_available(cuda_only=True):
+      epsilon = 1e-3
+      bn = normalization_layers.BatchNormalization(
+          axis=1, epsilon=epsilon, momentum=0.9, fused=True)
+      inputs = variables.Variable(
+          np.random.random((5, 4, 3, 6)) + 100, dtype=dtypes.float32)
+      training = array_ops.placeholder(dtype='bool')
+      outputs = bn.apply(inputs, training=training)
+
+      with self.test_session() as sess:
+        # Test training with placeholder learning phase.
+        sess.run(variables.global_variables_initializer())
+        np_gamma, np_beta = sess.run([bn.gamma, bn.beta])
+        np_gamma = np.reshape(np_gamma, (1, 4, 1, 1))
+        np_beta = np.reshape(np_beta, (1, 4, 1, 1))
+        for _ in range(100):
+          np_output, _, _ = sess.run(
+              [outputs] + bn.updates, feed_dict={training: True})
+          # Verify that the axis is normalized during training.
+          normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
+          self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
+          self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+
+        # Verify that the statistics are updated during training.
+        moving_mean, moving_var = sess.run([bn.moving_mean, bn.moving_variance])
+        np_inputs = sess.run(inputs)
+        mean = np.mean(np_inputs, axis=(0, 2, 3))
+        std = np.std(np_inputs, axis=(0, 2, 3))
+        variance = np.square(std)
+        self.assertAllClose(mean, moving_mean, atol=1e-2)
+        self.assertAllClose(variance, moving_var, atol=1e-2)
+
+        # Test inference with placeholder learning phase.
+        np_output = sess.run(outputs, feed_dict={training: False})
+
+        # Verify that the axis is normalized during inference.
+        normed_np_output = ((np_output - epsilon) * np_gamma) + np_beta
+        self.assertAlmostEqual(np.mean(normed_np_output), 0., places=1)
+        self.assertAlmostEqual(np.std(normed_np_output), 1., places=1)
+
   def testNegativeAxis(self):
     epsilon = 1e-3
     bn = normalization_layers.BatchNormalization(

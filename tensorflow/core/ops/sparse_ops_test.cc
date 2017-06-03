@@ -255,6 +255,7 @@ TEST(SparseOpsTest, SparseConcat_ShapeFn) {
   ShapeInferenceTestOp op("SparseConcat");
   std::vector<NodeDefBuilder::NodeOut> src_list;
   int n = 2;
+  src_list.reserve(n);
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_INT64);
   TF_ASSERT_OK(NodeDefBuilder("test", "SparseConcat")
                    .Input(src_list)

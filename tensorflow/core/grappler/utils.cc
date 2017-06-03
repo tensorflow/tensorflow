@@ -83,6 +83,10 @@ string ParseNodeName(const string& name, int* position) {
   }
 }
 
+bool IsControlInput(const string& name) {
+  return !name.empty() && name[0] == '^';
+}
+
 string NodeName(const string& name) {
   int position;
   return ParseNodeName(name, &position);

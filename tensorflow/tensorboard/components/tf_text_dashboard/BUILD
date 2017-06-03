@@ -1,10 +1,10 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
+load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-web_library(
+ts_web_library(
     name = "tf_text_dashboard",
     srcs = [
         "tf-text-dashboard.html",
@@ -17,7 +17,7 @@ web_library(
         "//tensorflow/tensorboard/components/tf_dashboard_common",
         "//tensorflow/tensorboard/components/tf_imports:d3",
         "//tensorflow/tensorboard/components/tf_imports:lodash",
-        "@org_polymer",
+        "//tensorflow/tensorboard/components/tf_imports:polymer",
         "@org_polymer_paper_dialog",
         "@org_polymer_paper_icon_button",
         "@org_polymer_paper_material",
@@ -26,15 +26,15 @@ web_library(
     ],
 )
 
-web_library(
+ts_web_library(
     name = "demo",
     srcs = ["index.html"] + glob(["data/**"]),
     path = "/tf-text-dashboard",
     deps = [
         ":tf_text_dashboard",
+        "//tensorflow/tensorboard/components/tf_imports:webcomponentsjs",
         "@org_polymer_iron_demo_helpers",
         "@org_polymer_paper_styles",
-        "@org_polymer_webcomponentsjs",
     ],
 )
 

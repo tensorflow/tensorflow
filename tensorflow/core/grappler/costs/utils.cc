@@ -167,12 +167,16 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
       inputs.push_back(UnknownInput());
     } else {
       const CostGraphDef::Node* input_cost = it->second;
-      const CostGraphDef::Node::OutputInfo& output =
-          input_cost->output_info(output_index);
-      OpInfo::TensorProperties input;
-      input.set_dtype(output.dtype());
-      *input.mutable_shape() = output.shape();
-      inputs.push_back(input);
+      if (input_cost->output_info_size() == 0) {
+        inputs.push_back(UnknownInput());
+      } else {
+        const CostGraphDef::Node::OutputInfo& output =
+            input_cost->output_info(output_index);
+        OpInfo::TensorProperties input;
+        input.set_dtype(output.dtype());
+        *input.mutable_shape() = output.shape();
+        inputs.push_back(input);
+      }
     }
   }
 

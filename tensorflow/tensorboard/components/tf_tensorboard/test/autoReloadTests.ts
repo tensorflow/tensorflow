@@ -12,19 +12,23 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+import {AUTORELOAD_LOCALSTORAGE_KEY, AutoReloadBehavior} from '../autoReloadBehavior';
+
 declare function fixture(id: string): void;
+
 window.HTMLImports.whenReady(() => {
   Polymer({
     is: 'autoreload-test-element',
-    behaviors: [TF.TensorBoard.AutoReloadBehavior],
+    behaviors: [AutoReloadBehavior],
   });
 
   describe('autoReload-behavior', function() {
-    var testElement;
-    var ls = window.localStorage;
-    var key = TF.TensorBoard.AUTORELOAD_LOCALSTORAGE_KEY;
-    var clock;
-    var callCount: number;
+    let testElement;
+    const ls = window.localStorage;
+    const key = AUTORELOAD_LOCALSTORAGE_KEY;
+    let clock;
+    let callCount: number;
 
     beforeEach(function() {
       ls.setItem(key, 'false');  // start it turned off so we can mutate fns

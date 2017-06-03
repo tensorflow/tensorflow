@@ -796,6 +796,7 @@ class NormalizeDescriptor {
 
 // Describes a kind of non-linearity (threshold-like mathematical function).
 enum class ActivationMode {
+  kNone,
   kSigmoid,
   // Rectified linear activation: f(x) = x < 0 ? 0 : x
   kRelu,
@@ -910,9 +911,11 @@ class DnnSupport {
   //  input_data: un-owned device memory region which contains the
   //    convolution input.
   //  filter_descriptor: dimensions of the convolution filter.
-  //  weights: coefficients for the convolution filter, these are multiplied
-  //    against values in the input that the filter convolves over.
   //  convolution_descriptor: stride of the convolution filter.
+  //  biases: un-owned device memory region containing biases to add to the
+  //  input. This can be DeviceMemory pointing to NULL only when activation_mode
+  //  is kNone.
+  //  activation_mode: Type of activation to perform.
   //  output_descriptor: dimensions of the output layer.
   //  output_data: un-owned device memory region in which to place the
   //    convolution result.
@@ -945,16 +948,62 @@ class DnnSupport {
       const dnn::FilterDescriptor& filter_descriptor,
       const DeviceMemory<float>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  // Enqueues a double-precision fused convolution, bias add, and activation
+  // operation onto the stream. See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<double>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<double>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<double>& biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<double>* output_data) {
+    return false;
+  }
+
+  // Enqueues a half-precision fused convolution, bias add, and activation
+  // operation onto the stream. See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<Eigen::half>& biases,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  // Enqueues a single-precision convolution operation (without bias add
+  // or activation) onto the stream.
+  // See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<float>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
 
-  // Return a list of algorithms supported by the forward convolution pass.
-  virtual bool GetConvolveAlgorithms(
-      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
-
-  // Enqueues a double-precision convolution operation onto the stream.
+  // Enqueues a double-precision convolution operation (without bias add
+  // or activation) onto the stream.
   // See DoConvolve above for argument details.
   virtual bool DoConvolve(
       Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
@@ -965,7 +1014,8 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<double>* output_data) = 0;
 
-  // Enqueues a half-precision convolution operation onto the stream.
+  // Enqueues a half-precision convolution operation (without bias add
+  // or activation) onto the stream.
   // See DoConvolve above for argument details.
   virtual bool DoConvolve(
       Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
@@ -978,6 +1028,10 @@ class DnnSupport {
       ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the forward convolution pass.
+  virtual bool GetConvolveAlgorithms(
+      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
 
   // Version of DoConvolve that uses pre-quantized 8 bit coefficients.
   // coefficient_scales specifies the scaling of each column of coefficients:
