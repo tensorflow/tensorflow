@@ -143,16 +143,15 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
 
   // Fixed blockDim.x, corresponding to Pascal's global load granularity of 32B.
   const int block_slices = 8;
-  const int block_cols = blockDim.y;
   const int block_rows = blockDim.z;
 
   // These values are the same for all threads and could
   // be precomputed on the CPU.
-  const int block_size = block_rows * block_cols * block_slices;
+  const int block_size = block_rows * in_cols * block_slices;
   const int in_row_size = in_cols * in_depth;
   const int in_size = in_rows * in_row_size;
   const int in_increment = (in_cols - 1) * block_slices;
-  const int filter_size = filter_rows * filter_cols;
+  const int filter_pixels = filter_rows * filter_cols;
   const int tile_cols = in_cols + filter_cols - 1;
   const int even_rows = kKnownEvenRows || (1 & ~in_rows);
   const int tile_rows = in_rows + filter_rows - even_rows;
@@ -170,7 +169,7 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
   const int thread_row = threadIdx.z;
 
   // Position in block.
-  const int thread_pix = thread_row * block_cols + thread_col;
+  const int thread_pix = thread_row * in_cols + thread_col;
   const int thread_idx = thread_pix * block_slices + thread_depth;
 
   // Initialize tile, in particular the padding.
@@ -192,7 +191,7 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
 
   const int max_depth = in_depth - thread_depth;
   const int filter_write_offset =
-      thread_pix < filter_size ? tile_size + thread_idx : 0;
+      thread_pix < filter_pixels ? tile_size + thread_idx : 0;
   const int filter_read_offset = tile_size + thread_depth;
   const bool skip_second =
       !kKnownEvenRows && thread_row + (in_rows & 1) == block_rows;
@@ -397,11 +396,11 @@ bool TryLaunchDepthwiseConv2dGPUSmall(const GpuDevice& d,
 
   const int tile_cols = args.in_cols + args.filter_cols - 1;
   const int tile_rows = block_rows * 2 + args.filter_rows - 1;
-  const int tile_size = tile_rows * tile_cols;
-  const int filter_size = args.filter_rows * args.filter_cols;
+  const int tile_pixels = tile_rows * tile_cols;
+  const int filter_pixels = args.filter_rows * args.filter_cols;
   dim3 block_dim = dim3(8, args.in_cols, block_rows);
   const int shared_memory_size =
-      block_dim.x * (tile_size + filter_size) * sizeof(T);
+      block_dim.x * (tile_pixels + filter_pixels) * sizeof(T);
 
   const int num_outputs =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
@@ -588,16 +587,15 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropInputGPUKernelNHWCSmall(
 
   // Fixed blockDim.x, corresponding to Pascal's global load granularity of 32B.
   const int block_slices = 8;
-  const int block_cols = blockDim.y;
   const int block_rows = blockDim.z;
 
   // These values are the same for all threads and could
   // be precomputed on the CPU.
-  const int block_size = block_rows * block_cols * block_slices;
+  const int block_size = block_rows * in_cols * block_slices;
   const int in_row_size = in_cols * in_depth;
   const int in_size = in_rows * in_row_size;
   const int in_increment = (in_cols - 1) * block_slices;
-  const int filter_size = filter_rows * filter_cols;
+  const int filter_pixels = filter_rows * filter_cols;
   const int tile_cols = in_cols + filter_cols - 1;
   const int even_rows = kKnownEvenRows || (1 & ~in_rows);
   const int tile_rows = in_rows + filter_rows - even_rows;
@@ -615,7 +613,7 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropInputGPUKernelNHWCSmall(
   const int thread_row = threadIdx.z;
 
   // Position in block.
-  const int thread_pix = thread_row * block_cols + thread_col;
+  const int thread_pix = thread_row * in_cols + thread_col;
   const int thread_idx = thread_pix * block_slices + thread_depth;
 
   // Initialize tile, in particular the padding.
@@ -637,9 +635,9 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropInputGPUKernelNHWCSmall(
 
   const int max_depth = in_depth - thread_depth;
   const int filter_write_offset =
-      thread_pix < filter_size ? tile_size + thread_idx : 0;
+      thread_pix < filter_pixels ? tile_size + thread_idx : 0;
   const int filter_read_offset =
-      tile_size + filter_size * block_slices + thread_depth;
+      tile_size + filter_pixels * block_slices + thread_depth;
   const bool skip_second =
       !kKnownEvenRows && thread_row + (in_rows & 1) == block_rows;
 
@@ -786,11 +784,11 @@ bool TryLaunchDepthwiseConv2dBackpropInputGPUSmall(
 
   const int tile_cols = args.in_cols + args.filter_cols - 1;
   const int tile_rows = block_rows * 2 + args.filter_rows - 1;
-  const int tile_size = tile_rows * tile_cols;
-  const int filter_size = args.filter_rows * args.filter_cols;
+  const int tile_pixels = tile_rows * tile_cols;
+  const int filter_pixels = args.filter_rows * args.filter_cols;
   dim3 block_dim = dim3(8, args.in_cols, block_rows);
   const int shared_memory_size =
-      block_dim.x * (tile_size + filter_size) * sizeof(T);
+      block_dim.x * (tile_pixels + filter_pixels) * sizeof(T);
 
   const int num_in_backprop =
       args.batch * args.in_rows * args.in_cols * args.in_depth;
@@ -1007,16 +1005,15 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
 
   // Fixed blockDim.x, corresponding to Pascal's global load granularity of 32B.
   const int block_slices = 8;
-  const int block_cols = blockDim.y;
   const int block_rows = blockDim.z;
 
   // These values are the same for all threads and could
   // be precomputed on the CPU.
-  const int block_size = block_rows * block_cols * block_slices;
+  const int block_size = block_rows * in_cols * block_slices;
   const int in_row_size = in_cols * in_depth;
   const int in_size = in_rows * in_row_size;
   const int in_increment = (in_cols - 1) * block_slices;
-  const int filter_size = filter_rows * filter_cols;
+  const int filter_pixels = filter_rows * filter_cols;
   const int tile_cols = in_cols + filter_cols - 1;
   const int tile_rows = 2 * block_rows + filter_rows - 1;
   const int tile_row_size = tile_cols * block_slices;
@@ -1028,14 +1025,14 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
   const int tensor_offset = block_rows * in_row_size;
   const int accum_pixels = 32;
   const int accum_increment = accum_pixels * block_slices;
-  const int accum_size = filter_size * accum_increment;
+  const int accum_size = filter_pixels * accum_increment;
 
   const int thread_depth = threadIdx.x;
   const int thread_col = threadIdx.y;
   const int thread_row = threadIdx.z;
 
   // Position in block.
-  const int thread_pix = thread_row * block_cols + thread_col;
+  const int thread_pix = thread_row * in_cols + thread_col;
   const int thread_idx = thread_pix * block_slices + thread_depth;
 
   // Initialize tile, in particular the padding and accumulator.
@@ -1247,11 +1244,11 @@ bool TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
   const int block_rows = (args.in_rows + 1) / 2 + rows_mask & ~rows_mask;
   const int tile_cols = args.in_cols + args.filter_cols - 1;
   const int tile_rows = block_rows * 2 + args.filter_rows - 1;
-  const int tile_size = tile_rows * tile_cols;
+  const int tile_pixels = tile_rows * tile_cols;
   const int accum_size = args.filter_rows * args.filter_cols * 32;
   dim3 block_dim = dim3(8, args.in_cols, block_rows);
   const int shared_memory_size =
-      block_dim.x * (tile_size + accum_size) * sizeof(T);
+      block_dim.x * (tile_pixels + accum_size) * sizeof(T);
 
   if (block_rows > args.in_rows ||
       args.filter_rows * args.filter_cols > args.in_cols * block_rows ||
