@@ -26,6 +26,7 @@ TEST(MfccTest, AgreesWithPythonGoldenValues) {
   Mfcc mfcc;
   std::vector<double> input;
   const int kSampleCount = 513;
+  input.reserve(kSampleCount);
   for (int i = 0; i < kSampleCount; ++i) {
     input.push_back(i + 1);
   }
@@ -51,6 +52,7 @@ TEST(MfccTest, AvoidsNansWithZeroInput) {
   Mfcc mfcc;
   std::vector<double> input;
   const int kSampleCount = 513;
+  input.reserve(kSampleCount);
   for (int i = 0; i < kSampleCount; ++i) {
     input.push_back(0.0);
   }

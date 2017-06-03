@@ -829,6 +829,7 @@ TEST_P(ArrayElementwiseOpTestParamCount, SquareManyValues) {
   const int count = GetParam();
   ComputationBuilder builder(client_, TestName());
   std::vector<float> values;
+  values.reserve(count);
   for (int i = 0; i < count; ++i) {
     values.push_back(i / static_cast<float>(count));
   }
@@ -836,6 +837,7 @@ TEST_P(ArrayElementwiseOpTestParamCount, SquareManyValues) {
   auto exp = builder.Pow(x, builder.ConstantR0<float>(2.0f));
 
   std::vector<float> expected;
+  expected.reserve(values.size());
   for (float value : values) {
     expected.push_back(value * value);
   }

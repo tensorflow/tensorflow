@@ -347,6 +347,7 @@ class BatchResource : public ResourceBase {
 
       // Concatenate the tasks ith input tensors into a big output tensor.
       std::vector<Tensor> to_concatenate;
+      to_concatenate.reserve(batch->num_tasks());
       for (int task_idx = 0; task_idx < batch->num_tasks(); ++task_idx) {
         to_concatenate.push_back(batch->task(task_idx).inputs.at(i));
       }

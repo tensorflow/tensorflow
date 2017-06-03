@@ -165,9 +165,10 @@ ComputationDataHandle ComputationBuilder::ConstantOp(
   }
 
   ConstantRequest request;
-  Literal* literal = request.mutable_literal();
-  populate(literal);
-  VLOG(3) << "created constant: " << literal->ShortDebugString();
+  Literal literal;
+  populate(&literal);
+  *request.mutable_literal() = literal.ToProto();
+  VLOG(3) << "created constant: " << request.literal().ShortDebugString();
   OpRequest op_request;
   *op_request.mutable_constant_request() = request;
   *op_request.mutable_computation() = computation_.handle();

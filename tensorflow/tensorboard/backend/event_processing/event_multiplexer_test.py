@@ -24,7 +24,6 @@ import shutil
 
 import tensorflow as tf
 
-from tensorflow.python.platform import googletest
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 
@@ -116,7 +115,7 @@ class EventMultiplexerTest(tf.test.TestCase):
 
   def setUp(self):
     super(EventMultiplexerTest, self).setUp()
-    self.stubs = googletest.StubOutForTesting()
+    self.stubs = tf.test.StubOutForTesting()
 
     self.stubs.Set(event_accumulator, 'EventAccumulator', _GetFakeAccumulator)
 

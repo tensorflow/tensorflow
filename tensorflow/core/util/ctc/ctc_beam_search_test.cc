@@ -150,6 +150,7 @@ TEST(CtcBeamSearch, DecodingWithAndWithoutDictionary) {
   // using Eigen::Map.
   Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
   std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  inputs.reserve(timesteps);
   for (int t = 0; t < timesteps; ++t) {
     inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
   }
@@ -199,6 +200,7 @@ TEST(CtcBeamSearch, AllBeamElementsHaveFiniteScores) {
   // using Eigen::Map.
   Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
   std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  inputs.reserve(timesteps);
   for (int t = 0; t < timesteps; ++t) {
     inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
   }
@@ -293,6 +295,7 @@ TEST(CtcBeamSearch, LabelSelection) {
   // using Eigen::Map.
   Eigen::Map<const Eigen::ArrayXi> seq_len(&sequence_lengths[0], batch_size);
   std::vector<Eigen::Map<const Eigen::MatrixXf>> inputs;
+  inputs.reserve(timesteps);
   for (int t = 0; t < timesteps; ++t) {
     inputs.emplace_back(&input_data_mat[t][0][0], batch_size, num_classes);
   }

@@ -44,6 +44,7 @@ struct ShapeTreeNode {
   // Children of this node.
   std::vector<std::unique_ptr<ShapeTreeNode>> children;
 
+  ShapeTreeNode() = default;
   explicit ShapeTreeNode(const T& data) : data(data) {}
 
   ShapeTreeNode(const ShapeTreeNode& other)
@@ -85,8 +86,9 @@ class ShapeTree {
  public:
   // Default constructor creates a tree with a nil shape (i.e. an empty tuple).
   ShapeTree() : ShapeTree(ShapeUtil::MakeNil()) {}
-  // Create ShapeTree with the given shape, and default T values for all nodes.
-  explicit ShapeTree(const Shape& shape) : ShapeTree(shape, T()) {}
+  // Create ShapeTree with the given shape, and default-constructed T values for
+  // all nodes.
+  explicit ShapeTree(const Shape& shape);
   // Create ShapeTree with the given shape, and init_value for all nodes.
   ShapeTree(const Shape& shape, const T& init_value);
 
@@ -127,12 +129,29 @@ class ShapeTree {
       const ShapeIndex& /*index*/, bool /*is_leaf*/, T* /*data*/)>;
   Status ForEachMutableElement(const MutableVisitorFunction& func);
 
+  // Copy the subtree of values from 'other' rooted at ShapeIndex
+  // 'source_base_index' into the subtree of value in this ShapeTree rooted at
+  // 'target_base_index'.
+  //
+  // Precondition: The subshape of other.shape() at index source_base_index must
+  // be compatible with the subshape of shape() at index target_base_index.
+  void CopySubtreeFrom(const ShapeTree<T>& other,
+                       const ShapeIndex& source_base_index,
+                       const ShapeIndex& target_base_index);
+
+  bool operator==(const ShapeTree<T>& other) const;
+  bool operator!=(const ShapeTree<T>& other) const { return !(*this == other); }
+
  private:
   using Node = internal::ShapeTreeNode<T>;
 
   // Initialize node->children based on 'shape'. All children are assigned the
   // the given 'init_value'.
   void InitChildren(const Shape& shape, const T& init_value, Node* node);
+
+  // Initialize node->children based on 'shape'. All children have
+  // default-constructed data values.
+  void InitChildren(const Shape& shape, Node* node);
 
   // Helpers for traversing the shape via ForEachElement. The helpers
   // recursively traverse the subtree rooted at "index" (defined as in
@@ -163,6 +182,24 @@ void ShapeTree<T>::InitChildren(const Shape& shape, const T& init_value,
                    node->children.back().get());
     }
   }
+}
+
+template <typename T>
+void ShapeTree<T>::InitChildren(const Shape& shape, Node* node) {
+  if (ShapeUtil::IsTuple(shape)) {
+    for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+      node->children.emplace_back(new Node());
+      InitChildren(shape.tuple_shapes(i), node->children.back().get());
+    }
+  }
+}
+
+template <typename T>
+ShapeTree<T>::ShapeTree(const Shape& shape) : root_(), shape_(shape) {
+  // The shape_ field is just used to hold the structure of the shape.
+  // It should not be relied upon to store layout information.
+  LayoutUtil::ClearLayout(&shape_);
+  InitChildren(shape_, &root_);
 }
 
 template <typename T>
@@ -238,6 +275,48 @@ template <typename T>
 Status ShapeTree<T>::ForEachMutableElement(const MutableVisitorFunction& func) {
   ShapeIndex index;
   return ForEachMutableHelper(func, &root_, &index);
+}
+
+template <typename T>
+void ShapeTree<T>::CopySubtreeFrom(const ShapeTree<T>& other,
+                                   const ShapeIndex& source_base_index,
+                                   const ShapeIndex& target_base_index) {
+  CHECK(ShapeUtil::Compatible(
+      ShapeUtil::GetSubshape(shape(), target_base_index),
+      ShapeUtil::GetSubshape(other.shape(), source_base_index)));
+  ForEachMutableElement(
+      [this, &other, &source_base_index, &target_base_index](
+          const ShapeIndex& index, bool /*is_leaf*/, T* data) {
+        // Copy the data element only if index is in the
+        // subtree rooted at target_base_index.
+        for (int i = 0; i < target_base_index.size(); ++i) {
+          if (i >= index.size() || index[i] != target_base_index[i]) {
+            return Status::OK();
+          }
+        }
+        // Construct source element index to copy from.
+        ShapeIndex source_index = source_base_index;
+        for (int i = target_base_index.size(); i < index.size(); ++i) {
+          source_index.push_back(index[i]);
+        }
+        *data = other.element(source_index);
+        return Status::OK();
+      })
+      .IgnoreError();
+}
+
+template <typename T>
+bool ShapeTree<T>::operator==(const ShapeTree<T>& other) const {
+  bool equal = true;
+  ForEachElement([this, &other, &equal](const ShapeIndex& index,
+                                        bool /*is_leaf*/, const T& data) {
+    if (data != other.element(index)) {
+      equal = false;
+    }
+    return Status::OK();
+  })
+      .IgnoreError();
+  return equal;
 }
 
 }  // namespace xla

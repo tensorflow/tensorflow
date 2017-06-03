@@ -2,11 +2,11 @@ workspace(name = "org_tensorflow")
 
 http_archive(
     name = "io_bazel_rules_closure",
-    sha256 = "4be8a887f6f38f883236e77bb25c2da10d506f2bf1a8e5d785c0f35574c74ca4",
-    strip_prefix = "rules_closure-aac19edc557aec9b603cd7ffe359401264ceff0d",
+    sha256 = "edc91f556b762fc5212d1050d00b12e40dd0b0b1c1d5d96886b59e9a30a6cae4",
+    strip_prefix = "rules_closure-3f07fb6a58870afbb36051bd5d54da4479561cc6",
     urls = [
-        "http://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/aac19edc557aec9b603cd7ffe359401264ceff0d.tar.gz",  # 2017-05-10
-        "https://github.com/bazelbuild/rules_closure/archive/aac19edc557aec9b603cd7ffe359401264ceff0d.tar.gz",
+        "http://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/3f07fb6a58870afbb36051bd5d54da4479561cc6.tar.gz",  # 2017-05-31
+        "https://github.com/bazelbuild/rules_closure/archive/3f07fb6a58870afbb36051bd5d54da4479561cc6.tar.gz",
     ],
 )
 

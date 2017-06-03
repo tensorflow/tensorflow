@@ -255,6 +255,16 @@ Status CorruptFileError(const Status& in_status, const string& filename,
                       detail, "): ", in_status.error_message()));
 }
 
+table::Options TableBuilderOptions() {
+  table::Options o;
+  // Compressed tables cannot be read by TensorFlow releases prior to 1.1.
+  // To smoothen the transition, compressed writes are disabled for now
+  // (version 1.2) with the intention that they will be enabled again at
+  // some point (perhaps the 1.3 release?).
+  o.compression = table::kNoCompression;
+  return o;
+}
+
 }  // namespace
 
 BundleWriter::BundleWriter(Env* env, StringPiece prefix)
@@ -442,7 +452,7 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
 
   table::Table* table = nullptr;
   TF_RETURN_IF_ERROR(
-      table::Table::Open(table::Options(), file.get(), file_size, &table));
+      table::Table::Open(TableBuilderOptions(), file.get(), file_size, &table));
   std::unique_ptr<table::Table> table_deleter(table);
   std::unique_ptr<table::Iterator> iter(table->NewIterator());
 
@@ -555,7 +565,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   TF_RETURN_IF_ERROR(
       env->NewWritableFile(MetaFilename(merged_prefix), &merged_metadata));
   {
-    table::TableBuilder builder(table::Options(), merged_metadata.get());
+    table::TableBuilder builder(TableBuilderOptions(), merged_metadata.get());
     // Header entry.
     BundleHeaderProto header;
     header.set_num_shards(merge.num_shards);
@@ -630,6 +640,12 @@ BundleReader::~BundleReader() {
   delete metadata_;
   delete iter_;
   delete table_;
+  // InputBuffer does not own the underlying RandomAccessFile.
+  for (auto pair : data_) {
+    if (pair.second->file() != nullptr) {
+      delete pair.second->file();
+    }
+  }
   gtl::STLDeleteValues(&data_);
   gtl::STLDeleteValues(&tensor_slices_);
 }
@@ -684,14 +700,16 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     }
   }
 
-  // Open the data file if not opened it.
-  std::unique_ptr<RandomAccessFile> file = nullptr;
-  std::unique_ptr<io::InputBuffer> buffered_file(data_[entry.shard_id()]);
+  // Open the data file if it has not been opened.
+  io::InputBuffer* buffered_file = data_[entry.shard_id()];
   if (buffered_file == nullptr) {
+    std::unique_ptr<RandomAccessFile> file = nullptr;
     TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(
         DataFilename(prefix_, entry.shard_id(), num_shards_), &file));
-    buffered_file.reset(
-        new io::InputBuffer(file.get(), 256 << 10 /* 256KB buffer */));
+    buffered_file =
+        new io::InputBuffer(file.release(), 256 << 10 /* 256KB buffer */);
+    // The InputBuffer and RandomAccessFile objects are both released in dtor.
+    data_[entry.shard_id()] = buffered_file;
   }
   CHECK(buffered_file != nullptr);
 
@@ -710,7 +728,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     // Relies on io::InputBuffer's buffering, because we issue many neighboring
     // reads for a single string tensor.
     TF_RETURN_IF_ERROR(ReadStringTensor(
-        buffered_file.get(), ret->NumElements(), entry.offset(), entry.size(),
+        buffered_file, ret->NumElements(), entry.offset(), entry.size(),
         GetStringBackingBuffer(*ret), &actual_crc32c));
   }
   if (crc32c::Unmask(entry.crc32c()) != actual_crc32c) {

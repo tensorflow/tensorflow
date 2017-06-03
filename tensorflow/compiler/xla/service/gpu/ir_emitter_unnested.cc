@@ -1631,6 +1631,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildKernelThunk(
 
   // Compute the input buffer indices.
   std::vector<BufferAllocation::Slice> io_buffers;
+  io_buffers.reserve(io_hlos.size());
   for (const HloInstruction* io_hlo : io_hlos) {
     io_buffers.push_back(GetAllocationSlice(*LatestNonGteAncestor(io_hlo)));
   }

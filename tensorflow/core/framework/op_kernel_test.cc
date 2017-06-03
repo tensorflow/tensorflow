@@ -456,7 +456,8 @@ class OpKernelBuilderTest : public ::testing::Test {
     }
   }
 
-  string GetKernelClassName(const string& op_type, DeviceType device_type,
+  string GetKernelClassName(const string& op_type,
+                            const DeviceType& device_type,
                             const std::vector<string>& attrs,
                             DataTypeSlice input_types = {}) {
     NodeDef def = CreateNodeDef(op_type, attrs);

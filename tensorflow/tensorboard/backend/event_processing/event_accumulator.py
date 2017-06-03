@@ -72,7 +72,7 @@ SUMMARY_TYPES = {
 
 ## The tagTypes below are just arbitrary strings chosen to pass the type
 ## information of the tag from the backend to the frontend
-COMPRESSED_HISTOGRAMS = 'compressedHistograms'
+COMPRESSED_HISTOGRAMS = 'distributions'
 HISTOGRAMS = 'histograms'
 IMAGES = 'images'
 AUDIO = 'audio'
