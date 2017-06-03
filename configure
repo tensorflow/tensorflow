@@ -790,11 +790,11 @@ while true; do
     fromuser=""
     if [ -z "$MPI_HOME" ]; then
         #Get the base folder by removing the bin path
-        default_path=$(dirname $(dirname $(which mpirun)) || dirname $(dirname $(which mpiexec))  || true)
+        default_mpi_path=$(dirname $(dirname $(which mpirun)) || dirname $(dirname $(which mpiexec))  || true)
         read -p "Please specify the MPI toolkit folder. [Default is $default_mpi_path]: " MPI_HOME
         fromuser="1"
         if [ -z "$MPI_HOME" ]; then
-            MPI_HOME=$default_path
+            MPI_HOME=$default_mpi_path
         fi
     fi
 
