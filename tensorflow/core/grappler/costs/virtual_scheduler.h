@@ -95,7 +95,6 @@ struct NodeInfo {
   OpInfo op_info;
   string name;
   string device_name;
-  std::vector<OpInfo::TensorProperties> outputs;
 };
 
 // The virtual scheduler emulates execution of nodes in a graph, considering

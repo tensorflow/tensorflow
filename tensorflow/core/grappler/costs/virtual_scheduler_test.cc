@@ -126,9 +126,9 @@ TEST_F(VirtualSchedulerTest, InitAndBasicScheduling) {
   EXPECT_EQ(ops_executed.count("c2"), 0);
 
   // Check input / output properties.
-  EXPECT_EQ(1, ops_executed["x"].outputs.size());
-  EXPECT_EQ(1, ops_executed["y"].outputs.size());
-  EXPECT_EQ(1, ops_executed["f"].outputs.size());
+  EXPECT_EQ(1, ops_executed["x"].op_info.outputs_size());
+  EXPECT_EQ(1, ops_executed["y"].op_info.outputs_size());
+  EXPECT_EQ(1, ops_executed["f"].op_info.outputs_size());
   EXPECT_EQ(2, ops_executed["c0"].op_info.inputs_size());
   EXPECT_EQ(2, ops_executed["c1"].op_info.inputs_size());
 }

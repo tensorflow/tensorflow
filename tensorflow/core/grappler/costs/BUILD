@@ -267,3 +267,18 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
     ],
 )
+
+cc_test(
+    name = "analytical_cost_estimator_test",
+    srcs = ["analytical_cost_estimator_test.cc"],
+    deps = [
+        ":analytical_cost_estimator",
+        ":virtual_scheduler",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+    ],
+)
