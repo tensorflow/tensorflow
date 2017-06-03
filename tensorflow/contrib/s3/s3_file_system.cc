@@ -18,10 +18,12 @@ limitations under the License.
 #include "tensorflow/contrib/s3/s3_crypto.h"
 
 #include <aws/core/Aws.h>
+#include <aws/core/utils/FileSystemUtils.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListObjectsV2Request.h>
+#include <aws/s3/model/PutObjectRequest.h>
 
 namespace tensorflow {
 
@@ -54,16 +56,14 @@ Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
 
 class S3RandomAccessFile : public RandomAccessFile {
  public:
-  S3RandomAccessFile(const string& fname) : fname_(fname) {}
+  S3RandomAccessFile(const string& bucket, const string& object)
+      : bucket_(bucket), object_(object) {}
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
-    string bucket, object;
-    TF_RETURN_IF_ERROR(ParseS3Path(fname_, false, &bucket, &object));
-
     Aws::S3::S3Client s3Client;
     Aws::S3::Model::GetObjectRequest getObjectRequest;
-    getObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
+    getObjectRequest.WithBucket(bucket_.c_str()).WithKey(object_.c_str());
     char buffer[50];
     memset(buffer, 0x00, sizeof(buffer));
     snprintf(buffer, sizeof(buffer) - 1, "bytes=%lld-%lld", offset,
@@ -87,7 +87,82 @@ class S3RandomAccessFile : public RandomAccessFile {
     *result = StringPiece(scratch, n);
     return Status::OK();
   }
-  string fname_;
+
+ private:
+  string bucket_;
+  string object_;
+};
+
+class S3WritableFile : public WritableFile {
+ public:
+  S3WritableFile(const string& bucket, const string& object)
+      : bucket_(bucket),
+        object_(object),
+        sync_needed_(true),
+        outfile_(Aws::MakeShared<Aws::Utils::TempFile>(
+            S3FileSystemAllocationTag, "/tmp/s3_filesystem_XXXXXX",
+            std::ios_base::binary | std::ios_base::trunc | std::ios_base::in |
+                std::ios_base::out)) {}
+
+  Status Append(const StringPiece& data) override {
+    if (!outfile_) {
+      return errors::FailedPrecondition(
+          "The internal temporary file is not writable.");
+    }
+    sync_needed_ = true;
+    outfile_->write(data.data(), data.size());
+    if (!outfile_->good()) {
+      return errors::Internal(
+          "Could not append to the internal temporary file.");
+    }
+    return Status::OK();
+  }
+
+  Status Close() override {
+    if (outfile_) {
+      TF_RETURN_IF_ERROR(Sync());
+      outfile_.reset();
+    }
+    return Status::OK();
+  }
+
+  Status Flush() override { return Sync(); }
+
+  Status Sync() override {
+    if (!outfile_) {
+      return errors::FailedPrecondition(
+          "The internal temporary file is not writable.");
+    }
+    if (!sync_needed_) {
+      return Status::OK();
+    }
+    Aws::Client::ClientConfiguration clientConfig;
+    clientConfig.connectTimeoutMs = 300000;
+    clientConfig.requestTimeoutMs = 600000;
+    Aws::S3::S3Client s3Client(clientConfig);
+    Aws::S3::Model::PutObjectRequest putObjectRequest;
+    putObjectRequest.WithBucket(bucket_.c_str()).WithKey(object_.c_str());
+    long offset = outfile_->tellp();
+    outfile_->seekg(0);
+    putObjectRequest.SetBody(outfile_);
+    putObjectRequest.SetContentLength(offset);
+    auto putObjectOutcome = s3Client.PutObject(putObjectRequest);
+    outfile_->clear();
+    outfile_->seekp(offset);
+    if (!putObjectOutcome.IsSuccess()) {
+      std::stringstream ss;
+      ss << putObjectOutcome.GetError().GetExceptionName() << ": "
+         << putObjectOutcome.GetError().GetMessage();
+      return Status(error::INVALID_ARGUMENT, StringPiece(ss.str()));
+    }
+    return Status::OK();
+  }
+
+ private:
+  string bucket_;
+  string object_;
+  bool sync_needed_;
+  std::shared_ptr<Aws::Utils::TempFile> outfile_;
 };
 
 class S3FileSystem : public FileSystem {
@@ -110,12 +185,17 @@ class S3FileSystem : public FileSystem {
   }
   Status NewRandomAccessFile(
       const string& fname, std::unique_ptr<RandomAccessFile>* result) override {
-    result->reset(new S3RandomAccessFile(fname));
+    string bucket, object;
+    TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
+    result->reset(new S3RandomAccessFile(bucket, object));
     return Status::OK();
   }
   Status NewWritableFile(const string& fname,
                          std::unique_ptr<WritableFile>* result) override {
-    return errors::Unimplemented("NewWritableFile unimplemented");
+    string bucket, object;
+    TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
+    result->reset(new S3WritableFile(bucket, object));
+    return Status::OK();
   }
 
   Status NewAppendableFile(const string& fname,
