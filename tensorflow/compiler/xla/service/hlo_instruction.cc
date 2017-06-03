@@ -65,7 +65,7 @@ using ::tensorflow::strings::StrCat;
       WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
   instruction->operands_.push_back(operand);
   instruction->literal_.reset(new Literal);
-  *instruction->literal_->mutable_u8s() += tag;
+  instruction->literal_->append_u8s(tag);
   return instruction;
 }
 
@@ -1484,6 +1484,7 @@ string HloInstruction::ToString(bool compact_operands,
   }
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
+    bounds.reserve(slice_starts_.size());
     for (int i = 0; i < slice_starts_.size(); ++i) {
       bounds.push_back(
           StrCat("[", slice_starts_[i], ":", slice_limits_[i], "]"));
@@ -1550,7 +1551,7 @@ HloInstructionProto HloInstruction::ToProto() const {
   *proto.mutable_metadata() = metadata_;
   switch (opcode_) {
     case HloOpcode::kConstant:
-      *proto.mutable_literal() = *literal_;
+      *proto.mutable_literal() = literal_->ToProto();
       break;
     case HloOpcode::kParameter:
       proto.set_parameter_number(parameter_number_);
@@ -1647,10 +1648,10 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
   trace_instruction_ = trace_instruction;
 }
 
-const string& HloInstruction::tracing_tag() const {
+string HloInstruction::TracingTag() const {
   CHECK_EQ(HloOpcode::kTrace, opcode());
   CHECK(literal_ != nullptr);
-  return literal_->u8s();
+  return literal_->u8s_string();
 }
 
 bool HloInstruction::IsFused() const {

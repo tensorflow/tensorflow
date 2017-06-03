@@ -60,7 +60,9 @@ class Device : public DeviceBase {
   const string& name() const { return device_attributes_.name(); }
 
   // Parsed name of this device
-  const DeviceNameUtils::ParsedName parsed_name() const { return parsed_name_; }
+  const DeviceNameUtils::ParsedName& parsed_name() const {
+    return parsed_name_;
+  }
 
   // Describes what kind of device this is.  This is intended to be
   // human-readable and not computer-parsed, except that two devices
@@ -147,6 +149,12 @@ class Device : public DeviceBase {
       const DeviceLocality& locality) {
     // Pass in an empty string as physical device name.
     return BuildDeviceAttributes(name, device, memory_limit, locality, "");
+  }
+
+ protected:
+  void DeleteResourceMgr() {
+    delete rmgr_;
+    rmgr_ = nullptr;
   }
 
  private:

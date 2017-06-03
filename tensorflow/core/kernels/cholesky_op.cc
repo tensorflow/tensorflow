@@ -64,11 +64,11 @@ class CholeskyOp : public LinearAlgebraOp<Scalar> {
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
         llt_decomposition(input);
 
-    // Output the lower triangular in a dense form.
-    outputs->at(0) = llt_decomposition.matrixL();
-
     OP_REQUIRES(context, llt_decomposition.info() == Eigen::Success,
                 errors::InvalidArgument(kErrMsg));
+
+    // Output the lower triangular in a dense form.
+    outputs->at(0) = llt_decomposition.matrixL();
   }
 };
 

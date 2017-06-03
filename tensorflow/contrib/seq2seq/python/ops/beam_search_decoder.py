@@ -72,10 +72,30 @@ class FinalBeamSearchDecoderOutput(
   pass
 
 
-def tile_batch(t, multiplier, name=None):
-  """Tile the batch dimension of tensor t.
+def _tile_batch(t, multiplier):
+  """Core single-tensor implementation of tile_batch."""
+  t = ops.convert_to_tensor(t, name="t")
+  shape_t = array_ops.shape(t)
+  if t.shape.ndims is None or t.shape.ndims < 1:
+    raise ValueError("t must have statically known rank")
+  tiling = [1] * (t.shape.ndims + 1)
+  tiling[1] = multiplier
+  tiled_static_batch_size = (
+      t.shape[0].value * multiplier if t.shape[0].value is not None else None)
+  tiled = array_ops.tile(array_ops.expand_dims(t, 1), tiling)
+  tiled = array_ops.reshape(
+      tiled, array_ops.concat(([shape_t[0] * multiplier], shape_t[1:]), 0))
+  tiled.set_shape(
+      tensor_shape.TensorShape(
+          [tiled_static_batch_size]).concatenate(t.shape[1:]))
+  return tiled
 
-  This function takes a tensor t shaped `[batch_size, s0, s1, ...]` composed of
+
+def tile_batch(t, multiplier, name=None):
+  """Tile the batch dimension of a (possibly nested structure of) tensor(s) t.
+
+  For each tensor t in a (possibly nested structure) of tensors,
+  this function takes a tensor t shaped `[batch_size, s0, s1, ...]` composed of
   minibatch entries `t[0], ..., t[batch_size - 1]` and tiles it to have a shape
   `[batch_size * multiplier, s0, s1, ...]` composed of minibatch entries
   `t[0], t[0], ..., t[1], t[1], ...` where each minibatch entry is repeated
@@ -87,27 +107,16 @@ def tile_batch(t, multiplier, name=None):
     name: Name scope for any created operations.
 
   Returns:
-    A `Tensor` shaped `[batch_size * multiplier, ...]`.
+    A (possibly nested structure of) `Tensor` shaped
+    `[batch_size * multiplier, ...]`.
 
   Raises:
-    ValueError: if `t` does not have a statically known rank or it's < 1.
+    ValueError: if tensor(s) `t` do not have a statically known rank or
+    the rank is < 1.
   """
-  with ops.name_scope(name, "tile_batch", [t, multiplier]):
-    t = ops.convert_to_tensor(t, name="t")
-    shape_t = array_ops.shape(t)
-    if t.shape.ndims is None or t.shape.ndims < 1:
-      raise ValueError("t must have statically known rank")
-    tiling = [1] * (t.shape.ndims + 1)
-    tiling[1] = multiplier
-    tiled_static_batch_size = (
-        t.shape[0].value * multiplier if t.shape[0].value is not None else None)
-    tiled = array_ops.tile(array_ops.expand_dims(t, 1), tiling)
-    tiled = array_ops.reshape(
-        tiled, array_ops.concat(([shape_t[0] * multiplier], shape_t[1:]), 0))
-    tiled.set_shape(
-        tensor_shape.TensorShape(
-            [tiled_static_batch_size]).concatenate(t.shape[1:]))
-    return tiled
+  flat_t = nest.flatten(t)
+  with ops.name_scope(name, "tile_batch", flat_t + [multiplier]):
+    return nest.map_structure(lambda t_: _tile_batch(t_, multiplier), t)
 
 
 def _check_maybe(t):

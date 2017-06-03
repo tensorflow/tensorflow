@@ -316,12 +316,16 @@ NodeInfo VirtualScheduler::GetCurrNodeInfo() const {
   NodeInfo node_info;
   node_info.name = node->name();
   node_info.device_name = graph_properties_.GetDeviceName(node->name());
-  node_info.outputs = graph_properties_.GetOutputProperties(node->name());
+  std::vector<OpInfo::TensorProperties> outputs =
+      graph_properties_.GetOutputProperties(node->name());
   auto& op_info = node_info.op_info;
   op_info.set_op(node->op());
   *op_info.mutable_attr() = node->attr();
   for (auto& input : inputs) {
     op_info.add_inputs()->Swap(&input);
+  }
+  for (auto& output : outputs) {
+    op_info.add_outputs()->Swap(&output);
   }
   op_info.mutable_device()->Swap(&device);
   // add some more to the node_info.

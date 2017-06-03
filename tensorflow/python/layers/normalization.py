@@ -66,9 +66,6 @@ class BatchNormalization(base.Layer):
     moving_variance_initializer: Initializer for the moving variance.
     beta_regularizer: Optional regularizer for the beta weight.
     gamma_regularizer: Optional regularizer for the gamma weight.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
-    name: A string, the name of the layer.
     renorm: Whether to use Batch Renormalization
       (https://arxiv.org/abs/1702.03275). This adds extra variables during
       training. The inference is the same for either value of this parameter.
@@ -82,6 +79,11 @@ class BatchNormalization(base.Layer):
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `momentum` is still applied
       to get the means and variances for inference.
+    fused: if `True`, use a faster, fused implementation based on
+      nn.fused_batch_norm. If `None`, use the fused implementation if possible.
+    trainable: Boolean, if `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    name: A string, the name of the layer.
   """
 
   def __init__(self,
@@ -99,6 +101,7 @@ class BatchNormalization(base.Layer):
                renorm=False,
                renorm_clipping=None,
                renorm_momentum=0.99,
+               fused=False,
                trainable=True,
                name=None,
                **kwargs):
@@ -116,6 +119,10 @@ class BatchNormalization(base.Layer):
     self.beta_regularizer = beta_regularizer
     self.gamma_regularizer = gamma_regularizer
     self.renorm = renorm
+    self.fused = fused
+    if self.fused and renorm:
+      raise ValueError(
+          'Batch renorm is currently not supported with fused batch norm.')
     if renorm:
       renorm_clipping = renorm_clipping or {}
       keys = ['rmax', 'rmin', 'dmax']
@@ -130,6 +137,13 @@ class BatchNormalization(base.Layer):
     if not input_shape.ndims:
       raise ValueError('Input has undefined rank:', input_shape)
     ndim = len(input_shape)
+    # TODO(yaozhang): if input is not 4D, reshape it to 4D and reshape the
+    # output back to its original shape accordingly.
+    if self.fused and ndim != 4:
+      raise ValueError(
+          'Only 4D inputs are currently supported with fused batch norm. '
+          'Consider reshaping the input to 4D and reshape the output back '
+          'to its original shape. Got input rank: ', ndim)
     if self.axis < 0:
       axis = ndim + self.axis
     else:
@@ -137,6 +151,20 @@ class BatchNormalization(base.Layer):
     if axis < 0 or axis >= ndim:
       raise ValueError('Value of `axis` argument ' + str(self.axis) +
                        ' is out of range for input with rank ' + str(ndim))
+
+    if self.fused is None:
+      self.fused = not self.renorm and ndim == 4 and axis in [1, 3]
+
+    if self.fused:
+      if axis == 1:
+        self._data_format = 'NCHW'
+      elif axis == 3:
+        self._data_format = 'NHWC'
+      else:
+        raise ValueError(
+            'Only axis 1 and 3 are currently supported dimensions for '
+            'fused batch norm. Got `axis` dimension: ', axis)
+
     param_dim = input_shape[axis]
     if not param_dim.value:
       raise ValueError('Input has undefined `axis` dimension. Input shape: ',
@@ -152,6 +180,8 @@ class BatchNormalization(base.Layer):
                                     trainable=True)
     else:
       self.beta = None
+      if self.fused:
+        self._beta_const = array_ops.constant(0.0, shape=(param_dim,))
     if self.scale:
       self.gamma = self.add_variable(name='gamma',
                                      shape=(param_dim,),
@@ -160,6 +190,8 @@ class BatchNormalization(base.Layer):
                                      trainable=True)
     else:
       self.gamma = None
+      if self.fused:
+        self._gamma_const = array_ops.constant(1.0, shape=(param_dim,))
 
     # Disable variable partitioning when creating the moving mean and variance
     partitioner = self._scope.partitioner
@@ -204,6 +236,45 @@ class BatchNormalization(base.Layer):
     finally:
       self._scope.set_partitioner(partitioner)
     self.built = True
+
+  def _fused_batch_norm(self, inputs, training):
+    """Returns the output of fused batch norm."""
+    beta = self.beta if self.center else self._beta_const
+    gamma = self.gamma if self.scale else self._gamma_const
+
+    def _fused_batch_norm_training():
+      return nn.fused_batch_norm(
+          inputs,
+          gamma,
+          beta,
+          epsilon=self.epsilon,
+          data_format=self._data_format)
+
+    def _fused_batch_norm_inference():
+      return nn.fused_batch_norm(
+          inputs,
+          gamma,
+          beta,
+          mean=self.moving_mean,
+          variance=self.moving_variance,
+          epsilon=self.epsilon,
+          is_training=False,
+          data_format=self._data_format)
+
+    output, mean, variance = utils.smart_cond(
+        training, _fused_batch_norm_training, _fused_batch_norm_inference)
+
+    training_value = utils.constant_value(training)
+    if training_value is not False:
+      decay = _smart_select(training, lambda: self.momentum, lambda: 1.)
+      mean_update = moving_averages.assign_moving_average(
+          self.moving_mean, mean, decay, zero_debias=False)
+      variance_update = moving_averages.assign_moving_average(
+          self.moving_variance, variance, decay, zero_debias=False)
+      self.add_update(mean_update, inputs=inputs)
+      self.add_update(variance_update, inputs=inputs)
+
+    return output
 
   def _renorm_correction_and_moments(self, mean, variance, training):
     """Returns the correction and update values for renorm."""
@@ -265,6 +336,9 @@ class BatchNormalization(base.Layer):
     return (r, d, new_mean, new_variance)
 
   def call(self, inputs, training=False):
+    if self.fused:
+      return self._fused_batch_norm(inputs, training=training)
+
     # First, compute the axes along which to reduce the mean / variance,
     # as well as the broadcast shape to be used for all parameters.
     input_shape = inputs.get_shape()
@@ -353,7 +427,8 @@ def batch_normalization(inputs,
                         reuse=None,
                         renorm=False,
                         renorm_clipping=None,
-                        renorm_momentum=0.99):
+                        renorm_momentum=0.99,
+                        fused=False):
   """Functional interface for the batch normalization layer.
 
   Reference: http://arxiv.org/abs/1502.03167
@@ -415,6 +490,8 @@ def batch_normalization(inputs,
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `momentum` is still applied
       to get the means and variances for inference.
+    fused: if `True`, use a faster, fused implementation based on
+      nn.fused_batch_norm. If `None`, use the fused implementation if possible.
 
   Returns:
     Output tensor.
@@ -431,10 +508,11 @@ def batch_normalization(inputs,
       moving_variance_initializer=moving_variance_initializer,
       beta_regularizer=beta_regularizer,
       gamma_regularizer=gamma_regularizer,
-      trainable=trainable,
       renorm=renorm,
       renorm_clipping=renorm_clipping,
       renorm_momentum=renorm_momentum,
+      fused=fused,
+      trainable=trainable,
       name=name,
       _reuse=reuse,
       _scope=name)

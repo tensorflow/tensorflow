@@ -66,7 +66,8 @@ StatusOr<std::unique_ptr<Literal>> ReplayComputation(
   if (use_fake_data) {
     arguments = MakeFakeArgumentsOrDie(computation, client);
   } else {  // use recorded data if available
-    for (const Literal& literal : module.arguments()) {
+    for (const auto& proto : module.arguments()) {
+      Literal literal(proto);
       TF_ASSIGN_OR_RETURN(std::unique_ptr<GlobalData> data,
                           client->TransferToServer(literal));
       arguments.push_back(std::move(data));
@@ -74,6 +75,7 @@ StatusOr<std::unique_ptr<Literal>> ReplayComputation(
   }
 
   std::vector<GlobalData*> execute_arguments;
+  execute_arguments.reserve(arguments.size());
   for (auto& argument : arguments) {
     execute_arguments.push_back(argument.get());
   }
@@ -100,7 +102,7 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args, bool use_fake_data) {
     if (module.has_result()) {
       fprintf(stdout, "was %s:%s\n",
               ShapeUtil::HumanString(module.result().shape()).c_str(),
-              LiteralUtil::ToString(module.result()).c_str());
+              LiteralUtil::ToString(Literal(module.result())).c_str());
     }
   }
 }

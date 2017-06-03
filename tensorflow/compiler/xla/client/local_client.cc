@@ -222,8 +222,9 @@ tensorflow::Status LocalExecutable::RecordArguments(
     SessionModule* session_module) {
   session_module->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
-    TF_RETURN_IF_ERROR(
-        LiteralFromShapedBuffer(*argument, session_module->add_arguments()));
+    Literal literal;
+    TF_RETURN_IF_ERROR(LiteralFromShapedBuffer(*argument, &literal));
+    *session_module->add_arguments() = literal.ToProto();
   }
   return tensorflow::Status::OK();
 }
@@ -231,9 +232,13 @@ tensorflow::Status LocalExecutable::RecordArguments(
 tensorflow::Status LocalExecutable::RecordResult(
     const ShapedBuffer* result, SessionModule* session_module) {
   session_module->clear_result();
-  return LiteralFromShapedBuffer(*result, session_module->mutable_result());
+  Literal literal(session_module->result());
+  TF_RETURN_IF_ERROR(LiteralFromShapedBuffer(*result, &literal));
+  *session_module->mutable_result() = literal.ToProto();
+  return tensorflow::Status::OK();
 }
 
+// TODO(dnovillo) Change signature to return StatusOr<Literal>.
 tensorflow::Status LocalExecutable::LiteralFromShapedBuffer(
     const ShapedBuffer& shaped_buffer, Literal* literal) {
   TF_ASSIGN_OR_RETURN(

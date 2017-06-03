@@ -37,10 +37,9 @@ limitations under the License.
   </template>
 </template>
 <script>
-"use strict";
+import {DashboardBehavior} from "../tf-dashboard-common/dashboard-behavior";
 
-(function() {
-TF.Dashboard.VzProjectorDashboard = Polymer({
+Polymer({
   is: 'vz-projector-dashboard',
   factoryImpl: function(routePrefix) {
     this.routePrefix = routePrefix;
@@ -52,7 +51,7 @@ TF.Dashboard.VzProjectorDashboard = Polymer({
     _initialized: Boolean,
   },
   behaviors: [
-    TF.Dashboard.DashboardBehavior("embeddings"),
+    DashboardBehavior("embeddings"),
   ],
   reload: function() {
     // Do not reload the embedding projector. Reloading could take a long time.
@@ -76,6 +75,5 @@ TF.Dashboard.VzProjectorDashboard = Polymer({
     xhr.send();
   },
 });
-})();
 </script>
 </dom-module>
