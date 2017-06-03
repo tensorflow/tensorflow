@@ -897,7 +897,7 @@ add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
 
 # Copy resources for TensorBoard.
 file(DOWNLOAD http://mirror.bazel.build/tensorboard/index.html ${DOWNLOAD_LOCATION}/tensorboard/index.html
-  EXPECTED_HASH SHA256=60f185c68ff3f906000df9670bf9f46588056b197da7e7b10074411a0c048dae)
+  EXPECTED_HASH SHA256=25554e708552ad8587152f7a444db3f4ca753f9ed72d9f8105203c1d1806d521)
 add_custom_command(TARGET tf_python_touchup_modules PRE_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory
   ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/tensorboard/components/)
