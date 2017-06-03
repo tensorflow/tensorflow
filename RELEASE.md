@@ -6,6 +6,15 @@
 * Added `tf.Session.make_callable()`, which provides a lower overhead means of running a similar step multiple times.
 * Added libverbs-based RDMA support to contrib (courtesy @junshi15 from Yahoo).
 * Bring `tf.feature_column.*` into the API. Non-deprecated functionality from `tf.contrib.layers.*` is moved to `tf.feature_column.*` with cosmetic changes.
+* Intel MKL Integration (https://software.intel.com/en-us/articles/tensorflow-optimizations-on-modern-intel-architecture). Intel developed a number of
+  optimized deep learning primitives: In addition to matrix multiplication and
+  convolution, these building blocks include:
+  Direct batched convolution
+  Pooling: maximum, minimum, average
+  Normalization: LRN, batch normalization
+  Activation: rectified linear unit (ReLU)
+  Data manipulation: multi-dimensional transposition (conversion), split,
+  concat, sum and scale.
 * `RNNCell` objects now subclass `tf.layers.Layer`.  The strictness described
   in the TensorFlow 1.1 release is gone:  The first time an RNNCell is used,
   it caches its scope.  All future uses of the RNNCell will reuse variables from

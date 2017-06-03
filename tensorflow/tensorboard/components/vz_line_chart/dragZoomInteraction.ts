@@ -13,11 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
-import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
-import * as Plottable from 'Plottable/plottable';  // from //third_party/javascript/plottable
-
-
 export class DragZoomLayer extends Plottable.Components.SelectionBoxLayer {
   private _dragInteraction: Plottable.Interactions.Drag;
   private _doubleClickInteraction: Plottable.Interactions.Click;

@@ -536,6 +536,7 @@ class AddNProcessor : public AgnosticNodeProcessor {
  protected:
   std::vector<int> GetInputPos() const override {
     std::vector<int> input_pos;
+    input_pos.reserve(node_->input_size());
     for (int i = 0; i < node_->input_size(); i++) {
       input_pos.push_back(i);
     }

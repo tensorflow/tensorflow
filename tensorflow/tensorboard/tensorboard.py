@@ -32,6 +32,8 @@ from werkzeug import serving
 
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_file_inspector as efi
+from tensorflow.tensorboard.plugins.audio import audio_plugin
+from tensorflow.tensorboard.plugins.distributions import distributions_plugin
 from tensorflow.tensorboard.plugins.histograms import histograms_plugin
 from tensorflow.tensorboard.plugins.images import images_plugin
 from tensorflow.tensorboard.plugins.projector import projector_plugin
@@ -203,9 +205,11 @@ def main(unused_argv=None):
     return 0
   else:
     plugins = [
-        histograms_plugin.HistogramsPlugin(),
-        images_plugin.ImagesPlugin(),
         scalars_plugin.ScalarsPlugin(),
+        images_plugin.ImagesPlugin(),
+        audio_plugin.AudioPlugin(),
+        distributions_plugin.DistributionsPlugin(),
+        histograms_plugin.HistogramsPlugin(),
         projector_plugin.ProjectorPlugin(),
         text_plugin.TextPlugin(),
     ]

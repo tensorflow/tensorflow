@@ -529,6 +529,7 @@ cc_library(
     srcs = ["transfer_manager.cc"],
     hdrs = ["transfer_manager.h"],
     deps = [
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -1680,10 +1681,8 @@ cc_library(
     deps = [
         ":buffer_assignment",
         ":hlo",
-        ":hlo_ordering",
         ":hlo_proto",
         "//tensorflow/compiler/xla:status",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/core:lib",
     ],
 )

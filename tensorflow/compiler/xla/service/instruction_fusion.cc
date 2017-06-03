@@ -151,7 +151,26 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         return true;
       };
 
-      if (std::all_of(hlo->users().begin(), hlo->users().end(),
+      // An "effectively unary" operation is one that has one "large"
+      // input with the others being negligible in terms of memory usage.
+      // We use "has a smaller true rank than the output" as a heuristic
+      // for "negligible" memory usage.
+      auto effectively_unary = [](HloInstruction* hlo) {
+        if (hlo->operands().size() == 1) {
+          return true;
+        }
+        auto output_rank = ShapeUtil::TrueRank(hlo->shape());
+        return std::count_if(
+                   hlo->operands().begin(), hlo->operands().end(),
+                   [output_rank](HloInstruction* operand) {
+                     return ((operand->opcode() != HloOpcode::kBroadcast) &&
+                             ShapeUtil::TrueRank(operand->shape()) >=
+                                 output_rank);
+                   }) <= 1;
+      };
+
+      if (effectively_unary(hlo) ||
+          std::all_of(hlo->users().begin(), hlo->users().end(),
                       user_fusable_into_hlo)) {
         all_consumers_fusable.insert(hlo);
       }

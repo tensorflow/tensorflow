@@ -324,6 +324,7 @@ static void BM_AllocationDelayed(int iters, int delay) {
   int size_index = 0;
 
   std::vector<void*> ptrs;
+  ptrs.reserve(delay);
   for (int i = 0; i < delay; i++) {
     ptrs.push_back(nullptr);
   }

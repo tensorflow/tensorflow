@@ -77,8 +77,10 @@ tensorflow::Status RecordArguments(
     SessionModule* module) {
   module->clear_arguments();
   for (const Allocation* allocation : arg_allocations) {
-    TF_RETURN_IF_ERROR(LiteralFromAllocation(allocation, allocation->shape(),
-                                             module->add_arguments()));
+    Literal argument;
+    TF_RETURN_IF_ERROR(
+        LiteralFromAllocation(allocation, allocation->shape(), &argument));
+    *module->add_arguments() = argument.ToProto();
   }
   return tensorflow::Status::OK();
 }
@@ -87,8 +89,11 @@ tensorflow::Status RecordArguments(
 tensorflow::Status RecordResult(const Allocation* result_allocation,
                                 SessionModule* module) {
   module->clear_result();
-  return LiteralFromAllocation(result_allocation, result_allocation->shape(),
-                               module->mutable_result());
+  Literal result;
+  TF_RETURN_IF_ERROR(LiteralFromAllocation(
+      result_allocation, result_allocation->shape(), &result));
+  *module->mutable_result() = result.ToProto();
+  return tensorflow::Status::OK();
 }
 
 }  // namespace
@@ -649,6 +654,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
         ResolveAndValidateArguments(request.arguments(), execute_backend_.get(),
                                     executor->device_ordinal()));
     std::vector<se::DeviceMemoryBase> arguments;
+    arguments.reserve(arg_allocations.size());
     for (const Allocation* allocation : arg_allocations) {
       arguments.push_back(allocation->device_memory());
     }
@@ -677,6 +683,7 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
       BuildExecutables(versioned_handles, std::move(module_configs),
                        execute_backend_.get(), executors));
   std::vector<Executable*> executable_ptrs;
+  executable_ptrs.reserve(executables.size());
   for (const auto& executable : executables) {
     executable_ptrs.push_back(executable.get());
   }
@@ -752,6 +759,7 @@ tensorflow::Status Service::Execute(const ExecuteRequest* arg,
           << module_config->entry_computation_layout().ToString();
 
   std::vector<se::DeviceMemoryBase> arguments;
+  arguments.reserve(arg_allocations.size());
   for (const Allocation* allocation : arg_allocations) {
     arguments.push_back(allocation->device_memory());
   }
@@ -820,6 +828,7 @@ tensorflow::Status Service::ExecuteAsync(const ExecuteAsyncRequest* arg,
           << module_config->entry_computation_layout().ToString();
 
   std::vector<se::DeviceMemoryBase> arguments;
+  arguments.reserve(arg_allocations.size());
   for (const Allocation* allocation : arg_allocations) {
     arguments.push_back(allocation->device_memory());
   }
@@ -908,13 +917,15 @@ tensorflow::Status Service::TransferToClient(const TransferToClientRequest* arg,
     literal_shape = &allocation->shape();
   }
 
-  return LiteralFromAllocation(allocation, *literal_shape,
-                               result->mutable_literal());
+  Literal literal;
+  auto status = LiteralFromAllocation(allocation, *literal_shape, &literal);
+  *result->mutable_literal() = literal.ToProto();
+  return status;
 }
 
 tensorflow::Status Service::TransferToServer(const TransferToServerRequest* arg,
                                              TransferToServerResponse* result) {
-  const Literal& literal = arg->literal();
+  Literal literal = Literal(arg->literal());
   const Shape& shape = literal.shape();
 
   if (ShapeUtil::IsTuple(shape) && execute_backend_->Replicas().size() > 1) {
@@ -978,7 +989,7 @@ tensorflow::Status Service::TransferToInfeed(const TransferToInfeedRequest* arg,
   }
 
   return execute_backend_->transfer_manager()->TransferLiteralToInfeed(
-      executor, arg->literal());
+      executor, Literal(arg->literal()));
 }
 
 tensorflow::Status Service::TransferFromOutfeed(
@@ -1001,8 +1012,12 @@ tensorflow::Status Service::TransferFromOutfeed(
     executor = execute_backend_->Replicas()[arg->replica_id()];
   }
 
-  return execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
-      executor, arg->shape_with_layout(), result->mutable_literal());
+  Literal literal;
+  TF_RETURN_IF_ERROR(
+      execute_backend_->transfer_manager()->TransferLiteralFromOutfeed(
+          executor, arg->shape_with_layout(), &literal));
+  *result->mutable_literal() = literal.ToProto();
+  return tensorflow::Status::OK();
 }
 
 tensorflow::Status Service::ResetDevice(const ResetDeviceRequest* arg,

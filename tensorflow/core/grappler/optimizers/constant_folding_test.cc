@@ -245,6 +245,47 @@ TEST_F(ConstantFoldingTest, ShapeMaterialization) {
   EXPECT_EQ(3, found);
 }
 
+TEST_F(ConstantFoldingTest, NoOpReduction) {
+  // Build a simple graph with a reduction that can be reduced to the identity.
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+
+  Output d = ops::Const(scope.WithOpName("d"), 3.14f, {3, 5, 7});
+  Output v = ops::PlaceholderWithDefault(scope.WithOpName("v"), d, {3, 5, 7});
+  Output c = ops::Const(scope.WithOpName("c"), 0, {0});
+  Output i = ops::Identity(scope.WithOpName("i"), c);
+  Output p = ops::Prod(scope.WithOpName("p"), v, i);
+  Output s = ops::Square(scope.WithOpName("s"), p);
+
+  GrapplerItem item;
+  item.fetch.push_back("s");
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  ASSERT_EQ("c", item.graph.node(2).name());
+  (*item.graph.mutable_node(2)->add_input()) = "^v";
+
+  ConstantFolding fold;
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  auto expected = EvaluateNodes(item.graph, {"s"});
+  auto optimized = EvaluateNodes(output, {"s"});
+  EXPECT_EQ(1, expected.size());
+  EXPECT_EQ(1, optimized.size());
+  test::ExpectTensorEqual<float>(expected[0], optimized[0]);
+
+  bool found = false;
+  for (const auto& node : output.node()) {
+    if (node.name() == "p") {
+      found = true;
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("v", node.input(0));
+      EXPECT_EQ("^v", node.input(1));
+    }
+  }
+  EXPECT_TRUE(found);
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

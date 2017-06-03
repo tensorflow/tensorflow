@@ -64,6 +64,7 @@ TEST_F(VecOpsSimpleTest, ExpManyValues) {
   for (int count : {63, 64, 65, 127, 128, 129, 17 * 4096}) {
     ComputationBuilder builder(client_, TestName());
     std::vector<float> exponents;
+    exponents.reserve(count);
     for (int i = 0; i < count; ++i) {
       exponents.push_back(i / static_cast<float>(count));
     }
@@ -71,6 +72,7 @@ TEST_F(VecOpsSimpleTest, ExpManyValues) {
     auto exp = builder.Exp(x);
 
     std::vector<float> expected;
+    expected.reserve(exponents.size());
     for (float exponent : exponents) {
       expected.push_back(std::exp(exponent));
     }

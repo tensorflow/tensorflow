@@ -218,6 +218,7 @@ cc_library(
     deps = [
         ":common",
         ":graph_to_functiondef",
+        ":union_find",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/kernels:parallel_check_op",
         "//tensorflow/compiler/jit/kernels:xla_local_launch_op",
@@ -235,6 +236,11 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+cc_library(
+    name = "union_find",
+    hdrs = ["union_find.h"],
 )
 
 cc_test(

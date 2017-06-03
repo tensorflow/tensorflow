@@ -634,6 +634,7 @@ void Generator::AppendDebugStringFunctions(const Descriptor& md) {
   Print().Print("namespace internal {").Print();
   Print(sig, " {").Nest();
   std::vector<const FieldDescriptor*> fields;
+  fields.reserve(md.field_count());
   for (int i = 0; i < md.field_count(); ++i) {
     fields.push_back(md.field(i));
   }
