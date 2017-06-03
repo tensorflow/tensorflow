@@ -812,7 +812,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
               "https://registry.npmjs.org/plottable/-/plottable-3.1.0.tgz",
           ],
       },
-      strip_prefix = {"plottable-3.1.0.tgz": "package"},
   )
 
   filegroup_external(
