@@ -97,11 +97,22 @@ ts_web_library(
     srcs = [
         "plottable.d.ts",
         "plottable.html",
-        "@com_palantir_plottable//:plottable.css",
-        "@com_palantir_plottable//:plottable.js",
     ],
     path = "/tf-imports",
-    deps = [":d3"],
+    deps = [
+        ":d3",
+        ":plottable_js_css",
+    ],
+)
+
+ts_web_library(
+    name = "plottable_js_css",
+    srcs = [
+        "//third_party/javascript/plottable:plottable.css",
+        "//third_party/javascript/plottable:plottable.js",
+    ],
+    path = "/tf-imports",
+    visibility = ["//visibility:private"],
 )
 
 ts_web_library(
