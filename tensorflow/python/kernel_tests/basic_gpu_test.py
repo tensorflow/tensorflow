@@ -129,7 +129,7 @@ class MathBuiltinUnaryTest(test.TestCase):
     for dtype in [np.float32]:
       self._testDtype(dtype, use_gpu=True)
 
-  def testFloorDevide(self):
+  def testFloorDivide(self):
     x = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
         [1, 3, 2])
     y = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
