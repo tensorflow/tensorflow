@@ -272,20 +272,20 @@ class BatchDatasetTest(test.TestCase):
         sess.run(get_next)
 
   def testUnbatchDataset(self):
-      data = [math_ops.range(10) for _ in range(3)]
-      data = dataset_ops.Dataset.from_tensor_slices(data)
-      data = data.batch(2)
-      data = data.unbatch()
+    data = [math_ops.range(10) for _ in range(3)]
+    data = dataset_ops.Dataset.from_tensor_slices(data)
+    data = data.batch(2)
+    data = data.unbatch()
 
-      iter = data.make_one_shot_iterator()
-      op = iter.get_next()
+    iter = data.make_one_shot_iterator()
+    op = iter.get_next()
 
-      with self.test_session() as sess:
-        for i in range(10):
-          self.assertAllClose(sess.run(op), (i,)*3)
+    with self.test_session() as sess:
+      for i in range(10):
+        self.assertAllClose(sess.run(op), (i,)*3)
 
-        with self.assertRaises(errors.OutOfRangeError):
-          sess.run(op)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(op)
 
 
 if __name__ == "__main__":
