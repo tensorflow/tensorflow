@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace functor {
-DEFINE_UNARY3(sinh, Eigen::half, float, double);
+DEFINE_UNARY2(sinh, float, double);
 }  // namespace functor
 }  // namespace tensorflow
 

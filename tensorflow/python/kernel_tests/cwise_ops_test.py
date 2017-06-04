@@ -331,8 +331,6 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.expm1, math_ops.expm1)
     self._compareBoth(z, np.log, math_ops.log)
     self._compareBoth(z, np.log1p, math_ops.log1p)
-    self._compareBoth(x, np.sinh, math_ops.sinh)
-    self._compareBoth(x, np.cosh, math_ops.cosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
     self._compareBoth(y, np.sign, math_ops.sign)
