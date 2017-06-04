@@ -14,51 +14,48 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-//go:generate sh generate.sh
-
-// Command genop generates a Go source file with functions for TensorFlow ops.
+// Command generates a Go source files with functions for TensorFlow ops.
 package main
 
 import (
 	"bytes"
 	"flag"
-	"go/format"
 	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
 
-	"github.com/tensorflow/tensorflow/tensorflow/go/genop/internal"
+	"github.com/tensorflow/tensorflow/tensorflow/go/genop/wrap"
 )
 
 func main() {
 	var (
-		filename = flag.String("outfile", "", "File to write generated source code to.")
-		header   = flag.String("header", "", "Path to a file whose contents will be copied into the generated file. Can be empty")
-		buf      bytes.Buffer
+		dir           = flag.String("dir", "", "Dir to store generated files. Required")
+		headerFile    = flag.String("headerFile", "", "Path to a file whose contents will be copied into the generated files. Required")
+		headerFileBuf bytes.Buffer
 	)
 	flag.Parse()
-	if *filename == "" {
-		log.Fatal("-outfile must be set")
+	if *dir == "" {
+		log.Fatal("-dir must be set")
 	}
-	if *header != "" {
-		hdr, err := ioutil.ReadFile(*header)
+	if *headerFile == "" {
+		log.Fatal("-headerFile must be set")
+	}
+	if *headerFile != "" {
+		hdr, err := ioutil.ReadFile(*headerFile)
 		if err != nil {
-			log.Fatalf("Unable to read %s: %v", *header, err)
+			log.Fatalf("Unable to read %s: %v", *headerFile, err)
 		}
-		buf.Write(hdr)
-		buf.WriteString("\n\n")
+		headerFileBuf.Write(hdr)
+		headerFileBuf.WriteString("\n\n")
 	}
-	os.MkdirAll(filepath.Dir(*filename), 0755)
 
-	if err := internal.GenerateFunctionsForRegisteredOps(&buf); err != nil {
+	os.MkdirAll(filepath.Dir(*dir), 0755)
+
+	directory := *dir
+
+	if err := wrap.GenerateFunctionsForRegisteredOps(directory, headerFileBuf); err != nil {
 		log.Fatal(err)
 	}
-	formatted, err := format.Source(buf.Bytes())
-	if err != nil {
-		log.Fatalf("Failed to generate valid source? 'go fmt' failed: %v", err)
-	}
-	if err := ioutil.WriteFile(*filename, formatted, 0644); err != nil {
-		log.Fatalf("Failed to write to %q: %v", *filename, err)
-	}
+
 }

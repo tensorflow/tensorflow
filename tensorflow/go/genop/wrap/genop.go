@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package internal generates Go source code with functions for TensorFlow operations.
+// Package generates Go source code with functions for TensorFlow operations.
 //
 // The basic outline of the generated API is as follows:
 //
@@ -27,32 +27,36 @@ limitations under the License.
 // generated for ops and the functions generated for optional attributes. For
 // now, we ignore those, but will need to revisit if a collision is actually
 // encountered.
-package internal
+package wrap
 
 // #include "tensorflow/c/c_api.h"
 import "C"
 
 import (
+	"bufio"
+	"bytes"
+	"encoding/json"
 	"fmt"
-	"io"
+	"io/ioutil"
+	"os"
 	"reflect"
 	"strings"
 	"text/template"
 	"unsafe"
 
 	"github.com/golang/protobuf/proto"
-	pb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/tensorflow/core/framework"
+	pb "github.com/tensorflow/tensorflow/tensorflow/go/pb/tensorflow/core/framework"
 )
 
-// GenerateFunctionsForRegisteredOps writes a Go source code file to w
+// GenerateFunctionsForRegisteredOps writes Go source code files
 // containing functions for each TensorFlow operation registered in the address
 // space of the calling process.
-func GenerateFunctionsForRegisteredOps(w io.Writer) error {
+func GenerateFunctionsForRegisteredOps(dir string, header bytes.Buffer) error {
 	ops, err := registeredOps()
 	if err != nil {
 		return err
 	}
-	return generateFunctionsForOps(w, ops)
+	return generateFunctionsForOps(dir, header, ops)
 }
 
 func registeredOps() (*pb.OpList, error) {
@@ -69,11 +73,7 @@ func registeredOps() (*pb.OpList, error) {
 	return list, err
 }
 
-func generateFunctionsForOps(w io.Writer, ops *pb.OpList) error {
-	thisPackage := reflect.TypeOf(tmplArgs{}).PkgPath()
-	if err := tmplHeader.Execute(w, thisPackage); err != nil {
-		return err
-	}
+func generateFunctionsForOps(dir string, header bytes.Buffer, ops *pb.OpList) error {
 	blacklist := map[string]bool{
 		"Const":           true,
 		"PyFunc":          true,
@@ -83,17 +83,27 @@ func generateFunctionsForOps(w io.Writer, ops *pb.OpList) error {
 		if blacklist[op.Name] {
 			continue
 		}
-		if err := generateFunctionForOp(w, op); err != nil {
+		if err := generateFunctionForOp(dir, header, op); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func generateFunctionForOp(w io.Writer, op *pb.OpDef) error {
+func fileExists(name string) bool {
+	if _, err := os.Stat(name); err != nil {
+		if os.IsNotExist(err) {
+			return false
+		}
+	}
+	return true
+}
+
+func generateFunctionForOp(dir string, header bytes.Buffer, op *pb.OpDef) error {
 	if strings.HasPrefix(op.Name, "_") { // Internal operation
 		return nil
 	}
+
 	// Ignore operations where the Go types corresponding to the TensorFlow
 	// type haven't been worked out (such as "func"s).
 	for _, a := range op.Attr {
@@ -113,11 +123,77 @@ func generateFunctionForOp(w io.Writer, op *pb.OpDef) error {
 		}
 	}
 	if op.Summary == "" {
-		// Undocumented operation, perhaps a sign of not being ready to
-		// export.
+		// Undocumented operation, perhaps a sign of not ready to export.
 		return nil
 	}
-	return tmplOp.Execute(w, newTmplArgs(op))
+
+	//read the func-to-file name mapping
+	wrapOpslistFile, err := ioutil.ReadFile("./wrap/wrap_opslist.json")
+	if err != nil {
+		return err
+	}
+	var wrapOpsList WrapOpsList
+	err = json.Unmarshal(wrapOpslistFile, &wrapOpsList)
+	if err != nil {
+		return err
+	}
+
+	fileName := "wrappers.go" //default
+	for _, w := range wrapOpsList.Wrappings {
+		fmt.Println(op.Name, w.FuncGrouping)
+		if strings.Contains(strings.ToLower(op.Name), strings.ToLower(w.FuncGrouping)) {
+			fileName = w.FileName
+			break
+		}
+	}
+
+	// create if file does exist, create it
+	if !fileExists(dir + "/" + fileName) {
+		fo, err := os.Create(dir + "/" + fileName)
+		if err != nil {
+			return err
+		}
+		defer func() {
+			if err := fo.Close(); err != nil {
+				return
+			}
+		}()
+		w := bufio.NewWriter(fo)
+		//write the header
+		w.Write(header.Bytes())
+		//write package name
+		thisPackage := reflect.TypeOf(tmplArgs{}).PkgPath()
+		if err := tmplHeader.Execute(w, thisPackage); err != nil {
+			return err
+		}
+		if err = w.Flush(); err != nil {
+			return err
+		}
+	}
+
+	// open output file
+	fo, err := os.OpenFile(dir+"/"+fileName, os.O_APPEND|os.O_WRONLY, 0666)
+	if err != nil {
+		return err
+	}
+	// close fo on exit and check for its returned error
+	defer func() {
+		if err := fo.Close(); err != nil {
+			return
+		}
+	}()
+	//make new writer
+	w := bufio.NewWriter(fo)
+
+	//generate source
+	if err := tmplOp.Execute(w, newTmplArgs(op)); err != nil {
+		return err
+	}
+	//write source
+	if err = w.Flush(); err != nil {
+		return err
+	}
+	return nil
 }
 
 var (
@@ -139,22 +215,6 @@ var (
 package op
 
 import tf "github.com/tensorflow/tensorflow/tensorflow/go"
-
-// optionalAttr is an intentionally un-exported type to hide
-// details of how optional attributes to operations are implemented.
-type optionalAttr map[string]interface{}
-
-func makeOutputList(op *tf.Operation, start int, output string) ([]tf.Output, int, error) {
-	size, err := op.OutputListSize(output)
-	if err != nil {
-		return nil, start, err
-	}
-	list := make([]tf.Output, size)
-	for i := 0; i < size; i++ {
-		list[i] = op.Output(start + i)
-	}
-	return list, start + size, nil
-}
 `))
 
 	tmplOp = template.Must(template.New("op").Funcs(template.FuncMap{

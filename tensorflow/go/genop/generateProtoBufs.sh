@@ -46,8 +46,8 @@ fi
 # Ensure that protoc-gen-go is available in $PATH
 # Since ${PROTOC} will require it.
 export PATH=$PATH:${GOPATH}/bin
-mkdir -p ./internal/proto
+mkdir -p ../pb
 ${PROTOC} \
   -I ${TF_DIR} \
-  --go_out=./internal/proto \
+  --go_out=../pb \
   ${TF_DIR}/tensorflow/core/framework/*.proto
