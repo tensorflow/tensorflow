@@ -938,7 +938,7 @@ cuda_py_test(
     tags = ["notsan"],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "diag_op_test",
     size = "medium",
     srcs = ["diag_op_test.py"],
