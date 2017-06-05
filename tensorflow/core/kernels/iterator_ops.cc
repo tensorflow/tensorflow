@@ -246,7 +246,7 @@ class OneShotIteratorOp : public OpKernel {
                                      n.Notify();
                                    });
       n.WaitForNotification();
-      OP_REQUIRES_OK(ctx, std::move(factory_status));
+      OP_REQUIRES_OK(ctx, factory_status);
       OP_REQUIRES(
           ctx,
           return_values.size() == 1 &&

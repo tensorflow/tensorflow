@@ -170,7 +170,7 @@ void Diagnostician::LogDiagnosticInformation() {
     VLOG(1) << "LD_LIBRARY_PATH is: \"" << library_path << "\"";
 
     std::vector<string> pieces = port::Split(library_path, ':');
-    for (auto piece : pieces) {
+    for (const auto &piece : pieces) {
       if (piece.empty()) {
         continue;
       }
