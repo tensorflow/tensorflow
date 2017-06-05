@@ -250,8 +250,12 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertIn(results.v.op.type, results.dump.node_op_type(results.v_name))
     self.assertIn(results.w.op.type, results.dump.node_op_type(results.w_name))
 
-    with self.assertRaisesRegexp(
-        ValueError, "Node 'foo_bar' does not exist in partition graphs."):
+    if test_util.gpu_device_name():
+      expected_error_regexp = r"None of the .* devices has a node named "
+    else:
+      expected_error_regexp = (
+          r"Node \'foo_bar\' does not exist in the partition graph of device")
+    with self.assertRaisesRegexp(ValueError, expected_error_regexp):
       results.dump.node_op_type("foo_bar")
 
   def testDumpStringTensorsWorks(self):
@@ -437,9 +441,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       # Verify dump files
       self.assertTrue(os.path.isdir(self._dump_root))
 
-      self.assertTrue(os.path.isdir(os.path.join(self._dump_root, u_namespace)))
-      self.assertTrue(
-          os.path.isdir(os.path.join(self._dump_root, v_namespace, "v")))
+      u_glob_out = glob.glob(os.path.join(self._dump_root, "*", u_namespace))
+      v_glob_out = glob.glob(os.path.join(
+          self._dump_root, "*", v_namespace, "v"))
+      self.assertTrue(os.path.isdir(u_glob_out[0]))
+      self.assertTrue(os.path.isdir(v_glob_out[0]))
 
       dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=run_metadata.partition_graphs)
@@ -689,7 +695,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     u_read_name = u_name + "/read"
 
     # Test node name list lookup of the DebugDumpDir object.
-    node_names = dump.nodes()
+    if test_util.gpu_device_name():
+      node_names = dump.nodes(
+          device_name="/job:localhost/replica:0/task:0/gpu:0")
+    else:
+      node_names = dump.nodes()
     self.assertTrue(u_name in node_names)
     self.assertTrue(u_read_name in node_names)
 
@@ -699,7 +709,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(u_attr["shape"].shape.dim))
     self.assertEqual(2, u_attr["shape"].shape.dim[0].size)
 
-    with self.assertRaisesRegexp(ValueError, "No node named \"foo\" exists"):
+    if test_util.gpu_device_name():
+      expected_error_regexp = r"None of the .* devices has a node named "
+    else:
+      expected_error_regexp = r"No node named \"foo\" exists"
+    with self.assertRaisesRegexp(ValueError, expected_error_regexp):
       dump.node_attributes("foo")
 
   def testGraphStructureLookupGivesDebugWatchKeys(self):
@@ -722,7 +736,6 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(0, u_data[0].output_slot)
     self.assertEqual("DebugIdentity", u_data[0].debug_op)
     self.assertGreaterEqual(u_data[0].timestamp, 0)
-
     self.assertEqual([], dump.watch_key_to_data("foo"))
 
   def testGraphStructureLookupGivesNodeInputsAndRecipients(self):
@@ -753,12 +766,13 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual([], dump.node_recipients(w_name, is_control=True))
 
     # Test errors raised on invalid node names.
-    with self.assertRaisesRegexp(ValueError,
-                                 "does not exist in partition graphs"):
+    if test_util.gpu_device_name():
+      expected_error_regexp = r"None of the .* devices has a node named "
+    else:
+      expected_error_regexp = "does not exist in the partition graph of device "
+    with self.assertRaisesRegexp(ValueError, expected_error_regexp):
       dump.node_inputs(u_name + "foo")
-
-    with self.assertRaisesRegexp(ValueError,
-                                 "does not exist in partition graphs"):
+    with self.assertRaisesRegexp(ValueError, expected_error_regexp):
       dump.node_recipients(u_name + "foo")
 
     # Test transitive_inputs().
@@ -769,8 +783,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(
         set([u_name, u_read_name, v_name]), set(dump.transitive_inputs(w_name)))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "does not exist in partition graphs"):
+    with self.assertRaisesRegexp(ValueError, expected_error_regexp):
       dump.transitive_inputs(u_name + "foo")
 
   def testGraphStructureLookupWithoutPartitionGraphsDoesNotErrorOut(self):
@@ -1067,10 +1080,12 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       y = array_ops.squeeze(ph, name="mismatch/y")
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
       debug_utils.watch_graph(
           run_options, sess.graph, debug_urls=self._debug_urls(), global_step=1)
 
-      sess.run(x, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options)
+      sess.run(x, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options,
+               run_metadata=run_metadata)
       dump1 = debug_data.DebugDumpDir(self._dump_root)
       self.assertEqual(1, dump1.core_metadata.global_step)
       self.assertGreaterEqual(dump1.core_metadata.session_run_index, 0)

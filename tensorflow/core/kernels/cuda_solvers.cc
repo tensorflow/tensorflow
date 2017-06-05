@@ -153,7 +153,7 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
         info_checker_callback) const {
   std::vector<HostLapackInfo> host_lapack_infos;
   if (dev_lapack_infos.empty()) {
-    info_checker_callback(Status::OK(), std::move(host_lapack_infos));
+    info_checker_callback(Status::OK(), host_lapack_infos);
     return Status::OK();
   }
 
@@ -174,7 +174,7 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
   auto wrapped_info_checker_callback =
       [info_checker_callback](std::vector<HostLapackInfo> host_lapack_infos) {
         Status status;
-        for (auto host_lapack_info : host_lapack_infos) {
+        for (const auto& host_lapack_info : host_lapack_infos) {
           for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
             const int info_value = (host_lapack_info.data())[i];
             if (info_value != 0) {

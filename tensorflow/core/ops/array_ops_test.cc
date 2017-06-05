@@ -175,7 +175,11 @@ TEST(ArrayOpsTest, Identity_ShapeFnHandles) {
   TF_ASSERT_OK(c.construction_status());
   ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
   TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));
-  EXPECT_TRUE(c.output_handle_dtype(0) == DT_BOOL);
+
+  const auto* shapes_and_types = c.output_handle_shapes_and_types(0);
+  ASSERT_TRUE(shapes_and_types != nullptr);
+  ASSERT_EQ(1, shapes_and_types->size());
+  EXPECT_EQ((*shapes_and_types)[0].dtype, DT_BOOL);
 }
 
 TEST(ArrayOpsTest, Diag_ShapeFn) {

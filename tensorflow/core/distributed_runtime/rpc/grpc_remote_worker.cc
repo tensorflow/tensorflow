@@ -173,7 +173,7 @@ class GrpcRemoteWorker : public WorkerInterface {
     }
 
     IssueRequest(req_copy ? req_copy : request, response, recvtensor_,
-                 std::move(*cb_to_use), call_opts);
+                 *cb_to_use, call_opts);
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
