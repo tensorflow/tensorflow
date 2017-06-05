@@ -1,8 +1,3 @@
-# Changes since the last release
-
-## Major Features and Improvements
-* Added `conv3d`, `avg_pool3d`, `max_pool3d` and `conv3d_transpose` for `tensorflow.contrib.slim`.
-
 # Release 1.2.0
 
 ## Major Features and Improvements
