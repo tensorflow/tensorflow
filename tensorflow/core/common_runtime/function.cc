@@ -49,7 +49,6 @@ static constexpr const char* const kGradientOp =
 static constexpr const char* const kNodeLabel = "Func";
 static constexpr const char* const kFuncAttr =
     FunctionLibraryDefinition::kFuncAttr;
-static constexpr const char* const kNoInlineAttr = "_noinline";
 
 // Represents the index-th output of a node.
 struct Endpoint {
@@ -356,21 +355,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
 Status FunctionLibraryRuntimeImpl::FunctionDefToBody(const FunctionDef& fdef,
                                                      AttrSlice attrs,
                                                      FunctionBody** fbody) {
-  // Instantiates the function template into a graph def.
-  InstantiationResult result;
-  TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig_, &result));
-
-  Graph* graph = new Graph(lib_def_);
-  GraphConstructorOptions opts;
-  opts.allow_internal_ops = true;
-  opts.expect_device_spec = false;
-  Status s = ConvertGraphDefToGraph(opts, result.gdef, graph);
-  if (!s.ok()) {
-    delete graph;
-  } else {
-    *fbody = new FunctionBody(fdef, result.arg_types, result.ret_types, graph);
-  }
-  return s;
+  return FunctionDefToBodyHelper(fdef, attrs, lib_def_, get_func_sig_, fbody);
 }
 
 Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
@@ -829,9 +814,8 @@ static bool ValidateInlining(const Node* node, const FunctionBody* fbody) {
 // Given a "caller" in "graph", which is a function call of a function
 // to "fbody". Replaces the "caller" with fbody->graph and connects
 // edges properly.
-static void InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
-                               Graph* g, Node* caller,
-                               const FunctionBody* fbody) {
+void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
+                        Node* caller, const FunctionBody* fbody) {
   if (!ValidateInlining(caller, fbody)) {
     LOG(WARNING) << "Inlining mismatch: " << caller->DebugString() << " vs. "
                  << DebugString(fbody->graph);
@@ -863,9 +847,7 @@ static void InlineFunctionBody(const FunctionLibraryDefinition& flib_def,
   // remember 'y' in node_map[x->id()].
   std::vector<Node*> node_map(fbody->graph->num_node_ids());
   Status s;
-  for (Node* n : fbody->graph->nodes()) {
-    if (n->IsSource() || n->IsSink()) continue;
-    CHECK(n->IsOp());
+  for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
     ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
     Node* clone = g->AddNode(ndef, &s);
@@ -1092,7 +1074,7 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
       ret_types(ret_t.begin(), ret_t.end()) {
   this->arg_nodes.resize(arg_types.size());
   this->ret_nodes.resize(ret_types.size());
-  for (Node* n : this->graph->nodes()) {
+  for (Node* n : this->graph->op_nodes()) {
     gtl::InlinedVector<Node*, 4>* node_vec;
     if (n->type_string() == kRetOp) {
       node_vec = &this->ret_nodes;
@@ -1139,9 +1121,7 @@ void SymbolicGradientHelper::Copy() {
   // Copy the nodes.
   node_map[src.source_node()->id()] = dst->source_node();
   node_map[src.sink_node()->id()] = dst->sink_node();
-  for (Node* n : src.nodes()) {
-    if (n->IsSource() || n->IsSink()) continue;
-    CHECK(n->IsOp());
+  for (Node* n : src.op_nodes()) {
     node_map[n->id()] = dst->CopyNode(n);
   }
 
@@ -1236,6 +1216,28 @@ FunctionBody* SymbolicGradientHelper::Compute() {
 
 FunctionBody* SymbolicGradient(const FunctionBody& f) {
   return SymbolicGradientHelper(f).Compute();
+}
+
+Status FunctionDefToBodyHelper(
+    const FunctionDef& fdef, const AttrSlice& attrs,
+    const FunctionLibraryDefinition* const lib_def,
+    const std::function<Status(const string&, const OpDef**)>& get_func_sig,
+    FunctionBody** fbody) {
+  // Instantiates the function template into a graph def.
+  InstantiationResult result;
+  TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig, &result));
+
+  Graph* graph = new Graph(lib_def);
+  GraphConstructorOptions opts;
+  opts.allow_internal_ops = true;
+  opts.expect_device_spec = false;
+  Status s = ConvertNodeDefsToGraph(opts, result.nodes, graph);
+  if (!s.ok()) {
+    delete graph;
+  } else {
+    *fbody = new FunctionBody(fdef, result.arg_types, result.ret_types, graph);
+  }
+  return s;
 }
 
 }  // end namespace tensorflow

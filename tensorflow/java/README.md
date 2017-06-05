@@ -21,7 +21,7 @@ native libraries will need to be built from source.
 
 1.  Install [bazel](https://www.bazel.build/versions/master/docs/install.html)
 
-2.  Setup the environment to buile TensorFlow from source code
+2.  Setup the environment to build TensorFlow from source code
     ([Linux](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-linux)
     or [Mac OS
     X](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-mac-os-x)).

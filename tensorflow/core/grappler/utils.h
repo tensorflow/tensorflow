@@ -34,7 +34,7 @@ class NodeMap {
   NodeDef* GetNode(const string& name);
   std::set<NodeDef*> GetOutputs(const string& node_name);
   // This method doesn't record the outputs of the added node; the outputs need
-  // to be explictly added by the AddOutput method.
+  // to be explicitly added by the AddOutput method.
   void AddNode(const string& name, NodeDef* node);
   void AddOutput(const string& node, const string& output);
   void UpdateOutput(const string& node, const string& old_output,
@@ -45,6 +45,10 @@ class NodeMap {
   std::unordered_map<string, NodeDef*> nodes_;
   std::unordered_map<string, std::set<NodeDef*>> outputs_;
 };
+
+// True iff 'name' refers to a control inputs, i.e. a node name prefixed with
+// the ^ character.
+bool IsControlInput(const string& name);
 
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.

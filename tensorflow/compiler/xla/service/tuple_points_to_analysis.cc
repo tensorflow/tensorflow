@@ -33,10 +33,9 @@ limitations under the License.
 namespace xla {
 
 string BufferAlias::ToString() const {
-  return tensorflow::strings::StrCat("BufferAlias(",
-                                     instruction_->FullyQualifiedName(), "[",
-                                     tensorflow::str_util::Join(index_, ","),
-                                     "] => ", buffer_->ToString(), ")");
+  return tensorflow::strings::StrCat(
+      "BufferAlias(", instruction_->FullyQualifiedName(), "[",
+      tensorflow::str_util::Join(index_, ","), "])");
 }
 
 std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias) {
@@ -174,7 +173,7 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
         if (buffer_aliases_.count(buffer) == 0) {
           buffer_aliases_.insert({buffer, std::vector<BufferAlias>()});
         }
-        buffer_aliases_[buffer].emplace_back(*buffer, instruction.get(), index);
+        buffer_aliases_[buffer].emplace_back(instruction.get(), index);
       }
       return Status::OK();
     }));
@@ -340,12 +339,6 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
   points_to_set.AddPointedToBuffer(NewLogicalBuffer(select, /*index=*/{}),
                                    /*index=*/{});
   return Status::OK();
-}
-
-Status TuplePointsToAnalysis::HandleFusion(HloInstruction* fusion) {
-  return ShapeUtil::IsTuple(fusion->shape())
-             ? Unimplemented("HandleFusion with tuple output")
-             : DefaultAction(fusion);
 }
 
 const PointsToSet& TuplePointsToAnalysis::GetPointsToSet(

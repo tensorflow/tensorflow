@@ -790,7 +790,11 @@ bool MemoryUsageTracker::Check() const {
       live_size += AllocatedSize(buffer.id);
     }
   }
-  CHECK_EQ(live_size, memory_usage_);
+  CHECK(live_size == memory_usage_)
+      << "Live set size " << live_size << " is not same as memory usage "
+      << memory_usage_
+      << ". This could happen if some nodes defined in the "
+         "computation are not being used/executed.";
 
   return true;
 }

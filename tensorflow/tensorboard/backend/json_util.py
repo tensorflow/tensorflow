@@ -29,7 +29,8 @@ from __future__ import print_function
 
 import math
 
-from tensorflow.python.util import compat
+import tensorflow as tf
+
 
 _INFINITY = float('inf')
 _NEGATIVE_INFINITY = float('-inf')
@@ -62,7 +63,7 @@ def Cleanse(obj, encoding='utf-8'):
     else:
       return obj
   elif isinstance(obj, bytes):
-    return compat.as_text(obj, encoding)
+    return tf.compat.as_text(obj, encoding)
   elif isinstance(obj, list) or isinstance(obj, tuple):
     return [Cleanse(i, encoding) for i in obj]
   elif isinstance(obj, set):

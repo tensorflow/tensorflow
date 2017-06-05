@@ -332,7 +332,7 @@ limit has been reached and no more examples are available.
 
 The last ingredient is the
 @{tf.train.Coordinator}. This is responsible
-for letting all the threads know if anything has signalled a shut down. Most
+for letting all the threads know if anything has signaled a shut down. Most
 commonly this would be because an exception was raised, for example one of the
 threads got an error when running some operation (or an ordinary Python
 exception).

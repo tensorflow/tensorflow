@@ -27,7 +27,19 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class SparseOpsTest(test.TestCase):
+def _assert_sparse_tensor_value(test_case, expected, actual):
+  test_case.assertEqual(np.int64, np.array(actual.indices).dtype)
+  test_case.assertAllEqual(expected.indices, actual.indices)
+
+  test_case.assertEqual(
+      np.array(expected.values).dtype, np.array(actual.values).dtype)
+  test_case.assertAllEqual(expected.values, actual.values)
+
+  test_case.assertEqual(np.int64, np.array(actual.dense_shape).dtype)
+  test_case.assertAllEqual(expected.dense_shape, actual.dense_shape)
+
+
+class DenseToSparseTensorTest(test.TestCase):
 
   def test_dense_to_sparse_tensor_1d(self):
     with self.test_session() as sess:
@@ -104,7 +116,7 @@ class SparseOpsTest(test.TestCase):
     self.assertAllEqual([1, 2, 3, 4, 5, 7, 8, 9], result.values)
     self.assertAllEqual([2, 2, 4], result.dense_shape)
 
-  def test_dense_to_sparse_tensor_1d_no_shape(self):
+  def test_dense_to_sparse_tensor_unknown_1d_shape(self):
     with self.test_session() as sess:
       tensor = array_ops.placeholder(shape=[None], dtype=dtypes.int32)
       st = sparse_ops.dense_to_sparse_tensor(tensor)
@@ -113,7 +125,7 @@ class SparseOpsTest(test.TestCase):
     self.assertAllEqual([100, 3], result.values)
     self.assertAllEqual([4], result.dense_shape)
 
-  def test_dense_to_sparse_tensor_3d_no_shape(self):
+  def test_dense_to_sparse_tensor_unknown_3d_shape(self):
     with self.test_session() as sess:
       tensor = array_ops.placeholder(
           shape=[None, None, None], dtype=dtypes.int32)
@@ -128,11 +140,18 @@ class SparseOpsTest(test.TestCase):
     self.assertAllEqual([1, 2, 3, 4, 5, 7, 8, 9], result.values)
     self.assertAllEqual([2, 2, 4], result.dense_shape)
 
-  def test_convert_to_sparse_undef_shape(self):
-    with self.test_session():
-      with self.assertRaises(ValueError):
-        tensor = array_ops.placeholder(dtype=dtypes.int32)
-        sparse_ops.dense_to_sparse_tensor(tensor)
+  def test_dense_to_sparse_unknown_rank(self):
+    ph = array_ops.placeholder(dtype=dtypes.int32)
+    with self.test_session() as sess:
+      st = sparse_ops.dense_to_sparse_tensor(ph)
+      result = sess.run(st, feed_dict={ph: [[1, 2, 0, 0], [3, 4, 5, 0]]})
+    self.assertAllEqual([[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]],
+                        result.indices)
+    self.assertAllEqual([1, 2, 3, 4, 5], result.values)
+    self.assertAllEqual([2, 4], result.dense_shape)
+
+
+class SparseRowEnvelopeTest(test.TestCase):
 
   def test_sparse_row_envelope(self):
     expected_sparse_row_envelope = [1, 0, 3]
@@ -181,6 +200,137 @@ class SparseOpsTest(test.TestCase):
           sparse_ops.sparse_row_envelope(sparse_input, 1, 2))
       self.assertAllEqual(expected_sparse_row_envelope,
                           sparse_row_envelope)
+
+
+class IndicatorToSparseIdsTest(test.TestCase):
+
+  def test_indicators_to_sparse_ids_1d(self):
+    indicators = (0, 0, 1, 0)
+    sparse_ids = sparse_ops.indicators_to_sparse_ids(indicators)
+    with self.test_session():
+      _assert_sparse_tensor_value(self, sparse_tensor.SparseTensorValue(
+          indices=((0,),),
+          values=(2,),
+          dense_shape=(1,),
+      ), sparse_ids.eval())
+
+  def test_indicators_to_sparse_ids_2d(self):
+    indicators = (
+        (0, 0, 1, 0),
+        (1, 0, 0, 1),
+    )
+    sparse_ids = sparse_ops.indicators_to_sparse_ids(indicators)
+    with self.test_session():
+      _assert_sparse_tensor_value(self, sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(2, 0, 3),
+          dense_shape=(2, 2),
+      ), sparse_ids.eval())
+
+  def test_indicators_to_sparse_ids_3d(self):
+    indicators = (
+        ((0, 0, 1, 0, 0), (0, 0, 0, 0, 0)),
+        ((1, 0, 0, 1, 0), (0, 0, 1, 0, 0)),
+        ((0, 0, 0, 0, 0), (0, 0, 0, 0, 0)),
+        ((1, 0, 0, 1, 1), (0, 0, 1, 0, 0)),
+    )
+    sparse_ids = sparse_ops.indicators_to_sparse_ids(indicators)
+    with self.test_session():
+      _assert_sparse_tensor_value(self, sparse_tensor.SparseTensorValue(
+          indices=(
+              (0, 0, 0),
+              (1, 0, 0), (1, 0, 1), (1, 1, 0),
+              (3, 0, 0), (3, 0, 1), (3, 0, 2), (3, 1, 0)
+          ), values=(
+              2,
+              0, 3, 2,
+              0, 3, 4, 2
+          ), dense_shape=(4, 2, 3),
+      ), sparse_ids.eval())
+
+  def test_int16_to_sparse_ids_2d(self):
+    indicators = (
+        (0, 0, 1, 0),
+        (1, 0, 0, 1),
+    )
+    sparse_ids = sparse_ops.indicators_to_sparse_ids(
+        indicators, dtype=dtypes.int16)
+    with self.test_session():
+      _assert_sparse_tensor_value(self, sparse_tensor.SparseTensorValue(
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=np.array((2, 0, 3), dtype=np.int16),
+          dense_shape=(2, 2),
+      ), sparse_ids.eval())
+
+  def test_indicators_to_sparse_ids_ignore_value(self):
+    indicators = (
+        ((-1, -1, 10, -1), (-1, -1, -1, -1)),
+        ((11, -1, -1, 12), (-1, -1, 13, -1)),
+    )
+    sparse_ids = sparse_ops.indicators_to_sparse_ids(
+        indicators, ignore_value=-1)
+    with self.test_session():
+      _assert_sparse_tensor_value(self, sparse_tensor.SparseTensorValue(
+          indices=((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0)),
+          values=(2, 0, 3, 2),
+          dense_shape=(2, 2, 2),
+      ), sparse_ids.eval())
+
+  def test_string_indicators_to_sparse_ids(self):
+    indicators = (
+        (('', '', 'A', ''), ('', '', '', '')),
+        (('B', '', '', 'C'), ('', '', 'D', '')),
+    )
+    sparse_ids = sparse_ops.indicators_to_sparse_ids(indicators)
+    with self.test_session():
+      _assert_sparse_tensor_value(self, sparse_tensor.SparseTensorValue(
+          indices=((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0)),
+          values=(2, 0, 3, 2),
+          dense_shape=(2, 2, 2),
+      ), sparse_ids.eval())
+
+  def test_string_indicators_to_sparse_ids_ignore_value(self):
+    indicators = (
+        (('x', 'x', 'A', 'x'), ('x', 'x', 'x', 'x')),
+        (('B', 'x', 'x', 'C'), ('x', 'x', 'D', 'x')),
+    )
+    sparse_ids = sparse_ops.indicators_to_sparse_ids(
+        indicators, ignore_value='x')
+    with self.test_session():
+      _assert_sparse_tensor_value(self, sparse_tensor.SparseTensorValue(
+          indices=((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0)),
+          values=(2, 0, 3, 2),
+          dense_shape=(2, 2, 2),
+      ), sparse_ids.eval())
+
+  def test_indicators_to_sparse_ids_unknown_3d_shape(self):
+    indicators_values = (
+        ((0, 0, 1, 0), (0, 0, 0, 0)),
+        ((1, 0, 0, 1), (0, 0, 1, 0)),
+    )
+    indicators = array_ops.placeholder(
+        dtype=dtypes.int32, shape=(None, None, None))
+    sparse_ids = sparse_ops.indicators_to_sparse_ids(indicators)
+    with self.test_session():
+      _assert_sparse_tensor_value(self, sparse_tensor.SparseTensorValue(
+          indices=((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0)),
+          values=(2, 0, 3, 2),
+          dense_shape=(2, 2, 2),
+      ), sparse_ids.eval(feed_dict={indicators: indicators_values}))
+
+  def test_indicators_to_sparse_ids_unknown_rank(self):
+    indicators_values = (
+        ((0, 0, 1, 0), (0, 0, 0, 0)),
+        ((1, 0, 0, 1), (0, 0, 1, 0)),
+    )
+    indicators = array_ops.placeholder(dtype=dtypes.int32)
+    sparse_ids = sparse_ops.indicators_to_sparse_ids(indicators)
+    with self.test_session():
+      _assert_sparse_tensor_value(self, sparse_tensor.SparseTensorValue(
+          indices=((0, 0, 0), (1, 0, 0), (1, 0, 1), (1, 1, 0)),
+          values=(2, 0, 3, 2),
+          dense_shape=(2, 2, 2),
+      ), sparse_ids.eval(feed_dict={indicators: indicators_values}))
 
 
 if __name__ == '__main__':

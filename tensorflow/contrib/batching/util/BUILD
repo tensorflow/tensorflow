@@ -47,7 +47,6 @@ cc_test(
     deps = [
         ":periodic_function",
         "//tensorflow/contrib/batching/test_util:fake_clock_env",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test_main",
     ],
 )

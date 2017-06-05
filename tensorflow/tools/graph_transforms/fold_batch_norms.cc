@@ -93,7 +93,7 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
         new_nodes->push_back(input_node);
 
         NodeDef new_conv_node;
-        new_conv_node.CopyFrom(conv_node);
+        new_conv_node = conv_node;
         new_conv_node.set_name(mul_node.name());
         new_nodes->push_back(new_conv_node);
 

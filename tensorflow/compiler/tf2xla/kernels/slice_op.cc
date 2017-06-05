@@ -50,6 +50,7 @@ class SliceOp : public XlaOpKernel {
     // slice will be an empty handle if the output has no elements.
     CHECK_EQ(begin.size(), size.size());
     std::vector<int64> limits;
+    limits.reserve(begin.size());
     for (int i = 0; i < begin.size(); ++i) {
       limits.push_back(begin[i] + size[i]);
     }

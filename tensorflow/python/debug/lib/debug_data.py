@@ -328,15 +328,17 @@ def has_inf_or_nan(datum, tensor):
     return False
 
 
+_CoreMetadata = collections.namedtuple("CoreMetadata", [
+    "global_step", "session_run_index", "executor_step_index", "input_names",
+    "output_names", "target_nodes"
+])
+
+
 def extract_core_metadata_from_event_proto(event):
   json_metadata = json.loads(event.log_message.message)
-  core_metadata = collections.namedtuple("CoreMetadata", [
-      "global_step", "session_run_count", "executor_step_count", "input_names",
-      "output_names", "target_nodes"
-  ])
-  return core_metadata(json_metadata["global_step"],
-                       json_metadata["session_run_count"],
-                       json_metadata["executor_step_count"],
+  return _CoreMetadata(json_metadata["global_step"],
+                       json_metadata["session_run_index"],
+                       json_metadata["executor_step_index"],
                        json_metadata["input_names"],
                        json_metadata["output_names"],
                        json_metadata["target_nodes"])
@@ -415,6 +417,8 @@ class DebugTensorDatum(object):
 
   def __repr__(self):
     return self.__str__()
+
+  # TODO(cais): (b/38325442) Add device name information to this class.
 
   def get_tensor(self):
     """Get tensor from the dump (`Event`) file.
@@ -519,6 +523,10 @@ class DebugTensorDatum(object):
     """
 
     return self._dump_size_bytes
+
+
+class WatchKeyDoesNotExistInDebugDumpDirError(ValueError):
+  pass
 
 
 class DebugDumpDir(object):
@@ -704,21 +712,21 @@ class DebugDumpDir(object):
 
     Of the three counters available in the return value, `global_step` is
     supplied by the caller of the debugged `Session.run()`, while
-    `session_run_count` and `executor_step_count` are determined by the state
+    `session_run_index` and `executor_step_index` are determined by the state
     of the core runtime, automatically. For the same fetch list, feed keys and
     debug tensor watch options, the same executor will be used and
-    `executor_step_count` should increase by one at a time. However, runs with
+    `executor_step_index` should increase by one at a time. However, runs with
     different fetch lists, feed keys and debug_tensor watch options that all
-    share the same `Session` object can lead to gaps in `session_run_count`.
+    share the same `Session` object can lead to gaps in `session_run_index`.
 
     Returns:
       If core metadata are loaded, a `namedtuple` with the fields:
         `global_step`: A global step count supplied by the caller of
           `Session.run()`. It is optional to the caller. If the caller did not
           supply this parameter, its value will be -1.
-        `session_run_count`: A counter for Run() calls to the underlying
+        `session_run_index`: A sorted index for Run() calls to the underlying
           TensorFlow `Session` object.
-        `executor_step_count`: A counter for invocations of a given runtime
+        `executor_step_index`: A counter for invocations of a given runtime
           executor. The same executor is re-used for the same fetched tensors,
           target nodes, input feed keys and debug tensor watch options.
         `input_names`: Names of the input (feed) Tensors.
@@ -1408,13 +1416,14 @@ class DebugDumpDir(object):
         may be dumped multiple times.
 
     Raises:
-      ValueError: If the tensor does not exist in the debug-dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor does not exist in
+        the debug-dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return [datum.file_path for datum in self._watch_key_to_datum[watch_key]]
 
@@ -1433,13 +1442,14 @@ class DebugDumpDir(object):
       List of tensors (`numpy.ndarray`) loaded from the debug-dump file(s).
 
     Raises:
-      ValueError: If the tensor does not exist in the debug-dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor does not exist in
+        the debug-dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return [datum.get_tensor() for datum in self._watch_key_to_datum[watch_key]]
 
@@ -1460,13 +1470,14 @@ class DebugDumpDir(object):
       (`list` of `int`) list of relative timestamps.
 
     Raises:
-      ValueError: If the tensor watch key does not exist in the debug dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor watch key does not
+        exist in the debug dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return self._watch_key_to_rel_time[watch_key]
 
@@ -1484,13 +1495,14 @@ class DebugDumpDir(object):
       (`list` of `int`): list of dump file sizes in bytes.
 
     Raises:
-      ValueError: If the tensor watch key does not exist in the debug dump data.
+      WatchKeyDoesNotExistInDebugDumpDirError: If the tensor watch key does not
+        exist in the debug dump data.
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
     if watch_key not in self._watch_key_to_datum:
-      raise ValueError("Watch key \"%s\" does not exist in the debug dump" %
-                       watch_key)
+      raise WatchKeyDoesNotExistInDebugDumpDirError(
+          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
     return self._watch_key_to_dump_size_bytes[watch_key]
 

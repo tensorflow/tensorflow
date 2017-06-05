@@ -162,13 +162,13 @@ export class RenderGraphInfo {
   private displayingStats: boolean;
   private index: {[nodeName: string]: RenderNodeInfo};
   private renderedOpNames: string[];
-  private deviceColorMap: d3.scale.Ordinal<string, string>;
-  private xlaClusterColorMap: d3.scale.Ordinal<string, string>;
-  private memoryUsageScale: d3.scale.Linear<string, string>;
-  private computeTimeScale: d3.scale.Linear<string, string>;
+  private deviceColorMap: d3.ScaleOrdinal<string, string>;
+  private xlaClusterColorMap: d3.ScaleOrdinal<string, string>;
+  private memoryUsageScale: d3.ScaleLinear<string, string>;
+  private computeTimeScale: d3.ScaleLinear<string, string>;
   /** Scale for the thickness of edges when there is no shape information. */
   edgeWidthScale:
-      d3.scale.Linear<number, number> | d3.scale.Pow<number, number>;
+      d3.ScaleLinear<number, number> | d3.ScalePower<number, number>;
   // Since the rendering information for each node is constructed lazily,
   // upon node's expansion by the user, we keep a map between the node's name
   // and whether the rendering information was already constructed for that
@@ -196,13 +196,13 @@ export class RenderGraphInfo {
   }
 
   computeScales() {
-    this.deviceColorMap = d3.scale.ordinal<string>()
+    this.deviceColorMap = d3.scaleOrdinal<string>()
         .domain(this.hierarchy.devices)
         .range(_.map(d3.range(this.hierarchy.devices.length),
                      MetanodeColors.DEVICE_PALETTE));
 
     this.xlaClusterColorMap =
-        d3.scale.ordinal<string>()
+        d3.scaleOrdinal<string>()
             .domain(this.hierarchy.xlaClusters)
             .range(_.map(
                 d3.range(this.hierarchy.xlaClusters.length),
@@ -218,7 +218,7 @@ export class RenderGraphInfo {
         return node.stats.totalBytes;
       }
     });
-    this.memoryUsageScale = d3.scale.linear<string, string>()
+    this.memoryUsageScale = d3.scaleLinear<string, string>()
         .domain(memoryExtent)
         .range(PARAMS.minMaxColors);
 
@@ -231,13 +231,13 @@ export class RenderGraphInfo {
         return node.stats.getTotalMicros();
       }
     });
-    this.computeTimeScale = d3.scale.linear<string, string>()
+    this.computeTimeScale = d3.scaleLinear<string, string>()
         .domain(computeTimeExtent)
         .range(PARAMS.minMaxColors);
 
     this.edgeWidthScale = this.hierarchy.hasShapeInfo ?
       scene.edge.EDGE_WIDTH_SCALE :
-      d3.scale.linear()
+      d3.scaleLinear()
         .domain([1, this.hierarchy.maxMetaEdgeSize])
         .range([scene.edge.MIN_EDGE_WIDTH, scene.edge.MAX_EDGE_WIDTH]);
   }
@@ -1159,7 +1159,7 @@ export class RenderMetaedgeInfo {
   /**
    * D3 selection of the group containing the path that displays this edge.
    */
-  edgeGroup: d3.Selection<RenderMetaedgeInfo>;
+  edgeGroup: d3.Selection<RenderMetaedgeInfo & any, any, any, any>;
 
   /** Id of the <marker> used as a start-marker for the edge path. */
   startMarkerId: string;

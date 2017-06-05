@@ -24,6 +24,8 @@ limitations under the License.
 
 %}
 
+%include "tensorflow/python/client/tf_sessionrun_wrapper.i"
+
 // Required to use PyArray_* functions.
 %init %{
 tensorflow::ImportNumpy();
@@ -69,7 +71,8 @@ tensorflow::ImportNumpy();
 // represented as a list of strings.
 %typemap(in) const tensorflow::NameVector& (
     tensorflow::NameVector temp,
-    tensorflow::Safe_PyObjectPtr temp_string_list(tensorflow::make_safe(nullptr))) {
+    tensorflow::Safe_PyObjectPtr temp_string_list(
+        tensorflow::make_safe(static_cast<PyObject*>(nullptr)))) {
   if (!PyList_Check($input)) {
     SWIG_fail;
   }
@@ -116,7 +119,7 @@ tensorflow::ImportNumpy();
 
 // Build a Python list of outputs and return it.
 %typemap(argout) tensorflow::PyObjectVector* out_values {
-  tensorflow::Safe_PyObjectVector out_values_safe;
+  std::vector<tensorflow::Safe_PyObjectPtr> out_values_safe;
   for (size_t i = 0; i < $1->size(); ++i) {
     out_values_safe.emplace_back(tensorflow::make_safe($1->at(i)));
   }
@@ -198,6 +201,16 @@ void PyTensorListToVector(PyObject* py_tensor_list,
 %ignore TF_Run;
 %ignore TF_PRun;
 %ignore TF_PRunSetup;
+
+// We use TF_SessionRun_wrapper instead of TF_SessionRun
+%ignore TF_SessionRun;
+%unignore TF_SessionRun_wrapper;
+// The %exception block above releases the Python GIL for the length of each
+// wrapped method. We disable this behavior for TF_SessionRun_wrapper because it
+// uses Python method(s) that expect the GIL to be held (at least
+// PyArray_Return, maybe others).
+%noexception TF_SessionRun_wrapper;
+
 
 %rename("_TF_SetTarget") TF_SetTarget;
 %rename("_TF_SetConfig") TF_SetConfig;

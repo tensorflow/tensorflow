@@ -150,7 +150,7 @@ void MetricTableReport::AppendCategoryTable() {
 
     // Show the category.
     string text = category.category_text;
-    if (text == "") {
+    if (text.empty()) {
       text = "[no category]";
     }
     tensorflow::strings::StrAppend(&text, " (", category.entries.size(), " ",
@@ -200,7 +200,7 @@ void MetricTableReport::AppendEntryTable() {
     metric_sum += entry.metric;
 
     string text = entry.text;
-    if (text == "") {
+    if (text.empty()) {
       text = "[no entry text]";
     }
     AppendTableRow(text, entry.metric, metric_sum);

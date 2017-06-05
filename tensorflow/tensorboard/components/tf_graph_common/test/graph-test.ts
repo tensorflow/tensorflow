@@ -33,12 +33,6 @@ suite('graph', () => {
         op: "MatMul"
         input: "Q:2"
         input: "W"
-      }
-      node {
-        name: "XX/YY/(YY)"
-        op: "MatMul"
-        input: "Q:2"
-        input: "W"
       }`);
     let statsPbtxt = tf.graph.test.util.stringToArrayBuffer(`step_stats {
       dev_stats {
@@ -51,11 +45,6 @@ suite('graph', () => {
         node_stats {
           node_name: "Q"
           all_start_micros: 12
-          all_end_rel_micros: 4
-        }
-        node_stats {
-          node_name: "XX/YY"
-          all_start_micros: 20
           all_end_rel_micros: 4
         }
       }
@@ -75,7 +64,6 @@ suite('graph', () => {
             assert.isTrue(slimGraph.nodes['X'] != null);
             assert.isTrue(slimGraph.nodes['W'] != null);
             assert.isTrue(slimGraph.nodes['Q'] != null);
-            assert.isTrue(slimGraph.nodes['XX/YY(YY)'] != null);
 
             let firstInputOfX = slimGraph.nodes['X'].inputs[0];
             assert.equal(firstInputOfX.name, 'Q');
@@ -88,8 +76,6 @@ suite('graph', () => {
             tf.graph.parser.parseStatsPbTxt(statsPbtxt).then(stepStats => {
               tf.graph.joinStatsInfoWithGraph(slimGraph, stepStats);
               assert.equal(slimGraph.nodes['Q'].stats.getTotalMicros(), 6);
-              assert.equal(
-                  slimGraph.nodes['XX/YY/(YY)'].stats.getTotalMicros(), 4);
               done();
             });
           });

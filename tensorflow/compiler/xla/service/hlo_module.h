@@ -23,8 +23,10 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/service/versioned_computation_handle.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -43,12 +45,13 @@ namespace xla {
 class HloModule {
  public:
   HloModule(const string& name,
-            const VersionedComputationHandle& entry_computation_handle);
+            const VersionedComputationHandle& entry_computation_handle,
+            const HloModuleConfig& config);
 
   // Constructor without a versioned computation handle. This constructor should
   // only be used for HloModules used outside of the XLA service (eg
   // tests). The versioned handle is used by the service in the compilation
-  // cache.
+  // cache. A default configuration is created for this module.
   explicit HloModule(const string& name);
 
   // Adds an entry computation to the module. A module can only have one entry
@@ -78,6 +81,10 @@ class HloModule {
     return entry_computation_;
   }
 
+  ComputationLayout* mutable_entry_computation_layout() {
+    return config_.mutable_entry_computation_layout();
+  }
+
   const VersionedComputationHandle& entry_computation_handle() const {
     return entry_computation_handle_;
   }
@@ -91,7 +98,10 @@ class HloModule {
   // computation B, then A will appear after B in the sort.
   std::list<HloComputation*> MakeComputationPostOrder() const;
 
+  const HloModuleConfig& config() const { return config_; }
+
   string ToString() const;
+  HloModuleProto ToProto() const;
 
   // Outlines the given expression from the given computation.
   // instructions_to_outline contains the instructions that form the expression.
@@ -116,6 +126,7 @@ class HloModule {
       std::unique_ptr<HloComputation> computation);
 
   const string name_;
+  HloModuleConfig config_;
   HloComputation* entry_computation_;
   std::vector<std::unique_ptr<HloComputation>> computations_;
 

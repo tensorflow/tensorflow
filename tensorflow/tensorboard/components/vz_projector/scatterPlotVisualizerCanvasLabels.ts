@@ -73,7 +73,7 @@ export class ScatterPlotVisualizerCanvasLabels implements
     }
 
     let opacityMap =
-        d3.scale.pow()
+        d3.scalePow()
             .exponent(Math.E)
             .domain([rc.farthestCameraSpacePointZ, rc.nearestCameraSpacePointZ])
             .range([0.1, 1]);

@@ -135,6 +135,11 @@ from tensorflow.contrib.keras.python.keras.layers.recurrent import SimpleRNN
 from tensorflow.contrib.keras.python.keras.layers.recurrent import GRU
 from tensorflow.contrib.keras.python.keras.layers.recurrent import LSTM
 
+# Wrapper functions
+from tensorflow.contrib.keras.python.keras.layers.wrappers import Wrapper 
+from tensorflow.contrib.keras.python.keras.layers.wrappers import Bidirectional 
+from tensorflow.contrib.keras.python.keras.layers.wrappers import TimeDistributed
+
 del absolute_import
 del division
 del print_function

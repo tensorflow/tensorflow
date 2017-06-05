@@ -900,7 +900,7 @@ boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
   in normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of
   `y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the
   `[0, 1]` interval of normalized image height is mapped to
-  `[0, image_height - 1] in image height coordinates. We do allow y1 > y2, in
+  `[0, image_height - 1]` in image height coordinates. We do allow `y1` > `y2`, in
   which case the sampled crop is an up-down flipped version of the original
   image. The width dimension is treated similarly. Normalized coordinates
   outside the `[0, 1]` range are allowed, in which case we use

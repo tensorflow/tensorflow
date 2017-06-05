@@ -116,6 +116,140 @@ __global__ void __launch_bounds__(1024, 2)
   }
 }
 
+// CUDA kernel to compute the depthwise convolution forward pass in NCHW format,
+// tailored for small images up to 16x16. Stride and depth multiplier must be 1.
+// Padding must be 'SAME', which allows to reuse the index computation.
+// Tiles of the input and filter tensors are loaded into shared memory before
+// performing the convolution. Each thread handles two elements per iteration,
+// one each in the lower and upper half of a tile.
+template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
+          bool kKnownEvenRows>
+__global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
+    const DepthwiseArgs args, const T* input, const T* filter, T* output) {
+  // Holds block plus halo and filter data for blockDim.x depths.
+  extern __shared__ __align__(sizeof(T)) unsigned char shared_memory[];
+  T* const shared_data = reinterpret_cast<T*>(shared_memory);
+
+  const int batches = args.batch;
+  const int in_rows = args.in_rows;
+  const int in_cols = args.in_cols;
+  const int in_depth = args.in_depth;
+  const int filter_rows =
+      kKnownFilterHeight < 0 ? args.filter_rows : kKnownFilterHeight;
+  const int filter_cols =
+      kKnownFilterWidth < 0 ? args.filter_cols : kKnownFilterWidth;
+  const int pad_rows = args.pad_rows;
+  const int pad_cols = args.pad_cols;
+
+  // Fixed blockDim.x, corresponding to Pascal's global load granularity of 32B.
+  const int block_slices = 8;
+  const int block_cols = blockDim.y;
+  const int block_rows = blockDim.z;
+
+  // These values are the same for all threads and could
+  // be precomputed on the CPU.
+  const int block_size = block_rows * block_cols * block_slices;
+  const int in_row_size = in_cols * in_depth;
+  const int in_size = in_rows * in_row_size;
+  const int in_increment = (in_cols - 1) * block_slices;
+  const int filter_size = filter_rows * filter_cols;
+  const int tile_cols = in_cols + filter_cols - 1;
+  const int even_rows = kKnownEvenRows || (1 & ~in_rows);
+  const int tile_rows = in_rows + filter_rows - even_rows;
+  const int tile_row_size = tile_cols * block_slices;
+  const int tile_size = tile_rows * tile_row_size;
+  const int tile_offset = block_rows * tile_row_size;
+  const int pad_offset = pad_rows * tile_cols + pad_cols;
+  const int batch_blocks = (in_depth + block_slices - 1) / block_slices;
+  const int in_blocks = batch_blocks * batches;
+  const int tensor_offset =
+      kKnownEvenRows ? in_size / 2 : block_rows * in_row_size;
+
+  const int thread_depth = threadIdx.x;
+  const int thread_col = threadIdx.y;
+  const int thread_row = threadIdx.z;
+
+  // Position in block.
+  const int thread_pix = thread_row * block_cols + thread_col;
+  const int thread_idx = thread_pix * block_slices + thread_depth;
+
+  // Initialize tile, in particular the padding.
+  for (int i = thread_idx; i < tile_size; i += block_size) {
+    shared_data[i] = T(0);
+  }
+  __syncthreads();
+
+  // Position in tensors.
+  const int tensor_idx = thread_pix * in_depth + thread_depth;
+
+  // Position in (padded) shared memory.
+  const int data_pix = thread_row * tile_cols + thread_col;
+  const int data_idx = data_pix * block_slices + thread_depth;
+
+  // Position in shared memory, offset by pad_rows / pad_cols.
+  const int tile_pix = data_pix + pad_offset;
+  const int tile_idx = tile_pix * block_slices + thread_depth;
+
+  const int max_depth = in_depth - thread_depth;
+  const int filter_write_offset =
+      thread_pix < filter_size ? tile_size + thread_idx : 0;
+  const int filter_read_offset = tile_size + thread_depth;
+  const bool skip_second =
+      !kKnownEvenRows && thread_row + (in_rows & 1) == block_rows;
+
+  for (int b = blockIdx.x; b < in_blocks; b += gridDim.x) {
+    const int batch = b / batch_blocks;
+    const int stack = b - batch * batch_blocks;
+
+    const int start_depth = stack * block_slices;
+    const int filter_offset = tensor_idx + start_depth;
+    const int inout_offset = batch * in_size + filter_offset;
+    const bool depth_in_range = start_depth < max_depth;
+
+    if (depth_in_range) {
+      const T* const in_ptr = inout_offset + input;
+      T* const tile_ptr = tile_idx + shared_data;
+      tile_ptr[0] = ldg(in_ptr);
+      if (!skip_second) {
+        tile_ptr[tile_offset] = ldg(tensor_offset + in_ptr);
+      }
+
+      if (filter_write_offset != 0) {
+        shared_data[filter_write_offset] = ldg(filter_offset + filter);
+      }
+    }
+
+    // Note: the condition to reach this is uniform across the entire block.
+    __syncthreads();
+
+    if (depth_in_range) {
+      T sum1 = 0;
+      T sum2 = 0;
+      int shared_offset = data_idx;
+      const T* filter_ptr = filter_read_offset + shared_data;
+      UNROLL for (int r = 0; r < filter_rows; ++r) {
+        UNROLL for (int c = 0; c < filter_cols; ++c) {
+          const T filter_value = *filter_ptr;
+          const T* const tile_ptr = shared_offset + shared_data;
+          sum1 += filter_value * tile_ptr[0];
+          sum2 += filter_value * tile_ptr[tile_offset];
+          shared_offset += block_slices;
+          filter_ptr += block_slices;
+        }
+        shared_offset += in_increment;
+      }
+      T* const out_ptr = inout_offset + output;
+      out_ptr[0] = sum1;
+      if (!skip_second) {
+        out_ptr[tensor_offset] = sum2;
+      }
+    }
+
+    // Note: the condition to reach this is uniform across the entire block.
+    __syncthreads();
+  }
+}
+
 // A Cuda kernel to compute the depthwise convolution forward pass
 // in NCHW format.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
@@ -243,17 +377,73 @@ __global__ void __launch_bounds__(1024, 2)
   }
 }
 
+template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
+bool TryLaunchDepthwiseConv2dGPUSmall(const GpuDevice& d,
+                                      const DepthwiseArgs args, const T* input,
+                                      const T* filter, T* output,
+                                      TensorFormat data_format) {
+  if (data_format != FORMAT_NHWC || args.depth_multiplier != 1 ||
+      args.stride != 1 || args.in_rows > 16 || args.in_cols > 16 ||
+      args.in_rows != args.out_rows || args.in_cols != args.out_cols ||
+      args.pad_rows < 0 || args.pad_rows >= args.filter_rows ||
+      args.pad_cols < 0 || args.pad_cols >= args.filter_cols) {
+    return false;
+  }
+
+  const int block_rows = (args.in_rows + 1) / 2;
+  if (args.filter_rows * args.filter_cols > args.in_cols * block_rows) {
+    return false;
+  }
+
+  const int tile_cols = args.in_cols + args.filter_cols - 1;
+  const int tile_rows = block_rows * 2 + args.filter_rows - 1;
+  const int tile_size = tile_rows * tile_cols;
+  const int filter_size = args.filter_rows * args.filter_cols;
+  dim3 block_dim = dim3(8, args.in_cols, block_rows);
+  const int shared_memory_size =
+      block_dim.x * (tile_size + filter_size) * sizeof(T);
+
+  const int num_outputs =
+      args.batch * args.out_rows * args.out_cols * args.out_depth;
+  if (args.in_rows & 1) {
+    CudaLaunchConfig config = GetCudaLaunchConfig(
+        num_outputs, d,
+        DepthwiseConv2dGPUKernelNHWCSmall<T, kKnownFilterWidth,
+                                          kKnownFilterHeight, false>,
+        shared_memory_size, block_dim.x * block_dim.y * block_dim.z);
+    DepthwiseConv2dGPUKernelNHWCSmall<T, kKnownFilterWidth, kKnownFilterHeight,
+                                      false>
+        <<<config.block_count, block_dim, shared_memory_size, d.stream()>>>(
+            args, input, filter, output);
+  } else {
+    CudaLaunchConfig config = GetCudaLaunchConfig(
+        num_outputs, d,
+        DepthwiseConv2dGPUKernelNHWCSmall<T, kKnownFilterWidth,
+                                          kKnownFilterHeight, true>,
+        shared_memory_size, block_dim.x * block_dim.y * block_dim.z);
+    DepthwiseConv2dGPUKernelNHWCSmall<T, kKnownFilterWidth, kKnownFilterHeight,
+                                      true>
+        <<<config.block_count, block_dim, shared_memory_size, d.stream()>>>(
+            args, input, filter, output);
+  }
+  return true;
+}
+
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
 void LaunchDepthwiseConv2dGPU(const GpuDevice& d, const DepthwiseArgs args,
                               const T* input, const T* filter, T* output,
                               TensorFormat data_format) {
+  if (TryLaunchDepthwiseConv2dGPUSmall<T, kKnownFilterWidth,
+                                       kKnownFilterHeight>(
+          d, args, input, filter, output, data_format)) {
+    return;
+  }
   const int num_outputs =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
   // The compile-time constant version runs faster with a single block.
   const int max_block_count = kKnownFilterWidth < 0 || kKnownFilterHeight < 0 ||
-                                      kKnownDepthMultiplier < 0 ||
-                                      args.out_rows * args.out_cols <= 256
+                                      kKnownDepthMultiplier < 0
                                   ? std::numeric_limits<int>::max()
                                   : d.getNumCudaMultiProcessors();
   if (data_format == FORMAT_NHWC) {
@@ -261,7 +451,7 @@ void LaunchDepthwiseConv2dGPU(const GpuDevice& d, const DepthwiseArgs args,
         num_outputs, d,
         DepthwiseConv2dGPUKernelNHWC<T, kKnownFilterWidth, kKnownFilterHeight,
                                      kKnownDepthMultiplier>,
-        0);
+        0, 0);
     DepthwiseConv2dGPUKernelNHWC<T, kKnownFilterWidth, kKnownFilterHeight,
                                  kKnownDepthMultiplier>
         <<<std::min(max_block_count, config.block_count),
@@ -272,7 +462,7 @@ void LaunchDepthwiseConv2dGPU(const GpuDevice& d, const DepthwiseArgs args,
         num_outputs, d,
         DepthwiseConv2dGPUKernelNCHW<T, kKnownFilterWidth, kKnownFilterHeight,
                                      kKnownDepthMultiplier>,
-        0);
+        0, 0);
     DepthwiseConv2dGPUKernelNCHW<T, kKnownFilterWidth, kKnownFilterHeight,
                                  kKnownDepthMultiplier>
         <<<std::min(max_block_count, config.block_count),
@@ -367,6 +557,145 @@ __global__ void __launch_bounds__(640, 2)
   }
 }
 
+// CUDA kernel to compute the depthwise convolution backward w.r.t. input in
+// NCHW format, tailored for small images up to 16x16. Stride and depth
+// multiplier must be 1. Padding must be 'SAME', which allows to reuse the index
+// computation.
+// Implementation is the same as the forward pass, except that the filter is
+// rotate by 180°, see filter_read_offset and filter_ptr.
+// Tiles of the input and filter tensors are loaded into shared memory before
+// performing the convolution. Each thread handles two elements per iteration,
+// one each in the lower and upper half of a tile.
+template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
+          bool kKnownEvenRows>
+__global__
+__launch_bounds__(1024, 2) void DepthwiseConv2dBackpropInputGPUKernelNHWCSmall(
+    const DepthwiseArgs args, const T* input, const T* filter, T* output) {
+  // Holds block plus halo and filter data for blockDim.x depths.
+  extern __shared__ __align__(sizeof(T)) unsigned char shared_memory[];
+  T* const shared_data = reinterpret_cast<T*>(shared_memory);
+
+  const int batches = args.batch;
+  const int in_rows = args.in_rows;
+  const int in_cols = args.in_cols;
+  const int in_depth = args.in_depth;
+  const int filter_rows =
+      kKnownFilterHeight < 0 ? args.filter_rows : kKnownFilterHeight;
+  const int filter_cols =
+      kKnownFilterWidth < 0 ? args.filter_cols : kKnownFilterWidth;
+  const int pad_rows = args.pad_rows;
+  const int pad_cols = args.pad_cols;
+
+  // Fixed blockDim.x, corresponding to Pascal's global load granularity of 32B.
+  const int block_slices = 8;
+  const int block_cols = blockDim.y;
+  const int block_rows = blockDim.z;
+
+  // These values are the same for all threads and could
+  // be precomputed on the CPU.
+  const int block_size = block_rows * block_cols * block_slices;
+  const int in_row_size = in_cols * in_depth;
+  const int in_size = in_rows * in_row_size;
+  const int in_increment = (in_cols - 1) * block_slices;
+  const int filter_size = filter_rows * filter_cols;
+  const int tile_cols = in_cols + filter_cols - 1;
+  const int even_rows = kKnownEvenRows || (1 & ~in_rows);
+  const int tile_rows = in_rows + filter_rows - even_rows;
+  const int tile_row_size = tile_cols * block_slices;
+  const int tile_size = tile_rows * tile_row_size;
+  const int tile_offset = block_rows * tile_row_size;
+  const int pad_offset = pad_rows * tile_cols + pad_cols;
+  const int batch_blocks = (in_depth + block_slices - 1) / block_slices;
+  const int in_blocks = batch_blocks * batches;
+  const int tensor_offset =
+      kKnownEvenRows ? in_size / 2 : block_rows * in_row_size;
+
+  const int thread_depth = threadIdx.x;
+  const int thread_col = threadIdx.y;
+  const int thread_row = threadIdx.z;
+
+  // Position in block.
+  const int thread_pix = thread_row * block_cols + thread_col;
+  const int thread_idx = thread_pix * block_slices + thread_depth;
+
+  // Initialize tile, in particular the padding.
+  for (int i = thread_idx; i < tile_size; i += block_size) {
+    shared_data[i] = T(0);
+  }
+  __syncthreads();
+
+  // Position in tensors.
+  const int tensor_idx = thread_pix * in_depth + thread_depth;
+
+  // Position in (padded) shared memory.
+  const int data_pix = thread_row * tile_cols + thread_col;
+  const int data_idx = data_pix * block_slices + thread_depth;
+
+  // Position in shared memory, offset by pad_rows / pad_cols.
+  const int tile_pix = data_pix + pad_offset;
+  const int tile_idx = tile_pix * block_slices + thread_depth;
+
+  const int max_depth = in_depth - thread_depth;
+  const int filter_write_offset =
+      thread_pix < filter_size ? tile_size + thread_idx : 0;
+  const int filter_read_offset =
+      tile_size + filter_size * block_slices + thread_depth;
+  const bool skip_second =
+      !kKnownEvenRows && thread_row + (in_rows & 1) == block_rows;
+
+  for (int b = blockIdx.x; b < in_blocks; b += gridDim.x) {
+    const int batch = b / batch_blocks;
+    const int stack = b - batch * batch_blocks;
+
+    const int start_depth = stack * block_slices;
+    const int filter_offset = tensor_idx + start_depth;
+    const int inout_offset = batch * in_size + filter_offset;
+    const bool depth_in_range = start_depth < max_depth;
+
+    if (depth_in_range) {
+      const T* const in_ptr = inout_offset + input;
+      T* const tile_ptr = tile_idx + shared_data;
+      tile_ptr[0] = ldg(in_ptr);
+      if (!skip_second) {
+        tile_ptr[tile_offset] = ldg(tensor_offset + in_ptr);
+      }
+
+      if (filter_write_offset != 0) {
+        shared_data[filter_write_offset] = ldg(filter_offset + filter);
+      }
+    }
+
+    // Note: the condition to reach this is uniform across the entire block.
+    __syncthreads();
+
+    if (depth_in_range) {
+      T sum1 = 0;
+      T sum2 = 0;
+      int shared_offset = data_idx;
+      const T* filter_ptr = filter_read_offset + shared_data;
+      UNROLL for (int r = 0; r < filter_rows; ++r) {
+        UNROLL for (int c = 0; c < filter_cols; ++c) {
+          filter_ptr -= block_slices;
+          const T filter_value = *filter_ptr;
+          const T* const tile_ptr = shared_offset + shared_data;
+          sum1 += filter_value * tile_ptr[0];
+          sum2 += filter_value * tile_ptr[tile_offset];
+          shared_offset += block_slices;
+        }
+        shared_offset += in_increment;
+      }
+      T* const out_ptr = inout_offset + output;
+      out_ptr[0] = sum1;
+      if (!skip_second) {
+        out_ptr[tensor_offset] = sum2;
+      }
+    }
+
+    // Note: the condition to reach this is uniform across the entire block.
+    __syncthreads();
+  }
+}
+
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
 __global__ void __launch_bounds__(640, 2)
@@ -438,6 +767,58 @@ __global__ void __launch_bounds__(640, 2)
   }
 }
 
+template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
+bool TryLaunchDepthwiseConv2dBackpropInputGPUSmall(
+    const GpuDevice& d, const DepthwiseArgs args, const T* out_backprop,
+    const T* filter, T* in_backprop, TensorFormat data_format) {
+  if (data_format != FORMAT_NHWC || args.depth_multiplier != 1 ||
+      args.stride != 1 || args.in_rows > 16 || args.in_cols > 16 ||
+      args.in_rows != args.out_rows || args.in_cols != args.out_cols ||
+      args.pad_rows < 0 || args.pad_rows >= args.filter_rows ||
+      args.pad_cols < 0 || args.pad_cols >= args.filter_cols) {
+    return false;
+  }
+
+  const int block_rows = (args.in_rows + 1) / 2;
+  if (args.filter_rows * args.filter_cols > args.in_cols * block_rows) {
+    return false;
+  }
+
+  const int tile_cols = args.in_cols + args.filter_cols - 1;
+  const int tile_rows = block_rows * 2 + args.filter_rows - 1;
+  const int tile_size = tile_rows * tile_cols;
+  const int filter_size = args.filter_rows * args.filter_cols;
+  dim3 block_dim = dim3(8, args.in_cols, block_rows);
+  const int shared_memory_size =
+      block_dim.x * (tile_size + filter_size) * sizeof(T);
+
+  const int num_in_backprop =
+      args.batch * args.in_rows * args.in_cols * args.in_depth;
+  if (args.in_rows & 1) {
+    CudaLaunchConfig config = GetCudaLaunchConfig(
+        num_in_backprop, d,
+        DepthwiseConv2dBackpropInputGPUKernelNHWCSmall<
+            T, kKnownFilterWidth, kKnownFilterHeight, false>,
+        shared_memory_size, block_dim.x * block_dim.y * block_dim.z);
+    DepthwiseConv2dBackpropInputGPUKernelNHWCSmall<T, kKnownFilterWidth,
+                                                   kKnownFilterHeight, false>
+        <<<config.block_count, block_dim, shared_memory_size, d.stream()>>>(
+            args, out_backprop, filter, in_backprop);
+  } else {
+    CudaLaunchConfig config = GetCudaLaunchConfig(
+        num_in_backprop, d,
+        DepthwiseConv2dBackpropInputGPUKernelNHWCSmall<
+            T, kKnownFilterWidth, kKnownFilterHeight, true>,
+        shared_memory_size, block_dim.x * block_dim.y * block_dim.z);
+    DepthwiseConv2dBackpropInputGPUKernelNHWCSmall<T, kKnownFilterWidth,
+                                                   kKnownFilterHeight, true>
+        <<<config.block_count, block_dim, shared_memory_size, d.stream()>>>(
+            args, out_backprop, filter, in_backprop);
+  }
+
+  return true;
+}
+
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
 void LaunchDepthwiseConv2dBackpropInputGPU(const GpuDevice& d,
@@ -445,6 +826,11 @@ void LaunchDepthwiseConv2dBackpropInputGPU(const GpuDevice& d,
                                            const T* out_backprop,
                                            const T* filter, T* in_backprop,
                                            TensorFormat data_format) {
+  if (TryLaunchDepthwiseConv2dBackpropInputGPUSmall<T, kKnownFilterWidth,
+                                                    kKnownFilterHeight>(
+          d, args, out_backprop, filter, in_backprop, data_format)) {
+    return;
+  }
   const int num_in_backprop =
       args.batch * args.in_rows * args.in_cols * args.in_depth;
   if (data_format == FORMAT_NHWC) {
@@ -452,7 +838,7 @@ void LaunchDepthwiseConv2dBackpropInputGPU(const GpuDevice& d,
         num_in_backprop, d,
         DepthwiseConv2dBackpropInputGPUKernelNHWC<
             T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>,
-        0);
+        0, 0);
     DepthwiseConv2dBackpropInputGPUKernelNHWC<
         T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
@@ -462,7 +848,7 @@ void LaunchDepthwiseConv2dBackpropInputGPU(const GpuDevice& d,
         num_in_backprop, d,
         DepthwiseConv2dBackpropInputGPUKernelNCHW<
             T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>,
-        0);
+        0, 0);
     DepthwiseConv2dBackpropInputGPUKernelNCHW<
         T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
@@ -590,6 +976,160 @@ __global__ void __launch_bounds__(640, 2)
   }
 }
 
+// CUDA kernel to compute the depthwise convolution backward w.r.t. filter in
+// NCHW format, tailored for small images up to 16x16. Stride and depth
+// multiplier must be 1. Padding must be 'SAME'.
+// Tiles of the input tensor are loaded into shared memory before performing the
+// convolution. Per iteration and filter element, each thread first performs
+// a partial convolution for two elements, one each in the lower and upper half
+// of a tile. The intermediate result of 4 consecutive columns are then
+// accumulated and written to shared memory. Finally, the values in shared
+// memory are warp-accumulated (in chunks of 32 elements) and summed up in
+// global memory using atomics.
+template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
+__global__
+__launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
+    const DepthwiseArgs args, const T* output, const T* input, T* filter) {
+  // Holds block plus halo and filter data for blockDim.x depths.
+  extern __shared__ __align__(sizeof(T)) unsigned char shared_memory[];
+  T* const shared_data = reinterpret_cast<T*>(shared_memory);
+
+  const int batches = args.batch;
+  const int in_rows = args.in_rows;
+  const int in_cols = args.in_cols;
+  const int in_depth = args.in_depth;
+  const int filter_rows =
+      kKnownFilterHeight < 0 ? args.filter_rows : kKnownFilterHeight;
+  const int filter_cols =
+      kKnownFilterWidth < 0 ? args.filter_cols : kKnownFilterWidth;
+  const int pad_rows = args.pad_rows;
+  const int pad_cols = args.pad_cols;
+
+  // Fixed blockDim.x, corresponding to Pascal's global load granularity of 32B.
+  const int block_slices = 8;
+  const int block_cols = blockDim.y;
+  const int block_rows = blockDim.z;
+
+  // These values are the same for all threads and could
+  // be precomputed on the CPU.
+  const int block_size = block_rows * block_cols * block_slices;
+  const int in_row_size = in_cols * in_depth;
+  const int in_size = in_rows * in_row_size;
+  const int in_increment = (in_cols - 1) * block_slices;
+  const int filter_size = filter_rows * filter_cols;
+  const int tile_cols = in_cols + filter_cols - 1;
+  const int tile_rows = 2 * block_rows + filter_rows - 1;
+  const int tile_row_size = tile_cols * block_slices;
+  const int tile_size = tile_rows * tile_row_size;
+  const int tile_offset = block_rows * tile_row_size;
+  const int pad_offset = pad_rows * tile_cols + pad_cols;
+  const int batch_blocks = (in_depth + block_slices - 1) / block_slices;
+  const int in_blocks = batch_blocks * batches;
+  const int tensor_offset = block_rows * in_row_size;
+  const int accum_pixels = 32;
+  const int accum_increment = accum_pixels * block_slices;
+  const int accum_size = filter_size * accum_increment;
+
+  const int thread_depth = threadIdx.x;
+  const int thread_col = threadIdx.y;
+  const int thread_row = threadIdx.z;
+
+  // Position in block.
+  const int thread_pix = thread_row * block_cols + thread_col;
+  const int thread_idx = thread_pix * block_slices + thread_depth;
+
+  // Initialize tile, in particular the padding and accumulator.
+  for (int i = thread_idx; i < tile_size + accum_size; i += block_size) {
+    shared_data[i] = T(0);
+  }
+  __syncthreads();
+
+  // Position in tensors.
+  const int tensor_idx = thread_pix * in_depth + thread_depth;
+
+  // Position in (padded) shared memory.
+  const int data_pix = thread_row * tile_cols + thread_col;
+  const int data_idx = data_pix * block_slices + thread_depth;
+
+  // Position in shared memory, offset by pad_rows / pad_cols.
+  const int tile_pix = data_pix + pad_offset;
+  const int tile_idx = tile_pix * block_slices + thread_depth;
+
+  // Position in accumulator (1 per 4 threads, depth major).
+  const int accum_pix = thread_pix / 4;
+  const int accum_idx = thread_depth * accum_pixels + accum_pix;
+
+  const int max_depth = in_depth - thread_depth;
+  const int accum_offset = tile_size + accum_idx;
+  const bool skip_second = block_rows + thread_row >= in_rows;
+
+  for (int b = blockIdx.x; b < in_blocks; b += gridDim.x) {
+    const int batch = b / batch_blocks;
+    const int stack = b - batch * batch_blocks;
+
+    const int start_depth = stack * block_slices;
+    const int filter_offset = tensor_idx + start_depth;
+    const int inout_offset = batch * in_size + filter_offset;
+    const bool depth_in_range = start_depth < max_depth;
+
+    if (depth_in_range) {
+      const T* const in_ptr = inout_offset + input;
+      T* const tile_ptr = tile_idx + shared_data;
+      tile_ptr[0] = ldg(in_ptr);
+      if (!skip_second) {
+        tile_ptr[tile_offset] = ldg(tensor_offset + in_ptr);
+      }
+    }
+
+    // Note: the condition to reach this is uniform across the entire block.
+    __syncthreads();
+
+    if (depth_in_range) {
+      const T* const out_ptr = inout_offset + output;
+      const T out1 = ldg(out_ptr);
+      const T out2 = skip_second ? T(0) : ldg(tensor_offset + out_ptr);
+      int shared_offset = data_idx;
+      T* accum_ptr = accum_offset + shared_data;
+      UNROLL for (int r = 0; r < filter_rows; ++r) {
+        UNROLL for (int c = 0; c < filter_cols; ++c) {
+          const T* const tile_ptr = shared_offset + shared_data;
+          T val = out1 * tile_ptr[0] + out2 * tile_ptr[tile_offset];
+          val += CudaShuffleDown(val, 16);
+          val += CudaShuffleDown(val, 8);
+          if (!(thread_idx & 24) /* i.e. 'lane_idx < 8' */) {
+            *accum_ptr = val;
+          }
+          shared_offset += block_slices;
+          accum_ptr += accum_increment;
+        }
+        shared_offset += in_increment;
+      }
+    }
+
+    // Note: the condition to reach this is uniform across the entire block.
+    __syncthreads();
+
+    const T* const accum_data = tile_size + shared_data;
+    for (int i = thread_idx; i < accum_size; i += block_size) {
+      const int filter_idx = i / 32;
+      const int filter_pix = filter_idx / block_slices;
+      const int filter_depth = filter_idx % block_slices + start_depth;
+      const int filter_offset = filter_pix * in_depth + filter_depth;
+      if (filter_depth < in_depth) {
+        T val = accum_data[i];
+        val += CudaShuffleDown(val, 16);
+        val += CudaShuffleDown(val, 8);
+        val += CudaShuffleDown(val, 4);
+        val += CudaShuffleDown(val, 2);
+        val += CudaShuffleDown(val, 1);
+        if (!(thread_idx & 31) /* i.e. 'lane_idx == 0' */) {
+          CudaAtomicAdd(filter_offset + filter, val);
+        }
+      }
+    }
+  }
+}
+
 // A Cuda kernel to compute the depthwise convolution backprop w.r.t. filter.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
@@ -690,6 +1230,49 @@ __global__ void __launch_bounds__(640, 2)
   }
 }
 
+template <typename T, int kKnownFilterWidth, int kKnownFilterHeight>
+bool TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
+    const GpuDevice& d, const DepthwiseArgs args, const T* out_backprop,
+    const T* input, T* filter_backprop, TensorFormat data_format) {
+  if (data_format != FORMAT_NHWC || args.depth_multiplier != 1 ||
+      args.stride != 1 || args.in_rows > 16 || args.in_cols > 16 ||
+      args.in_rows != args.out_rows || args.in_cols != args.out_cols ||
+      args.pad_rows < 0 || args.pad_rows >= args.filter_rows ||
+      args.pad_cols < 0 || args.pad_cols >= args.filter_cols) {
+    return false;
+  }
+
+  const int lookup_table[] = {0, 3, 1, 3};
+  const int rows_mask = lookup_table[args.in_cols & 3];
+  const int block_rows = (args.in_rows + 1) / 2 + rows_mask & ~rows_mask;
+  const int tile_cols = args.in_cols + args.filter_cols - 1;
+  const int tile_rows = block_rows * 2 + args.filter_rows - 1;
+  const int tile_size = tile_rows * tile_cols;
+  const int accum_size = args.filter_rows * args.filter_cols * 32;
+  dim3 block_dim = dim3(8, args.in_cols, block_rows);
+  const int shared_memory_size =
+      block_dim.x * (tile_size + accum_size) * sizeof(T);
+
+  if (block_rows > args.in_rows ||
+      args.filter_rows * args.filter_cols > args.in_cols * block_rows ||
+      shared_memory_size > d.sharedMemPerBlock()) {
+    return false;
+  }
+
+  const int num_out_backprop =
+      args.batch * args.out_rows * args.out_cols * args.out_depth;
+  CudaLaunchConfig config = GetCudaLaunchConfig(
+      num_out_backprop, d,
+      DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall<T, kKnownFilterWidth,
+                                                      kKnownFilterHeight>,
+      shared_memory_size, block_dim.x * block_dim.y * block_dim.z);
+  DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall<T, kKnownFilterWidth,
+                                                  kKnownFilterHeight>
+      <<<config.block_count, block_dim, shared_memory_size, d.stream()>>>(
+          args, out_backprop, input, filter_backprop);
+  return true;
+}
+
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
           int kKnownDepthMultiplier>
 void LaunchDepthwiseConv2dBackpropFilterGPU(const GpuDevice& d,
@@ -697,6 +1280,11 @@ void LaunchDepthwiseConv2dBackpropFilterGPU(const GpuDevice& d,
                                             const T* out_backprop,
                                             const T* input, T* filter_backprop,
                                             TensorFormat data_format) {
+  if (TryLaunchDepthwiseConv2dBackpropFilterGPUSmall<T, kKnownFilterWidth,
+                                                     kKnownFilterHeight>(
+          d, args, out_backprop, input, filter_backprop, data_format)) {
+    return;
+  }
   const int num_out_backprop =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
   if (data_format == FORMAT_NHWC) {
@@ -704,7 +1292,7 @@ void LaunchDepthwiseConv2dBackpropFilterGPU(const GpuDevice& d,
         num_out_backprop, d,
         DepthwiseConv2dBackpropFilterGPUKernelNHWC<
             T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>,
-        0);
+        0, 0);
     DepthwiseConv2dBackpropFilterGPUKernelNHWC<
         T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
@@ -714,7 +1302,7 @@ void LaunchDepthwiseConv2dBackpropFilterGPU(const GpuDevice& d,
         num_out_backprop, d,
         DepthwiseConv2dBackpropFilterGPUKernelNCHW<
             T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>,
-        0);
+        0, 0);
     DepthwiseConv2dBackpropFilterGPUKernelNCHW<
         T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>
         <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(

@@ -236,7 +236,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   `tensor[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :,
   :])`
 
-  ```prettyprint
+  ```python
   # a is a tensor.
   # s is a tensor of singular values.
   # u is a tensor of left singular vectors.
@@ -374,7 +374,7 @@ def norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None):
       # matrices.
       result = math_ops.sqrt(
           math_ops.reduce_sum(
-              math_ops.square(tensor), axis, keep_dims=True))
+              tensor * math_ops.conj(tensor), axis, keep_dims=True))
     else:
       result = math_ops.abs(tensor)
       if ord == 1:

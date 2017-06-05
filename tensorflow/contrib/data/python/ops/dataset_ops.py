@@ -629,6 +629,7 @@ class Dataset(object):
     # structure of elements in the resulting dataset.
     a.enumerate(start=5) == { (5, 1), (6, 2), (7, 3) }
     b.enumerate() == { (0, (7, 8)), (1, (9, 10)), (2, (11, 12)) }
+    ```
 
     Args:
       start: A `tf.int64` scalar `tf.Tensor`, representing the start
@@ -1441,7 +1442,8 @@ class MapDataset(Dataset):
         self._output_buffer_size = ops.convert_to_tensor(
             output_buffer_size, dtype=dtypes.int64, name="output_buffer_size")
       else:
-        self._output_buffer_size = self._num_threads
+        self._output_buffer_size = ops.convert_to_tensor(
+            self._num_threads, dtype=dtypes.int64, name="output_buffer_size")
     else:
       self._num_threads = None
       self._output_buffer_size = None

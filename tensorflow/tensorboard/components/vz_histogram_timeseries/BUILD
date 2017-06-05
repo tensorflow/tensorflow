@@ -1,40 +1,37 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
 load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
+load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-web_library(
+ts_web_library(
     name = "vz_histogram_timeseries",
-    srcs = [
-        "vz-histogram-timeseries.html",
-    ],
+    srcs = ["vz-histogram-timeseries.html"],
     path = "/vz-histogram-timeseries",
     deps = [
         "//tensorflow/tensorboard/components/tf_imports:d3",
-        "@org_polymer",
+        "//tensorflow/tensorboard/components/tf_imports:polymer",
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(["**"]),
-    tags = ["notsan"],
+ts_web_library(
+    name = "demo",
+    srcs = ["index.html"],
+    path = "/vz-histogram-timeseries",
+    deps = [
+        ":vz_histogram_timeseries",
+        "//tensorflow/tensorboard/components/tf_imports:webcomponentsjs",
+        "@org_polymer_iron_demo_helpers",
+        "@org_polymer_paper_button",
+        "@org_polymer_paper_styles",
+    ],
 )
-
-################################################################################
-# MARKED FOR DELETION
 
 tensorboard_webcomponent_library(
     name = "legacy",
-    srcs = [
-        "index.html",
-        "vz-histogram-timeseries.html",
-        ":legacy_ts",
-    ],
-    visibility = ["//visibility:public"],
+    srcs = [":vz_histogram_timeseries"],
+    visibility = ["//learning/vis/vz_elements/catalog:__pkg__"],
     destdir = "vz-histogram-timeseries",
     deps = [
         "//tensorflow/tensorboard/components/tf_imports_google:lib",
@@ -42,9 +39,8 @@ tensorboard_webcomponent_library(
     ],
 )
 
-# This is needed: components/BUILD seeks a legacy_ts rule in this package.
-tensorboard_ts_library(
-    name = "legacy_ts",
-    deps_mgmt = "off",
-    runtime = "nodejs",
+filegroup(
+    name = "all_files",
+    srcs = glob(["**"]),
+    tags = ["notsan"],
 )

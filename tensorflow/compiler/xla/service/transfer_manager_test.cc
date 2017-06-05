@@ -121,7 +121,7 @@ TEST_F(CpuTransferManagerTest, TransferR1U8FromDevice) {
   const Shape shape = ShapeUtil::MakeShape(U8, {4});
   TF_CHECK_OK(transfer_manager_.TransferLiteralFromDevice(
       stream_exec_, memptr, shape, shape, &literal));
-  CHECK_EQ("klmn", literal.u8s());
+  CHECK_EQ("klmn", literal.u8s_string());
 }
 
 TEST_F(CpuTransferManagerTest, TransferBufferFromDevice) {

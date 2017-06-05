@@ -22,7 +22,7 @@ namespace tensorflow {
 
 class OpKernelContext;
 
-// DeepConv2D is a Conv2D implementation specialzied for deep (i.e. large
+// DeepConv2D is a Conv2D implementation specialized for deep (i.e. large
 // in_depth * out_depth product) convolutions (see deep_conv2d.cc for details).
 
 // DeepConv2DTransform is an interface for implementing transforms for

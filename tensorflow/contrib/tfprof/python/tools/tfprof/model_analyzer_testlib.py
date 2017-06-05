@@ -17,13 +17,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.rnn.python.ops.core_rnn_cell import BasicRNNCell
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
+from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import gradient_descent
 
@@ -55,7 +57,7 @@ def BuildFullModel():
     with variable_scope.variable_scope('inp_%d' % i):
       seq.append(array_ops.reshape(BuildSmallModel(), [2, 1, -1]))
 
-  cell = BasicRNNCell(16, 48)
+  cell = rnn_cell.BasicRNNCell(16)
   out = rnn.dynamic_rnn(
       cell, array_ops.concat(seq, axis=1), dtype=dtypes.float32)[0]
 
@@ -65,3 +67,31 @@ def BuildFullModel():
   return sgd_op.minimize(loss)
 
 
+def BuildSplitableModel():
+  """Build a small model that can be run partially in each step."""
+  image = array_ops.zeros([2, 6, 6, 3])
+
+  kernel1 = variable_scope.get_variable(
+      'DW', [3, 3, 3, 6],
+      dtypes.float32,
+      initializer=init_ops.random_normal_initializer(stddev=0.001))
+  r1 = nn_ops.conv2d(image, kernel1, [1, 2, 2, 1], padding='SAME')
+
+  kernel2 = variable_scope.get_variable(
+      'DW2', [2, 3, 3, 6],
+      dtypes.float32,
+      initializer=init_ops.random_normal_initializer(stddev=0.001))
+  r2 = nn_ops.conv2d(image, kernel2, [1, 2, 2, 1], padding='SAME')
+
+  r3 = r1 + r2
+  return r1, r2, r3
+
+
+def SearchTFProfNode(node, name):
+  """Search a node in the tree."""
+  if node.name == name:
+    return node
+  for c in node.children:
+    r = SearchTFProfNode(c, name)
+    if r: return r
+  return None

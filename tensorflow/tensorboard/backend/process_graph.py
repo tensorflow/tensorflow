@@ -19,7 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.util import compat
+
+import tensorflow as tf
 
 
 def prepare_graph_for_ui(graph, limit_attr_size=1024,
@@ -65,5 +66,4 @@ def prepare_graph_for_ui(graph, limit_attr_size=1024,
           # Add the attribute key to the list of "too large" attributes.
           # This is used in the info card in the graph UI to show the user
           # that some attributes are too large to be shown.
-          node.attr[large_attrs_key].list.s.append(compat.as_bytes(key))
-
+          node.attr[large_attrs_key].list.s.append(tf.compat.as_bytes(key))

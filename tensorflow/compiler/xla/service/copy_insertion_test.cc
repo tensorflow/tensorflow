@@ -44,13 +44,20 @@ class CopyInsertionTest : public HloTestBase {
     EXPECT_IS_OK(copy_insertion.Run(module).status());
 
     // Verify the points to set of the root of the computation after copy
-    // insertion contains no constants or parameters.
+    // insertion contains no constants or parameters, and is distinct and
+    // non-ambiguous.
     auto points_to_analysis =
         TuplePointsToAnalysis::Run(module).ConsumeValueOrDie();
+    const auto& points_to = points_to_analysis->GetPointsToSet(
+        module->entry_computation()->root_instruction());
+    EXPECT_TRUE(points_to.IsDistinct());
+    EXPECT_TRUE(!points_to.IsAmbiguous());
+
     tensorflow::gtl::FlatSet<const LogicalBuffer*> maybe_live_out_buffers =
         points_to_analysis
             ->GetPointsToSet(module->entry_computation()->root_instruction())
             .CreateFlattenedSet();
+
     for (const LogicalBuffer* buffer : maybe_live_out_buffers) {
       EXPECT_NE(buffer->instruction()->opcode(), HloOpcode::kConstant);
       EXPECT_NE(buffer->instruction()->opcode(), HloOpcode::kParameter);
@@ -390,6 +397,47 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     return builder.Build();
   }
 
+  // Builds a While body computation with two output tuple elements dependent on
+  // both input tuple elements.
+  //
+  // EX: Body({in0, in1, in2})
+  //   out0 = Add(in0, 1)
+  //   out1 = in1
+  //   out2 = in2
+  //   Tuple(out0, out1, out2)
+  std::unique_ptr<HloComputation> BuildDependentBodyComputation2() {
+    auto builder = HloComputation::Builder(TestName() + ".Body");
+
+    const Shape& loop_state_shape = ShapeUtil::MakeTupleShape(
+        {induction_variable_shape_, data_shape_, data_shape_});
+
+    auto loop_state = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, loop_state_shape, "loop_state"));
+
+    // Update the induction variable GTE(0).
+    auto induction_variable =
+        builder.AddInstruction(HloInstruction::CreateGetTupleElement(
+            induction_variable_shape_, loop_state, 0));
+    auto inc = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+
+    // add0 = Add(in0, 1)
+    auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
+        induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
+    // data1 = GTE(1).
+    HloInstruction* data1 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 1));
+
+    // data2 = GTE(2).
+    HloInstruction* data2 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 2));
+
+    // Create output Tuple.
+    builder.AddInstruction(HloInstruction::CreateTuple({add0, data1, data2}));
+
+    return builder.Build();
+  }
+
   // Builds a While body computation with read-only tuple element 0.
   // EX:
   // Body({in0, in1})
@@ -408,6 +456,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     // Update data GTE(1).
     auto data = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 1));
+
     // Use 'induction_variable' in computation with no path to output tuple.
     auto update = builder.AddInstruction(
         HloInstruction::CreateBroadcast(data_shape_, induction_variable, {8}));
@@ -431,6 +480,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     // Create param instruction to access loop state.
     const Shape& loop_state_shape =
         nested ? nested_loop_state_shape_ : loop_state_shape_;
+
     auto loop_state = builder.AddInstruction(
         HloInstruction::CreateParameter(0, loop_state_shape, "loop_state"));
     // Update the induction variable GTE(0).
@@ -972,7 +1022,8 @@ TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinct) {
                                   op::Copy(old_init->operand(1)->operand(0)))));
 }
 
-// Tests while init instruction buffer which interfers with while result buffer.
+// Tests while init instruction buffer which interferes with while result
+// buffer.
 //
 //     init_data = Broadcast(...)
 //     add_unrelated = Add(init_data) // takes a reference to cause interference
@@ -987,6 +1038,82 @@ TEST_F(WhileCopyInsertionTest, InitPointsToInterfering) {
 
   EXPECT_THAT(while_hlo->operand(0), op::Tuple(op::Copy(old_init->operand(0)),
                                                op::Copy(old_init->operand(1))));
+}
+
+// Tests while init instruction buffer which has a non-distinct points-to set:
+//
+//     init = Tuple(Parameter(S32, {}), Parameter(F32, {8},
+//                  Parameter(F32, {8})))
+//
+// where the second and third parameters are identical *and* the tuple shared
+// by another while instruction..
+//
+// Verifies that the resulting point-to set is distinct in the resulting Tuple
+// (non-identical Copys). In other words, verifies that copy sharing does not
+// insert identical copies to the resulting tuple.
+TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinctUsedByTwoWhileLoops) {
+  auto condition1 = module_.AddEmbeddedComputation(BuildConditionComputation());
+  auto condition2 = module_.AddEmbeddedComputation(BuildConditionComputation());
+  // Loop body that outputs tuple comprises two elements dependent on the init
+  // tuple.
+  auto body1 = module_.AddEmbeddedComputation(BuildDependentBodyComputation2());
+  auto body2 = module_.AddEmbeddedComputation(BuildDependentBodyComputation2());
+
+  auto builder = HloComputation::Builder(TestName() + ".While");
+
+  auto iter_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, induction_variable_shape_, "iter"));
+  auto data_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, data_shape_, "data"));
+
+  // Loop init tuple contains two identical parameter buffers.
+  auto loop_init = builder.AddInstruction(
+      HloInstruction::CreateTuple({iter_param, data_param, data_param}));
+
+  const Shape& loop_state_shape = ShapeUtil::MakeTupleShape(
+      {induction_variable_shape_, data_shape_, data_shape_});
+
+  // Two while loops shares the same loop init tuple.
+  auto while_hlo1 = builder.AddInstruction(HloInstruction::CreateWhile(
+      loop_state_shape, condition1, body1, loop_init));
+  auto while_hlo2 = builder.AddInstruction(HloInstruction::CreateWhile(
+      loop_state_shape, condition2, body2, loop_init));
+
+  module_.AddEntryComputation(builder.Build());
+
+  auto points_to_analysis =
+      TuplePointsToAnalysis::Run(&module_).ConsumeValueOrDie();
+
+  // Asserts that the init tuples before copy insertion is non-distinct.
+  ASSERT_FALSE(
+      points_to_analysis->GetPointsToSet(while_hlo1->operand(0)).IsDistinct());
+  ASSERT_FALSE(
+      points_to_analysis->GetPointsToSet(while_hlo2->operand(0)).IsDistinct());
+
+  auto old_init1 = while_hlo1->operand(0);
+  auto old_init2 = while_hlo2->operand(0);
+
+  InsertCopies(&module_);
+
+  EXPECT_THAT(while_hlo1->operand(0),
+              op::Tuple(op::Copy(old_init1->operand(0)),
+                        op::Copy(old_init1->operand(1)),
+                        op::Copy(old_init1->operand(2))));
+
+  EXPECT_THAT(while_hlo2->operand(0),
+              op::Tuple(op::Copy(old_init2->operand(0)),
+                        op::Copy(old_init2->operand(1)),
+                        op::Copy(old_init2->operand(2))));
+
+  // Verifies the init tuples after copy insertion is distinct.
+  points_to_analysis = TuplePointsToAnalysis::Run(&module_).ConsumeValueOrDie();
+  const auto& points_to1 =
+      points_to_analysis->GetPointsToSet(while_hlo1->operand(0));
+  EXPECT_TRUE(points_to1.IsDistinct());
+
+  const auto& points_to2 =
+      points_to_analysis->GetPointsToSet(while_hlo2->operand(0));
+  EXPECT_TRUE(points_to2.IsDistinct());
 }
 
 }  // namespace

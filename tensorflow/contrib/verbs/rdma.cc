@@ -782,8 +782,8 @@ void RdmaTensorBuffer::SendNextItem() {
         EnqueueItem(key_with_step_id);
       }
     };
-    channel_->adapter_->worker_env_->rendezvous_mgr
-        ->RecvLocalAsync(step_id, parsed, cb);
+    channel_->adapter_->worker_env_->rendezvous_mgr->RecvLocalAsync(step_id,
+                                                                    parsed, cb);
   }
 }
 

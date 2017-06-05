@@ -152,17 +152,16 @@ public class OperationBuilderTest {
   @Test
   public void addControlInput() {
     try (Graph g = new Graph();
-         Session s = new Session(g);
-         Tensor yes = Tensor.create(true);
-         Tensor no = Tensor.create(false)) {
+        Session s = new Session(g);
+        Tensor yes = Tensor.create(true);
+        Tensor no = Tensor.create(false)) {
       Output placeholder = TestUtil.placeholder(g, "boolean", DataType.BOOL);
-      Operation check = g.opBuilder("Assert", "assert")
-          .addInput(placeholder)
-          .addInputList(new Output[]{placeholder})
-          .build();
-      Operation noop = g.opBuilder("NoOp", "noop")
-          .addControlInput(check)
-          .build();
+      Operation check =
+          g.opBuilder("Assert", "assert")
+              .addInput(placeholder)
+              .addInputList(new Output[] {placeholder})
+              .build();
+      Operation noop = g.opBuilder("NoOp", "noop").addControlInput(check).build();
 
       // No problems when the Assert check succeeds
       s.runner().feed(placeholder, yes).addTarget(noop).run();

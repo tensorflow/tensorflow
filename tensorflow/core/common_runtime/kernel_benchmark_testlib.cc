@@ -123,10 +123,12 @@ void Benchmark::RunWithArgs(
   }
   // Gets inputs' and outputs' rendezvous keys.
   std::vector<std::pair<string, Tensor>> in;
+  in.reserve(inputs.size());
   for (const auto& p : inputs) {
     in.push_back({GetRendezvousKey(p.first), p.second});
   }
   std::vector<string> out;
+  out.reserve(outputs.size());
   for (const auto& n : outputs) {
     out.push_back(GetRendezvousKey(n));
   }

@@ -66,13 +66,7 @@ module tf.graph.scene.node {
     // Select all children and join with data.
     // (Note that all children of g.nodes are g.node)
     let nodeGroups =
-        container
-            .selectAll(function() {
-              // using d3's selector function
-              // See https://github.com/mbostock/d3/releases/tag/v2.0.0
-              // (It's not listed in the d3 wiki.)
-              return this.childNodes;  // this here refers to container.node()
-            })
+        (container as any).selectAll(function() {return this.childNodes;})
             .data(nodeData, (d) => {
               // make sure that we don't have to swap shape type
               return d.node.name + ':' + d.node.type;
@@ -86,10 +80,9 @@ module tf.graph.scene.node {
           let nodeGroup = d3.select(this);
           // index node group for quick stylizing
           sceneElement.addNodeGroup(d.node.name, nodeGroup);
-        });
-
-    // UPDATE
-    nodeGroups
+        })
+        .merge(nodeGroups)
+        // ENTER + UPDATE
         .attr('class', d => { return Class.Node.GROUP + ' ' + nodeClass(d); })
         .each(function(d) {
           let nodeGroup = d3.select(this);
@@ -200,7 +193,7 @@ function addButton(selection, d: render.RenderNodeInfo, sceneElement) {
       .attr('d', 'M0,-2.2 V2.2 M-2.2,0 H2.2');
   scene.selectOrCreateChild(group, 'path', Class.Node.COLLAPSE_BUTTON)
       .attr('d', 'M-2.2,0 H2.2');
-  group.on('click', d => {
+  (group as any).on('click', (d: any) => {
     // Stop this event's propagation so that it isn't also considered a
     // node-select.
     (<Event>d3.event).stopPropagation();
@@ -368,7 +361,7 @@ function labelBuild(nodeGroup, renderNodeInfo: render.RenderNodeInfo,
     label.attr('font-size', scale(text.length) + 'px');
   }
 
-  let txtElement = <d3.Selection<any>>label.text(text);
+  let txtElement = <d3.Selection<any, any, any, any>>label.text(text);
   enforceLabelWidth(txtElement, renderNodeInfo.node.type, renderNodeInfo);
   return label;
 }
@@ -386,8 +379,8 @@ function labelBuild(nodeGroup, renderNodeInfo: render.RenderNodeInfo,
  * determine whether META nodes are collapsed or expanded.
  */
 export function enforceLabelWidth(
-    txtElementSelection: d3.Selection<any>, nodeType: NodeType | number,
-    renderNodeInfo?: render.RenderNodeInfo) {
+    txtElementSelection: d3.Selection<any, any, any, any>, nodeType: NodeType | number,
+    renderNodeInfo?: render.RenderNodeInfo): any {
   // Get text element itself and its on-screen width.
   let txtNode = <SVGTextElement>txtElementSelection.node();
   let computedTxtLength = txtNode.getComputedTextLength();
@@ -453,7 +446,7 @@ export function enforceLabelWidth(
 let fontScale = null;
 function getLabelFontScale(sceneElement) {
   if (!fontScale) {
-    fontScale = d3.scale.linear()
+    fontScale = d3.scaleLinear()
       .domain([sceneElement.maxMetanodeLabelLengthLargeFont,
         sceneElement.maxMetanodeLabelLength])
       .range([sceneElement.maxMetanodeLabelLengthFontSize,
@@ -482,7 +475,7 @@ function labelPosition(nodeGroup, cx: number, cy: number,
  * @param nodeClass class for the element.
  * @return Selection of the shape.
  */
-export function buildShape(nodeGroup, d, nodeClass: string) {
+export function buildShape(nodeGroup, d, nodeClass: string): d3.Selection<any, any, any, any> {
   // Create a group to house the underlying visual elements.
   let shapeGroup = scene.selectOrCreateChild(nodeGroup, 'g', nodeClass);
   // TODO(jimbo): DOM structure should be templated in HTML somewhere, not JS.
@@ -505,15 +498,15 @@ export function buildShape(nodeGroup, d, nodeClass: string) {
       scene.selectOrCreateChild(shapeGroup, 'use', classList)
           .attr('xlink:href', '#op-series-' + stampType + '-stamp');
       scene.selectOrCreateChild(shapeGroup, 'rect', Class.Node.COLOR_TARGET)
-          .attr({rx: d.radius, ry: d.radius});
+          .attr('rx', d.radius).attr('ry', d.radius);
       break;
     case NodeType.BRIDGE:
       scene.selectOrCreateChild(shapeGroup, 'rect', Class.Node.COLOR_TARGET)
-          .attr({rx: d.radius, ry: d.radius});
+          .attr('rx', d.radius).attr('ry', d.radius);
       break;
     case NodeType.META:
       scene.selectOrCreateChild(shapeGroup, 'rect', Class.Node.COLOR_TARGET)
-          .attr({rx: d.radius, ry: d.radius});
+          .attr('rx', d.radius).attr('ry', d.radius);
       break;
     default:
       throw Error('Unrecognized node type: ' + d.node.type);
@@ -727,12 +720,12 @@ export function traceInputs(renderGraphInfo: tf.graph.render.RenderGraphInfo) {
 
   // Extract currently selected node. Return if input tracing disabled or no
   // node is selected.
-  let selectedNodeSelectorString = 'g.node.selected,g.op.selected';
-  let node = d3.select(selectedNodeSelectorString);
+  const selectedNodeSelectorString = 'g.node.selected,g.op.selected';
+  const nodeSelection = d3.select(selectedNodeSelectorString);
   let currentNode = undefined;
-  if (renderGraphInfo && renderGraphInfo.traceInputs && node && node[0] &&
-      node[0][0]) {
-    currentNode = node[0][0] as Element;
+  if (renderGraphInfo && renderGraphInfo.traceInputs &&
+      nodeSelection.nodes().length) {
+    currentNode = nodeSelection.nodes()[0];
   } else {
     return;
   }
@@ -744,13 +737,12 @@ export function traceInputs(renderGraphInfo: tf.graph.render.RenderGraphInfo) {
         traceAllInputsOfOpNode(renderGraphInfo, nodeInstance, allTracedNodes);
   });
 
-  d3.selectAll(selectedNodeSelectorString).classed({
-    // Remove the input-highlight from the selected node.
-    'input-highlight': false,
-    // Add input-highlight-selected class to selected node, which allows
-    // treating the selected not as a special case of an input node.
-    'input-highlight-selected': true
-  });
+  d3.selectAll(selectedNodeSelectorString)
+      // Remove the input-highlight from the selected node.
+      .classed('input-highlight', false)
+      // Add input-highlight-selected class to selected node, which allows
+      // treating the selected not as a special case of an input node.
+      .classed('input-highlight-selected', true);
 
   // Highlight all parent nodes of each OpNode as input parent to allow
   // specific highlighting.
@@ -1024,16 +1016,17 @@ function _markParentsOfNodes(visibleNodes: {[nodeName: string]: Node}) {
     let currentNode = nodeInstance;
 
     while (currentNode.name !== tf.graph.ROOT_NAME) {
-      let renderedElement = d3.select(`.node[data-name="${currentNode.name}"]`);
+      const renderedElementSelection =
+          d3.select(`.node[data-name="${currentNode.name}"]`);
       // Only mark the element as a parent node to an input if it is not
       // marked as input node itself.
-      if (renderedElement[0][0] &&
-          !renderedElement.classed('input-highlight') &&
-          !renderedElement.classed('selected') &&
+      if (renderedElementSelection.nodes().length &&
+          !renderedElementSelection.classed('input-highlight') &&
+          !renderedElementSelection.classed('selected') &&
           // OpNode only parent if start node is embedded node, in which case
           // the OpNode should be faded as well.
-          !renderedElement.classed('op')) {
-        renderedElement.classed('input-parent', true);
+          !renderedElementSelection.classed('op')) {
+        renderedElementSelection.classed('input-parent', true);
       }
       currentNode = currentNode.parentNode;
     }
