@@ -3159,6 +3159,21 @@ tf_kernel_library(
     deps = REQUIRED_DEPS,
 )
 
+tf_cc_test(
+    name = "sendrecv_ops_test",
+    srcs = ["sendrecv_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":sendrecv_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 cc_library(
     name = "sparse",
     deps = [
