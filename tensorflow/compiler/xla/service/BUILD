@@ -681,7 +681,6 @@ cc_test(
     srcs = ["buffer_liveness_test.cc"],
     deps = [
         ":buffer_liveness",
-        ":cpu_plugin",
         ":hlo",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
@@ -727,7 +726,6 @@ cc_test(
         ":call_graph",
         ":computation_tracker",
         ":copy_insertion",
-        ":cpu_plugin",
         ":flatten_call_graph",
         ":hlo",
         ":hlo_ordering",
@@ -792,7 +790,6 @@ cc_test(
     name = "hlo_ordering_test",
     srcs = ["hlo_ordering_test.cc"],
     deps = [
-        ":cpu_plugin",
         ":hlo",
         ":hlo_ordering",
         "//tensorflow/compiler/xla:shape_util",
@@ -862,7 +859,6 @@ cc_test(
     srcs = ["algebraic_simplifier_test.cc"],
     deps = [
         ":algebraic_simplifier",
-        ":cpu_plugin",
         ":hlo",
         ":hlo_matchers",
         ":hlo_pass",
@@ -930,7 +926,6 @@ cc_test(
     name = "inliner_test",
     srcs = ["inliner_test.cc"],
     deps = [
-        ":cpu_plugin",
         ":hlo",
         ":hlo_matchers",
         ":inliner",
@@ -1087,7 +1082,6 @@ cc_test(
     name = "hlo_computation_test",
     srcs = ["hlo_computation_test.cc"],
     deps = [
-        ":cpu_plugin",
         ":hlo",
         ":hlo_matchers",
         "//tensorflow/compiler/xla:literal_util",
@@ -1118,7 +1112,6 @@ cc_test(
     name = "hlo_module_test",
     srcs = ["hlo_module_test.cc"],
     deps = [
-        ":cpu_plugin",
         ":hlo",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1258,7 +1251,6 @@ cc_test(
     srcs = ["copy_insertion_test.cc"],
     deps = [
         ":copy_insertion",
-        ":cpu_plugin",
         ":hlo",
         ":hlo_matchers",
         ":tuple_points_to_analysis",
@@ -1323,7 +1315,6 @@ cc_test(
     name = "hlo_rematerialization_test",
     srcs = ["hlo_rematerialization_test.cc"],
     deps = [
-        ":cpu_plugin",
         ":hlo",
         ":hlo_matchers",
         ":hlo_ordering",
@@ -1340,7 +1331,6 @@ cc_test(
     name = "hlo_dce_test",
     srcs = ["hlo_dce_test.cc"],
     deps = [
-        ":cpu_plugin",
         ":hlo",
         ":hlo_dce",
         "//tensorflow/compiler/xla:literal_util",
@@ -1363,7 +1353,6 @@ cc_test(
     deps = [
         ":algebraic_simplifier",
         ":computation_layout",
-        ":cpu_plugin",
         ":hlo",
         ":hlo_matchers",
         ":layout_assignment",
@@ -1436,7 +1425,6 @@ cc_test(
     name = "hlo_cse_test",
     srcs = ["hlo_cse_test.cc"],
     deps = [
-        ":cpu_plugin",
         ":hlo",
         ":hlo_cse",
         ":hlo_matchers",
@@ -1472,7 +1460,6 @@ cc_test(
     name = "hlo_constant_folding_test",
     srcs = ["hlo_constant_folding_test.cc"],
     deps = [
-        ":cpu_plugin",
         ":hlo",
         ":hlo_constant_folding",
         ":hlo_matchers",

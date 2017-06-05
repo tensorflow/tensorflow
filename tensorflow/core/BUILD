@@ -1891,7 +1891,6 @@ cc_library(
         ":framework",
         ":lib",
         ":lib_internal",
-        ":test",
     ],
 )
 
@@ -1906,7 +1905,7 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":test",
+        ":test",  # buildcleaner: keep
         "//tensorflow/core/platform/default/build_config:test_main",
     ],
     alwayslink = 1,
