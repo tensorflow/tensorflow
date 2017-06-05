@@ -526,6 +526,7 @@ done
 if [ -z "$TF_CUDA_VERSION" ]; then
   TF_CUDA_VERSION="8.0"
   export TF_CUDA_VERSION
+  write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION"  
 fi
 
 # Set up which gcc nvcc should use as the host compiler
@@ -636,6 +637,7 @@ done
 if [ -z "$TF_CUDNN_VERSION" ]; then
   TF_CUDNN_VERSION="6"
   export TF_CUDNN_VERSION
+  write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
 fi
 
 # Configure the compute capabilities that TensorFlow builds for.
