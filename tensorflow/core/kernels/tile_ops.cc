@@ -184,9 +184,12 @@ class TileOp : public OpKernel {
     for (int i = 0; i < NDIM; ++i) {
       broadcast_array[i] = multiples_array[i];
     }
-    functor::Tile<Device, T, NDIM>()(
-        context->eigen_device<Device>(), result->tensor<T, NDIM>(),
-        context->input(0).tensor<T, NDIM>(), broadcast_array);
+    functor::Tile<Device, T>() (
+        context->eigen_device<Device>(), context->input(0),
+        result, multiples_array);
+    //functor::Tile<Device, T, NDIM>()(
+    //    context->eigen_device<Device>(), result->tensor<T, NDIM>(),
+    //    context->input(0).tensor<T, NDIM>(), broadcast_array);
   }
 
   template <DataType DT, int NDIM>
