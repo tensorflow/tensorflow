@@ -464,5 +464,33 @@ class MapStageTest(test.TestCase):
         # Nothing is left
         self.assertTrue(sess.run([size, isize]) == [0, 0])
 
+        # Test again with partial index gets
+        stager = data_flow_ops.MapStagingArea(
+            [dtypes.float32, dtypes.float32, dtypes.float32])
+        stage_xvf = stager.put(pi, [x, v, f], [0, 1, 2])
+        key_xf, get_xf = stager.get(gi, [0, 2])
+        key_v, get_v = stager.get(gi, [1])
+        size = stager.size()
+        isize = stager.incomplete_size()
+
+        # Stage complete tuple
+        sess.run(stage_xvf, feed_dict={pi: 0, x: 1, f: 2, v: 3})
+
+        self.assertTrue(sess.run([size, isize]) == [1, 0])
+
+        # Partial get using indices
+        self.assertTrue(sess.run([key_xf, get_xf],
+              feed_dict={gi: 0}) == [0, [1, 2]])
+
+        # Still some of key 0 left
+        self.assertTrue(sess.run([size, isize]) == [1, 0])
+
+        # Partial get of remaining index
+        self.assertTrue(sess.run([key_v, get_v],
+              feed_dict={gi: 0}) == [0, [3]])
+
+        # All gone
+        self.assertTrue(sess.run([size, isize]) == [0, 0])
+
 if __name__ == '__main__':
   test.main()
