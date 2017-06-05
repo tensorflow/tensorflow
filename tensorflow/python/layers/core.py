@@ -65,6 +65,7 @@ class Dense(base.Layer):
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such cases.
+    dtype: Data type used by the layer weights.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -91,8 +92,10 @@ class Dense(base.Layer):
                activity_regularizer=None,
                trainable=True,
                name=None,
+               dtype=None,
                **kwargs):
-    super(Dense, self).__init__(trainable=trainable, name=name, **kwargs)
+    super(Dense, self).__init__(trainable=trainable, name=name,
+                                dtype=dtype, **kwargs)
     self.units = units
     self.activation = activation
     self.use_bias = use_bias
@@ -166,6 +169,7 @@ def dense(
     activity_regularizer=None,
     trainable=True,
     name=None,
+    dtype=None,
     reuse=None):
   """Functional interface for the densely-connected layer.
 
@@ -193,6 +197,7 @@ def dense(
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer.
+    dtype: Data type used by the layer weights.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
