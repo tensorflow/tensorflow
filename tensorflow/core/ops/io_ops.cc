@@ -520,6 +520,21 @@ shared_name: If non-empty, this reader is named in the given bucket
              with this shared_name. Otherwise, the node name is used instead.
 )doc");
 
+REGISTER_OP("LMDBReader")
+    .Output("reader_handle: Ref(string)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
+    .Doc(R"doc(
+A Reader that outputs the records from a LMDB file.
+reader_handle: The handle to reference the Reader.
+container: If non-empty, this reader is placed in the given container.
+        Otherwise, a default container is used.
+shared_name: If non-empty, this reader is named in the given bucket
+             with this shared_name. Otherwise, the node name is used instead.
+)doc");
+
 // TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("IdentityReader")
     .Output("reader_handle: Ref(string)")

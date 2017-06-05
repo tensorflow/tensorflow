@@ -113,6 +113,7 @@ include(zlib)
 include(gif)
 include(png)
 include(jpeg)
+include(lmdb)
 include(eigen)
 include(gemmlowp)
 include(jsoncpp)
@@ -129,6 +130,7 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${gif_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
+    ${lmdb_STATIC_LIBRARIES}
     ${jsoncpp_STATIC_LIBRARIES}
     ${farmhash_STATIC_LIBRARIES}
     ${fft2d_STATIC_LIBRARIES}
@@ -140,6 +142,7 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     gif_copy_headers_to_destination
     png_copy_headers_to_destination
     jpeg_copy_headers_to_destination
+    lmdb_copy_headers_to_destination
     jsoncpp
     farmhash_copy_headers_to_destination
     highwayhash_copy_headers_to_destination
@@ -158,6 +161,7 @@ include_directories(
     ${gif_INCLUDE_DIR}
     ${png_INCLUDE_DIR}
     ${jpeg_INCLUDE_DIR}
+    ${lmdb_INCLUDE_DIR}
     ${eigen_INCLUDE_DIRS}
     ${gemmlowp_INCLUDE_DIR}
     ${jsoncpp_INCLUDE_DIR}

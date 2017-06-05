@@ -979,6 +979,7 @@ tf_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
+    data = ["//tensorflow/core:lmdb_testdata"],
 )
 
 cuda_py_test(
