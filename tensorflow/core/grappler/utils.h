@@ -60,7 +60,11 @@ int NodePosition(const string& name);
 // Returns the node name and position in a single call.
 string ParseNodeName(const string& name, int* position);
 
-// Add a prefix to a node name
+// Add a prefix to a node name with a custom delimiter.
+string AddPrefixToNodeName(const string& name, const string& prefix,
+                           const string& delimiter);
+
+// Add a prefix to a node name.
 string AddPrefixToNodeName(const string& name, const string& prefix);
 
 // Executes a 'fn' in the 'thread_pool'. The method waits for the configured

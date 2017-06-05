@@ -1103,7 +1103,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int64 dim = 0; dim < slice_sizes.size(); ++dim) {
     const int64 input_dim_size = operand_shape.dimensions(dim);
     const int64 slice_dim_size = slice_sizes[dim];
-    if (slice_dim_size <= 0) {
+    if (slice_dim_size < 0) {
       return InvalidArgument("negative size index to dynamic slice: %lld",
                              slice_dim_size);
     }
@@ -1175,9 +1175,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int64 dim = 0; dim < ShapeUtil::Rank(operand_shape); ++dim) {
     const int64 input_dim_size = operand_shape.dimensions(dim);
     const int64 update_dim_size = update_shape.dimensions(dim);
-    if (update_dim_size <= 0) {
+    if (update_dim_size < 0) {
       return InvalidArgument(
-          "size index %lld to dynamic update slice must be > 0",
+          "size index %lld to dynamic update slice must be >= 0",
           update_dim_size);
     }
     if (update_dim_size > input_dim_size) {

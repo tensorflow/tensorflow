@@ -491,35 +491,10 @@ class InferenceContext {
     return input_handle_shapes_and_types_[idx].get();
   }
 
-  // DEPRECATED: use input_handle_shapes_and_types.
-  ShapeHandle input_handle_shape(int idx);
-  // DEPRECATED: use input_handle_shapes_and_types.
-  DataType input_handle_dtype(int idx) const {
-    if (input_handle_shapes_and_types_[idx] == nullptr) {
-      return DT_INVALID;
-    } else {
-      DCHECK_EQ(input_handle_shapes_and_types_[idx]->size(), 1);
-      return (*input_handle_shapes_and_types_[idx])[0].dtype;
-    }
-  }
-
   void set_output_handle_shapes_and_types(
       int idx, const std::vector<ShapeAndType>& shapes_and_types) {
     output_handle_shapes_and_types_[idx].reset(
         new std::vector<ShapeAndType>(shapes_and_types));
-  }
-
-  // DEPRECATED: use output_handle_shapes_and_types.
-  ShapeHandle output_handle_shape(int idx) {
-    return output_handle_shapes_and_types_[idx] == nullptr
-               ? UnknownShape()
-               : (*output_handle_shapes_and_types_[idx])[0].shape;
-  }
-  // DEPRECATED: use output_handle_shapes_and_types.
-  DataType output_handle_dtype(int idx) const {
-    return output_handle_shapes_and_types_[idx] == nullptr
-               ? DT_INVALID
-               : (*output_handle_shapes_and_types_[idx])[0].dtype;
   }
 
   // Note that shape functions should usually call MakeShapeFromShapeTensor,

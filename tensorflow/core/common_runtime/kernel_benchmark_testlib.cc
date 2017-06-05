@@ -39,7 +39,8 @@ namespace tensorflow {
 namespace test {
 
 Benchmark::Benchmark(const string& device, Graph* g,
-                     const SessionOptions* options, Graph* init) {
+                     const SessionOptions* options, Graph* init,
+                     Rendezvous* rendez) {
   SessionOptions default_options;
   if (!options) {
     options = &default_options;
@@ -61,7 +62,11 @@ Benchmark::Benchmark(const string& device, Graph* g,
     pool_->Schedule(closure);
   };
 
-  rendez_ = NewLocalRendezvous();
+  if (rendez == nullptr) {
+    rendez_ = NewLocalRendezvous();
+  } else {
+    rendez_ = rendez;
+  }
 
   const int graph_def_version = g->versions().producer();
 
