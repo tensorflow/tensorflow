@@ -186,6 +186,8 @@ private:
     {
       std::size_t index = findices(i);
 
+      TF_RETURN_IF_ERROR(check_index(key, index));
+
       // Insist on a value present at the specified index
       if(!map_tuple[index].has_value())
       {
@@ -406,6 +408,9 @@ public:
   {
     mutex_lock l(mu_);
 
+    // Sanity check the indices
+    TF_RETURN_IF_ERROR(check_index_ordering(*indices));
+
     typename MapType::iterator it;
 
     // Wait until the element with the requested key is present
@@ -427,6 +432,9 @@ public:
   Status pop(const KeyType* key, const Tensor * indices,  Tuple* tuple)
   {
     mutex_lock l(mu_);
+
+    // Sanity check the indices
+    TF_RETURN_IF_ERROR(check_index_ordering(*indices));
 
     typename MapType::iterator it;
 
@@ -458,6 +466,9 @@ public:
   Status popitem(KeyType* key, const Tensor * indices, Tuple* tuple)
   {
     mutex_lock l(mu_);
+
+    // Sanity check the indices
+    TF_RETURN_IF_ERROR(check_index_ordering(*indices));
 
     // Wait until map is not empty
     not_empty_.wait(l, [this]() { return !this->map_.empty(); });
