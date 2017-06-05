@@ -624,10 +624,11 @@ class MapUnstageOp : public OpKernel
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
     OP_REQUIRES_OK(ctx, map->pop(key_tensor, indices_tensor, &tuple));
 
-    OP_REQUIRES(
-        ctx, tuple.size() == (size_t)indices_tensor->NumElements(),
-        errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
+    OP_REQUIRES(ctx,
+        tuple.size() == indices_tensor->NumElements(),
+        errors::InvalidArgument("output/indices size mismatch: ", tuple.size(),
                                 " vs. ", indices_tensor->NumElements()));
+
     for (size_t i = 0; i < tuple.size(); ++i) {
       ctx->set_output(i, tuple[i]);
     }
@@ -682,10 +683,11 @@ class MapPeekOp : public OpKernel
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
     OP_REQUIRES_OK(ctx, map->get(key_tensor, indices_tensor, &tuple));
 
-    OP_REQUIRES(
-        ctx, tuple.size() == (size_t)indices_tensor->NumElements(),
-        errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
+    OP_REQUIRES(ctx,
+        tuple.size() == indices_tensor->NumElements(),
+        errors::InvalidArgument("output/indices size mismatch: ", tuple.size(),
                                 " vs. ", indices_tensor->NumElements()));
+
     for (size_t i = 0; i < tuple.size(); ++i) {
       ctx->set_output(i, tuple[i]);
     }
@@ -746,12 +748,12 @@ class MapUnstageNoKeyOp : public OpKernel
     ctx->set_output(0, key);
 
     // Set the rest of the outputs to the tuple Tensors
-    OP_REQUIRES(
-        ctx, tuple.size() == (size_t)indices_tensor->NumElements(),
-        errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
+    OP_REQUIRES(ctx,
+        tuple.size() == indices_tensor->NumElements(),
+        errors::InvalidArgument("output/indices size mismatch: ", tuple.size(),
                                 " vs. ", indices_tensor->NumElements()));
-    for (size_t i = 0; i < tuple.size(); ++i)
-    {
+
+    for (size_t i = 0; i < tuple.size(); ++i) {
       ctx->set_output(i+1, tuple[i]);
     }
   }
