@@ -1653,6 +1653,13 @@ class Stream {
                           DeviceMemory<uint8> *reserve_space_data,
                           ScratchAllocator *workspace_allocator);
 
+  // Enqueue onto the stream a operation that transforms a tensor.
+  // See DnnSupport::DoTransformTensor for more details.
+  Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
+                              const DeviceMemory<float> &input_data,
+                              const dnn::BatchDescriptor &output_desc,
+                              DeviceMemory<float> *output_data);
+
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program
   // execution) to complete.

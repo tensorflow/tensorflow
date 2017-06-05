@@ -4389,6 +4389,23 @@ Stream &Stream::ThenRnnBackward(
   return *this;
 }
 
+Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
+                                    const DeviceMemory<float> &input_data,
+                                    const dnn::BatchDescriptor &output_desc,
+                                    DeviceMemory<float> *output_data) {
+  VLOG_CALL(PARAM(input_desc), PARAM(input_data), PARAM(output_desc),
+            PARAM(output_data));
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoTransformTensor(this, input_desc, input_data,
+                                        output_desc, output_data));
+    } else {
+      SetErrorAndLogNoDnnSupport();
+    }
+  }
+  return *this;
+}
+
 Stream &Stream::ThenDoHostCallbackForTest(std::function<void()> callback) {
   VLOG_CALL(PARAM(callback));
 
