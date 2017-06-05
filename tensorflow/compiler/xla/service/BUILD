@@ -1143,6 +1143,51 @@ cc_library(
 )
 
 cc_library(
+    name = "hlo_dataflow_analysis",
+    srcs = [
+        "hlo_dataflow_analysis.cc",
+    ],
+    hdrs = [
+        "hlo_dataflow_analysis.h",
+    ],
+    deps = [
+        ":call_graph",
+        ":hlo",
+        ":liveness_util",
+        "//tensorflow/compiler/xla:shape_tree",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_test(
+    name = "hlo_dataflow_analysis_test",
+    srcs = ["hlo_dataflow_analysis_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_dataflow_analysis",
+        ":hlo_matchers",
+        ":instruction_fusion",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "tuple_points_to_analysis",
     srcs = [
         "tuple_points_to_analysis.cc",
