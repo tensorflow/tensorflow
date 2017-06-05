@@ -268,7 +268,233 @@ REGISTER_OP("ShapeData")
       return Status::OK();
     });
 
+REGISTER_OP("ShapeDataInt64")
+    .Input("a: int64")
+    .Output("o: int64")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      const Tensor* shape_data = c->input_tensor(0);
+      if (shape_data == nullptr) {
+        return shape_inference::UnknownShape(c);
+      }
+
+      std::vector<shape_inference::DimensionHandle> dims;
+      dims.reserve(shape_data->NumElements());
+      for (int i = 0; i < shape_data->NumElements(); ++i) {
+        dims.emplace_back(c->MakeDim(shape_data->flat<int64>()(i)));
+      }
+
+      c->set_output(0, c->MakeShape(dims));
+      return Status::OK();
+    });
+
 }  // namespace
+
+TEST(ShapeRefinerTest, PropagateShapeAcrossTensorContent) {
+  Scope root = Scope::NewRootScope();
+
+  // Create variable 2x4 tensor.
+  auto input = ops::Variable(root, {2, 4}, DT_INT32);
+
+  // Shape is a vector of 2 elements (2,4)
+  auto shape = ops::Shape(root, input);
+
+  // Ones for indices of the slice. (get the 4).
+  auto ones = ops::Const(root, {1});
+
+  // Slice an element of the shape (4).
+  auto sliced = ops::Slice(root, shape, ones, ones);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(sliced.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(ones.node()));
+  TF_ASSERT_OK(m.AddNode(input.node()));
+  TF_ASSERT_OK(m.AddNode(shape.node()));
+  TF_ASSERT_OK(m.AddNode(sliced.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
+  EXPECT_EQ("[4]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, PropagateShapeAcrossTensorContentInt64) {
+  Scope root = Scope::NewRootScope();
+
+  // Create variable 2x4 tensor.
+  auto input = ops::Variable(
+      root, {2, 4, static_cast<int64>(std::numeric_limits<int32>::max()) * 2},
+      DT_INT64);
+
+  // Shape is a vector of 2 elements (2,4)
+  auto attrs = ops::Shape::OutType(DT_INT64);
+  auto shape = ops::Shape(root, input, attrs);
+
+  // Ones for indices of the slice. (get the 4).
+  auto ones = ops::Const(root, {1});
+
+  // Slice an element of the shape (4).
+  auto sliced = ops::Slice(root, shape, ones, ones);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeDataInt64")
+                   .Input(sliced.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(ones.node()));
+  TF_ASSERT_OK(m.AddNode(input.node()));
+  TF_ASSERT_OK(m.AddNode(shape.node()));
+  TF_ASSERT_OK(m.AddNode(sliced.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
+  EXPECT_EQ("[4]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, PropagateShapeAcrossTensorContentInt32Overflow) {
+  Scope root = Scope::NewRootScope();
+
+  // Create variable 2x4 tensor.
+  auto input = ops::Variable(
+      root, {2, 4, static_cast<int64>(std::numeric_limits<int32>::max()) * 2},
+      DT_INT32);
+
+  // Shape is a vector of 2 elements (2,4)
+  auto shape = ops::Shape(root, input);
+
+  // Ones for indices of the slice. (get the 4).
+  auto ones = ops::Const(root, {1});
+
+  // Slice an element of the shape (4).
+  auto sliced = ops::Slice(root, shape, ones, ones);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(sliced.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(ones.node()));
+  TF_ASSERT_OK(m.AddNode(input.node()));
+  TF_ASSERT_OK(m.AddNode(shape.node()));
+  TF_ASSERT_OK(m.AddNode(sliced.node()));
+
+  // Expect an error since there's an overflow.
+  EXPECT_FALSE(m.AddNode(shape_data).ok());
+}
+
+TEST(ShapeRefinerTest, PropagateRankAcrossTensorContent) {
+  Scope root = Scope::NewRootScope();
+
+  // Create variable 2x4x3 tensor.
+  auto input = ops::Variable(root, {2, 4, 3}, DT_INT32);
+
+  // Rank 3.
+  auto rank = ops::Rank(root, input);
+
+  auto identity = ops::Identity(root, rank);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(identity.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(input.node()));
+  TF_ASSERT_OK(m.AddNode(rank.node()));
+  TF_ASSERT_OK(m.AddNode(identity.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
+  EXPECT_EQ("[3]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, PropagateSizeAcrossTensorContent) {
+  Scope root = Scope::NewRootScope();
+
+  // Create variable.
+  auto input = ops::Variable(root, {1, 2, 3, 4, 5}, DT_INT32);
+
+  // 5!.
+  auto size = ops::Size(root, input);
+
+  auto identity = ops::Identity(root, size);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(identity.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(input.node()));
+  TF_ASSERT_OK(m.AddNode(size.node()));
+  TF_ASSERT_OK(m.AddNode(identity.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
+  EXPECT_EQ("[120]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, PropagateSizeAcrossTensorContentInt64) {
+  Scope root = Scope::NewRootScope();
+
+  // Create variable.
+  auto input =
+      ops::Variable(root,
+                    {1, 2, 3, 4, 5,
+                     static_cast<int64>(std::numeric_limits<int32>::max()) * 2},
+                    DT_INT64);
+
+  // 5! * int32_max_value * 2.
+  auto attrs = ops::Size::OutType(DT_INT64);
+  auto size = ops::Size(root, input, attrs);
+
+  auto identity = ops::Identity(root, size);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeDataInt64")
+                   .Input(identity.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(input.node()));
+  TF_ASSERT_OK(m.AddNode(size.node()));
+  TF_ASSERT_OK(m.AddNode(identity.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+
+  shape_inference::InferenceContext* ctx = m.GetContext(shape_data);
+  EXPECT_EQ("[515396075280]", ctx->DebugString(ctx->output(0)));
+}
+
+TEST(ShapeRefinerTest, PropagateSizeAcrossTensorContentInt32Overflow) {
+  Scope root = Scope::NewRootScope();
+
+  // Create variable.
+  auto input =
+      ops::Variable(root,
+                    {1, 2, 3, 4, 5,
+                     static_cast<int64>(std::numeric_limits<int32>::max()) * 2},
+                    DT_INT32);
+
+  // 5!.
+  auto size = ops::Size(root, input);
+
+  auto identity = ops::Identity(root, size);
+
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(identity.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(input.node()));
+  TF_ASSERT_OK(m.AddNode(size.node()));
+  TF_ASSERT_OK(m.AddNode(identity.node()));
+  EXPECT_FALSE(m.AddNode(shape_data).ok());
+}
 
 TEST(ShapeRefinerTest, PropagateShape) {
   Scope root = Scope::NewRootScope();
