@@ -60,6 +60,7 @@ android_library(
         "manual",
         "notap",
     ],
+    deps = ["@errorprone_annotations"],
 )
 
 # Build the native .so.

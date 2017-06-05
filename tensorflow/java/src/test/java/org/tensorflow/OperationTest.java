@@ -16,8 +16,14 @@ limitations under the License.
 package org.tensorflow;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotEquals;
+import static org.junit.Assert.assertNotSame;
+import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -42,6 +48,96 @@ public class OperationTest {
       } catch (IllegalArgumentException iae) {
         // expected
       }
+    }
+  }
+
+  @Test
+  public void operationEquality() {
+    Operation op1;
+    try (Graph g = new Graph()) {
+      op1 = TestUtil.constant(g, "op1", 1).op();
+      Operation op2 = TestUtil.constant(g, "op2", 2).op();
+      Operation op3 = new Operation(g, op1.getUnsafeNativeHandle());
+      Operation op4 = g.operation("op1");
+      assertEquals(op1, op1);
+      assertNotEquals(op1, op2);
+      assertNotSame(op1, op3);
+      assertEquals(op1, op3);
+      assertEquals(op1.hashCode(), op3.hashCode());
+      assertNotSame(op1, op4);
+      assertNotSame(op3, op4);
+      assertEquals(op1, op4);
+      assertEquals(op1.hashCode(), op4.hashCode());
+      assertEquals(op3, op4);
+      assertNotEquals(op2, op3);
+      assertNotEquals(op2, op4);
+    }
+    try (Graph g = new Graph()) {
+      Operation newOp1 = TestUtil.constant(g, "op1", 1).op();
+      assertNotEquals(op1, newOp1);
+    }
+  }
+
+  @Test
+  public void operationCollection() {
+    try (Graph g = new Graph()) {
+      Operation op1 = TestUtil.constant(g, "op1", 1).op();
+      Operation op2 = TestUtil.constant(g, "op2", 2).op();
+      Operation op3 = new Operation(g, op1.getUnsafeNativeHandle());
+      Operation op4 = g.operation("op1");
+      Set<Operation> ops = new HashSet<>();
+      ops.addAll(Arrays.asList(op1, op2, op3, op4));
+      assertEquals(2, ops.size());
+      assertTrue(ops.contains(op1));
+      assertTrue(ops.contains(op2));
+      assertTrue(ops.contains(op3));
+      assertTrue(ops.contains(op4));
+    }
+  }
+
+  @Test
+  public void operationToString() {
+    try (Graph g = new Graph()) {
+      Operation op = TestUtil.constant(g, "c", new int[] {1}).op();
+      assertEquals("<Const 'c'>", op.toString());
+    }
+  }
+
+  @Test
+  public void outputEquality() {
+    try (Graph g = new Graph()) {
+      Output output = TestUtil.constant(g, "c", 1);
+      Output output1 = output.op().output(0);
+      Output output2 = g.operation("c").output(0);
+      assertNotSame(output, output1);
+      assertNotSame(output, output2);
+      assertEquals(output, output1);
+      assertEquals(output.hashCode(), output1.hashCode());
+      assertEquals(output, output2);
+      assertEquals(output.hashCode(), output2.hashCode());
+    }
+  }
+
+  @Test
+  public void outputCollection() {
+    try (Graph g = new Graph()) {
+      Output output = TestUtil.constant(g, "c", 1);
+      Output output1 = output.op().output(0);
+      Output output2 = g.operation("c").output(0);
+      Set<Output> ops = new HashSet<>();
+      ops.addAll(Arrays.asList(output, output1, output2));
+      assertEquals(1, ops.size());
+      assertTrue(ops.contains(output));
+      assertTrue(ops.contains(output1));
+      assertTrue(ops.contains(output2));
+    }
+  }
+
+  @Test
+  public void outputToString() {
+    try (Graph g = new Graph()) {
+      Output output = TestUtil.constant(g, "c", new int[] {1});
+      assertEquals("<Const 'c:0' shape=[1] dtype=INT32>", output.toString());
     }
   }
 

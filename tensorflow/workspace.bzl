@@ -576,6 +576,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   java_import_external(
+      name = "errorprone_annotations",
+      jar_sha256 = "cde78ace21e46398299d0d9c6be9f47b7f971c7f045d40c78f95be9a638cbf7e",
+      jar_urls = [
+          "http://mirror.bazel.build/repo1.maven.org/maven2/com/google/errorprone/error_prone_annotations/2.0.19/error_prone_annotations-2.0.19.jar",
+          "http://repo1.maven.org/maven2/com/google/errorprone/error_prone_annotations/2.0.19/error_prone_annotations-2.0.19.jar",
+          "http://maven.ibiblio.org/maven2/com/google/errorprone/error_prone_annotations/2.0.19/error_prone_annotations-2.0.19.jar",
+      ],
+      licenses = ["notice"],  # Apache 2.0
+  )
+
+  java_import_external(
       name = "junit",
       jar_sha256 = "59721f0805e223d84b90677887d9ff567dc534d7c502ca903c0c2b17f05c116a",
       jar_urls = [

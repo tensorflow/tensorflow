@@ -15,6 +15,8 @@ limitations under the License.
 
 package org.tensorflow;
 
+import com.google.errorprone.annotations.Immutable;
+
 /**
  * A Graph node that performs computation on Tensors.
  *
@@ -27,6 +29,7 @@ package org.tensorflow;
  *
  * <p>Operation instances are immutable and thread-safe.
  */
+@Immutable
 public final class Operation {
 
   // Create an Operation instance referring to an operation in g, with the given handle to the C
@@ -73,15 +76,14 @@ public final class Operation {
   /**
    * Returns the size of the list of Tensors produced by this operation.
    *
-   * <p>An Operation has multiple named outputs, each of which produces either
-   * a single tensor or a list of tensors. This method returns the size of
-   * the list of tensors for a specific named output of the operation.
+   * <p>An Operation has multiple named outputs, each of which produces either a single tensor or a
+   * list of tensors. This method returns the size of the list of tensors for a specific named
+   * output of the operation.
    *
-   * @param name identifier of the list of tensors (of which there may
-   *        be many) produced by this operation.
+   * @param name identifier of the list of tensors (of which there may be many) produced by this
+   *     operation.
    * @return the size of the list of Tensors produced by this named output.
-   * @throws IllegalArgumentException if this operation has no output
-   *         with the provided name.
+   * @throws IllegalArgumentException if this operation has no output with the provided name.
    */
   public int outputListLength(final String name) {
     Graph.Reference r = graph.ref();
@@ -95,6 +97,46 @@ public final class Operation {
   /** Returns a symbolic handle to one of the tensors produced by this operation. */
   public Output output(int idx) {
     return new Output(this, idx);
+  }
+
+  @Override
+  public int hashCode() {
+    Graph.Reference r = graph.ref();
+    try {
+      // xor the first and last 32 bits of the underlying 64-bit pointer value.
+      return (int) (unsafeNativeHandle ^ (unsafeNativeHandle >>> 32));
+    } finally {
+      r.close();
+    }
+  }
+
+  @Override
+  public boolean equals(Object o) {
+    if (o == this) {
+      return true;
+    }
+    if (!(o instanceof Operation)) {
+      return false;
+    }
+    Operation that = (Operation) o;
+    if (graph != that.graph) {
+      return false;
+    }
+
+    // The graph object is known to be identical here, so this one
+    // reference is sufficient to validate the use of native pointers
+    // in both objects.
+    Graph.Reference r = graph.ref();
+    try {
+      return unsafeNativeHandle == that.unsafeNativeHandle;
+    } finally {
+      r.close();
+    }
+  }
+
+  @Override
+  public String toString() {
+    return String.format("<%s '%s'>", type(), name());
   }
 
   long getUnsafeNativeHandle() {
@@ -122,6 +164,11 @@ public final class Operation {
   }
 
   private final long unsafeNativeHandle;
+
+  // Graph is mutable, but used in this class only to fetch read-only data, and is never
+  // passed externally. Note however that this object is itself valid only when the Graph
+  // is active, and can throw exceptions after the Graph is closed.
+  @SuppressWarnings("Immutable")
   private final Graph graph;
 
   private static native String name(long handle);
