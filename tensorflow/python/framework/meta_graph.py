@@ -510,7 +510,7 @@ def create_meta_graph_def(meta_info_def=None,
     meta_graph_def.saver_def.MergeFrom(saver_def)
 
   # Adds collection_list.
-  if collection_list:
+  if collection_list is not None:
     clist = collection_list
   else:
     clist = graph.get_all_collection_keys()
