@@ -245,20 +245,20 @@ class NodeProcessor {
   virtual Status AddLayoutTransposeToInputs() {
     std::vector<int> input_pos = GetInputPos();
     for (const auto& pos : input_pos) {
-      string node_name_NHWCToNCHW = strings::StrCat(
-          kTransposeNHWCToNCHW, "-", node_->name(), "-", node_->input(pos));
+      string base_name = strings::StrCat(node_->name(), "-", node_->input(pos));
+      string node_name =
+          AddPrefixToNodeName(base_name, kTransposeNHWCToNCHW, "-");
       auto input_node = node_map_->GetNode(node_->input(pos));
       int output_pos = NodePosition(node_->input(pos));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
       AddNodeTranspose(
-          node_name_NHWCToNCHW, node_->input(pos), node_->attr().at("T").type(),
+          node_name, node_->input(pos), node_->attr().at("T").type(),
           input_node->attr().at("_output_shapes").list().shape(output_pos),
           true);
-      node_map_->UpdateOutput(node_->input(pos), node_->name(),
-                              node_name_NHWCToNCHW);
-      node_map_->AddOutput(node_name_NHWCToNCHW, node_->name());
-      *node_->mutable_input(pos) = node_name_NHWCToNCHW;
+      node_map_->UpdateOutput(node_->input(pos), node_->name(), node_name);
+      node_map_->AddOutput(node_name, node_->name());
+      *node_->mutable_input(pos) = node_name;
     }
     return Status::OK();
   }
@@ -266,9 +266,10 @@ class NodeProcessor {
   virtual Status AddLayoutTransposeToOutputs() {
     auto outputs = node_map_->GetOutputs(node_->name());
     for (const auto& output : outputs) {
-      string node_name_NCHWToNHWC = strings::StrCat(
-          kTransposeNCHWToNHWC, "-", node_->name(), "-", output->name());
-      // TODO (yaozhang): handle the rare case where node A is connected to more
+      string base_name = strings::StrCat(node_->name(), "-", output->name());
+      string node_name =
+          AddPrefixToNodeName(base_name, kTransposeNCHWToNHWC, "-");
+      // TODO(yaozhang): handle the rare case where node A is connected to more
       // than one input of node B.
       auto it = std::find_if(output->mutable_input()->begin(),
                              output->mutable_input()->end(),
@@ -290,13 +291,12 @@ class NodeProcessor {
       }
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "T"));
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "_output_shapes"));
-      AddNodeTranspose(
-          node_name_NCHWToNHWC, node_->name(), node_->attr().at("T").type(),
-          node_->attr().at("_output_shapes").list().shape(0), false);
-      *it = node_name_NCHWToNHWC;
-      node_map_->UpdateOutput(node_->name(), output->name(),
-                              node_name_NCHWToNHWC);
-      node_map_->AddOutput(node_name_NCHWToNHWC, output->name());
+      AddNodeTranspose(node_name, node_->name(), node_->attr().at("T").type(),
+                       node_->attr().at("_output_shapes").list().shape(0),
+                       false);
+      *it = node_name;
+      node_map_->UpdateOutput(node_->name(), output->name(), node_name);
+      node_map_->AddOutput(node_name, output->name());
     }
     return Status::OK();
   }
@@ -468,7 +468,13 @@ class Conv2DBackpropInputProcessor : public Conv2DProcessor {
 
   Status CustomizedProcessing() override {
     NodeDef* node = node_map_->GetNode(node_->input(0));
-    return UpdateAttrValue(node);
+    NodeDef* added_node = graph_->add_node();
+    *added_node = *node;
+    string node_name =
+        AddPrefixToNodeName(node->name(), "LayoutOptimizer", "-");
+    added_node->set_name(node_name);
+    node_map_->AddNode(node_name, added_node);
+    return UpdateAttrValue(added_node);
   }
 };
 
@@ -621,9 +627,11 @@ class BinaryOpProcessor : public AgnosticNodeProcessor {
 
   Status CustomizedProcessing() override {
     if (is_4d_with_vector_) {
-      string suffix = strings::StrCat("-", node_->name(), "-", node_->input(1));
-      string reshape_node_name = strings::StrCat(kReshapeNHWCToNCHW, suffix);
-      string shape_const_node_name = strings::StrCat(kReshapeConst, suffix);
+      string base_name = strings::StrCat(node_->name(), "-", node_->input(1));
+      string reshape_node_name =
+          AddPrefixToNodeName(base_name, kReshapeNHWCToNCHW, "-");
+      string shape_const_node_name =
+          AddPrefixToNodeName(base_name, kReshapeConst, "-");
       auto input_node = node_map_->GetNode(node_->input(1));
       TF_RETURN_IF_ERROR(HasAttribute(*input_node, "_output_shapes"));
       int vector_size =
@@ -710,15 +718,15 @@ class SliceProcessor : public AgnosticNodeProcessor {
   Status CustomizedProcessing() override {
     // Skip the first input, which is the data to be sliced.
     for (int i = 1; i < node_->input_size(); i++) {
-      string node_name_NHWCToNCHW =
-          strings::StrCat(kPermVecNHWCToNCHW, "-", node_->name(), "-input", i);
+      string base_name = strings::StrCat(node_->name(), "-input", i);
+      string node_name =
+          AddPrefixToNodeName(base_name, kPermVecNHWCToNCHW, "-");
       TF_RETURN_IF_ERROR(HasAttribute(*node_, "Index"));
-      AddNodePermVec(node_name_NHWCToNCHW, node_->input(i),
+      AddNodePermVec(node_name, node_->input(i),
                      node_->attr().at("Index").type(), true);
-      node_map_->UpdateOutput(node_->input(i), node_->name(),
-                              node_name_NHWCToNCHW);
-      node_map_->AddOutput(node_name_NHWCToNCHW, node_->name());
-      *node_->mutable_input(i) = node_name_NHWCToNCHW;
+      node_map_->UpdateOutput(node_->input(i), node_->name(), node_name);
+      node_map_->AddOutput(node_name, node_->name());
+      *node_->mutable_input(i) = node_name;
     }
     return Status::OK();
   }
@@ -795,7 +803,7 @@ class SliceProcessorConcatOffset : public AgnosticNodeProcessor {
                                       "input 1 of ConcatOffset"));
       }
       // Need to process if the channel is at dimension 3, which indicates the
-      // NHWC format is being used. As mutiple Slice nodes may share the same
+      // NHWC format is being used. As multiple Slice nodes may share the same
       // ConcatOffset node, the NHWC to NCHW conversion may have already
       // been performed when processing other Slice nodes.
       TF_RETURN_IF_ERROR(HasAttribute(*axis_node, "value"));

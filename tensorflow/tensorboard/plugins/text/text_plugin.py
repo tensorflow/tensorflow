@@ -35,7 +35,6 @@ import six
 import tensorflow as tf
 from werkzeug import wrappers
 
-from tensorflow.python.summary import text_summary
 from tensorflow.tensorboard.backend import http_util
 from tensorflow.tensorboard.plugins import base_plugin
 
@@ -256,7 +255,7 @@ class TextPlugin(base_plugin.TBPlugin):
 
   def index_impl(self):
     run_to_series = {}
-    name = text_summary.TextSummaryPluginAsset.plugin_name
+    name = 'tensorboard_text'
     run_to_assets = self.multiplexer.PluginAssets(name)
 
     for run, assets in run_to_assets.items():

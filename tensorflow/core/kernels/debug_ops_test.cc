@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
@@ -94,7 +95,22 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
     ASSERT_TRUE(env_->FileExists(dump_roots[i]).ok());
     ASSERT_TRUE(env_->IsDirectory(dump_roots[i]).ok());
 
-    DIR* dir = opendir(dump_roots[i].c_str());
+    std::vector<string> device_roots;
+    DIR* dir0 = opendir(dump_roots[i].c_str());
+    struct dirent* ent0;
+    const string kDeviceDirPrefix =
+        strings::StrCat(DebugIO::kMetadataFilePrefix, DebugIO::kDeviceTag);
+    while ((ent0 = readdir(dir0)) != nullptr) {
+      if (!strncmp(ent0->d_name, kDeviceDirPrefix.c_str(),
+                   kDeviceDirPrefix.size())) {
+        device_roots.push_back(io::JoinPath(dump_roots[i], ent0->d_name));
+      }
+    }
+    ASSERT_EQ(1, device_roots.size());
+    closedir(dir0);
+
+    const string& device_root = device_roots[0];
+    DIR* dir = opendir(device_root.c_str());
     struct dirent* ent;
     int dump_files_found = 0;
     while ((ent = readdir(dir)) != nullptr) {
@@ -102,8 +118,7 @@ TEST_F(DebugIdentityOpTest, Int32Success_6_FileURLs) {
         dump_files_found++;
 
         // Try reading the file into a Event proto.
-        const string dump_file_path =
-            strings::StrCat(dump_roots[i], "/", ent->d_name);
+        const string dump_file_path = io::JoinPath(device_root, ent->d_name);
         std::fstream ifs(dump_file_path, std::ios::in | std::ios::binary);
         Event event;
         event.ParseFromIstream(&ifs);
