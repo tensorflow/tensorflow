@@ -245,6 +245,41 @@ TEST_F(ConstantFoldingTest, ShapeMaterialization) {
   EXPECT_EQ(3, found);
 }
 
+TEST_F(ConstantFoldingTest, SwitchNodes) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  ops::Variable v_in(scope.WithOpName("v_in"), {3}, DT_FLOAT);
+  ops::Variable v_ctrl(scope.WithOpName("v_ctrl"), {}, DT_BOOL);
+  ops::Switch s(scope.WithOpName("switch"), v_in, v_ctrl);
+  ops::Rank rank(scope.WithOpName("rank"), s.output_false);
+  ops::Identity i(scope.WithOpName("i"), s.output_true);
+  ops::Size size(scope.WithOpName("size"), i);
+  ops::Square p1(scope.WithOpName("p1"), rank);
+  ops::Square p2(scope.WithOpName("p2"), size);
+  ops::Merge m(scope.WithOpName("m"), {p1.y, p2.y});
+
+  GrapplerItem item;
+  item.fetch.push_back("m");
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding fold;
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  for (const auto& node : output.node()) {
+    if (node.name() == "rank") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^ConstantFoldingCtrl/switch_0", node.input(0));
+    }
+    if (node.name() == "size") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^i", node.input(0));
+    }
+  }
+}
+
 TEST_F(ConstantFoldingTest, NoOpReduction) {
   // Build a simple graph with a reduction that can be reduced to the identity.
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();

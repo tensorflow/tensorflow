@@ -35,6 +35,11 @@ bool IsDequeueOp(const NodeDef& node) {
          op == "QueueDequeueUpToV2" || op == "QueueDequeueUpTo";
 }
 
+bool IsIdentity(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Identity";
+}
+
 bool IsMerge(const NodeDef& node) {
   const auto op = node.op();
   return op == "Merge";
@@ -50,6 +55,11 @@ bool IsReduction(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Sum" || op == "Prod" || op == "Min" || op == "Max" ||
          op == "Mean" || op == "Any" || op == "All";
+}
+
+bool IsSwitch(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Switch";
 }
 
 bool IsTranspose(const NodeDef& node) {
