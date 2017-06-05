@@ -481,7 +481,7 @@ Status GraphConstructor::ValidateShape(Node* node) {
           "MutableHashTableOfTensors", "Mutex", "CuckooTable", "IndexTable",
           "WholeFileReader", "TextLineReader", "FixedLengthRecordReader",
           "TFRecordReader", "IdentityReader", "RefSwitch", "RefEnter",
-          "RefNextIteration", "RefMerge", "RefIdentity",
+          "RefNextIteration", "RefMerge", "RefIdentity", "LMDBReader",
           // To be removed after 2017/04/24.
           "ConditionalAccumulator", "SparseConditionalAccumulator", "Table",
       };
