@@ -2078,6 +2078,7 @@ shared_name: It is necessary to match this name to the matching Unstage Op.
 
 REGISTER_OP("MapPeek")
     .Input("key: int64")
+    .Input("indices: int32")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")
     .Attr("memory_limit: int >= 0 = 0")
@@ -2094,6 +2095,7 @@ this op will block until it does.
 
 REGISTER_OP("MapUnstage")
     .Input("key: int64")
+    .Input("indices: int32")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")
     .Attr("memory_limit: int >= 0 = 0")
@@ -2109,6 +2111,7 @@ does not contain this key, the op will block until it does.
     )doc");
 
 REGISTER_OP("MapUnstageNoKey")
+    .Input("indices: int32")
     .Output("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")
@@ -2193,6 +2196,7 @@ shared_name: It is necessary to match this name to the matching Unstage Op.
 
 REGISTER_OP("OrderedMapPeek")
     .Input("key: int64")
+    .Input("indices: int32")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")
     .Attr("memory_limit: int >= 0 = 0")
@@ -2210,6 +2214,7 @@ performance.
 
 REGISTER_OP("OrderedMapUnstage")
     .Input("key: int64")
+    .Input("indices: int32")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")
     .Attr("memory_limit: int >= 0 = 0")
@@ -2225,6 +2230,7 @@ does not contain this key, the op will block until it does.
     )doc");
 
 REGISTER_OP("OrderedMapUnstageNoKey")
+    .Input("indices: int32")
     .Output("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")
