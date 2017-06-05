@@ -242,6 +242,17 @@ table.tf-graph-controls td.input-element-table-data {
 #color-by-radio-group paper-radio-button {
   pointer-events: auto !important;
 }
+
+.legend-clarifier {
+  color: #266236;
+  cursor: help;
+  display: inline-block;
+  text-decoration: underline;
+}
+
+.legend-clarifier paper-tooltip {
+  width: 150px;
+}
 </style>
 <svg width="0" height="0">
   <defs>
@@ -497,7 +508,15 @@ table.tf-graph-controls td.input-element-table-data {
                   rx="5" ry="5"/>
             </svg>
           </td>
-          <td>Namespace<span class="gray">*</span></td>
+          <td>
+            Namespace<span class="gray">*</span>
+            <div class="legend-clarifier">
+              <span>?</span>
+              <paper-tooltip position="right">
+                Encapsulates a set of nodes. Namespace is hierarchical and based on scope.
+              </paper-tooltip>
+            </div>
+          </td>
         </tr>
         <tr>
           <td>
@@ -507,7 +526,15 @@ table.tf-graph-controls td.input-element-table-data {
                 y="6" />
             </svg>
           </td>
-          <td>OpNode</td>
+          <td>
+            OpNode
+            <div class="legend-clarifier">
+              <span>?</span>
+              <paper-tooltip position="right">
+                Node that performs an operation. These nodes cannot expand.
+              </paper-tooltip>
+            </div>
+          </td>
         </tr>
         <tr>
           <td>
@@ -517,7 +544,15 @@ table.tf-graph-controls td.input-element-table-data {
                   stroke="#ccc" x="2" y="2"/>
             </svg>
           </td>
-          <td>Unconnected series<span class="gray">*</span></td>
+          <td>
+            Unconnected series<span class="gray">*</span>
+            <div class="legend-clarifier">
+              <span>?</span>
+              <paper-tooltip position="right">
+                Sequence of numbered nodes that are not connected to each other.
+              </paper-tooltip>
+            </div>
+          </td>
         </tr>
         <tr>
           <td>
@@ -527,7 +562,15 @@ table.tf-graph-controls td.input-element-table-data {
                   fill="white" stroke="#ccc" x="2" y="2"/>
             </svg>
           </td>
-          <td>Connected series<span class="gray">*</span></td>
+          <td>
+            Connected series<span class="gray">*</span>
+            <div class="legend-clarifier">
+              <span>?</span>
+              <paper-tooltip position="right">
+                Sequence of numbered nodes that are connected to each other.
+              </paper-tooltip>
+            </div>
+          </td>
         </tr>
         <tr>
           <td>
@@ -535,7 +578,15 @@ table.tf-graph-controls td.input-element-table-data {
               <circle fill="white" stroke="#848484" cx="10" cy="10" r="5"/>
             </svg>
           </td>
-          <td>Constant</td>
+          <td>
+            Constant
+            <div class="legend-clarifier">
+              <span>?</span>
+              <paper-tooltip position="right">
+                Node that outputs a constant value.
+              </paper-tooltip>
+            </div>
+          </td>
         </tr>
         <tr>
           <td>
@@ -543,7 +594,15 @@ table.tf-graph-controls td.input-element-table-data {
               <use x="0" y="0" class="image-icon" xlink:href="#summary-icon"/>
             </svg>
           </td>
-          <td>Summary</td>
+          <td>
+            Summary
+            <div class="legend-clarifier">
+              <span>?</span>
+              <paper-tooltip position="right">
+                Node that collects data for visualization within TensorBoard.
+              </paper-tooltip>
+            </div>
+          </td>
         </tr>
         <tr>
           <td>
@@ -559,7 +618,15 @@ table.tf-graph-controls td.input-element-table-data {
                   d="M2 9 l 23 0" stroke-linecap="round" />
             </svg>
           </td>
-          <td>Dataflow edge</td>
+          <td>
+            Dataflow edge
+            <div class="legend-clarifier">
+              <span>?</span>
+              <paper-tooltip position="right">
+                Edge showing the data flow between operations. Edges flow upwards unless arrowheads specify otherwise.
+              </paper-tooltip>
+            </div>
+          </td>
         </tr>
         <tr>
           <td>
@@ -569,18 +636,36 @@ table.tf-graph-controls td.input-element-table-data {
                 d="M2 9 l 23 0" stroke-linecap="round" stroke-dasharray="2, 2" />
             </svg>
           </td>
-          <td>Control dependency edge</td>
+          <td>
+            Control dependency edge
+            <div class="legend-clarifier">
+              <span>?</span>
+              <paper-tooltip position="right">
+                Edge showing the control dependency between operations.
+              </paper-tooltip>
+            </div>
+          </td>
         </tr>
         <tr>
           <td>
             <svg class="icon" height="15px"
                 preserveAspectRatio="xMinYMid meet" viewBox="0 0 15 15">
-              <path marker-start="url(#ref-arrowhead-legend)"
+              <path
+                marker-start="url(#ref-arrowhead-legend)"
+                marker-end="url(#ref-arrowhead-legend)"
                 stroke="#bbb" d="M2 9 l 23 0"
                 stroke-linecap="round" />
             </svg>
           </td>
-          <td>Reference edge</td>
+          <td>
+            Reference edge
+            <div class="legend-clarifier">
+              <span>?</span>
+              <paper-tooltip position="right">
+                Edge showing that the outgoing operation node can mutate the incoming tensor.
+              </paper-tooltip>
+            </div>
+          </td>
         </tr>
       </table>
     </div>
