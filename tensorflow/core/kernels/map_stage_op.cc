@@ -86,13 +86,13 @@ public:
   // Public typedefs
   typedef std::vector<Tensor> Tuple;
   typedef gtl::optional<Tensor> OptionalTensor;
-  typedef std::vector<OptionalTensor> IncompleteTuple;
+  typedef std::vector<OptionalTensor> OptionalTuple;
 
-  typedef MapTraits<Ordered, IncompleteTuple> MapTraits_;
+  typedef MapTraits<Ordered, OptionalTuple> MapTraits_;
   typedef typename MapTraits_::MapType MapType;
   typedef typename MapTraits_::KeyType KeyType;
 
-  typedef MapTraits<false, IncompleteTuple> IncompleteTraits;
+  typedef MapTraits<false, OptionalTuple> IncompleteTraits;
   typedef typename IncompleteTraits::MapType IncompleteType;
 
 private:
@@ -151,7 +151,7 @@ private:
   }
 
   // Get number of bytes in the incomplete tuple
-  inline std::size_t get_tuple_bytes(const IncompleteTuple & tuple)
+  inline std::size_t get_tuple_bytes(const OptionalTuple & tuple)
   {
     return std::accumulate(tuple.begin(), tuple.end(), 0,
       [](const std::size_t & lhs, const OptionalTensor & rhs) {
@@ -173,7 +173,7 @@ private:
     return Status::OK();
   }
 
-  inline Status copy_or_move_tensors(IncompleteTuple & map_tuple,
+  inline Status copy_or_move_tensors(OptionalTuple & map_tuple,
                                           const Tensor & key,
                                           const Tensor & indices,
                                           Tuple * output,
@@ -195,7 +195,7 @@ private:
       }
 
       // Copy the contained tensor and
-      // remove from the IncompleteTuple
+      // remove from the OptionalTuple
       output->push_back(map_tuple[index].value());
 
       // Clear out the entry if we're not copying (moving)
@@ -211,7 +211,7 @@ private:
   // is uninitialized
   inline Status check_index_uninitialized(const Tensor & key,
                                   std::size_t index,
-                                  const IncompleteTuple & tuple)
+                                  const OptionalTuple & tuple)
   {
     if(tuple[index].has_value())
     {
@@ -255,7 +255,7 @@ private:
   // Insert incomplete data into the Barrier
   Status put_incomplete(const KeyType & key,
                         const Tensor & indices,
-                        IncompleteTuple *  tuple,
+                        OptionalTuple *  tuple,
                         mutex_lock &l)
   {
     auto findices = indices.flat<int>();
@@ -276,10 +276,10 @@ private:
     }
 
     // This key isn't present in the incomplete set
-    // Create IncompleteTuple and insert
+    // Create OptionalTuple and insert
     if(it == incomplete_.end())
     {
-      IncompleteTuple empty(dtypes_.size());
+      OptionalTuple empty(dtypes_.size());
 
       // Initialize empty tuple with given dta
       for(std::size_t i = 0; i < findices.dimension(0); ++i)
@@ -303,7 +303,7 @@ private:
     else
     {
       // Reference existing incomplete tuple
-      IncompleteTuple & present = it->second;
+      OptionalTuple & present = it->second;
 
       // Assign given data
       for(std::size_t i = 0; i < findices.dimension(0); ++i)
@@ -327,7 +327,7 @@ private:
       // If so, put the tuple in the actual map
       if(complete)
       {
-        IncompleteTuple insert_tuple = std::move(it->second);
+        OptionalTuple insert_tuple = std::move(it->second);
 
         // Remove from incomplete
         incomplete_.erase(it);
@@ -340,7 +340,7 @@ private:
   }
 
   // Does the insertion into the actual staging area
-  Status put_complete(const KeyType & key, IncompleteTuple * tuple,
+  Status put_complete(const KeyType & key, OptionalTuple * tuple,
                     mutex_lock & l)
   {
     // Insert key and tuples into the map
@@ -361,7 +361,7 @@ public:
       current_bytes_(0) {}
 
   Status put(KeyType* key, const Tensor * indices,
-              IncompleteTuple* tuple)
+              OptionalTuple* tuple)
   {
     mutex_lock l(mu_);
 
@@ -556,7 +556,7 @@ class MapStageOp : public OpKernel
     StagingMap<Ordered>* map = nullptr;
     OP_REQUIRES_OK(ctx, GetStagingMap(ctx, def(), &map));
     core::ScopedUnref scope(map);
-    typename StagingMap<Ordered>::IncompleteTuple tuple;
+    typename StagingMap<Ordered>::OptionalTuple tuple;
 
     const Tensor * key_tensor;
     const Tensor * indices_tensor;
