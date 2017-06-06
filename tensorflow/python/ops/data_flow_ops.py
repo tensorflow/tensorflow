@@ -1647,7 +1647,8 @@ class StagingArea(BaseStagingArea):
                         self._scope_vals(values)) as scope:
 
       # Hard-code indices for this staging area
-      indices = range(len(values)) if isinstance(values, (list, tuple)) else None
+      indices = (list(six.moves.range(len(values)))
+                  if isinstance(values, (list, tuple)) else None)
       vals, _ = self._check_put_dtypes(values, indices)
 
       with ops.colocate_with(self._coloc_op):
@@ -1661,7 +1662,7 @@ class StagingArea(BaseStagingArea):
     with ops.colocate_with(self._coloc_op):
       ret = get_fn()
 
-    indices = range(len(self._dtypes)) # Hard coded
+    indices = list(six.moves.range(len(self._dtypes))) # Hard coded
     return self._get_return_value(ret, indices)
 
   def get(self, name=None):
@@ -1910,7 +1911,7 @@ class MapStagingArea(BaseStagingArea):
 
   def _get_indices_and_dtypes(self, indices=None):
     if indices is None:
-      indices = range(len(self._dtypes))
+      indices = list(six.moves.range(len(self._dtypes)))
 
     if not isinstance(indices, (tuple, list)):
       raise TypeError("Invalid indices type '%s'" % type(indices))
