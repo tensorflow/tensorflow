@@ -138,6 +138,9 @@ def _fused_batch_norm(
     center=True,
     scale=False,
     epsilon=0.001,
+    renorm=False,
+    r_max=1.0,
+    d_max=0.0,
     activation_fn=None,
     param_initializers=None,
     updates_collections=ops.GraphKeys.UPDATE_OPS,
@@ -187,6 +190,12 @@ def _fused_batch_norm(
       not used. When the next layer is linear (also e.g. `nn.relu`), this can be
       disabled since the scaling can be done by the next layer.
     epsilon: Small float added to variance to avoid dividing by zero.
+    renorm: If True, apply stop gradient on gamma and beta parameters as described
+    here Batch Renormalization: https://arxiv.org/pdf/1702.03275.pdf
+    r_max: scalar tensor or float, sets the clipping bounds on the r value
+    (used in place of gamma in batch renormalization)
+    d_max: scalar tensor or float, sets the clipping bounds on the d value
+    (used in place of beta in batch renormalization)
     activation_fn: Activation function, default set to None to skip it and
       maintain a linear activation.
     param_initializers: Optional initializers for beta, gamma, moving mean and
@@ -305,8 +314,15 @@ def _fused_batch_norm(
         collections=moving_variance_collections)
 
     def _fused_batch_norm_training():
-      return nn.fused_batch_norm(
+      outputs, mean, variance = nn.fused_batch_norm(
           inputs, gamma, beta, epsilon=epsilon, data_format=data_format)
+      if renorm:
+          moving_inv = math_ops.rsqrt(moving_variance + epsilon)
+          r = tf.stop_gradient(tf.clip_by_value(tf.sqrt(variance + epsilon) * moving_inv, 1./r_max, r_max))
+          d = tf.stop_gradient(tf.clip_by_value((mean - moving_mean) * moving_inv, -d_max, d_max))
+          outputs = outputs * r + d
+      return outputs, mean, variance
+
     def _fused_batch_norm_inference():
       return nn.fused_batch_norm(
           inputs,
