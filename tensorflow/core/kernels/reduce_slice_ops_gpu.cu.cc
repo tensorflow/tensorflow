@@ -69,7 +69,7 @@ namespace functor {
         return;                                                                \
       }                                                                        \
       Cuda3DLaunchConfig config = GetCuda3DLaunchConfig(sizex, sizey, sizez, d,\
-          ReduceSliceDeviceKernel##reduceop<T, Index>, 0);                     \
+          ReduceSliceDeviceKernel##reduceop<T, Index>, 0, 0);                  \
                                                                                \
       ReduceSliceDeviceKernel##reduceop<T, Index>                              \
           <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(    \
