@@ -461,6 +461,29 @@ def tf_cuda_cc_test(name,
       linkopts=linkopts,
       args=args)
 
+def tf_cuda_only_cc_test(name,
+                    srcs=[],
+                    deps=[],
+                    tags=[],
+                    data=[],
+                    size="medium",
+                    linkstatic=0,
+                    args=[],
+                    linkopts=[]):
+  native.cc_test(
+    name="%s%s" % (name, "_gpu"),
+    srcs=srcs,
+    size=size,
+    args=args,
+    copts= _cuda_copts() + tf_copts(),
+    data=data,
+    deps=deps + if_cuda([
+        clean_dep("//tensorflow/core:cuda"),
+        clean_dep("//tensorflow/core:gpu_lib"),
+    ]),
+    linkopts=["-lpthread", "-lm"] + linkopts,
+    linkstatic=linkstatic,
+    tags=tags)
 
 # Create a cc_test for each of the tensorflow tests listed in "tests"
 def tf_cc_tests(srcs,
