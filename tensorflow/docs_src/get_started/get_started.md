@@ -29,7 +29,9 @@ working internally when you use the more compact higher level API.
 
 # Tensors
 
-The central unit of data in TensorFlow is the **tensor**. A tensor consists of a
+The central unit of data in TensorFlow is the **tensor**. The formal physicist's and 
+mathematician's definition of a tensor is a multilinear map; the tensors here are in fact the same 
+thing and are simply values in a particular basis. A tensor in Tensorflow consists of a
 set of primitive values shaped into an array of any number of dimensions. A
 tensor's **rank** is its number of dimensions. Here are some examples of
 tensors:
