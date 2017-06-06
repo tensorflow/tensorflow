@@ -356,6 +356,8 @@ filegroup(
         "//tensorflow/tensorboard/components/tf_graph_controls/demo:all_files",
         "//tensorflow/tensorboard/components/tf_graph_dashboard:all_files",
         "//tensorflow/tensorboard/components/tf_graph_dashboard/demo:all_files",
+        "//tensorflow/tensorboard/components/tf_graph_debugger_data_card:all_files",
+        "//tensorflow/tensorboard/components/tf_graph_debugger_data_card/demo:all_files",
         "//tensorflow/tensorboard/components/tf_graph_info:all_files",
         "//tensorflow/tensorboard/components/tf_graph_info/demo:all_files",
         "//tensorflow/tensorboard/components/tf_graph_loader:all_files",
