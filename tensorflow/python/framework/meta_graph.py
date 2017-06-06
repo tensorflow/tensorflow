@@ -577,8 +577,8 @@ def import_scoped_meta_graph(meta_graph_or_file,
   the argument is a file containing a `MetaGraphDef` protocol buffer ,
   it constructs a protocol buffer from the file content. The function
   then adds all the nodes from the `graph_def` field to the
-  current graph, recreates the desired collections, and returns a saver
-  constructed from the `saver_def` field.
+  current graph, recreates the desired collections, and returns a dictionary of
+  all the Variables imported into the name scope.
 
   In combination with `export_scoped_meta_graph()`, this function can be used to
 
