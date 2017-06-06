@@ -29,6 +29,7 @@ TEST(MfccMelFilterbankTest, AgreesWithPythonGoldenValues) {
 
   std::vector<double> input;
   const int kSampleCount = 513;
+  input.reserve(kSampleCount);
   for (int i = 0; i < kSampleCount; ++i) {
     input.push_back(i + 1);
   }

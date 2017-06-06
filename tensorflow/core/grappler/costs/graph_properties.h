@@ -36,8 +36,9 @@ class GraphProperties {
 
   Status InferStatically();
   Status InferDynamically(Cluster* cluster);
+  Status InferFromCostGraph(const CostGraphDef& cost_graph);
 
-  bool HasInputProperties(const string& name) const;
+  bool HasOutputProperties(const string& name) const;
   std::vector<OpInfo::TensorProperties> GetInputProperties(
       const string& node_name) const;
   std::vector<OpInfo::TensorProperties> GetOutputProperties(

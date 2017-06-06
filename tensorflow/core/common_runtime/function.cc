@@ -1231,7 +1231,7 @@ Status FunctionDefToBodyHelper(
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = false;
-  Status s = ConvertGraphDefToGraph(opts, result.gdef, graph);
+  Status s = ConvertNodeDefsToGraph(opts, result.nodes, graph);
   if (!s.ok()) {
     delete graph;
   } else {

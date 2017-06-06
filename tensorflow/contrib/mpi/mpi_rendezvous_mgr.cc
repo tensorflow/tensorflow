@@ -257,7 +257,7 @@ void MPIRendezvousMgr::AddRequest(RecvTensorRequest request,
     this->QueueSendRequest(req);
 
     // Wait for the notification that indicates the tensor has been
-    // succesfully transmitted to the remote process. Only needed if we
+    // successfully transmitted to the remote process. Only needed if we
     // have not parsed the tensor to proto
     if (doOptimalTransfer) mpi_send_call->n_.WaitForNotification();
   };  // done_cb

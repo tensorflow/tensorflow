@@ -190,10 +190,12 @@ class Backend {
   // Vector of stream executors. stream_executors_[0] is the default executor.
   std::vector<perftools::gputools::StreamExecutor*> stream_executors_;
 
+  tensorflow::mutex mu_;
+
   // Mapping from stream executor to stream pools, used by `BorrowStream` above.
   std::map<perftools::gputools::StreamExecutor*,
            Pool<perftools::gputools::Stream>>
-      stream_pools_;
+      stream_pools_ GUARDED_BY(mu_);
 
   // The default memory allocator to use.
   std::unique_ptr<StreamExecutorMemoryAllocator> memory_allocator_;

@@ -405,7 +405,7 @@ static void VersionTest(const VersionDef& versions, const string& error) {
   {
     // Prepare an empty checkpoint with some version information
     SavedTensorSlices sts;
-    sts.mutable_meta()->mutable_versions()->CopyFrom(versions);
+    *sts.mutable_meta()->mutable_versions() = versions;
     string contents;
     EXPECT_TRUE(sts.SerializeToString(&contents));
 

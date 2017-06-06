@@ -150,7 +150,8 @@ class MapDatasetTest(test.TestCase):
               results.append(sess.run(get_next))
             except errors.OutOfRangeError:
               return
-        threads = [self.checkedThread(target=iterator_thread) for _ in range(8)]
+        threads = [self.checkedThread(target=iterator_thread)
+                   for _ in range(64)]
         for t in threads:
           t.start()
         for t in threads:

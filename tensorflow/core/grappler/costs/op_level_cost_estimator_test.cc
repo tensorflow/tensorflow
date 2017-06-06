@@ -64,6 +64,31 @@ OpInfo DescribeMatMulUnknownShape() {
   return op_features;
 }
 
+// Wrangles the minimum number of proto fields to set up an input of
+// arbitrary rank and type.
+void DescribeArbitraryRankInput(const std::vector<int>& dims, DataType dtype,
+                                OpInfo* op_features) {
+  auto input = op_features->add_inputs();
+  input->set_dtype(dtype);
+  auto shape = input->mutable_shape();
+  for (auto d : dims) {
+    shape->add_dim()->set_size(d);
+  }
+}
+
+// Returns an OpInfo for a BatchMatMul
+OpInfo DescribeBatchMatMul(const std::vector<int>& dims_a,
+                           const std::vector<int>& dims_b) {
+  OpInfo op_features;
+  auto device = op_features.mutable_device();
+  device->set_type("CPU");
+  op_features.set_op("BatchMatMul");
+
+  DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_features);
+  DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_features);
+  return op_features;
+}
+
 // Wrangles the minimum number of proto fields to set up a 4D Tensor for cost
 // estimation purposes.
 void DescribeTensor4D(int dim0, int dim1, int dim2, int dim3,
@@ -90,24 +115,64 @@ OpInfo DescribeConvolution(int batch, int ix, int iy, int iz1, int iz2, int kx,
 }
 }  // namespace
 
-TEST(OpLevelCostEstimatorTest, UnknownOrPartialShape) {
-  OpLevelCostEstimator estimator;
+class OpLevelCostEstimatorTest : public ::testing::Test {
+ protected:
+  Costs PredictCosts(const OpInfo& op_features) const {
+    return estimator_.PredictCosts(op_features);
+  }
 
-  EXPECT_EQ(false,
-            estimator.PredictCosts(DescribeMatMul(2, 4, 7, 7)).inaccurate);
-  EXPECT_EQ(true,
-            estimator.PredictCosts(DescribeMatMul(-1, 4, 7, 7)).inaccurate);
-  EXPECT_EQ(true,
-            estimator.PredictCosts(DescribeMatMul(2, 4, -1, 7)).inaccurate);
+  int64 CountMatMulOperations(const OpInfo& op_features,
+                              bool* found_unknown_shapes) const {
+    return estimator_.CountMatMulOperations(op_features, found_unknown_shapes);
+  }
 
+  int64 CountBatchMatMulOperations(const OpInfo& op_features,
+                                   bool* found_unknown_shapes) const {
+    return estimator_.CountBatchMatMulOperations(op_features,
+                                                 found_unknown_shapes);
+  }
+
+  OpLevelCostEstimator estimator_;
+};
+
+TEST_F(OpLevelCostEstimatorTest, UnknownOrPartialShape) {
+  EXPECT_FALSE(PredictCosts(DescribeMatMul(2, 4, 7, 7)).inaccurate);
+  EXPECT_TRUE(PredictCosts(DescribeMatMul(-1, 4, 7, 7)).inaccurate);
+  EXPECT_TRUE(PredictCosts(DescribeMatMul(2, 4, -1, 7)).inaccurate);
+
+  EXPECT_FALSE(PredictCosts(DescribeConvolution(16, 19, 19, 48, 48, 5, 5, 256))
+                   .inaccurate);
+  EXPECT_TRUE(PredictCosts(DescribeConvolution(16, -1, 19, 48, 48, 5, 5, 256))
+                  .inaccurate);
+}
+
+TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
+  EXPECT_TRUE(PredictCosts(DescribeBatchMatMul({}, {})).inaccurate);
+  EXPECT_TRUE(PredictCosts(DescribeBatchMatMul({2, 4}, {})).inaccurate);
+  EXPECT_FALSE(PredictCosts(DescribeBatchMatMul({2, 4}, {4, 2})).inaccurate);
+  EXPECT_FALSE(
+      PredictCosts(DescribeBatchMatMul({1, 2, 4}, {1, 4, 2})).inaccurate);
+  EXPECT_FALSE(
+      PredictCosts(DescribeBatchMatMul({2, 4}, {1, 3, 4, 2})).inaccurate);
+  bool matmul_inaccurate = false;
+  bool batch_matmul_inaccurate = false;
   EXPECT_EQ(
-      false,
-      estimator.PredictCosts(DescribeConvolution(16, 19, 19, 48, 48, 5, 5, 256))
-          .inaccurate);
-  EXPECT_EQ(
-      true,
-      estimator.PredictCosts(DescribeConvolution(16, -1, 19, 48, 48, 5, 5, 256))
-          .inaccurate);
+      CountMatMulOperations(DescribeMatMul(2, 2, 4, 4), &matmul_inaccurate),
+      CountBatchMatMulOperations(DescribeBatchMatMul({2, 4}, {4, 2}),
+                                 &batch_matmul_inaccurate));
+  EXPECT_EQ(matmul_inaccurate, batch_matmul_inaccurate);
+  EXPECT_EQ(10 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4),
+                                       &matmul_inaccurate),
+            CountBatchMatMulOperations(
+                DescribeBatchMatMul({10, 2, 4}, {-1, 10, 4, 2}),
+                &batch_matmul_inaccurate));
+  EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
+  EXPECT_EQ(20 * CountMatMulOperations(DescribeMatMul(2, 2, 4, 4),
+                                       &matmul_inaccurate),
+            CountBatchMatMulOperations(
+                DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}),
+                &batch_matmul_inaccurate));
+  EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
 }
 
 }  // end namespace grappler

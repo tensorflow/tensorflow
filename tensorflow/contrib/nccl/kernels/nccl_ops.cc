@@ -38,7 +38,7 @@ namespace tensorflow {
 //    when the async op kernel's done callback is called.
 class NcclAsyncOpBase : public AsyncOpKernel {
  public:
-  NcclAsyncOpBase(OpKernelConstruction* c) : AsyncOpKernel(c) {
+  explicit NcclAsyncOpBase(OpKernelConstruction* c) : AsyncOpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("num_devices", &num_devices_));
     OP_REQUIRES_OK(c, c->GetAttr("shared_name", &collective_prefix_));
   }
@@ -62,7 +62,7 @@ class NcclAsyncOpBase : public AsyncOpKernel {
 // <k> devices in the communicator.
 class NcclAllReduceOpKernel : public NcclAsyncOpBase {
  public:
-  NcclAllReduceOpKernel(OpKernelConstruction* c) : NcclAsyncOpBase(c) {
+  explicit NcclAllReduceOpKernel(OpKernelConstruction* c) : NcclAsyncOpBase(c) {
     string reduction;
     OP_REQUIRES_OK(c, c->GetAttr("reduction", &reduction));
     if (reduction == "min") {
@@ -106,7 +106,8 @@ REGISTER_KERNEL_BUILDER(Name("NcclAllReduce").Device(DEVICE_GPU),
 
 class NcclBroadcastSendKernel : public NcclAsyncOpBase {
  public:
-  NcclBroadcastSendKernel(OpKernelConstruction* c) : NcclAsyncOpBase(c) {}
+  explicit NcclBroadcastSendKernel(OpKernelConstruction* c)
+      : NcclAsyncOpBase(c) {}
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
     auto actual_done = [c, done](Status s) {
@@ -127,7 +128,8 @@ REGISTER_KERNEL_BUILDER(Name("NcclBroadcastSend").Device(DEVICE_GPU),
 
 class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
  public:
-  NcclBroadcastRecvKernel(OpKernelConstruction* c) : NcclAsyncOpBase(c) {}
+  explicit NcclBroadcastRecvKernel(OpKernelConstruction* c)
+      : NcclAsyncOpBase(c) {}
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
     const Tensor& shape_t = c->input(0);

@@ -71,7 +71,8 @@ class TFProfShowTest : public ::testing::Test {
 
 TEST_F(TFProfShowTest, DumpScopeMode) {
   string dump_file = io::JoinPath(testing::TmpDir(), "dump");
-  Options opts(5, 0, 0, 0, 0, 0, "name", {"VariableV2"},  // accout_type_regexes
+  Options opts(5, 0, 0, 0, 0, 0, -1, "name",
+               {"VariableV2"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops"}, "file",
                {{"outfile", dump_file}});
@@ -93,7 +94,7 @@ TEST_F(TFProfShowTest, DumpScopeMode) {
 
 TEST_F(TFProfShowTest, DumpOpMode) {
   string dump_file = io::JoinPath(testing::TmpDir(), "dump");
-  Options opts(5, 0, 0, 0, 0, 4, "params", {".*"},  // accout_type_regexes
+  Options opts(5, 0, 0, 0, 0, 4, -1, "params", {".*"},  // accout_type_regexes
                {".*"}, {""}, {".*"}, {""}, false,
                {"params", "bytes", "micros", "float_ops", "occurrence"}, "file",
                {{"outfile", dump_file}});

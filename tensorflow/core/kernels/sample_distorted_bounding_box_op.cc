@@ -298,7 +298,7 @@ class SampleDistortedBoundingBoxOp : public OpKernel {
 
     // Insert the entire image if no bounding boxes are supplied.
     const Rectangle image_rect(0, 0, width, height);
-    if (bounding_boxes.size() < 1) {
+    if (bounding_boxes.empty()) {
       OP_REQUIRES(context, use_image_if_no_bounding_boxes_,
                   errors::InvalidArgument(
                       "No bounding boxes provided as input. One must "

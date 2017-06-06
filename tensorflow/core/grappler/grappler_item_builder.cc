@@ -12,7 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 
 #include <unordered_map>
@@ -70,7 +69,8 @@ void InitializeTensor(DataType type, Tensor* tensor) {
 // of the cluster type (E.g: single cpu, multiple gpu, etc)  being simulated in
 // order to get the correct session options and environment, and performing the
 // correct optimizations.
-Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def) {
+Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
+                     const ItemConfig& cfg) {
   // Create a session option for a single GPU device.
   SessionOptions options;
 
@@ -94,7 +94,12 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def) {
   // Optimizer options: L1 and inlining. L1 is default.
   OptimizerOptions* optimizer_opts =
       options.config.mutable_graph_options()->mutable_optimizer_options();
-  optimizer_opts->set_do_function_inlining(true);
+  if (cfg.apply_optimizations) {
+    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L1);
+  } else {
+    optimizer_opts->set_opt_level(::tensorflow::OptimizerOptions_Level_L0);
+  }
+  optimizer_opts->set_do_function_inlining(cfg.inline_functions);
 
   // Create the function library runtime.
   std::unique_ptr<FunctionLibraryRuntime> flib(NewFunctionLibraryRuntime(
@@ -128,16 +133,6 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   std::unique_ptr<GrapplerItem> new_item(new GrapplerItem());
   new_item->id = id;
   new_item->graph = meta_graph.graph_def();
-
-  // Optimize the graph (function inlining, l1 optimizations, etc).
-  if (cfg.apply_optimizations) {
-    Status optimize_status =
-        OptimizeGraph(meta_graph.graph_def(), &new_item->graph);
-    if (!optimize_status.ok()) {
-      LOG(ERROR) << "Function optimization failed: " << optimize_status;
-      return nullptr;
-    }
-  }
 
   // Attempt to detect the fetch node(s).
   if (meta_graph.collection_def().count("train_op") > 0) {
@@ -180,13 +175,17 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       // from it. We do this because in newer protos, the input placeholder
       // shape is not empty if the shape is partially defined.
       TensorShape shape;
+      TensorShapeProto shape_proto;
       std::vector<int32> dims;
       for (const auto& dim_proto : node.attr().at("shape").shape().dim()) {
         if (cfg.placeholder_unknown_output_shape_dim >= 0 &&
             dim_proto.size() == -1) {
           dims.push_back(cfg.placeholder_unknown_output_shape_dim);
+          shape_proto.add_dim()->set_size(
+              cfg.placeholder_unknown_output_shape_dim);
         } else {
           dims.push_back(dim_proto.size());
+          shape_proto.add_dim()->set_size(dim_proto.size());
         }
       }
       Status make_shape_status =
@@ -211,6 +210,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
           (shape.dims() == 0) && (node.attr().count("_output_shapes") == 1) &&
           (node.attr().at("_output_shapes").list().shape(0).dim_size() != 0)) {
         shape.Clear();
+        shape_proto.clear_dim();
         for (int dim_i = 0;
              dim_i <
              node.attr().at("_output_shapes").list().shape(0).dim_size();
@@ -219,20 +219,32 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
               node.attr().at("_output_shapes").list().shape(0).dim(dim_i);
           if (dim.size() == -1) {
             shape.AddDim(cfg.placeholder_unknown_output_shape_dim);
+            shape_proto.add_dim()->set_size(
+                cfg.placeholder_unknown_output_shape_dim);
           } else {
-            shape.AddDim(node.attr()
-                             .at("_output_shapes")
-                             .list()
-                             .shape(0)
-                             .dim(dim_i)
-                             .size());
+            int size = node.attr()
+                           .at("_output_shapes")
+                           .list()
+                           .shape(0)
+                           .dim(dim_i)
+                           .size();
+            shape.AddDim(size);
+            shape_proto.add_dim()->set_size(size);
           }
         }
       }
       Tensor fake_input(type, shape);
       InitializeTensor(type, &fake_input);
       new_item->feed.emplace_back(node.name(), fake_input);
+      // Set the shape of the node in the graph. This is needed for statically
+      // inferring shapes and is a no-op when dynamically inferring shapes as
+      // the Placeholder shape will match the shape passed from new_item->feed.
+      *(node.mutable_attr()->at("shape").mutable_shape()) = shape_proto;
     }
+
+    // Erase the recorded result of any previous shape inference to start again
+    // from scratch.
+    node.mutable_attr()->erase("_output_shapes");
 
     // Delete user specified placement if requested.
     if (cfg.ignore_user_placement) {
@@ -311,6 +323,14 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
           << "Can't access one or more of the asset files, skipping this input";
       return nullptr;
     }
+  }
+
+  // Optimize the graph (function inlining, l1 optimizations, etc).
+  Status optimize_status =
+      OptimizeGraph(new_item->graph, &new_item->graph, cfg);
+  if (!optimize_status.ok()) {
+    LOG(ERROR) << "Function optimization failed: " << optimize_status;
+    return nullptr;
   }
 
   return new_item;

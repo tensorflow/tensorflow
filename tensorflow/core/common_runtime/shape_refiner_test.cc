@@ -259,6 +259,7 @@ REGISTER_OP("ShapeData")
       }
 
       std::vector<shape_inference::DimensionHandle> dims;
+      dims.reserve(shape_data->NumElements());
       for (int i = 0; i < shape_data->NumElements(); ++i) {
         dims.emplace_back(c->MakeDim(shape_data->flat<int32>()(i)));
       }
@@ -556,7 +557,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
                    .Finalize(root.graph(), &result));
 
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
-  for (auto input : inputs) {
+  for (const auto& input : inputs) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
   TF_ASSERT_OK(m.AddNode(pack.node()));

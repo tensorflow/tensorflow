@@ -44,11 +44,14 @@ struct DebugNodeKey {
   DebugNodeKey(const string& device_name, const string& node_name,
                const int32 output_slot, const string& debug_op);
 
+  static const string DeviceNameToDevicePath(const string& device_name);
+
   const string device_name;
   const string node_name;
   const int32 output_slot;
   const string debug_op;
   const string debug_node_name;
+  const string device_path;
 };
 
 class DebugIO {
@@ -135,6 +138,11 @@ class DebugIO {
                                  const string& debug_url);
 
   static Status CloseDebugURL(const string& debug_url);
+
+  static const char* const kMetadataFilePrefix;
+  static const char* const kCoreMetadataTag;
+  static const char* const kDeviceTag;
+  static const char* const kGraphTag;
 
   static const char* const kFileURLScheme;
   static const char* const kGrpcURLScheme;

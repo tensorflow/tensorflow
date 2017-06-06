@@ -776,7 +776,8 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
     if (cudnn_use_autotune_ && !AutoTuneConvBwdFilter::GetInstance()->Find(
                                    conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmType> algorithms;
-      CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(&algorithms));
+      CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
+          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {

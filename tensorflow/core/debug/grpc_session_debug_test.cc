@@ -187,7 +187,10 @@ TEST_F(GrpcSessionDebugTest, FileDebugURL) {
     IsSingleFloatValue(outputs[0], 4.0);
 
     std::vector<Tensor> dumped_tensors;
-    LoadTensorDumps("n", &dumped_tensors);
+    LoadTensorDumps(io::JoinPath(DebugNodeKey::DeviceNameToDevicePath(
+                                     cluster->devices()[0].name()),
+                                 "n"),
+                    &dumped_tensors);
 
     if (i == 0 || i == 5) {
       ASSERT_EQ(0, dumped_tensors.size());
@@ -267,7 +270,10 @@ TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
         TF_CHECK_OK(session->Close());
 
         std::vector<Tensor> dumped_tensors;
-        LoadTensorDumps("n", &dumped_tensors);
+        LoadTensorDumps(
+            io::JoinPath(DebugNodeKey::DeviceNameToDevicePath(a_dev.name()),
+                         "n"),
+            &dumped_tensors);
         ASSERT_EQ(1, dumped_tensors.size());
         ASSERT_EQ(TensorShape({2, 2}), dumped_tensors[0].shape());
         for (size_t i = 0; i < 4; ++i) {
