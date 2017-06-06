@@ -300,9 +300,9 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
   def __init__(self,
                model_dir=None,
                linear_feature_columns=None,
-               linear_optimizer=None,
+               linear_optimizer='Ftrl',
                dnn_feature_columns=None,
-               dnn_optimizer=None,
+               dnn_optimizer='Adagrad',
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
@@ -319,12 +319,12 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         used by linear part of the model. All items in the set must be
         instances of classes derived from `FeatureColumn`.
       linear_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the linear part of the model. If `None`, will use a FTRL optimizer.
+        the linear part of the model. Defaults to FTRL optimizer.
       dnn_feature_columns: An iterable containing all the feature columns used
         by deep part of the model. All items in the set must be instances of
         classes derived from `FeatureColumn`.
       dnn_optimizer: An instance of `tf.Optimizer` used to apply gradients to
-        the deep part of the model. If `None`, will use an Adagrad optimizer.
+        the deep part of the model. Defaults to Adagrad optimizer.
       dnn_hidden_units: List of hidden units per layer. All layers are fully
         connected.
       dnn_activation_fn: Activation function applied to each layer. If None,
