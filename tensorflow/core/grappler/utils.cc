@@ -98,13 +98,18 @@ int NodePosition(const string& name) {
   return position;
 }
 
-string AddPrefixToNodeName(const string& name, const string& prefix) {
+string AddPrefixToNodeName(const string& name, const string& prefix,
+                           const string& delimiter) {
   if (!name.empty()) {
     if (name[0] == '^') {
-      return strings::StrCat("^", prefix, "/", name.substr(1));
+      return strings::StrCat("^", prefix, delimiter, name.substr(1));
     }
   }
-  return strings::StrCat(prefix, "/", name);
+  return strings::StrCat(prefix, delimiter, name);
+}
+
+string AddPrefixToNodeName(const string& name, const string& prefix) {
+  return AddPrefixToNodeName(name, prefix, "/");
 }
 
 bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
