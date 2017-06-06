@@ -15,6 +15,7 @@ between them.  This flexible architecture lets you deploy computation to one
 or more CPUs or GPUs in a desktop, server, or mobile device without rewriting
 code.  TensorFlow also includes TensorBoard, a data visualization toolkit.
 
+
 TensorFlow was originally developed by researchers and engineers
 working on the Google Brain team within Google's Machine Intelligence research
 organization for the purposes of conducting machine learning and deep neural
