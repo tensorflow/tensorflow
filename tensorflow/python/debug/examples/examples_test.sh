@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-#
+
 # Bash unit tests for TensorFlow Debugger (tfdbg) Python examples that do not
 # involve downloading data. Also tests the binary offline_analyzer.
 #
