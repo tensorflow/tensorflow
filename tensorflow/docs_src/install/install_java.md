@@ -216,7 +216,7 @@ and Mac OS X:
 
 <pre><b>java -cp libtensorflow-1.2.0-rc1.jar:. -Djava.library.path=./jni HelloTF</b></pre>
 
-And the following comand line executes the `HelloTF` program on Windows:
+And the following command line executes the `HelloTF` program on Windows:
 
 <pre><b>java -cp libtensorflow-1.2.0-rc1.jar;. -Djava.library.path=jni HelloTF</b></pre>
 
