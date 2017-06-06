@@ -1595,18 +1595,14 @@ class Stream {
     return ThenMemcpy(gpu_dst, gpu_src, size);
   }
 
-  // Entrain onto the stream: a memset of zero at a GPU location of size
-  // bytes.
+  // Entrain onto the stream: a memset of zero at a GPU location of size bytes.
   // The location must not be null.
   Stream &ThenMemZero(DeviceMemoryBase *location, uint64 size);
 
-  // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location
-  // of
-  // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly
-  // divisible
+  // Entrain onto the stream: a memset of a 32-bit pattern at a GPU location of
+  // size bytes, where bytes must be evenly 32-bit sized (i.e. evenly divisible
   // by 4). The location must not be null.
-  Stream &ThenMemset32(DeviceMemoryBase *location, const uint32 &pattern,
-                       uint64 size);
+  Stream &ThenMemset32(DeviceMemoryBase *location, uint32 pattern, uint64 size);
 
   // Enqueue a forward operation of the RNN model onto the stream.
   // See DnnSupport::DoRnnForward for more details.
