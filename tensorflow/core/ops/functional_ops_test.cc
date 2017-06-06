@@ -33,6 +33,7 @@ TEST(FunctionalOpsTest, SymbolicGradient_ShapeFn) {
     in_type_list.emplace_back(DT_FLOAT);
     src_list.emplace_back("a", 0, DT_FLOAT);
   }
+  out_type_list.reserve(num_outputs);
   for (int i = 0; i < num_outputs; ++i) {
     out_type_list.emplace_back(DT_FLOAT);
   }

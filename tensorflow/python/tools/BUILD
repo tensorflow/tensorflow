@@ -216,6 +216,7 @@ py_test(
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
     srcs_version = "PY2AND3",
+    tags = ["manual"],
     deps = [
         ":saved_model_cli",
     ],

@@ -893,7 +893,7 @@ def index_table_from_file(vocabulary_file=None,
   ```
 
   Args:
-    vocabulary_file: The vocabulary filename.
+    vocabulary_file: The vocabulary filename, may be a constant scalar `Tensor`.
     num_oov_buckets: The number of out-of-vocabulary buckets.
     vocab_size: Number of the elements in the vocabulary, if known.
     default_value: The value to use for out-of-vocabulary feature values.
@@ -911,8 +911,9 @@ def index_table_from_file(vocabulary_file=None,
     ValueError: If `num_oov_buckets` is negative or `vocab_size` is not greater
       than zero.
   """
-  if not vocabulary_file:
-    raise ValueError("vocabulary_file must be specified.")
+  if vocabulary_file is None or (
+      isinstance(vocabulary_file, str) and not vocabulary_file):
+    raise ValueError("vocabulary_file must be specified and must not be empty.")
   if num_oov_buckets < 0:
     raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
                      % num_oov_buckets)

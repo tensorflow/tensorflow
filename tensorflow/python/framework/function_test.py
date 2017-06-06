@@ -39,6 +39,7 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -816,6 +817,22 @@ class FunctionTest(test.TestCase):
                             feed_dict={input_op: np.linspace(1, 10, 10)})
       self.assertAllEqual(out1, np.linspace(2, 11, 10))
       self.assertAllEqual(out2, np.linspace(2, 11, 10))
+
+  def testTwoInputsSameOp(self):
+    g = ops.Graph()
+    with g.as_default():
+      m = array_ops.placeholder(dtypes.float32)
+      s, u, v = linalg_ops.svd(m)
+      ss = math_ops.reduce_sum(s)
+      uu = math_ops.reduce_sum(u)
+      vv = math_ops.reduce_sum(v)
+      result = ss + uu + vv
+    f = function._graph_to_function_def(
+        g,
+        g.get_operations()[1:],  # skip the placeholder
+        [s, u, v],
+        [result])
+    self.assertEqual(len(f.signature.input_arg), 3)
 
 
 class FunctionsFromProtos(test.TestCase):

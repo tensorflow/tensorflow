@@ -19,6 +19,7 @@ limitations under the License.
 #include "include/json/json.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_node_show.h"
 
@@ -44,6 +45,9 @@ class ChromeTraceFormatter {
 
   void EmitFlowEnd(const string& name, int64 ts, int64 pid, int64 tid,
                    int64 flow_id);
+
+  void EmitCounter(const string& category, const string& name, int64 pid,
+                   int64 ts, const string& device, int64 bytes);
 
   string Format();
 
@@ -80,16 +84,53 @@ class TimeNode {
   std::vector<TimeNode*> next_tnodes;
 };
 
+// Tracking the memory based on the op input/output, temporary bytes and
+// persistent bytes.
+// Currently, we calculate a "predicted" memory, but do not use it for display.
+// The displayed memory timeline is directly from the TensorFlow allocator,
+// which is the groundtruth.
+class MemoryTracker {
+ public:
+  class Device {
+   public:
+    // The first 3 fields are predicted.
+    std::map<string, int64> tensor_size;
+    std::map<string, int64> earliest_ref;
+    std::map<string, int64> latest_ref;
+    // ground truth memory stats. time->bytes.
+    std::map<int64, int64> allocator_stats;
+  };
+
+  void TrackNode(int64 step, GraphNode* node);
+
+  void TrackNodeConnection(int64 step, GraphNode* node, GraphNode* src);
+
+  const std::map<string, Device>& devices() const { return devices_; }
+
+ private:
+  std::map<string, Device> devices_;
+};
+
 class Timeline {
  public:
-  Timeline(const string& outfile) : outfile_(outfile) {}
+  Timeline(int64 step, const string& outfile)
+      : step_(step), outfile_(outfile) {}
   ~Timeline() {}
+
+  int64 step() const { return step_; }
+  void SetStep(int64 step) { step_ = step; }
 
   void GenerateGraphTimeline(const GraphNode* gnode);
 
   void GenerateScopeTimeline(const ScopeNode* node);
 
   void GenerateCodeTimeline(const CodeNode* node);
+
+  void TrackNode(GraphNode* node) { mem_tracker_.TrackNode(step_, node); }
+
+  void TrackNodeConnection(GraphNode* node, GraphNode* src) {
+    mem_tracker_.TrackNodeConnection(step_, node, src);
+  }
 
  private:
   void OutputTimeline();
@@ -130,9 +171,11 @@ class Timeline {
 
   int64 AllocatePID();
 
+  int64 step_;
   const string outfile_;
   int64 next_pid_ = 0;
   int64 allocator_pid_ = -1;
+  MemoryTracker mem_tracker_;
   ChromeTraceFormatter chrome_formatter_;
   std::map<string, int64> device_pids_;
 

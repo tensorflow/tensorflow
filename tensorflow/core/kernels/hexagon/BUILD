@@ -110,7 +110,6 @@ cc_library(
         ":graph_transferer",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:remote_fused_graph_ops",
-        "//tensorflow/core",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ],
     alwayslink = 1,

@@ -104,10 +104,13 @@ class Node {
   // fully specifies a device, and satisfies def().device().
   // TODO(josh11b): Move assigned_device_name outside of Node into a
   // NodeId->DeviceName map.
-  string assigned_device_name() const { return assigned_device_name_; }
-  void set_assigned_device_name(const string& device_name) {
-    assigned_device_name_ = device_name;
+  const string& assigned_device_name() const;
+  void set_assigned_device_name(const string& device_name);
+  bool has_assigned_device_name() const {
+    return assigned_device_name_index_ > 0;
   }
+  int assigned_device_name_index() const { return assigned_device_name_index_; }
+  void set_assigned_device_name_index(int index);
 
   // Read only access to attributes
   AttrSlice attrs() const { return AttrSlice(def()); }
@@ -154,6 +157,8 @@ class Node {
   }
   bool IsHostSend() const { return class_ == NC_HOST_SEND; }
   bool IsHostRecv() const { return class_ == NC_HOST_RECV; }
+
+  bool IsMetadata() const { return class_ == NC_METADATA; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
@@ -232,6 +237,7 @@ class Node {
     NC_GET_SESSION_HANDLE,
     NC_GET_SESSION_TENSOR,
     NC_DELETE_SESSION_TENSOR,
+    NC_METADATA,
     NC_OTHER  // Not a special kind of node
   };
 
@@ -248,8 +254,16 @@ class Node {
 
   Properties* props_;
 
-  // Name of device assigned to perform this computation.
-  string assigned_device_name_;
+  // Index within Graph::device_names_ of the name of device assigned
+  // to perform this computation.
+  int assigned_device_name_index_;
+
+  // A back-pointer to the Graph that owns this node.  Currently, this exists
+  // solely to allow Node::[set_]assigned_device_name() to work. However, if all
+  // callers of Node::[set_]assigned_device_name() are modified to use the
+  // equivalent methods defined directly on Graph, then we can remove this
+  // field and reclaim that memory.
+  Graph* graph_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Node);
 };
@@ -417,6 +431,12 @@ class Graph {
   // array's size.
   int num_nodes() const { return num_nodes_; }
 
+  // The number of live nodes in the graph, excluding the Source and Sink nodes.
+  int num_op_nodes() const {
+    DCHECK_GE(num_nodes_, 2);
+    return num_nodes_ - 2;
+  }
+
   // The number of live edges in the graph.
   //
   // Because edges can be removed from the graph, num_edges() is often
@@ -438,6 +458,9 @@ class Graph {
   // Access to the list of all nodes.  Example usage:
   //   for (Node* node : graph.nodes()) { ... }
   gtl::iterator_range<NodeIter> nodes() const;
+
+  // Access to the list of all nodes, excluding the Source and Sink nodes.
+  gtl::iterator_range<NodeIter> op_nodes() const;
 
   // Returns one more than the maximum id assigned to any node.
   int num_node_ids() const { return nodes_.size(); }
@@ -468,6 +491,26 @@ class Graph {
 
   const OpRegistryInterface* op_registry() const { return &ops_; }
   const FunctionLibraryDefinition& flib_def() const { return ops_; }
+
+  void CheckDeviceNameIndex(int index) {
+    DCHECK_GE(index, 0);
+    DCHECK_LT(index, static_cast<int>(device_names_.size()));
+  }
+
+  int InternDeviceName(const string& device_name);
+
+  const string& get_assigned_device_name(const Node& node) const {
+    return device_names_[node.assigned_device_name_index()];
+  }
+
+  void set_assigned_device_name_index(Node* node, int device_name_index) {
+    CheckDeviceNameIndex(device_name_index);
+    node->assigned_device_name_index_ = device_name_index;
+  }
+
+  void set_assigned_device_name(Node* node, const string& device_name) {
+    node->assigned_device_name_index_ = InternDeviceName(device_name);
+  }
 
   // TODO(josh11b): uint64 hash() const;
 
@@ -509,6 +552,30 @@ class Graph {
   // For generating unique names.
   int name_counter_ = 0;
 
+  // In most graphs, the number of unique values used for the
+  // Node::assigned_device_name() property is quite small.  If the graph is
+  // large, then this duplication of values can consume a significant amount of
+  // memory.  Instead, we represent the same information using an interning
+  // table, which consists of a vector of unique strings (device_names_), as
+  // well a map (device_names_map_) from unique strings to indices within the
+  // unique string table.
+  //
+  // The InternDeviceName() method handles adding a new entry into the table,
+  // or locating the index of an existing entry.
+  //
+  // The fact that Node::assigned_device_name() is implemented using an
+  // interning table is intentionally public.  This allows algorithms that
+  // frequently access this field to do so efficiently, especially for the case
+  // where the assigned_device_name of one Node is copied directly from that
+  // of another Node.
+
+  // A table of the unique assigned device names.  Indices do NOT correspond
+  // to node IDs.  Index 0 is always the empty string.
+  std::vector<string> device_names_;
+
+  // Maps unique device names to indices within device_names_[i].
+  std::unordered_map<string, int> device_names_map_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(Graph);
 };
 
@@ -540,6 +607,10 @@ inline bool IsIdentity(const Node* node) { return node->IsIdentity(); }
 
 // Returns true iff 'n' is a control flow node.
 inline bool IsControlFlow(const Node* n) { return n->IsControlFlow(); }
+
+// Returns true if the node only depends on its input's metadata
+// (shape).  Specifically, returns true for "Size", "Shape" and "Rank" ops.
+inline bool IsMetadata(const Node* n) { return n->IsMetadata(); }
 
 inline bool IsHostMemoryPreserving(const Node* node) {
   return IsIdentity(node) || IsControlFlow(node);
@@ -631,6 +702,43 @@ inline bool Edge::IsControlEdge() const {
   // Note that if either src_output_ or dst_input_ is kControlSlot,
   // so is the other one (AddEdge checks this).
   return src_output_ == Graph::kControlSlot;
+}
+
+inline gtl::iterator_range<NodeIter> Graph::nodes() const {
+  // Note that NodeId 0 is always valid since we don't let the source
+  // node be removed from the graph.
+  return gtl::make_range(NodeIter(this, 0), NodeIter(this, num_node_ids()));
+}
+
+inline gtl::iterator_range<NodeIter> Graph::op_nodes() const {
+  // Note that NodeId 0 is always valid since we don't let the source
+  // node be removed from the graph.
+  //
+  // The current implementation of Graph maintains the invariant that the
+  // first two nodes are the source and sink nodes, and all other nodes are op
+  // nodes. This method (op_nodes()) relies on this invariant.
+  NodeIter begin(this, 0);
+  NodeIter end(this, num_node_ids());
+  if (begin != end) {
+    ++begin;
+  }
+  if (begin != end) {
+    ++begin;
+  }
+  return gtl::make_range(begin, end);
+}
+
+inline void Node::set_assigned_device_name_index(int index) {
+  graph_->CheckDeviceNameIndex(index);
+  assigned_device_name_index_ = index;
+}
+
+inline void Node::set_assigned_device_name(const string& device_name) {
+  graph_->set_assigned_device_name(this, device_name);
+}
+
+inline const string& Node::assigned_device_name() const {
+  return graph_->get_assigned_device_name(*this);
 }
 
 }  // namespace tensorflow

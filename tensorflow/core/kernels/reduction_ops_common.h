@@ -238,9 +238,11 @@ class ReductionOp : public OpKernel {
     if (ctx->track_allocations()) {
       // The temporary memory becomes the output memory.
       if (ctx->allocate_on_host(alloc_attr)) {
-        ctx->record_host_temp_memory_size(-out.AllocatedBytes());
+        ctx->record_host_temp_memory_size(
+            -static_cast<int64>(out.AllocatedBytes()));
       } else {
-        ctx->record_device_temp_memory_size(-out.AllocatedBytes());
+        ctx->record_device_temp_memory_size(
+            -static_cast<int64>(out.AllocatedBytes()));
       }
     }
     ctx->set_output(0, out);

@@ -44,7 +44,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:lib",
-        "//tensorflow/tensorboard/plugins/projector:projector_plugin",
         "//tensorflow/tensorboard/plugins/projector:protos_all_py",
     ],
 )

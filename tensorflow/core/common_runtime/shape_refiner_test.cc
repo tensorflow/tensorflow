@@ -259,6 +259,7 @@ REGISTER_OP("ShapeData")
       }
 
       std::vector<shape_inference::DimensionHandle> dims;
+      dims.reserve(shape_data->NumElements());
       for (int i = 0; i < shape_data->NumElements(); ++i) {
         dims.emplace_back(c->MakeDim(shape_data->flat<int32>()(i)));
       }
@@ -556,7 +557,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
                    .Finalize(root.graph(), &result));
 
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
-  for (auto input : inputs) {
+  for (const auto& input : inputs) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
   TF_ASSERT_OK(m.AddNode(pack.node()));
@@ -791,8 +792,8 @@ TEST(ShapeRefinerTest, IncrementalUpdates) {
   // Inject a shape, and incrementally propagate it to the dequeue op.
   ctx = m.GetContext(queue);
   shape_inference::ShapeHandle shp = ctx->MakeShape({3, 7});
-  ctx->set_output_handle_shape(0, shp);
-  ctx->set_output_handle_dtype(0, DT_FLOAT);
+  ctx->set_output_handle_shapes_and_types(
+      0, std::vector<shape_inference::ShapeAndType>{{shp, DT_FLOAT}});
 
   bool refined = false;
   TF_ASSERT_OK(m.UpdateNode(dequeue, &refined));

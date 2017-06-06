@@ -349,7 +349,7 @@ class HierarchyImpl implements Hierarchy {
    */
   getTemplateIndex(): (string) => number {
     let templateNames = d3.keys(this.templates);
-    let templateIndex = d3.scale.ordinal()
+    let templateIndex = d3.scaleOrdinal()
         .domain(templateNames)
         .range(d3.range(0, templateNames.length));
     return (templateId: string) => <number>templateIndex(templateId);

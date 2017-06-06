@@ -103,14 +103,25 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
     params = list(params)  # Iterate to get the underlying Variables.
   if not isinstance(params, list):
     params = [params]
+
   def maybe_normalize(x):
-    if max_norm is not None:
-      if x.get_shape().ndims is not None:
-        ndims = x.get_shape().ndims
-      else:
-        ndims = array_ops.size(array_ops.shape(x))
-      return clip_ops.clip_by_norm(x, max_norm, axes=list(range(1, ndims)))
-    return x
+    """Normalizes the embeddings in x if max_norm is not None."""
+    if max_norm is None:
+      return x
+    static = True
+    ids_rank = ops.convert_to_tensor(ids).get_shape().ndims
+    if ids_rank is None:
+      ids_rank = array_ops.rank(ids)
+      static = False
+    x_rank = x.get_shape().ndims
+    if x_rank is None:
+      x_rank = array_ops.rank(x)
+      static = False
+    return clip_ops.clip_by_norm(
+        x, max_norm,
+        axes=list(range(ids_rank, x_rank)) if static
+        else math_ops.range(ids_rank, x_rank))
+
   with ops.name_scope(name, "embedding_lookup", params + [ids]) as name:
     np = len(params)  # Number of partitions
     # Preserve the resource variable status to avoid accidental dense reads.

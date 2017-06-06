@@ -77,7 +77,10 @@ cc_library(
     name = "types",
     hdrs = ["types.h"],
     visibility = [":friends"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -113,7 +116,6 @@ cc_test(
         ":test",
         ":test_helpers",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -180,7 +182,10 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":status_macros",
+        ":statusor",
         ":types",
+        ":util",
         "//tensorflow/core:lib",
     ],
 )
@@ -247,7 +252,6 @@ cc_test(
         ":test",
         ":test_helpers",
         "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -258,7 +262,6 @@ cc_test(
     deps = [
         ":shape_util",
         ":test",
-        ":test_helpers",
         ":xla_data_proto",
         "//tensorflow/core:test_main",
     ],
@@ -481,7 +484,6 @@ cc_test(
         ":text_literal_writer",
         ":types",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )

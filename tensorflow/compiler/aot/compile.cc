@@ -200,7 +200,7 @@ Status RewriteAndPruneGraph(Graph* graph, const Config& config,
   for (const Fetch& fetch : config.fetch()) {
     missing_fetches.insert(TensorIdToString(fetch.id()));
   }
-  for (const Node* n : graph->nodes()) {
+  for (const Node* n : graph->op_nodes()) {
     if (n->type_string() == kArgOp) {
       string feed_id;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFeedIdAttr, &feed_id));
@@ -350,6 +350,7 @@ Status CompileXla(xla::CompileOnlyClient* client,
   compile_result->program_shape = *pshape_or.ValueOrDie();
   xla::ProgramShape* pshape = &compile_result->program_shape;
   std::vector<const xla::Shape*> arg_layouts;
+  arg_layouts.reserve(pshape->parameters_size());
   for (int i = 0; i < pshape->parameters_size(); ++i) {
     arg_layouts.push_back(pshape->mutable_parameters(i));
   }

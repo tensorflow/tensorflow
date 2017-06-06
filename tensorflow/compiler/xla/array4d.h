@@ -55,7 +55,7 @@ namespace xla {
 template <typename T>
 class Array4D {
  public:
-  // Creates a 4D array, unitialized values.
+  // Creates a 4D array, uninitialized values.
   Array4D(int64 planes, int64 depth, int64 height, int64 width)
       : planes_(planes),
         depth_(depth),
@@ -65,7 +65,7 @@ class Array4D {
     Fill(T());
   }
 
-  // Creates a 4D array, initalized to value.
+  // Creates a 4D array, initialized to value.
   Array4D(int64 planes, int64 depth, int64 height, int64 width, T value)
       : Array4D(planes, depth, height, width) {
     Fill(value);

@@ -155,7 +155,7 @@ def run(experiment_fn, output_dir=None, schedule=None, run_config=None,
       to create the `Estimator` (passed as `model_dir` to its constructor). It
       must return an `Experiment`. For this case, `run_config` and `hparams`
       must be None.
-      2) It accpets two arguments `run_config` and `hparams`, which should be
+      2) It accepts two arguments `run_config` and `hparams`, which should be
       used to create the `Estimator` (`run_config` passed as `config` to its
       constructor; `hparams` used as the hyper-paremeters of the model).
       It must return an `Experiment`. For this case, `output_dir` must be None.

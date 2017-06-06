@@ -78,7 +78,7 @@ struct MultinomialFunctor<CPUDevice, T> {
       gen_copy.Skip(start_row * (num_samples + 3) / 4);
       random::SimplePhilox simple_philox(&gen_copy);
 
-      std::vector<float> cdf(num_classes);
+      std::vector<double> cdf(num_classes);
 
       for (int64 b = start_row; b < limit_row; ++b) {
         const auto* logits_row = &logits(b, 0);
@@ -86,25 +86,25 @@ struct MultinomialFunctor<CPUDevice, T> {
         // Takes an along-class maximum (for numerical stability).
         T max = std::numeric_limits<T>::lowest();
         for (int64 j = 0; j < num_classes; ++j) {
-          if (std::isfinite(static_cast<float>(logits_row[j]))) {
+          if (std::isfinite(static_cast<double>(logits_row[j]))) {
             max = std::max(max, logits_row[j]);
           }
         }
-        const float max_logit = static_cast<float>(max);
+        const double max_logit = static_cast<double>(max);
 
         // Precompute cumulative probability distribution across classes.
         // Note: This isn't normalized.
-        float running_total = 0;
+        double running_total = 0;
         for (int64 j = 0; j < num_classes; ++j) {
-          if (std::isfinite(static_cast<float>(logits_row[j]))) {
+          if (std::isfinite(static_cast<double>(logits_row[j]))) {
             running_total +=
-                std::exp(static_cast<float>(logits_row[j]) - max_logit);
+                std::exp(static_cast<double>(logits_row[j]) - max_logit);
           }
           cdf[j] = running_total;
         }
         // Generate each sample.
         for (int64 j = 0; j < num_samples; ++j) {
-          float to_find = simple_philox.RandFloat() * running_total;
+          double to_find = simple_philox.RandDouble() * running_total;
           auto found_iter = std::upper_bound(cdf.begin(), cdf.end(), to_find);
           output(b, j) = std::distance(cdf.begin(), found_iter);
         }
@@ -183,7 +183,9 @@ class MultinomialOp : public OpKernel {
                                &scratch));
       }
 
-      const int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
+      int num_samples_ceil_4 = (num_samples + 3) / 4 * 4;
+      // CPU generates doubles = 2 samples per number.
+      if (std::is_same<Device, CPUDevice>::value) num_samples_ceil_4 *= 2;
       auto rng =
           generator_.ReserveRandomOutputs(batch_size * num_samples_ceil_4, 256);
       functor::MultinomialFunctor<Device, T>()(

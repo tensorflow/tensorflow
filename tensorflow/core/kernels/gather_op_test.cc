@@ -164,6 +164,7 @@ static Graph* Gather(int dim) {
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   std::vector<Index> indices_vec;
+  indices_vec.reserve(kLookups);
   for (int i = 0; i < kLookups; i++) {
     indices_vec.push_back(rnd.Uniform(kRows));
   }

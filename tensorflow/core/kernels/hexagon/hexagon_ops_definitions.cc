@@ -398,4 +398,4 @@ GraphTransferInfo::Destination HexagonOpsDefinitions::GetTransferDestination()
     const {
   return GraphTransferInfo::HEXAGON;
 }
-};
+}  // namespace tensorflow

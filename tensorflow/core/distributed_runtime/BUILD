@@ -29,6 +29,7 @@ filegroup(
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 # For platform specific build config
 load(
@@ -43,6 +44,28 @@ load(
 package(default_visibility = [
     "//tensorflow:internal",
 ])
+
+cc_library(
+    name = "partial_run_mgr",
+    srcs = ["partial_run_mgr.cc"],
+    hdrs = ["partial_run_mgr.h"],
+    deps = [
+        ":worker_interface",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_test(
+    name = "partial_run_mgr_test",
+    size = "small",
+    srcs = ["partial_run_mgr_test.cc"],
+    deps = [
+        ":partial_run_mgr",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
 
 cc_library(
     name = "message_wrappers",
@@ -141,6 +164,7 @@ cc_library(
     ],
     deps = [
         ":graph_mgr",
+        ":partial_run_mgr",
         ":rendezvous_mgr_interface",
         ":session_mgr",
         ":worker_interface",
@@ -299,6 +323,7 @@ cc_library(
     name = "base_rendezvous_mgr",
     srcs = ["base_rendezvous_mgr.cc"],
     hdrs = ["base_rendezvous_mgr.h"],
+    copts = tf_copts(),
     deps = [
         ":rendezvous_mgr_interface",
         ":worker_cache",

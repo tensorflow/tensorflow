@@ -57,7 +57,6 @@ cc_library(
     deps = [
         ":cc_ops",
         ":client_session",
-        ":grad_op_registry",
         ":gradients",
         ":ops",
         ":scope",
@@ -512,7 +511,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core/kernels:ops_util",
     ],
 )

@@ -21,6 +21,7 @@ limitations under the License.
 <link rel="import" href="../tf-graph-controls/tf-graph-controls.html">
 <link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
+<link rel="import" href="../vz-sorting/vz-sorting.html">
 
 <!--
 tf-graph-dashboard displays a graph from a TensorFlow run.
@@ -103,19 +104,21 @@ out-hierarchy-params="{{_hierarchyParams}}"
 </dom-module>
 
 <script>
-"use strict";
+import {DashboardBehavior} from "../tf-dashboard-common/dashboard-behavior";
+import {ReloadBehavior} from "../tf-dashboard-common/reload-behavior";
+import {BackendBehavior} from "../tf-backend/behavior";
+import {compareTagNames} from "../vz-sorting/sorting";
 
-(function() {
-TF.Dashboard.TfGraphDashboard = Polymer({
+Polymer({
   is: 'tf-graph-dashboard',
   factoryImpl: function(backend, debuggerDataEnabled) {
     this.backend = backend;
     this.debuggerDataEnabled = debuggerDataEnabled;
   },
   behaviors: [
-    TF.Dashboard.DashboardBehavior("graphs"),
-    TF.Dashboard.ReloadBehavior("tf-graph-dashboard"),
-    TF.Backend.Behavior,
+    DashboardBehavior("graphs"),
+    ReloadBehavior("tf-graph-dashboard"),
+    BackendBehavior,
   ],
   properties: {
     _datasets: Object,
@@ -186,20 +189,20 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     }
     // Set this to true so we only initialize once.
     this._initialized = true;
-    Promise.all([backend.graphRuns(), backend.runMetadataRuns()])
+    Promise.all([backend.graphRuns(), backend.runMetadataTags()])
       .then(function(result) {
-        var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);
+        var runsWithGraph = result[0].sort(compareTagNames);
         var runToMetadata = result[1];
         var datasets = _.map(runsWithGraph, function(runName) {
           return {
             name: runName,
-            path: backend.router.graph(
+            path: backend.graphUrl(
                 runName, tf.graph.LIMIT_ATTR_SIZE, tf.graph.LARGE_ATTRS_KEY),
             runMetadata: runToMetadata[runName] ? _.map(
-              runToMetadata[runName].sort(VZ.Sorting.compareTagNames), function(tag) {
+              runToMetadata[runName].sort(compareTagNames), function(tag) {
                 return {
                   tag: tag,
-                  path: backend.router.runMetadata(tag, runName)
+                  path: backend.runMetadataUrl(tag, runName)
                 };
               }, this) : []
           };
@@ -296,5 +299,4 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     this._requestHealthPills();
   },
 });
-})();
 </script>

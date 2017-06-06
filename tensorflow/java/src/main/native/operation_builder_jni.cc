@@ -24,7 +24,7 @@ TF_OperationDescription* requireHandle(JNIEnv* env, jlong handle) {
   if (handle == 0) {
     throwException(env, kIllegalStateException,
                    "Operation has already been built");
-    return 0;
+    return nullptr;
   }
   return reinterpret_cast<TF_OperationDescription*>(handle);
 }

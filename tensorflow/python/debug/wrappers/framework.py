@@ -666,7 +666,7 @@ class WatchOptions(object):
         are set, the two filtering operations will occur in a logical `AND`
         relation. In other words, a node will be included if and only if it
         hits both whitelists.
-      tensor_dtype_regex_whitelist: Regular-experssion whitelist for Tensor
+      tensor_dtype_regex_whitelist: Regular-expression whitelist for Tensor
         data type, e.g., `"^int.*"`.
         This whitelist operates in logical `AND` relations to the two whitelists
         above.

@@ -90,8 +90,8 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     case xla::U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case xla::F16:
-      literal = *xla::LiteralUtil::CreateR0<xla::half>(
-              static_cast<xla::half>(value));
+      literal =
+          *xla::LiteralUtil::CreateR0<xla::half>(static_cast<xla::half>(value));
       break;
     case xla::TUPLE:
       LOG(FATAL) << "tuple element type is not integral";

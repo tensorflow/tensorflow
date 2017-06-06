@@ -63,7 +63,11 @@ class TFShow {
 
   bool ShouldTrim(ShowNode* node, const std::vector<string>& regexes);
 
-  bool ShouldAccount(ShowNode* node, const Options& opts);
+  bool ReAccount(ShowNode* node, const Options& opts);
+
+  string FormatNode(ShowNode* node, const Options& opts);
+
+  string FormatLegend(const Options& opts);
 
   template <typename T>
   std::vector<T*> SortNodes(const std::vector<T*>& nodes, const Options& opts) {

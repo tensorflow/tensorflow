@@ -89,7 +89,7 @@ class UntypedCall : public core::RefCounted {
   virtual void RequestReceived(Service* service, bool ok) = 0;
 
   // This method will be called either (i) when the server is notified
-  // that the request has been cancelled, or (ii) when the request completes
+  // that the request has been canceled, or (ii) when the request completes
   // normally. The implementation should distinguish these cases by querying
   // the `grpc::ServerContext` associated with the request.
   virtual void RequestCancelled(Service* service, bool ok) = 0;
@@ -175,7 +175,7 @@ class Call : public UntypedCall<Service> {
   }
 
   // Registers `callback` as the function that should be called if and when this
-  // call is cancelled by the client.
+  // call is canceled by the client.
   void SetCancelCallback(std::function<void()> callback) {
     mutex_lock l(mu_);
     cancel_callback_ = std::move(callback);

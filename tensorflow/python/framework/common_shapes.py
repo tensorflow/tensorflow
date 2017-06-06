@@ -20,7 +20,6 @@ from __future__ import print_function
 import numpy as np
 import six.moves
 
-from tensorflow.core.framework import types_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import errors
@@ -554,24 +553,11 @@ def broadcast_shape(shape_x, shape_y):
   return tensor_shape.TensorShape(return_dims)
 
 
-def call_cpp_shape_fn(op,
-                      input_tensors_needed=None,
-                      input_tensors_as_shapes_needed=None,
-                      debug_python_shape_fn=None,
-                      require_shape_fn=True):
+def call_cpp_shape_fn(op, require_shape_fn=True):
   """A shape function that delegates to the registered C++ shape function.
 
   Args:
     op: the node in the graph for which to compute output shapes.
-    input_tensors_needed: a list of input tensor indices for which to compute
-      the input tensor's value and pass to the C++ shape function.
-    input_tensors_as_shapes_needed: a list of input tensor indices for which to
-      compute the constant_value_as_shape and pass to the C++ shape function.
-    debug_python_shape_fn: For testing only during migration to using
-      call_cpp_shape_fn. Do not submit calls that set this,
-      as the comparison is slow. If non-None, the python shape function;
-      this function will be called and its output compared to that of
-      the C++ shape function.
     require_shape_fn: If true, and the C++ shape function is not registered
       in the current binary then an exception is raised; otherwise, if the
       C++ shape function is not registered then unknown_shape is used.
@@ -597,17 +583,16 @@ def call_cpp_shape_fn(op,
     # calls the C / C-API directly, we should be able to remove this.
     return {
         "shapes": [tensor_shape.TensorShape(op.get_attr("value").tensor_shape)],
-        "handle_shapes": [tensor_shape.TensorShape(None).as_proto()],
-        "handle_dtypes": [types_pb2.DT_INVALID]
+        "handle_data": [None]
     }
 
-  input_tensors_needed = input_tensors_needed or []
-  input_tensors_as_shapes_needed = input_tensors_as_shapes_needed or []
+  input_tensors_needed = []
+  input_tensors_as_shapes_needed = []
 
   while True:
     res = _call_cpp_shape_fn_impl(op, input_tensors_needed,
                                   input_tensors_as_shapes_needed,
-                                  debug_python_shape_fn, require_shape_fn)
+                                  require_shape_fn)
     if not isinstance(res, dict):
       # Handles the case where _call_cpp_shape_fn_impl calls unknown_shape(op).
       return res
@@ -631,9 +616,7 @@ def call_cpp_shape_fn(op,
 
 
 def _call_cpp_shape_fn_impl(
-    op, input_tensors_needed,
-    input_tensors_as_shapes_needed,
-    debug_python_shape_fn, require_shape_fn):
+    op, input_tensors_needed, input_tensors_as_shapes_needed, require_shape_fn):
   """Core implementaton of call_cpp_shape_fn."""
   graph_def_version = op.graph.graph_def_versions.producer
   node_def_str = op.node_def.SerializeToString()
@@ -642,8 +625,8 @@ def _call_cpp_shape_fn_impl(
     r = cpp_shape_inference_pb2.CppShapeInferenceResult()
     r.shape.CopyFrom(t.get_shape().as_proto())
     # pylint: disable=protected-access
-    r.handle_shape.CopyFrom(t._handle_shape)
-    r.handle_dtype = t._handle_dtype
+    if t._handle_data is not None:
+      r.handle_data.CopyFrom(t._handle_data)
     # pylint: enable=protected-access
     return r.SerializeToString()
   input_shapes = [tensor_to_inference_result(i) for i in op.inputs]
@@ -689,29 +672,15 @@ def _call_cpp_shape_fn_impl(
       for s in output_shapes
   ]
   result = [r.shape for r in result_protos]
-  result_handle_shapes = [r.handle_shape for r in result_protos]
-  result_handle_dtypes = [r.handle_dtype for r in result_protos]
+  result_handle_data = [
+      r.handle_data if r.handle_data.is_set else None for r in result_protos
+  ]
 
-  if debug_python_shape_fn:
-    try:
-      python_result = [tensor_shape.as_shape(s)
-                       for s in debug_python_shape_fn(op)]
-    except Exception as err:
-      raise AssertionError("Python shape function return error but "
-                           "C++ shape functon did not: %s" % str(err))
-    result_as_shapes = [tensor_shape.as_shape(s) for s in result]
-    if str(result_as_shapes) != str(python_result):
-      raise ValueError(
-          ("Python vs CPP shape mismatch.  "
-           "CPP: %s vs python: %s on node %s "
-           "with input shapes %s") % (
-               str(result_as_shapes), str(python_result), str(op.node_def),
-               ",".join([str(i.get_shape()) for i in op.inputs])))
-
-  return {"shapes": result,
-          "handle_shapes": result_handle_shapes,
-          "handle_dtypes": result_handle_dtypes,
-          "inputs_needed": output[-1]}
+  return {
+      "shapes": result,
+      "handle_data": result_handle_data,
+      "inputs_needed": output[-1]
+  }
 
 # pylint: disable=protected-access
 ops._set_call_cpp_shape_fn(call_cpp_shape_fn)

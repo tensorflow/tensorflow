@@ -31,7 +31,7 @@ limitations under the License.
 // (tensorflow::table::Table).  Each key is a name of a tensor and its value is
 // a serialized BundleEntryProto.  Each BundleEntryProto describes the metadata
 // of a tensor: which of the "data" files contains the content of a tensor, the
-// offset into that file, checksum, some auxilary data, etc.
+// offset into that file, checksum, some auxiliary data, etc.
 //
 // A tensor bundle can be accessed randomly using a BundleReader.  Usage:
 //
@@ -273,6 +273,7 @@ class BundleReader {
   RandomAccessFile* metadata_;  // Owned.
   table::Table* table_;
   table::Iterator* iter_;
+  // Owned the InputBuffer objects and their underlying RandomAccessFile's.
   std::unordered_map<int32, io::InputBuffer*> data_;
 
   // Maps each partitioned tensor's key to its stored slices (represented in a

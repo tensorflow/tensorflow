@@ -81,15 +81,15 @@ void MyDriverFunc(const GPUDevice &d) {
                 config.thread_per_block, 0, d.stream()>>> (cfg3, other_args...);
 
   // maximize occupancy
-  CudaLaunchConfig cfg4 = GetCudaLaunchConfig(10240, d, MyKernel1D, 0 );
+  CudaLaunchConfig cfg4 = GetCudaLaunchConfig(10240, d, MyKernel1D, 0, 0 );
   MyKernel1D <<<config.block_count,
                 config.thread_per_block, 0, d.stream()>>> (cfg4, other_args...);
   Cuda2DLaunchConfig cfg5 = GetCuda2DLaunchConfig(10240, 10240, d,
-                                                  MyKernel1D, 0);
+                                                  MyKernel1D, 0, 0);
   MyKernel2D <<<config.block_count,
                 config.thread_per_block, 0, d.stream()>>> (cfg5, other_args...);
   Cuda3DLaunchConfig cfg6 = GetCuda3DLaunchConfig(4096, 4096, 100, d,
-                                                  MyKernel1D, 0);
+                                                  MyKernel1D, 0, 0);
   MyKernel3D <<<config.block_count,
                 config.thread_per_block, 0, d.stream()>>> (cfg6, other_args...);
 }
@@ -156,7 +156,8 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
 template <typename DeviceFunc>
 inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
                                             const GPUDevice& d, DeviceFunc func,
-                                            size_t dynamic_shared_memory_size) {
+                                            size_t dynamic_shared_memory_size,
+                                            int block_size_limit) {
   CudaLaunchConfig config;
 
   if (work_element_count <= 0) {
@@ -165,10 +166,12 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
 
   int block_count = 0;
   int thread_per_block = 0;
+
   cudaError_t err = cudaOccupancyMaxPotentialBlockSize(
       &block_count, &thread_per_block, func, dynamic_shared_memory_size,
-      work_element_count);
+      block_size_limit);
   CHECK_EQ(err, cudaSuccess);
+
   block_count =
       std::min(block_count, DIV_UP(work_element_count, thread_per_block));
 
@@ -220,7 +223,7 @@ using Cuda3DLaunchConfig = Cuda2DLaunchConfig;
 template <typename DeviceFunc>
 inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(
     int xdim, int ydim, int zdim, const GPUDevice& d, DeviceFunc func,
-    size_t dynamic_shared_memory_size) {
+    size_t dynamic_shared_memory_size, int block_size_limit) {
   Cuda3DLaunchConfig config;
 
   if (xdim <= 0 || ydim <= 0 || zdim <= 0) {
@@ -242,7 +245,7 @@ inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(
   int thread_per_block = 0;
   cudaError_t err = cudaOccupancyMaxPotentialBlockSize(
       &block_count, &thread_per_block, func, dynamic_shared_memory_size,
-      xdim * ydim * zdim);
+      block_size_limit);
   CHECK_EQ(err, cudaSuccess);
 
 #define MIN3(a, b, c) std::min((a), std::min((b), (c)))
@@ -269,9 +272,9 @@ inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(
 template <typename DeviceFunc>
 inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(
     int xdim, int ydim, const GPUDevice& d, DeviceFunc func,
-    size_t dynamic_shared_memory_size) {
+    size_t dynamic_shared_memory_size, int block_size_limit) {
   return GetCuda3DLaunchConfig(xdim, ydim, 1, d, func,
-                               dynamic_shared_memory_size);
+                               dynamic_shared_memory_size, block_size_limit);
 }
 
 namespace gpu {
@@ -583,6 +586,86 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T tf_min(const T& x, const T& y) {
 template <typename T>
 EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T tf_max(const T& x, const T& y) {
   return x < y ? y : x;
+}
+
+template <typename T>
+__device__ EIGEN_ALWAYS_INLINE T CudaShuffle(T value, int srcLane,
+                                             int width = warpSize) {
+  return __shfl(value, srcLane, width);
+}
+
+// Variant of the (undocumented) version from the CUDA SDK, but using unsigned
+// instead of float for lo and hi (which is incorrect with ftz, for example).
+// A bug has been filed with NVIDIA and will be fixed in the next CUDA release.
+// TODO(csigg): remove when the bug is fixed in the next CUDA release.
+__device__ EIGEN_ALWAYS_INLINE double CudaShuffle(double value, int srcLane,
+                                                  int width = warpSize) {
+  unsigned lo, hi;
+  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  hi = __shfl(hi, srcLane, width);
+  lo = __shfl(lo, srcLane, width);
+  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
+  return value;
+}
+
+template <typename T>
+__device__ EIGEN_ALWAYS_INLINE T CudaShuffleUp(T value, int delta,
+                                               int width = warpSize) {
+  return __shfl_up(value, delta, width);
+}
+
+// Variant of the (undocumented) version from the CUDA SDK, but using unsigned
+// instead of float for lo and hi (which is incorrect with ftz, for example).
+// A bug has been filed with NVIDIA and will be fixed in the next CUDA release.
+// TODO(csigg): remove when the bug is fixed in the next CUDA release.
+__device__ EIGEN_ALWAYS_INLINE double CudaShuffleUp(double value, int delta,
+                                                    int width = warpSize) {
+  unsigned lo, hi;
+  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  hi = __shfl_up(hi, delta, width);
+  lo = __shfl_up(lo, delta, width);
+  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
+  return value;
+}
+
+template <typename T>
+__device__ EIGEN_ALWAYS_INLINE T CudaShuffleDown(T value, int delta,
+                                                 int width = warpSize) {
+  return __shfl_down(value, delta, width);
+}
+
+// Variant of the (undocumented) version from the CUDA SDK, but using unsigned
+// instead of float for lo and hi (which is incorrect with ftz, for example).
+// A bug has been filed with NVIDIA and will be fixed in the next CUDA release.
+// TODO(csigg): remove when the bug is fixed in the next CUDA release.
+__device__ EIGEN_ALWAYS_INLINE double CudaShuffleDown(double value, int delta,
+                                                      int width = warpSize) {
+  unsigned lo, hi;
+  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  hi = __shfl_down(hi, delta, width);
+  lo = __shfl_down(lo, delta, width);
+  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
+  return value;
+}
+
+template <typename T>
+__device__ EIGEN_ALWAYS_INLINE T CudaShuffleXor(T value, int laneMask,
+                                                int width = warpSize) {
+  return __shfl_xor(value, laneMask, width);
+}
+
+// Variant of the (undocumented) version from the CUDA SDK, but using unsigned
+// instead of float for lo and hi (which is incorrect with ftz, for example).
+// A bug has been filed with NVIDIA and will be fixed in the next CUDA release.
+// TODO(csigg): remove when the bug is fixed in the next CUDA release.
+__device__ EIGEN_ALWAYS_INLINE double CudaShuffleXor(double value, int laneMask,
+                                                     int width = warpSize) {
+  unsigned lo, hi;
+  asm volatile("mov.b64 {%0,%1}, %2;" : "=r"(lo), "=r"(hi) : "d"(value));
+  hi = __shfl_xor(hi, laneMask, width);
+  lo = __shfl_xor(lo, laneMask, width);
+  asm volatile("mov.b64 %0, {%1,%2};" : "=d"(value) : "r"(lo), "r"(hi));
+  return value;
 }
 
 }  // namespace tensorflow

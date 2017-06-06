@@ -57,6 +57,7 @@ class DeviceType {
   explicit DeviceType(StringPiece type) : type_(type.data(), type.size()) {}
 
   const char* type() const { return type_.c_str(); }
+  const string& type_string() const { return type_; }
 
   bool operator<(const DeviceType& other) const;
   bool operator==(const DeviceType& other) const;

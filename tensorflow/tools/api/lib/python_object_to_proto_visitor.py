@@ -56,7 +56,8 @@ def _SanitizedArgSpec(obj):
     sanitized_defaults = []
     for val in unsanitized_arg_spec.defaults:
       str_val = str(val)
-      if ' object at 0x' in str_val:
+      # Sanitize argspecs that have hex code in them.
+      if ' at 0x' in str_val:
         sanitized_defaults.append('%s instance>' % str_val.split(' at ')[0])
       else:
         sanitized_defaults.append(str_val)
@@ -89,6 +90,12 @@ def _SanitizedMRO(obj):
     str_repr = str(cls)
     return_list.append(str_repr)
     if 'tensorflow' not in str_repr:
+      break
+
+    # Hack - tensorflow.test.StubOutForTesting may or may not be type <object>
+    # depending on the environment. To avoid inconsistency, break after we add
+    # StubOutForTesting to the return_list.
+    if 'StubOutForTesting' in str_repr:
       break
 
   return return_list

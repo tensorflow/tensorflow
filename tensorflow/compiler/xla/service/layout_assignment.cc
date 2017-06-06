@@ -102,7 +102,9 @@ LayoutConstraints::LayoutConstraints(
     : points_to_analysis_(points_to_analysis), computation_(computation) {
   // Gather all array-shaped logical buffers into unconstrained_buffer_ids.
   for (auto& buffer : points_to_analysis_.logical_buffers()) {
-    if (buffer->IsArray()) {
+    // The points to analysis is computed per module, restrict constraints to
+    // array buffers in this computation.
+    if (buffer->IsArray() && buffer->instruction()->parent() == computation) {
       unconstrained_buffer_ids_.insert(buffer->id());
     }
   }
@@ -711,8 +713,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
   CHECK(ShapeUtil::IsArray(instruction->shape()) &&
         ShapeUtil::IsArray(operand->shape()));
 
-  if ((instruction->IsElementwiseOnOperand(operand_no) ||
-       InstructionRequiresInputLayoutEqualToOutputLayout(instruction)) &&
+  if (instruction->IsElementwiseOnOperand(operand_no) &&
       !ShapeUtil::IsScalar(operand->shape()) &&
       ShapeUtil::Rank(operand->shape()) ==
           ShapeUtil::Rank(instruction->shape())) {

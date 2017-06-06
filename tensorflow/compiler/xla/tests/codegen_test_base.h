@@ -41,9 +41,6 @@ class CodegenTestBase : public HloTestBase {
   void CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
                           const string& pattern);
 
-  // Sets the fast-math-disabled flag on the config we use when compiling.
-  void set_fast_math_disabled(bool disabled) { fast_math_disabled_ = disabled; }
-
  protected:
   // Compiles hlo_module to an executable, CHECK-failing if this fails.
   std::unique_ptr<Executable> CompileToExecutable(
@@ -52,8 +49,6 @@ class CodegenTestBase : public HloTestBase {
   // Runs FileCheck with the given pattern over the given string and EXPECTs
   // that FileCheck succeeded in matching the input.
   void RunFileCheck(const string& input, const string& pattern);
-
-  bool fast_math_disabled_ = false;
 };
 
 }  // namespace xla

@@ -24,7 +24,7 @@ namespace tensorflow {
 
 namespace {
 
-// See documentation in ../ops/iterator_ops.cc for a high-level
+// See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class ShuffleDatasetOp : public OpKernel {
@@ -127,7 +127,7 @@ class ShuffleDatasetOp : public OpKernel {
           }
         }
 
-        if (buffer_.size() > 0) {
+        if (!buffer_.empty()) {
           *end_of_sequence = false;
           // Choose an element to produce uniformly at random, and
           // swap the last element into its place in the buffer.

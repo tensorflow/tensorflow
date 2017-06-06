@@ -269,7 +269,7 @@ class Binomial(distribution.Distribution):
             message="total_count must be non-negative."),
         distribution_util.assert_integer_form(
             total_count,
-            message="total_count cannot contain fractional componentes."),
+            message="total_count cannot contain fractional components."),
     ], total_count)
 
   def _maybe_assert_valid_sample(self, counts, check_integer=True):

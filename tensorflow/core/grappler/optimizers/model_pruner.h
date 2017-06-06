@@ -22,7 +22,7 @@ namespace tensorflow {
 namespace grappler {
 
 // Prune a model to make it more efficient:
-// * Remove unecessary operations.
+// * Remove unnecessary operations.
 // * Optimize gradient computations.
 class ModelPruner : public GraphOptimizer {
  public:
