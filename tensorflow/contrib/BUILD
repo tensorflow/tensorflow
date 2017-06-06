@@ -55,6 +55,7 @@ py_library(
         "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/contrib/saved_model:saved_model_py",
         "//tensorflow/contrib/seq2seq:seq2seq_py",
+        "//tensorflow/contrib/signal:signal_py",
         "//tensorflow/contrib/slim",
         "//tensorflow/contrib/slim:nets",
         "//tensorflow/contrib/solvers:solvers_py",
@@ -66,6 +67,7 @@ py_library(
         "//tensorflow/contrib/tensor_forest:init_py",
         "//tensorflow/contrib/tensorboard",
         "//tensorflow/contrib/testing:testing_py",
+        "//tensorflow/contrib/text:text_py",
         "//tensorflow/contrib/tfprof",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
@@ -83,7 +85,9 @@ cc_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
         "//tensorflow/contrib/nccl:nccl_kernels",
+        "//tensorflow/contrib/seq2seq:beam_search_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
+        "//tensorflow/contrib/text:all_kernels",
     ],
 )
 
@@ -97,7 +101,9 @@ cc_library(
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
         "//tensorflow/contrib/nccl:nccl_ops_op_lib",
+        "//tensorflow/contrib/seq2seq:beam_search_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
+        "//tensorflow/contrib/text:all_ops",
     ],
 )
 

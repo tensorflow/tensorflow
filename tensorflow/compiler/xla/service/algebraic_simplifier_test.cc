@@ -794,8 +794,8 @@ TEST_F(AlgebraicSimplifierTest, ReshapesMerged) {
       builder.AddInstruction(HloInstruction::CreateReshape(
           ShapeUtil::MakeShape(F32, {2, 1, 2}), param0));
 
-      builder.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(F32, {1, 2, 1, 1, 2, 1}), reshape1));
+  builder.AddInstruction(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(F32, {1, 2, 1, 1, 2, 1}), reshape1));
 
   auto module = MakeUnique<HloModule>(TestName());
   auto computation = module->AddEntryComputation(builder.Build());
@@ -810,6 +810,33 @@ TEST_F(AlgebraicSimplifierTest, ReshapesMerged) {
   EXPECT_THAT(computation->root_instruction(), op::Reshape(param0));
 }
 
+TEST_F(AlgebraicSimplifierTest, CopiesMerged) {
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(F32, {2, 2, 2}),
+          "param0"));
+
+  HloInstruction* copy1 = builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShapeWithLayout(F32, {2, 2, 2}, {0, 1, 2}),
+      HloOpcode::kCopy, param0));
+
+  builder.AddInstruction(HloInstruction::CreateUnary(
+      ShapeUtil::MakeShapeWithLayout(F32, {2, 2, 2}, {0, 2, 1}),
+      HloOpcode::kCopy, copy1));
+
+  auto module = MakeUnique<HloModule>(TestName());
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(), op::Copy(op::Copy(param0)));
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/true,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(), op::Copy(param0));
+}
+
 TEST_F(AlgebraicSimplifierTest, TransposesMerged) {
   HloComputation::Builder builder(TestName());
   HloInstruction* param0 =
@@ -820,8 +847,8 @@ TEST_F(AlgebraicSimplifierTest, TransposesMerged) {
       builder.AddInstruction(HloInstruction::CreateTranspose(
           ShapeUtil::MakeShape(F32, {3, 4, 2}), param0, {1, 2, 0}));
 
-      builder.AddInstruction(HloInstruction::CreateTranspose(
-          ShapeUtil::MakeShape(F32, {4, 3, 2}), transpose1, {1, 0, 2}));
+  builder.AddInstruction(HloInstruction::CreateTranspose(
+      ShapeUtil::MakeShape(F32, {4, 3, 2}), transpose1, {1, 0, 2}));
 
   auto module = MakeUnique<HloModule>(TestName());
   auto computation = module->AddEntryComputation(builder.Build());

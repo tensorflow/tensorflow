@@ -578,6 +578,158 @@ Arguments | Type                    | Semantics
 The function is applied to each element in the `operand` array, resulting in an
 array with the same shape. It is allowed for `operand` to be a scalar (rank 0).
 
+
+## BatchNormTraining
+
+See also
+[`ComputationBuilder::BatchNormTraining`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h) and
+[`the original batch normalization paper`](https://arxiv.org/abs/1502.03167)
+for a detailed description of the algorithm.
+
+<b> Warning: Not implemented yet </b>
+
+Normalizes an array across batch and spatial dimensions.
+
+<b> `BatchNormTraining(operand, scale, offset, epsilon, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                        |
+| --------------- | ----------------------- | -------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be        |
+:                 :                         : normalized                       :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\gamma\\))                   :
+| `offset`        | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\beta\\ )                    :
+| `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
+| `feature_index` | `int64`                 | Index to feature dimension       |
+:                 :                         : in `operand`                     :
+
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the mean and variance
+across all the other dimensions and use the mean and variance to normalize each
+element in `operand`. If an invalid `feature_index` is passed, an error is
+produced.
+
+The algorithm goes as follows for each batch in `operand` \\(x\\) that
+contains `m` elements with `w` and `h` as the size of spatial dimensions (
+assuming `operand` is an 4 dimensional array):
+
+- Calculates batch mean \\(\mu_l\\) for each feature `l` in feature dimension:
+\\(\mu_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h x_{ijkl}\\)
+
+- Calculates batch variance \\(\sigma^2_l\\):
+\\(\sigma^2_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h (x_{ijkl} - \mu_l)^2\\)
+
+- Normalizes, scales and shifts:
+\\(y_{ijkl}=\frac{\gamma_l(x_{ijkl}-\mu_l)}{\sqrt[2]{\sigma^2_l+\epsilon}}+\beta_l\\)
+
+The epsilon value, usually a small number, is added to avoid divide-by-zero errors.
+
+The output type is a tuple of three ComputationDataHandles:
+
+| Outputs      | Type                    | Semantics                            |
+| ------------ | ----------------------- | -------------------------------------|
+| `output`     | `ComputationDataHandle` | n dimensional array with the same    |
+:              :                         : shape as input `operand` (y)         :
+| `batch_mean` | `ComputationDataHandle` | 1 dimensional array (\\(\mu\\))      |
+| `batch_var`  | `ComputationDataHandle` | 1 dimensional array (\\(\sigma^2\\)) |
+
+The `batch_mean` and `batch_var` are moments calculated across the batch and
+spatial dimensions using the formulars above.
+
+## BatchNormInference
+
+See also
+[`ComputationBuilder::BatchNormInference`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> Warning: Not implemented yet </b>
+
+Normalizes an array across batch and spatial dimensions.
+
+<b> `BatchNormInference(operand, scale, offset, mean, variance, epsilon, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                       |
+| --------------  | ----------------------- | ------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be       |
+:                 :                         : normalized                      :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array             |
+| `offset`        | `ComputationDataHandle` | 1 dimensional array             |
+| `mean`          | `ComputationDataHandle` | 1 dimensional array             |
+| `variance`      | `ComputationDataHandle` | 1 dimensional array             |
+| `epsilon`       | `float`                 | Epsilon value                   |
+| `feature_index` | `int64`                 | Index to feature dimension in   |
+:                 :                         : `operand`                       :
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the mean and variance
+across all the other dimensions and use the mean and variance to normalize each
+element in `operand`. If an invalid `feature_index` is passed, an error is
+produced.
+
+`BatchNormInference`  is equivalent to calling `BatchNormTraining` without
+computing `mean` and `variance` for each batch. It uses the input `mean` and
+`variance` instead as estimated values. The purpose of this op is to reduce
+latency in inference, hence the name `BatchNormInference`.
+
+The output is a n dimensional, normalized array with the same shape as input
+`operand`.
+
+## BatchNormGrad
+
+See also
+[`ComputationBuilder::BatchNormGrad`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/computation_builder.h).
+
+<b> Warning: Not implemented yet </b>
+
+Calculates gradients of batch norm.
+
+<b> `BatchNormGrad(x, scale, mean, variance, epsilon, grad_y, feature_index)` </b>
+
+| Arguments       | Type                    | Semantics                        |
+| --------------  | ----------------------- | -------------------------------- |
+| `operand`       | `ComputationDataHandle` | n dimensional array to be        |
+:                 :                         : normalized (x)                   :
+| `scale`         | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\gamma\\))                   :
+| `mean`          | `ComputationDataHandle` | 1 dimensional array (\\(\mu\\))  |
+| `variance`      | `ComputationDataHandle` | 1 dimensional array              |
+:                 :                         : (\\(\sigma^2\\))                 :
+| `grad_output`   | `ComputationDataHandle` | Gradients passed to              |
+:                 :                         : `BatchNormTraining`              :
+:                 :                         : (\\( \nabla y\\))                :
+| `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
+| `feature_index` | `int64`                 | Index to feature dimension in    |
+:                 :                         : `operand`                        :
+
+For each feature in the feature dimension (`feature_index` is the index for the
+feature dimension in `operand`), the operation calculates the gradients with
+respect to `operand`, `offset` and `scale` across all the other dimensions. If
+an invalid `feature_index` is passed, an error is produced.
+
+The three gradients are defined by the following formulas:
+
+\\( \nabla x = \nabla y * \gamma * \sqrt{\sigma^2+\epsilon} \\)
+
+\\( \nabla \gamma = sum(\nabla y * (x - \mu) * \sqrt{\sigma^2 + \epsilon}) \\)
+
+\\( \nabla \beta = sum(\nabla y) \\)
+
+The inputs `mean` and `variance` represents moments value
+across batch and spatial dimensions.
+
+The output type is a tuple of three ComputationDataHandles:
+
+|Outputs       | Type                    | Semantics                           |
+|------------- | ----------------------- | ------------------------------------|
+|`grad_operand`| `ComputationDataHandle` | gradient with respect to input      |
+:              :                         : `operand`                           :
+|`grad_offset` | `ComputationDataHandle` | gradient with respect to input      |
+:              :                         : `offset`                            :
+|`grad_scale`  | `ComputationDataHandle` | gradient with respect to input      |
+:              :                         : `scale`                             :
+
+
 ## GetTupleElement
 
 See also

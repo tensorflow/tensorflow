@@ -153,7 +153,7 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
         info_checker_callback) const {
   std::vector<HostLapackInfo> host_lapack_infos;
   if (dev_lapack_infos.empty()) {
-    info_checker_callback(Status::OK(), std::move(host_lapack_infos));
+    info_checker_callback(Status::OK(), host_lapack_infos);
     return Status::OK();
   }
 
@@ -174,7 +174,7 @@ Status CudaSolver::CopyLapackInfoToHostAsync(
   auto wrapped_info_checker_callback =
       [info_checker_callback](std::vector<HostLapackInfo> host_lapack_infos) {
         Status status;
-        for (auto host_lapack_info : host_lapack_infos) {
+        for (const auto& host_lapack_info : host_lapack_infos) {
           for (int i = 0; i < host_lapack_info.size() && status.ok(); ++i) {
             const int info_value = (host_lapack_info.data())[i];
             if (info_value != 0) {
@@ -268,9 +268,8 @@ static inline Status GetrfBatchedImpl(
   using CudaScalar = typename CUDAComplexT<Scalar>::type;
   ScratchSpace<uint8> dev_a_dev_ptrs(context, sizeof(CudaScalar*) * batch_size,
                                      /* on_host */ false);
-  if (!CopyHostToDevice(
-          context, (void*)dev_a_dev_ptrs.mutable_data() /* dest */,
-          (const void*)host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes())) {
+  if (!CopyHostToDevice(context, dev_a_dev_ptrs.mutable_data() /* dest */,
+                        host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes())) {
     return errors::Internal("GetrfBatched: failed to copy pointers to device");
   }
   TF_RETURN_IF_CUBLAS_ERROR(
@@ -302,12 +301,10 @@ static inline Status GetriBatchedImpl(
                                      /* on_host */ false);
   ScratchSpace<uint8> dev_a_inv_dev_ptrs(
       context, sizeof(CudaScalar*) * batch_size, /* on_host */ false);
-  if (!CopyHostToDevice(
-          context, (void*)dev_a_dev_ptrs.mutable_data() /* dest */,
-          (const void*)host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes()) ||
-      !CopyHostToDevice(context, (void*)dev_a_inv_dev_ptrs.mutable_data(),
-                        (const void*)host_a_inv_dev_ptrs,
-                        dev_a_inv_dev_ptrs.bytes())) {
+  if (!CopyHostToDevice(context, dev_a_dev_ptrs.mutable_data() /* dest */,
+                        host_a_dev_ptrs /* source */, dev_a_dev_ptrs.bytes()) ||
+      !CopyHostToDevice(context, dev_a_inv_dev_ptrs.mutable_data(),
+                        host_a_inv_dev_ptrs, dev_a_inv_dev_ptrs.bytes())) {
     return errors::Internal("GetriBatched: failed to copy pointers to device");
   }
   TF_RETURN_IF_CUBLAS_ERROR(

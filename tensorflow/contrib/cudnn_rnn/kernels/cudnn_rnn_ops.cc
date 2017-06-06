@@ -107,7 +107,6 @@ using perftools::gputools::DeviceMemory;
 using perftools::gputools::DeviceMemoryBase;
 using perftools::gputools::ScratchAllocator;
 using perftools::gputools::port::StatusOr;
-using strings::Printf;
 
 Status ParseRNNMode(const string& str, RnnMode* rnn_mode) {
   if (str == "rnn_relu") {
@@ -231,7 +230,8 @@ inline perftools::gputools::port::Status ToExecutorStatus(const Status& s) {
 class CudnnRNNWorkspaceAllocator : public ScratchAllocator {
  public:
   ~CudnnRNNWorkspaceAllocator() override {}
-  CudnnRNNWorkspaceAllocator(OpKernelContext* context) : context_(context) {}
+  explicit CudnnRNNWorkspaceAllocator(OpKernelContext* context)
+      : context_(context) {}
   int64 GetMemoryLimitInBytes(perftools::gputools::Stream* stream) override {
     return std::numeric_limits<int64>::max();
   }
@@ -303,7 +303,7 @@ class CudnnRNNReserveSpaceAllocator : public ScratchAllocator {
 // This class is not thread-safe.
 class CudnnRNNPersistentSpaceAllocator : public ScratchAllocator {
  public:
-  CudnnRNNPersistentSpaceAllocator(OpKernelContext* context)
+  explicit CudnnRNNPersistentSpaceAllocator(OpKernelContext* context)
       : context_(context) {}
 
   ~CudnnRNNPersistentSpaceAllocator() override {}
@@ -461,7 +461,8 @@ void RestoreParams(const OpInputList params_input,
 // shape validations.
 class CudnnRNNKernelCommon : public OpKernel {
  protected:
-  CudnnRNNKernelCommon(OpKernelConstruction* context) : OpKernel(context) {
+  explicit CudnnRNNKernelCommon(OpKernelConstruction* context)
+      : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dropout", &dropout_));
     OP_REQUIRES_OK(context, context->GetAttr("seed", &seed_));
     OP_REQUIRES_OK(context, context->GetAttr("seed2", &seed2_));

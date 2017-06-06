@@ -80,6 +80,7 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
         shape = PartialTensorShape(shape_proto);
       }
     }
+    sizes.reserve(shape.dims());
     for (int i = 0; i < shape.dims(); ++i) {
       sizes.push_back(shape.dim_size(i));
     }
@@ -87,6 +88,7 @@ void PrintBenchmarkUsage(const std::vector<const NodeDef*>& placeholders,
     input_layer_shapes.push_back(sizes_string);
   }
   std::vector<string> output_layers;
+  output_layers.reserve(outputs.size());
   for (const NodeDef* node : outputs) {
     output_layers.push_back(node->name());
   }
@@ -184,7 +186,7 @@ Status SummarizeGraph(const GraphDef& graph, const string& graph_path,
         ++control_edge_count;
       }
     }
-    if (node.device() != "") {
+    if (!node.device().empty()) {
       ++device_counts[node.device()];
     }
     if ((node.op() == "Const") || (node.op() == "Variable") ||

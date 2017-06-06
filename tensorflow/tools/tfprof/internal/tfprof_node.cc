@@ -27,86 +27,31 @@ namespace tfprof {
 // For CPU, op_end_rel is the kernel time, while all_end_rel_micros includes
 // some post-processing.
 // Here, we only consider kernel time for simplicity.
-void TFGraphNode::AddStepStat(const string& device,
-                              const NodeExecStats* step_stat) {
-  step_stat_ = step_stat;
-  CHECK(step_stat_);
-
+void TFGraphNode::AddStepStat(int64 step, const string& device,
+                              const NodeExecStats& step_stat) {
   string dev = str_util::Lowercase(device);
+
   // TODO(xpan): Test it.
   if (RE2::FullMatch(dev, "/job:.*/replica:\\d+/task:\\d+/[a-z]+:\\d+")) {
-    canonical_device_ = dev;
-    // TODO(xpan): Support things other than gpu?
-    host_device_ = StringReplace(dev, "gpu:\\d+", "cpu:0");
-    AddOpType(canonical_device_);
-  }
-
-  devices_.insert(dev);
-  if (step_stat_->all_start_micros() > 0) {
-    if (all_start_micros_ > 0) {
-      all_start_micros_ =
-          std::min(all_start_micros_,
-                   static_cast<int64>(step_stat_->all_start_micros()));
+    if (!canonical_device_.empty()) {
+      if (canonical_device_ != dev) {
+        fprintf(stderr, "Unexpected: graph node changed device: %s->%s.\n",
+                canonical_device_.c_str(), dev.c_str());
+        return;
+      }
     } else {
-      all_start_micros_ = step_stat_->all_start_micros();
-    }
-    int64 op_end_rel_micros = step_stat_->op_end_rel_micros();
-    // Round quick execution to 1 micro to be semantically robust.
-    if (op_end_rel_micros == 0) {
-      ++op_end_rel_micros;
-    }
-    latest_end_rel_micros_ =
-        std::max(latest_end_rel_micros_, op_end_rel_micros);
-
-    op_execs_[dev].push_back(
-        std::make_pair(step_stat_->all_start_micros(), op_end_rel_micros));
-
-    if (dev.find("stream") != dev.npos && dev.find("stream:all") == dev.npos) {
-      gpu_kernel_execs_[dev].push_back(
-          std::make_pair(step_stat_->all_start_micros(), op_end_rel_micros));
+      canonical_device_ = dev;
+      // TODO(xpan): Support things other than gpu?
+      host_device_ = StringReplace(dev, "gpu:\\d+", "cpu:0");
+      AddOpType(canonical_device_);
     }
   }
+
+  ExecStep& exec = execs_[step];
+  exec.AddTimeStats(dev, step_stat);
 
   if (dev == canonical_device_) {
-    for (const auto& mem : step_stat_->memory()) {
-      // TODO(xpan): Fix this hack. Currently the allocator name seems quite
-      // ad-hoc.
-      if (mem.allocator_name().find("GPU") == mem.allocator_name().npos) {
-        continue;
-      }
-      if (dev == canonical_device_) {
-        allocator_bytes_in_use_ =
-            std::max(allocator_bytes_in_use_,
-                     static_cast<int64>(mem.allocator_bytes_in_use()));
-      }
-    }
-    int64 total_output_bytes = 0;
-    for (const auto& output : step_stat_->output()) {
-      if (output.has_tensor_description() &&
-          output.tensor_description().has_allocation_description()) {
-        // TODO(xpan): Maybe allocated_bytes.
-        int64 output_bytes = std::max(output.tensor_description()
-                                          .allocation_description()
-                                          .allocated_bytes(),
-                                      output.tensor_description()
-                                          .allocation_description()
-                                          .requested_bytes());
-        uint64 output_ptr =
-            output.tensor_description().allocation_description().ptr();
-        total_output_bytes += output_bytes;
-        output_bytes_[output.slot()] = std::make_pair(output_bytes, output_ptr);
-      }
-    }
-    if (step_stat_->has_memory_stats()) {
-      host_temp_bytes_ += step_stat_->memory_stats().host_temp_memory_size();
-      host_persistent_bytes_ +=
-          step_stat_->memory_stats().host_persistent_memory_size();
-      accelerator_temp_bytes_ +=
-          step_stat_->memory_stats().device_temp_memory_size();
-      accelerator_persistent_bytes_ +=
-          step_stat_->memory_stats().device_persistent_memory_size();
-    }
-    requested_bytes_ = total_output_bytes;
+    exec.AddMemoryStats(dev, step_stat);
   }
 }
 }  // namespace tfprof

@@ -53,20 +53,21 @@ class SplitOpTest(test.TestCase):
     model_input = array_ops.placeholder(dtypes.float32)
     inp = np.zeros((1, 10))
     # check that we still fail at runtime if the shapes were unknown
-    with self.test_session(use_gpu=False) as sess:
+    with self.test_session(use_gpu=True) as sess:
       with self.assertRaises(errors_impl.InvalidArgumentError):
         sess.run(array_ops.split(model_input, [4]), {model_input: inp})
 
     # test that we can pass a scalar Tensor as num_splits
-    with self.test_session(use_gpu=False) as sess:
-      result = sess.run(
-          array_ops.split(
-              array_ops.ones([4, 4]),
-              num_or_size_splits=array_ops.ones([2, 2]).get_shape()[1],
-              axis=0))
+    for axis in [0, -2]:
+      with self.test_session(use_gpu=True) as sess:
+        result = sess.run(
+            array_ops.split(
+                array_ops.ones([4, 4]),
+                num_or_size_splits=array_ops.ones([2, 2]).get_shape()[1],
+                axis=axis))
 
-    self.assertEqual(result[0].shape, (2, 4))
-    self.assertEqual(result[1].shape, (2, 4))
+      self.assertEqual(result[0].shape, (2, 4))
+      self.assertEqual(result[1].shape, (2, 4))
 
     # test that none split dimensions remain, even if we don't know how
     # the split_dim will be split, but we do know the axis
@@ -80,7 +81,7 @@ class SplitOpTest(test.TestCase):
     model_input2 = array_ops.placeholder(dtypes.float32, shape=[None, 2])
     result = array_ops.split(model_input2, [2, 2], axis=0)[0]
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.test_session(use_gpu=True) as sess:
       sess.run(result, feed_dict={model_input2: np.ones([4, 2])})
 
   def testExplicitNum(self):
@@ -116,7 +117,7 @@ class SplitOpTest(test.TestCase):
   def _RunAndVerifyVariable(self, dtype, large_num_splits=False):
     # Random dims of rank 5
     shape = np.random.randint(1, 5, size=5)
-    split_dim = np.random.randint(0, 5)
+    split_dim = np.random.randint(-5, 5)
     if large_num_splits:
       num_split = np.random.randint(16, 25)
     else:
@@ -180,12 +181,13 @@ class SplitOpTest(test.TestCase):
     self.assertAllEqual(result[:, 1:4], inp_grads[1])
 
   def testOutputShape(self):
-    with self.test_session(use_gpu=True):
-      tensor = array_ops.placeholder(dtypes.float32, shape=[None, 12])
-      size_splits = [3, 7, 2]
-      outputs = array_ops.split(tensor, size_splits, 1)
-      for i, output in enumerate(outputs):
-        self.assertEqual(output.get_shape().as_list(), [None, size_splits[i]])
+    for axis in [1, -1]:
+      with self.test_session(use_gpu=True):
+        tensor = array_ops.placeholder(dtypes.float32, shape=[None, 12])
+        size_splits = [3, 7, 2]
+        outputs = array_ops.split(tensor, size_splits, axis)
+        for i, output in enumerate(outputs):
+          self.assertEqual(output.get_shape().as_list(), [None, size_splits[i]])
 
   def _compare(self, x, dim, num):
     np_ans = np.split(x, num, dim)
@@ -246,7 +248,7 @@ class SplitOpTest(test.TestCase):
   def _RunAndVerify(self, dtype, large_num_splits=False):
     # Random dims of rank 5
     shape = np.random.randint(0, 5, size=5)
-    split_dim = np.random.randint(0, 5)
+    split_dim = np.random.randint(-5, 5)
     if large_num_splits:
       num_split = np.random.randint(9, 15)
     else:
@@ -294,6 +296,10 @@ class SplitOpTest(test.TestCase):
     # split_dim greater than rank of input.
     with self.assertRaises(ValueError):
       array_ops.split(value=[[0, 1], [2, 3]], num_or_size_splits=4, axis=2)
+
+    # split dim less than -(rank of input)
+    with self.assertRaises(ValueError):
+      array_ops.split(value=[[0, 1], [2, 3]], num_or_size_splits=4, axis=-3)
 
     # num_split does not evenly divide the size in split_dim.
     with self.assertRaisesRegexp(ValueError, "should evenly divide"):

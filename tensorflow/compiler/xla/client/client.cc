@@ -58,14 +58,13 @@ StatusOr<std::unique_ptr<Literal>> Client::Transfer(
         "server provided response without a literal in "
         "TransferToClient request");
   }
-
-  return WrapUnique(response.release_literal());
+  return MakeUnique<Literal>(response.literal());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
     const Literal& literal, const DeviceHandle* device_handle) {
   TransferToServerRequest request;
-  *request.mutable_literal() = literal;
+  *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
     *request.mutable_device_handle() = *device_handle;
   }
@@ -93,7 +92,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
 Status Client::TransferToInfeed(const Literal& literal, int64 replica_id,
                                 const DeviceHandle* device_handle) {
   TransferToInfeedRequest request;
-  *request.mutable_literal() = literal;
+  *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
     *request.mutable_device_handle() = *device_handle;
   }
@@ -141,7 +140,8 @@ StatusOr<std::unique_ptr<Literal>> Client::TransferFromOutfeed(
         "TransferToClient request");
   }
 
-  return WrapUnique(response.release_literal());
+  Literal literal(response.literal());
+  return MakeUnique<Literal>(literal);
 }
 
 Status Client::ResetDevice() {

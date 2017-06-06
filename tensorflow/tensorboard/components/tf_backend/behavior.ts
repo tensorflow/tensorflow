@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 import {getRuns, getTags, TYPES} from './backend';
 
+/** @polymerBehavior */
 export const BackendBehavior = {
   properties: {
     /** *** Required properties *** */

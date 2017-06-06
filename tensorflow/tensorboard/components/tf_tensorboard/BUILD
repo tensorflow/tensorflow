@@ -1,16 +1,16 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
+load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
+load("//tensorflow/tensorboard:vulcanize.bzl", "tensorboard_html_binary")
 
 licenses(["notice"])  # Apache 2.0
 
-web_library(
+ts_web_library(
     name = "tf_tensorboard",
     srcs = [
+        "autoReloadBehavior.ts",
         "style.html",
         "tf-tensorboard.html",
-        ":ts",
     ],
     path = "/tf-tensorboard",
     visibility = ["//visibility:public"],
@@ -23,11 +23,11 @@ web_library(
         "//tensorflow/tensorboard/components/tf_graph_dashboard",
         "//tensorflow/tensorboard/components/tf_histogram_dashboard",
         "//tensorflow/tensorboard/components/tf_image_dashboard",
+        "//tensorflow/tensorboard/components/tf_imports:polymer",
         "//tensorflow/tensorboard/components/tf_scalar_dashboard",
         "//tensorflow/tensorboard/components/tf_storage",
         "//tensorflow/tensorboard/components/tf_text_dashboard",
         "//tensorflow/tensorboard/components/vz_projector",
-        "@org_polymer",
         "@org_polymer_font_roboto",
         "@org_polymer_iron_icons",
         "@org_polymer_paper_button",
@@ -40,20 +40,22 @@ web_library(
     ],
 )
 
-web_library(
+ts_web_library(
     name = "demo",
     srcs = ["demo.html"],
     path = "/tf-tensorboard",
     deps = [
         ":tf_tensorboard",
         "//tensorflow/tensorboard/demo:demo_data",
-        "@org_polymer_webcomponentsjs",
     ],
 )
 
-tensorboard_typescript_genrule(
-    name = "ts",
-    srcs = ["autoReloadBehavior.ts"],
+tensorboard_html_binary(
+    name = "devserver",
+    testonly = 1,
+    input_path = "/tf-tensorboard/demo.html",
+    output_path = "/index.html",
+    deps = [":demo"],
 )
 
 filegroup(

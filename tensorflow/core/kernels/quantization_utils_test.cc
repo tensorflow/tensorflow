@@ -37,6 +37,7 @@ void TestRequantizeMany(Eigen::ThreadPoolDevice* eigen_device, float input_min,
                         int tolerance = 1) {
   const int values_count = values_quantized.size();
   std::vector<quint8> expected_values;
+  expected_values.reserve(values_count);
   for (int value_index = 0; value_index < values_count; ++value_index) {
     expected_values.push_back(FloatToQuantized<quint8>(
         QuantizedToFloat(values_quantized[value_index], input_min, input_max),
@@ -78,6 +79,7 @@ void TestRequantizeMany8To32Bit(float input_min, float input_max,
                                 int tolerance = 256) {
   const int values_count = values_quantized.size();
   std::vector<qint32> expected_values;
+  expected_values.reserve(values_count);
   for (int value_index = 0; value_index < values_count; ++value_index) {
     expected_values.push_back(FloatToQuantized<qint32>(
         QuantizedToFloat(values_quantized[value_index], input_min, input_max),

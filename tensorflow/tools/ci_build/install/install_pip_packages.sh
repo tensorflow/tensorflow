@@ -85,3 +85,6 @@ pip2 install mock
 
 pip2 install portpicker
 pip3 install portpicker
+
+pip2 install backports.weakref==1.0rc1
+pip3 install backports.weakref==1.0rc1

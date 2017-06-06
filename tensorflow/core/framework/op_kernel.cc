@@ -96,9 +96,9 @@ OpKernel::OpKernel(OpKernelConstruction* context)
   OP_REQUIRES_OK(context, CheckOpDeprecation(*context->op_def_,
                                              context->graph_def_version()));
 
-  // Kernels executing on GPU tie very few resources on the CPU where the
+  // Kernels executing on GPU/SYCL tie very few resources on the CPU where the
   // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU);
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) && context->device_type() != DeviceType(DEVICE_SYCL);
 }
 
 OpKernel::~OpKernel() {}

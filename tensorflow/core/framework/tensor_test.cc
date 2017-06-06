@@ -820,15 +820,13 @@ namespace {
 // failures to allocate.
 class DummyCPUAllocator : public Allocator {
  public:
-  DummyCPUAllocator() {}
+  DummyCPUAllocator() = default;
   string Name() override { return "cpu"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     return nullptr;
   }
-  void DeallocateRaw(void* ptr) override { return; }
+  void DeallocateRaw(void* ptr) override {}
 };
-
-}  // namespace
 
 TEST(Tensor, FailureToAllocate) {
   TensorShape shape({1});
@@ -1080,4 +1078,5 @@ static void BM_CreateAndMoveCtrWithBuf(int iters) {
 }
 BENCHMARK(BM_CreateAndMoveCtrWithBuf);
 
+}  // namespace
 }  // namespace tensorflow

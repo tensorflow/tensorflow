@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/reference_util.h"
 
 #include <array>
+#include <utility>
 
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
@@ -331,7 +332,8 @@ ReferenceUtil::ConvArray4DGeneralDimensions(
     std::pair<int64, int64> kernel_stride, Padding padding,
     ConvolutionDimensionNumbers dimension_numbers) {
   return ConvArray4DGeneralDimensionsDilated(lhs, rhs, kernel_stride, padding,
-                                             {1, 1}, {1, 1}, dimension_numbers);
+                                             {1, 1}, {1, 1},
+                                             std::move(dimension_numbers));
 }
 
 /* static */ std::unique_ptr<Array4D<float>>

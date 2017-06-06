@@ -44,4 +44,3 @@ GetSyclCastFromInt32(DataType dst_dtype) {
 #endif // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
-

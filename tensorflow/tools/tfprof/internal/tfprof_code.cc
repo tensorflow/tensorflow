@@ -53,14 +53,16 @@ string GetTraceString(const CodeDef::Trace& trace) {
 }  // namespace
 
 void TFCode::AddNode(TFGraphNode* node) {
-  if (!node->code()) {
+  if (node->code().traces_size() == 0) {
     return;
   }
   TFMultiGraphNode* pre_trace_node = nullptr;
-  for (int i = 0; i < node->code()->traces_size(); ++i) {
+  // TODO(xpan): Consider to release CodeDef after TFCode is built. It
+  // takes a lot of memory.
+  for (int i = 0; i < node->code().traces_size(); ++i) {
     // Unlike op name, which is globally unique, trace name is only unique
     // w.r.t. it's parent.
-    const string& trace = GetTraceString(node->code()->traces(i));
+    const string& trace = GetTraceString(node->code().traces(i));
     if (i == 0) {
       if (!trace_root_) {
         trace_root_.reset(new TFMultiGraphNode(trace));
@@ -72,7 +74,7 @@ void TFCode::AddNode(TFGraphNode* node) {
     pre_trace_node->AddChildren(trace);
     TFMultiGraphNode* trace_node = pre_trace_node->children().at(trace).get();
 
-    if (i == node->code()->traces_size() - 1) {
+    if (i == node->code().traces_size() - 1) {
       trace_node->AddGraphNode(node);
     }
     pre_trace_node = trace_node;

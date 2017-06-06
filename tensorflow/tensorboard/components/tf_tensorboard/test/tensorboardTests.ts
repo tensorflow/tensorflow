@@ -12,6 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+import * as backend_router from '../../tf-backend/router';
+import {TABS} from '../../tf-globals/globals';
+
 describe('tf-tensorboard tests', () => {
   window.HTMLImports.whenReady(() => {
     let tensorboard: any;
@@ -25,16 +29,16 @@ describe('tf-tensorboard tests', () => {
       setTimeout(function() {
         let tabs = tensorboard.$.tabs.getElementsByTagName('paper-tab');
         let tabMode = Array.prototype.map.call(tabs, (x) => x.dataMode);
-        chai.assert.deepEqual(tabMode, TF.Globals.TABS, 'mode is correct');
+        chai.assert.deepEqual(tabMode, TABS, 'mode is correct');
         let tabText =
             Array.prototype.map.call(tabs, (x) => x.innerText.toLowerCase());
-        chai.assert.deepEqual(tabText, TF.Globals.TABS, 'text is correct');
+        chai.assert.deepEqual(tabText, TABS, 'text is correct');
         done();
       });
     });
 
     it('respects router manually provided', function() {
-      let router = TF.Backend.router('data', true);
+      const router = backend_router.router('data', true);
       tensorboard.router = router;
       tensorboard.demoDir = null;
       chai.assert.equal(tensorboard._backend.router, router);
@@ -46,7 +50,7 @@ describe('tf-tensorboard tests', () => {
     });
 
     describe('reloading the selected dashboard', function() {
-      TF.Globals.TABS.forEach((name, tabIndex) => {
+      TABS.forEach((name, tabIndex) => {
         // These tabs do not support reload mode.
         if (name === 'graphs' || name === 'projections') {
           return;
@@ -70,7 +74,7 @@ describe('tf-tensorboard tests', () => {
     });
 
     it('reload is disabled for graph dashboard', function(done) {
-      let idx = TF.Globals.TABS.indexOf('graphs');
+      const idx = TABS.indexOf('graphs');
       chai.assert.notEqual(idx, -1, 'graphs was found');
       tensorboard.$.tabs.set('selected', idx);
       setTimeout(

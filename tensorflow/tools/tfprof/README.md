@@ -259,7 +259,8 @@ tfprof>
 -min_micros                 0
 -min_params                 0
 -min_float_ops              0
--min_occurrence              0
+-min_occurrence             0
+-step                       -1
 -order_by                   name
 -account_type_regexes       Variable,VariableV2
 -start_name_regexes         .*
@@ -597,6 +598,8 @@ provides checkpointed tensors' values.
 `-min_float_ops`: Show ops that contain at least this number of float operations. Only available if an op has op.RegisterStatistics() defined and OpLog is provided
 
 `-min_occurrence`: Show ops that appear at least this number of times. Only available in "op" view.
+
+`-step`: Show the stats of the this step when multiple steps of RunMetadata were added. By default, show the average of all steps."
 
 `-order_by`: Order the results by [name|depth|bytes|micros|params|float_ops|occurrence]
 
