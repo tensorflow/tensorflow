@@ -63,6 +63,7 @@ mathematical functions to your graph.
 *   @{tf.digamma}
 *   @{tf.erf}
 *   @{tf.erfc}
+*   @{tf.erfcinv}
 *   @{tf.squared_difference}
 *   @{tf.igamma}
 *   @{tf.igammac}

@@ -44,6 +44,7 @@ UNARY_TRANSFORMS = [("__neg__", math_ops.negative),
                     ("digamma", math_ops.digamma),
                     ("erf", math_ops.erf),
                     ("erfc", math_ops.erfc),
+                    ("erfcinv", math_ops.erfcinv),
                     ("__invert__", math_ops.logical_not, bool)]
 
 DOC_FORMAT_STRING = (

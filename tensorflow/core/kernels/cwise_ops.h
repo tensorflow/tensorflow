@@ -499,6 +499,9 @@ template <typename T>
 struct erfc : base<T, Eigen::internal::scalar_erfc_op<T> > {};
 
 template <typename T>
+struct erfcinv : base<T, Eigen::internal::scalar_erfcinv_op<T> > {};
+
+template <typename T>
 struct sigmoid : base<T, Eigen::internal::scalar_sigmoid_op<T> > {};
 
 template <typename T>
