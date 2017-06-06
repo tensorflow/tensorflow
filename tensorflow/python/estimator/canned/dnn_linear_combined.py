@@ -445,6 +445,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                label_dimension=1,
+               weight_feature_key=None,
                input_layer_partitioner=None,
                config=None):
     """Initializes a DNNLinearCombinedRegressor instance.
@@ -472,6 +473,9 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       label_dimension: Number of regression targets per example. This is the
         size of the last dimension of the labels and logits `Tensor` objects
         (typically, these have shape `[batch_size, label_dimension]`).
+      weight_feature_key: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
       input_layer_partitioner: Partitioner for input layer. Defaults to
         `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: RunConfig object to configure the runtime settings.
@@ -482,7 +486,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
     """
     linear_feature_columns = linear_feature_columns or []
     dnn_feature_columns = dnn_feature_columns or []
-    self._feature_columns = linear_feature_columns + dnn_feature_columns
+    self._feature_columns = (
+        list(linear_feature_columns) + list(dnn_feature_columns))
     if not self._feature_columns:
       raise ValueError('Either linear_feature_columns or dnn_feature_columns '
                        'must be defined.')
@@ -492,8 +497,10 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           features=features,
           labels=labels,
           mode=mode,
-          head=head_lib._regression_head_with_mean_squared_error_loss(  # pylint: disable=protected-access
-              label_dimension=label_dimension),
+          head=head_lib.  # pylint: disable=protected-access
+          _regression_head_with_mean_squared_error_loss(
+              label_dimension=label_dimension,
+              weight_feature_key=weight_feature_key),
           linear_feature_columns=linear_feature_columns,
           linear_optimizer=linear_optimizer,
           dnn_feature_columns=dnn_feature_columns,

@@ -45,7 +45,7 @@ from tensorflow.python.training import saver
 from tensorflow.python.training import training_util
 
 # pylint rules which are disabled by default for test files.
-# pylint: disable=invalid-name,protected-access
+# pylint: disable=invalid-name,protected-access,missing-docstring
 
 # Names of variables created by model.
 LEARNING_RATE_NAME = 'dnn/regression_head/dnn/learning_rate'
@@ -426,6 +426,3 @@ class BaseDNNModelFnTest(object):
             sess.run(estimator_spec.predictions)
           else:
             self.fail('Invalid mode: {}'.format(mode))
-
-
-# pylint: enable=invalid-name,protected-access

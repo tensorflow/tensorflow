@@ -208,6 +208,7 @@ py_test(
     deps = [
         ":dnn_linear_combined",
         ":dnn_testing_utils",
+        ":linear_testing_utils",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
     ],
@@ -439,15 +440,45 @@ py_library(
     ],
 )
 
+py_library(
+    name = "linear_testing_utils",
+    testonly = 1,
+    srcs = ["canned/linear_testing_utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":estimator",
+        ":export_export",
+        ":metric_keys",
+        ":numpy_io",
+        ":pandas_io",
+        ":run_config",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
+    ],
+)
+
 py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["canned/linear_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":estimator",
         ":export_export",
         ":linear",
+        ":linear_testing_utils",
         ":metric_keys",
         ":numpy_io",
         ":pandas_io",

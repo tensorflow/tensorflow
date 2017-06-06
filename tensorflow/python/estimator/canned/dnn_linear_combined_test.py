@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.estimator.canned import dnn_linear_combined
 from tensorflow.python.estimator.canned import dnn_testing_utils
+from tensorflow.python.estimator.canned import linear_testing_utils
 from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 
@@ -56,6 +57,69 @@ class DNNOnlyModelFnTest(dnn_testing_utils.BaseDNNModelFnTest, test.TestCase):
         dnn_dropout=dropout,
         input_layer_partitioner=input_layer_partitioner,
         config=config)
+
+
+# A function to mimic linear-regressor init reuse same tests.
+def _linear_regressor_fn(feature_columns,
+                         model_dir=None,
+                         label_dimension=1,
+                         weight_feature_key=None,
+                         optimizer='Ftrl',
+                         config=None,
+                         partitioner=None):
+  return dnn_linear_combined.DNNLinearCombinedRegressor(
+      model_dir=model_dir,
+      linear_feature_columns=feature_columns,
+      linear_optimizer=optimizer,
+      label_dimension=label_dimension,
+      weight_feature_key=weight_feature_key,
+      input_layer_partitioner=partitioner,
+      config=config)
+
+
+class LinearOnlyRegressorPartitionerTest(
+    linear_testing_utils.BaseLinearRegressorPartitionerTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearRegressorPartitionerTest.__init__(
+        self, _linear_regressor_fn)
+
+
+class LinearOnlyRegressorEvaluationTest(
+    linear_testing_utils.BaseLinearRegressorEvaluationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearRegressorEvaluationTest.__init__(
+        self, _linear_regressor_fn)
+
+
+class LinearOnlyRegressorPredictTest(
+    linear_testing_utils.BaseLinearRegressorPredictTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearRegressorPredictTest.__init__(
+        self, _linear_regressor_fn)
+
+
+class LinearOnlyRegressorIntegrationTest(
+    linear_testing_utils.BaseLinearRegressorIntegrationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearRegressorIntegrationTest.__init__(
+        self, _linear_regressor_fn)
+
+
+class LinearOnlyRegressorTrainingTest(
+    linear_testing_utils.BaseLinearRegressorTrainingTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearRegressorTrainingTest.__init__(
+        self, _linear_regressor_fn)
 
 
 if __name__ == '__main__':
