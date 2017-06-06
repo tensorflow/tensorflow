@@ -45,16 +45,31 @@ bool IsMerge(const NodeDef& node) {
   return op == "Merge";
 }
 
+bool IsNoOp(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "NoOp";
+}
+
 bool IsPlaceholder(const NodeDef& node) {
   const auto op = node.op();
   return op == "Placeholder" || op == "PlaceholderV2" ||
          op == "PlaceholderWithDefault";
 }
 
+bool IsRecv(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "_Recv";
+}
+
 bool IsReduction(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Sum" || op == "Prod" || op == "Min" || op == "Max" ||
          op == "Mean" || op == "Any" || op == "All";
+}
+
+bool IsSend(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "_Send";
 }
 
 bool IsSwitch(const NodeDef& node) {
