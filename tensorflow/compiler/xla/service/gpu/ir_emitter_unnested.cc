@@ -996,7 +996,7 @@ Status IrEmitterUnnested::EmitRowReduction(
   //   for (shuffle_distance = 16; shuffle_distance > 0; shuffle_distance /= 2)
   //     partial_result = Reducer(
   //         partial_result,
-  //         __shfl_down(partial_result, shuffle_distance));
+  //         __shfl_down_sync(CUDA_WARP_ALL, partial_result, shuffle_distance));
   //   if (lane_id == 0)
   //     AtomicReducer(&output[y], partial_result);
   // }
