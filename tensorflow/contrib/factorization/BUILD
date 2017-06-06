@@ -214,7 +214,6 @@ tf_py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variables",
     ],
-    tags = ["manual"],
 )
 
 # Kernel tests

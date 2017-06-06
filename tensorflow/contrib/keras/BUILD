@@ -310,10 +310,7 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/convolutional_test.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "manual",
-        "notsan",
-    ],
+    tags = ["notsan"],
     deps = [
         ":keras",
         ":testing_utils",
