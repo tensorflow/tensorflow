@@ -70,7 +70,7 @@ bool XlaCompiler::Argument::operator==(
 }
 
 XlaCompiler::XlaCompiler(XlaCompiler::Options options)
-    : options_(std::move(options)),
+    : options_(options),
       initialization_status_(Status::OK()),
       next_step_id_(1),
       device_(
