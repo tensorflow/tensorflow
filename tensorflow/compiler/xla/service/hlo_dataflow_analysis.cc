@@ -133,26 +133,6 @@ std::ostream& operator<<(std::ostream& out, const HloValueSet& value_set) {
   return out;
 }
 
-void InstructionValueSet::ForEachValueSet(
-    const InstructionValueSet::VisitorFunction& func) const {
-  ForEachElement([&func](const ShapeIndex& index, bool /*is_leaf*/,
-                         const HloValueSet& value_set) {
-    func(index, value_set);
-    return Status::OK();
-  })
-      .IgnoreError();
-}
-
-void InstructionValueSet::ForEachMutableValueSet(
-    const InstructionValueSet::MutableVisitorFunction& func) {
-  ForEachMutableElement([&func](const ShapeIndex& index, bool /*is_leaf*/,
-                                HloValueSet* value_set) {
-    func(index, value_set);
-    return Status::OK();
-  })
-      .IgnoreError();
-}
-
 InstructionValueSet InstructionValueSet::Union(
     tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs) {
   CHECK_GT(inputs.size(), 0);
@@ -160,18 +140,14 @@ InstructionValueSet InstructionValueSet::Union(
     CHECK(ShapeUtil::Compatible(inputs[0]->shape(), inputs[i]->shape()));
   }
   InstructionValueSet union_set(inputs[0]->shape());
-  union_set
-      .ForEachMutableElement([&inputs](const ShapeIndex& index,
-                                       bool /*is leaf*/,
-                                       HloValueSet* value_set) {
+  union_set.ForEachMutableElement(
+      [&inputs](const ShapeIndex& index, HloValueSet* value_set) {
         std::vector<const HloValueSet*> input_sets;
         for (const InstructionValueSet* input : inputs) {
           input_sets.push_back(&input->element(index));
         }
         *value_set = HloValueSet::Union(input_sets);
-        return Status::OK();
-      })
-      .IgnoreError();
+      });
   return union_set;
 }
 
@@ -184,12 +160,10 @@ std::ostream& operator<<(std::ostream& out,
 string InstructionValueSet::ToString() const {
   string out =
       StrCat("InstructionValueSet(", ShapeUtil::HumanString(shape()), ")");
-  ForEachElement([this, &out](const ShapeIndex& index, bool /*is_leaf*/,
-                              const HloValueSet& value_set) {
-    StrAppend(&out, index.ToString(), " : ", value_set.ToString(), "\n");
-    return Status::OK();
-  })
-      .IgnoreError();
+  ForEachElement(
+      [this, &out](const ShapeIndex& index, const HloValueSet& value_set) {
+        StrAppend(&out, index.ToString(), " : ", value_set.ToString(), "\n");
+      });
   return out;
 }
 
@@ -255,9 +229,9 @@ string HloDataflowAnalysis::ToString() const {
       StrAppend(&out, "    ", instruction->FullyQualifiedName(), ":\n");
       if (ShapeUtil::IsTuple(instruction->shape())) {
         GetInstructionValueSet(instruction.get())
-            .ForEachValueSet([this, &instruction, &out](
-                                 const ShapeIndex& index,
-                                 const HloValueSet& value_set) {
+            .ForEachElement([this, &instruction, &out](
+                                const ShapeIndex& index,
+                                const HloValueSet& value_set) {
               StrAppend(&out, "      tuple index ", index.ToString(), ":\n");
               for (HloValue::Id value_id : value_set.value_ids()) {
                 StrAppend(
@@ -332,7 +306,7 @@ InstructionValueSet HloDataflowAnalysis::Phi(
     CHECK(ShapeUtil::Compatible(instruction->shape(), input->shape()));
   }
   InstructionValueSet new_value_set(instruction->shape());
-  new_value_set.ForEachMutableValueSet(
+  new_value_set.ForEachMutableElement(
       [this, instruction, &inputs, skip_top_level](const ShapeIndex& index,
                                                    HloValueSet* value_set) {
         // If we're skipping the top level, just copy over the existing
@@ -417,7 +391,7 @@ void HloDataflowAnalysis::UpdateUsesOfValuesAt(
     for (int64 operand_number : user->OperandIndices(instruction)) {
       if (prev_value_set != nullptr) {
         // Remove uses from the old value set.
-        prev_value_set->ForEachValueSet(
+        prev_value_set->ForEachElement(
             [this, instruction, user, operand_number](
                 const ShapeIndex& index, const HloValueSet& value_set) {
               for (HloValue::Id value_id : value_set.value_ids()) {
@@ -432,7 +406,7 @@ void HloDataflowAnalysis::UpdateUsesOfValuesAt(
             });
       }
       // Add uses in the new value set.
-      new_value_set.ForEachValueSet(
+      new_value_set.ForEachElement(
           [this, instruction, user, operand_number](
               const ShapeIndex& index, const HloValueSet& value_set) {
             for (HloValue::Id value_id : value_set.value_ids()) {
@@ -450,7 +424,7 @@ void HloDataflowAnalysis::UpdateLiveOutValues(
     const InstructionValueSet* prev_root_value_set) {
   if (prev_root_value_set != nullptr) {
     // Clear the old live out set.
-    prev_root_value_set->ForEachValueSet(
+    prev_root_value_set->ForEachElement(
         [this](const ShapeIndex& index, const HloValueSet& value_set) {
           for (HloValue::Id value_id : value_set.value_ids()) {
             // HloValues in the previous value set may have been deleted.
@@ -461,7 +435,7 @@ void HloDataflowAnalysis::UpdateLiveOutValues(
           }
         });
   }
-  new_root_value_set.ForEachValueSet(
+  new_root_value_set.ForEachElement(
       [this](const ShapeIndex& index, const HloValueSet& value_set) {
         for (HloValue::Id value_id : value_set.value_ids()) {
           GetValue(value_id).set_live_out_of_module(true);
@@ -713,9 +687,9 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
       // instruction.
       auto define_all_values = [this, &instruction]() {
         GetInstructionValueSet(instruction.get())
-            .ForEachMutableValueSet([this, &instruction](
-                                        const ShapeIndex& index,
-                                        HloValueSet* value_set) {
+            .ForEachMutableElement([this, &instruction](
+                                       const ShapeIndex& index,
+                                       HloValueSet* value_set) {
               *value_set = HloValueSet({NewHloValue(instruction.get(), index)});
             });
       };

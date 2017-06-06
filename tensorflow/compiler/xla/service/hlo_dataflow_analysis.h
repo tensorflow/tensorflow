@@ -220,17 +220,6 @@ class InstructionValueSet : public ShapeTree<HloValueSet> {
   static InstructionValueSet Union(
       tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs);
 
-  // Traverse the shape and call the given function for each HloValueSet
-  // contained in the InstructionValueSet at the corresponding ShapeIndex.
-  using VisitorFunction = std::function<void(const ShapeIndex& /*index*/,
-                                             const HloValueSet& /*value_set*/)>;
-  void ForEachValueSet(const VisitorFunction& func) const;
-
-  // Mutable form of ForEachValueSet.
-  using MutableVisitorFunction = std::function<void(
-      const ShapeIndex& /*index*/, HloValueSet* /*value_set*/)>;
-  void ForEachMutableValueSet(const MutableVisitorFunction& func);
-
   string ToString() const;
 };
 

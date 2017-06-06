@@ -1797,7 +1797,7 @@ namespace {
 Status CheckWhileBuffersShareAllocation(
     const HloInstruction* xla_while,
     const BufferAssignment& buffer_assignment) {
-  return ShapeUtil::ForEachSubshape(
+  return ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
       [&buffer_assignment, &xla_while](const Shape& /*subshape*/,
                                        const ShapeIndex& index) -> Status {

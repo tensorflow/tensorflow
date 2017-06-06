@@ -165,12 +165,10 @@ class InstructionCopier {
 
 bool InstructionCopier::HasAllIndicesFalse() const {
   bool all_indices_false = true;
-  TF_CHECK_OK(indices_to_copy_.ForEachElement(
-      [&all_indices_false](const ShapeIndex& /*index*/, bool /*is_leaf*/,
-                           bool data) {
+  indices_to_copy_.ForEachElement(
+      [&all_indices_false](const ShapeIndex& /*index*/, bool data) {
         if (data) all_indices_false = false;
-        return tensorflow::Status::OK();
-      }));
+      });
   return all_indices_false;
 }
 
@@ -187,11 +185,11 @@ Status InstructionCopier::RecordIndicesWhichPointToParamOrConstant(
 
   // Multiple buffers within a parameter/constant may be live out, so collect
   // a set of indices at which to copy first.
-  TF_RETURN_IF_ERROR(points_to.ForEachElement(
-      [this](const ShapeIndex& index, bool /*is_leaf*/,
+  points_to.ForEachElement(
+      [this](const ShapeIndex& index,
              const std::vector<const LogicalBuffer*>& buffers) {
         if (IsReadOnlyIndex(index)) {
-          return Status::OK();
+          return;
         }
         for (const LogicalBuffer* buffer : buffers) {
           // pointee is the HloInstruction producing the buffer which may be
@@ -207,8 +205,7 @@ Status InstructionCopier::RecordIndicesWhichPointToParamOrConstant(
             break;
           }
         }
-        return Status::OK();
-      }));
+      });
   return Status::OK();
 }
 
@@ -229,9 +226,9 @@ Status InstructionCopier::RecordAmbiguousOrNonDistinctIndices(
   // Mapping from LogicalBuffer to index (used to detect non-distinct indices).
   FlatMap<const LogicalBuffer*, std::vector<ShapeIndex>>
       buffer_to_source_indices;
-  TF_RETURN_IF_ERROR(points_to.ForEachElement(
+  points_to.ForEachElement(
       [this, &buffer_to_source_indices](
-          const ShapeIndex& index, bool /*is_leaf*/,
+          const ShapeIndex& index,
           const std::vector<const LogicalBuffer*>& buffers) {
         if (buffers.size() > 1) {
           // Record ambiguous points-to set at 'index'.
@@ -247,8 +244,7 @@ Status InstructionCopier::RecordAmbiguousOrNonDistinctIndices(
         for (const LogicalBuffer* buffer : buffers) {
           buffer_to_source_indices[buffer].push_back(index);
         }
-        return Status::OK();
-      }));
+      });
 
   // Record all non-distinct indices detected in 'buffer_to_source_indices'.
   for (const auto& buff_to_src : buffer_to_source_indices) {
@@ -274,16 +270,16 @@ Status InstructionCopier::RecordIndicesWhichInterfereWithOtherInstruction(
     ShapeTree<bool>* read_only_indices_out) {
   // Record all buffer indices for 'instruction_', which interfere with
   // 'other_instruction' at the same index.
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshape(
+  ShapeUtil::ForEachSubshape(
       instruction_->shape(),
       [this, &liveness, other_instruction, read_only_indices_out](
           const Shape& /*subshape*/, const ShapeIndex& index) {
         if (IsReadOnlyIndex(index)) {
-          return Status::OK();
+          return;
         }
         if (indices_to_copy_.element(index)) {
           // Return if previous pass already set index.
-          return Status::OK();
+          return;
         }
         const auto& points_to_analysis = liveness.points_to_analysis();
         // Lookup buffers for 'instruction_' and 'other_instruction'.
@@ -311,7 +307,7 @@ Status InstructionCopier::RecordIndicesWhichInterfereWithOtherInstruction(
           if (read_only_indices_out != nullptr) {
             *read_only_indices_out->mutable_element(index) = true;
           }
-          return Status::OK();
+          return;
         }
         // We can't say anything about the ambiguity of 'other_instruction' at
         // this point, so we need to check interference between the single
@@ -329,8 +325,7 @@ Status InstructionCopier::RecordIndicesWhichInterfereWithOtherInstruction(
             break;
           }
         }
-        return Status::OK();
-      }));
+      });
   return Status::OK();
 }
 
@@ -344,9 +339,9 @@ Status InstructionCopier::RecordIndicesWhichInterfereWithOtherInstruction(
 Status InstructionCopier::RecordControlPredecessors(
     const TuplePointsToAnalysis& points_to_analysis,
     HloInstruction* parameter) {
-  return indices_to_copy_.ForEachElement(
+  return indices_to_copy_.ForEachElementWithStatus(
       [this, &points_to_analysis, parameter](const ShapeIndex& index,
-                                             bool /*is_leaf*/, bool will_copy) {
+                                             bool will_copy) {
         if (will_copy) {
           TF_ASSIGN_OR_RETURN(
               const LogicalBuffer* buffer,
@@ -455,13 +450,13 @@ RevertReadOnlyIndicesForEntryParamsAndConstants(
   FlatSet<const LogicalBuffer*> buffer_set;
 
   ShapeTree<HloInstruction*> copy_overrides(init_hlo->shape());
-  TF_RETURN_IF_ERROR(points_to.ForEachElement(
+  points_to.ForEachElement(
       [init_hlo, read_only_indices, shared_copies, &buffer_set,
-       &copy_overrides](const ShapeIndex& index, bool /*is_leaf*/,
+       &copy_overrides](const ShapeIndex& index,
                         const std::vector<const LogicalBuffer*>& buffers) {
         // Look for read-only entry parameters.
         if (!read_only_indices->element(index)) {
-          return Status::OK();
+          return;
         }
         for (const LogicalBuffer* buffer : buffers) {
           HloInstruction* pointee = buffer->instruction();
@@ -510,8 +505,7 @@ RevertReadOnlyIndicesForEntryParamsAndConstants(
           // single-copy optimization above, so there's nothing more to do.
           break;
         }
-        return Status::OK();
-      }));
+      });
   return copy_overrides;
 }
 
