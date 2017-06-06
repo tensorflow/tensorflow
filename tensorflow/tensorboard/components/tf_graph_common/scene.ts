@@ -42,6 +42,7 @@ module tf.graph.scene {
       CONTAINER: 'edges',
       GROUP: 'edge',
       LINE: 'edgeline',
+      REFERENCE_EDGE: 'referenceedge',
       REF_LINE: 'refline',
       STRUCTURAL: 'structural'
     },
