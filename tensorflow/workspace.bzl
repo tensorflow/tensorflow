@@ -98,7 +98,7 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
 # Runs 'patch -p1'
 def _apply_patch(repo_ctx, patch_file):
   cmd = [
-      "patch", "--binary", "-p1", "-d", repo_ctx.path("."), "-i", repo_ctx.path(patch_file)
+      "patch", "-p1", "-d", repo_ctx.path("."), "-i", repo_ctx.path(patch_file)
   ]
   if _is_windows(repo_ctx):
     bazel_sh = _get_env_var(repo_ctx, "BAZEL_SH")
