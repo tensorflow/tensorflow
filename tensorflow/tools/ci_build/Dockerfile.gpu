@@ -1,14 +1,15 @@
-FROM nvidia/cuda:8.0-cudnn5-devel-ubuntu14.04
+FROM nvidia/cuda:8.0-cudnn6-devel-ubuntu14.04
 
 MAINTAINER Jan Prach <jendap@google.com>
 
 # In the Ubuntu 14.04 images, cudnn is placed in system paths. Move them to
 # /usr/local/cuda
-RUN cp /usr/include/cudnn.h /usr/local/cuda/include
-RUN cp /usr/lib/x86_64-linux-gnu/libcudnn* /usr/local/cuda/lib64
+RUN cp -P /usr/include/cudnn.h /usr/local/cuda/include
+RUN cp -P /usr/lib/x86_64-linux-gnu/libcudnn* /usr/local/cuda/lib64
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
+ARG DEBIAN_FRONTEND=noninteractive
 RUN /install/install_bootstrap_deb_packages.sh
 RUN add-apt-repository -y ppa:openjdk-r/ppa && \
     add-apt-repository -y ppa:george-edison55/cmake-3.x
