@@ -131,7 +131,8 @@ patched_http_archive = repository_rule(
 
 
 # If TensorFlow is linked as a submodule.
-# path_prefix and tf_repo_name are no longer used.
+# path_prefix is no longer used.
+# tf_repo_name is thought to be under consideration.
 def tf_workspace(path_prefix="", tf_repo_name=""):
   # We must check the bazel version before trying to parse any other BUILD
   # files, in case the parsing of those build files depends on the bazel
@@ -142,9 +143,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   python_configure(name="local_config_python")
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used " +
-          "and will be removed in the future.")
-  if tf_repo_name:
-    print("tf_repo_name was specified to tf_workspace but is no longer used " +
           "and will be removed in the future.")
 
   native.new_http_archive(
