@@ -38,7 +38,7 @@ export let TAB = '__tab__';
 /**
  * The name of the property for users to set on a Polymer component
  * in order for its stored properties to be stored in the URI unambiguously.
- * (No need to set this if you want mutliple instances of the component to
+ * (No need to set this if you want multiple instances of the component to
  * share URI state)
  *
  * Example:
@@ -258,7 +258,7 @@ function _writeComponent(component: string) {
  * Convert dictionary of strings into a URI Component.
  * All key value entries get added as key value pairs in the component,
  * with the exception of a key with the TAB value, which if present
- * gets prepended to the URI Component string for backwards comptability
+ * gets prepended to the URI Component string for backwards compatibility
  * reasons.
  */
 function _dictToComponent(items: StringDict): string {
