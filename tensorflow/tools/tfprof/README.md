@@ -92,7 +92,7 @@ Sigmoid                        152.57MB (85.28%, 0.21%),        96.66ms (23.46%,
 
 ### Visualize time and memory.
 <left>
-![CodeTimeline](g3doc/graph_timeline.png)
+[CodeTimeline](g3doc/graph_timeline.png)
 </left>
 
 ## Python API Tutorials
@@ -191,8 +191,8 @@ view and scope view. See code view example in later examples.
 ```
 
 <left>
-![CodeTimeline](g3doc/graph_timeline.png)
-![CodeTimeline](g3doc/scope_timeline.png)
+[CodeTimeline](g3doc/graph_timeline.png)
+[CodeTimeline](g3doc/scope_timeline.png)
 </left>
 
 
@@ -304,7 +304,7 @@ _TFProfRoot (0us/22.44ms)
 
 Set ```-output timeline:outfile=<filename>``` to generate timeline instead of stdout.
 <left>
-![CodeTimeline](g3doc/code_timeline.png)
+[CodeTimeline](g3doc/code_timeline.png)
 </left>
 
 
