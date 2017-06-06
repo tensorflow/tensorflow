@@ -435,7 +435,7 @@ Status GraphConstructor::MakeNode(const NodeDef& node_def, Node** node) {
 Status GraphConstructor::ValidateShape(Node* node) {
   if (!opts_.importing) return Status::OK();
   TF_RETURN_IF_ERROR(refiner_->AddNode(node));
-  // For nodes with the _output_shapes atttribute, override the shape.
+  // For nodes with the _output_shapes attribute, override the shape.
   std::vector<TensorShapeProto> shape_attrs;
   const char* kAttrName = "_output_shapes";
   if (!GetNodeAttr(node->attrs(), kAttrName, &shape_attrs).ok()) {
