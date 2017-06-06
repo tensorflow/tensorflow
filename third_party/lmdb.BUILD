@@ -18,8 +18,20 @@ cc_library(
     copts = [
         "-w",
     ],
-    linkopts = [
-        "-lpthread",
-    ],
+    linkopts = select({
+        ":windows": ["-Wl,advapi32.lib"], # InitializeSecurityDescriptor, SetSecurityDescriptorDacl
+        ":windows_msvc": ["-Wl,advapi32.lib"],
+        "//conditions:default": ["-lpthread"],
+    }),
     visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
+)
+
+config_setting(
+    name = "windows_msvc",
+    values = {"cpu": "x64_windows_msvc"},
 )
