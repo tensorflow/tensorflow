@@ -865,6 +865,7 @@ class _BaseLinearClassiferTrainingTest(object):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def _mock_optimizer(self, expected_loss=None):
