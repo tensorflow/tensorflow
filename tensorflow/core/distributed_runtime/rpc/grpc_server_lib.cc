@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/public/session_options.h"
 
@@ -149,6 +150,10 @@ Status GrpcServer::Init(
           !strings::safe_strto32(hostname_port[1], &requested_port)) {
         return errors::InvalidArgument(
             "Could not parse port for local server from \"", iter->second,
+            "\"");
+      } else if (!port::IsValidIpAddr(hostname_port[0])) {
+        return errors::InvalidArgument(
+            "Invalid ip address for local server from \"", iter->second,
             "\"");
       } else {
         break;

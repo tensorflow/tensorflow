@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/platform/types.h"
+#include <arpa/inet.h>
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sched.h>
 #endif
@@ -46,6 +47,11 @@ string Hostname() {
   gethostname(hostname, sizeof hostname);
   hostname[sizeof hostname - 1] = 0;
   return string(hostname);
+}
+
+bool IsValidIpAddr(const string& ip) {
+  struct sockaddr_in sa;
+  return inet_pton(AF_INET, ip.c_str(), &(sa.sin_addr))!=0;
 }
 
 int NumSchedulableCPUs() {
