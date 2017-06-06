@@ -1544,6 +1544,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":constant_op",
         ":framework",
         ":framework_for_generated_wrappers",
         ":lookup_ops_gen",
