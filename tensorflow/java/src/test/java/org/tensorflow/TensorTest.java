@@ -43,7 +43,7 @@ public class TensorTest {
     long[] doubles_shape = {4};
     boolean[] bools = {true, false, true, false};
     long[] bools_shape = {4};
-    byte[] bools_test = TestUtil.bool2byte(bools);
+    byte[] bools_ = TestUtil.bool2byte(bools);
     byte[] strings = "test".getBytes(UTF_8);
     long[] strings_shape = {};
     byte[] strings_; // raw TF_STRING
@@ -55,8 +55,8 @@ public class TensorTest {
 
     // validate creating a tensor using a byte buffer
     {
-      try (Tensor t = Tensor.create(DataType.BOOL, bools_shape, ByteBuffer.wrap(bools_test))) {
-        boolean[] actual = t.copyTo(new boolean[bools_test.length]);
+      try (Tensor t = Tensor.create(DataType.BOOL, bools_shape, ByteBuffer.wrap(bools_))) {
+        boolean[] actual = t.copyTo(new boolean[bools_.length]);
         for (int i = 0; i < bools.length; ++i) {
           assertEquals("" + i, bools[i], actual[i]);
         }
@@ -80,7 +80,7 @@ public class TensorTest {
 
     // validate shape checking
     try (Tensor t =
-        Tensor.create(DataType.BOOL, new long[bools_test.length * 2], ByteBuffer.wrap(bools_test))) {
+        Tensor.create(DataType.BOOL, new long[bools_.length * 2], ByteBuffer.wrap(bools_))) {
       fail("should have failed on incompatible buffer");
     } catch (IllegalArgumentException e) {
       // expected
