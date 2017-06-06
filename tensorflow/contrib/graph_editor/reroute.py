@@ -370,7 +370,7 @@ def _reroute_sgv_outputs(sgv0, sgv1, mode):
 def _reroute_sgv(sgv0, sgv1, mode):
   """Re-route both the inputs and the outputs of the two subgraph views.
 
-  This involves swapping all the inputs/ouputs of the two subgraph views.
+  This involves swapping all the inputs/outputs of the two subgraph views.
 
   Args:
     sgv0: the first subgraph to be swapped. This argument is converted to a

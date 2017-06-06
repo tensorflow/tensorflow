@@ -28107,7 +28107,7 @@ op {
     }
   }
   summary: "Op is similar to a lightweight Dequeue."
-  description: "The basic funtionality is similar to dequeue with many fewer\ncapabilities and options.  This Op is optimized for performance."
+  description: "The basic functionality is similar to dequeue with many fewer\ncapabilities and options.  This Op is optimized for performance."
   is_stateful: true
 }
 op {

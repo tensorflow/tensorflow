@@ -2003,7 +2003,7 @@ REGISTER_OP("Unstage")
     .Doc(R"doc(
 Op is similar to a lightweight Dequeue.
 
-The basic funtionality is similar to dequeue with many fewer
+The basic functionality is similar to dequeue with many fewer
 capabilities and options.  This Op is optimized for performance.
 )doc");
 
