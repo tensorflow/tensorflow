@@ -36,7 +36,6 @@ import tensorflow as tf
 
 from werkzeug import serving
 
-from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.tensorboard import tensorboard
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
@@ -221,7 +220,7 @@ class TensorboardServerTest(tf.test.TestCase):
     node2.name = 'b'
     node2.attr['very_large_attr'].s = b'a' * 2048  # 2 KB attribute
 
-    meta_graph_def = meta_graph_pb2.MetaGraphDef(graph_def=graph_def)
+    meta_graph_def = tf.MetaGraphDef(graph_def=graph_def)
 
     if self._only_use_meta_graph:
       writer.add_meta_graph(meta_graph_def)

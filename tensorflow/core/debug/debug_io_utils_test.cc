@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/util/event.pb.h"
@@ -46,6 +47,18 @@ class DebugIOUtilsTest : public ::testing::Test {
   std::unique_ptr<Tensor> tensor_a_;
   std::unique_ptr<Tensor> tensor_b_;
 };
+
+TEST_F(DebugIOUtilsTest, ConstructDebugNodeKey) {
+  DebugNodeKey debug_node_key("/job:worker/replica:1/task:0/gpu:2",
+                              "hidden_1/MatMul", 0, "DebugIdentity");
+  EXPECT_EQ("/job:worker/replica:1/task:0/gpu:2", debug_node_key.device_name);
+  EXPECT_EQ("hidden_1/MatMul", debug_node_key.node_name);
+  EXPECT_EQ(0, debug_node_key.output_slot);
+  EXPECT_EQ("DebugIdentity", debug_node_key.debug_op);
+  EXPECT_EQ("hidden_1/MatMul:0:DebugIdentity", debug_node_key.debug_node_name);
+  EXPECT_EQ("_tfdbg_device_,job_worker,replica_1,task_0,gpu_2",
+            debug_node_key.device_path);
+}
 
 TEST_F(DebugIOUtilsTest, DumpFloatTensorToFileSunnyDay) {
   Initialize();
@@ -138,10 +151,14 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
 
   // First, create the file at the path.
   const string test_dir = testing::TmpDir();
-  const string txt_file_name = strings::StrCat(test_dir, "/baz");
-
-  if (!env_->FileExists(test_dir).ok()) {
-    ASSERT_TRUE(env_->CreateDir(test_dir).ok());
+  const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
+  const DebugNodeKey kDebugNodeKey(kDeviceName, "baz/tensor_a", 0,
+                                   "DebugIdentity");
+  const string txt_file_dir =
+      io::JoinPath(test_dir, DebugNodeKey::DeviceNameToDevicePath(kDeviceName));
+  const string txt_file_name = io::JoinPath(txt_file_dir, "baz");
+  if (!env_->FileExists(txt_file_dir).ok()) {
+    ASSERT_TRUE(env_->RecursivelyCreateDir(txt_file_dir).ok());
   }
   ASSERT_EQ(error::Code::NOT_FOUND, env_->FileExists(txt_file_name).code());
 
@@ -157,8 +174,7 @@ TEST_F(DebugIOUtilsTest, DumpTensorToFileCannotCreateDirectory) {
 
   // Second, try to dump the tensor to a path that requires "baz" to be a
   // directory, which should lead to an error.
-  const DebugNodeKey kDebugNodeKey("/job:localhost/replica:0/task:0/cpu:0",
-                                   "baz/tensor_a", 0, "DebugIdentity");
+
   const uint64 wall_time = env_->NowMicros();
 
   string dump_file_name;

@@ -557,7 +557,7 @@ TEST(ShapeRefinerTest, ConstantValueAsShape_PackInt32) {
                    .Finalize(root.graph(), &result));
 
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
-  for (auto input : inputs) {
+  for (const auto& input : inputs) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
   TF_ASSERT_OK(m.AddNode(pack.node()));
