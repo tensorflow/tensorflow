@@ -18,15 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
+import itertools
+import threading
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
 from tensorflow.python.platform import test
 
@@ -219,5 +225,50 @@ class BroadcastSimpleTest(test.TestCase):
     self._compareGpu(x, y + 0.1, np.floor_divide, math_ops.floordiv)
 
 
-if __name__ == "__main__":
+class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
+  """Tests concurrent sessions executing on the same GPU."""
+
+  def _run_session(self, session, results):
+    n_iterations = 500
+    with session as s:
+      data = variables.Variable(1.0)
+      with ops.device('/gpu:0'):
+        random_seed.set_random_seed(1)
+        matrix1 = variables.Variable(
+            random_ops.truncated_normal([1024, 1]), name='matrix1')
+        matrix2 = variables.Variable(
+            random_ops.truncated_normal([1, 1024]), name='matrix2')
+        x1 = math_ops.multiply(data, matrix1, name='x1')
+        x3 = math_ops.matmul(x1, math_ops.matmul(matrix2, matrix1))
+        x4 = math_ops.matmul(array_ops.transpose(x3), x3, name='x4')
+        s.run(variables.global_variables_initializer())
+
+        for _ in xrange(n_iterations):
+          value = s.run(x4)
+          results.add(value.flat[0])
+          if len(results) != 1:
+            break
+
+  def testConcurrentSessions(self):
+    n_threads = 4
+    threads = []
+    results = []
+    for _ in xrange(n_threads):
+      session = self.test_session(graph=ops.Graph(), use_gpu=True)
+      results.append(set())
+      args = (session, results[-1])
+      threads.append(threading.Thread(target=self._run_session, args=args))
+
+    for thread in threads:
+      thread.start()
+    for thread in threads:
+      thread.join()
+
+    flat_results = set([x for x in itertools.chain(*results)])
+    self.assertEqual(1,
+                     len(flat_results),
+                     'Expected single value, got %r' % flat_results)
+
+
+if __name__ == '__main__':
   test.main()

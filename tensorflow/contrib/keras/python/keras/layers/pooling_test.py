@@ -100,15 +100,18 @@ class Pooling2DTest(test.TestCase):
                   'padding': 'valid',
                   'pool_size': (3, 3)},
           input_shape=(3, 5, 6, 4))
-      testing_utils.layer_test(
-          keras.layers.AveragePooling2D,
-          kwargs={
-              'strides': (1, 1),
-              'padding': 'valid',
-              'pool_size': (2, 2),
-              'data_format': 'channels_first'
-          },
-          input_shape=(3, 4, 5, 6))
+      # Only runs on GPU with CUDA, channels_first is not supported on CPU.
+      # TODO(b/62340061): Support channels_first on CPU.
+      if test.is_gpu_available(cuda_only=True):
+        testing_utils.layer_test(
+            keras.layers.AveragePooling2D,
+            kwargs={
+                'strides': (1, 1),
+                'padding': 'valid',
+                'pool_size': (2, 2),
+                'data_format': 'channels_first'
+            },
+            input_shape=(3, 4, 5, 6))
 
 
 class Pooling3DTest(test.TestCase):

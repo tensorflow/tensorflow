@@ -238,6 +238,33 @@ bool IsFullSlice(const TensorSlice& slice_spec,
   }
 }
 
+Status CorruptFileError(const Status& in_status, const string& filename,
+                        const string& detail) {
+  if (in_status.ok()) {
+    return errors::Internal("Unable to read file (", filename,
+                            "). Perhaps the file is corrupt or was produced by "
+                            "a newer version of TensorFlow with format changes "
+                            "(",
+                            detail, ")");
+  }
+  return Status(
+      in_status.code(),
+      strings::StrCat("Unable to read file (", filename,
+                      "). Perhaps the file is corrupt or was produced by a "
+                      "newer version of TensorFlow with format changes (",
+                      detail, "): ", in_status.error_message()));
+}
+
+table::Options TableBuilderOptions() {
+  table::Options o;
+  // Compressed tables cannot be read by TensorFlow releases prior to 1.1.
+  // To smoothen the transition, compressed writes are disabled for now
+  // (version 1.2) with the intention that they will be enabled again at
+  // some point (perhaps the 1.3 release?).
+  o.compression = table::kNoCompression;
+  return o;
+}
+
 }  // namespace
 
 BundleWriter::BundleWriter(Env* env, StringPiece prefix)
@@ -425,7 +452,7 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
 
   table::Table* table = nullptr;
   TF_RETURN_IF_ERROR(
-      table::Table::Open(table::Options(), file.get(), file_size, &table));
+      table::Table::Open(TableBuilderOptions(), file.get(), file_size, &table));
   std::unique_ptr<table::Table> table_deleter(table);
   std::unique_ptr<table::Iterator> iter(table->NewIterator());
 
@@ -433,11 +460,13 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
   // Process header.
   {
     iter->Seek(kHeaderEntryKey);
-    CHECK(iter->Valid()) << "File: " << filename
-                         << ", iterator status: " << iter->status();
+    if (!iter->Valid()) {
+      return CorruptFileError(iter->status(), filename,
+                              "failed to seek to header entry");
+    }
     BundleHeaderProto header;
-    TF_CHECK_OK(ParseEntryProto(iter->key(), iter->value(), &header));
-    CHECK_GE(header.num_shards(), 0);
+    Status s = ParseEntryProto(iter->key(), iter->value(), &header);
+    if (!s.ok()) return CorruptFileError(s, filename, "unable to parse header");
 
     merge_state->num_shards += header.num_shards();
     if (!merge_state->seen_first_bundle) {
@@ -536,7 +565,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   TF_RETURN_IF_ERROR(
       env->NewWritableFile(MetaFilename(merged_prefix), &merged_metadata));
   {
-    table::TableBuilder builder(table::Options(), merged_metadata.get());
+    table::TableBuilder builder(TableBuilderOptions(), merged_metadata.get());
     // Header entry.
     BundleHeaderProto header;
     header.set_num_shards(merge.num_shards);
@@ -584,10 +613,17 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
 
   // Reads "num_shards_" from the first entry.
   iter_->Seek(kHeaderEntryKey);
-  CHECK(iter_->Valid()) << "File: " << filename
-                        << ", iterator status: " << iter_->status();
+  if (!iter_->Valid()) {
+    status_ = CorruptFileError(iter_->status(), filename,
+                               "failed to seek to header entry");
+    return;
+  }
   BundleHeaderProto header;
-  TF_CHECK_OK(ParseEntryProto(iter_->key(), iter_->value(), &header));
+  status_ = ParseEntryProto(iter_->key(), iter_->value(), &header);
+  if (!status_.ok()) {
+    status_ = CorruptFileError(status_, filename, "unable to parse header");
+    return;
+  }
   num_shards_ = header.num_shards();
   if ((header.endianness() == BundleHeaderProto::BIG && port::kLittleEndian) ||
       (header.endianness() == BundleHeaderProto::LITTLE &&
