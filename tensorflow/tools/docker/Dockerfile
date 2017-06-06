@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libfreetype6-dev \
         libpng12-dev \
         libzmq3-dev \
+        libtcmalloc-minimal4 \
         pkg-config \
         python \
         python-dev \
