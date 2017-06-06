@@ -40,9 +40,9 @@ from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
 
 # The default learning rates are a historical artifact of the initial
-# implementation, but seem a reasonable choice.
-_DNN_LEARNING_RATE = 0.05
-_LINEAR_LEARNING_RATE = 0.2
+# implementation.
+_DNN_LEARNING_RATE = 0.001
+_LINEAR_LEARNING_RATE = 0.005
 
 
 def _check_no_sync_replicas_optimizer(optimizer):
@@ -125,22 +125,15 @@ def _dnn_linear_combined_model_fn(
           max_partitions=num_ps_replicas,
           min_slice_size=64 << 20))
 
-  linear_optimizer = optimizers.get_optimizer_instance(
-      linear_optimizer,
-      learning_rate=_linear_learning_rate(len(linear_feature_columns)))
-  _check_no_sync_replicas_optimizer(linear_optimizer)
-
-  dnn_optimizer = optimizers.get_optimizer_instance(
-      dnn_optimizer,
-      learning_rate=_DNN_LEARNING_RATE)
-  _check_no_sync_replicas_optimizer(dnn_optimizer)
-
   # Build DNN Logits.
   dnn_parent_scope = 'dnn'
 
   if not dnn_feature_columns:
     dnn_logits = None
   else:
+    dnn_optimizer = optimizers.get_optimizer_instance(
+        dnn_optimizer, learning_rate=_DNN_LEARNING_RATE)
+    _check_no_sync_replicas_optimizer(dnn_optimizer)
     if not dnn_hidden_units:
       raise ValueError(
           'dnn_hidden_units must be defined when dnn_feature_columns is '
@@ -175,7 +168,7 @@ def _dnn_linear_combined_model_fn(
       with variable_scope.variable_scope(
           'logits',
           values=(net,)) as dnn_logits_scope:
-        logits = core_layers.dense(
+        dnn_logits = core_layers.dense(
             net,
             units=head.logits_dimension,
             activation=None,
@@ -188,6 +181,10 @@ def _dnn_linear_combined_model_fn(
   if not linear_feature_columns:
     linear_logits = None
   else:
+    linear_optimizer = optimizers.get_optimizer_instance(
+        linear_optimizer,
+        learning_rate=_linear_learning_rate(len(linear_feature_columns)))
+    _check_no_sync_replicas_optimizer(linear_optimizer)
     with variable_scope.variable_scope(
         linear_parent_scope,
         values=tuple(six.itervalues(features)),
@@ -230,12 +227,12 @@ def _dnn_linear_combined_model_fn(
       with ops.colocate_with(global_step):
         return state_ops.assign_add(global_step, 1)
 
-    return head.create_estimator_spec(
-        features=features,
-        mode=mode,
-        labels=labels,
-        train_op_fn=_train_op_fn,
-        logits=logits)
+  return head.create_estimator_spec(
+      features=features,
+      mode=mode,
+      labels=labels,
+      train_op_fn=_train_op_fn,
+      logits=logits)
 
 
 class DNNLinearCombinedClassifier(estimator.Estimator):
@@ -441,9 +438,9 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
   def __init__(self,
                model_dir=None,
                linear_feature_columns=None,
-               linear_optimizer=None,
+               linear_optimizer='Ftrl',
                dnn_feature_columns=None,
-               dnn_optimizer=None,
+               dnn_optimizer='Adagrad',
                dnn_hidden_units=None,
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
