@@ -44,15 +44,8 @@ Client* GetOrCreateLocalClientOrDie(se::Platform* platform) {
 }
 }  // namespace
 
-ClientLibraryTestBase::ClientLibraryTestBase(
-    se::Platform* platform,
-    tensorflow::gtl::ArraySlice<string> disabled_pass_names)
-    : client_(GetOrCreateLocalClientOrDie(platform)) {
-  legacy_flags::HloPassPipelineFlags* flags =
-      legacy_flags::GetHloPassPipelineFlags();
-  flags->xla_disable_hlo_passes =
-      tensorflow::str_util::Join(disabled_pass_names, ",");
-}
+ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
+    : client_(GetOrCreateLocalClientOrDie(platform)) {}
 
 string ClientLibraryTestBase::TestName() const {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();

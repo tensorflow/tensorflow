@@ -41,8 +41,12 @@ namespace {
 class MapTest : public ClientLibraryTestBase {
  public:
   explicit MapTest(perftools::gputools::Platform* platform = nullptr)
-      : ClientLibraryTestBase(platform,
-                              /*disabled_pass_names=*/{"algsimp", "inline"}) {}
+      : ClientLibraryTestBase(platform) {
+    DebugOptions debug_options;
+    debug_options.add_xla_disable_hlo_passes("algsimp");
+    debug_options.add_xla_disable_hlo_passes("inline");
+    SetDebugOptions(debug_options);
+  }
 
   // Creates a function that adds its scalar argument with the constant 1.0.
   //

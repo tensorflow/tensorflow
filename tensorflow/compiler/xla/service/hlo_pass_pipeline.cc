@@ -46,12 +46,21 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
 
   legacy_flags::HloPassPipelineFlags* flags =
       legacy_flags::GetHloPassPipelineFlags();
-  std::vector<string> tmp =
-      tensorflow::str_util::Split(flags->xla_disable_hlo_passes, ',');
-  tensorflow::gtl::FlatSet<string> disabled_passes(tmp.begin(), tmp.end());
-  if (!disabled_passes.empty()) {
+  std::unique_ptr<tensorflow::gtl::FlatSet<string>> disabled_passes;
+  if (!flags->xla_disable_hlo_passes.empty()) {
+    std::vector<string> passes_vec =
+        tensorflow::str_util::Split(flags->xla_disable_hlo_passes, ',');
+    disabled_passes = MakeUnique<tensorflow::gtl::FlatSet<string>>(
+        passes_vec.begin(), passes_vec.end());
+  } else {
+    auto repeated_field =
+        module->config().debug_options().xla_disable_hlo_passes();
+    disabled_passes = MakeUnique<tensorflow::gtl::FlatSet<string>>(
+        repeated_field.begin(), repeated_field.end());
+  }
+  if (!disabled_passes->empty()) {
     VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
-            << tensorflow::str_util::Join(disabled_passes, ", ");
+            << tensorflow::str_util::Join(*disabled_passes, ", ");
   }
 
   auto run_invariant_checkers = [this, module]() -> Status {
@@ -66,8 +75,8 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   bool changed = false;
   string message;
   for (auto& pass : passes_) {
-    if (!disabled_passes.empty() &&
-        disabled_passes.count(pass->name().ToString()) > 0) {
+    if (!disabled_passes->empty() &&
+        disabled_passes->count(pass->name().ToString()) > 0) {
       VLOG(1) << "  Skipping HLO pass " << pass->name()
               << ", disabled by --xla_disable_hlo_passes";
       continue;
