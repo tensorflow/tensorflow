@@ -29,6 +29,7 @@ from tensorflow.contrib.seq2seq.python.ops import attention_wrapper as wrapper
 from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
@@ -64,7 +65,8 @@ class AttentionWrapperTest(test.TestCase):
 
   def assertAllCloseOrEqual(self, x, y, **kwargs):
     if isinstance(x, np.ndarray) or isinstance(x, float):
-      return super(AttentionWrapperTest, self).assertAllClose(x, y, **kwargs)
+      return super(AttentionWrapperTest, self).assertAllClose(
+          x, y, atol=1e-4, **kwargs)
     else:
       self.assertAllEqual(x, y, **kwargs)
 
@@ -84,7 +86,7 @@ class AttentionWrapperTest(test.TestCase):
                          expected_final_alignment_history=None,
                          attention_layer_size=6,
                          name=''):
-    encoder_sequence_length = [3, 2, 3, 1, 0]
+    encoder_sequence_length = [3, 2, 3, 1, 1]
     decoder_sequence_length = [2, 0, 1, 2, 3]
     batch_size = 5
     encoder_max_time = 8
@@ -98,10 +100,14 @@ class AttentionWrapperTest(test.TestCase):
     else:
       attention_depth = encoder_output_depth
 
-    decoder_inputs = np.random.randn(batch_size, decoder_max_time,
-                                     input_depth).astype(np.float32)
-    encoder_outputs = np.random.randn(batch_size, encoder_max_time,
-                                      encoder_output_depth).astype(np.float32)
+    decoder_inputs = array_ops.placeholder_with_default(
+        np.random.randn(batch_size, decoder_max_time,
+                        input_depth).astype(np.float32),
+        shape=(None, None, input_depth))
+    encoder_outputs = array_ops.placeholder_with_default(
+        np.random.randn(batch_size, encoder_max_time,
+                        encoder_output_depth).astype(np.float32),
+        shape=(None, None, encoder_output_depth))
 
     attention_mechanism = create_attention_mechanism(
         num_units=attention_mechanism_depth,
@@ -152,7 +158,7 @@ class AttentionWrapperTest(test.TestCase):
         # Remove the history from final_state for purposes of the
         # remainder of the tests.
         final_state = final_state._replace(alignment_history=())  # pylint: disable=protected-access
-        self.assertEqual((None, batch_size, encoder_max_time),
+        self.assertEqual((None, batch_size, None),
                          tuple(state_alignment_history.get_shape().as_list()))
       else:
         state_alignment_history = ()
@@ -190,16 +196,17 @@ class AttentionWrapperTest(test.TestCase):
 
     expected_final_output = BasicDecoderOutput(
         rnn_output=ResultSummary(
-            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.00083043973),
-        sample_id=ResultSummary(shape=(5, 3), dtype=dtype('int32'), mean=2.0))
+            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0052250605),
+        sample_id=ResultSummary(
+            shape=(5, 3), dtype=dtype('int32'), mean=1.4))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0039763632),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0040092287),
             h=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0019849765)),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0020015112)),
         attention=ResultSummary(
-            shape=(5, 6), dtype=dtype('float32'), mean=-0.00081052497),
+            shape=(5, 6), dtype=dtype('float32'), mean=-0.0052052638),
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
@@ -221,17 +228,17 @@ class AttentionWrapperTest(test.TestCase):
 
     expected_final_output = BasicDecoderOutput(
         rnn_output=ResultSummary(
-            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.00040482997),
+            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.00597103),
         sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=1.8666666666666667))
+            shape=(5, 3), dtype=dtype('int32'), mean=1.4))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0039785588),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0040052128),
             h=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0019861322)),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0019996136)),
         attention=ResultSummary(
-            shape=(5, 6), dtype=dtype('float32'), mean=-0.00038488387),
+            shape=(5, 6), dtype=dtype('float32'), mean=-0.00595117),
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
@@ -248,16 +255,17 @@ class AttentionWrapperTest(test.TestCase):
 
     expected_final_output = BasicDecoderOutput(
         rnn_output=ResultSummary(
-            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.00084602338),
-        sample_id=ResultSummary(shape=(5, 3), dtype=dtype('int32'), mean=2.0))
+            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0052615386),
+        sample_id=ResultSummary(
+            shape=(5, 3), dtype=dtype('int32'), mean=1.4666666666666666))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0039764317),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.004009536),
             h=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0019850098)),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0020016613)),
         attention=ResultSummary(
-            shape=(5, 6), dtype=dtype('float32'), mean=-0.00080144603),
+            shape=(5, 6), dtype=dtype('float32'), mean=-0.0051812846),
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
@@ -276,16 +284,17 @@ class AttentionWrapperTest(test.TestCase):
 
     expected_final_output = BasicDecoderOutput(
         rnn_output=ResultSummary(
-            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.00084602338),
-        sample_id=ResultSummary(shape=(5, 3), dtype=dtype('int32'), mean=2.0))
+            shape=(5, 3, 6), dtype=dtype('float32'), mean=-0.0052615386),
+        sample_id=ResultSummary(
+            shape=(5, 3), dtype=dtype('int32'), mean=1.4666666666666666))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0039764317),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.004009536),
             h=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0019850098)),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0020016613)),
         attention=ResultSummary(
-            shape=(5, 6), dtype=dtype('float32'), mean=-0.00080144603),
+            shape=(5, 6), dtype=dtype('float32'), mean=-0.0051812846),
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
@@ -303,17 +312,17 @@ class AttentionWrapperTest(test.TestCase):
 
     expected_final_output = BasicDecoderOutput(
         rnn_output=ResultSummary(
-            shape=(5, 3, 10), dtype=dtype('float32'), mean=0.019546926),
+            shape=(5, 3, 10), dtype=dtype('float32'), mean=0.117389656),
         sample_id=ResultSummary(
-            shape=(5, 3), dtype=dtype('int32'), mean=2.7999999999999998))
+            shape=(5, 3), dtype=dtype('int32'), mean=4.5999999999999996))
     expected_final_state = AttentionWrapperState(
         cell_state=LSTMStateTuple(
             c=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.0041728448),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.0063607907),
             h=ResultSummary(
-                shape=(5, 9), dtype=dtype('float32'), mean=-0.002085865)),
+                shape=(5, 9), dtype=dtype('float32'), mean=-0.00323448)),
         attention=ResultSummary(
-            shape=(5, 10), dtype=dtype('float32'), mean=0.019546915),
+            shape=(5, 10), dtype=dtype('float32'), mean=0.117389656,),
         time=3,
         alignments=ResultSummary(
             shape=(5, 8), dtype=dtype('float32'), mean=0.125),
