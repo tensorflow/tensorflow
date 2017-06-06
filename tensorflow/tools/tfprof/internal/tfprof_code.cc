@@ -219,9 +219,7 @@ std::vector<CodeNode*> TFCode::Account(const std::vector<CodeNode*>& roots,
     node->ResetTotalStats();
     std::vector<CodeNode*> act_cnodes = Account(node->children, opts);
     node->account = ReAccount(node, opts);
-    // LOG(ERROR) << act_cnodes.size() << " " << node->account;
     if (node->account || !act_cnodes.empty()) {
-      // LOG(ERROR) << node->name();
       node->show_children.clear();
       node->ResetTotalStats();
       node->AddSelfToTotalStats();

@@ -37,10 +37,13 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
+class TFGraphNode;
+
 class ExecStep {
  public:
-  ExecStep()
-      : all_start_micros_(0),
+  ExecStep(TFGraphNode* node)
+      : node(node),
+        all_start_micros_(0),
         latest_end_rel_micros_(0),
         mem_initiated_(false),
         requested_bytes_(0),
@@ -50,99 +53,11 @@ class ExecStep {
         accelerator_persistent_bytes_(0),
         allocator_bytes_in_use_(0) {}
 
-  void AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
-    devices_.insert(dev);
-    if (step_stat.all_start_micros() > 0) {
-      if (all_start_micros_ > 0) {
-        all_start_micros_ =
-            std::min(all_start_micros_,
-                     static_cast<int64>(step_stat.all_start_micros()));
-      } else {
-        all_start_micros_ = step_stat.all_start_micros();
-      }
-      int64 op_end_rel_micros = step_stat.op_end_rel_micros();
-      // Round quick execution to 1 micro to be semantically robust.
-      if (op_end_rel_micros == 0) {
-        ++op_end_rel_micros;
-      }
-      latest_end_rel_micros_ =
-          std::max(latest_end_rel_micros_, op_end_rel_micros);
+  void AddTimeStats(const string& dev, const NodeExecStats& step_stat);
 
-      op_execs_[dev].push_back(
-          std::make_pair(step_stat.all_start_micros(), op_end_rel_micros));
+  void AddMemoryStats(const string& dev, const NodeExecStats& step_stat);
 
-      if (dev.find("stream") != dev.npos &&
-          dev.find("stream:all") == dev.npos) {
-        gpu_kernel_execs_[dev].push_back(
-            std::make_pair(step_stat.all_start_micros(), op_end_rel_micros));
-      }
-    }
-  }
-
-  void AddMemoryStats(const string& dev, const NodeExecStats& step_stat) {
-    if (mem_initiated_) {
-      // fprintf(stderr, "Memory initiated twice on %s", dev.c_str());
-      return;
-    }
-    mem_initiated_ = true;
-
-    for (const auto& mem : step_stat.memory()) {
-      // TODO(xpan): Fix this hack. Currently the allocator name seems quite
-      // ad-hoc.
-      if (mem.allocator_name().find("GPU") == mem.allocator_name().npos) {
-        continue;
-      }
-      allocator_bytes_in_use_ =
-          std::max(allocator_bytes_in_use_,
-                   static_cast<int64>(mem.allocator_bytes_in_use()));
-    }
-    int64 total_output_bytes = 0;
-    for (const auto& output : step_stat.output()) {
-      if (output.has_tensor_description() &&
-          output.tensor_description().has_allocation_description()) {
-        // TODO(xpan): Maybe allocated_bytes.
-        int64 output_bytes = std::max(output.tensor_description()
-                                          .allocation_description()
-                                          .allocated_bytes(),
-                                      output.tensor_description()
-                                          .allocation_description()
-                                          .requested_bytes());
-        uint64 output_ptr =
-            output.tensor_description().allocation_description().ptr();
-        total_output_bytes += output_bytes;
-        output_bytes_[output.slot()] = std::make_pair(output_bytes, output_ptr);
-      }
-    }
-    if (step_stat.has_memory_stats()) {
-      host_temp_bytes_ += step_stat.memory_stats().host_temp_memory_size();
-      host_persistent_bytes_ +=
-          step_stat.memory_stats().host_persistent_memory_size();
-      accelerator_temp_bytes_ +=
-          step_stat.memory_stats().device_temp_memory_size();
-      accelerator_persistent_bytes_ +=
-          step_stat.memory_stats().device_persistent_memory_size();
-    }
-    requested_bytes_ = total_output_bytes;
-  }
-
-  int64 exec_micros() const {
-    int64 total = 0;
-    for (const auto& execs : gpu_kernel_execs_) {
-      for (const auto& exec : execs.second) {
-        total += exec.second;
-      }
-    }
-    if (total > 0) return total;
-
-    // If there is no gpu kernel time, fall back to assume it runs on cpu.
-    // TODO(xpan): No way to track CPU async op timing accurately?
-    for (const auto& execs : op_execs_) {
-      for (const auto& exec : execs.second) {
-        total += exec.second;
-      }
-    }
-    return total;
-  }
+  int64 exec_micros() const;
 
   const std::map<string, std::vector<std::pair<int64, int64>>>& op_execs()
       const {
@@ -164,6 +79,7 @@ class ExecStep {
   int64 allocator_bytes_in_use() const { return allocator_bytes_in_use_; }
 
  private:
+  TFGraphNode* node;
   // The earliest/latest time including scheduling and kernel execution.
   int64 all_start_micros_;
   int64 latest_end_rel_micros_;
@@ -480,6 +396,9 @@ class TFMultiGraphNode {
   std::map<string, const TFGraphNode*> nodes_;
   std::map<string, std::unique_ptr<TFMultiGraphNode>> children_;
 };
+
+bool IsCombinedGPUStream(const string& device);
+bool IsCPUDevice(const string& device);
 }  // namespace tfprof
 }  // namespace tensorflow
 
