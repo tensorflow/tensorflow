@@ -1,0 +1,59 @@
+#ifndef {{cpp_header_guard}}
+#define {{cpp_header_guard}}
+
+#include "{{main_header_file}}"
+
+// Required in order for Eigen::ThreadPoolDevice to be an actual type
+#define EIGEN_USE_THREADS
+
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+
+{{project_namespace_start}}
+{{op_namespace_start}}
+
+// For simpler partial specialisation
+typedef Eigen::ThreadPoolDevice CPUDevice;
+
+{% set op_templates = op_type_attrs | map(attribute="name") | list -%}
+{% set template_specialise = ['CPUDevice'] + op_templates -%}
+{% set template_specialise = template_specialise | join(", ")  -%}
+{% set class_template = op_templates | format_list("typename %s") -%}
+
+// Specialise the {{op_name}} op for CPUs
+template <{{ class_template | join(", ") }}>
+class {{op_name}}<{{ template_specialise }}> : public tensorflow::OpKernel
+{
+public:
+    explicit {{op_name}}(tensorflow::OpKernelConstruction * context) :
+        tensorflow::OpKernel(context) {}
+
+    void Compute(tensorflow::OpKernelContext * context) override
+    {
+        namespace tf = tensorflow;
+
+        // Create reference to input Tensorflow tensors
+        {% for item in op_inputs -%}
+        const auto & in_{{ item.name }} = context->input({{loop.index0}});
+        {% endfor %}
+
+        // Extract Eigen tensors
+        {% for item in op_inputs -%}
+        auto {{ item.name }} = in_{{ item.name }}.tensor<{{item.tf_type}}, {{ item.shape | length }}>();
+        {% endfor  %}
+
+        // Allocate output tensors
+        {% for item in op_outputs -%}
+        // Allocate space for output tensor '{{item.name}}'
+        tf::Tensor * {{ item.name }}_ptr = nullptr;
+        tf::TensorShape {{ item.name }}_shape = tf::TensorShape({ {{ item.shape | join(", ") }} });
+        OP_REQUIRES_OK(context, context->allocate_output(
+            {{loop.index0}}, {{ item.name }}_shape, &{{ item.name }}_ptr));
+        {% endfor %}
+    }
+};
+
+{{op_namespace_stop}}
+{{project_namespace_stop}}
+
+#endif // #ifndef {{cpp_header_guard}}

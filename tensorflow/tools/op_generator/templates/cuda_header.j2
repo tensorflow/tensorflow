@@ -1,0 +1,153 @@
+#if GOOGLE_CUDA
+
+#ifndef {{cuda_header_guard}}
+#define {{cuda_header_guard}}
+
+#include "{{main_header_file}}"
+
+// Required in order for Eigen::GpuDevice to be an actual type
+#define EIGEN_USE_GPU
+
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
+
+{{project_namespace_start}}
+{{op_namespace_start}}
+
+// For simpler partial specialisation
+typedef Eigen::GpuDevice GPUDevice;
+
+{% set op_templates = op_type_attrs | map(attribute="name") | list -%}
+
+{% if op_templates | length > 0 -%}
+{# Templated Case -#}
+
+{% set kernel_template = op_templates | format_list("typename %s") | join(", ") -%}
+{% set ltr = "<" + op_templates | join(", ") + ">"-%}
+{% set kernel_template = "template <" + kernel_template + "> " -%}
+// LaunchTraits struct defining
+// kernel block sizes for type permutations
+{{kernel_template}}struct LaunchTraits {};
+
+{% for perm in op_type_perms -%}
+{% set lt_template_specialise = perm | join(", ") -%}
+// Specialise for {{lt_template_specialise}}
+{% set lt_template_specialise = "<" + lt_template_specialise + ">" -%}
+// Should really be .cu file as this is a concrete type
+// but this works because this header is included only once
+template <> struct LaunchTraits{{lt_template_specialise}}
+{
+    static constexpr int BLOCKDIMX = 1024;
+    static constexpr int BLOCKDIMY = 1;
+    static constexpr int BLOCKDIMZ = 1;
+};
+{% endfor %}
+
+{% else -%}
+{# Untemplated Case -#}
+
+{% set kernel_template = "" %}
+{% set ltr = "" -%}
+{% set lt_template_specialise = "" %}
+// Should really be .cu file but this works because header is included once
+struct LaunchTraits
+{
+    static constexpr int BLOCKDIMX = {{N}};
+    static constexpr int BLOCKDIMY = 1;
+    static constexpr int BLOCKDIMZ = 1;
+};
+
+{% endif -%}
+
+
+// CUDA kernel outline
+{{ kernel_template  }}
+__global__ void {{kernel_name}}(
+    {% for item in op_inputs -%}
+    const {{ item.tf_type }} * {{ item.name }},
+    {% endfor %}
+    {%- for item in op_outputs -%}
+    {{ item.tf_type }} * {{ item.name }}
+    {%- if loop.last %}){% else %},{%- endif %}
+    {% endfor %}
+{
+    // Shared memory usage unnecesssary, but demonstrates use of
+    // constant Trait members to create kernel shared memory.
+    using LTr = LaunchTraits{{ltr}};
+    __shared__ int buffer[LTr::BLOCKDIMX];
+
+    int i = blockIdx.x*blockDim.x + threadIdx.x;
+
+    if(i >= LTr::BLOCKDIMX)
+        { return; }
+
+    // Set shared buffer to thread index
+    buffer[i] = i;
+}
+
+{% set template_specialise = ['GPUDevice'] + op_templates -%}
+{% set template_specialise = template_specialise | join(", ")  -%}
+{% set class_template = op_templates | format_list("typename %s") -%}
+
+// Specialise the {{op_name}} op for GPUs
+template <{{ class_template | join(", ")}}>
+class {{op_name}}<{{ template_specialise }}> : public tensorflow::OpKernel
+{
+public:
+    explicit {{op_name}}(tensorflow::OpKernelConstruction * context) :
+        tensorflow::OpKernel(context) {}
+
+    void Compute(tensorflow::OpKernelContext * context) override
+    {
+        namespace tf = tensorflow;
+
+        // Create variables for input tensors
+        {% for item in op_inputs -%}
+        const auto & in_{{ item.name }} = context->input({{loop.index0}});
+        {% endfor %}
+
+        // Allocate output tensors
+        {% for item in op_outputs -%}
+        // Allocate space for output tensor '{{item.name}}'
+        tf::Tensor * {{ item.name }}_ptr = nullptr;
+        tf::TensorShape {{ item.name}}_shape = tf::TensorShape({ {{ item.shape | join(", ") }} });
+        OP_REQUIRES_OK(context, context->allocate_output(
+            {{loop.index0}}, {{item.name}}_shape, &{{item.name}}_ptr));
+        {% endfor %}
+
+        using LTr = LaunchTraits{{ltr}};
+
+        // Set up our CUDA thread block and grid
+        dim3 block(LTr::BLOCKDIMX);
+        dim3 grid(1);
+
+        // Get pointers to flattened tensor data buffers
+        {% for item in op_inputs -%}
+        const auto fin_{{ item.name }} = in_{{ item.name }}.flat<{{item.tf_type}}>().data();
+        {% endfor %}
+        {%- for item in op_outputs -%}
+        auto fout_{{ item.name }} = {{ item.name }}_ptr->flat<{{item.tf_type}}>().data();
+        {% endfor %}
+
+        // Get the GPU device
+        const auto & device = context->eigen_device<GPUDevice>();
+
+        // Call the {{kernel_name}} CUDA kernel
+        {{kernel_name}}{{lt_template_specialise}}
+            <<<grid, block, 0, device.stream()>>>(
+                {% for item in op_inputs -%}
+                fin_{{ item.name }},
+                {% endfor %}
+                {%- for item in op_outputs -%}
+                fout_{{ item.name }}
+                {%- if loop.last %});{% else %},{%- endif %}
+                {% endfor %}
+    }
+};
+
+{{op_namespace_stop}}
+{{project_namespace_stop}}
+
+#endif // #ifndef {{cuda_header_guard}}
+
+#endif // #if GOOGLE_CUDA

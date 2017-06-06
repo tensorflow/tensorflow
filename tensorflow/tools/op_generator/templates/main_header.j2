@@ -1,0 +1,33 @@
+#ifndef {{main_header_guard}}
+#define {{main_header_guard}}
+
+// {{project}} namespace start and stop defines
+#define {{project_namespace_start}} namespace {{project}} {
+#define {{project_namespace_stop}} }
+
+// {{snake_case}} namespace start and stop defines
+#define {{op_namespace_start}} namespace {{snake_case}} {
+#define {{op_namespace_stop}} }
+
+{{project_namespace_start}}
+{{op_namespace_start}}
+
+// General definition of the {{op_name}} op,
+// which will be specialised for CPUs and GPUs in
+// {{cpp_header_file}} and {{cuda_header_file}} respectively.
+// Concrete template instantiations of this class
+// should be provided in
+// {{cpp_source_file}} and {{cuda_source_file}} respectively
+{% set class_template = op_type_attrs | map(attribute="name") | list -%}
+{% set class_template = ["Device"] + class_template  -%}
+{% set class_template = class_template | format_list("typename %s") | join(", ") -%}
+{% set class_template = "template <" + class_template + ">" -%}
+
+// Specialise the {{op_name}} op for GPUs
+{{ class_template }}
+class {{op_name}} {};
+
+{{op_namespace_stop}}
+{{project_namespace_stop}}
+
+#endif // #ifndef {{main_header_guard}}
