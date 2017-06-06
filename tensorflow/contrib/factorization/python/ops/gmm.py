@@ -130,7 +130,11 @@ class GMM(estimator.Estimator):
 
     def _model_fn(features, labels, mode):
       """Model function."""
-      assert labels is None, labels
+      if isinstance(labels, dict):
+        assert len(labels) == 0, labels
+      else:
+        assert labels is None, labels
+
       (all_scores, model_predictions, losses, training_op) = gmm_ops.gmm(
           self._parse_tensor_or_dict(features), self._training_initial_clusters,
           self._num_clusters, self._random_seed, self._covariance_type,

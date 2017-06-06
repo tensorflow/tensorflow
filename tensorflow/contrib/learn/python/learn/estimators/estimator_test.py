@@ -122,6 +122,14 @@ def extract(data, key):
     return data
 
 
+def extract(data, key):
+  if isinstance(data, dict):
+    assert key in data
+    return data[key]
+  else:
+    return data
+
+
 def linear_model_params_fn(features, labels, mode, params):
   features = extract(features, 'input')
   labels = extract(labels, 'labels')
@@ -650,6 +658,31 @@ class EstimatorTest(test.TestCase):
       _ = est.score(x=boston.data, y=boston.target.astype(np.float64))
     with self.assertRaises(learn.NotFittedError):
       est.predict(x=boston.data)
+
+  def testContinueTrainingDictionaryInput(self):
+    boston = base.load_boston()
+    output_dir = tempfile.mkdtemp()
+    est = estimator.Estimator(model_fn=linear_model_fn, model_dir=output_dir)
+    boston_input = {'input': boston.data}
+    float64_target = {'labels': boston.target.astype(np.float64)}
+    est.fit(x=boston_input, y=float64_target, steps=50)
+    scores = est.evaluate(
+        x=boston_input,
+        y=float64_target,
+        metrics={'MSE': metric_ops.streaming_mean_squared_error})
+    del est
+    # Create another estimator object with the same output dir.
+    est2 = estimator.Estimator(model_fn=linear_model_fn, model_dir=output_dir)
+    # Check we can evaluate and predict.
+    scores2 = est2.evaluate(
+        x=boston_input,
+        y=float64_target,
+        metrics={'MSE': metric_ops.streaming_mean_squared_error})
+    self.assertAllClose(scores2['MSE'], scores['MSE'])
+    predictions = np.array(list(est2.predict(x=boston_input)))
+    other_score = _sklearn.mean_squared_error(predictions,
+                                              float64_target['labels'])
+    self.assertAllClose(other_score, scores['MSE'])
 
   def testContinueTraining(self):
     boston = base.load_boston()
