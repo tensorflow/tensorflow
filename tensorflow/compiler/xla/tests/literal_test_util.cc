@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/platform/host_info.h"
 
 namespace xla {
 
@@ -64,13 +65,6 @@ namespace xla {
 }
 
 namespace {
-
-string Hostname() {
-  char hostname[1024];
-  gethostname(hostname, sizeof hostname);
-  hostname[sizeof hostname - 1] = 0;
-  return string(hostname);
-}
 
 // Helper function for comparing a floating point type, FloatT, bitwise equal
 // between the left-hand-side and right-hand-side, by bit-casting to UnsignedT
