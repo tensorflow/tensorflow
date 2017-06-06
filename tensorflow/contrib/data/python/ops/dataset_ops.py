@@ -837,7 +837,8 @@ class Dataset(object):
     Returns:
       A `Dataset`.
     """
-    return self.flat_map(map_func=Dataset.from_tensor_slices)
+    return self.flat_map(
+      map_func=lambda *args: Dataset.from_tensor_slices(args))
 
   def filter(self, predicate):
     """Filters this dataset according to `predicate`.
