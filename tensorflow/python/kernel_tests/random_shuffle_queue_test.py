@@ -969,6 +969,9 @@ class RandomShuffleQueueTest(test.TestCase):
       self.assertNotEqual(60.0, results[1])
       thread.join()
 
+      # Join the checked thread to make sure we can terminate without errors.
+      thread.join()
+
   def testBlockingEnqueueToClosedQueue(self):
     with self.test_session() as sess:
       q = data_flow_ops.RandomShuffleQueue(4, 0, dtypes_lib.float32, ((),))
