@@ -35,10 +35,10 @@ class ZipDatasetTest(test.TestCase):
         array_ops.placeholder(dtypes.float64)
     ]
 
-    datasets = [
+    datasets = tuple([
         dataset_ops.Dataset.from_tensor_slices(component_placeholder)
         for component_placeholder in component_placeholders
-    ]
+    ])
     zipped = dataset_ops.Dataset.zip(datasets)
 
     iterator = zipped.make_initializable_iterator()

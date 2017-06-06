@@ -231,6 +231,7 @@ filegroup(
         "//tensorflow/contrib/data/python/framework:all_files",
         "//tensorflow/contrib/data/python/kernel_tests:all_files",
         "//tensorflow/contrib/data/python/ops:all_files",
+        "//tensorflow/contrib/data/python/util:all_files",
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/factorization:all_files",
         "//tensorflow/contrib/factorization/kernels:all_files",

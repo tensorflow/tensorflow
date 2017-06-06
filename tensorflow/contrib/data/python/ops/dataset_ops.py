@@ -22,6 +22,7 @@ import abc
 import numpy as np
 
 from tensorflow.contrib.data.python.framework import function
+from tensorflow.contrib.data.python.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -38,7 +39,6 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
-from tensorflow.python.util import nest
 
 
 class Iterator(object):
@@ -1869,7 +1869,7 @@ def _parse_example(serialized, features):
       result.extend([val.indices, val.values, val.dense_shape])
     else:
       result.append(val)
-  return result
+  return tuple(result)
 
 
 def _get_file_names(file_pattern, randomize_input):
