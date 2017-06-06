@@ -54,6 +54,14 @@ class TextTest(test.TestCase):
     self.assertAllEqual(
         list(tokens), [[1, 2, 3, 0], [1, 2, 3, 0], [1, 2, 0, 3]])
 
+  def testVocabularyProcessorReturnDocLen(self):
+    vocab_processor = text.VocabularyProcessor(max_document_length=4,
+                                                 min_frequency=1)
+    tokens = vocab_processor.fit_transform(["a b c", "a\nb\nc", "a, b - c"],
+                                           return_docs_len=True)
+    self.assertAllEqual(
+        list(doc_len for tokens, doc_len in tokens), [3, 3, 4])
+
   def testVocabularyProcessorSaveRestore(self):
     filename = test.get_temp_dir() + "test.vocab"
     vocab_processor = text.VocabularyProcessor(
