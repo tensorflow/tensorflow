@@ -856,6 +856,4 @@ if [ "$TF_NEED_MPI" == "1" ]; then
 fi
 
 
-# TODO(gunan): Remove once bazel correctly handles changes in remote repositories.
-bazel clean
 echo "Configuration finished"
