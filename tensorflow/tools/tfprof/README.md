@@ -603,15 +603,15 @@ provides checkpointed tensors' values.
 
 `-order_by`: Order the results by [name|depth|bytes|micros|params|float_ops|occurrence]
 
-`-account_type_regexes`: Account and display the ops whose types match one of the type regexes specified. tfprof allow user to define extra op types for ops through tensorflow.tfprof.OpLog proto. regexes are comma-sperated.
+`-account_type_regexes`: Account and display the ops whose types match one of the type regexes specified. tfprof allow user to define extra op types for ops through tensorflow.tfprof.OpLog proto. regexes are comma-separated.
 
 `-start_name_regexes`: Show ops starting from the ops that matches the regexes, recursively. regexes are comma-separated.
 
-`-trim_name_regexes`: Hide ops starting from the ops that matches the regexes, recursively, regexes are comma-seprated.
+`-trim_name_regexes`: Hide ops starting from the ops that matches the regexes, recursively, regexes are comma-separated.
 
-`-show_name_regexes`: Show ops that match the regexes. regexes are comma-seprated.
+`-show_name_regexes`: Show ops that match the regexes. regexes are comma-separated.
 
-`-hide_name_regexes`: Hide ops that match the regexes. regexes are comma-seprated.
+`-hide_name_regexes`: Hide ops that match the regexes. regexes are comma-separated.
 
 Notes: For each op, `-account_type_regexes` is first evaluated, only ops with
 types matching the specified regexes are accounted and selected for displayed.

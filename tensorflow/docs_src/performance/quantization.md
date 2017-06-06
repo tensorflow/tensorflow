@@ -153,7 +153,7 @@ bit.
 
 The min and max operations actually look at the values in the input float
 tensor, and then feeds them into the Dequantize operation that converts the
-tensor into eight-bits. There're more details on how the quantized representation
+tensor into eight-bits. There are more details on how the quantized representation
 works later on.
 
 Once the individual operations have been converted, the next stage is to remove
