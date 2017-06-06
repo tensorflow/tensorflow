@@ -77,15 +77,8 @@ END
 function setup_python {
   ## Set up python-related environment settings:
   while true; do
-    fromuser=""
-    if [ -z "$PYTHON_BIN_PATH" ]; then
-      default_python_bin_path=$(which python || which python3 || true)
-      read -p "Please specify the location of python. [Default is $default_python_bin_path]: " PYTHON_BIN_PATH
-      fromuser="1"
-      if [ -z "$PYTHON_BIN_PATH" ]; then
-        PYTHON_BIN_PATH=$default_python_bin_path
-      fi
-    fi
+    default_python_bin_path=$(which python || which python3 || true)
+    PYTHON_BIN_PATH=$default_python_bin_path
     if [ -e "$PYTHON_BIN_PATH" ]; then
       break
     fi
@@ -102,26 +95,7 @@ function setup_python {
     IFS=','
     python_lib_path=($(python_path))
     unset IFS
-
-    if [ 1 = "$USE_DEFAULT_PYTHON_LIB_PATH" ]; then
-      PYTHON_LIB_PATH=${python_lib_path[0]}
-      echo "Using python library path: $PYTHON_LIB_PATH"
-
-    else
-      echo "Found possible Python library paths:"
-      for x in "${python_lib_path[@]}"; do
-        echo "  $x"
-      done
-      set -- "${python_lib_path[@]}"
-      echo "Please input the desired Python library path to use.  Default is ["$1"]"
-      read b || true
-      if [ "$b" == "" ]; then
-        PYTHON_LIB_PATH=${python_lib_path[0]}
-        echo "Using python library path: $PYTHON_LIB_PATH"
-      else
-        PYTHON_LIB_PATH="$b"
-      fi
-    fi
+    PYTHON_LIB_PATH=${python_lib_path[0]}
   fi
 
   if [ ! -x "$PYTHON_BIN_PATH" ]  || [ -d "$PYTHON_BIN_PATH" ]; then
@@ -184,15 +158,7 @@ setup_python
 
 ## Set up MKL related environment settings
 while [ "$TF_NEED_MKL" == "" ]; do
-  fromuser=""
-  read -p "Do you wish to build TensorFlow with MKL support? [y/N] " INPUT
-  fromuser="1"
-  case $INPUT in
-    [Yy]* ) echo "MKL support will be enabled for TensorFlow"; TF_NEED_MKL=1;;
-    [Nn]* ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
-    "" ) echo "No MKL support will be enabled for TensorFlow"; TF_NEED_MKL=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
+  TF_NEED_MKL=0
 done
 
 OSNAME=`uname -s`
@@ -280,11 +246,7 @@ fi # TF_NEED_MKL
 ## Set up architecture-dependent optimization flags.
 if [ -z "$CC_OPT_FLAGS" ]; then
   default_cc_opt_flags="-march=native"
-  read -p "Please specify optimization flags to use during compilation when bazel option "\
-"\"--config=opt\" is specified [Default is $default_cc_opt_flags]: " CC_OPT_FLAGS
-  if [ -z "$CC_OPT_FLAGS" ]; then
-    CC_OPT_FLAGS=$default_cc_opt_flags
-  fi
+  CC_OPT_FLAGS=$default_cc_opt_flags
 fi
 
 if is_windows; then
@@ -296,16 +258,7 @@ if is_windows; then
 fi
 
 if is_linux; then
-  while [ "$TF_NEED_JEMALLOC" == "" ]; do
-    read -p "Do you wish to use jemalloc as the malloc implementation? [Y/n] "\
-      INPUT
-    case $INPUT in
-      [Yy]* ) echo "jemalloc enabled"; TF_NEED_JEMALLOC=1;;
-      [Nn]* ) echo "jemalloc disabled"; TF_NEED_JEMALLOC=0;;
-      "" ) echo "jemalloc enabled"; TF_NEED_JEMALLOC=1;;
-      * ) echo "Invalid selection: " $INPUT;;
-    esac
-  done
+  TF_NEED_JEMALLOC=1
 else
   TF_NEED_JEMALLOC=0
 fi
@@ -315,17 +268,7 @@ if [[ "$TF_NEED_JEMALLOC" == "1" ]]; then
 fi
 
 while [[ "$TF_NEED_GCP" == "" ]]; do
-  read -p "Do you wish to build TensorFlow with "\
-"Google Cloud Platform support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "Google Cloud Platform support will be enabled for "\
-"TensorFlow"; TF_NEED_GCP=1;;
-    [Nn]* ) echo "No Google Cloud Platform support will be enabled for "\
-"TensorFlow"; TF_NEED_GCP=0;;
-    "" ) echo "No Google Cloud Platform support will be enabled for "\
-"TensorFlow"; TF_NEED_GCP=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
+  TF_NEED_GCP=0
 done
 
 if [[ "$TF_NEED_GCP" == "1" ]]; then
@@ -333,17 +276,7 @@ if [[ "$TF_NEED_GCP" == "1" ]]; then
 fi
 
 while [[ "$TF_NEED_HDFS" == "" ]]; do
-  read -p "Do you wish to build TensorFlow with "\
-"Hadoop File System support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "Hadoop File System support will be enabled for "\
-"TensorFlow"; TF_NEED_HDFS=1;;
-    [Nn]* ) echo "No Hadoop File System support will be enabled for "\
-"TensorFlow"; TF_NEED_HDFS=0;;
-    "" ) echo "No Hadoop File System support will be enabled for "\
-"TensorFlow"; TF_NEED_HDFS=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
+  TF_NEED_HDFS=0
 done
 
 if [[ "$TF_NEED_HDFS" == "1" ]]; then
@@ -352,13 +285,7 @@ fi
 
 ## Enable XLA.
 while [[ "$TF_ENABLE_XLA" == "" ]]; do
-  read -p "Do you wish to build TensorFlow with the XLA just-in-time compiler (experimental)? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "XLA JIT support will be enabled for TensorFlow"; TF_ENABLE_XLA=1;;
-    [Nn]* ) echo "No XLA JIT support will be enabled for TensorFlow"; TF_ENABLE_XLA=0;;
-    "" ) echo "No XLA support will be enabled for TensorFlow"; TF_ENABLE_XLA=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
+  TF_ENABLE_XLA=0
 done
 
 if [[ "$TF_ENABLE_XLA" == "1" ]]; then
@@ -367,17 +294,7 @@ fi
 
 # Verbs configuration
 while [ "$TF_NEED_VERBS" == "" ]; do
-  read -p "Do you wish to build TensorFlow with "\
-"VERBS support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "VERBS support will be enabled for "\
-"TensorFlow"; TF_NEED_VERBS=1;;
-    [Nn]* ) echo "No VERBS support will be enabled for "\
-"TensorFlow"; TF_NEED_VERBS=0;;
-    "" ) echo "No VERBS support will be enabled for "\
-"TensorFlow"; TF_NEED_VERBS=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
+  TF_NEED_VERBS=0
 done
 
 if [[ "$TF_NEED_VERBS" == "1" ]]; then
@@ -397,25 +314,13 @@ chmod a+x ${GEN_GIT_SOURCE}
 
 ## Set up SYCL-related environment settings
 while [ "$TF_NEED_OPENCL" == "" ]; do
-  read -p "Do you wish to build TensorFlow with OpenCL support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "OpenCL support will be enabled for TensorFlow"; TF_NEED_OPENCL=1;;
-    [Nn]* ) echo "No OpenCL support will be enabled for TensorFlow"; TF_NEED_OPENCL=0;;
-    "" ) echo "No OpenCL support will be enabled for TensorFlow"; TF_NEED_OPENCL=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
+  TF_NEED_OPENCL=0
 done
 
 ## Set up Cuda-related environment settings
 
 while [ "$TF_NEED_CUDA" == "" ]; do
-  read -p "Do you wish to build TensorFlow with CUDA support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "CUDA support will be enabled for TensorFlow"; TF_NEED_CUDA=1;;
-    [Nn]* ) echo "No CUDA support will be enabled for TensorFlow"; TF_NEED_CUDA=0;;
-    "" ) echo "No CUDA support will be enabled for TensorFlow"; TF_NEED_CUDA=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
+  TF_NEED_CUDA=0
 done
 
 export TF_NEED_CUDA
@@ -426,13 +331,7 @@ write_action_env_to_bazelrc "TF_NEED_OPENCL" "$TF_NEED_OPENCL"
 
 if [ "$TF_NEED_CUDA" == "1" ]; then
 while [[ "$TF_CUDA_CLANG" == "" ]]; do
-  read -p "Do you want to use clang as CUDA compiler? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "Clang will be used as CUDA compiler"; TF_CUDA_CLANG=1;;
-    [Nn]* ) echo "nvcc will be used as CUDA compiler"; TF_CUDA_CLANG=0;;
-    "" ) echo "nvcc will be used as CUDA compiler"; TF_CUDA_CLANG=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
+  TF_CUDA_CLANG=0
 done
 
 export TF_CUDA_CLANG
@@ -780,17 +679,7 @@ fi
 
 
 while [ "$TF_NEED_MPI" == "" ]; do
-  read -p "Do you wish to build TensorFlow with "\
-"MPI support? [y/N] " INPUT
-  case $INPUT in
-    [Yy]* ) echo "MPI support will be enabled for "\
-"TensorFlow"; TF_NEED_MPI=1;;
-    [Nn]* ) echo "MPI support will not be enabled for "\
-"TensorFlow"; TF_NEED_MPI=0;;
-    "" ) echo "MPI support will not be enabled for "\
-"TensorFlow"; TF_NEED_MPI=0;;
-    * ) echo "Invalid selection: " $INPUT;;
-  esac
+  TF_NEED_MPI=0
 done
 
 # Find out where the MPI toolkit is installed
