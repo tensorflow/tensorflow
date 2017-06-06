@@ -42,7 +42,6 @@ TEST_OPTIONS = {
     'min_micros': 0,
     'min_params': 0,
     'min_float_ops': 0,
-    'device_regexes': ['.*'],
     'order_by': 'name',
     'account_type_regexes': ['.*'],
     'start_name_regexes': ['.*'],
@@ -76,8 +75,6 @@ class PrintModelAnalysisTest(test.TestCase):
     opts.min_micros = TEST_OPTIONS['min_micros']
     opts.min_params = TEST_OPTIONS['min_params']
     opts.min_float_ops = TEST_OPTIONS['min_float_ops']
-    for p in TEST_OPTIONS['device_regexes']:
-      opts.device_regexes.append(p)
     opts.order_by = TEST_OPTIONS['order_by']
     for p in TEST_OPTIONS['account_type_regexes']:
       opts.account_type_regexes.append(p)

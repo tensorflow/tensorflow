@@ -19,8 +19,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::InferenceContext;
-
 template <typename T>
 class SingleImageRandomDotStereogramsOp : public OpKernel {
  private:
@@ -59,8 +57,8 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
   ::tensorflow::TensorShapeProto output_image_shape;
   ::tensorflow::TensorShapeProto output_data_window;
 
-  uint8 Cblack = (uint8)0;
-  uint8 Cwhite = (uint8)255;
+  uint8 Cblack = 0;
+  uint8 Cwhite = 255;
 
   int indexMode = 0;  // 0 - truncate XY, 1 - round XY, 2 - Interpolate XY (not
                       // implemented yet, keep default of 0)
@@ -101,7 +99,7 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
         eye_separation * dots_per_inch;  // Initialize pixels from eye to eye
   }
 
-  ~SingleImageRandomDotStereogramsOp() {  // Destructor
+  ~SingleImageRandomDotStereogramsOp() override {  // Destructor
   }
 
   void Compute(OpKernelContext* context) override {
@@ -153,7 +151,7 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
     BuildZBuffer(inputZ);
 
     // Output a scalar string.
-    Tensor* output_tensor = NULL;
+    Tensor* output_tensor = nullptr;
     OP_REQUIRES_OK(
         context,
         context->allocate_output(
@@ -182,8 +180,8 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
       // Init Min/Max to first value
       if (normalize_max < normalize_min)  // Autoscale if MIN>MAX
       {
-        MaxValue = (double)*Z;
-        MinValue = (double)*Z;
+        MaxValue = *Z;
+        MinValue = *Z;
 
         for (int y = 0; y < input_Yvalue; ++y)
           for (int x = 0; x < input_Xvalue; ++x) {
@@ -215,10 +213,7 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
   //***************************************************************************
   //***************************************************************************
   double getZfromInputImage(const T* Z, int x, int y) {
-    double return_val;
-
-    return_val = (double)*(Z + input_Xvalue * y + x);  // Get value
-    return return_val;
+    return *(Z + input_Xvalue * y + x);
   }
 
   //***************************************************************************
@@ -273,31 +268,20 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
   //***************************************************************************
 
   double getZFromOutputPixel(int x, int y) {
-    double xofz, yofz, returnval;
-
     // Convert pixel units to Z units, do this as "double"
-
-    xofz =
-        (double)input_Xvalue * (x - data_box_left) / ((double)data_box_width);
-    yofz =
-        (double)input_Yvalue * (y - data_box_top) / ((double)data_box_height);
+    double xofz = static_cast<double>(input_Xvalue) * (x - data_box_left) /
+                  (static_cast<double>(data_box_width));
+    double yofz = static_cast<double>(input_Yvalue) * (y - data_box_top) /
+                  (static_cast<double>(data_box_height));
 
     if ((xofz < 0) || (yofz < 0) || (yofz >= input_Yvalue) ||
-        (xofz >= input_Xvalue)) {  // Top of left side border hit or  Right
-                                   // side or bottom border hit
-                                   // Send BORDER Z value
-      return (border_level);
+        (xofz >= input_Xvalue)) {  // Top of left side border hit or Right
+                                   // side or bottom border hit,
+                                   // send BORDER Z value
+      return border_level;
+    } else {
+      return getZfromZbuffer(xofz, yofz);
     }
-
-    {  // in data set Z interpolate if need
-      double gz;
-
-      gz = getZfromZbuffer(xofz, yofz);
-
-      returnval = gz;
-    }
-
-    return (returnval);
   }
 
   //***************************************************************************

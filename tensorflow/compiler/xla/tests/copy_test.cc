@@ -183,14 +183,10 @@ void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {
   std::unique_ptr<HloComputation> computation = builder.Build();
 
   auto hlo_module = MakeUnique<HloModule>("test_module");
-  auto config = MakeUnique<HloModuleConfig>(computation->ComputeProgramShape());
-  *config->mutable_entry_computation_layout()->mutable_result_layout() =
-      ShapeLayout(ShapeUtil::MakeShapeWithLayout(
-          constant->shape().element_type(),
-          AsInt64Slice(constant->shape().dimensions()), {1, 2, 0}));
   hlo_module->AddEntryComputation(std::move(computation));
+  ForceResultLayout(hlo_module.get(), LayoutUtil::MakeLayout({1, 2, 0}));
   std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), std::move(config), {});
+      ExecuteAndTransfer(std::move(hlo_module), {});
 
   LiteralTestUtil::ExpectR3EqualArray3D(a, *result);
 }
@@ -222,17 +218,10 @@ void CopyOpTest::TestCopyConstantLayoutR4(
   std::unique_ptr<HloComputation> computation = builder.Build();
 
   auto hlo_module = MakeUnique<HloModule>("test_module");
-  auto config = MakeUnique<HloModuleConfig>(computation->ComputeProgramShape());
-  *config->mutable_entry_computation_layout()->mutable_result_layout() =
-      ShapeLayout(ShapeUtil::MakeShapeWithLayout(
-          constant->shape().element_type(),
-          AsInt64Slice(constant->shape().dimensions()), ({
-            std::vector<int64> p(permutation.rbegin(), permutation.rend());
-            p;
-          })));
   hlo_module->AddEntryComputation(std::move(computation));
+  ForceResultLayout(hlo_module.get(), LayoutUtil::MakeLayout(permutation));
   std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), std::move(config), {});
+      ExecuteAndTransfer(std::move(hlo_module), {});
 
   LiteralTestUtil::ExpectR4EqualArray4D(a, *result);
 }

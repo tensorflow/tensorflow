@@ -54,6 +54,7 @@ class TensorArray(object):
                flow=None,
                infer_shape=True,
                element_shape=None,
+               colocate_with_first_write_call=True,
                name=None):
     """Construct a new TensorArray or wrap an existing TensorArray handle.
 
@@ -85,6 +86,11 @@ class TensorArray(object):
       element_shape: (optional, default: None) A `TensorShape` object specifying
         the shape constraints of each of the elements of the TensorArray.
         Need not be fully defined.
+      colocate_with_first_write_call: If `True`, the TensorArray will be
+        colocated on the same device as the the Tensor used on its first write
+        (write operations include `write`, `unstack`, and `split`).  If `False`,
+        the TensorArray will be placed on the device determined by the
+        device context available during its initialization.
       name: A name for the operation (optional).
 
     Raises:
@@ -120,7 +126,11 @@ class TensorArray(object):
     # Used to keep track of what tensors the TensorArray should be
     # colocated with.  We choose to colocate the TensorArray with the
     # first tensor written to it.
-    self._colocate_with = []
+    self._colocate_with_first_write_call = colocate_with_first_write_call
+    if colocate_with_first_write_call:
+      self._colocate_with = []
+    else:
+      self._colocate_with = None
 
     # Record the current static shape for the array elements. The element
     # shape is defined either by `element_shape` or the shape of the tensor
@@ -142,8 +152,8 @@ class TensorArray(object):
         # Construct the TensorArray with an empty device.  The first
         # write into the TensorArray from a Tensor with a set device
         # will retroactively set the device value of this op.
-        with ops.device(None), ops.colocate_with(None, ignore_existing=True):
-          self._handle, self._flow = gen_data_flow_ops._tensor_array_v3(
+        def create():
+          return gen_data_flow_ops._tensor_array_v3(
               dtype=dtype,
               size=size,
               element_shape=element_shape,
@@ -151,6 +161,11 @@ class TensorArray(object):
               clear_after_read=clear_after_read,
               tensor_array_name=tensor_array_name,
               name=scope)
+        if colocate_with_first_write_call:
+          with ops.device(None), ops.colocate_with(None, ignore_existing=True):
+            self._handle, self._flow = create()
+        else:
+          self._handle, self._flow = create()
 
   @property
   def flow(self):
@@ -200,10 +215,13 @@ class TensorArray(object):
     If no internal colocation group is set, colocate with `value` and set
     the internal colocation group to be value.
     """
-    if not self._colocate_with:
-      self._colocate_with.append(value)
-    with ops.colocate_with(self._colocate_with[0]):
+    if not self._colocate_with_first_write_call:
       yield
+    else:
+      if not self._colocate_with:
+        self._colocate_with.append(value)
+      with ops.colocate_with(self._colocate_with[0]):
+        yield
 
   def identity(self):
     """Returns a TensorArray with the same content and properties.
@@ -214,8 +232,10 @@ class TensorArray(object):
       Use this object all for subsequent operations.
     """
     flow = array_ops.identity(self._flow)
-    ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow,
-                     infer_shape=self._infer_shape)
+    ta = TensorArray(
+        dtype=self._dtype, handle=self._handle, flow=flow,
+        infer_shape=self._infer_shape,
+        colocate_with_first_write_call=self._colocate_with_first_write_call)
     ta._element_shape = self._element_shape
     ta._colocate_with = self._colocate_with
     return ta
@@ -237,7 +257,8 @@ class TensorArray(object):
             dtype=self._dtype,
             handle=g_handle,
             flow=flow,
-            infer_shape=self._infer_shape)
+            infer_shape=self._infer_shape,
+            colocate_with_first_write_call=False)
         g._element_shape = self._element_shape
         return g
 
@@ -286,7 +307,9 @@ class TensorArray(object):
             value=value,
             flow_in=self._flow,
             name=name)
-      ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow_out)
+      ta = TensorArray(
+          dtype=self._dtype, handle=self._handle, flow=flow_out,
+          colocate_with_first_write_call=self._colocate_with_first_write_call)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       ta._colocate_with = self._colocate_with
@@ -416,7 +439,9 @@ class TensorArray(object):
             value=value,
             flow_in=self._flow,
             name=name)
-      ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow_out)
+      ta = TensorArray(
+          dtype=self._dtype, handle=self._handle, flow=flow_out,
+          colocate_with_first_write_call=self._colocate_with_first_write_call)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       ta._colocate_with = self._colocate_with
@@ -456,7 +481,9 @@ class TensorArray(object):
             lengths=lengths_64,
             flow_in=self._flow,
             name=name)
-      ta = TensorArray(dtype=self._dtype, handle=self._handle, flow=flow_out)
+      ta = TensorArray(
+          dtype=self._dtype, handle=self._handle, flow=flow_out,
+          colocate_with_first_write_call=self._colocate_with_first_write_call)
       ta._infer_shape = self._infer_shape
       ta._element_shape = self._element_shape
       ta._colocate_with = self._colocate_with

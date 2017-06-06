@@ -55,7 +55,6 @@ const tensorflow::int64 FLAGS_brain_gpu_util_debug_string_maxlen = 128;
 extern bool FLAGS_brain_gpu_record_mem_types;
 
 using perftools::gputools::DeviceMemoryBase;
-using perftools::gputools::DeviceMemory;
 using perftools::gputools::Stream;
 
 namespace tensorflow {

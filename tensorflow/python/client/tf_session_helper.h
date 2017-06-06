@@ -116,6 +116,18 @@ void TF_Reset_wrapper(const TF_SessionOptions* opt,
 // for no difference.
 string EqualGraphDefWrapper(const string& actual, const string& expected);
 
+// Runs the graph associated with the session starting with the supplied inputs.
+// On success, `py_outputs` is populated with a numpy ndarray for each output
+// (the caller must decref these ndarrays, although this will likely be handled
+// by the Python gc). `session`, `out_status`, and `py_outputs` must be
+// non-null. `py_outputs` should be empty.
+void TF_SessionRun_wrapper(TF_Session* session, const TF_Buffer* run_options,
+                           const std::vector<TF_Output>& inputs,
+                           const std::vector<PyObject*>& input_ndarrays,
+                           const std::vector<TF_Output>& outputs,
+                           const std::vector<TF_Operation*>& targets,
+                           TF_Buffer* run_metadata, TF_Status* out_status,
+                           std::vector<PyObject*>* py_outputs);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_PYTHON_CLIENT_TF_SESSION_HELPER_H_

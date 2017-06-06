@@ -208,6 +208,16 @@ func FakeQuantWithMinMaxVarsPerChannelGradientNumBits(value int64) FakeQuantWith
 	}
 }
 
+// FakeQuantWithMinMaxVarsPerChannelGradientNarrowRange sets the optional narrow_range attribute to value.
+//
+// value: Whether to quantize into 2^num_bits - 1 distinct values.
+// If not specified, defaults to false
+func FakeQuantWithMinMaxVarsPerChannelGradientNarrowRange(value bool) FakeQuantWithMinMaxVarsPerChannelGradientAttr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation.
 //
 // Arguments:
@@ -254,16 +264,26 @@ func FakeQuantWithMinMaxVarsNumBits(value int64) FakeQuantWithMinMaxVarsAttr {
 	}
 }
 
+// FakeQuantWithMinMaxVarsNarrowRange sets the optional narrow_range attribute to value.
+// If not specified, defaults to false
+func FakeQuantWithMinMaxVarsNarrowRange(value bool) FakeQuantWithMinMaxVarsAttr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
 // Fake-quantize the 'inputs' tensor of type float via global float scalars `min`
 //
 // and `max` to 'outputs' tensor of same shape as `inputs`.
 //
-// [min; max] is the clamping range for the 'inputs' data.  Op divides this range
-// into 255 steps (total of 256 values), then replaces each 'inputs' value with the
-// closest of the quantized step values.
-// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
+// `[min; max]` define the clamping range for the `inputs` data.
+// `inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
+// when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
+// then de-quantized and output as floats in `[min; max]` interval.
+// `num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
-// This operation has a gradient and thus allows for training `min` and `max` values.
+// This operation has a gradient and thus allows for training `min` and `max`
+// values.
 func FakeQuantWithMinMaxVars(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsAttr) (outputs tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -2149,7 +2169,7 @@ func ZerosLike(scope *Scope, x tf.Output) (y tf.Output) {
 // dimension. Must sum to the dimension of value along split_dim.
 // Can contain one -1 indicating that dimension is to be inferred.
 //	split_dim: 0-D.  The dimension along which to split.  Must be in the range
-// `[0, rank(value))`.
+// `[-rank(value), rank(value))`.
 //
 //
 // Returns Tensors whose shape matches that of `value`
@@ -2184,7 +2204,7 @@ func SplitV(scope *Scope, value tf.Output, size_splits tf.Output, split_dim tf.O
 //
 // Arguments:
 //	split_dim: 0-D.  The dimension along which to split.  Must be in the range
-// `[0, rank(value))`.
+// `[-rank(value), rank(value))`.
 //	value: The tensor to split.
 //	num_split: The number of ways to split.  Must evenly divide
 // `value.shape[split_dim]`.
@@ -3204,8 +3224,8 @@ func CTCLossCtcMergeRepeated(value bool) CTCLossAttr {
 // CTCLossIgnoreLongerOutputsThanInputs sets the optional ignore_longer_outputs_than_inputs attribute to value.
 //
 // value: Scalar. If set to true, during CTC
-// calculation items have longer input sequences than output sequences
-// are ignored by returning zero-gradient for those items.
+// calculation, items that have longer output sequences than input sequences
+// are skipped: they don't contribute to the loss term and have zero-gradient.
 // If not specified, defaults to false
 func CTCLossIgnoreLongerOutputsThanInputs(value bool) CTCLossAttr {
 	return func(m optionalAttr) {
@@ -3325,12 +3345,21 @@ func FakeQuantWithMinMaxArgsNumBits(value int64) FakeQuantWithMinMaxArgsAttr {
 	}
 }
 
+// FakeQuantWithMinMaxArgsNarrowRange sets the optional narrow_range attribute to value.
+// If not specified, defaults to false
+func FakeQuantWithMinMaxArgsNarrowRange(value bool) FakeQuantWithMinMaxArgsAttr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
 // Fake-quantize the 'inputs' tensor, type float to 'outputs' tensor of same type.
 //
-// Attributes [min; max] define the clamping range for the 'inputs' data.  Op
-// divides this range into 255 steps (total of 256 values), then replaces each
-// 'inputs' value with the closest of the quantized step values.
-// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
+// Attributes `[min; max]` define the clamping range for the `inputs` data.
+// `inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
+// when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
+// then de-quantized and output as floats in `[min; max]` interval.
+// `num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
 // Quantization is called fake since the output is still in floating point.
 func FakeQuantWithMinMaxArgs(scope *Scope, inputs tf.Output, optional ...FakeQuantWithMinMaxArgsAttr) (outputs tf.Output) {
@@ -6410,6 +6439,14 @@ func FakeQuantWithMinMaxArgsGradientNumBits(value int64) FakeQuantWithMinMaxArgs
 	}
 }
 
+// FakeQuantWithMinMaxArgsGradientNarrowRange sets the optional narrow_range attribute to value.
+// If not specified, defaults to false
+func FakeQuantWithMinMaxArgsGradientNarrowRange(value bool) FakeQuantWithMinMaxArgsGradientAttr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxArgs operation.
 //
 // Arguments:
@@ -7948,9 +7985,18 @@ func WriteFile(scope *Scope, filename tf.Output, contents tf.Output) (o *tf.Oper
 // Computes the Cholesky decomposition of one or more square matrices.
 //
 // The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
-// form square matrices, with the same constraints as the single matrix Cholesky
-// decomposition above. The output is a tensor of the same shape as the input
+// form square matrices.
+//
+// The input has to be symmetric and positive definite. Only the lower-triangular
+// part of the input will be used for this operation. The upper-triangular part
+// will not be read.
+//
+// The output is a tensor of the same shape as the input
 // containing the Cholesky decompositions for all input submatrices `[..., :, :]`.
+//
+// **Note**: The gradient computation on GPU is faster for large matrices but
+// not for large batch dimensions when the submatrices are small. In this
+// case it might be faster to use the CPU.
 //
 // Arguments:
 //	input: Shape is `[..., M, M]`.
@@ -8004,11 +8050,23 @@ type DecodeCSVAttr func(optionalAttr)
 
 // DecodeCSVFieldDelim sets the optional field_delim attribute to value.
 //
-// value: delimiter to separate fields in a record.
+// value: char delimiter to separate fields in a record.
 // If not specified, defaults to ","
 func DecodeCSVFieldDelim(value string) DecodeCSVAttr {
 	return func(m optionalAttr) {
 		m["field_delim"] = value
+	}
+}
+
+// DecodeCSVUseQuoteDelim sets the optional use_quote_delim attribute to value.
+//
+// value: If false, treats double quotation marks as regular
+// characters inside of the string fields (ignoring RFC 4180, Section 2,
+// Bullet 5).
+// If not specified, defaults to true
+func DecodeCSVUseQuoteDelim(value bool) DecodeCSVAttr {
+	return func(m optionalAttr) {
+		m["use_quote_delim"] = value
 	}
 }
 
@@ -8539,7 +8597,7 @@ func RandomShuffleSeed2(value int64) RandomShuffleAttr {
 //   to one and only one `output[i]`. For example, a mapping that might occur for a
 //   3x2 tensor is:
 //
-// ```prettyprint
+// ```
 // [[1, 2],       [[5, 6],
 //  [3, 4],  ==>   [1, 2],
 //  [5, 6]]        [3, 4]]
@@ -8580,17 +8638,27 @@ func FakeQuantWithMinMaxVarsPerChannelNumBits(value int64) FakeQuantWithMinMaxVa
 	}
 }
 
+// FakeQuantWithMinMaxVarsPerChannelNarrowRange sets the optional narrow_range attribute to value.
+// If not specified, defaults to false
+func FakeQuantWithMinMaxVarsPerChannelNarrowRange(value bool) FakeQuantWithMinMaxVarsPerChannelAttr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
 // Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
 //
 // `[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
 // to 'outputs' tensor of same shape as `inputs`.
 //
-// [min; max] is the clamping range for the 'inputs' data in the corresponding
-// depth channel.  Op divides this range into 255 steps (total of 256 values), then
-// replaces each 'inputs' value with the closest of the quantized step values.
-// 'num_bits' is the bitwidth of the quantization; between 2 and 8, inclusive.
+// `[min; max]` define the clamping range for the `inputs` data.
+// `inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
+// when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
+// then de-quantized and output as floats in `[min; max]` interval.
+// `num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.
 //
-// This operation has a gradient and thus allows for training `min` and `max` values.
+// This operation has a gradient and thus allows for training `min` and `max`
+// values.
 func FakeQuantWithMinMaxVarsPerChannel(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsPerChannelAttr) (outputs tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -8937,6 +9005,9 @@ func SparseMatMulBIsSparse(value bool) SparseMatMulAttr {
 // match the outer dimension of "b". This op is optimized for the case where at
 // least one of "a" or "b" is sparse. The breakeven for using this versus a dense
 // matrix multiply on one platform was 30% zero values in the sparse matrix.
+//
+// The gradient computation of this operation will only take advantage of sparsity
+// in the input gradient when that gradient comes from a Relu.
 func SparseMatMul(scope *Scope, a tf.Output, b tf.Output, optional ...SparseMatMulAttr) (product tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -11735,26 +11806,31 @@ func CumsumReverse(value bool) CumsumAttr {
 //
 // By default, this op performs an inclusive cumsum, which means that the first
 // element of the input is identical to the first element of the output:
-// ```prettyprint
-// tf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]
+//
+// ```python
+// tf.cumsum([a, b, c])  # => [a, a + b, a + b + c]
 // ```
 //
 // By setting the `exclusive` kwarg to `True`, an exclusive cumsum is
 // performed instead:
-// ```prettyprint
-// tf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]
+//
+// ```python
+// tf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]
 // ```
 //
 // By setting the `reverse` kwarg to `True`, the cumsum is performed in the
 // opposite direction:
-// ```prettyprint
-// tf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]
+//
+// ```python
+// tf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]
 // ```
+//
 // This is more efficient than using separate `tf.reverse` ops.
 //
 // The `reverse` and `exclusive` kwargs can also be combined:
-// ```prettyprint
-// tf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]
+//
+// ```python
+// tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
 // ```
 func Cumsum(scope *Scope, x tf.Output, axis tf.Output, optional ...CumsumAttr) (out tf.Output) {
 	if scope.Err() != nil {
@@ -12858,26 +12934,31 @@ func CumprodReverse(value bool) CumprodAttr {
 //
 // By default, this op performs an inclusive cumprod, which means that the first
 // element of the input is identical to the first element of the output:
-// ```prettyprint
-// tf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]
+//
+// ```python
+// tf.cumprod([a, b, c])  # => [a, a * b, a * b * c]
 // ```
 //
 // By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
 // performed instead:
-// ```prettyprint
-// tf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]
+//
+// ```python
+// tf.cumprod([a, b, c], exclusive=True)  # => [1, a, a * b]
 // ```
 //
 // By setting the `reverse` kwarg to `True`, the cumprod is performed in the
 // opposite direction:
-// ```prettyprint
-// tf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]
+//
+// ```python
+// tf.cumprod([a, b, c], reverse=True)  # => [a * b * c, b * c, c]
 // ```
+//
 // This is more efficient than using separate `tf.reverse` ops.
 //
 // The `reverse` and `exclusive` kwargs can also be combined:
-// ```prettyprint
-// tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
+//
+// ```python
+// tf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]
 // ```
 func Cumprod(scope *Scope, x tf.Output, axis tf.Output, optional ...CumprodAttr) (out tf.Output) {
 	if scope.Err() != nil {
@@ -16350,7 +16431,7 @@ func SvdFullMatrices(value bool) SvdAttr {
 // Computes the SVD of each inner matrix in `input` such that
 // `input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`
 //
-// ```prettyprint
+// ```python
 // # a is a tensor containing a batch of matrices.
 // # s is a tensor of singular values for each matrix.
 // # u is the tensor containing of left singular vectors for each matrix.
@@ -19090,7 +19171,7 @@ func SparseToDenseValidateIndices(value bool) SparseToDenseAttr {
 //
 // Builds an array `dense` with shape `output_shape` such that
 //
-// ```prettyprint
+// ```
 // # If sparse_indices is scalar
 // dense[i] = (i == sparse_indices ? sparse_values : default_value)
 //
@@ -20164,15 +20245,14 @@ func LogicalOr(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 //
 // For example:
 //
-// ```prettyprint
+// ```python
 // # 'condition' tensor is [[True,  False]
 // #                        [False, True]]
 // # 't' is [[1, 2],
 // #         [3, 4]]
 // # 'e' is [[5, 6],
 // #         [7, 8]]
-// select(condition, t, e) ==> [[1, 6],
-//                              [7, 4]]
+// select(condition, t, e)  # => [[1, 6], [7, 4]]
 //
 //
 // # 'condition' tensor is [True, False]
@@ -20632,22 +20712,22 @@ func UnsortedSegmentSum(scope *Scope, data tf.Output, segment_ids tf.Output, num
 //
 // For example:
 //
-// ```prettyprint
+// ```python
 // c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
 //
 // # Select two rows, one segment.
 // tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
-//   ==> [[0 0 0 0]]
+// # => [[0 0 0 0]]
 //
 // # Select two rows, two segment.
 // tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
-//   ==> [[ 1  2  3  4]
-//        [-1 -2 -3 -4]]
+// # => [[ 1  2  3  4]
+// #     [-1 -2 -3 -4]]
 //
 // # Select all rows, two segments.
 // tf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
-//   ==> [[0 0 0 0]
-//        [5 6 7 8]]
+// # => [[0 0 0 0]
+// #     [5 6 7 8]]
 //
 // # Which is equivalent to:
 // tf.segment_sum(c, tf.constant([0, 0, 1]))
@@ -21353,7 +21433,7 @@ func QrFullMatrices(value bool) QrAttr {
 // Computes the QR decomposition of each inner matrix in `tensor` such that
 // `tensor[..., :, :] = q[..., :, :] * r[..., :,:])`
 //
-// ```prettyprint
+// ```python
 // # a is a tensor.
 // # q is a tensor of orthonormal matrices.
 // # r is a tensor of upper triangular matrices.
@@ -21746,6 +21826,16 @@ func FakeQuantWithMinMaxVarsGradientNumBits(value int64) FakeQuantWithMinMaxVars
 	}
 }
 
+// FakeQuantWithMinMaxVarsGradientNarrowRange sets the optional narrow_range attribute to value.
+//
+// value: Whether to quantize into 2^num_bits - 1 distinct values.
+// If not specified, defaults to false
+func FakeQuantWithMinMaxVarsGradientNarrowRange(value bool) FakeQuantWithMinMaxVarsGradientAttr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
 // Compute gradients for a FakeQuantWithMinMaxVars operation.
 //
 // Arguments:
@@ -21966,7 +22056,7 @@ func SelfAdjointEigV2ComputeV(value bool) SelfAdjointEigV2Attr {
 // Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in
 // `input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.
 //
-// ```prettyprint
+// ```python
 // # a is a tensor.
 // # e is a tensor of eigenvalues.
 // # v is a tensor of eigenvectors.

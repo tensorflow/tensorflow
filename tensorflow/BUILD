@@ -164,6 +164,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "with_mpi_support",
+    values = {"define": "with_mpi_support=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = ["//tensorflow/..."],
@@ -289,6 +295,7 @@ filegroup(
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/contrib/tensorboard:all_files",
         "//tensorflow/contrib/testing:all_files",
+        "//tensorflow/contrib/text:all_files",
         "//tensorflow/contrib/tfprof/python/tools/tfprof:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
@@ -386,6 +393,11 @@ filegroup(
         "//tensorflow/tensorboard/demo:all_files",
         "//tensorflow/tensorboard/java/org/tensorflow/tensorboard/vulcanize:all_files",
         "//tensorflow/tensorboard/plugins:all_files",
+        "//tensorflow/tensorboard/plugins/audio:all_files",
+        "//tensorflow/tensorboard/plugins/distributions:all_files",
+        "//tensorflow/tensorboard/plugins/graphs:all_files",
+        "//tensorflow/tensorboard/plugins/histograms:all_files",
+        "//tensorflow/tensorboard/plugins/images:all_files",
         "//tensorflow/tensorboard/plugins/projector:all_files",
         "//tensorflow/tensorboard/plugins/scalars:all_files",
         "//tensorflow/tensorboard/plugins/text:all_files",

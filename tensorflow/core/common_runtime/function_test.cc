@@ -93,7 +93,7 @@ class FunctionTest : public ::testing::Test {
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = false;
-    TF_CHECK_OK(ConvertGraphDefToGraph(opts, result.gdef, g));
+    TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g));
 
     const int version = g->versions().producer();
     LocalExecutorParams params;
@@ -949,7 +949,7 @@ GraphDef Optimize(const std::function<bool(Graph* g)>& pass,
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = false;
-  TF_CHECK_OK(ConvertGraphDefToGraph(opts, result.gdef, g.get()));
+  TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g.get()));
   pass(g.get());
   std::unique_ptr<Graph> g1(new Graph(OpRegistry::Global()));
   CopyGraph(*g, g1.get());

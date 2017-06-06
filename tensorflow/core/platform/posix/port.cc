@@ -70,7 +70,7 @@ void* AlignedMalloc(size_t size, int minimum_alignment) {
 #if defined(__ANDROID__)
   return memalign(minimum_alignment, size);
 #else  // !defined(__ANDROID__)
-  void* ptr = NULL;
+  void* ptr = nullptr;
   // posix_memalign requires that the requested alignment be at least
   // sizeof(void*). In this case, fall back on malloc which should return
   // memory aligned to at least the size of a pointer.
@@ -82,7 +82,7 @@ void* AlignedMalloc(size_t size, int minimum_alignment) {
   int err = posix_memalign(&ptr, minimum_alignment, size);
 #endif
   if (err != 0) {
-    return NULL;
+    return nullptr;
   } else {
     return ptr;
   }

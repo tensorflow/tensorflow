@@ -65,7 +65,7 @@ using ::tensorflow::strings::StrCat;
       WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
   instruction->operands_.push_back(operand);
   instruction->literal_.reset(new Literal);
-  *instruction->literal_->mutable_u8s() += tag;
+  instruction->literal_->append_u8s(tag);
   return instruction;
 }
 
@@ -1484,6 +1484,7 @@ string HloInstruction::ToString(bool compact_operands,
   }
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
+    bounds.reserve(slice_starts_.size());
     for (int i = 0; i < slice_starts_.size(); ++i) {
       bounds.push_back(
           StrCat("[", slice_starts_[i], ":", slice_limits_[i], "]"));
@@ -1531,6 +1532,51 @@ string HloInstruction::ToShortString() const {
                        StrAppend(out, operand->name());
                      })
                     .c_str());
+}
+
+HloInstructionProto HloInstruction::ToProto() const {
+  HloInstructionProto proto;
+  proto.set_name(name_);
+  proto.set_opcode(HloOpcodeString(opcode_));
+  *proto.mutable_shape() = shape_;
+  for (const HloInstruction* operand : operands_) {
+    *proto.add_operand_names() = operand->name();
+  }
+  for (const HloInstruction* control : control_predecessors_) {
+    *proto.add_control_predecessor_names() = control->name();
+  }
+  for (const HloComputation* computation : called_computations_) {
+    *proto.add_called_computation_names() = computation->name();
+  }
+  *proto.mutable_metadata() = metadata_;
+  switch (opcode_) {
+    case HloOpcode::kConstant:
+      *proto.mutable_literal() = literal_->ToProto();
+      break;
+    case HloOpcode::kParameter:
+      proto.set_parameter_number(parameter_number_);
+      proto.set_parameter_name(parameter_name_);
+      break;
+    case HloOpcode::kFusion: {
+      HloComputationProto* proto_fused_computation =
+          proto.mutable_fused_instructions_computation();
+      proto_fused_computation->set_name(FullyQualifiedName());
+
+      // Fill in fused instructions. Note that fused_instructions() returns in
+      // reverse post-order (i.e. root first), so we reverse to get post-order.
+      for (auto fused_it = fused_instructions().rbegin();
+           fused_it != fused_instructions().rend(); ++fused_it) {
+        HloInstructionProto fused_proto = (*fused_it)->ToProto();
+        proto_fused_computation->add_instructions()->Swap(&fused_proto);
+      }
+      break;
+    }
+    case HloOpcode::kGetTupleElement:
+      proto.set_tuple_index(tuple_index_);
+      break;
+    default: {}  // Nothing to do
+  }
+  return proto;
 }
 
 string HloInstruction::ToCategory() const {
@@ -1602,10 +1648,10 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
   trace_instruction_ = trace_instruction;
 }
 
-const string& HloInstruction::tracing_tag() const {
+string HloInstruction::TracingTag() const {
   CHECK_EQ(HloOpcode::kTrace, opcode());
   CHECK(literal_ != nullptr);
-  return literal_->u8s();
+  return literal_->u8s_string();
 }
 
 bool HloInstruction::IsFused() const {

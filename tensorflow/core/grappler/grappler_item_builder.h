@@ -31,6 +31,7 @@ struct ItemConfig {
       : ignore_user_placement(true),
         ignore_colocation(true),
         placeholder_unknown_output_shape_dim(-1),
+        apply_optimizations(true),
         inline_functions(true) {}
 
   // If true, ignore all user specified node placement.
@@ -40,7 +41,9 @@ struct ItemConfig {
   // Dimension to use if a placeholder node has an _output_shapes attribute with
   // a dimension of -1.
   int placeholder_unknown_output_shape_dim;
-  // If true, inline all functions in the graph.
+  // If true, does L1 optimizations.
+  bool apply_optimizations;
+  // If true, does inlining.
   bool inline_functions;
 };
 

@@ -96,9 +96,6 @@ describe('backend tests', () => {
       assertIsDatum(image);
       chai.assert.isNumber(image.width);
       chai.assert.isNumber(image.height);
-      const nonDemoQuery = 'index=0&tag=im1&run=run1';
-      const expectedUrl = demoRouter.individualImage(nonDemoQuery, 10.0);
-      chai.assert.equal(image.url, expectedUrl);
       done();
     });
   });
@@ -108,9 +105,6 @@ describe('backend tests', () => {
       const audio = audioClips[0];
       assertIsDatum(audio);
       chai.assert.equal(audio.content_type, 'audio/wav');
-      const nonDemoQuery = 'index=0&tag=audio1&run=run1';
-      const expectedUrl = demoRouter.individualAudio(nonDemoQuery);
-      chai.assert.equal(audio.url, expectedUrl);
       done();
     });
   });
@@ -137,15 +131,15 @@ describe('backend tests', () => {
       chai.assert.deepEqual(x, scalar);
       next();
     });
-    backend.imageRuns().then((x) => {
+    backend.imageTags().then((x) => {
       chai.assert.deepEqual(x, image);
       next();
     });
-    backend.audioRuns().then((x) => {
+    backend.audioTags().then((x) => {
       chai.assert.deepEqual(x, audio);
       next();
     });
-    backend.runMetadataRuns().then((x) => {
+    backend.runMetadataTags().then((x) => {
       chai.assert.deepEqual(x, runMetadata);
       next();
     });

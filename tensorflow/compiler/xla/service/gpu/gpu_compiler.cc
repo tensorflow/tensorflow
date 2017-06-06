@@ -24,6 +24,7 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/LLVMContext.h"
 #include "external/llvm/include/llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/legacy_flags/gpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
@@ -44,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -51,6 +53,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -167,7 +170,7 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   pipeline.AddInvariantChecker<HloVerifier>();
   pipeline.AddPass<PadInsertion>();
   pipeline.AddPass<GpuLayoutAssignment>(
-      hlo_module->mutable_config()->mutable_entry_computation_layout());
+      hlo_module->mutable_entry_computation_layout());
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
@@ -270,6 +273,13 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
       BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
                           BufferSizeBytesFunction(), kMemoryAlignment));
 
+  legacy_flags::GpuCompilerFlags* flags = legacy_flags::GetGpuCompilerFlags();
+  if (!flags->xla_gpu_dump_debug_json_to.empty()) {
+    HloProto proto = MakeHloProto(*module, *buffer_assignment);
+    TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
+        proto, flags->xla_gpu_dump_debug_json_to, module->name()));
+  }
+
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
                                       &stream_exec->GetDeviceDescription(),
                                       &llvm_module);
@@ -282,7 +292,6 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
       entry_computation->root_instruction()->Accept(&ir_emitter));
 
   string ir_module_string_before_opt;
-  legacy_flags::GpuCompilerFlags* flags = legacy_flags::GetGpuCompilerFlags();
   if (VLOG_IS_ON(2) || flags->xla_gpu_embed_ir) {
     ir_module_string_before_opt = llvm_ir::DumpModuleToString(llvm_module);
     VLOG(2) << "LLVM module before optimizations:";

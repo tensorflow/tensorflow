@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
@@ -42,7 +43,7 @@ Costs CombineCosts(const Costs& left, const Costs& right) {
     result.max_per_op_streaming =
         std::max(left.max_per_op_streaming, right.max_per_op_streaming);
   }
-  VLOG(2) << "costs execution_time=" << result.execution_time.count()
+  VLOG(3) << "costs execution_time=" << result.execution_time.count()
           << " max_memory=" << result.max_memory
           << " max_per_op_buffers=" << result.max_per_op_buffers
           << " max_per_op_streaming=" << result.max_per_op_streaming;
@@ -87,9 +88,14 @@ Status VirtualScheduler::Init() {
 
   // TODO(dyoon): this is a bit inefficient as name_to_node is already built in
   // ComputeTransitiveFanin().
+  //
+  // Once ComputeTransitiveFanin is complete, only the nodes that can be reached
+  // from the fetch nodes are scheduled. So the scheduled nodes should be
+  // exactly the same as those executed for real. One possible discrepancy could
+  // be the control flow nodes, where tf only executes one path.
   std::unordered_map<string, const NodeDef*> name_to_node;
-  for (const auto& node : graph.node()) {
-    name_to_node[node.name()] = &node;
+  for (const auto& node : nodes) {
+    name_to_node[node->name()] = node;
   }
 
   // Build node_map.
@@ -178,13 +184,17 @@ void VirtualScheduler::MaybeUpdateInputProperties(
       value->add_float_val(1);
       inputs->push_back(control_message);
     } else {
-      const auto input_position = NodePosition(input_source_name);
-      // Use the input source's output property as _Send and _Recv's input
-      // property.
-      auto outputs =
-          graph_properties_.GetOutputProperties(NodeName(input_source_name));
-      CHECK_GT(outputs.size(), input_position);
-      inputs->push_back(outputs[input_position]);
+      // Like with HasInputProperties, if a node does not have output
+      // properties, it's likely it was pruned during the shape inference run.
+      if (graph_properties_.HasOutputProperties(NodeName(input_source_name))) {
+        const auto input_position = NodePosition(input_source_name);
+        // Use the input source's output property as _Send and _Recv's input
+        // property.
+        auto outputs =
+            graph_properties_.GetOutputProperties(NodeName(input_source_name));
+        CHECK_GT(outputs.size(), input_position);
+        inputs->push_back(outputs[input_position]);
+      }
     }
   }
 }
@@ -205,23 +215,14 @@ string VirtualScheduler::DeviceName(const NodeDef* node) const {
     const auto* to = node_state.outputs[0];
     return ChannelDeviceName(from, to);
   } else {
-    const string& device =
-        node->device().empty() ? kDefaultDevice : node->device();
-    DeviceNameUtils::ParsedName parsed;
-    if (!DeviceNameUtils::ParseFullName(device, &parsed)) {
-      LOG(WARNING) << "Device name parse failed: " << device;
-      return device;
-    }
-    // Return a short name like /CPU:0 or /GPU:0.
-    return "/" + DeviceNameUtils::LocalName(parsed.type, parsed.id);
+    return node->device().empty() ? "/" + default_device_type_ + ":0"
+                                  : node->device();
   }
 }
 
 string VirtualScheduler::ChannelDeviceName(const NodeDef* from,
                                            const NodeDef* to) const {
-  // TODO(dyoon): once ChannelCostEstimator is ready, assign Channel device to
-  // _Send ops.
-  return kDefaultDevice;
+  return kChannelDevice + ": " + DeviceName(from) + " to " + DeviceName(to);
 }
 
 std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::TransferNode(
@@ -274,12 +275,8 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::TransferNode(
   return std::make_pair(send, recv);
 }
 
-const NodeDef* VirtualScheduler::GetCurrNode() const {
-  return ready_nodes_->GetCurrNode();
-}
-
 NodeInfo VirtualScheduler::GetCurrNodeInfo() const {
-  const NodeDef* node = GetCurrNode();
+  const NodeDef* node = ready_nodes_->GetCurrNode();
   std::vector<OpInfo::TensorProperties> inputs =
       graph_properties_.GetInputProperties(node->name());
   // Some ops created within VirtualScheduler may need further processing to
@@ -291,13 +288,13 @@ NodeInfo VirtualScheduler::GetCurrNodeInfo() const {
   DeviceProperties device;
   if (placer_) {
     device = placer_->get_device(*node);
-  } else {
-    device.set_type("UNKNOWN");
+  }
+  if (device.type() == "UNKNOWN") {
     string device_type;
     int device_id;
     DeviceNameUtils::ParsedName parsed;
     if (!node->device().empty() &&
-        DeviceNameUtils::ParseFullName(node->device(), &parsed)) {
+        DeviceNameUtils::ParseFullName(DeviceName(node), &parsed)) {
       device_type = parsed.type;
       device_id = parsed.id;
     } else {
@@ -311,15 +308,24 @@ NodeInfo VirtualScheduler::GetCurrNodeInfo() const {
     }
   }
 
+  // Special case for _Send op.
+  if (IsSendOp(node)) {
+    device.set_type(kChannelDevice);
+  }
+
   NodeInfo node_info;
   node_info.name = node->name();
   node_info.device_name = graph_properties_.GetDeviceName(node->name());
-  node_info.outputs = graph_properties_.GetOutputProperties(node->name());
+  std::vector<OpInfo::TensorProperties> outputs =
+      graph_properties_.GetOutputProperties(node->name());
   auto& op_info = node_info.op_info;
   op_info.set_op(node->op());
   *op_info.mutable_attr() = node->attr();
   for (auto& input : inputs) {
     op_info.add_inputs()->Swap(&input);
+  }
+  for (auto& output : outputs) {
+    op_info.add_outputs()->Swap(&output);
   }
   op_info.mutable_device()->Swap(&device);
   // add some more to the node_info.
@@ -343,11 +349,53 @@ Costs& VirtualScheduler::FindOrCreateZero(const string& op_name,
   return it->second;
 }
 
+bool VirtualScheduler::PopCurrNode() {
+  const auto* node = ready_nodes_->GetCurrNode();
+  auto& node_state = node_map_[node];
+  auto& device = device_[DeviceName(node)];
+  auto curr_time = device.GetCurrTime();
+
+  // Increment num_inputs_ready of the output nodes.
+  for (auto* output : node_state.outputs) {
+    auto& output_state = node_map_[output];
+    output_state.num_inputs_ready++;
+    if (output_state.num_inputs_ready == output_state.inputs.size()) {
+      // This output node is now ready.
+      output_state.time_ready = curr_time;
+      ready_nodes_->AddNode(output);
+    }
+  }
+
+  // Increment num_outputs_executed of the input nodes.
+  for (auto* input : node_state.inputs) {
+    auto& input_state = node_map_[input];
+    input_state.num_outputs_executed++;
+    if (input_state.num_outputs_executed == input_state.outputs.size()) {
+      // All the outputs are executed; no reference to this input nodel
+      input_state.time_no_reference = curr_time;
+      // TODO(dyoon): collect device memory usage; note that this input node
+      // use device memory between time_scheduled and time_no_reference.
+    }
+  }
+
+  // Remove the current node; assume FIFO.
+  ready_nodes_->RemoveCurrNode();
+
+  return !ready_nodes_->Empty();
+}
+
 bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
   // Update graph_costs_ and per-op costs.
   graph_costs_ = CombineCosts(graph_costs_, node_costs);
-  const auto* node = GetCurrNode();
+  const auto* node = ready_nodes_->GetCurrNode();
   const auto& op_name = node->op();
+
+  // Also keep track of op counts and times per op (with their shapes).
+  NodeInfo node_info = GetCurrNodeInfo();
+  string node_description = GetOpDescription(node_info.op_info);
+  op_counts_[node_description] += 1;
+  op_costs_[node_description] =
+      node_costs.execution_time.asMicroSeconds().count();
 
   auto& op_cost = FindOrCreateZero(op_name, &op_to_cost_);
   op_cost = CombineCosts(op_cost, node_costs);
@@ -377,32 +425,7 @@ bool VirtualScheduler::MarkCurrNodeExecuted(const Costs& node_costs) {
           << ", scheduled: " << node_state.time_scheduled.count()
           << ", finished: " << node_state.time_finished.count();
 
-  // Increment num_inputs_ready of the output nodes.
-  for (auto* output : node_state.outputs) {
-    auto& output_state = node_map_[output];
-    output_state.num_inputs_ready++;
-    if (output_state.num_inputs_ready == output_state.inputs.size()) {
-      // This output node is now ready.
-      output_state.time_ready = curr_time;
-      ready_nodes_->AddNode(output);
-    }
-  }
-
-  // Increment num_outputs_executed of the input nodes.
-  for (auto* input : node_state.inputs) {
-    auto& input_state = node_map_[input];
-    input_state.num_outputs_executed++;
-    if (input_state.num_outputs_executed == input_state.outputs.size()) {
-      // All the outputs are executed; no reference to this input nodel
-      input_state.time_no_reference = curr_time;
-      // TODO(dyoon): collect device memory usage; note that this input node
-      // use device memory between time_scheduled and time_no_reference.
-    }
-  }
-
-  // Remove the current node; assume FIFO.
-  ready_nodes_->RemoveCurrNode();
-  return !ready_nodes_->Empty();  // True if not empty.
+  return PopCurrNode();
 }
 
 Costs VirtualScheduler::Summary() const {
@@ -443,6 +466,13 @@ Costs VirtualScheduler::Summary() const {
     if (critical_path_costs.execution_time <= state.GetCurrTime()) {
       critical_path_costs = state.device_costs;
     }
+  }
+
+  // Also log the op description and their corresponding counts.
+  VLOG(2) << "Node description, counts, cost:";
+  for (const auto& item : op_counts_) {
+    VLOG(2) << "Node: " << item.first << ", Count: " << item.second
+            << ", Individual Cost: " << op_costs_.at(item.first);
   }
 
   VLOG(1) << "Critical path execution time: "

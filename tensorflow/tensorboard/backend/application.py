@@ -22,24 +22,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import csv
-import imghdr
 import os
 import re
 import threading
 import time
 
 import six
-from six import StringIO
-from six.moves import urllib
-from six.moves import xrange  # pylint: disable=redefined-builtin
 from six.moves.urllib import parse as urlparse
+import tensorflow as tf
 from werkzeug import wrappers
 
-from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.tensorboard.backend import http_util
-from tensorflow.tensorboard.backend import process_graph
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 
@@ -60,50 +53,27 @@ DEFAULT_SIZE_GUIDANCE = {
 #
 # Once everything has been migrated, we should be able to delete
 # /data/runs entirely.
-_MIGRATED_DATA_KEYS = frozenset(('scalars',))
+_MIGRATED_DATA_KEYS = frozenset((
+    'audio',
+    'distributions',
+    'graph',
+    'histograms',
+    'images',
+    'run_metadata',
+    'scalars',
+))
 
 DATA_PREFIX = '/data'
 LOGDIR_ROUTE = '/logdir'
 RUNS_ROUTE = '/runs'
 PLUGIN_PREFIX = '/plugin'
 PLUGINS_LISTING_ROUTE = '/plugins_listing'
-IMAGES_ROUTE = '/' + event_accumulator.IMAGES
-AUDIO_ROUTE = '/' + event_accumulator.AUDIO
-HISTOGRAMS_ROUTE = '/' + event_accumulator.HISTOGRAMS
-COMPRESSED_HISTOGRAMS_ROUTE = '/' + event_accumulator.COMPRESSED_HISTOGRAMS
-INDIVIDUAL_IMAGE_ROUTE = '/individualImage'
-INDIVIDUAL_AUDIO_ROUTE = '/individualAudio'
-GRAPH_ROUTE = '/' + event_accumulator.GRAPH
-RUN_METADATA_ROUTE = '/' + event_accumulator.RUN_METADATA
 TAB_ROUTES = ['', '/events', '/images', '/audio', '/graphs', '/histograms']
-
-_IMGHDR_TO_MIMETYPE = {
-    'bmp': 'image/bmp',
-    'gif': 'image/gif',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png'
-}
-_DEFAULT_IMAGE_MIMETYPE = 'application/octet-stream'
 
 # Slashes in a plugin name could throw the router for a loop. An empty
 # name would be confusing, too. To be safe, let's restrict the valid
 # names as follows.
 _VALID_PLUGIN_RE = re.compile(r'^[A-Za-z0-9_.-]+$')
-
-
-def _content_type_for_image(encoded_image_string):
-  image_type = imghdr.what(None, encoded_image_string)
-  return _IMGHDR_TO_MIMETYPE.get(image_type, _DEFAULT_IMAGE_MIMETYPE)
-
-
-class _OutputFormat(object):
-  """An enum used to list the valid output formats for API calls.
-
-  Not all API calls support all formats (for example, only scalars and
-  compressed histograms support CSV).
-  """
-  JSON = 'json'
-  CSV = 'csv'
 
 
 def standard_tensorboard_wsgi(
@@ -175,28 +145,12 @@ class TensorBoardWSGIApp(object):
       reload_multiplexer(self._multiplexer, path_to_run)
 
     self.data_applications = {
-        DATA_PREFIX + AUDIO_ROUTE:
-            self._serve_audio,
-        DATA_PREFIX + COMPRESSED_HISTOGRAMS_ROUTE:
-            self._serve_compressed_histograms,
-        DATA_PREFIX + GRAPH_ROUTE:
-            self._serve_graph,
-        DATA_PREFIX + HISTOGRAMS_ROUTE:
-            self._serve_histograms,
-        DATA_PREFIX + IMAGES_ROUTE:
-            self._serve_images,
-        DATA_PREFIX + INDIVIDUAL_AUDIO_ROUTE:
-            self._serve_individual_audio,
-        DATA_PREFIX + INDIVIDUAL_IMAGE_ROUTE:
-            self._serve_image,
         DATA_PREFIX + LOGDIR_ROUTE:
             self._serve_logdir,
         # TODO(chizeng): Delete this RPC once we have skylark rules that obviate
         # the need for the frontend to determine which plugins are active.
         DATA_PREFIX + PLUGINS_LISTING_ROUTE:
             self._serve_plugins_listing,
-        DATA_PREFIX + RUN_METADATA_ROUTE:
-            self._serve_run_metadata,
         DATA_PREFIX + RUNS_ROUTE:
             self._serve_runs,
     }
@@ -218,8 +172,8 @@ class TensorBoardWSGIApp(object):
       try:
         plugin_apps = plugin.get_plugin_apps(self._multiplexer, self._logdir)
       except Exception as e:  # pylint: disable=broad-except
-        logging.warning('Plugin %s failed. Exception: %s', plugin.plugin_name,
-                        str(e))
+        tf.logging.warning('Plugin %s failed. Exception: %s',
+                           plugin.plugin_name, str(e))
         continue
       for route, app in plugin_apps.items():
         if not route.startswith('/'):
@@ -228,55 +182,6 @@ class TensorBoardWSGIApp(object):
                            (plugin.plugin_name, route))
         path = DATA_PREFIX + PLUGIN_PREFIX + '/' + plugin.plugin_name + route
         self.data_applications[path] = app
-
-  # We use underscore_names for consistency with inherited methods.
-
-  def _image_response_for_run(self, run_images, run, tag):
-    """Builds a JSON-serializable object with information about run_images.
-
-    Args:
-      run_images: A list of event_accumulator.ImageValueEvent objects.
-      run: The name of the run.
-      tag: The name of the tag the images all belong to.
-
-    Returns:
-      A list of dictionaries containing the wall time, step, URL, width, and
-      height for each image.
-    """
-    response = []
-    for index, run_image in enumerate(run_images):
-      response.append({
-          'wall_time': run_image.wall_time,
-          'step': run_image.step,
-          # We include the size so that the frontend can add that to the <img>
-          # tag so that the page layout doesn't change when the image loads.
-          'width': run_image.width,
-          'height': run_image.height,
-          'query': self._query_for_individual_image(run, tag, index)
-      })
-    return response
-
-  def _audio_response_for_run(self, run_audio, run, tag):
-    """Builds a JSON-serializable object with information about run_audio.
-
-    Args:
-      run_audio: A list of event_accumulator.AudioValueEvent objects.
-      run: The name of the run.
-      tag: The name of the tag the images all belong to.
-
-    Returns:
-      A list of dictionaries containing the wall time, step, URL, and
-      content_type for each audio clip.
-    """
-    response = []
-    for index, run_audio_clip in enumerate(run_audio):
-      response.append({
-          'wall_time': run_audio_clip.wall_time,
-          'step': run_audio_clip.step,
-          'content_type': run_audio_clip.content_type,
-          'query': self._query_for_individual_audio(run, tag, index)
-      })
-    return response
 
   def _path_is_safe(self, path):
     """Check path is safe (stays within current directory).
@@ -301,205 +206,6 @@ class TensorBoardWSGIApp(object):
     """Respond with a JSON object containing this TensorBoard's logdir."""
     return http_util.Respond(
         request, {'logdir': self._logdir}, 'application/json')
-
-  @wrappers.Request.application
-  def _serve_graph(self, request):
-    """Given a single run, return the graph definition in json format."""
-    run = request.args.get('run', None)
-    if run is None:
-      return http_util.Respond(
-          request, 'query parameter "run" is required', 'text/plain', 400)
-
-    try:
-      graph = self._multiplexer.Graph(run)
-    except ValueError:
-      return http_util.Respond(
-          request, '404 Not Found', 'text/plain; charset=UTF-8', code=404)
-
-    limit_attr_size = request.args.get('limit_attr_size', None)
-    if limit_attr_size is not None:
-      try:
-        limit_attr_size = int(limit_attr_size)
-      except ValueError:
-        return http_util.Respond(
-            request, 'query parameter `limit_attr_size` must be integer',
-            'text/plain', 400)
-
-    large_attrs_key = request.args.get('large_attrs_key', None)
-    try:
-      process_graph.prepare_graph_for_ui(graph, limit_attr_size,
-                                         large_attrs_key)
-    except ValueError as e:
-      return http_util.Respond(request, e.message, 'text/plain', 400)
-
-    return http_util.Respond(request, str(graph), 'text/x-protobuf')  # pbtxt
-
-  @wrappers.Request.application
-  def _serve_run_metadata(self, request):
-    """Given a tag and a TensorFlow run, return the session.run() metadata."""
-    tag = request.args.get('tag', None)
-    run = request.args.get('run', None)
-    if tag is None:
-      return http_util.Respond(
-          request, 'query parameter "tag" is required', 'text/plain', 400)
-    if run is None:
-      return http_util.Respond(
-          request, 'query parameter "run" is required', 'text/plain', 400)
-    try:
-      run_metadata = self._multiplexer.RunMetadata(run, tag)
-    except ValueError:
-      return http_util.Respond(
-          request, '404 Not Found', 'text/plain; charset=UTF-8', code=404)
-    return http_util.Respond(
-        request, str(run_metadata), 'text/x-protobuf')  # pbtxt
-
-  @wrappers.Request.application
-  def _serve_histograms(self, request):
-    """Given a tag and single run, return an array of histogram values."""
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-    values = self._multiplexer.Histograms(run, tag)
-    return http_util.Respond(request, values, 'application/json')
-
-  @wrappers.Request.application
-  def _serve_compressed_histograms(self, request):
-    """Given a tag and single run, return an array of compressed histograms."""
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-    compressed_histograms = self._multiplexer.CompressedHistograms(run, tag)
-    if request.args.get('format') == _OutputFormat.CSV:
-      string_io = StringIO()
-      writer = csv.writer(string_io)
-
-      # Build the headers; we have two columns for timing and two columns for
-      # each compressed histogram bucket.
-      headers = ['Wall time', 'Step']
-      if compressed_histograms:
-        bucket_count = len(compressed_histograms[0].compressed_histogram_values)
-        for i in xrange(bucket_count):
-          headers += ['Edge %d basis points' % i, 'Edge %d value' % i]
-      writer.writerow(headers)
-
-      for compressed_histogram in compressed_histograms:
-        row = [compressed_histogram.wall_time, compressed_histogram.step]
-        for value in compressed_histogram.compressed_histogram_values:
-          row += [value.rank_in_bps, value.value]
-        writer.writerow(row)
-      return http_util.Respond(request, string_io.getvalue(), 'text/csv')
-    else:
-      return http_util.Respond(
-          request, compressed_histograms, 'application/json')
-
-  @wrappers.Request.application
-  def _serve_images(self, request):
-    """Given a tag and list of runs, serve a list of images.
-
-    Note that the images themselves are not sent; instead, we respond with URLs
-    to the images. The frontend should treat these URLs as opaque and should not
-    try to parse information about them or generate them itself, as the format
-    may change.
-
-    Args:
-      request: A werkzeug.wrappers.Request object.
-
-    Returns:
-      A werkzeug.Response application.
-    """
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-
-    images = self._multiplexer.Images(run, tag)
-    response = self._image_response_for_run(images, run, tag)
-    return http_util.Respond(request, response, 'application/json')
-
-  @wrappers.Request.application
-  def _serve_image(self, request):
-    """Serves an individual image."""
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-    index = int(request.args.get('index'))
-    image = self._multiplexer.Images(run, tag)[index]
-    encoded_image_string = image.encoded_image_string
-    content_type = _content_type_for_image(encoded_image_string)
-    return http_util.Respond(request, encoded_image_string, content_type)
-
-  def _query_for_individual_image(self, run, tag, index):
-    """Builds a URL for accessing the specified image.
-
-    This should be kept in sync with _serve_image. Note that the URL is *not*
-    guaranteed to always return the same image, since images may be unloaded
-    from the reservoir as new images come in.
-
-    Args:
-      run: The name of the run.
-      tag: The tag.
-      index: The index of the image. Negative values are OK.
-
-    Returns:
-      A string representation of a URL that will load the index-th
-      sampled image in the given run with the given tag.
-    """
-    query_string = urllib.parse.urlencode({
-        'run': run,
-        'tag': tag,
-        'index': index
-    })
-    return query_string
-
-  @wrappers.Request.application
-  def _serve_audio(self, request):
-    """Given a tag and list of runs, serve a list of audio.
-
-    Note that the audio clips themselves are not sent; instead, we respond with
-    URLs to the audio. The frontend should treat these URLs as opaque and should
-    not try to parse information about them or generate them itself, as the
-    format may change.
-
-    Args:
-      request: A werkzeug.wrappers.Request object.
-
-    Returns:
-      A werkzeug.Response application.
-    """
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-
-    audio_list = self._multiplexer.Audio(run, tag)
-    response = self._audio_response_for_run(audio_list, run, tag)
-    return http_util.Respond(request, response, 'application/json')
-
-  @wrappers.Request.application
-  def _serve_individual_audio(self, request):
-    """Serves an individual audio clip."""
-    tag = request.args.get('tag')
-    run = request.args.get('run')
-    index = int(request.args.get('index'))
-    audio = self._multiplexer.Audio(run, tag)[index]
-    return http_util.Respond(
-        request, audio.encoded_audio_string, audio.content_type)
-
-  def _query_for_individual_audio(self, run, tag, index):
-    """Builds a URL for accessing the specified audio.
-
-    This should be kept in sync with _serve_individual_audio. Note that the URL
-    is *not* guaranteed to always return the same audio, since audio may be
-    unloaded from the reservoir as new audio comes in.
-
-    Args:
-      run: The name of the run.
-      tag: The tag.
-      index: The index of the audio. Negative values are OK.
-
-    Returns:
-      A string representation of a URL that will load the index-th
-      sampled audio in the given run with the given tag.
-    """
-    query_string = urllib.parse.urlencode({
-        'run': run,
-        'tag': tag,
-        'index': index
-    })
-    return query_string
 
   @wrappers.Request.application
   def _serve_plugins_listing(self, request):
@@ -527,10 +233,7 @@ class TensorBoardWSGIApp(object):
 
     Returns:
       A werkzeug Response with the following content:
-      {runName: {images: [tag1, tag2, tag3],
-                 audio: [tag4, tag5, tag6],
-                 histograms: [tagX, tagY, tagZ],
-                 firstEventTimestamp: 123456.789}}
+      {runName: {firstEventTimestamp: 123456.789}}
     """
     runs = self._multiplexer.Runs()
     for run_name, run_data in runs.items():
@@ -541,15 +244,15 @@ class TensorBoardWSGIApp(object):
         run_data['firstEventTimestamp'] = self._multiplexer.FirstEventTimestamp(
             run_name)
       except ValueError:
-        logging.warning('Unable to get first event timestamp for run %s',
-                        run_name)
+        tf.logging.warning('Unable to get first event timestamp for run %s',
+                           run_name)
         run_data['firstEventTimestamp'] = None
     return http_util.Respond(request, runs, 'application/json')
 
   @wrappers.Request.application
   def _serve_index(self, request):
     """Serves the index page (i.e., the tensorboard app itself)."""
-    contents = resource_loader.load_resource(
+    contents = tf.resource_loader.load_resource(
         'tensorboard/components/index.html')
     return http_util.Respond(request, contents, 'text/html', expires=3600)
 
@@ -582,7 +285,7 @@ class TensorBoardWSGIApp(object):
     elif clean_path in TAB_ROUTES:
       return self._serve_index(environ, start_response)
     else:
-      logging.warning('path %s not found, sending 404', clean_path)
+      tf.logging.warning('path %s not found, sending 404', clean_path)
       return http_util.Respond(request, 'Not found', 'text/plain', code=404)(
           environ, start_response)
     # pylint: enable=too-many-function-args
@@ -638,13 +341,13 @@ def reload_multiplexer(multiplexer, path_to_run):
       name is interpreted as a run name equal to the path.
   """
   start = time.time()
-  logging.info('TensorBoard reload process beginning')
+  tf.logging.info('TensorBoard reload process beginning')
   for (path, name) in six.iteritems(path_to_run):
     multiplexer.AddRunsFromDirectory(path, name)
-  logging.info('TensorBoard reload process: Reload the whole Multiplexer')
+  tf.logging.info('TensorBoard reload process: Reload the whole Multiplexer')
   multiplexer.Reload()
   duration = time.time() - start
-  logging.info('TensorBoard done reloading. Load took %0.3f secs', duration)
+  tf.logging.info('TensorBoard done reloading. Load took %0.3f secs', duration)
 
 
 def start_reloading_multiplexer(multiplexer, path_to_run, load_interval):
@@ -679,5 +382,5 @@ def start_reloading_multiplexer(multiplexer, path_to_run, load_interval):
 
 def get_tensorboard_tag():
   """Read the TensorBoard TAG number, and return it or an empty string."""
-  tag = resource_loader.load_resource('tensorboard/TAG').strip()
+  tag = tf.resource_loader.load_resource('tensorboard/TAG').strip()
   return tag

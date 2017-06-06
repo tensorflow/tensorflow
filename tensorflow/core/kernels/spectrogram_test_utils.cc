@@ -100,7 +100,7 @@ void ReadCSVFileToComplexVectorOrDie(
   }
   std::vector<string> lines = str_util::Split(data_string, '\n');
   for (const string& line : lines) {
-    if (line == "") {
+    if (line.empty()) {
       continue;
     }
     std::vector<std::complex<double> > data_line;
