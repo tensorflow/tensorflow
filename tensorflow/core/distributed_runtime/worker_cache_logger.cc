@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
 
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mutex.h"

@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/tools/tfprof/internal/tfprof_node.h"
 
-#include "tensorflow/core/framework/allocation_description.pb.h"
-#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
 
 namespace tensorflow {

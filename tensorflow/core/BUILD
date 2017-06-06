@@ -458,6 +458,7 @@ cc_library(
     deps = [
         ":lib",
         ":op_gen_overrides_proto_cc",
+        ":protos_all_cc",
     ],
 )
 
