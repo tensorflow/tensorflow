@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+MINIMUM_BAZEL_VERSION="0.3.1"
+BAZEL_VERSION="$(bazel version 2>/dev/null | grep 'Build label' | grep -o '[0-9]*\.[0-9]*\.[0-9]*')"
+BAZEL_GREATEST="$(printf "%s\n%s\n" "${BAZEL_VERSION}" "${MINIMUM_BAZEL_VERSION}" | sort -st. -k 1,1nr -k 2,2nr -k 3,3nr | head -n1)"
+if [[ "${BAZEL_GREATEST}" != "${BAZEL_VERSION}" ]]; then
+  echo "ERROR: Please install bazel >=${MINIMUM_BAZEL_VERSION} (you have ${BAZEL_VERSION:-none})" >&2
+  exit 1
+fi
+
 set -e
 set -o pipefail
 
