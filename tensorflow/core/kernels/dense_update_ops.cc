@@ -208,7 +208,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #endif  // end GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_KERNELS(type)                                         \
+#define REGISTER_SYCL_KERNELS(type)                                         \
   REGISTER_KERNEL_BUILDER(                                             \
       Name("AssignAdd").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       DenseUpdateOp<SYCLDevice, type, DenseUpdateType::ADD>);          \
@@ -216,7 +216,7 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
       Name("AssignSub").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
       DenseUpdateOp<SYCLDevice, type, DenseUpdateType::SUB>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNELS);
-#undef REGISTER_KERNELS
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
