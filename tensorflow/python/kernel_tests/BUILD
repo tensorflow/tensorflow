@@ -2392,7 +2392,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "map_stage_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["map_stage_op_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
