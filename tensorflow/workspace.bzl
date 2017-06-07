@@ -2693,3 +2693,18 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       path = "/test-fixture",
       exclude = ["test/**"],
   )
+
+  filegroup_external(
+      name = "org_chromium_catapult_vulcanized_trace_viewer",
+      licenses = ["notice"],  # BSD-3-Clause
+      sha256_urls = {
+          "f0df289ba9d03d857ad1c2f5918861376b1510b71588ffc60eff5c7a7bfedb09": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/catapult-project/catapult/2f7ee994984f3ebd3dd3dc3e05777bf180ec2ee8/LICENSE",
+              "https://raw.githubusercontent.com/catapult-project/catapult/2f7ee994984f3ebd3dd3dc3e05777bf180ec2ee8/LICENSE",
+          ],
+          "9e99e79439ea5a1471bd4dd325bd6733e133bcb3da4df4b878ed6d2aec7c8d86": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/catapult-project/catapult/2f7ee994984f3ebd3dd3dc3e05777bf180ec2ee8/trace_viewer_full.html",
+              "https://raw.githubusercontent.com/catapult-project/catapult/2f7ee994984f3ebd3dd3dc3e05777bf180ec2ee8/trace_viewer_full.html"
+          ],
+      },
+  )

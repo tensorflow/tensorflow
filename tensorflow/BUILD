@@ -372,6 +372,7 @@ filegroup(
         "//tensorflow/tensorboard/components/tf_storage/test:all_files",
         "//tensorflow/tensorboard/components/tf_tensorboard:all_files",
         "//tensorflow/tensorboard/components/tf_text_dashboard:all_files",
+        "//tensorflow/tensorboard/components/tf_trace_viewer:all_files",
         "//tensorflow/tensorboard/components/vz_distribution_chart:all_files",
         "//tensorflow/tensorboard/components/vz_histogram_timeseries:all_files",
         "//tensorflow/tensorboard/components/vz_line_chart:all_files",
