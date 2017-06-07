@@ -2387,12 +2387,11 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
-    shard_count = 2,
 )
 
 cuda_py_test(
     name = "map_stage_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_stage_op_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
