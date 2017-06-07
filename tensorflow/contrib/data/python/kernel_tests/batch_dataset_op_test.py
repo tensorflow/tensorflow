@@ -40,9 +40,9 @@ class BatchDatasetTest(test.TestCase):
     """Test an dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(count) -> BatchDataset(batch_size).
-    components = [np.arange(7),
+    components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
-                  np.array(37.0) * np.arange(7)]
+                  np.array(37.0) * np.arange(7))
 
     count = array_ops.placeholder(dtypes.int64, shape=[])
     batch_size = array_ops.placeholder(dtypes.int64, shape=[])

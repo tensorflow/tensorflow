@@ -191,18 +191,13 @@ LocalClientTestBase::ShapedBufferToScopedShapedBuffer(
   }
   *scoped_buffer->mutable_buffers() = shaped_buffer->buffers();
 
-  TF_CHECK_OK(
-      scoped_buffer->mutable_shape_index_to_buffer_entry()
-          ->ForEachMutableElement(
-              [&shaped_buffer](const ShapeIndex& index, bool is_leaf,
-                               size_t* buffer_entry) -> ::tensorflow::Status {
-                if (is_leaf) {
-                  *buffer_entry =
-                      shaped_buffer->shape_index_to_buffer_entry().element(
-                          index);
-                }
-                return tensorflow::Status::OK();
-              }));
+  scoped_buffer->mutable_shape_index_to_buffer_entry()->ForEachMutableElement(
+      [&shaped_buffer](const ShapeIndex& index, size_t* buffer_entry) {
+        if (ShapeUtil::IsLeafIndex(shaped_buffer->shape(), index)) {
+          *buffer_entry =
+              shaped_buffer->shape_index_to_buffer_entry().element(index);
+        }
+      });
   return scoped_buffer;
 }
 

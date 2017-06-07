@@ -245,6 +245,66 @@ TEST_F(ConstantFoldingTest, ShapeMaterialization) {
   EXPECT_EQ(3, found);
 }
 
+TEST_F(ConstantFoldingTest, SwitchNodes) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  ops::Variable v_in(scope.WithOpName("v_in"), {3}, DT_FLOAT);
+  ops::Variable v_ctrl(scope.WithOpName("v_ctrl"), {}, DT_BOOL);
+  ops::Switch s1(scope.WithOpName("switch"), v_in, v_ctrl);
+  ops::Rank rank(scope.WithOpName("rank"), s1.output_false);
+  ops::Identity i(scope.WithOpName("i"), s1.output_true);
+  ops::Size size(scope.WithOpName("size"), i);
+  ops::Square p1(scope.WithOpName("p1"), rank);
+  ops::Square p2(scope.WithOpName("p2"), size);
+  ops::Merge m(scope.WithOpName("m"), {p1.y, p2.y});
+
+  Output predicate =
+      ops::Const(scope.WithOpName("false"), false, TensorShape({}));
+  Output constant =
+      ops::Const(scope.WithOpName("constant"), 1.0f, TensorShape({1}));
+  ops::Switch s2(scope.WithOpName("switch2"), constant, predicate);
+  ops::Identity statically_known(scope.WithOpName("i2"), s2.output_false);
+  ops::Identity never_generated(scope.WithOpName("i3"), s2.output_true);
+  ops::Merge m2(scope.WithOpName("m2"),
+                {statically_known.output, never_generated.output});
+
+  GrapplerItem item;
+  item.fetch.push_back("m");
+  item.fetch.push_back("m2");
+
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+
+  ConstantFolding fold;
+  GraphDef output;
+  Status status = fold.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  for (const auto& node : output.node()) {
+    if (node.name() == "rank") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^ConstantFoldingCtrl/switch_0", node.input(0));
+    }
+    if (node.name() == "size") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^i", node.input(0));
+    }
+    if (node.name() == "ConstantFolding/switch2-0") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(0, node.input_size());
+    }
+    if (node.name() == "ConstantFolding/i2") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(0, node.input_size());
+    }
+    if (node.name() == "i3") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("switch2:1", node.input(0));
+    }
+  }
+}
+
 TEST_F(ConstantFoldingTest, NoOpReduction) {
   // Build a simple graph with a reduction that can be reduced to the identity.
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();

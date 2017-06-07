@@ -94,7 +94,7 @@ class HloTestBase : public ::testing::Test {
         ->Clear();
   }
 
-  string TestName() const;
+  static string TestName();
 
   std::unique_ptr<Backend> backend_;
 

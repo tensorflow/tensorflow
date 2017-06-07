@@ -1172,9 +1172,7 @@ StatusOr<bool> HloRematerialization::Run(
       [&module_output_size, this](const Shape& subshape,
                                   const ShapeIndex& /*index*/) {
         module_output_size += size_function_(subshape);
-        return Status::OK();
-      })
-      .IgnoreError();
+      });
 
   const int64 adjusted_memory_limit_bytes =
       memory_limit_bytes - module_output_size;

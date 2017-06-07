@@ -498,7 +498,9 @@ bool HloComputation::operator==(const HloComputation& other) const {
         // If <a,b> are visited but not identical, the recursion should have
         // been aborted. So, if <a,b> are visited at this point, they must be
         // identical.
-        if (visited.count(std::make_pair(a, b)) > 0) return true;
+        if (visited.count(std::make_pair(a, b)) > 0) {
+          return true;
+        }
         visited.emplace(a, b);
         return a->Identical(
             *b, eq, [](const HloComputation* a, const HloComputation* b) {

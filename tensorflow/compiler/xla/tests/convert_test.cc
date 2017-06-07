@@ -36,8 +36,12 @@ namespace {
 class ConvertTest : public ClientLibraryTestBase {
  public:
   explicit ConvertTest(perftools::gputools::Platform* platform = nullptr)
-      : ClientLibraryTestBase(platform,
-                              /*disabled_pass_names=*/{"algsimp", "inline"}) {}
+      : ClientLibraryTestBase(platform) {
+    DebugOptions debug_options;
+    debug_options.add_xla_disable_hlo_passes("algsimp");
+    debug_options.add_xla_disable_hlo_passes("inline");
+    SetDebugOptions(debug_options);
+  }
 };
 
 TEST_F(ConvertTest, ConvertR1S32ToR1S32) {
