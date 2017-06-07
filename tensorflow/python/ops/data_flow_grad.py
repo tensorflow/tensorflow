@@ -54,12 +54,26 @@ def _DynamicStitchGrads(op, grad):
   def AsInt32(x):
     return (x if op.inputs[0].dtype == dtypes.int32 else
             math_ops.cast(x, dtypes.int32))
-  inputs = [AsInt32(op.inputs[i]) for i in xrange(num_values)]
+  idxs = [AsInt32(array_ops.reshape(op.inputs[i], (-1,)))
+          for i in xrange(num_values)]
   if isinstance(grad, ops.IndexedSlices):
     output_shape = array_ops.shape(op.outputs[0])
     output_rows = output_shape[0]
     grad = math_ops.unsorted_segment_sum(grad.values, grad.indices, output_rows)
-  values_grad = [array_ops.gather(grad, inp) for inp in inputs]
+
+  values_grad = []
+  zeros = array_ops.zeros_like(grad)
+  idx_zeros = [zeros[:array_ops.shape(x)[0]] for x in idxs]
+  grad_range = math_ops.range(array_ops.shape(grad)[0])
+  for i in range(num_values):
+    if i == num_values - 1:
+      v_grad = grad
+    else:
+      v_grad = data_flow_ops.dynamic_stitch(
+        [grad_range] + idxs[i+1:], [grad] + idx_zeros[i+1:])
+    v_grad = array_ops.gather(v_grad, AsInt32(op.inputs[i]))
+    values_grad += [v_grad]
+
   return indices_grad + values_grad
 
 
