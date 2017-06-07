@@ -44,6 +44,12 @@ class HloTestBase : public ::testing::Test {
 
   ~HloTestBase() override;
 
+  // Creates a new HLO module for a test. The module created will have
+  // TestName() for its name; it will also automatically populate its debug
+  // options from command-line flags. It's recommended to use this method to
+  // create all HloModules for tests.
+  std::unique_ptr<HloModule> CreateNewModule();
+
   // Executes the given module and returns a global data handle.
   StatusOr<perftools::gputools::DeviceMemoryBase> Execute(
       std::unique_ptr<HloModule> module,
