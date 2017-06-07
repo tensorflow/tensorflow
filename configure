@@ -670,6 +670,12 @@ if is_windows; then
   write_action_env_to_bazelrc "CUDA_PATH" "$CUDA_PATH"
   write_action_env_to_bazelrc "CUDA_COMPUTE_CAPABILITIES" "$CUDA_COMPUTE_CAPABILITIES"
   write_action_env_to_bazelrc "NO_WHOLE_ARCHIVE_OPTION" "1"
+  write_to_bazelrc "build --config=win-cuda"
+  write_to_bazelrc "test --config=win-cuda"
+else
+  # If CUDA is enabled, always use GPU during build and test.
+  write_to_bazelrc "build --config=cuda"
+  write_to_bazelrc "test --config=cuda"
 fi
 
 # end of if "$TF_NEED_CUDA" == "1"
