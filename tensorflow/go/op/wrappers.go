@@ -3797,7 +3797,7 @@ func TensorArrayWriteV3(scope *Scope, handle tf.Output, index tf.Output, value t
 //
 // TensorArray gradient calls use an accumulator TensorArray object.  If
 // multiple gradients are calculated and run in the same session, the multiple
-// gradient nodes may accidentally flow throuth the same accumulator TensorArray.
+// gradient nodes may accidentally flow through the same accumulator TensorArray.
 // This double counts and generally breaks the TensorArray gradient flow.
 //
 // The solution is to identify which gradient call this particular
