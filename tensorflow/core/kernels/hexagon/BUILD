@@ -96,6 +96,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
         "//third_party/eigen3",
     ],

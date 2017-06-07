@@ -41,8 +41,12 @@ namespace {
 class VecOpsSimpleTest : public ClientLibraryTestBase {
  public:
   explicit VecOpsSimpleTest(perftools::gputools::Platform* platform = nullptr)
-      : ClientLibraryTestBase(platform,
-                              /*disabled_pass_names=*/{"algsimp", "inline"}) {}
+      : ClientLibraryTestBase(platform) {
+    DebugOptions debug_options;
+    debug_options.add_xla_disable_hlo_passes("algsimp");
+    debug_options.add_xla_disable_hlo_passes("inline");
+    SetDebugOptions(debug_options);
+  }
 
   ErrorSpec error_spec_{0.0001};
 };

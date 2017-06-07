@@ -30,12 +30,12 @@ from tensorflow.python.platform import test
 class FilterDatasetTest(test.TestCase):
 
   def testFilterDataset(self):
-    components = [
+    components = (
         np.arange(7, dtype=np.int64),
         np.array([[1, 2, 3]], dtype=np.int64) * np.arange(
             7, dtype=np.int64)[:, np.newaxis],
         np.array(37.0, dtype=np.float64) * np.arange(7)
-    ]
+    )
     count = array_ops.placeholder(dtypes.int64, shape=[])
     modulus = array_ops.placeholder(dtypes.int64)
 

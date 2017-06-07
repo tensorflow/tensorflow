@@ -45,9 +45,9 @@ class MapDatasetTest(test.TestCase):
     """Test an dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(count).
-    components = [np.arange(7),
+    components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
-                  np.array(37.0) * np.arange(7)]
+                  np.array(37.0) * np.arange(7))
     count = array_ops.placeholder(dtypes.int64, shape=[])
 
     dataset = self._buildMapDataset(components, count)
@@ -107,9 +107,9 @@ class MapDatasetTest(test.TestCase):
     """Test an dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset -> ParallelMapDataset(square_3) ->
     # RepeatDataset(count).
-    components = [np.arange(7),
+    components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
-                  np.array(37.0) * np.arange(7)]
+                  np.array(37.0) * np.arange(7))
     count = array_ops.placeholder(dtypes.int64, shape=[])
     num_threads = array_ops.placeholder(dtypes.int32, shape=[])
     output_buffer_size = array_ops.placeholder(dtypes.int64, shape=[])
@@ -175,9 +175,9 @@ class MapDatasetTest(test.TestCase):
   def _testDisposeParallelMapDataset(self, explicit_dispose):
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(1000).
-    components = [np.arange(1000),
+    components = (np.arange(1000),
                   np.array([[1, 2, 3]]) * np.arange(1000)[:, np.newaxis],
-                  np.array(37.0) * np.arange(1000)]
+                  np.array(37.0) * np.arange(1000))
 
     dataset = self._buildParallelMapDataset(components, 1000, 100, 100)
     iterator = dataset.make_initializable_iterator()
@@ -200,7 +200,7 @@ class MapDatasetTest(test.TestCase):
     self._testDisposeParallelMapDataset(False)
 
   def testParallelMapError(self):
-    components = [np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)]
+    components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
     dataset = (dataset_ops.Dataset.from_tensor_slices(components)
                .map(lambda x: array_ops.check_numerics(x, "message")))
@@ -230,10 +230,7 @@ class MapDatasetTest(test.TestCase):
         lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
 
     input_sentences = dataset_ops.Dataset.from_tensor_slices(
-        constant_op.constant([
-            "brain brain tank salad surgery",
-            "surgery brain",
-        ]))
+        ["brain brain tank salad surgery", "surgery brain"])
 
     iterator = (input_sentences
                 .map(lambda x: string_ops.string_split([x]).values)

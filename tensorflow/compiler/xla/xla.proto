@@ -27,6 +27,10 @@ message DebugOptions {
   // various stages in compilation (file names are LOG(INFO)'d). Set to ".*" to
   // dump *all* HLO modules.
   string xla_generate_hlo_graph = 1;
+
+  // List of HLO passes to disable. These names must exactly match the pass
+  // names as specified by the HloPassInterface::name() method.
+  repeated string xla_disable_hlo_passes = 2;
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings

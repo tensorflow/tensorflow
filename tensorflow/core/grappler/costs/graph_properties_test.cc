@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
@@ -158,6 +159,7 @@ TEST_F(GraphPropertiesTest, Variables) {
   item.fetch.push_back("Var");
 
   Tensor initial_val(DT_FLOAT, TensorShape({3, 7}));
+  test::FillIota<float>(&initial_val, 0);
   TF_CHECK_OK(NodeDefBuilder("InitialVal", "Const")
                   .Attr("dtype", DT_FLOAT)
                   .Attr("value", initial_val)

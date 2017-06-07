@@ -46,14 +46,8 @@ ClientType client_types[] = {ClientType::kLocal, ClientType::kCompileOnly};
 class ComputeConstantTest : public ::testing::Test {
  public:
   explicit ComputeConstantTest(
-      perftools::gputools::Platform* platform = nullptr,
-      tensorflow::gtl::ArraySlice<string> disabled_pass_names = {})
-      : platform_(platform) {
-    legacy_flags::HloPassPipelineFlags* flags =
-        legacy_flags::GetHloPassPipelineFlags();
-    flags->xla_disable_hlo_passes =
-        tensorflow::str_util::Join(disabled_pass_names, ",");
-  }
+      perftools::gputools::Platform* platform = nullptr)
+      : platform_(platform) {}
 
   string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();

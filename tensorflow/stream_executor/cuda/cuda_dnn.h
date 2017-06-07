@@ -481,6 +481,11 @@ class CudnnSupport : public dnn::DnnSupport {
       std::unique_ptr<TemporaryDeviceMemory<T>>* transform_scratch)
       EXCLUSIVE_LOCKS_REQUIRED(dnn_handle_mutex_);
 
+  bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
+                         const DeviceMemory<float>& input_data,
+                         const dnn::BatchDescriptor& output_desc,
+                         DeviceMemory<float>* output_data) override;
+
   template <class T>
   bool DoBatchNormalizationForwardImpl(
       Stream* stream, dnn::DataType data_type, const DeviceMemory<T>& x,
