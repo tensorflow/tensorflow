@@ -82,7 +82,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   public synchronized void onPause() {
     LOGGER.d("onPause " + this);
 
-    if (!isFinishing()) {
+    if (isFinishing()) {
       LOGGER.d("Requesting finish");
       finish();
     }
