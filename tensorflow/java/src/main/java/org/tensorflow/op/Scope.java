@@ -13,17 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-package org.tensorflow;
+package org.tensorflow.op;
+
+import org.tensorflow.Graph;
 
 /**
- * A {@code Scope} represents a set of related properties when creating Tensorflow Operations, such
- * as a common name prefix.
+ * Manages groups of related properties when creating Tensorflow Operations, such as a common name
+ * prefix.
  *
  * <p>A {@code Scope} is a container for common properties applied to TensorFlow Ops. Normal user
  * code initializes a {@code Scope} and provides it to Operation building classes. For example:
  *
  * <pre>{@code
- * Scope scope = Scope.create(graph);
+ * Scope scope = new Scope(graph);
  * Constant c = Constant.create(scope, 42);
  * }</pre>
  *
@@ -51,13 +53,13 @@ package org.tensorflow;
  * <p>An example using {@code Constant} implemented as before:
  *
  * <pre>{@code
- * Scope root = Scope.create(graph);
+ * Scope root = new Scope(graph);
  *
  * // The linear subscope will generate names like linear/...
  * Scope linear = Scope.withSubScope("linear");
  *
  * // This op name will be "linear/W"
- * Constant.create(linear.withOpName("W"), ...);
+ * Constant.create(linear.withName("W"), ...);
  *
  * // This op will be "linear/Constant", using the default
  * // name provided by Constant
@@ -72,23 +74,23 @@ package org.tensorflow;
  * <p>Scope objects are thread-safe.
  */
 public final class Scope {
+
   /**
    * Create a new top-level scope.
    *
    * @param graph The graph instance to be managed by the scope.
-   * @return a top-level Scope.
    */
-  public static Scope create(Graph graph) {
-    return builder(graph).build();
+  public Scope(Graph graph) {
+    this(graph, new NameScope());
   }
 
-  /** @return the graph managed by this scope. */
+  /** Returns the graph managed by this scope. */
   public Graph graph() {
     return graph;
   }
 
   /**
-   * Return a new subscope with the provided name.
+   * Returns a new scope where added operations will have the provided name prefix.
    *
    * <p>Ops created with this scope will have {@code name/childScopeName/} as the prefix. The actual
    * name will be unique in the returned scope. All other properties are inherited from the current
@@ -106,7 +108,7 @@ public final class Scope {
    * @throws IllegalArgumentException if the name is invalid
    */
   public Scope withSubScope(String childScopeName) {
-    return toBuilder().nameScope(nameScope.withSubScope(childScopeName)).build();
+    return new Scope(graph, nameScope.withSubScope(childScopeName));
   }
 
   /**
@@ -121,8 +123,8 @@ public final class Scope {
    * @return a new Scope that uses opName for operations.
    * @throws IllegalArgumentException if the name is invalid
    */
-  public Scope withOpName(String opName) {
-    return toBuilder().nameScope(nameScope.withOpName(opName)).build();
+  public Scope withName(String opName) {
+    return new Scope(graph, nameScope.withName(opName));
   }
 
   /**
@@ -158,41 +160,11 @@ public final class Scope {
     return nameScope.makeOpName(defaultName);
   }
 
-  private Scope(Builder builder) {
-    graph = builder.graph;
-    if (builder.nameScope != null) {
-      nameScope = builder.nameScope;
-    } else {
-      nameScope = NameScope.create();
-    }
+  private Scope(Graph graph, NameScope nameScope) {
+    this.graph = graph;
+    this.nameScope = nameScope;
   }
 
   private final Graph graph;
   private final NameScope nameScope;
-
-  private Builder toBuilder() {
-    return builder(graph).nameScope(nameScope);
-  }
-
-  private static Builder builder(Graph graph) {
-    return new Builder(graph);
-  }
-
-  private static final class Builder {
-    private Builder(Graph g) {
-      graph = g;
-    }
-
-    private Builder nameScope(NameScope ns) {
-      nameScope = ns;
-      return this;
-    }
-
-    private Scope build() {
-      return new Scope(this);
-    }
-
-    private final Graph graph;
-    private NameScope nameScope;
-  }
 }
