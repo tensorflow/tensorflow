@@ -17,8 +17,6 @@ CURL_WIN_COPTS = [
     # may not be needed (or may have to change) if the WINVER setting
     # changes in //third_party/msvc/vc_12_0/CROSSTOOL.
     "/D_USING_V110_SDK71_",
-    # See curl.h for discussion of write size and Windows
-    "/DCURL_MAX_WRITE_SIZE=16384",
 ]
 
 CURL_WIN_SRCS = [
@@ -252,9 +250,6 @@ cc_library(
     copts = select({
         "@%ws%//tensorflow:windows": CURL_WIN_COPTS,
         "@%ws%//tensorflow:windows_msvc": CURL_WIN_COPTS,
-        "@%ws%//tensorflow:darwin": [
-            "-fno-constant-cfstrings",
-        ],
         "//conditions:default": [
             "-I%prefix%/curl/lib",
             "-D_GNU_SOURCE",
@@ -264,6 +259,20 @@ cc_library(
             "-DHAVE_LIBZ",
             "-DHAVE_ZLIB_H",
             "-Wno-string-plus-int",
+        ],
+    }) + select({
+        "@%ws%//tensorflow:darwin": [
+            "-fno-constant-cfstrings",
+        ],
+        "@%ws%//tensorflow:windows": [
+            # See curl.h for discussion of write size and Windows
+            "/DCURL_MAX_WRITE_SIZE=16384",
+        ],
+        "@%ws%//tensorflow:windows_msvc": [
+            # See curl.h for discussion of write size and Windows
+            "/DCURL_MAX_WRITE_SIZE=16384",
+        ],
+        "//conditions:default": [
             "-DCURL_MAX_WRITE_SIZE=65536",
         ],
     }),
