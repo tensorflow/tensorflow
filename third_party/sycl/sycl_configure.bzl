@@ -168,6 +168,7 @@ def _sycl_autoconf_imp(repository_ctx):
     # copy template files
     _tpl(repository_ctx, "sycl:build_defs.bzl")
     _tpl(repository_ctx, "sycl:BUILD")
+    _tpl(repository_ctx, "sycl:LICENSE.text")
     _tpl(repository_ctx, "sycl:platform.bzl")
     _tpl(repository_ctx, "crosstool:BUILD")
     _file(repository_ctx, "sycl:LICENSE.text")
