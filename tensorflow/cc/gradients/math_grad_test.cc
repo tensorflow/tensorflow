@@ -362,7 +362,7 @@ TEST_F(CWiseUnaryGradTest, Sinh_Complex) {
     return x + CRV({{-2, 2}, {-3, 3}, {1, -4}});
   };
   auto dx_fn = [this](const complex64& x, const complex64& dy) {
-    return dy * conjugate(std::cos(x));
+    return dy * conjugate(std::cosh(x));
   };
   TestCWiseGrad<complex64>(SINH, x_fn, dy_fn, dx_fn);
 }
