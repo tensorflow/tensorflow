@@ -58,6 +58,15 @@ class ConvTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'kernel_size'):
       conv_layers.conv2d(images, 32, None)
 
+  def testInvalidGroupSize(self):
+    height, width = 7, 9
+    images = random_ops.random_uniform((5, height, width, 3), seed=1)
+    with self.assertRaisesRegexp(ValueError, 'divisible'):
+      conv_layers.conv2d(images, 32, 8, groups=3)
+
+    with self.assertRaisesRegexp(ValueError, 'divisible'):
+      conv_layers.conv2d(images, 32, 8, groups=4)
+
   def testCreateConv2D(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4))
@@ -88,6 +97,16 @@ class ConvTest(test.TestCase):
                          [5, 32, height - 2, width - 2])
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
+
+  def testCreateConv2DChannelGroup(self):
+    height, width = 7, 9
+    images = random_ops.random_uniform((5, height, width, 6), seed=1)
+    layer = conv_layers.Conv2D(9, 3, groups=3)
+    output = layer.apply(images)
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, height - 2, width - 2, 9])
+    self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 2, 9])
+    self.assertListEqual(layer.bias.get_shape().as_list(), [9])
 
   def testUnknownInputChannels(self):
     images = random_ops.random_uniform((5, 7, 9, 4))
@@ -153,6 +172,15 @@ class ConvTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
+  def testCreateConv1DChannelGroup(self):
+    width = 7
+    data = random_ops.random_uniform((5, width, 4), seed=1)
+    layer = conv_layers.Conv1D(8, 3, groups=2)
+    output = layer.apply(data)
+    self.assertListEqual(output.get_shape().as_list(), [5, width - 2, 8])
+    self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 2, 8])
+    self.assertListEqual(layer.bias.get_shape().as_list(), [8])
+
   def testUnknownInputChannelsConv1D(self):
     data = random_ops.random_uniform((5, 4, 7))
     data._shape = tensor_shape.as_shape((5, 4, None))
@@ -179,6 +207,16 @@ class ConvTest(test.TestCase):
     self.assertListEqual(output.get_shape().as_list(),
                          [5, depth - 2, height - 2, width - 2, 32])
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 3, 4, 32])
+    self.assertListEqual(layer.bias.get_shape().as_list(), [32])
+
+  def testCreateConv3DChannelGroup(self):
+    depth, height, width = 6, 7, 9
+    volumes = random_ops.random_uniform((5, depth, height, width, 4))
+    layer = conv_layers.Conv3D(32, [3, 3, 3], groups=2)
+    output = layer.apply(volumes)
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, depth - 2, height - 2, width - 2, 32])
+    self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 3, 2, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
   def testUnknownInputChannelsConv3D(self):
@@ -510,6 +548,15 @@ class Conv2DTransposeTest(test.TestCase):
 
     with self.assertRaisesRegexp(ValueError, 'kernel_size'):
       conv_layers.conv2d_transpose(images, 32, None)
+
+  def testInvalidGroupSize(self):
+    height, width = 7, 9
+    images = random_ops.random_uniform((5, height, width, 3), seed=1)
+    with self.assertRaisesRegexp(ValueError, 'divisible'):
+      conv_layers.conv2d_transpose(images, 32, 8, groups=3)
+
+    with self.assertRaisesRegexp(ValueError, 'divisible'):
+      conv_layers.conv2d(images, 32, 8, groups=4)
 
   def testCreateConv2DTranspose(self):
     height, width = 7, 9
