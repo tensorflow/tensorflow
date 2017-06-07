@@ -19,7 +19,7 @@
 #
 # The script obeys the following required environment variables:
 #   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | GPU_CLANG | ANDROID | ANDROID_FULL)
-#   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
+#   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5 | PYTHON3.6)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
 # The below environment variable is required, but will be deprecated together
@@ -34,7 +34,8 @@
 #
 #   2) TF_BUILD_PYTHON_VERSION is set to PYTHON3, the build will use the version
 # pointed to by "which python3" on the system, which is typically python3.4. To
-# build for python3.5, set the environment variable to PYTHON3.5
+# build for python3.5 or python3.6, set the environment variable to PYTHON3.5 or
+# PYTHON3.6, respectively.
 #
 #
 # Additionally, the script follows the directions of optional environment
@@ -516,8 +517,9 @@ echo ""
 
 TMP_DIR=""
 DOCKERFILE_FLAG=""
-if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
-  # Modify Dockerfile for Python3.5 build
+if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] || \
+   [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+  # Modify Dockerfile for Python 3.5 / 3.6 build
   TMP_DIR=$(mktemp -d)
   echo "Docker build will occur in temporary directory: ${TMP_DIR}"
 
@@ -533,9 +535,9 @@ if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
 
   # Replace a line in the Dockerfile
   sed -i \
-      's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
+      "s/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_${TF_BUILD_PYTHON_VERSION}_pip_packages.sh/g" \
       "${DOCKERFILE}" && \
-      echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}" || \
+      echo "Copied and modified Dockerfile for ${TF_BUILD_PYTHON_VERSION} build: ${DOCKERFILE}" || \
       die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
 
   DOCKERFILE_FLAG="--dockerfile ${DOCKERFILE}"
