@@ -64,8 +64,7 @@ StatusOr<bool> HloPassPipeline::Run(HloModule* module) {
   bool changed = false;
   string message;
   for (auto& pass : passes_) {
-    if (!disabled_passes.empty() &&
-        disabled_passes.count(pass->name().ToString()) > 0) {
+    if (disabled_passes.count(pass->name().ToString()) > 0) {
       VLOG(1) << "  Skipping HLO pass " << pass->name()
               << ", disabled by --xla_disable_hlo_passes";
       continue;

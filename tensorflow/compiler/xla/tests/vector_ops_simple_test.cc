@@ -43,8 +43,8 @@ class VecOpsSimpleTest : public ClientLibraryTestBase {
  public:
   explicit VecOpsSimpleTest(perftools::gputools::Platform* platform = nullptr)
       : ClientLibraryTestBase(platform) {
-    mutable_debug_options()->mutable_xla_disable_hlo_passes()->Add("algsimp");
-    mutable_debug_options()->mutable_xla_disable_hlo_passes()->Add("inline");
+    mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
+    mutable_debug_options()->add_xla_disable_hlo_passes("inline");
   }
 
   ErrorSpec error_spec_{0.0001};
