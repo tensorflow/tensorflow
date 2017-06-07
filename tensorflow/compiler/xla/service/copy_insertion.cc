@@ -167,7 +167,9 @@ bool InstructionCopier::HasAllIndicesFalse() const {
   bool all_indices_false = true;
   indices_to_copy_.ForEachElement(
       [&all_indices_false](const ShapeIndex& /*index*/, bool data) {
-        if (data) all_indices_false = false;
+        if (data) {
+          all_indices_false = false;
+        }
       });
   return all_indices_false;
 }

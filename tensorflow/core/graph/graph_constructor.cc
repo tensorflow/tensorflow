@@ -57,11 +57,11 @@ bool IsValidNodeName(StringPiece s, bool allow_internal_ops) {
 class GraphConstructor {
  public:
   struct Options {
-    Options(const GraphConstructorOptions& in)
+    Options(const GraphConstructorOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(in.allow_internal_ops),
           expect_device_spec(in.expect_device_spec),
           importing(false) {}
-    Options(const ImportGraphDefOptions& in)
+    Options(const ImportGraphDefOptions& in)  // NOLINT(runtime/explicit)
         : allow_internal_ops(false),
           expect_device_spec(false),
           prefix(in.prefix.empty() || StringPiece(in.prefix).ends_with("/")
