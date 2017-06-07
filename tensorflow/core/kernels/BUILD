@@ -286,15 +286,6 @@ tf_kernel_library(
     ],
 )
 
-tf_kernel_library(
-    name = "map_stage_op",
-    srcs = ["map_stage_op.cc"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ],
-)
-
 cc_library(
     name = "queue_base",
     srcs = ["queue_base.cc"],
@@ -1319,7 +1310,6 @@ cc_library(
         ":fifo_queue_op",
         ":lookup_table_init_op",
         ":lookup_table_op",
-        ":map_stage_op",
         ":padding_fifo_queue_op",
         ":priority_queue_op",
         ":queue_ops",
