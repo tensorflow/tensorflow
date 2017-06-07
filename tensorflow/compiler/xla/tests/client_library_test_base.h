@@ -46,8 +46,7 @@ namespace xla {
 class ClientLibraryTestBase : public ::testing::Test {
  protected:
   explicit ClientLibraryTestBase(
-      perftools::gputools::Platform* platform = nullptr,
-      tensorflow::gtl::ArraySlice<string> disabled_pass_names = {});
+      perftools::gputools::Platform* platform = nullptr);
 
   // Returns the name of the test currently being run.
   string TestName() const;
@@ -57,6 +56,12 @@ class ClientLibraryTestBase : public ::testing::Test {
   }
 
   void SetSeed(uint64 seed) { execution_options_.set_seed(seed); }
+
+  // Provides mutable access to the execution DebugOptions field; this lets
+  // tests tweak the options that will be used to compile/run the graph.
+  DebugOptions* mutable_debug_options() {
+    return execution_options_.mutable_debug_options();
+  }
 
   // TODO(b/25566808): Add helper that populates a literal from a testdata file.
 

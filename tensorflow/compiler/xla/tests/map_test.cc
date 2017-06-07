@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -41,8 +42,10 @@ namespace {
 class MapTest : public ClientLibraryTestBase {
  public:
   explicit MapTest(perftools::gputools::Platform* platform = nullptr)
-      : ClientLibraryTestBase(platform,
-                              /*disabled_pass_names=*/{"algsimp", "inline"}) {}
+      : ClientLibraryTestBase(platform) {
+    mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
+    mutable_debug_options()->add_xla_disable_hlo_passes("inline");
+  }
 
   // Creates a function that adds its scalar argument with the constant 1.0.
   //
@@ -99,8 +102,8 @@ class MapTest : public ClientLibraryTestBase {
   // Creates a function that adds its scalar argument with the constant 1.0 and
   // then multiplies by the original element.
   //
-  //           /---------------\
-  //          /                 \
+  //           /------------------|
+  //          /                   |
   // x {R0F32} ----> (add) ----> (mul)
   //                /
   // 1.0f ---------/
@@ -146,8 +149,8 @@ class MapTest : public ClientLibraryTestBase {
 
   // Creates a function that adds three scalar arguments
   //
-  // x {R0F32} ----\
-  //                \
+  // x {R0F32} -------|
+  //                  |
   // y {R0F32} ----> (add) ---> (add)
   //                           /
   // z {R0F32} ---------------/
@@ -620,6 +623,7 @@ TEST_F(MapTestWithFullOpt, MapSquare) {
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

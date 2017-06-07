@@ -66,6 +66,20 @@ cc_library(
 )
 
 cc_library(
+    name = "debug_options_flags",
+    srcs = ["debug_options_flags.cc"],
+    hdrs = ["debug_options_flags.h"],
+    deps =
+        [
+            ":parse_flags_from_env",
+            "//tensorflow/compiler/xla:types",
+            "//tensorflow/compiler/xla:xla_proto",
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+        ],
+)
+
+cc_library(
     name = "cpu_compiler_flags",
     srcs = ["cpu_compiler_flags.cc"],
     hdrs = ["cpu_compiler_flags.h"],
@@ -152,18 +166,6 @@ cc_library(
     name = "hlo_graph_dumper_flags",
     srcs = ["hlo_graph_dumper_flags.cc"],
     hdrs = ["hlo_graph_dumper_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "hlo_pass_pipeline_flags",
-    srcs = ["hlo_pass_pipeline_flags.cc"],
-    hdrs = ["hlo_pass_pipeline_flags.h"],
     deps = [
         ":parse_flags_from_env",
         "//tensorflow/compiler/xla:types",

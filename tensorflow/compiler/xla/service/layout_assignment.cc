@@ -283,7 +283,7 @@ Status LayoutConstraints::SetInstructionLayout(
 
   // Create a BufferLayoutConstraint for each array shape in the output of the
   // instruction.
-  return ShapeUtil::ForEachSubshape(
+  return ShapeUtil::ForEachSubshapeWithStatus(
       shape_with_layout,
       [this, instruction](const Shape& subshape,
                           const ShapeIndex& index) -> Status {
@@ -618,11 +618,11 @@ Status CheckLayouts(
       // which could be the source of the subshape value.
       const PointsToSet& points_to_set =
           points_to_analysis->GetPointsToSet(instruction.get());
-      TF_RETURN_IF_ERROR(points_to_set.ForEachElement(
+      TF_RETURN_IF_ERROR(points_to_set.ForEachElementWithStatus(
           [&instruction](
-              ShapeIndex index, bool is_leaf,
+              ShapeIndex index,
               const std::vector<const LogicalBuffer*>& buffers) -> Status {
-            if (is_leaf) {
+            if (ShapeUtil::IsLeafIndex(instruction->shape(), index)) {
               const Shape& instruction_subshape =
                   ShapeUtil::GetSubshape(instruction->shape(), index);
               for (const LogicalBuffer* buffer : buffers) {
@@ -916,11 +916,11 @@ Status LayoutAssignment::PropagateUseConstraintToDefs(
   // match the given layout.
   const PointsToSet& points_to_set =
       constraints->points_to_analysis().GetPointsToSet(instruction);
-  return points_to_set.ForEachElement(
+  return points_to_set.ForEachElementWithStatus(
       [this, &shape_layout, constraints](
-          const ShapeIndex& index, bool is_leaf,
+          const ShapeIndex& index,
           const std::vector<const LogicalBuffer*>& buffers) -> Status {
-        if (is_leaf) {
+        if (ShapeUtil::IsLeafIndex(shape_layout.shape(), index)) {
           for (const LogicalBuffer* buffer : buffers) {
             if (constraints->BufferLayout(*buffer) == nullptr &&
                 ShapeUtil::IsArray(buffer->shape())) {
@@ -1245,7 +1245,7 @@ Status LayoutAssignment::AssignLayouts(const LayoutConstraints& constraints,
 
     // Any remaining layouts in the output of the instruction must be
     // inferrable using points-to analysis.
-    TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableSubshape(
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachMutableSubshapeWithStatus(
         instruction->mutable_shape(),
         [instruction, &constraints](Shape* subshape, const ShapeIndex& index) {
           if (subshape->has_layout() || !ShapeUtil::IsArray(*subshape)) {

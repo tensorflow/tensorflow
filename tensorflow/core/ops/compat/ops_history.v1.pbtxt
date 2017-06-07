@@ -13032,6 +13032,25 @@ op {
   }
 }
 op {
+  name: "MergeV2Checkpoints"
+  input_arg {
+    name: "checkpoint_prefixes"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "destination_prefix"
+    type: DT_STRING
+  }
+  attr {
+    name: "delete_old_dirs"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "Mfcc"
   input_arg {
     name: "spectrogram"
@@ -19848,6 +19867,33 @@ op {
   }
 }
 op {
+  name: "Restore"
+  input_arg {
+    name: "file_pattern"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_name"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "tensor"
+    type_attr: "dt"
+  }
+  attr {
+    name: "dt"
+    type: "type"
+  }
+  attr {
+    name: "preferred_shard"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "RestoreSlice"
   input_arg {
     name: "file_pattern"
@@ -19878,6 +19924,37 @@ op {
   }
 }
 op {
+  name: "RestoreSlice"
+  input_arg {
+    name: "file_pattern"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_name"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shape_and_slice"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "tensor"
+    type_attr: "dt"
+  }
+  attr {
+    name: "dt"
+    type: "type"
+  }
+  attr {
+    name: "preferred_shard"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "RestoreV2"
   input_arg {
     name: "prefix"
@@ -19901,6 +19978,32 @@ op {
     has_minimum: true
     minimum: 1
   }
+}
+op {
+  name: "RestoreV2"
+  input_arg {
+    name: "prefix"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shape_and_slices"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "tensors"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
 }
 op {
   name: "Reverse"
@@ -20318,6 +20421,28 @@ op {
   }
 }
 op {
+  name: "Save"
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "SaveSlices"
   input_arg {
     name: "filename"
@@ -20337,6 +20462,57 @@ op {
   }
   attr {
     name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "SaveSlices"
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shapes_and_slices"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "SaveV2"
+  input_arg {
+    name: "prefix"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shape_and_slices"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensors"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
     type: "list(type)"
     has_minimum: true
     minimum: 1
@@ -20366,6 +20542,7 @@ op {
     has_minimum: true
     minimum: 1
   }
+  is_stateful: true
 }
 op {
   name: "ScalarSummary"

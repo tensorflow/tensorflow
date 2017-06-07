@@ -36,6 +36,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib as _contextlib
 import re as _re
 
 from google.protobuf import json_format as _json_format
@@ -104,7 +105,46 @@ def _clean_tag(name):
   return name
 
 
-def scalar(name, tensor, collections=None):
+@_contextlib.contextmanager
+def _summary_scope(name, family=None, default_name=None, values=None):
+  """Enters a scope used for the summary and yields both the name and tag.
+
+  To ensure that the summary tag name is always unique, we create a name scope
+  based on `name` and use the full scope name in the tag.
+
+  If `family` is set, then the tag name will be '<family>/<scope_name>', where
+  `scope_name` is `<outer_scope>/<family>/<name>`. This ensures that `family`
+  is always the prefix of the tag (and unmodified), while ensuring the scope
+  respects the outer scope from this this summary was created.
+
+  Args:
+    name: A name for the generated summary node.
+    family: Optional; if provided, used as the prefix of the summary tag name.
+    default_name: Optional; if provided, used as default name of the summary.
+    values: Optional; passed as `values` parameter to name_scope.
+
+  Yields:
+    A tuple `(tag, scope)`, both of which are unique and should be used for the
+    tag and the scope for the summary to output.
+  """
+  name = _clean_tag(name)
+  family = _clean_tag(family)
+  # Use family name in the scope to ensure uniqueness of scope/tag.
+  scope_base_name = name if family is None else '{}/{}'.format(family, name)
+  with _ops.name_scope(scope_base_name, default_name, values=values) as scope:
+    if family is None:
+      tag = scope.rstrip('/')
+    else:
+      # Prefix our scope with family again so it displays in the right tab.
+      tag = '{}/{}'.format(family, scope.rstrip('/'))
+      # Note: tag is not 100% unique if the user explicitly enters a scope with
+      # the same name as family, then later enter it again before summaries.
+      # This is very contrived though, and we opt here to let it be a runtime
+      # exception if tags do indeed collide.
+    yield (tag, scope)
+
+
+def scalar(name, tensor, collections=None, family=None):
   """Outputs a `Summary` protocol buffer containing a single scalar value.
 
   The generated Summary has a Tensor.proto containing the input Tensor.
@@ -115,6 +155,8 @@ def scalar(name, tensor, collections=None):
     tensor: A real numeric Tensor containing a single value.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
+    family: Optional; if provided, used as the prefix of the summary tag name,
+      which controls the tab name used for display on Tensorboard.
 
   Returns:
     A scalar `Tensor` of type `string`. Which contains a `Summary` protobuf.
@@ -122,16 +164,14 @@ def scalar(name, tensor, collections=None):
   Raises:
     ValueError: If tensor has the wrong shape or type.
   """
-  name = _clean_tag(name)
-  with _ops.name_scope(name, None, [tensor]) as scope:
+  with _summary_scope(name, family, values=[tensor]) as (tag, scope):
     # pylint: disable=protected-access
-    val = _gen_logging_ops._scalar_summary(
-        tags=scope.rstrip('/'), values=tensor, name=scope)
+    val = _gen_logging_ops._scalar_summary(tags=tag, values=tensor, name=scope)
     _collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
 
-def image(name, tensor, max_outputs=3, collections=None):
+def image(name, tensor, max_outputs=3, collections=None, family=None):
   """Outputs a `Summary` protocol buffer with images.
 
   The summary has up to `max_outputs` summary values containing images. The
@@ -169,24 +209,22 @@ def image(name, tensor, max_outputs=3, collections=None):
     max_outputs: Max number of batch elements to generate images for.
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
+    family: Optional; if provided, used as the prefix of the summary tag name,
+      which controls the tab name used for display on Tensorboard.
 
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  name = _clean_tag(name)
-  with _ops.name_scope(name, None, [tensor]) as scope:
+  with _summary_scope(name, family, values=[tensor]) as (tag, scope):
     # pylint: disable=protected-access
     val = _gen_logging_ops._image_summary(
-        tag=scope.rstrip('/'),
-        tensor=tensor,
-        max_images=max_outputs,
-        name=scope)
+        tag=tag, tensor=tensor, max_images=max_outputs, name=scope)
     _collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
 
-def histogram(name, values, collections=None):
+def histogram(name, values, collections=None, family=None):
   # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with a histogram.
 
@@ -208,22 +246,24 @@ def histogram(name, values, collections=None):
       build the histogram.
     collections: Optional list of graph collections keys. The new summary op is
       added to these collections. Defaults to `[GraphKeys.SUMMARIES]`.
+    family: Optional; if provided, used as the prefix of the summary tag name,
+      which controls the tab name used for display on Tensorboard.
 
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  # pylint: enable=line-too-long
-  name = _clean_tag(name)
-  with _ops.name_scope(name, 'HistogramSummary', [values]) as scope:
+  with _summary_scope(name, family, values=[values],
+                      default_name='HistogramSummary') as (tag, scope):
     # pylint: disable=protected-access
     val = _gen_logging_ops._histogram_summary(
-        tag=scope.rstrip('/'), values=values, name=scope)
+        tag=tag, values=values, name=scope)
     _collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
 
-def audio(name, tensor, sample_rate, max_outputs=3, collections=None):
+def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
+          family=None):
   # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with audio.
 
@@ -250,23 +290,20 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None):
     max_outputs: Max number of batch elements to generate audio for.
     collections: Optional list of ops.GraphKeys.  The collections to add the
       summary to.  Defaults to [_ops.GraphKeys.SUMMARIES]
+    family: Optional; if provided, used as the prefix of the summary tag name,
+      which controls the tab name used for display on Tensorboard.
 
   Returns:
     A scalar `Tensor` of type `string`. The serialized `Summary` protocol
     buffer.
   """
-  # pylint: enable=line-too-long
-  name = _clean_tag(name)
-  with _ops.name_scope(name, None, [tensor]) as scope:
+  with _summary_scope(name, family=family, values=[tensor]) as (tag, scope):
     # pylint: disable=protected-access
     sample_rate = _ops.convert_to_tensor(
         sample_rate, dtype=_dtypes.float32, name='sample_rate')
     val = _gen_logging_ops._audio_summary_v2(
-        tag=scope.rstrip('/'),
-        tensor=tensor,
-        max_outputs=max_outputs,
-        sample_rate=sample_rate,
-        name=scope)
+        tag=tag, tensor=tensor, max_outputs=max_outputs,
+        sample_rate=sample_rate, name=scope)
     _collect(val, collections, [_ops.GraphKeys.SUMMARIES])
   return val
 
