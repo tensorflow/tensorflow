@@ -153,6 +153,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v.assign(2.0).eval()
       self.assertEqual(2.0, v.value().eval())
 
+  def testLoad(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      v.load(2.0)
+      self.assertEqual(2.0, v.value().eval())
+
   def testToFromProto(self):
     with self.test_session():
       v = resource_variable_ops.ResourceVariable(1.0)

@@ -1237,7 +1237,9 @@ Status AlgebraicSimplifierVisitor::HandleConvolution(
   //   bitcasts_ == true.
 
   // TODO(cwhipkey): b/31337498, make this layout insensitive.
-  if (!is_layout_sensitive_) return Status::OK();
+  if (!is_layout_sensitive_) {
+    return Status::OK();
+  }
 
   const ConvolutionDimensionNumbers& dnums =
       convolution->convolution_dimension_numbers();

@@ -35,6 +35,14 @@ def _Collect(val, collections, default_collections):
     ops.add_to_collection(key, val)
 
 
+# TODO(dandelion): As currently implemented, this op has several problems.
+# The 'summary_description' field is passed but not used by the kernel.
+# The 'name' field is used to creat a scope and passed down via name=scope,
+# but gen_logging_ops._tensor_summary ignores this parameter and uses the
+# kernel's op name as the name. This is ok because scope and the op name
+# are identical, but it's probably worthwhile to fix.
+# Finally, because of the complications above, this currently does not
+# support the family= attribute added to other summaries in cl/156791589.
 def tensor_summary(  # pylint: disable=invalid-name
     name,
     tensor,

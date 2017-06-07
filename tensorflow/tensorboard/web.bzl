@@ -14,13 +14,32 @@
 
 """Same as web_library but supports TypeScript."""
 
+load("//tensorflow/tensorboard:defs.bzl", "legacy_js")
+
+load("//third_party:clutz.bzl",
+     "CLUTZ_ATTRIBUTES",
+     "CLUTZ_OUTPUTS",
+     "clutz_aspect",
+     "extract_dts_from_closure_libraries")
+
 load("@io_bazel_rules_closure//closure/private:defs.bzl",
+     "CLOSURE_LIBRARY_BASE_ATTR",
+     "CLOSURE_LIBRARY_DEPS_ATTR",
+     "collect_js",
      "collect_runfiles",
      "convert_path_to_es6_module_name",
      "create_argfile",
      "difference",
      "long_path",
      "unfurl")
+
+_ASPECT_SLURP_FILE_TYPE = FileType([
+    ".html", ".js", ".css", ".gss", ".png", ".jpg", ".gif", ".ico", ".svg"])
+
+_CLOSURE_WORKER = attr.label(
+    default=Label("@io_bazel_rules_closure//java/io/bazel/rules/closure:ClosureWorker"),
+    executable=True,
+    cfg="host")
 
 def _ts_web_library(ctx):
   if not ctx.attr.srcs:
@@ -43,36 +62,33 @@ def _ts_web_library(ctx):
   # process what came before
   deps = unfurl(ctx.attr.deps, provider="webfiles")
   webpaths = depset()
-  manifests = depset(order="topological")
-  jslibs = depset(order="postorder")
-  ts_typings = depset(ctx.files._es6dts)
-  ts_typings_paths = depset()
+  ts_typings = depset(ctx.files._default_typings)
+  ts_typings_paths = depset(
+      [long_path(ctx, f) for f in ctx.files._default_typings])
   ts_typings_execroots = depset()
+  aspect_runfiles = depset()
   for dep in deps:
     webpaths += dep.webfiles.webpaths
-    manifests += dep.webfiles.manifests
     if hasattr(dep.webfiles, "ts_typings"):
       ts_typings += dep.webfiles.ts_typings
     if hasattr(dep.webfiles, "ts_typings_paths"):
       ts_typings_paths += dep.webfiles.ts_typings_paths
     if hasattr(dep.webfiles, "ts_typings_execroots"):
       ts_typings_execroots += dep.webfiles.ts_typings_execroots
-    if hasattr(dep.webfiles, "jslibs"):
-      jslibs += dep.webfiles.jslibs
-    if hasattr(dep, "closure_js_library"):
-      jslibs += getattr(dep.closure_js_library, "srcs", [])
+    if hasattr(dep.webfiles, "aspect_runfiles"):
+      aspect_runfiles += dep.webfiles.aspect_runfiles
 
   # process what comes now
   manifest_srcs = []
   new_webpaths = []
   ts_inputs = depset()
   ts_outputs = []
-  ts_files = ["lib.es6.d.ts"] + list(ts_typings_paths)
+  ts_files = list(ts_typings_paths)
   new_typings = []
   new_typings_paths = []
   new_typings_execroot = struct(inputs=[])
   execroot = struct(
-      inputs=[("lib.es6.d.ts", ctx.files._es6dts[0].path)],
+      inputs=[(long_path(ctx, f), f.path) for f in ctx.files._default_typings],
       outputs=[],
       program=[ctx.executable._tsc.path, "-p"])
   web_srcs = []
@@ -118,23 +134,20 @@ def _ts_web_library(ctx):
     else:
       web_srcs.append(src)
 
-  # create webfiles manifest
-  manifest = ctx.new_file(ctx.configuration.bin_dir,
-                          "%s.pbtxt" % ctx.label.name)
-  ctx.file_action(
-      output=manifest,
-      content=struct(
-          label=str(ctx.label),
-          src=manifest_srcs).to_proto())
-  manifests += [manifest]
-  webpaths += new_webpaths
+  # get typings for closure code
+  clutz_dts = extract_dts_from_closure_libraries(ctx)
+  if clutz_dts:
+    entry = (long_path(ctx, clutz_dts), clutz_dts.path)
+    ts_inputs += [clutz_dts]
+    ts_files.append(entry[0])
+    execroot.inputs.append(entry)
 
   # compile typescript
   workspace = ""
   if ctx.label.workspace_root:
     workspace = "/" + ctx.label.workspace_root
   if execroot.outputs:
-    ts_config = ctx.new_file(ctx.bin_dir, "%s-tsc.json" % ctx.label.name)
+    ts_config = _new_file(ctx, "-tsc.json")
     execroot.inputs.append(("tsconfig.json", ts_config.path))
     ctx.file_action(
         output=ts_config,
@@ -149,10 +162,9 @@ def _ts_web_library(ctx):
                 noResolve=True,
                 target="es5",
             ),
-            files=list(ts_files),
+            files=ts_files,
         ).to_json())
-    er_config = ctx.new_file(ctx.bin_dir,
-                             "%s-tsc-execroot.json" % ctx.label.name)
+    er_config = _new_file(ctx, "-tsc-execroot.json")
     ctx.file_action(output=er_config, content=execroot.to_json())
     ts_inputs += collect_runfiles([ctx.attr._tsc])
     ts_inputs += ctx.files._tsc
@@ -164,41 +176,14 @@ def _ts_web_library(ctx):
         outputs=ts_outputs,
         executable=ctx.executable._execrooter,
         arguments=[er_config.path] + [f.path for f in ts_typings_execroots],
-        progress_message="Compiling %d TypeScript files" % len(ts_files))
+        progress_message="Compiling %d TypeScript files %s" % (
+            len(ts_files), ctx.label))
 
   # perform strict dependency checking
-  inputs = [manifest]
-  direct_manifests = depset([manifest])
-  args = ["WebfilesValidator",
-          "--dummy", ctx.outputs.dummy.path,
-          "--target", manifest.path]
-  for category in ctx.attr.suppress:
-    args.append("--suppress")
-    args.append(category)
-  inputs.extend(web_srcs)
-  for dep in deps:
-    inputs.append(dep.webfiles.dummy)
-    for f in dep.files:
-      inputs.append(f)
-    direct_manifests += [dep.webfiles.manifest]
-    inputs.append(dep.webfiles.manifest)
-    args.append("--direct_dep")
-    args.append(dep.webfiles.manifest.path)
-  for man in difference(manifests, direct_manifests):
-    inputs.append(man)
-    args.append("--transitive_dep")
-    args.append(man.path)
-  argfile = create_argfile(ctx, args)
-  inputs.append(argfile)
-  ctx.action(
-      inputs=inputs,
-      outputs=[ctx.outputs.dummy],
-      executable=ctx.executable._ClosureWorker,
-      arguments=["@@" + argfile.path],
-      mnemonic="Closure",
-      execution_requirements={"supports-workers": "1"},
-      progress_message="Checking webfiles in %s" % ctx.label)
-  web_srcs.append(ctx.outputs.dummy)
+  manifest = _make_manifest(ctx, manifest_srcs)
+  webpaths += new_webpaths
+  dummy, manifests = _run_webfiles_validator(ctx, web_srcs, deps, manifest)
+  web_srcs.append(dummy)
 
   # define development web server that only applies to this transitive closure
   params = struct(
@@ -207,7 +192,7 @@ def _ts_web_library(ctx):
       manifest=[long_path(ctx, man) for man in manifests],
       external_asset=[struct(webpath=k, path=v)
                       for k, v in ctx.attr.external_assets.items()])
-  params_file = ctx.new_file(ctx.bin_dir, "%s_params.pbtxt" % ctx.label.name)
+  params_file = _new_file(ctx, "-params.pbtxt")
   ctx.file_action(output=params_file, content=params.to_proto())
   ctx.file_action(
       executable=True,
@@ -217,8 +202,7 @@ def _ts_web_library(ctx):
           long_path(ctx, params_file)))
 
   if new_typings:
-    er_config = ctx.new_file(ctx.bin_dir,
-                             "%s-typings-execroot.json" % ctx.label.name)
+    er_config = _new_file(ctx, "-typings-execroot.json")
     ctx.file_action(output=er_config, content=new_typings_execroot.to_json())
     ts_typings += new_typings
     ts_typings_paths += new_typings_paths
@@ -230,83 +214,120 @@ def _ts_web_library(ctx):
 
   # export data to parent rules
   return struct(
-      files=depset(web_srcs),
+      files=depset(web_srcs + [dummy]),
       exports=unfurl(ctx.attr.exports),
       webfiles=struct(
           manifest=manifest,
           manifests=manifests,
           webpaths=webpaths,
-          dummy=ctx.outputs.dummy,
-          jslibs=jslibs,
+          dummy=dummy,
           ts_typings=ts_typings,
           ts_typings_paths=ts_typings_paths,
           ts_typings_execroots=ts_typings_execroots),
+      closure_js_library=collect_js(
+          ctx, unfurl(ctx.attr.deps, provider="closure_js_library")),
       runfiles=ctx.runfiles(
           files=ctx.files.srcs + ctx.files.data + ts_outputs + [
               manifest,
               params_file,
               ctx.outputs.executable,
-              ctx.outputs.dummy],
+              dummy],
           transitive_files=(collect_runfiles([ctx.attr._WebfilesServer]) |
                             collect_runfiles(deps) |
-                            collect_runfiles(ctx.attr.data))))
+                            collect_runfiles(ctx.attr.data) |
+                            aspect_runfiles)))
 
 def _web_aspect_impl(target, ctx):
-  if ctx.rule.kind in ("js_library", "pinto_library"):
-    return _web_aspect_js_library(target, ctx, [], depset())
-  if hasattr(target, "js"):
-    return _web_aspect_js_library(
-        target,
-        ctx,
-        target.files,
-        target.js.full_tc(True))
-  return struct()
-
-def _web_aspect_js_library(target, ctx, extra_srcs, extra_transitive):
-  deps = unfurl((ctx.rule.attr.deps +
-                 getattr(ctx.rule.attr, 'sticky_deps', [])),
-                provider="webfiles")
-  # process what came before
+  if hasattr(target, "webfiles"):
+    return struct()
+  srcs = []
+  deps = []
+  if hasattr(ctx.rule.files, "srcs"):
+    srcs.extend(_ASPECT_SLURP_FILE_TYPE.filter(ctx.rule.files.srcs))
+  for attr in ("deps", "sticky_deps", "module_deps"):
+    value = getattr(ctx.rule.attr, attr, None)
+    if value:
+      deps.extend(value)
+  deps = unfurl(deps, provider="webfiles")
   webpaths = depset()
-  manifests = depset(order="topological")
-  jslibs = depset(order="postorder")
+  aspect_runfiles = depset(srcs)
   for dep in deps:
     webpaths += dep.webfiles.webpaths
-    manifests += dep.webfiles.manifests
-    if hasattr(dep.webfiles, "jslibs"):
-      jslibs += dep.webfiles.jslibs
-  # process what comes now
-  srcs = ctx.rule.files.srcs + extra_srcs
-  jslibs += [src for src in srcs if src.path.endswith(".js")]
+    if hasattr(dep.webfiles, "aspect_runfiles"):
+      aspect_runfiles += dep.webfiles.aspect_runfiles
   manifest_srcs = []
   new_webpaths = []
-  web_srcs = []
   for src in srcs:
     webpath = "/" + long_path(ctx, src)
     _add_webpath(ctx, src, webpath, webpaths, new_webpaths, manifest_srcs)
-    web_srcs.append(src)
-  # create webfiles manifest
-  manifest = ctx.new_file(ctx.configuration.bin_dir,
-                          "%s-webfiles.pbtxt" % ctx.label.name)
-  ctx.file_action(
-      output=manifest,
-      content=struct(
-          label=str(ctx.label),
-          src=manifest_srcs).to_proto())
-  manifests += [manifest]
   webpaths += new_webpaths
+  manifest = _make_manifest(ctx, manifest_srcs)
+  dummy, manifests = _run_webfiles_validator(ctx, srcs, deps, manifest)
+  aspect_runfiles += [dummy, manifest]
   return struct(
-      exports=[] if srcs else deps,
       webfiles=struct(
           manifest=manifest,
           manifests=manifests,
           webpaths=webpaths,
-          dummy=manifest,
-          jslibs=jslibs),
-      closure_legacy_js_runfiles=(depset(srcs + ctx.rule.files.data) |
-                                  extra_transitive |
-                                  collect_runfiles(deps) |
-                                  collect_runfiles(ctx.rule.files.data)))
+          dummy=dummy,
+          aspect_runfiles=aspect_runfiles))
+
+def _make_manifest(ctx, src_list):
+  manifest = _new_file(ctx, "-webfiles.pbtxt")
+  ctx.file_action(
+      output=manifest,
+      content=struct(
+          label=str(ctx.label),
+          src=src_list).to_proto())
+  return manifest
+
+def _run_webfiles_validator(ctx, srcs, deps, manifest):
+  dummy = _new_file(ctx, "-webfiles.ignoreme")
+  manifests = depset(order="topological")
+  for dep in deps:
+    manifests += dep.webfiles.manifests
+  if srcs:
+    args = ["WebfilesValidator",
+            "--dummy", dummy.path,
+            "--target", manifest.path]
+    if hasattr(ctx, "attr") and hasattr(ctx.attr, "suppress"):
+      for category in ctx.attr.suppress:
+        args.append("--suppress")
+        args.append(category)
+    inputs = [manifest]
+    inputs.extend(srcs)
+    direct_manifests = depset()
+    for dep in deps:
+      inputs.append(dep.webfiles.dummy)
+      for f in dep.files:
+        inputs.append(f)
+      direct_manifests += [dep.webfiles.manifest]
+      inputs.append(dep.webfiles.manifest)
+      args.append("--direct_dep")
+      args.append(dep.webfiles.manifest.path)
+    for man in difference(manifests, direct_manifests):
+      inputs.append(man)
+      args.append("--transitive_dep")
+      args.append(man.path)
+    argfile = _new_file(ctx, "-webfiles-checker-args.txt")
+    ctx.file_action(output=argfile, content="\n".join(args))
+    inputs.append(argfile)
+    ctx.action(
+        inputs=inputs,
+        outputs=[dummy],
+        executable=(getattr(ctx.executable, "_ClosureWorker", None) or
+                    getattr(ctx.executable, "_ClosureWorkerAspect", None)),
+        arguments=["@@" + argfile.path],
+        mnemonic="Closure",
+        execution_requirements={"supports-workers": "1"},
+        progress_message="Checking webfiles %s" % ctx.label)
+  else:
+    ctx.file_action(output=dummy, content="BOO!")
+  manifests += [manifest]
+  return dummy, manifests
+
+def _new_file(ctx, suffix):
+  return ctx.new_file(ctx.bin_dir, "%s%s" % (ctx.label.name, suffix))
 
 def _add_webpath(ctx, src, webpath, webpaths, new_webpaths, manifest_srcs):
   if webpath in new_webpaths:
@@ -354,45 +375,45 @@ def _get_strip(ctx):
 
 web_aspect = aspect(
     implementation=_web_aspect_impl,
-    attr_aspects=["deps"])
+    attr_aspects=["deps", "sticky_deps", "module_deps"],
+    attrs={"_ClosureWorkerAspect": _CLOSURE_WORKER})
 
 ts_web_library = rule(
     implementation=_ts_web_library,
     executable=True,
-    attrs={
+    attrs=CLUTZ_ATTRIBUTES + {
         "path": attr.string(),
         "srcs": attr.label_list(allow_files=True),
-        "deps": attr.label_list(aspects=[web_aspect]),
+        "deps": attr.label_list(
+            aspects=[
+                web_aspect,
+                clutz_aspect,
+                legacy_js,
+            ]),
         "exports": attr.label_list(),
         "data": attr.label_list(cfg="data", allow_files=True),
         "suppress": attr.string_list(),
         "strip_prefix": attr.string(),
         "external_assets": attr.string_dict(default={"/_/runfiles": "."}),
+        "clutz_entry_points": attr.string_list(),
         "_execrooter": attr.label(
-            default=Label(
-                "//tensorflow/tensorboard/scripts:execrooter"),
+            default=Label("//tensorflow/tensorboard/scripts:execrooter"),
             executable=True,
             cfg="host"),
         "_tsc": attr.label(
-            default=Label(
-                "@com_microsoft_typescript//:tsc"),
+            default=Label("@com_microsoft_typescript//:tsc"),
             allow_files=True,
             executable=True,
             cfg="host"),
-        "_es6dts": attr.label(
-            default=Label(
-                "@com_microsoft_typescript//:lib.es6.d.ts"),
+        "_default_typings": attr.label(
+            default=Label("//tensorflow/tensorboard:ts_web_library_default_typings"),
             allow_files=True),
-        "_ClosureWorker": attr.label(
-            default=Label("@io_bazel_rules_closure//java/io/bazel/rules/closure:ClosureWorker"),
-            executable=True,
-            cfg="host"),
         "_WebfilesServer": attr.label(
-            default=Label(
-                "@io_bazel_rules_closure//java/io/bazel/rules/closure/webfiles/server:WebfilesServer"),
+            default=Label("@io_bazel_rules_closure//java/io/bazel/rules/closure/webfiles/server:WebfilesServer"),
             executable=True,
             cfg="host"),
+        "_ClosureWorker": _CLOSURE_WORKER,
+        "_closure_library_base": CLOSURE_LIBRARY_BASE_ATTR,
+        "_closure_library_deps": CLOSURE_LIBRARY_DEPS_ATTR,
     },
-    outputs={
-        "dummy": "%{name}.ignoreme",
-    })
+    outputs=CLUTZ_OUTPUTS)

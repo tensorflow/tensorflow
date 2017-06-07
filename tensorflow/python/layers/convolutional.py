@@ -371,6 +371,7 @@ def conv1d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -546,6 +547,7 @@ def conv2d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -1277,6 +1279,7 @@ def conv2d_transpose(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)

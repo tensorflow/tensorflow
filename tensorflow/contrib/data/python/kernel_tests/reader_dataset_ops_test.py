@@ -496,5 +496,30 @@ class ReadBatchFeaturesTest(test.TestCase):
             with self.assertRaises(errors.OutOfRangeError):
               self._next_actual_batch(sess)
 
+  def testReadWithEquivalentDataset(self):
+    # TODO(mrry): Add support for tf.SparseTensor as a Dataset component.
+    features = {
+        "file": parsing_ops.FixedLenFeature([], dtypes.int64),
+        "record": parsing_ops.FixedLenFeature([], dtypes.int64),
+    }
+    dataset = (dataset_ops.TFRecordDataset(self.test_filenames)
+               .map(lambda x: parsing_ops.parse_single_example(x, features))
+               .repeat(10)
+               .batch(2))
+    iterator = dataset.make_initializable_iterator()
+    init_op = iterator.initializer
+    next_element = iterator.get_next()
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for file_batch, _, _, _, record_batch in self._next_expected_batch(
+          range(self._num_files), 2, 10):
+        actual_batch = sess.run(next_element)
+        self.assertAllEqual(file_batch, actual_batch["file"])
+        self.assertAllEqual(record_batch, actual_batch["record"])
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(next_element)
+
+
 if __name__ == "__main__":
   test.main()

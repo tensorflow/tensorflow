@@ -33,7 +33,7 @@ class DatasetConstructorTest(test.TestCase):
 
   def testTensorDataset(self):
     """Test an dataset that represents a single tuple of tensors."""
-    components = [np.array(1), np.array([1, 2, 3]), np.array(37.0)]
+    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
 
     iterator = (dataset_ops.Dataset.from_tensors(components)
                 .make_initializable_iterator())
@@ -53,11 +53,11 @@ class DatasetConstructorTest(test.TestCase):
 
   def testTensorSliceDataset(self):
     """Test an dataset that represents the slices from a tuple of tensors."""
-    components = [
+    components = (
         np.tile(np.array([[1], [2], [3], [4]]), 20), np.tile(
             np.array([[12], [13], [14], [15]]), 22),
         np.array([37.0, 38.0, 39.0, 40.0])
-    ]
+    )
 
     iterator = (dataset_ops.Dataset.from_tensor_slices(components)
                 .make_initializable_iterator())
@@ -73,6 +73,27 @@ class DatasetConstructorTest(test.TestCase):
         results = sess.run(get_next)
         for component, result_component in zip(components, results):
           self.assertAllEqual(component[i], result_component)
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testTensorSliceDatasetWithDict(self):
+    components = {"foo": [1, 2, 3], "bar": [[4.0], [5.0], [6.0]]}
+    iterator = (dataset_ops.Dataset.from_tensor_slices(components)
+                .make_initializable_iterator())
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    self.assertEqual(dtypes.int32, iterator.output_types["foo"])
+    self.assertEqual(dtypes.float32, iterator.output_types["bar"])
+    self.assertEqual((), iterator.output_shapes["foo"])
+    self.assertEqual((1,), iterator.output_shapes["bar"])
+
+    with self.test_session() as sess:
+      sess.run(init_op)
+      for i in range(3):
+        results = sess.run(get_next)
+        self.assertEqual(components["foo"][i], results["foo"])
+        self.assertEqual(components["bar"][i], results["bar"])
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 

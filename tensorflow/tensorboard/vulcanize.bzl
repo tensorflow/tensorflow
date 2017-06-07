@@ -12,26 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@io_bazel_rules_closure//closure/private:defs.bzl", "unfurl", "long_path")
+load("//tensorflow/tensorboard:defs.bzl", "legacy_js")
+load("@io_bazel_rules_closure//closure/private:defs.bzl", "collect_js", "unfurl", "long_path")
 load("//tensorflow/tensorboard:web.bzl", "web_aspect")
 
 def _tensorboard_html_binary(ctx):
   deps = unfurl(ctx.attr.deps, provider="webfiles")
-  manifests = depset(order="topological")
-  files = depset()
-  jslibs = depset(ctx.files._jslibs)
-  webpaths = depset()
+  manifests = set(order="topological")
+  files = set()
+  webpaths = set()
   for dep in deps:
     manifests += dep.webfiles.manifests
     webpaths += dep.webfiles.webpaths
     files += dep.data_runfiles.files
-    if hasattr(dep.webfiles, "jslibs"):
-      jslibs += dep.webfiles.jslibs
-    if hasattr(dep, "closure_js_library"):
-      jslibs += getattr(dep.closure_js_library, "srcs", [])
   webpaths += [ctx.attr.output_path]
+  closure_js_library=collect_js(
+      ctx, unfurl(ctx.attr.deps, provider="closure_js_library"))
 
   # vulcanize
+  jslibs = depset(ctx.files._jslibs) + closure_js_library.srcs
   ctx.action(
       inputs=list(manifests | files | jslibs),
       outputs=[ctx.outputs.html],
@@ -101,7 +100,12 @@ tensorboard_html_binary = rule(
         "input_path": attr.string(mandatory=True),
         "output_path": attr.string(mandatory=True),
         "data": attr.label_list(cfg="data", allow_files=True),
-        "deps": attr.label_list(aspects=[web_aspect], mandatory=True),
+        "deps": attr.label_list(
+            aspects=[
+                web_aspect,
+                legacy_js,
+            ],
+            mandatory=True),
         "external_assets": attr.string_dict(default={"/_/runfiles": "."}),
         "_jslibs": attr.label(
             default=Label("//tensorflow/tensorboard/java/org/tensorflow/tensorboard/vulcanize:jslibs"),

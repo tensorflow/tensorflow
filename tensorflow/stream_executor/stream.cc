@@ -4302,7 +4302,7 @@ Stream &Stream::ThenMemZero(DeviceMemoryBase *location, uint64 size) {
   return *this;
 }
 
-Stream &Stream::ThenMemset32(DeviceMemoryBase *location, const uint32 &pattern,
+Stream &Stream::ThenMemset32(DeviceMemoryBase *location, uint32 pattern,
                              uint64 size) {
   VLOG_CALL(PARAM(location), PARAM(pattern), PARAM(size));
 
@@ -4384,6 +4384,23 @@ Stream &Stream::ThenRnnBackward(
     } else {
       SetError();
       LOG(WARNING) << "Attempting to call ThenRnnBackward without DNN support";
+    }
+  }
+  return *this;
+}
+
+Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
+                                    const DeviceMemory<float> &input_data,
+                                    const dnn::BatchDescriptor &output_desc,
+                                    DeviceMemory<float> *output_data) {
+  VLOG_CALL(PARAM(input_desc), PARAM(input_data), PARAM(output_desc),
+            PARAM(output_data));
+  if (ok()) {
+    if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
+      CheckError(dnn->DoTransformTensor(this, input_desc, input_data,
+                                        output_desc, output_data));
+    } else {
+      SetErrorAndLogNoDnnSupport();
     }
   }
   return *this;

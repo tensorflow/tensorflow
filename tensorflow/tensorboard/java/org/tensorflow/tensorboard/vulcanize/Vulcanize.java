@@ -24,7 +24,6 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
 import com.google.common.base.Splitter;
 import com.google.common.collect.HashMultimap;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
@@ -38,6 +37,7 @@ import com.google.javascript.jscomp.DiagnosticGroup;
 import com.google.javascript.jscomp.DiagnosticGroups;
 import com.google.javascript.jscomp.DiagnosticType;
 import com.google.javascript.jscomp.JSError;
+import com.google.javascript.jscomp.ModuleIdentifier;
 import com.google.javascript.jscomp.PropertyRenamingPolicy;
 import com.google.javascript.jscomp.Result;
 import com.google.javascript.jscomp.SourceFile;
@@ -53,8 +53,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -63,6 +65,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Attribute;
 import org.jsoup.nodes.Comment;
@@ -92,6 +95,7 @@ public final class Vulcanize {
   private static final Set<String> legalese = new HashSet<>();
   private static final List<String> licenses = new ArrayList<>();
   private static final List<Webpath> stack = new ArrayList<>();
+  private static final List<SourceFile> externs = new ArrayList<>();
   private static final List<SourceFile> sourcesFromJsLibraries = new ArrayList<>();
   private static final Map<Webpath, String> sourcesFromScriptTags = new LinkedHashMap<>();
   private static final Map<Webpath, Node> sourceTags = new LinkedHashMap<>();
@@ -111,7 +115,13 @@ public final class Vulcanize {
     Path output = Paths.get(args[4]);
     for (int i = 5; i < args.length; i++) {
       if (args[i].endsWith(".js")) {
-        sourcesFromJsLibraries.add(SourceFile.fromFile(args[i]));
+        String code = new String(Files.readAllBytes(Paths.get(args[i])), UTF_8);
+        SourceFile sourceFile = SourceFile.fromCode(args[i], code);
+        if (code.contains("@externs")) {
+          externs.add(sourceFile);
+        } else {
+          sourcesFromJsLibraries.add(sourceFile);
+        }
         continue;
       }
       if (!args[i].endsWith(".pbtxt")) {
@@ -339,12 +349,20 @@ public final class Vulcanize {
     options.setRemoveUnusedPrototypePropertiesInExterns(false);
     options.setRemoveUnusedClassProperties(false);
 
-    // Closure pass.
+    // Dependency management.
     options.setClosurePass(true);
     options.setManageClosureDependencies(true);
     options.getDependencyOptions().setDependencyPruning(true);
-    options.getDependencyOptions().setDependencySorting(false);
+    options.getDependencyOptions().setDependencySorting(true);
     options.getDependencyOptions().setMoocherDropping(false);
+    options.getDependencyOptions()
+        .setEntryPoints(
+            sourceTags
+                .keySet()
+                .stream()
+                .map(Webpath::toString)
+                .map(ModuleIdentifier::forFile)
+                .collect(Collectors.toList()));
 
     // Polymer pass.
     options.setPolymerVersion(1);
@@ -362,6 +380,16 @@ public final class Vulcanize {
         new WarningsGuard() {
           @Override
           public CheckLevel level(JSError error) {
+            if (error.sourceName == null) {
+              return null;
+            }
+            if (error.sourceName.startsWith("javascript/externs")
+                || error.sourceName.contains("com_google_javascript_closure_compiler_externs")) {
+              // TODO(jart): Figure out why these "mismatch of the removeEventListener property on
+              //             type" warnings are showing up.
+              //             https://github.com/google/closure-compiler/pull/1959
+              return CheckLevel.OFF;
+            }
             if (IGNORE_PATHS_PATTERN.matcher(error.sourceName).matches()) {
               return CheckLevel.OFF;
             }
@@ -395,42 +423,39 @@ public final class Vulcanize {
     // Compile everything into a single script.
     Compiler compiler = new Compiler();
     compiler.disableThreads();
-    Result result = compiler.compile(ImmutableList.<SourceFile>of(), sauce, options);
+    Result result = compiler.compile(externs, sauce, options);
     if (!result.success) {
       System.exit(1);
     }
     String jsBlob = compiler.toSource();
 
     // Split apart the JS blob and put it back in the original <script> locations.
+    Deque<Map.Entry<Webpath, Node>> tags = new ArrayDeque<>();
+    tags.addAll(sourceTags.entrySet());
     Matcher matcher = WEBPATH_PATTERN.matcher(jsBlob);
-    Webpath path = null;
-    String pureJsDeps = "";
-    int start = -1;
+    verify(matcher.find(), "Nothing found in compiled JS blob!");
+    Webpath path = Webpath.get(matcher.group(1));
+    int start = 0;
     while (matcher.find()) {
-      if (!sourceTags.containsKey(Webpath.get(matcher.group(1)))) {
-        continue;  // Skip over js_library dependencies, which must group at beginning of args.
-      }
-      if (path != null) {
-        swapScript(path, pureJsDeps + jsBlob.substring(start, matcher.start()));
-        pureJsDeps = "";
-      } else {
-        pureJsDeps = jsBlob.substring(0, matcher.start());
+      if (sourceTags.containsKey(path)) {
+        swapScript(tags, path, jsBlob.substring(start, matcher.start()));
+        start = matcher.start();
       }
       path = Webpath.get(matcher.group(1));
-      start = matcher.start();
     }
-    swapScript(path, pureJsDeps + jsBlob.substring(start));
-    if (!sourceTags.isEmpty()) {
-      throw new RuntimeException("Couldn't pull out: " + ImmutableSet.copyOf(sourceTags.keySet()));
-    }
+    swapScript(tags, path, jsBlob.substring(start));
+    verify(tags.isEmpty(), "<script> wasn't compiled: %s", tags);
   }
 
-  private static void swapScript(Webpath path, String script) {
-    Node tag = sourceTags.get(path);
+  private static void swapScript(
+      Deque<Map.Entry<Webpath, Node>> tags, Webpath path, String script) {
+    verify(!tags.isEmpty(), "jscomp compiled %s after last <script>?!", path);
+    Webpath want = tags.getFirst().getKey();
+    verify(path.equals(want), "<script> tag for %s should come before %s", path, want);
+    Node tag = tags.removeFirst().getValue();
     tag.replaceWith(
         new Element(Tag.valueOf("script"), tag.baseUri())
             .appendChild(new DataNode(script, tag.baseUri())));
-    sourceTags.remove(path);
   }
 
   private static void handleLicense(String text) {

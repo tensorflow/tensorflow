@@ -1960,6 +1960,23 @@ class DnnSupport {
     return false;
   }
 
+  // Transforms a tensor into another tensor with a different layout and/or data
+  // type.
+  //
+  // Arguments:
+  //  stream: pointer to the stream where this operation should be enqueued to.
+  //  input_desc: descriptor for the input tensor.
+  //  input_data: the device memory region that contains the input tensor.
+  //  output_desc: descriptor for the output tensor.
+  //  output_data: the device memory region that contains the output tensor.
+  virtual bool DoTransformTensor(Stream* stream,
+                                 const dnn::BatchDescriptor& input_desc,
+                                 const DeviceMemory<float>& input_data,
+                                 const dnn::BatchDescriptor& output_desc,
+                                 DeviceMemory<float>* output_data) {
+    return false;
+  }
+
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(DnnSupport);
 };
