@@ -226,8 +226,10 @@ if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
   else
     default_mkl_path=/opt/intel/mklml
     fromuser=""
-    read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
-    fromuser="1"
+    if [ -z "$MKL_INSTALL_PATH" ]; then
+      read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
+      fromuser="1"
+    fi
     if [ -z "$MKL_INSTALL_PATH" ]; then
       MKL_INSTALL_PATH=$default_mkl_path
     fi
