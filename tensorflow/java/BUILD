@@ -15,6 +15,16 @@ java_library(
     visibility = ["//visibility:public"],
 )
 
+# Operator convenience wrappers for the core tensorflow library.
+java_library(
+    name = "tensorflow_op",
+    srcs = [
+        ":java_op_sources",
+    ],
+    javacopts = JAVACOPTS,
+    deps = [":tensorflow"],
+)
+
 # NOTE(ashankar): Rule to include the Java API in the Android Inference Library
 # .aar. At some point, might make sense for a .aar rule here instead.
 filegroup(
@@ -22,6 +32,14 @@ filegroup(
     srcs = glob(["src/main/java/org/tensorflow/*.java"]),
     visibility = [
         "//tensorflow/contrib/android:__pkg__",
+        "//tensorflow/java:__pkg__",
+    ],
+)
+
+filegroup(
+    name = "java_op_sources",
+    srcs = glob(["src/main/java/org/tensorflow/op/*.java"]),
+    visibility = [
         "//tensorflow/java:__pkg__",
     ],
 )
@@ -40,32 +58,6 @@ java_test(
     srcs = ["src/test/java/org/tensorflow/GraphTest.java"],
     javacopts = JAVACOPTS,
     test_class = "org.tensorflow.GraphTest",
-    deps = [
-        ":tensorflow",
-        ":testutil",
-        "@junit",
-    ],
-)
-
-java_test(
-    name = "NameScopeTest",
-    size = "small",
-    srcs = ["src/test/java/org/tensorflow/NameScopeTest.java"],
-    javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.NameScopeTest",
-    deps = [
-        ":tensorflow",
-        ":testutil",
-        "@junit",
-    ],
-)
-
-java_test(
-    name = "ScopeTest",
-    size = "small",
-    srcs = ["src/test/java/org/tensorflow/ScopeTest.java"],
-    javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.ScopeTest",
     deps = [
         ":tensorflow",
         ":testutil",
@@ -159,6 +151,20 @@ java_test(
     test_class = "org.tensorflow.TensorTest",
     deps = [
         ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "ScopeTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/ScopeTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.ScopeTest",
+    deps = [
+        ":tensorflow",
+        ":tensorflow_op",
         ":testutil",
         "@junit",
     ],

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-package org.tensorflow;
+package org.tensorflow.op;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -40,7 +40,7 @@ final class NameScope {
     if (baseName == null) {
       checkPattern(OP_NAME_REGEX, scopeName);
     } else {
-      checkPattern(ROOT_SCOPE_NAME_REGEX, scopeName);
+      checkPattern(SUBSCOPE_NAME_REGEX, scopeName);
     }
 
     if (baseOpName != null) {
@@ -49,14 +49,14 @@ final class NameScope {
     }
 
     String newBaseName = fullyQualify(makeUnique(scopeName));
-    return NameScope.builder().baseName(newBaseName).build();
+    return new NameScope(newBaseName, null, null);
   }
 
-  NameScope withOpName(String name) {
+  NameScope withName(String name) {
     checkPattern(OP_NAME_REGEX, name);
 
     // All context except for the baseOpName is shared with the new scope.
-    return NameScope.builder().ids(ids).baseName(baseName).baseOpName(name).build();
+    return new NameScope(baseName, name, ids);
   }
 
   String makeOpName(String opName) {
@@ -74,20 +74,18 @@ final class NameScope {
    *
    * <p>A root-level namescope generates operator names with no components, like {@code Const_72}
    * and {@code result}.
-   *
-   * @return a NameScope that generates top-level names.
    */
-  static NameScope create() {
-    return NameScope.builder().build();
+  NameScope() {
+    this(null, null, null);
   }
 
-  private NameScope(Builder builder) {
-    baseName = builder.baseName;
-    baseOpName = builder.baseOpName;
-    if (builder.ids != null) {
-      ids = builder.ids;
+  private NameScope(String baseName, String baseOpName, Map<String, Integer> ids) {
+    this.baseName = baseName;
+    this.baseOpName = baseOpName;
+    if (ids != null) {
+      this.ids = ids;
     } else {
-      ids = new HashMap<String, Integer>();
+      this.ids = new HashMap<String, Integer>();
     }
   }
 
@@ -145,37 +143,16 @@ final class NameScope {
     }
   }
 
+  // The constraints for operator and scope names originate from restrictions on node names
+  // noted in the proto definition core/framework/node_def.proto for NodeDef and actually
+  // implemented in core/framework/node_def_util.cc [Note that the proto comment does not include
+  // dash (-) in names, while the actual implementation permits it. These regexs follow the actual
+  // implementation.]
+  //
+  // These two patterns are used to ensure fully qualified names always start with a
+  // LETTER_DIGIT_DOT, followed by zero or more LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE. SLASH is not
+  // permitted in actual user-supplied names to NameScope - it is used as a reserved character to
+  // separate subcomponents within fully qualified names.
   private static final Pattern OP_NAME_REGEX = Pattern.compile("[A-Za-z0-9.][A-Za-z0-9_.\\-]*");
-  private static final Pattern ROOT_SCOPE_NAME_REGEX = Pattern.compile("[A-Za-z0-9_.\\-]+");
-
-  private static Builder builder() {
-    return new Builder();
-  }
-
-  private static final class Builder {
-    private Builder() {}
-
-    private Builder baseName(String name) {
-      baseName = name;
-      return this;
-    }
-
-    private Builder baseOpName(String name) {
-      baseOpName = name;
-      return this;
-    }
-
-    private Builder ids(Map<String, Integer> map) {
-      ids = map;
-      return this;
-    }
-
-    private NameScope build() {
-      return new NameScope(this);
-    }
-
-    private String baseName = null;
-    private String baseOpName = null;
-    private Map<String, Integer> ids = null;
-  }
+  private static final Pattern SUBSCOPE_NAME_REGEX = Pattern.compile("[A-Za-z0-9_.\\-]+");
 }

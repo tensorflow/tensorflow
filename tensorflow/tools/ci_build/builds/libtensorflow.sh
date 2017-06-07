@@ -20,6 +20,8 @@
 # And jars:
 # (3) Java API .jar
 # (4) Java API sources .jar
+# (5) Java Op wrappers .jar
+# (6) Java Op wrapper sources .jar
 #
 # These binary distributions will allow use of TensorFlow in various languages
 # without having to compile the TensorFlow framework from sources, which takes
@@ -34,6 +36,8 @@
 # - lib_package/libtensorflow_jni${SUFFIX}.tar.gz
 # - lib_package/libtensorflow.jar
 # - lib_package/libtensorflow-src.jar
+# - lib_package/libtensorflow_op.jar
+# - lib_package/libtensorflow_op-src.jar
 # - lib_package/libtensorflow_proto.zip
 #
 # ASSUMPTIONS:
@@ -75,12 +79,15 @@ function build_libtensorflow_tarball() {
     //tensorflow/tools/lib_package:libtensorflow_jni.tar.gz \
     //tensorflow/java:libtensorflow.jar \
     //tensorflow/java:libtensorflow-src.jar \
+    //tensorflow/java:libtensorflow_op.jar \
+    //tensorflow/java:libtensorflow_op-src.jar \
     //tensorflow/tools/lib_package:libtensorflow_proto.zip
 
   mkdir -p ${DIR}
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow.tar.gz ${DIR}/libtensorflow${TARBALL_SUFFIX}.tar.gz
   cp bazel-bin/tensorflow/tools/lib_package/libtensorflow_jni.tar.gz ${DIR}/libtensorflow_jni${TARBALL_SUFFIX}.tar.gz
   cp bazel-bin/tensorflow/java/libtensorflow.jar bazel-bin/tensorflow/java/libtensorflow-src.jar ${DIR}
+  cp bazel-bin/tensorflow/java/libtensorflow_op.jar bazel-bin/tensorflow/java/libtensorflow_op-src.jar ${DIR}
   cp bazel-genfiles/tensorflow/tools/lib_package/libtensorflow_proto.zip ${DIR}
   chmod -x ${DIR}/*
 }
