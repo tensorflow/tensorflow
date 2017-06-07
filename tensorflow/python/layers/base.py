@@ -56,7 +56,7 @@ class Layer(object):
   Properties:
     trainable: Whether the layer should be trained (boolean).
     name: The name of the layer (string).
-    dtype: Default dtype of the layer (dtypes.float32).
+    dtype: Data type of the layer. defaults to `float32` if None is passed.
     trainable_variables: List of trainable variables.
     non_trainable_variables: List of non-trainable variables.
     variables: List of all variables of this layer, trainable and non-trainable.
@@ -67,7 +67,7 @@ class Layer(object):
   """
 
   def __init__(self, trainable=True, name=None,
-               dtype=dtypes.float32, **kwargs):
+               dtype=None, **kwargs):
     # We use a kwargs dict here because these kwargs only exist
     # for compatibility reasons.
     # The list of kwargs is subject to changes in the future.
@@ -94,6 +94,8 @@ class Layer(object):
     self._graph = ops.get_default_graph()
     self._per_input_losses = {}
     self._per_input_updates = {}
+    if dtype is None:
+        dtype = dtypes.float32
     self.dtype = dtypes.as_dtype(dtype).name
     self.input_spec = None
 

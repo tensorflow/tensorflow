@@ -79,6 +79,7 @@ class _Conv(base.Layer):
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
   """
 
   def __init__(self, rank,
@@ -97,9 +98,10 @@ class _Conv(base.Layer):
                activity_regularizer=None,
                trainable=True,
                name=None,
+               dtype=None,
                **kwargs):
     super(_Conv, self).__init__(trainable=trainable,
-                                name=name, **kwargs)
+                                name=name, dtype=dtype, **kwargs)
     self.rank = rank
     self.filters = filters
     self.kernel_size = utils.normalize_tuple(kernel_size, rank, 'kernel_size')
@@ -255,6 +257,7 @@ class Conv1D(_Conv):
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
   """
 
   def __init__(self, filters,
@@ -272,6 +275,7 @@ class Conv1D(_Conv):
                activity_regularizer=None,
                trainable=True,
                name=None,
+               dtype=None,
                **kwargs):
     super(Convolution1D, self).__init__(
         rank=1,
@@ -289,7 +293,7 @@ class Conv1D(_Conv):
         bias_regularizer=bias_regularizer,
         activity_regularizer=activity_regularizer,
         trainable=trainable,
-        name=name, **kwargs)
+        name=name, dtype=dtype, **kwargs)
 
 
 def conv1d(inputs,
@@ -308,6 +312,7 @@ def conv1d(inputs,
            activity_regularizer=None,
            trainable=True,
            name=None,
+           dtype=None,
            reuse=None):
   """Functional interface for 1D convolution layer (e.g. temporal convolution).
 
@@ -349,6 +354,7 @@ def conv1d(inputs,
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -371,6 +377,7 @@ def conv1d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -423,6 +430,7 @@ class Conv2D(_Conv):
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
   """
 
   def __init__(self, filters,
@@ -440,6 +448,7 @@ class Conv2D(_Conv):
                activity_regularizer=None,
                trainable=True,
                name=None,
+               dtype=None,
                **kwargs):
     super(Conv2D, self).__init__(
         rank=2,
@@ -457,7 +466,7 @@ class Conv2D(_Conv):
         bias_regularizer=bias_regularizer,
         activity_regularizer=activity_regularizer,
         trainable=trainable,
-        name=name, **kwargs)
+        name=name, dtype=dtype, **kwargs)
 
 
 def conv2d(inputs,
@@ -476,6 +485,7 @@ def conv2d(inputs,
            activity_regularizer=None,
            trainable=True,
            name=None,
+           dtype=None,
            reuse=None):
   """Functional interface for the 2D convolution layer.
 
@@ -524,6 +534,7 @@ def conv2d(inputs,
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -546,6 +557,7 @@ def conv2d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -599,6 +611,7 @@ class Conv3D(_Conv):
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
   """
 
   def __init__(self, filters,
@@ -616,6 +629,7 @@ class Conv3D(_Conv):
                activity_regularizer=None,
                trainable=True,
                name=None,
+               dtype=None,
                **kwargs):
     super(Conv3D, self).__init__(
         rank=3,
@@ -633,7 +647,7 @@ class Conv3D(_Conv):
         bias_regularizer=bias_regularizer,
         activity_regularizer=activity_regularizer,
         trainable=trainable,
-        name=name, **kwargs)
+        name=name, dtype=dtype, **kwargs)
 
 
 def conv3d(inputs,
@@ -652,6 +666,7 @@ def conv3d(inputs,
            activity_regularizer=None,
            trainable=True,
            name=None,
+           dtype=None,
            reuse=None):
   """Functional interface for the 3D convolution layer.
 
@@ -701,6 +716,7 @@ def conv3d(inputs,
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -723,6 +739,7 @@ def conv3d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -780,6 +797,7 @@ class SeparableConv2D(Conv2D):
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
   """
 
   def __init__(self, filters,
@@ -800,6 +818,7 @@ class SeparableConv2D(Conv2D):
                activity_regularizer=None,
                trainable=True,
                name=None,
+               dtype=None,
                **kwargs):
     super(SeparableConv2D, self).__init__(
         filters=filters,
@@ -814,6 +833,7 @@ class SeparableConv2D(Conv2D):
         activity_regularizer=activity_regularizer,
         trainable=trainable,
         name=name,
+        dtype=dtype,
         **kwargs)
     self.depth_multiplier = depth_multiplier
     self.depthwise_initializer = depthwise_initializer
@@ -936,6 +956,7 @@ def separable_conv2d(inputs,
                      activity_regularizer=None,
                      trainable=True,
                      name=None,
+                     dtype=None,
                      reuse=None):
   """Functional interface for the depthwise separable 2D convolution layer.
 
@@ -989,6 +1010,7 @@ def separable_conv2d(inputs,
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -1014,6 +1036,7 @@ def separable_conv2d(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -1056,6 +1079,7 @@ class Conv2DTranspose(Conv2D):
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
   """
 
   def __init__(self, filters,
@@ -1072,6 +1096,7 @@ class Conv2DTranspose(Conv2D):
                activity_regularizer=None,
                trainable=True,
                name=None,
+               dtype=None,
                **kwargs):
     super(Conv2DTranspose, self).__init__(
         filters,
@@ -1088,6 +1113,7 @@ class Conv2DTranspose(Conv2D):
         activity_regularizer=activity_regularizer,
         trainable=trainable,
         name=name,
+        dtype=dtype,
         **kwargs)
     self.input_spec = base.InputSpec(ndim=4)
 
@@ -1218,6 +1244,7 @@ def conv2d_transpose(inputs,
                      activity_regularizer=None,
                      trainable=True,
                      name=None,
+                     dtype=None,
                      reuse=None):
   """Functional interface for transposed 2D convolution layer.
 
@@ -1256,6 +1283,7 @@ def conv2d_transpose(inputs,
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -1277,6 +1305,7 @@ def conv2d_transpose(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=None,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
@@ -1315,6 +1344,7 @@ class Conv3DTranspose(Conv3D):
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
   """
 
   def __init__(self,
@@ -1332,6 +1362,7 @@ class Conv3DTranspose(Conv3D):
                activity_regularizer=None,
                trainable=True,
                name=None,
+               dtype=None,
                **kwargs):
     super(Conv3DTranspose, self).__init__(
         filters=filters,
@@ -1348,6 +1379,7 @@ class Conv3DTranspose(Conv3D):
         activity_regularizer=activity_regularizer,
         trainable=trainable,
         name=name,
+        dtype=dtype,
         **kwargs)
 
   def build(self, input_shape):
@@ -1483,6 +1515,7 @@ def conv3d_transpose(inputs,
                      activity_regularizer=None,
                      trainable=True,
                      name=None,
+                     dtype=None,
                      reuse=None):
   """Functional interface for transposed 3D convolution layer.
 
@@ -1514,6 +1547,7 @@ def conv3d_transpose(inputs,
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: A string, the name of the layer.
+    dtype: Data type used by the layer weights.
     reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
@@ -1535,6 +1569,7 @@ def conv3d_transpose(inputs,
       activity_regularizer=activity_regularizer,
       trainable=trainable,
       name=name,
+      dtype=dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs)
