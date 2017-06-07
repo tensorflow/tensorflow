@@ -209,7 +209,9 @@ def _get_replica_device_setter(config):
   """
   ps_ops = [
       'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
-      'MutableHashTableOfTensors', 'MutableDenseHashTable'
+      'MutableHashTableV2', 'MutableHashTableOfTensors',
+      'MutableHashTableOfTensorsV2', 'MutableDenseHashTable',
+      'MutableDenseHashTableV2'
   ]
 
   if config.task_type:

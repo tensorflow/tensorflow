@@ -1286,7 +1286,7 @@ class EstimatorExportTest(test.TestCase):
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
         # Note that the SavedModel builder replaced the Saver with a new one
-        self.assertTrue('save_1/LookupTableImport' in graph_ops)
+        self.assertTrue('save_1/LookupTableImportV2' in graph_ops)
 
     # Clean up.
     gfile.DeleteRecursively(tmpdir)
