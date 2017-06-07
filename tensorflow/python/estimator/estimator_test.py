@@ -55,6 +55,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import checkpoint_state_pb2
 from tensorflow.python.training import saver
 from tensorflow.python.training import saver_test_utils
@@ -1518,6 +1519,47 @@ class EstimatorExportTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn)
     est.train(dummy_input_fn, steps=1)
     est.export_savedmodel(tempfile.mkdtemp(), serving_input_receiver_fn)
+
+
+class EstimatorHookOrderingTest(test.TestCase):
+
+  def testCustomHooksAreCalledBeforeNanTensorHook(self):
+
+    def nan_making_model_fn(mode, features, labels):
+      """A graph that generates NaN's for testing."""
+      del features, labels
+
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, name='global_step')
+      inc_global_step = state_ops.assign_add(global_step, 1)
+      nan_const = constant_op.constant(np.nan, dtype=dtypes.float32)
+      loss = control_flow_ops.cond(
+          inc_global_step > 1, lambda: nan_const, lambda: 1.0)
+
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          predictions=global_step.read_value(),
+          loss=loss,
+          train_op=inc_global_step)
+
+    def empty_input_fn():
+      return dict(), None
+
+    class AfterRunCountingHook(session_run_hook.SessionRunHook):
+      """Hooks that counts the number of times after_run() is called."""
+
+      def __init__(self):
+        self.after_run_count = 0
+
+      def after_run(self, run_context, run_values):
+        del run_context, run_values
+        self.after_run_count += 1
+
+    test_hook = AfterRunCountingHook()
+    est = estimator.Estimator(model_fn=nan_making_model_fn)
+    with self.assertRaises(basic_session_run_hooks.NanLossDuringTrainingError):
+      est.train(input_fn=empty_input_fn, steps=2, hooks=[test_hook])
+    self.assertEqual(2, test_hook.after_run_count)
 
 
 class EstimatorIntegrationTest(test.TestCase):

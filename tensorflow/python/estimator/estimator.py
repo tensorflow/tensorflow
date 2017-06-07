@@ -589,6 +589,7 @@ class Estimator(object):
       estimator_spec = self._call_model_fn(features, labels,
                                            model_fn_lib.ModeKeys.TRAIN)
       ops.add_to_collection(ops.GraphKeys.LOSSES, estimator_spec.loss)
+      all_hooks.extend(hooks)
       all_hooks.extend([
           training.NanTensorHook(estimator_spec.loss),
           training.LoggingTensorHook(
@@ -598,7 +599,6 @@ class Estimator(object):
               },
               every_n_iter=100)
       ])
-      all_hooks.extend(hooks)
       all_hooks.extend(estimator_spec.training_hooks)
 
       if not (estimator_spec.scaffold.saver or

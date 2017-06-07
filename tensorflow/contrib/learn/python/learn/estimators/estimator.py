@@ -957,6 +957,7 @@ class BaseEstimator(
       self._check_inputs(features, labels)
       model_fn_ops = self._get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
+      all_hooks.extend(hooks)
       all_hooks.extend([
           basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
           basic_session_run_hooks.LoggingTensorHook(
@@ -966,7 +967,6 @@ class BaseEstimator(
               },
               every_n_iter=100)
       ])
-      all_hooks.extend(hooks)
 
       scaffold = model_fn_ops.scaffold or monitored_session.Scaffold()
       if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
