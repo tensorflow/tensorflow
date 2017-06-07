@@ -16,37 +16,62 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
-#include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/devices.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
 
-VirtualPlacer::VirtualPlacer(Cluster* cluster) : has_gpu_(false) {
-  devices_["CPU"] = GetLocalCPUInfo();
-  if (GetNumAvailableGPUs() > 0) {
-    has_gpu_ = true;
-    devices_["GPU"] = GetLocalGPUInfo(0);
+VirtualPlacer::VirtualPlacer(const Cluster* cluster) : has_gpu_(false) {
+  CHECK(cluster);
+  devices_ = cluster->GetDevices();
+  for (const auto& device : devices_) {
+    if (str_util::Lowercase(device.first).find("gpu") != string::npos) {
+      has_gpu_ = true;
+    }
   }
+
   unknown_device_.set_type("UNKNOWN");
 }
 
-const OpInfo::DeviceProperties& VirtualPlacer::get_device(
-    const NodeDef& node) const {
-  string device_type;
-  DeviceNameUtils::ParsedName parsed;
-  if (!node.device().empty() &&
-      DeviceNameUtils::ParseFullName(node.device(), &parsed)) {
-    device_type = parsed.type;
+const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
+  string device;
+  if (!node.device().empty()) {
+    auto it = devices_.find(node.device());
+    if (it != devices_.end()) {
+      return it->second;
+    }
+    DeviceNameUtils::ParsedName parsed_name;
+    bool parsed = DeviceNameUtils::ParseFullName(node.device(), &parsed_name);
+    if (!parsed) {
+      parsed = DeviceNameUtils::ParseLocalName(node.device(), &parsed_name);
+      parsed_name.job = "localhost";
+    }
+    if (!parsed) {
+      if (node.device() == "GPU" || node.device() == "CPU" ||
+          node.device() == "gpu" || node.device() == "cpu") {
+        parsed_name.job = "localhost";
+        parsed_name.type = node.device();
+        parsed = true;
+      }
+    }
+    if (!parsed) {
+      return unknown_device_;
+    } else {
+      device = strings::StrCat(
+          "/job:", parsed_name.job, "/replica:", parsed_name.replica,
+          "/task:", parsed_name.task, "/",
+          str_util::Lowercase(parsed_name.type), ":", parsed_name.id);
+    }
   } else {
     if (has_gpu_) {
-      device_type = "GPU";
+      device = "/job:localhost/replica:0/task:0/gpu:0";
     } else {
-      device_type = "CPU";
+      device = "/job:localhost/replica:0/task:0/cpu:0";
     }
   }
-  auto it = devices_.find(device_type);
+  auto it = devices_.find(device);
   if (it == devices_.end()) {
     return unknown_device_;
   }

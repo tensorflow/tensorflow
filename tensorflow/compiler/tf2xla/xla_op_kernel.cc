@@ -357,6 +357,7 @@ void XlaOpKernelContext::SetVariableOutput(int index, int variable_id) {
 
 Status XlaOpKernelContext::AssignVariable(
     int index, DataType type, const xla::ComputationDataHandle& handle) {
+  TF_RET_CHECK(handle.handle() != 0);
   SetOpHasSideEffects();
 
   const XlaExpression* expression =
@@ -379,8 +380,8 @@ void XlaOpKernelContext::SetOpHasSideEffects() {
   XlaContext::Get(context_).AddSideEffects();
 }
 
-const XlaCompiler::Options& XlaOpKernelContext::GetCompilerOptions() const {
-  return XlaContext::Get(context_).compiler()->options();
+XlaCompiler* XlaOpKernelContext::compiler() const {
+  return XlaContext::Get(context_).compiler();
 }
 
 void XlaOpKernelContext::CtxFailure(Status s) { context_->CtxFailure(s); }

@@ -43,6 +43,7 @@ inline int GetTensorBatchDimIndex(int num_dims, TensorFormat format) {
     return 0;
   } else {
     LOG(FATAL) << "Unknown format " << format;
+    return -1;  // Avoid compiler warning about missing return value
   }
 }
 
@@ -54,6 +55,7 @@ inline int GetTensorFeatureDimIndex(int num_dims, TensorFormat format) {
     return 1;
   } else {
     LOG(FATAL) << "Unknown format " << format;
+    return -1;  // Avoid compiler warning about missing return value
   }
 }
 
@@ -67,6 +69,7 @@ inline int GetTensorSpatialDimIndex(int num_dims, TensorFormat format,
     return dim + 2;
   } else {
     LOG(FATAL) << "Unknown format " << format;
+    return -1;  // Avoid compiler warning about missing return value
   }
 }
 

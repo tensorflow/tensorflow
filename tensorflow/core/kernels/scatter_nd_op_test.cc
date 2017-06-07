@@ -242,7 +242,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
 
 class ScatterNdUpdateBM : public ScatterNdUpdateOpTest {
  public:
-  virtual void TestBody() {}
+  void TestBody() override {}
   void MakeBenchmarkOp(const char* op, DataType index_type) {
     TF_ASSERT_OK(NodeDefBuilder("myop", op)
                      .Input(FakeInput(DT_FLOAT_REF))

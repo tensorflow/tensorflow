@@ -89,7 +89,7 @@ SCIKIT_DECOUPLE_INSTRUCTIONS = (
 
 
 def _verify_input_args(x, y, input_fn, feed_fn, batch_size):
-  """Verifies validity of co-existance of input arguments."""
+  """Verifies validity of co-existence of input arguments."""
   if input_fn is None:
     if x is None:
       raise ValueError('Either x or input_fn must be provided.')
@@ -331,14 +331,21 @@ def _write_dict_to_summary(output_dir,
   for key in dictionary:
     if dictionary[key] is None:
       continue
+    if key == 'global_step':
+      continue
     value = summary_proto.value.add()
     value.tag = key
     if (isinstance(dictionary[key], np.float32) or
         isinstance(dictionary[key], float)):
       value.simple_value = float(dictionary[key])
+    elif (isinstance(dictionary[key], np.int64) or
+          isinstance(dictionary[key], np.int32) or
+          isinstance(dictionary[key], int)):
+      value.simple_value = int(dictionary[key])
     else:
-      logging.warn('Skipping summary for %s, must be a float or np.float32.',
-                   key)
+      logging.warn(
+          'Skipping summary for %s, must be a float, np.float32, np.int64, np.int32 or int.',
+          key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
 
@@ -351,7 +358,7 @@ class BaseEstimator(
   """
   __metaclass__ = abc.ABCMeta
 
-  # Note that for Google users, this is overriden with
+  # Note that for Google users, this is overridden with
   # learn_runner.EstimatorConfig.
   # TODO(wicke): Remove this once launcher takes over config functionality
   _Config = run_config.RunConfig  # pylint: disable=invalid-name
@@ -372,7 +379,6 @@ class BaseEstimator(
       logging.info('Using default config.')
     else:
       self._config = config
-    logging.info('Using config: %s', str(vars(self._config)))
 
     if self._config.session_config is None:
       self._session_config = config_pb2.ConfigProto(allow_soft_placement=True)
@@ -397,6 +403,7 @@ class BaseEstimator(
                       self._model_dir)
     if self._config.model_dir is None:
       self._config = self._config.replace(model_dir=self._model_dir)
+    logging.info('Using config: %s', str(vars(self._config)))
 
     # Set device function depending if there are replicas or not.
     self._device_fn = _get_replica_device_setter(self._config)
@@ -696,7 +703,7 @@ class BaseEstimator(
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
 
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
@@ -1085,8 +1092,9 @@ class Estimator(BaseEstimator):
       # Check number of arguments of the given function matches requirements.
       model_fn_args = _model_fn_args(model_fn)
       if params is not None and 'params' not in model_fn_args:
-        raise ValueError('Estimator\'s model_fn (%s) has less than 4 '
-                         'arguments, but not None params (%s) are passed.' %
+        raise ValueError('Estimator\'s model_fn (%s) does not have a params '
+                         'argument, but params (%s) were passed to the '
+                         'Estimator\'s constructor.' %
                          (model_fn, params))
       if params is None and 'params' in model_fn_args:
         logging.warning('Estimator\'s model_fn (%s) includes params '
@@ -1141,7 +1149,7 @@ class Estimator(BaseEstimator):
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1157,7 +1165,7 @@ class Estimator(BaseEstimator):
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1196,7 +1204,7 @@ class Estimator(BaseEstimator):
   def _get_predict_ops(self, features):
     """Method that builds model graph and returns prediction ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 

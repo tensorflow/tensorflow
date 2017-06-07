@@ -347,6 +347,7 @@ class BatchResource : public ResourceBase {
 
       // Concatenate the tasks ith input tensors into a big output tensor.
       std::vector<Tensor> to_concatenate;
+      to_concatenate.reserve(batch->num_tasks());
       for (int task_idx = 0; task_idx < batch->num_tasks(); ++task_idx) {
         to_concatenate.push_back(batch->task(task_idx).inputs.at(i));
       }
@@ -817,7 +818,8 @@ class UnbatchGradResource : public ResourceBase {
 
   // Flushes the information for one batch, given its context and done
   // callback. Clears all information about it from the available_tensors_.
-  Status OutputBatch(OpKernelContext* context, AsyncOpKernel::DoneCallback done)
+  Status OutputBatch(OpKernelContext* context,
+                     const AsyncOpKernel::DoneCallback& done)
       EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     const Tensor& batch_index_t = context->input(1);
     auto batch_index =
@@ -848,7 +850,8 @@ class UnbatchGradResource : public ResourceBase {
   }
 
   // Ingests data from one invocation of the op.
-  Status Compute(OpKernelContext* context, AsyncOpKernel::DoneCallback done) {
+  Status Compute(OpKernelContext* context,
+                 const AsyncOpKernel::DoneCallback& done) {
     const Tensor& data_t = context->input(0);
     const Tensor& batch_index_t = context->input(1);
     const Tensor& grad_t = context->input(2);

@@ -53,7 +53,7 @@ class Experiment(object):
   """
 
   # TODO(ispir): remove delay_workers_by_global_step and make global step based
-  # waiting as only behaviour.
+  # waiting as only behavior.
   @deprecated_args(
       "2016-10-23",
       "local_eval_frequency is deprecated as local_run will be renamed to "
@@ -511,6 +511,8 @@ class Experiment(object):
     (via constructor). The model will be first trained for
     `train_steps_per_iteration`, and then be evaluated in turns.
 
+    This method is intended for single machine usage.
+
     This differs from `train_and_evaluate` as follows:
       1. The procedure will have train and evaluation in turns. The model
       will be trained for a number of steps (usuallly smaller than `train_steps`
@@ -548,7 +550,7 @@ class Experiment(object):
     eval_result = None
 
     # Set the default value for train_steps_per_iteration, which will be
-    # overriden by other settings.
+    # overridden by other settings.
     train_steps_per_iteration = 1000
     if self._train_steps_per_iteration is not None:
       train_steps_per_iteration = self._train_steps_per_iteration

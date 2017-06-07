@@ -215,7 +215,7 @@ bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
 --out_graph=optimized_inception_graph.pb \
 --inputs='Mul' \
 --outputs='softmax' \
---transforms='\
+--transforms='
   strip_unused_nodes(type=float, shape="1,299,299,3")
   fold_constants(ignore_errors=true)
   fold_batch_norms
@@ -431,12 +431,11 @@ graph:
 ```bash
 bazel build tensorflow/tools/graph_transforms:transform_graph
 bazel-bin/tensorflow/tools/graph_transforms/transform_graph \
---logtostderr \
 --in_graph=/tmp/quantized_inception.pb \
 --out_graph=/tmp/logged_quantized_inception.pb \
 --inputs=Mul \
 --outputs=softmax \
---transforms='\
+--transforms='
 insert_logging(op=RequantizationRange, show_name=true, message="__requant_min_max:")\
 '
 ```
@@ -450,12 +449,10 @@ log:
 bazel build tensorflow/examples/label_image:label_image
 bazel-bin/tensorflow/examples/label_image/label_image \
 --image=${HOME}/Downloads/grace_hopper.jpg \
---logtostderr \
 --input_layer=Mul \
 --output_layer=softmax \
 --graph=/tmp/logged_quantized_inception.pb \
 --labels=${HOME}/Downloads/imagenet_comp_graph_label_strings.txt \
---logtostderr \
 2>/tmp/min_max_log_small.txt
 ```
 
@@ -589,7 +586,7 @@ equivalent, followed by a float conversion op so that the result is usable by
 subsequent nodes. This is mostly useful for [shrinking file
 sizes](#shrinking-file-size), but also helps with the more advanced
 [quantize_nodes](#quantize_nodes) transform. Even though there are no
-prerequesites, it is advisable to run [fold_batch_norms](#fold_batch_norms) or
+prerequisites, it is advisable to run [fold_batch_norms](#fold_batch_norms) or
 [fold_old_batch_norms](#fold_old_batch_norms), because rounding variances down
 to zero may cause significant loss of precision.
 
@@ -677,7 +674,7 @@ number of steps. The unique values are chosen per buffer by linearly allocating
 between the largest and smallest values present. This is useful when you'll be
 deploying on mobile, and you want a model that will compress effectively. See
 [shrinking file size](#shrinking-file-size) for more details. Even though there
-are no prerequesites, it is advisable to run
+are no prerequisites, it is advisable to run
 [fold_batch_norms](#fold_batch_norms) or
 [fold_old_batch_norms](#fold_old_batch_norms), because rounding variances down
 to zero may cause significant loss of precision.
@@ -1001,7 +998,7 @@ There are a few things to know about the `ReplaceMatchingOpTypes` function:
     important nodes are listed in the `output_nodes` argument that's passed into
     each replacement function call. You can disable this checking by setting
     `allow_inconsistencies` to true in the options, but otherwise any
-    replacements that break the graph constraints will be cancelled. If you do
+    replacements that break the graph constraints will be canceled. If you do
     allow inconsistencies, it's your transform's responsibility to fix them up
     before you return your final result. Functions like `RenameNodeInputs` can
     be useful if you are doing wholesale node renaming for example.

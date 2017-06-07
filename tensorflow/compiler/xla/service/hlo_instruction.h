@@ -30,9 +30,11 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -56,6 +58,8 @@ class HloInstruction {
     kLoop,                // Fused into a loop.
     kInput,               // Op's input is fused into the op itself.
     kOutput,              // Op's output is fused into the op itself.
+                          // REQUIRES: At least one operand buffer must be able
+                          // to alias the output buffer.
     kTransposeDot,        // Fused into a dot with transposed operands.
     kConvBackwardFilter,  // Fused into a backward filter convolution.
     kConvBackwardInput,   // Fused into a backward input convolution.
@@ -498,6 +502,9 @@ class HloInstruction {
   // As ToString, but returns a shorter string.
   string ToShortString() const;
 
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const;
+
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
   string ToCategory() const;
@@ -529,7 +536,7 @@ class HloInstruction {
   // Returns a tag to be used in tracing.
   //
   // Precondition: opcode() == HloOpcode::kTrace
-  const string& tracing_tag() const;
+  string TracingTag() const;
 
   // Returns whether the instruction is a constant.
   bool IsConstant() const;
@@ -578,6 +585,13 @@ class HloInstruction {
   //
   // Precondition: opcode() == HloOpcode::kFusion
   const std::vector<HloInstruction*>& fused_parameters() const;
+
+  // Returns true if this instruction is a fusion instruction that generates
+  // multiple outputs.
+  const bool IsMultiOutputFusion() const {
+    return (opcode() == HloOpcode::kFusion &&
+            fused_expression_root()->opcode() == HloOpcode::kTuple);
+  }
 
   FusionKind fusion_kind() const {
     CHECK_EQ(HloOpcode::kFusion, opcode_);

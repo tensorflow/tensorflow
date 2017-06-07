@@ -39,7 +39,8 @@ namespace tensorflow {
 namespace test {
 
 Benchmark::Benchmark(const string& device, Graph* g,
-                     const SessionOptions* options, Graph* init) {
+                     const SessionOptions* options, Graph* init,
+                     Rendezvous* rendez) {
   SessionOptions default_options;
   if (!options) {
     options = &default_options;
@@ -61,7 +62,11 @@ Benchmark::Benchmark(const string& device, Graph* g,
     pool_->Schedule(closure);
   };
 
-  rendez_ = NewLocalRendezvous();
+  if (rendez == nullptr) {
+    rendez_ = NewLocalRendezvous();
+  } else {
+    rendez_ = rendez;
+  }
 
   const int graph_def_version = g->versions().producer();
 
@@ -103,13 +108,13 @@ void Benchmark::Run(int iters) { RunWithArgs({}, {}, iters); }
 
 string GetRendezvousKey(const Node* node) {
   string send_device;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "send_device", &send_device));
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "send_device", &send_device));
   string recv_device;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "recv_device", &recv_device));
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "recv_device", &recv_device));
   string tensor_name;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "tensor_name", &tensor_name));
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "tensor_name", &tensor_name));
   uint64 send_device_incarnation;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "send_device_incarnation",
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "send_device_incarnation",
                           reinterpret_cast<int64*>(&send_device_incarnation)));
   return Rendezvous::CreateKey(send_device, send_device_incarnation,
                                recv_device, tensor_name, FrameAndIter(0, 0));
@@ -123,10 +128,12 @@ void Benchmark::RunWithArgs(
   }
   // Gets inputs' and outputs' rendezvous keys.
   std::vector<std::pair<string, Tensor>> in;
+  in.reserve(inputs.size());
   for (const auto& p : inputs) {
     in.push_back({GetRendezvousKey(p.first), p.second});
   }
   std::vector<string> out;
+  out.reserve(outputs.size());
   for (const auto& n : outputs) {
     out.push_back(GetRendezvousKey(n));
   }

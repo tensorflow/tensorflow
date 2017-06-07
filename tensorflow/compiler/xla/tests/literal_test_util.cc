@@ -262,7 +262,7 @@ class NearComparator {
     max_abs_err_ = 0.0;
     *miscompares_.mutable_shape() =
         ShapeUtil::ChangeElementType(actual.shape(), PRED);
-    miscompares_.mutable_preds()->Resize(
+    miscompares_.mutable_preds()->resize(
         ShapeUtil::ElementsIn(miscompares_.shape()), false);
     multi_index_.resize(expected.shape().dimensions_size(), 0);
 
@@ -314,7 +314,7 @@ class NearComparator {
 
  private:
   // EXPECTs that the two given scalar values are within the error bound. Keeps
-  // track of how many mismatches have occured to keep the size of the output
+  // track of how many mismatches have occurred to keep the size of the output
   // manageable.
   template <typename NativeT>
   bool ExpectValuesNear(NativeT expected, NativeT actual) {
@@ -389,7 +389,7 @@ class NearComparator {
         tensorflow::strings::Printf("tempfile-%s-%llx-%s", Hostname().c_str(),
                                     now_usec, name.c_str()));
     TF_CHECK_OK(tensorflow::WriteBinaryProto(tensorflow::Env::Default(),
-                                             filename, literal));
+                                             filename, literal.ToProto()));
     LOG(ERROR) << "wrote to " << name << " file: " << filename;
   }
 

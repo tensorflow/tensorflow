@@ -25,6 +25,8 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.test_util import TensorFlowTestCase
+# Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import training_ops

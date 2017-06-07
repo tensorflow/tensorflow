@@ -25,20 +25,31 @@ filegroup(
 )
 
 py_library(
+    name = "feature_column_py",
+    srcs = ["feature_column_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":feature_column",
+        "//tensorflow/python:util",
+    ],
+)
+
+py_library(
     name = "feature_column",
     srcs = ["feature_column.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":lookup_ops",
         "//tensorflow/python:embedding_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:init_ops",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
+        "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
@@ -48,6 +59,9 @@ py_library(
 filegroup(
     name = "vocabulary_testdata",
     srcs = [
+        "testdata/embedding.ckpt.data-00000-of-00001",
+        "testdata/embedding.ckpt.index",
+        "testdata/embedding.ckpt.meta",
         "testdata/warriors_vocabulary.txt",
         "testdata/wire_vocabulary.txt",
     ],
@@ -60,32 +74,12 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
-        ":feature_column",
+        ":feature_column_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
-    ],
-)
-
-# TODO(ptucker,yleon): Move along with 3p/tf/contrib/lookup.
-# Test is still in 3p/tf/contrib/lookup.
-py_library(
-    name = "lookup_ops",
-    srcs = [
-        "lookup_ops.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:lookup_ops_gen",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:string_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python:util",
+        "//tensorflow/python/estimator:inputs",
     ],
 )

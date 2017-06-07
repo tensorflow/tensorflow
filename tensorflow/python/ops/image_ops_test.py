@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import colorsys
+import functools
 import math
 import os
 import time
@@ -1448,7 +1449,7 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           use_tensor_inputs_options=[False])
 
       # The orignal error message does not contain back slashes. However, they
-      # are added by either the assert op or the runtime. If this behaviour
+      # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(
           x,
@@ -2280,7 +2281,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
           use_tensor_inputs_options=[False])
 
       # The orignal error message does not contain back slashes. However, they
-      # are added by either the assert op or the runtime. If this behaviour
+      # are added by either the assert op or the runtime. If this behavior
       # changes in the future, the match string will also needs to be changed.
       self._assertRaises(
           x,
@@ -2790,6 +2791,38 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
     # Check that TensorFlow correctly calculates the total variation
     # for each image individually and returns the correct array.
     self._test(multi, tot_var * np.array([1.0, 1.1, 1.2]))
+
+
+class FormatTest(test_util.TensorFlowTestCase):
+
+  def testFormats(self):
+    prefix = "tensorflow/core/lib"
+    paths = ("png/testdata/lena_gray.png", "jpeg/testdata/jpeg_merge_test1.jpg",
+             "gif/testdata/lena.gif")
+    decoders = {
+        "jpeg": functools.partial(image_ops.decode_jpeg, channels=3),
+        "png": functools.partial(image_ops.decode_png, channels=3),
+        "gif": lambda s: array_ops.squeeze(image_ops.decode_gif(s), axis=0),
+    }
+    with self.test_session():
+      for path in paths:
+        contents = io_ops.read_file(os.path.join(prefix, path)).eval()
+        images = {}
+        for name, decode in decoders.items():
+          image = decode(contents).eval()
+          self.assertEqual(image.ndim, 3)
+          for prev_name, prev in images.items():
+            print("path %s, names %s %s, shapes %s %s" %
+                  (path, name, prev_name, image.shape, prev.shape))
+            self.assertAllEqual(image, prev)
+          images[name] = image
+
+  def testError(self):
+    path = "tensorflow/core/lib/gif/testdata/scan.gif"
+    with self.test_session():
+      for decode in image_ops.decode_jpeg, image_ops.decode_png:
+        with self.assertRaisesOpError(r"Got 12 frames"):
+          decode(io_ops.read_file(path)).eval()
 
 
 if __name__ == "__main__":

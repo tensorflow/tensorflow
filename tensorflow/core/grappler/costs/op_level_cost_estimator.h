@@ -20,7 +20,6 @@ limitations under the License.
 #include <map>
 #include <string>
 
-#include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/util/padding.h"
@@ -33,14 +32,14 @@ class OpLevelCostEstimator {
   OpLevelCostEstimator();
   virtual ~OpLevelCostEstimator() {}
 
-  Costs PredictCosts(const OpInfo& op_features) const;
+  virtual Costs PredictCosts(const OpInfo& op_features) const;
 
  protected:
   // Returns an estimate of device performance (in billions of operations
-  // executed per second) and memory bandwith (in GigaBytes/second) for the
+  // executed per second) and memory bandwidth (in GigaBytes/second) for the
   // specified device.
   virtual std::pair<double, double> GetDeviceInfo(
-      const OpInfo::DeviceProperties& device) const;
+      const DeviceProperties& device) const;
 
   // For operations for which we haven't yet built estimates, returns a dummy
   // value based on input size.
@@ -81,6 +80,8 @@ class OpLevelCostEstimator {
   int64 CountMatMulOperations(const OpInfo& op_features,
                               MatMulDimensions* mat_mul,
                               bool* found_unknown_shapes) const;
+  int64 CountBatchMatMulOperations(const OpInfo& op_features,
+                                   bool* found_unknown_shapes) const;
   int64 CountConv2DBackPropInputOperations(const OpInfo& op_features,
                                            ConvolutionDimensions* conv_info,
                                            bool* found_unknown_shapes) const;
@@ -117,6 +118,7 @@ class OpLevelCostEstimator {
   Costs PredictConv2DBackPropFilter(const OpInfo& op_features) const;
   Costs PredictMatMul(const OpInfo& op_features) const;
   Costs PredictNoOp(const OpInfo& op_features) const;
+  Costs PredictBatchMatMul(const OpInfo& op_features) const;
 
   // Utility function for safe division. Returns 0
   // if rhs is 0 or negative.
@@ -133,9 +135,12 @@ class OpLevelCostEstimator {
       const TensorShapeProto& original_filter_shape, const OpInfo& op_features,
       bool* found_unknown_shapes);
 
- private:
+ protected:
   typedef std::function<Costs(const OpInfo& op_feature)> CostImpl;
   std::map<string, CostImpl> device_cost_impl_;
+
+ private:
+  friend class OpLevelCostEstimatorTest;
 };
 
 }  // end namespace grappler

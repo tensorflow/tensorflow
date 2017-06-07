@@ -35,15 +35,15 @@ ScopeNode* TFScope::CreateParentNode(const string& name) {
   node_defs_.back()->set_name(name);
   node_defs_.back()->set_op(kTFScopeParent);
   parent_nodes_[name] =
-      std::unique_ptr<TFNode>(new TFNode(node_defs_.back().get()));
+      std::unique_ptr<TFGraphNode>(new TFGraphNode(node_defs_.back().get()));
   nodes_map_[name] =
       std::unique_ptr<ScopeNode>(new ScopeNode(parent_nodes_[name].get()));
   return nodes_map_[name].get();
 }
 
-void TFScope::AddNode(TFNode* node) {
-  string name = node->node_def()->name();
-  if (nodes_map_.find(node->node_def()->name()) == nodes_map_.end()) {
+void TFScope::AddNode(TFGraphNode* node) {
+  string name = node->name();
+  if (nodes_map_.find(node->name()) == nodes_map_.end()) {
     nodes_map_[name] = std::unique_ptr<ScopeNode>(new ScopeNode(node));
   }
 
@@ -58,35 +58,58 @@ void TFScope::AddNode(TFNode* node) {
 }
 
 void TFScope::Build() {
-  if (!roots_.empty()) return;
+  if (root_) return;
+
+  std::vector<ScopeNode*> roots;
   // Found roots, which are nodes without "/".
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     ScopeNode* node = it->second.get();
     auto last_slash = node->name().find_last_of("/");
     if (last_slash == string::npos) {
-      roots_.push_back(node);
+      roots.push_back(node);
     } else {
       const string prefix = node->name().substr(0, last_slash);
       nodes_map_[prefix]->children.push_back(node);
     }
   }
+
+  root_ = CreateParentNode(kTFProfRoot);
+  root_->children.assign(roots.begin(), roots.end());
 }
 
-const ShowNode* TFScope::ShowInternal(const Options& opts) {
-  // Search from roots recursively to find start node, if start_name_regexes
-  // is specified.
-  std::vector<ScopeNode*> roots = roots_;
+const ShowNode* TFScope::ShowInternal(const Options& opts, Timeline* timeline) {
+  std::vector<ScopeNode*> roots = Account(root_->children, opts);
+  root_->ResetTotalStats();
+  root_->show_children.clear();
+  for (ScopeNode* n : roots) {
+    root_->AggregateTotalStats(n);
+  }
+
   if (opts.start_name_regexes.size() != 1 ||
       opts.start_name_regexes[0] != ".*") {
     roots = SearchRoot(roots, opts.start_name_regexes);
   }
 
-  ScopeNode* root = CreateParentNode(kTFProfRoot);
-  root->children.assign(roots.begin(), roots.end());
-  Account({root}, opts);
+  root_->show_children.assign(roots.begin(), roots.end());
+  ScopeNode* root = PrintScope({root_}, opts, 1, 0)[0];
 
-  root = PrintScope({root}, opts, 1, 0)[0];
+  root->formatted_str = FormatLegend(opts) + root->formatted_str;
+  Format(root->show_children, &root->formatted_str, root->mutable_proto());
+
+  if (timeline) {
+    timeline->GenerateScopeTimeline(root);
+  }
   return root;
+}
+
+void TFScope::Format(const std::vector<ScopeNode*> roots, string* display_str,
+                     TFGraphNodeProto* proto) {
+  for (ScopeNode* node : roots) {
+    display_str->append(node->formatted_str);
+    TFGraphNodeProto* child = proto->add_children();
+    child->MergeFrom(node->proto());
+    Format(node->show_children, display_str, child);
+  }
 }
 
 std::vector<ScopeNode*> TFScope::SearchRoot(
@@ -108,7 +131,7 @@ std::vector<ScopeNode*> TFScope::SearchRoot(
       // Found a start node at this branch, no need to continue.
       continue;
     }
-    std::vector<ScopeNode*> nroots = SearchRoot(root->children, regexes);
+    std::vector<ScopeNode*> nroots = SearchRoot(root->show_children, regexes);
     res.insert(res.end(), nroots.begin(), nroots.end());
   }
   return res;
@@ -120,27 +143,24 @@ std::vector<ScopeNode*> TFScope::PrintScope(const std::vector<ScopeNode*> roots,
   std::vector<ScopeNode*> show_nodes;
 
   for (ScopeNode* node : roots) {
-    int nlast_ident = last_ident;
+    int ident = last_ident;
     bool show = ShouldShow(node, opts, depth);
+    if (show) ident += 2;
+
+    std::vector<ScopeNode*> show_cnodes;
+    if (!ShouldTrim(node, opts.trim_name_regexes) && depth <= opts.max_depth) {
+      show_cnodes = PrintScope(node->show_children, opts, depth + 1, ident);
+    }
     if (show) {
-      node->formatted_str.clear();
+      node->show_children.clear();
       if (opts.account_displayed_op_only) {
         node->ResetTotalStats();
         node->AddSelfToTotalStats();
       }
-      nlast_ident += 2;
-    }
 
-    std::vector<ScopeNode*> show_cnodes;
-    if (!ShouldTrim(node, opts.trim_name_regexes)) {
-      show_cnodes = PrintScope(node->children, opts, depth + 1, nlast_ident);
-    }
-    if (show) {
       show_cnodes = SortNodes(show_cnodes, opts);
-      string children_str;
       for (ScopeNode* sc : show_cnodes) {
-        children_str += sc->formatted_str;
-        node->mutable_proto()->add_children()->MergeFrom(sc->proto());
+        node->show_children.push_back(sc);
         if (opts.account_displayed_op_only) {
           node->AggregateTotalStats(sc);
         }
@@ -148,9 +168,9 @@ std::vector<ScopeNode*> TFScope::PrintScope(const std::vector<ScopeNode*> roots,
 
       node->formatted_str =
           strings::Printf("%s%s\n", string(last_ident, ' ').c_str(),
-                          node->Format(opts).c_str());
+                          FormatNode(node, opts).c_str());
 
-      if (opts.select.find(kShown[5]) != opts.select.end()) {
+      if (opts.select.find(kShown[4]) != opts.select.end()) {
         std::unique_ptr<TFProfTensor> tfprof_tensor;
         if (LookUpCheckPoint(node->name(), &tfprof_tensor)) {
           string value_str;
@@ -159,8 +179,6 @@ std::vector<ScopeNode*> TFScope::PrintScope(const std::vector<ScopeNode*> roots,
           node->formatted_str += value_str;
         }
       }
-
-      node->formatted_str += children_str;
       show_nodes.push_back(node);
     } else {
       show_nodes.insert(show_nodes.end(), show_cnodes.begin(),
@@ -170,22 +188,27 @@ std::vector<ScopeNode*> TFScope::PrintScope(const std::vector<ScopeNode*> roots,
   return show_nodes;
 }
 
-void TFScope::Account(const std::vector<ScopeNode*>& roots,
-                      const Options& opts) {
-  if (roots.empty()) return;
+std::vector<ScopeNode*> TFScope::Account(const std::vector<ScopeNode*>& roots,
+                                         const Options& opts) {
+  std::vector<ScopeNode*> act_nodes;
 
   for (ScopeNode* node : roots) {
     node->ResetTotalStats();
-    Account(node->children, opts);
+    std::vector<ScopeNode*> act_cnodes = Account(node->children, opts);
 
-    node->account = ShouldAccount(node, opts);
-    if (node->account) {
+    node->account = ReAccount(node, opts);
+    if (node->account || !act_cnodes.empty()) {
+      node->show_children.clear();
+      node->ResetTotalStats();
       node->AddSelfToTotalStats();
-    }
-    for (ScopeNode* c : node->children) {
-      node->AggregateTotalStats(c);
+      for (ScopeNode* c : act_cnodes) {
+        node->AggregateTotalStats(c);
+        node->show_children.push_back(c);
+      }
+      act_nodes.push_back(node);
     }
   }
+  return act_nodes;
 }
 }  // namespace tfprof
 }  // namespace tensorflow

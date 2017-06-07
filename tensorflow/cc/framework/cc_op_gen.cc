@@ -198,7 +198,7 @@ string PrintTensorProto(const TensorProto& proto) {
                          ").AsTensorProto()");
 }
 
-string PrintAttrValue(string op, const AttrValue& attr_value) {
+string PrintAttrValue(const string& op, const AttrValue& attr_value) {
   switch (attr_value.value_case()) {
     case AttrValue::kS:
       return PrintString(attr_value.s());
@@ -740,11 +740,10 @@ void OpInfo::GetOutput(string* out) const {
     return;
   }
   strings::StrAppend(out, "  ::tensorflow::NameRangeMap _outputs_range;\n");
-  strings::StrAppend(
-      out,
-      "  ::tensorflow::Status _status_ = "
-      "::tensorflow::NameRangesForNode(ret->def(), ret->op_def(), "
-      "nullptr, &_outputs_range);\n");
+  strings::StrAppend(out,
+                     "  ::tensorflow::Status _status_ = "
+                     "::tensorflow::NameRangesForNode(*ret, ret->op_def(), "
+                     "nullptr, &_outputs_range);\n");
   strings::StrAppend(out, "  if (!_status_.ok()) {\n", "    ", scope_str,
                      ".UpdateStatus(_status_);\n", "    return;\n");
   strings::StrAppend(out, "  }\n\n");

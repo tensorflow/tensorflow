@@ -23,25 +23,17 @@ these functions should be recursive.
 
 Example structures: `((3, 4), 5, (6, 7, (9, 10), 8))`, `(np.array(0),
   (np.array([3, 4]), tf.constant([3, 4])))`
-
-@@assert_same_structure
-@@is_sequence
-@@flatten
-@@flatten_dict_items
-@@pack_sequence_as
-@@map_structure
-@@assert_shallow_structure
-@@flatten_up_to
-@@map_structure_up_to
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
+import collections as _collections
 
-import six
+import six as _six
+
+from tensorflow.python.util.all_util import remove_undocumented
 
 
 def _sequence_like(instance, args):
@@ -56,8 +48,8 @@ def _sequence_like(instance, args):
   """
   if (isinstance(instance, tuple) and
       hasattr(instance, "_fields") and
-      isinstance(instance._fields, collections.Sequence) and
-      all(isinstance(f, six.string_types) for f in instance._fields)):
+      isinstance(instance._fields, _collections.Sequence) and
+      all(isinstance(f, _six.string_types) for f in instance._fields)):
     # This is a namedtuple
     return type(instance)(*args)
   else:
@@ -83,8 +75,8 @@ def is_sequence(seq):
   Returns:
     True if the sequence is a not a string and is a collections.Sequence.
   """
-  return (isinstance(seq, collections.Sequence)
-          and not isinstance(seq, six.string_types))
+  return (isinstance(seq, _collections.Sequence)
+          and not isinstance(seq, _six.string_types))
 
 
 def flatten(nest):
@@ -180,7 +172,7 @@ def flatten_dict_items(dictionary):
   if not isinstance(dictionary, dict):
     raise TypeError("input must be a dictionary")
   flat_dictionary = {}
-  for i, v in six.iteritems(dictionary):
+  for i, v in _six.iteritems(dictionary):
     if not is_sequence(i):
       if i in flat_dictionary:
         raise ValueError(
@@ -539,3 +531,18 @@ def map_structure_up_to(shallow_tree, func, *inputs):
                          for input_tree in inputs]
   results = [func(*tensors) for tensors in zip(*all_flattened_up_to)]
   return pack_sequence_as(structure=shallow_tree, flat_sequence=results)
+
+
+_allowed_symbols = [
+    "assert_same_structure",
+    "is_sequence",
+    "flatten",
+    "flatten_dict_items",
+    "pack_sequence_as",
+    "map_structure",
+    "assert_shallow_structure",
+    "flatten_up_to",
+    "map_structure_up_to",
+]
+
+remove_undocumented(__name__, _allowed_symbols)

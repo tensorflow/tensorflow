@@ -57,7 +57,7 @@ class SavedModelBuilder(object):
   Typical usage for the `SavedModelBuilder`:
   ```python
   ...
-  builder = saved_model.builder.SavedModelBuilder(export_dir)
+  builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
 
   with tf.Session(graph=tf.Graph()) as sess:
     ...
@@ -96,53 +96,13 @@ class SavedModelBuilder(object):
     # weights.
     self._has_saved_variables = False
 
-  def _asset_path_from_tensor(self, path_tensor):
-    """Returns the filepath value stored in constant `path_tensor`.
-
-    Args:
-      path_tensor: Tensor of a file-path.
-
-    Returns:
-      The string value i.e. path of the tensor, if valid.
-
-    Raises:
-      TypeError if tensor does not match expected op type, dtype or value.
-    """
-    if not isinstance(path_tensor, ops.Tensor):
-      raise TypeError("Asset path tensor must be a Tensor.")
-    if path_tensor.op.type != "Const":
-      raise TypeError("Asset path tensor must be of type constant.")
-    if path_tensor.dtype != dtypes.string:
-      raise TypeError("Asset path tensor must be of dtype string.")
-    str_values = path_tensor.op.get_attr("value").string_val
-    if len(str_values) != 1:
-      raise TypeError("Asset path tensor must be a scalar.")
-    return str_values[0]
-
-  def _add_asset_to_collection(self, asset_filename, asset_tensor):
-    """Builds an asset proto and adds it to the asset collection of the graph.
-
-    Args:
-      asset_filename: The filename of the asset to be added.
-      asset_tensor: The asset tensor used to populate the tensor info of the
-          asset proto.
-    """
-    asset_proto = meta_graph_pb2.AssetFileDef()
-    asset_proto.filename = asset_filename
-    asset_proto.tensor_info.name = asset_tensor.name
-
-    asset_any_proto = Any()
-    asset_any_proto.Pack(asset_proto)
-    ops.add_to_collection(constants.ASSETS_KEY, asset_any_proto)
-
   def _save_and_write_assets(self, assets_collection_to_add=None):
     """Saves asset to the meta graph and writes asset files to disk.
 
     Args:
       assets_collection_to_add: The collection where the asset paths are setup.
     """
-    asset_source_filepath_list = self._maybe_save_assets(
-        assets_collection_to_add)
+    asset_source_filepath_list = _maybe_save_assets(assets_collection_to_add)
 
     # Return if there are no assets to write.
     if len(asset_source_filepath_list) is 0:
@@ -200,42 +160,6 @@ class SavedModelBuilder(object):
       if not isinstance(main_op, ops.Operation):
         raise TypeError("main_op needs to be an Operation: %r" % main_op)
       ops.add_to_collection(constants.MAIN_OP_KEY, main_op)
-
-  def _maybe_save_assets(self, assets_collection_to_add=None):
-    """Saves assets to the meta graph.
-
-    Args:
-      assets_collection_to_add: The collection where the asset paths are setup.
-
-    Returns:
-      The list of filepaths to the assets in the assets collection.
-
-    Raises:
-      ValueError: Indicating an invalid filepath tensor.
-    """
-    asset_source_filepath_list = []
-
-    if assets_collection_to_add is None:
-      tf_logging.info("No assets to save.")
-      return asset_source_filepath_list
-
-    # Iterate over the supplied asset collection, build the `AssetFile` proto
-    # and add them to the collection with key `constants.ASSETS_KEY`, in the
-    # graph.
-    for asset_tensor in assets_collection_to_add:
-      asset_source_filepath = self._asset_path_from_tensor(asset_tensor)
-      if not asset_source_filepath:
-        raise ValueError("Invalid asset filepath tensor %s" % asset_tensor)
-
-      asset_source_filename = os.path.basename(asset_source_filepath)
-
-      # Build `AssetFile` proto and add it to the asset collection in the graph.
-      self._add_asset_to_collection(asset_source_filename, asset_tensor)
-
-      asset_source_filepath_list.append(asset_source_filepath)
-
-    tf_logging.info("Assets added to graph.")
-    return asset_source_filepath_list
 
   def _tag_and_add_meta_graph(self, meta_graph_def, tags, signature_def_map):
     """Tags the meta graph def and adds it to the SavedModel.
@@ -360,7 +284,19 @@ class SavedModelBuilder(object):
         write_version=saver_pb2.SaverDef.V2,
         allow_empty=True)
 
-    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
+    # The graph almost certainly previously contained at least one Saver, and
+    # possibly several (e.g. one for loading a pretrained embedding, and another
+    # for the model weights).  However, a *new* Saver was just created that
+    # includes all of the variables.  In the context of the SavedModel, this
+    # new Saver is the only one that needs to be retained. The associated
+    # checkpoint produced in add_meta_graph_and_variables() contains all of the
+    # variable values.  Thus, any preexisting Savers are redundant and useless
+    # at best, but worse may break downstream graph-processing tools, and can be
+    # confusing during debugging. It is therefore safe and wise to set
+    # `clear_extraneous_savers` to `True`, since it removes both the extraneous
+    # SaverDefs and their associated Save/Restore Ops from the graph.
+    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices,
+                                             clear_extraneous_savers=True)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
@@ -438,7 +374,20 @@ class SavedModelBuilder(object):
     saver.save(sess, variables_path, write_meta_graph=False, write_state=False)
 
     # Export the meta graph def.
-    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices)
+
+    # The graph almost certainly previously contained at least one Saver, and
+    # possibly several (e.g. one for loading a pretrained embedding, and another
+    # for the model weights).  However, a *new* Saver was just created that
+    # includes all of the variables.  In the context of the SavedModel, this
+    # new Saver is the only one that needs to be retained.  The associated
+    # checkpoint that was saved just above contains all of the variable values.
+    # Thus, any preexisting Savers are redundant and useless at best, but worse
+    # may break downstream graph-processing tools, and can be confusing during
+    # debugging.  It is therefore safe and wise to set `clear_extraneous_savers`
+    # to `True`, since it removes both the extraneous SaverDefs and their
+    # associated Save/Restore Ops from the graph.
+    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices,
+                                             clear_extraneous_savers=True)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
@@ -475,3 +424,81 @@ class SavedModelBuilder(object):
     tf_logging.info("SavedModel written to: %s", path)
 
     return path
+
+
+def _maybe_save_assets(assets_collection_to_add=None):
+  """Saves assets to the meta graph.
+
+  Args:
+    assets_collection_to_add: The collection where the asset paths are setup.
+
+  Returns:
+    The list of filepaths to the assets in the assets collection.
+
+  Raises:
+    ValueError: Indicating an invalid filepath tensor.
+  """
+  asset_source_filepath_list = []
+
+  if assets_collection_to_add is None:
+    tf_logging.info("No assets to save.")
+    return asset_source_filepath_list
+
+  # Iterate over the supplied asset collection, build the `AssetFile` proto
+  # and add them to the collection with key `constants.ASSETS_KEY`, in the
+  # graph.
+  for asset_tensor in assets_collection_to_add:
+    asset_source_filepath = _asset_path_from_tensor(asset_tensor)
+    if not asset_source_filepath:
+      raise ValueError("Invalid asset filepath tensor %s" % asset_tensor)
+
+    asset_source_filename = os.path.basename(asset_source_filepath)
+
+    # Build `AssetFile` proto and add it to the asset collection in the graph.
+    _add_asset_to_collection(asset_source_filename, asset_tensor)
+
+    asset_source_filepath_list.append(asset_source_filepath)
+
+  tf_logging.info("Assets added to graph.")
+  return asset_source_filepath_list
+
+
+def _asset_path_from_tensor(path_tensor):
+  """Returns the filepath value stored in constant `path_tensor`.
+
+  Args:
+    path_tensor: Tensor of a file-path.
+
+  Returns:
+    The string value i.e. path of the tensor, if valid.
+
+  Raises:
+    TypeError if tensor does not match expected op type, dtype or value.
+  """
+  if not isinstance(path_tensor, ops.Tensor):
+    raise TypeError("Asset path tensor must be a Tensor.")
+  if path_tensor.op.type != "Const":
+    raise TypeError("Asset path tensor must be of type constant.")
+  if path_tensor.dtype != dtypes.string:
+    raise TypeError("Asset path tensor must be of dtype string.")
+  str_values = path_tensor.op.get_attr("value").string_val
+  if len(str_values) != 1:
+    raise TypeError("Asset path tensor must be a scalar.")
+  return str_values[0]
+
+
+def _add_asset_to_collection(asset_filename, asset_tensor):
+  """Builds an asset proto and adds it to the asset collection of the graph.
+
+  Args:
+    asset_filename: The filename of the asset to be added.
+    asset_tensor: The asset tensor used to populate the tensor info of the
+        asset proto.
+  """
+  asset_proto = meta_graph_pb2.AssetFileDef()
+  asset_proto.filename = asset_filename
+  asset_proto.tensor_info.name = asset_tensor.name
+
+  asset_any_proto = Any()
+  asset_any_proto.Pack(asset_proto)
+  ops.add_to_collection(constants.ASSETS_KEY, asset_any_proto)

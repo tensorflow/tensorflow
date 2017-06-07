@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/nccl/kernels/nccl_manager.h"
 
+#include <utility>
+
 #ifdef GOOGLE_CUDA
 
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -64,7 +66,7 @@ struct NcclManager::CommunicatorMember {
 
 struct NcclManager::Communicator {
  public:
-  Communicator(std::vector<CommunicatorMember> members)
+  explicit Communicator(std::vector<CommunicatorMember> members)
       : num_devices(members.size()), members(std::move(members)) {}
 
   const int num_devices;
@@ -287,7 +289,7 @@ void NcclManager::AddBroadcastSend(
     const Tensor* in_t, DoneCallback done_callback) {
   std::unique_ptr<Participant> participant(
       new Participant(in_t, nullptr /* out_t */, event_mgr, tensor_stream,
-                      executor, gpu_device_id, done_callback));
+                      executor, gpu_device_id, std::move(done_callback)));
   participant->root = true;
   AddParticipant(num_devices, key, std::move(participant), in_t->dtype(),
                  kBroadcast, ncclSum /* unused */);
@@ -300,7 +302,7 @@ void NcclManager::AddBroadcastRecv(
     Tensor* out_t, DoneCallback done_callback) {
   std::unique_ptr<Participant> participant(
       new Participant(nullptr /* in_t */, out_t, event_mgr, tensor_stream,
-                      executor, gpu_device_id, done_callback));
+                      executor, gpu_device_id, std::move(done_callback)));
   AddParticipant(num_devices, key, std::move(participant), out_t->dtype(),
                  kBroadcast, ncclSum /* unused */);
 }

@@ -36,6 +36,7 @@ class CancellationManager;
 class OpKernel;
 class ResourceMgr;
 class ScopedStepContainer;
+class Node;
 
 // FunctionDefHelper::Create is a convenient helper to construct a
 // FunctionDef proto.
@@ -190,11 +191,6 @@ inline FunctionDefHelper::AttrValueWrapper::AttrValueWrapper(StringPiece val) {
 // InstantiateFunction calls "get_function" to find signatures of other
 // functions and primitive ops.
 
-// Placeholders in "fdef" is substituted based on "attr_values" here.
-typedef ::tensorflow::protobuf::Map<string, AttrValue> InstantiateAttrValueMap;
-typedef gtl::ArraySlice<std::pair<string, FunctionDefHelper::AttrValueWrapper>>
-    InstantiateAttrValueSlice;
-
 // GetFunctionSignature(func name, opdef) returns OK if the func name is found
 // and opdef is filled with a pointer to the corresponding signature
 // (a OpDef proto). Otherwise, returns an error.
@@ -204,14 +200,9 @@ typedef std::function<Status(const string&, const OpDef**)>
 struct InstantiationResult {
   DataTypeVector arg_types;
   DataTypeVector ret_types;
-  GraphDef gdef;
+  std::vector<NodeDef> nodes;
 };
-Status InstantiateFunction(const FunctionDef& fdef,
-                           const InstantiateAttrValueMap& attr_values,
-                           GetFunctionSignature get_function,
-                           InstantiationResult* result);
-Status InstantiateFunction(const FunctionDef& fdef,
-                           InstantiateAttrValueSlice attr_values,
+Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result);
 
@@ -225,6 +216,7 @@ Status InstantiateFunction(const FunctionDef& fdef,
 // etc.)
 string DebugString(const FunctionDef& func_def);
 string DebugString(const GraphDef& instantiated_func_def);
+string DebugString(gtl::ArraySlice<NodeDef> instantiated_func_nodes);
 
 // Returns a debug string for a top level graph (the main program and
 // its supporting functions defined in its library).
@@ -241,9 +233,7 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2);
 // space. But it may be change as the implementation
 // evolves. Therefore, it should not be persisted or compared across
 // address spaces.
-string Canonicalize(const string& funcname,
-                    const InstantiateAttrValueMap& attrs);
-string Canonicalize(const string& funcname, InstantiateAttrValueSlice attrs);
+string Canonicalize(const string& funcname, AttrSlice attrs);
 
 // Represents a function call frame. I.e., the data structure used to
 // pass arguments to a function and retrieve its results.
@@ -330,8 +320,15 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Given a node def 'ndef', inspects attributes of the callee
   // function to derive the attribute 'value' for 'attr'. Returns OK
   // iff the attribute is given by the function's definition.
+  // TODO(irving): Remove; keep only the const Node& version.
   template <typename T>
   Status GetAttr(const NodeDef& ndef, const string& attr, T* value) const;
+
+  // Given a node, inspects attributes of the callee function to derive the
+  // attribute 'value' for 'attr'. Returns OK iff the attribute is given by the
+  // function's definition.
+  template <typename T>
+  Status GetAttr(const Node& node, const string& attr, T* value) const;
 
   // Returns a proto representation of the state of this function library.
   FunctionDefLibrary ToProto() const;
@@ -375,11 +372,8 @@ class FunctionLibraryRuntime {
   // Returns OK and fills in "handle" if the instantiation succeeds.
   // Otherwise returns an error and "handle" is undefined.
   typedef uint64 Handle;
-  virtual Status Instantiate(const string& function_name,
-                             const InstantiateAttrValueMap& attrs,
+  virtual Status Instantiate(const string& function_name, AttrSlice attrs,
                              Handle* handle) = 0;
-  Status Instantiate(const string& function_name,
-                     InstantiateAttrValueSlice attrs, Handle* handle);
 
   // Returns the function body for the instantiated function given its
   // handle 'h'. Returns nullptr if "h" is not found.
@@ -506,17 +500,15 @@ bool RegisterOp(const string& op, Creator func);
 Status GetOpGradientCreator(const string& op, Creator* creator);
 };
 
-// Implementation details.
-
-template <typename T>
-Status FunctionLibraryDefinition::GetAttr(const NodeDef& ndef,
-                                          const string& attr, T* value) const {
-  const FunctionDef* fdef = GetAttrImpl(ndef);
-  if (fdef && GetNodeAttr(AttrSlice(&fdef->attr()), attr, value).ok()) {
-    return Status::OK();
-  }
-  return errors::InvalidArgument("Attr ", attr, " is not defined.");
-}
+// Declare explicit instantiations of GetAttr
+#define GET_ATTR(T)                                          \
+  extern template Status FunctionLibraryDefinition::GetAttr( \
+      const Node&, const string&, T*) const;                 \
+  extern template Status FunctionLibraryDefinition::GetAttr( \
+      const NodeDef&, const string&, T*) const;
+GET_ATTR(string)
+GET_ATTR(bool)
+#undef GET_ATTR
 
 }  // end namespace tensorflow
 

@@ -476,7 +476,11 @@ void RdmaChannel::Connect(const RdmaAddress& remoteAddr) {
     struct ibv_qp_attr attr;
     memset(&attr, 0, sizeof(ibv_qp_attr));
     attr.qp_state = IBV_QPS_RTR;
-    attr.path_mtu = IBV_MTU_4096;
+    struct ibv_port_attr port_attr;
+    CHECK(!ibv_query_port(adapter_->context_, (uint8_t)1, &port_attr))
+        << "Query port failed";
+    // This assumes both QP's ports are configured with the same MTU
+    attr.path_mtu = port_attr.active_mtu;
     attr.dest_qp_num = remoteAddr.qpn;
     attr.rq_psn = remoteAddr.psn;
     attr.max_dest_rd_atomic = 1;
@@ -778,11 +782,8 @@ void RdmaTensorBuffer::SendNextItem() {
         EnqueueItem(key_with_step_id);
       }
     };
-    // Use default session (legacy_session_)
-    // TODO use WorkerSessionForSession
-    // need to pass in session handle
-    channel_->adapter_->worker_env_->session_mgr->LegacySession()
-        ->rendezvous_mgr->RecvLocalAsync(step_id, parsed, cb);
+    channel_->adapter_->worker_env_->rendezvous_mgr->RecvLocalAsync(step_id,
+                                                                    parsed, cb);
   }
 }
 

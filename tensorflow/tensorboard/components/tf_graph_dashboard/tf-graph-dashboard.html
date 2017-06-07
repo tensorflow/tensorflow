@@ -18,9 +18,10 @@ limitations under the License.
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../tf-graph-loader/tf-graph-loader.html">
 <link rel="import" href="../tf-graph-board/tf-graph-board.html">
-<link rel="import" href="../tf-graph/tf-graph-controls.html">
+<link rel="import" href="../tf-graph-controls/tf-graph-controls.html">
 <link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
+<link rel="import" href="../vz-sorting/vz-sorting.html">
 
 <!--
 tf-graph-dashboard displays a graph from a TensorFlow run.
@@ -103,19 +104,21 @@ out-hierarchy-params="{{_hierarchyParams}}"
 </dom-module>
 
 <script>
-"use strict";
+import {DashboardBehavior} from "../tf-dashboard-common/dashboard-behavior";
+import {ReloadBehavior} from "../tf-dashboard-common/reload-behavior";
+import {BackendBehavior} from "../tf-backend/behavior";
+import {compareTagNames} from "../vz-sorting/sorting";
 
-(function() {
-TF.Dashboard.TfGraphDashboard = Polymer({
+Polymer({
   is: 'tf-graph-dashboard',
   factoryImpl: function(backend, debuggerDataEnabled) {
     this.backend = backend;
     this.debuggerDataEnabled = debuggerDataEnabled;
   },
   behaviors: [
-    TF.Dashboard.DashboardBehavior("graphs"),
-    TF.Dashboard.ReloadBehavior("tf-graph-dashboard"),
-    TF.Backend.Behavior,
+    DashboardBehavior("graphs"),
+    ReloadBehavior("tf-graph-dashboard"),
+    BackendBehavior,
   ],
   properties: {
     _datasets: Object,
@@ -155,7 +158,7 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     'node-toggle-expand': '_handleNodeToggleExpand',
   },
   observers: [
-    '_maybeFetchHealthPillsAtSpecificStep(allStepsModeEnabled, specificHealthPillStep)',
+    '_maybeFetchHealthPills(allStepsModeEnabled, specificHealthPillStep)',
     '_maybeInitializeDashboard(backend, _isAttached)',
   ],
   attached: function() {
@@ -165,19 +168,16 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     this.set('_isAttached', false);
   },
   reload: function() {
-    if (!this.debuggerDataEnabled ||
-        !this.healthPillsToggledOn ||
-        !this._renderHierarchy ||
-        this._datasetsEmpty(this._datasets)) {
-      // Do not load debugger data if the feature is disabled, if the user toggled off the feature,
-      // or if the graph itself has not loaded yet. We need the graph to load so that we know which
-      // nodes to request health pills for.
-      return;
-    }
-
-    // Request debugger data on graph reloads, but do not re-request the graph itself. The graph
-    // would not change across reloads.
-    this._requestHealthPills();
+    this._maybeFetchHealthPills();
+  },
+  _shouldRequestHealthPills: function() {
+    // Do not load debugger data if the feature is disabled, if the user toggled off the feature,
+    // or if the graph itself has not loaded yet. We need the graph to load so that we know which
+    // nodes to request health pills for.
+    return this.debuggerDataEnabled &&
+        this.healthPillsToggledOn &&
+        this._renderHierarchy &&
+        !this._datasetsEmpty(this._datasets);
   },
   _maybeInitializeDashboard: function(backend, isAttached) {
     if (this._initialized || !backend || !isAttached) {
@@ -189,20 +189,20 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     }
     // Set this to true so we only initialize once.
     this._initialized = true;
-    Promise.all([backend.graphRuns(), backend.runMetadataRuns()])
+    Promise.all([backend.graphRuns(), backend.runMetadataTags()])
       .then(function(result) {
-        var runsWithGraph = result[0].sort(VZ.Sorting.compareTagNames);
+        var runsWithGraph = result[0].sort(compareTagNames);
         var runToMetadata = result[1];
         var datasets = _.map(runsWithGraph, function(runName) {
           return {
             name: runName,
-            path: backend.router.graph(
+            path: backend.graphUrl(
                 runName, tf.graph.LIMIT_ATTR_SIZE, tf.graph.LARGE_ATTRS_KEY),
             runMetadata: runToMetadata[runName] ? _.map(
-              runToMetadata[runName].sort(VZ.Sorting.compareTagNames), function(tag) {
+              runToMetadata[runName].sort(compareTagNames), function(tag) {
                 return {
                   tag: tag,
-                  path: backend.router.runMetadata(tag, runName)
+                  path: backend.runMetadataUrl(tag, runName)
                 };
               }, this) : []
           };
@@ -279,7 +279,7 @@ TF.Dashboard.TfGraphDashboard = Polymer({
   },
   _handleNodeToggleExpand: function() {
     // Nodes were toggled. We may need to request health pills for more nodes.
-    this._requestHealthPills();
+    this._maybeFetchHealthPills();
   },
   _healthPillsToggledOnChanged: function(healthPillsToggledOn) {
     if (healthPillsToggledOn) {
@@ -291,14 +291,12 @@ TF.Dashboard.TfGraphDashboard = Polymer({
     }
   },
   // Fetch health pills for a specific step if applicable.
-  _maybeFetchHealthPillsAtSpecificStep: function(allStepsModeEnabled, specificHealthPillStep) {
-    if (!this._renderHierarchy) {
-      // The graph is not ready yet.
+  _maybeFetchHealthPills: function() {
+    if (!this._shouldRequestHealthPills()) {
       return;
     }
 
     this._requestHealthPills();
   },
 });
-})();
 </script>

@@ -63,9 +63,14 @@ class ServiceOptions {
   ServiceOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
 
+  // Sets the thread pool size for parallel execution of an individual operator.
+  ServiceOptions& set_intra_op_parallelism_threads(int num_threads);
+  int intra_op_parallelism_threads() const;
+
  private:
   perftools::gputools::Platform* platform_ = nullptr;
   int number_of_replicas_ = -1;
+  int intra_op_parallelism_threads_ = -1;
 };
 
 // The XLA service object, which is the same across all
@@ -146,11 +151,6 @@ class Service : public ServiceInterface {
       const TransferToClientRequest* arg,
       TransferToClientResponse* result) override;
 
-  // Requests that global data be copied into a buffer supplied by the client.
-  tensorflow::Status TransferToClientInProcess(
-      const TransferToClientInProcessRequest* arg,
-      TransferToClientInProcessResponse* result) override;
-
   // Transfers data from a literal provided by the client, into device memory.
   tensorflow::Status TransferToServer(
       const TransferToServerRequest* arg,
@@ -167,11 +167,6 @@ class Service : public ServiceInterface {
   tensorflow::Status TransferFromOutfeed(
       const TransferFromOutfeedRequest* arg,
       TransferFromOutfeedResponse* result) override;
-
-  // Transfers data from a buffer provided by the client, into device memory.
-  tensorflow::Status TransferToServerInProcess(
-      const TransferToServerInProcessRequest* arg,
-      TransferToServerInProcessResponse* result) override;
 
   // Resets devices, clearing all existing state on all the devices associated
   // with this service (including memory allocated on the devices).
@@ -265,11 +260,11 @@ class Service : public ServiceInterface {
       tensorflow::gtl::ArraySlice<const GlobalDataHandle*> arguments,
       const Backend* backend, int device_ordinal);
 
-  // Create a Hlo module config foe the given program shape and arguments.
+  // Create a Hlo module config for the given program shape and arguments.
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Allocation*> arguments,
-      const ExecutionOptions& execution_options);
+      const ExecutionOptions& execution_options, Backend* backend);
 
   // Builds an Executable for the given parameters. If
   // executable_for_compute_constant is true, then the executable is intended to
@@ -328,10 +323,6 @@ class Service : public ServiceInterface {
           executors,
       tensorflow::gtl::ArraySlice<string> result_tags);
 
-  // Dumps the executed HLO according to service-associated flags.
-  static void DumpExecutedHlo(const HloModule& module, const string& label,
-                              const HloExecutionProfile* profile);
-
   // Returns an HLO dumper for use in the compiler (it refers to flags
   // associated with the service).
   static Compiler::HloDumper MakeHloDumper();
@@ -354,21 +345,6 @@ class Service : public ServiceInterface {
   // given computation result shape.
   tensorflow::Status ValidateResultShapeWithLayout(
       const Shape& shape_with_layout, const Shape& result_shape) const;
-
-  // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
-  // timer for the execution, sets up HLO profiling if enabled, and fills in the
-  // given ExecutionProfile if non-null. The given execute_func should be a
-  // function which calls the desired ExecuteOnStream overload with the supplied
-  // arguments. The ExecuteOnStream overloads return different types so this
-  // method is templated on return-type of the execute function.
-  template <typename ReturnT>
-  static ReturnT ExecuteOnStreamWrapper(
-      Executable* executable, const ServiceExecutableRunOptions* run_options,
-      ExecutionProfile* profile, Backend* backend,
-      std::function<ReturnT(Executable* executable,
-                            const ServiceExecutableRunOptions* run_options,
-                            HloExecutionProfile* hlo_execution_profile)>
-          execute_func);
 
   // Tracks computations built via the API.
   ComputationTracker computation_tracker_;
@@ -399,83 +375,6 @@ class Service : public ServiceInterface {
   TF_DISALLOW_COPY_AND_ASSIGN(Service);
 };
 
-template <typename ReturnT>
-ReturnT Service::ExecuteOnStreamWrapper(
-    Executable* executable, const ServiceExecutableRunOptions* run_options,
-    ExecutionProfile* profile, Backend* backend,
-    std::function<ReturnT(Executable* executable,
-                          const ServiceExecutableRunOptions* run_options,
-                          HloExecutionProfile* hlo_execution_profile)>
-        execute_func) {
-  perftools::gputools::Stream* stream = run_options->stream();
-  std::unique_ptr<perftools::gputools::Timer> timer;
-  if (profile != nullptr) {
-    timer.reset(new perftools::gputools::Timer(stream->parent()));
-    stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
-  }
-
-  VLOG(1) << "enqueueing executable on stream...";
-  // If the profiling flag isn't enabled, we pass nullptr as the profile to
-  // indicate profiling is not requested.
-  HloExecutionProfile hlo_execution_profile;
-  legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
-  HloExecutionProfile* profile_ptr =
-      flags->xla_hlo_profile && executable->hlo_profiling_enabled()
-          ? &hlo_execution_profile
-          : nullptr;
-
-  auto return_value = execute_func(executable, run_options, profile_ptr);
-
-  if (profile != nullptr) {
-    VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
-    stream->ThenStopTimer(timer.get()).BlockHostUntilDone();
-    VLOG(1) << "done with block-host-until-done";
-
-    // Merge in run time profile information from the executable.
-    profile->MergeFrom(executable->execution_profile());
-
-    // Overall execution time (in nanoseconds) from the executor timer.
-    profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
-
-    // TODO(b/28123297): On GPU we end up including transfer time in
-    // the compute time this way. Instead, we should get the correct
-    // value by measuring it. Setting the field here at least lets
-    // benchmarks provide *some* value for GPU computations.
-    //
-    // TODO(b/28447609): The value in compute_and_transfer_time_ns is actually
-    // the compute time without the transfer time, so this way we get the
-    // correct compute time. We should instead have the correct value for
-    // compute_and_transfer_time and set compute_time to the compute time.
-    if (profile->compute_time_ns() == 0) {
-      profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
-    }
-  }
-
-  if (profile_ptr != nullptr) {
-    HloCostAnalysis::ShapeSizeFunction shape_size =
-        [backend](const Shape& shape) {
-          return backend->compiler()->ShapeSizeBytes(shape);
-        };
-    std::unordered_set<const xla::HloComputation*> profiled_computations =
-        profile_ptr->profiled_computations();
-    // To ensure we have print the profiles in a stable order, iterate over the
-    // computations in post order.
-    std::list<xla::HloComputation*> all_computations =
-        executable->module().MakeComputationPostOrder();
-    for (xla::HloComputation* computation : all_computations) {
-      if (profiled_computations.count(computation) > 0) {
-        string profile_string = profile_ptr->ToString(
-            *computation, stream->parent()->GetDeviceDescription(), shape_size);
-        if (!profile_string.empty()) {
-          XLA_LOG_LINES(tensorflow::INFO, profile_string);
-        }
-      }
-    }
-    DumpExecutedHlo(executable->module(), "Service::Execute", profile_ptr);
-  }
-
-  return return_value;
-}
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_SERVICE_H_

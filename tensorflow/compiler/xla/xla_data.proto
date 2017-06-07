@@ -275,7 +275,7 @@ message ChannelHandle {
 //
 // Transfers to/from the client are encoded in literal form, and the structure
 // of the repeated fields is implied by the shape.
-message Literal {
+message LiteralProto {
   Shape shape = 1;
   repeated bool preds = 2;
   bytes u8s = 3;
@@ -285,7 +285,8 @@ message Literal {
   repeated uint64 u64s = 7;
   repeated float f32s = 8;
   repeated double f64s = 9;
-  repeated Literal tuple_literals = 10;
+  repeated LiteralProto tuple_literals = 10;
+  bytes f16s = 11;  // Note: the F16s are encoded in little endian byte order
 }
 
 message WindowDimension {
@@ -336,7 +337,7 @@ message Window {
 // field in OpRequest.
 
 message ConstantRequest {
-  Literal literal = 2;
+  LiteralProto literal = 2;
 }
 
 message GetTupleElementRequest {

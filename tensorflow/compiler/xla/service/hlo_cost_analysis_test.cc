@@ -127,7 +127,8 @@ class HloCostAnalysisTest : public ::testing::Test {
     VersionedComputationHandle versioned_handle =
         user_computation->GetVersionedHandle();
     return std::move(
-        computation_tracker_.BuildHloModule(versioned_handle).ValueOrDie());
+        computation_tracker_.BuildHloModule(versioned_handle, HloModuleConfig())
+            .ValueOrDie());
   }
 
   Client* client_;

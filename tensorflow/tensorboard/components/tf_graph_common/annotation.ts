@@ -75,9 +75,7 @@ module tf.graph.scene.annotation {
             addAnnotationLabel(
                 aGroup, a.node.name, a, Class.Annotation.ELLIPSIS);
           }
-        });
-
-    annotationGroups
+        }).merge(annotationGroups)
         .attr(
             'class',
             a => {
@@ -114,11 +112,10 @@ function annotationToClassName(annotationType: render.AnnotationType) {
 function buildShape(aGroup, a: render.Annotation) {
   if (a.annotationType === render.AnnotationType.SUMMARY) {
     let summary = selectOrCreateChild(aGroup, 'use');
-    summary.attr({
-      'class': 'summary',
-      'xlink:href': '#summary-icon',
-      'cursor': 'pointer'
-    });
+    summary
+      .attr('class', 'summary')
+      .attr('xlink:href', '#summary-icon')
+      .attr('cursor', 'pointer');
   } else {
     let shape = node.buildShape(aGroup, a, Class.Annotation.NODE);
     // add title tag to get native tooltips
@@ -203,20 +200,18 @@ function update(aGroup, d: render.RenderNodeInfo, a: render.Annotation,
   }
 
   // label position
-  aGroup.select('text.' + Class.Annotation.LABEL).transition().attr({
-    x: cx + a.dx + (a.isIn ? -1 : 1) * (a.width / 2 + a.labelOffset),
-    y: d.y + a.dy
-  });
+  aGroup.select('text.' + Class.Annotation.LABEL).transition()
+    .attr('x', cx + a.dx + (a.isIn ? -1 : 1) * (a.width / 2 + a.labelOffset))
+    .attr('y', d.y + a.dy);
 
   // Some annotations (such as summary) are represented using a 12x12 image tag.
   // Purposely omitted units (e.g. pixels) since the images are vector graphics.
   // If there is an image, we adjust the location of the image to be vertically
   // centered with the node and horizontally centered between the arrow and the
   // text label.
-  aGroup.select('use.summary').transition().attr({
-    x: cx + a.dx - 3,
-    y: d.y + a.dy - 6
-  });
+  aGroup.select('use.summary').transition()
+    .attr('x', cx + a.dx - 3)
+    .attr('y', d.y + a.dy - 6);
 
   // Node position (only one of the shape selection will be non-empty.)
   positionEllipse(

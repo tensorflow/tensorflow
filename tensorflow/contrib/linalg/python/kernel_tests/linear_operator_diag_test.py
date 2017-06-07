@@ -122,7 +122,7 @@ class LinearOperatorDiagTest(
     with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
       linalg.LinearOperatorDiag(1.)
 
-  def test_broadcast_apply_and_solve(self):
+  def test_broadcast_matmul_and_solve(self):
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.matmul cannot handle.
     # In particular, tf.matmul does not broadcast.
@@ -130,7 +130,7 @@ class LinearOperatorDiagTest(
       x = random_ops.random_normal(shape=(2, 2, 3, 4))
 
       # This LinearOperatorDiag will be brodacast to (2, 2, 3, 3) during solve
-      # and apply with 'x' as the argument.
+      # and matmul with 'x' as the argument.
       diag = random_ops.random_uniform(shape=(2, 1, 3))
       operator = linalg.LinearOperatorDiag(diag, is_self_adjoint=True)
       self.assertAllEqual((2, 1, 3, 3), operator.shape)
@@ -140,10 +140,10 @@ class LinearOperatorDiagTest(
       mat = array_ops.matrix_diag(diag_broadcast)
       self.assertAllEqual((2, 2, 3, 3), mat.get_shape())  # being pedantic.
 
-      operator_apply = operator.apply(x)
-      mat_apply = math_ops.matmul(mat, x)
-      self.assertAllEqual(operator_apply.get_shape(), mat_apply.get_shape())
-      self.assertAllClose(*sess.run([operator_apply, mat_apply]))
+      operator_matmul = operator.matmul(x)
+      mat_matmul = math_ops.matmul(mat, x)
+      self.assertAllEqual(operator_matmul.get_shape(), mat_matmul.get_shape())
+      self.assertAllClose(*sess.run([operator_matmul, mat_matmul]))
 
       operator_solve = operator.solve(x)
       mat_solve = linalg_ops.matrix_solve(mat, x)

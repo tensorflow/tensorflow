@@ -254,6 +254,7 @@ TEST_F(HloScheduleTest, LatticeMatMul) {
   //      d40      -- layer 4
   HloComputation::Builder builder("entry_computation");
   std::vector<HloInstruction*> params;
+  params.reserve(6);
   for (int i = 0; i < 6; ++i) {
     params.push_back(builder.AddInstruction(HloInstruction::CreateParameter(
         i, f32_2x2_, /*name=*/tensorflow::strings::Printf("param%d", i))));

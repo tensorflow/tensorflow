@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
+namespace {
 
 typedef FunctionDefHelper FDH;
 
@@ -58,13 +59,29 @@ void HasError(const Status& s, const string& substr) {
       << s << ", expected substring " << substr;
 }
 
+// A helper class to make AttrSlice from initializer lists
+class Attrs {
+ public:
+  Attrs(const std::initializer_list<  // NOLINT(runtime/explicit)
+        std::pair<string, FunctionDefHelper::AttrValueWrapper>>& attrs) {
+    for (const auto& aval : attrs) {
+      map_.insert({aval.first, aval.second.proto});
+    }
+  }
+
+  operator AttrSlice() { return AttrSlice(&map_); }  // NOLINT(runtime/explicit)
+
+ private:
+  AttrValueMap map_;
+};
+
 class FunctionTest : public ::testing::Test {
  protected:
   FunctionTest()
       : device_(DeviceFactory::NewDevice("CPU", {},
                                          "/job:localhost/replica:0/task:0")) {}
 
-  void Create(const FunctionDef& fdef, InstantiateAttrValueSlice attrs) {
+  void Create(const FunctionDef& fdef, Attrs attrs) {
     exec_ = nullptr;
     InstantiationResult result;
     TF_CHECK_OK(InstantiateFunction(fdef, attrs, GetOpSig, &result));
@@ -76,7 +93,7 @@ class FunctionTest : public ::testing::Test {
     GraphConstructorOptions opts;
     opts.allow_internal_ops = true;
     opts.expect_device_spec = false;
-    TF_CHECK_OK(ConvertGraphDefToGraph(opts, result.gdef, g));
+    TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g));
 
     const int version = g->versions().producer();
     LocalExecutorParams params;
@@ -151,8 +168,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     fdef_lib_ = lib_def_->ToProto();
   }
 
-  Status Run(const string& name, InstantiateAttrValueSlice attrs,
-             const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
+  Status Run(const string& name, Attrs attrs, const std::vector<Tensor>& args,
+             std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::Handle handle;
     Status status = lib_->Instantiate(name, attrs, &handle);
     if (!status.ok()) {
@@ -188,8 +205,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     return Status::OK();
   }
 
-  std::unique_ptr<Graph> GetFuncBody(const string& name,
-                                     InstantiateAttrValueSlice attrs) {
+  std::unique_ptr<Graph> GetFuncBody(const string& name, Attrs attrs) {
     FunctionLibraryRuntime::Handle handle;
     Status status = lib_->Instantiate(name, attrs, &handle);
     if (!status.ok()) {
@@ -203,8 +219,7 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     return ret;
   }
 
-  std::unique_ptr<Graph> GetGradBody(const string& func,
-                                     InstantiateAttrValueSlice attrs) {
+  std::unique_ptr<Graph> GetGradBody(const string& func, Attrs attrs) {
     FunctionLibraryRuntime::Handle handle;
     Status status = lib_->Instantiate(func, attrs, &handle);
     if (!status.ok()) {
@@ -391,6 +406,90 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
   }
 }
 
+// Verifies that control dependencies on the caller are added as control
+// dependencies on any function calls created by inlining.
+TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
+  Init({test::function::XTimesTwo(), test::function::XTimesFour()});
+
+  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  {
+    Scope s = Scope::NewRootScope();
+    TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+    auto c = ops::NoOp(s.WithOpName("c"));
+    auto b = Call(&s, "b", "XTimesFour", {a});
+    s.graph()->AddControlEdge(c.operation.node(), b.node());
+    auto ret = ops::_Retval(s.WithOpName("b_RetVal"), b, 0);
+    TF_ASSERT_OK(s.ToGraph(g.get()));
+  }
+
+  ExpandInlineFunctions(lib_.get(), g.get());
+  {
+    Scope s = Scope::NewRootScope();
+    TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+    auto c = ops::NoOp(s.WithOpName("c"));
+    auto func0 =
+        ops::NoOp(s.WithOpName("Func/_0").WithControlDependencies({c}));
+    auto func1 = ops::Identity(
+        s.WithOpName("Func/_1").WithControlDependencies({func0}), a);
+    auto b_x2 = Call(&s, "b/x2", "XTimesTwo", {func1});
+    s.graph()->AddControlEdge(func0.operation.node(), b_x2.node());
+    auto b_y = Call(&s, "b/y", "XTimesTwo", {b_x2});
+    s.graph()->AddControlEdge(func0.operation.node(), b_y.node());
+    auto func2 = ops::Identity(s.WithOpName("Func/_2"), b_y);
+    auto ret = ops::_Retval(s.WithOpName("b_RetVal"), func2, 0);
+    GraphDef expected;
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+
+  ExpandInlineFunctions(lib_.get(), g.get());
+  {
+    Scope s = Scope::NewRootScope();
+    TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+    auto c = ops::NoOp(s.WithOpName("c"));
+    auto func0 =
+        ops::NoOp(s.WithOpName("Func/_0").WithControlDependencies({c}));
+    auto func1 = ops::Identity(
+        s.WithOpName("Func/_1").WithControlDependencies({func0}), a);
+
+    auto func3 =
+        ops::NoOp(s.WithOpName("Func/_3").WithControlDependencies({func0}));
+    auto func4 = ops::Identity(
+        s.WithOpName("Func/_4").WithControlDependencies({func3}), func1);
+    auto b_x2_two = ops::Const(
+        s.WithOpName("b/x2/two").WithControlDependencies({func3}), 2LL);
+    auto b_x2_scale = ops::Cast(s.WithOpName("b/x2/scale"), b_x2_two, DT_FLOAT);
+    auto b_x2_y = ops::Mul(s.WithOpName("b/x2/y"), func4, b_x2_scale);
+    auto func5 = ops::Identity(s.WithOpName("Func/_5"), b_x2_y);
+
+    auto func6 =
+        ops::NoOp(s.WithOpName("Func/_6").WithControlDependencies({func0}));
+    auto func7 = ops::Identity(
+        s.WithOpName("Func/_7").WithControlDependencies({func6}), func5);
+    auto b_y_two = ops::Const(
+        s.WithOpName("b/y/two").WithControlDependencies({func6}), 2LL);
+    auto b_y_scale = ops::Cast(s.WithOpName("b/y/scale"), b_y_two, DT_FLOAT);
+    auto b_y_y = ops::Mul(s.WithOpName("b/y/y"), func7, b_y_scale);
+    auto func8 = ops::Identity(s.WithOpName("Func/_8"), b_y_y);
+
+    auto func2 = ops::Identity(s.WithOpName("Func/_2"), func8);
+    auto ret = ops::_Retval(s.WithOpName("b_RetVal"), func2, 0);
+
+    GraphDef expected;
+    TF_ASSERT_OK(s.ToGraphDef(&expected));
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+}
+
 TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
@@ -531,13 +630,14 @@ TEST_F(FunctionLibraryRuntimeTest, Error_InstantiaionError) {
 
   // Instantiating "XTimesTwo" should fail.
   FunctionLibraryRuntime::Handle handle;
-  HasError(lib_->Instantiate("XTimesTwo", {{"T", DT_FLOAT}}, &handle),
+  HasError(lib_->Instantiate("XTimesTwo", Attrs({{"T", DT_FLOAT}}), &handle),
            "Not found: type attr not found");
 
   // But XTimesFour and XTimes16 instantiation should succeed. Only
   // when they run, they fail because XTimesTwo is bad.
-  TF_CHECK_OK(lib_->Instantiate("XTimesFour", {{"T", DT_FLOAT}}, &handle));
-  TF_CHECK_OK(lib_->Instantiate("XTimes16", {{"T", DT_FLOAT}}, &handle));
+  TF_CHECK_OK(
+      lib_->Instantiate("XTimesFour", Attrs({{"T", DT_FLOAT}}), &handle));
+  TF_CHECK_OK(lib_->Instantiate("XTimes16", Attrs({{"T", DT_FLOAT}}), &handle));
 
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   Tensor y;
@@ -844,13 +944,12 @@ bool DoNothing(Graph* g) { return false; }
 GraphDef Optimize(const std::function<bool(Graph* g)>& pass,
                   const FunctionDef& fdef) {
   InstantiationResult result;
-  InstantiateAttrValueMap empty;
-  TF_CHECK_OK(InstantiateFunction(fdef, empty, GetOpSig, &result));
+  TF_CHECK_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
   std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = false;
-  TF_CHECK_OK(ConvertGraphDefToGraph(opts, result.gdef, g.get()));
+  TF_CHECK_OK(ConvertNodeDefsToGraph(opts, result.nodes, g.get()));
   pass(g.get());
   std::unique_ptr<Graph> g1(new Graph(OpRegistry::Global()));
   CopyGraph(*g, g1.get());
@@ -1164,4 +1263,5 @@ TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
   TF_EXPECT_GRAPH_EQ(expected, Optimize(remove_listarray_and_identity, func));
 }
 
+}  // end namespace
 }  // end namespace tensorflow

@@ -194,7 +194,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinearRandom2x2To1x1) {
   ResizeBilinearBaseline(input->tensor<float, 4>(),
                          expected->tensor<float, 4>());
   EXPECT_EQ(input->flat<float>()(0), output->flat<float>()(0));
-  test::ExpectTensorEqual<float>(*expected.get(), *output);
+  test::ExpectTensorEqual<float>(*expected, *output);
 }
 
 TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners2x2To1x1) {

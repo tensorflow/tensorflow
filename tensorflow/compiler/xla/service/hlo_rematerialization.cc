@@ -790,7 +790,11 @@ bool MemoryUsageTracker::Check() const {
       live_size += AllocatedSize(buffer.id);
     }
   }
-  CHECK_EQ(live_size, memory_usage_);
+  CHECK(live_size == memory_usage_)
+      << "Live set size " << live_size << " is not same as memory usage "
+      << memory_usage_
+      << ". This could happen if some nodes defined in the "
+         "computation are not being used/executed.";
 
   return true;
 }
@@ -1156,9 +1160,7 @@ StatusOr<bool> HloRematerialization::Run(
   VLOG(1) << "HloRematerialization() with memory limit of "
           << HumanReadableNumBytes(memory_limit_bytes);
 
-  TF_ASSIGN_OR_RETURN(points_to_analysis_,
-                      TuplePointsToAnalysis::Run(
-                          module, /*include_loop_fusion_instructions=*/true));
+  TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module));
 
   // Adjust memory limit to account for the output of the entry
   // computation. This is necessary because the per-computation accounting in

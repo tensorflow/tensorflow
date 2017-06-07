@@ -127,6 +127,16 @@ class TemporaryVariableOp : public OpKernel {
     OP_REQUIRES_OK(context, rm->Create(context->step_container()->name(),
                                        var_name_, tmp_var));
     context->set_output_ref(0, &tmp_var->mu, &tmp_var->val);
+    if (context->track_allocations()) {
+      AllocatorAttributes attr;
+      if (context->allocate_on_host(attr)) {
+        context->record_host_persistent_memory_allocation(
+            tmp_var->val.AllocatedBytes());
+      } else {
+        context->record_device_persistent_memory_allocation(
+            tmp_var->val.AllocatedBytes());
+      }
+    }
   }
 
  private:
@@ -170,10 +180,10 @@ class DestroyTemporaryVariableOp : public OpKernel {
     if (context->track_allocations()) {
       if (context->allocate_on_host(AllocatorAttributes())) {
         context->record_host_persistent_memory_allocation(
-            -tmpvar.AllocatedBytes());
+            -static_cast<int64>(tmpvar.AllocatedBytes()));
       } else {
         context->record_device_persistent_memory_allocation(
-            -tmpvar.AllocatedBytes());
+            -static_cast<int64>(tmpvar.AllocatedBytes()));
       }
     }
   }

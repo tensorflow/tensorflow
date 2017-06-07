@@ -29,14 +29,14 @@ const EDGE_WIDTH_SCALE_EXPONENT = 0.3;
 /** The domain (min and max value) for the edge width. */
 const DOMAIN_EDGE_WIDTH_SCALE = [1, 5E6];
 
-export const EDGE_WIDTH_SCALE = d3.scale.pow()
+export const EDGE_WIDTH_SCALE: d3.ScalePower<number, number> = d3.scalePow()
       .exponent(EDGE_WIDTH_SCALE_EXPONENT)
       .domain(DOMAIN_EDGE_WIDTH_SCALE)
       .range([MIN_EDGE_WIDTH, MAX_EDGE_WIDTH])
       .clamp(true);
 
 let arrowheadMap =
-    d3.scale.quantize().domain([MIN_EDGE_WIDTH, MAX_EDGE_WIDTH]).range([
+    d3.scaleQuantize<String>().domain([MIN_EDGE_WIDTH, MAX_EDGE_WIDTH]).range([
       'small', 'medium', 'large', 'xlarge'
     ]);
 
@@ -87,12 +87,7 @@ export function buildGroup(sceneGroup,
 
   // Select all children and join with data.
   // (Note that all children of g.edges are g.edge)
-  let edgeGroups = container.selectAll(function() {
-    // using d3's selector function
-    // See https://github.com/mbostock/d3/releases/tag/v2.0.0
-    // (It's not listed in the d3 wiki.)
-    return this.childNodes;
-  }).data(edges, getEdgeKey);
+  let edgeGroups = (container as any).selectAll(function() {return this.childNodes;}).data(edges, getEdgeKey);
 
   // Make edges a group to support rendering multiple lines for metaedge
   edgeGroups.enter()
@@ -108,10 +103,10 @@ export function buildGroup(sceneGroup,
         // Add line during enter because we're assuming that type of line
         // normally does not change.
         appendEdge(edgeGroup, d, sceneElement);
-      });
-
-  edgeGroups.each(position);
-  edgeGroups.each(function(d) {
+      })
+      .merge(edgeGroups)
+      .each(position)
+      .each(function(d) {
     stylize(d3.select(this), d, sceneElement);
   });
 
@@ -168,8 +163,8 @@ export function getLabelForEdge(metaedge: Metaedge,
  * @return The new array of control points.
  */
 function adjustPathPointsForMarker(points: render.Point[],
-    marker: d3.Selection<any>, isStart: boolean): render.Point[] {
-  let lineFunc = d3.svg.line<render.Point>()
+    marker: d3.Selection<any, any, any, any>, isStart: boolean): render.Point[] {
+  let lineFunc = d3.line<render.Point>()
     .x(d => d.x)
     .y(d => d.y);
   let path =
@@ -232,11 +227,9 @@ export function appendEdge(edgeGroup, d: EdgeData,
   let strokeWidth = sceneElement.renderHierarchy.edgeWidthScale(size);
 
   let path = edgeGroup.append('path')
-                 .attr({
-                   'id': pathId,
-                   'class': edgeClass,
-                 })
-                 .style({'stroke-width': strokeWidth + 'px'});
+                 .attr('id', pathId)
+                 .attr('class', edgeClass)
+                 .style('stroke-width', strokeWidth + 'px');
 
   // Check if there is a reference edge and add an arrowhead of the right size.
   if (d.label && d.label.metaedge && d.label.metaedge.numRefEdges) {
@@ -264,17 +257,15 @@ export function appendEdge(edgeGroup, d: EdgeData,
 
   edgeGroup.append('text')
       .append('textPath')
-      .attr({
-        'xlink:href': '#' + pathId,
-        'startOffset': '50%',
-        'text-anchor': 'middle',
-        'dominant-baseline': 'central'
-      })
+        .attr('xlink:href', '#' + pathId)
+        .attr('startOffset', '50%')
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'central')
       .text(labelForEdge);
 };
 
-export let interpolate = d3.svg.line<{x: number, y: number}>()
-                             .interpolate('basis')
+export let interpolate: d3.Line<{x: number, y: number}> = d3.line<{x: number, y: number}>()
+                             .curve(d3.curveBasis)
                              .x((d) => { return d.x;})
                              .y((d) => { return d.y;});
 
@@ -333,7 +324,7 @@ function position(d) {
   d3.select(this)
       .select('path.' + Class.Edge.LINE)
       .transition()
-      .attrTween('d', getEdgePathInterpolator);
+      .attrTween('d', getEdgePathInterpolator as any);
 };
 
 /**

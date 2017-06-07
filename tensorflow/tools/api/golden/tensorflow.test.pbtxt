@@ -5,6 +5,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.platform.benchmark._BenchmarkRegistrar\'>"
   }
   member {
+    name: "StubOutForTesting"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TestCase"
     mtype: "<type \'type\'>"
   }
@@ -23,6 +27,10 @@ tf_module {
   member_method {
     name: "compute_gradient_error"
     argspec: "args=[\'x\', \'x_shape\', \'y\', \'y_shape\', \'x_init_value\', \'delta\', \'init_targets\', \'extra_feed_dict\'], varargs=None, keywords=None, defaults=[\'None\', \'0.001\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "create_local_cluster"
+    argspec: "args=[\'num_workers\', \'num_ps\', \'protocol\'], varargs=None, keywords=None, defaults=[\'grpc\'], "
   }
   member_method {
     name: "get_temp_dir"

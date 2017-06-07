@@ -57,7 +57,7 @@ class GraphTransferer {
       const GraphDef& graph_def,
       const std::vector<std::pair<string, Tensor>>& input_node_info_list,
       const std::vector<string>& output_node_names,
-      const bool shape_inference_for_unkown_shape);
+      const bool shape_inference_for_unknown_shape);
 
   // Load graph structure into GraphTransferer from protobuf file
   // TODO(satok): Pass a pair of TensorShape and DataType instead of

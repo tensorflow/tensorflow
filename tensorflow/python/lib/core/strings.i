@@ -87,7 +87,7 @@ bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
   if (!temp_string_list) {
     SWIG_fail;
   }
-  tensorflow::Safe_PyObjectVector converted;
+  std::vector<tensorflow::Safe_PyObjectPtr> converted;
   converted.reserve(size);
   for (const string& op : $1) {
     // Always treat strings as bytes, consistent with the typemap
@@ -103,4 +103,3 @@ bool _BytesToStringPiece(PyObject* obj, tensorflow::StringPiece* result) {
   }
   $result = temp_string_list.release();
 }
-

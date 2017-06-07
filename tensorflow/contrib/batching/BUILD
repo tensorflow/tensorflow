@@ -21,7 +21,6 @@ cc_library(
     name = "batch_scheduler",
     hdrs = ["batch_scheduler.h"],
     deps = [
-        ":batch_scheduler_hdrs",
         "//tensorflow/core:lib",
     ],
 )
@@ -54,7 +53,6 @@ cc_library(
     deps = [
         ":batch_scheduler",
         ":shared_batch_scheduler_hdrs",
-        "//tensorflow/contrib/batching/util:periodic_function",
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
@@ -181,7 +179,11 @@ py_test(
     size = "small",
     srcs = ["python/ops/batch_ops_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["nomac"],
+    tags = [
+        "manual",
+        "no_pip",
+        "nomac",
+    ],
     deps = [
         ":batch_py",
         "//tensorflow/python:framework_test_lib",

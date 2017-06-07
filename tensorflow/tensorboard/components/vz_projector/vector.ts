@@ -203,7 +203,7 @@ export function centroid<T>(dataPoints: T[], accessor?: (a: T) => Vector):
  * a random (0, 1) gaussian distribution.
  */
 export function rn(size: number): Float32Array {
-  let normal = d3.random.normal();
+  const normal = d3.randomNormal();
   let result = new Float32Array(size);
   for (let i = 0; i < size; ++i) {
     result[i] = normal();

@@ -696,8 +696,9 @@ def train(train_op,
         else:
           should_stop_op = constant_op.constant(False)
         train_step_kwargs['should_stop'] = should_stop_op
-        train_step_kwargs['should_log'] = math_ops.equal(
-            math_ops.mod(global_step, log_every_n_steps), 0)
+        if log_every_n_steps > 0:
+          train_step_kwargs['should_log'] = math_ops.equal(
+              math_ops.mod(global_step, log_every_n_steps), 0)
         if is_chief and trace_every_n_steps is not None:
           train_step_kwargs['should_trace'] = math_ops.equal(
               math_ops.mod(global_step, trace_every_n_steps), 0)
@@ -737,7 +738,7 @@ def train(train_op,
           _wait_for_step(sess, global_step,
                          min(startup_delay_steps, number_of_steps or
                              sys.maxint))
-        sv.start_queue_runners(sess)
+        threads = sv.start_queue_runners(sess)
         logging.info('Starting Queues.')
         if is_chief and sync_optimizer is not None:
           sv.start_queue_runners(sess, [chief_queue_runner])
@@ -748,6 +749,7 @@ def train(train_op,
                 sess, train_op, global_step, train_step_kwargs)
             if should_stop:
               logging.info('Stopping Training.')
+              sv.request_stop()
               break
         except errors.OutOfRangeError:
           # OutOfRangeError is thrown when epoch limit per
@@ -756,6 +758,7 @@ def train(train_op,
         if logdir and sv.is_chief:
           logging.info('Finished training! Saving model to disk.')
           sv.saver.save(sess, sv.save_path, global_step=sv.global_step)
+          sv.stop(threads, close_summary_writer=True)
 
     except errors.AbortedError:
       # Always re-run on AbortedError as it indicates a restart of one of the

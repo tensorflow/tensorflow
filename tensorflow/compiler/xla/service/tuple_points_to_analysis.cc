@@ -33,10 +33,9 @@ limitations under the License.
 namespace xla {
 
 string BufferAlias::ToString() const {
-  return tensorflow::strings::StrCat("BufferAlias(",
-                                     instruction_->FullyQualifiedName(), "[",
-                                     tensorflow::str_util::Join(index_, ","),
-                                     "] => ", buffer_->ToString(), ")");
+  return tensorflow::strings::StrCat(
+      "BufferAlias(", instruction_->FullyQualifiedName(), "[",
+      tensorflow::str_util::Join(index_, ","), "])");
 }
 
 std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias) {
@@ -131,10 +130,9 @@ void PointsToSet::add_tuple_source(const ShapeIndex& index,
 }
 
 /* static */ StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
-TuplePointsToAnalysis::Run(const HloModule* module,
-                           const bool include_loop_fusion_instructions) {
+TuplePointsToAnalysis::Run(const HloModule* module) {
   std::unique_ptr<TuplePointsToAnalysis> analysis(
-      new TuplePointsToAnalysis(module, include_loop_fusion_instructions));
+      new TuplePointsToAnalysis(module));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return std::move(analysis);
 }
@@ -145,17 +143,14 @@ Status TuplePointsToAnalysis::Analyze() {
     TF_RETURN_IF_ERROR(computation->Accept(this));
     TF_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(computation->instructions()));
-    if (include_loop_fusion_instructions_) {
-      // Run points-to analysis on loop fusion instructions in 'computation'.
-      for (auto& instruction : computation->instructions()) {
-        if (instruction->opcode() != HloOpcode::kFusion ||
-            instruction->fusion_kind() != HloInstruction::FusionKind::kLoop) {
-          continue;
-        }
-        TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
-        TF_RETURN_IF_ERROR(PopulateDefinedBuffersAndAliases(
-            instruction->fused_instructions()));
+    // Run points-to analysis on fusion instructions in 'computation'.
+    for (auto& instruction : computation->instructions()) {
+      if (instruction->opcode() != HloOpcode::kFusion) {
+        continue;
       }
+      TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
+      TF_RETURN_IF_ERROR(
+          PopulateDefinedBuffersAndAliases(instruction->fused_instructions()));
     }
   }
 
@@ -178,7 +173,7 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
         if (buffer_aliases_.count(buffer) == 0) {
           buffer_aliases_.insert({buffer, std::vector<BufferAlias>()});
         }
-        buffer_aliases_[buffer].emplace_back(*buffer, instruction.get(), index);
+        buffer_aliases_[buffer].emplace_back(instruction.get(), index);
       }
       return Status::OK();
     }));
@@ -346,12 +341,6 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
   return Status::OK();
 }
 
-Status TuplePointsToAnalysis::HandleFusion(HloInstruction* fusion) {
-  return ShapeUtil::IsTuple(fusion->shape())
-             ? Unimplemented("HandleFusion with tuple output")
-             : DefaultAction(fusion);
-}
-
 const PointsToSet& TuplePointsToAnalysis::GetPointsToSet(
     const HloInstruction* hlo_instruction) const {
   return *FindOrDie(points_to_, hlo_instruction);
@@ -482,9 +471,7 @@ string TuplePointsToAnalysis::ToString() const {
     for (const HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       InstructionToString(instruction, &output);
-      if (include_loop_fusion_instructions_ &&
-          instruction->opcode() == HloOpcode::kFusion &&
-          instruction->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+      if (instruction->opcode() == HloOpcode::kFusion) {
         for (auto& fused : instruction->fused_instructions()) {
           InstructionToString(fused.get(), &output);
         }

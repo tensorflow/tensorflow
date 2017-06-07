@@ -25,6 +25,7 @@ from tensorflow.contrib import compiler
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn
+from tensorflow.contrib import data
 from tensorflow.contrib import deprecated
 from tensorflow.contrib import distributions
 from tensorflow.contrib import factorization
@@ -53,6 +54,7 @@ from tensorflow.contrib import quantization
 from tensorflow.contrib import rnn
 from tensorflow.contrib import saved_model
 from tensorflow.contrib import seq2seq
+from tensorflow.contrib import signal
 from tensorflow.contrib import slim
 from tensorflow.contrib import solvers
 from tensorflow.contrib import sparsemax

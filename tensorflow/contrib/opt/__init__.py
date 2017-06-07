@@ -19,18 +19,24 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import
+from tensorflow.contrib.opt.python.training.delay_compensated_gradient_descent import *
+from tensorflow.contrib.opt.python.training.drop_stale_gradient_optimizer import *
 from tensorflow.contrib.opt.python.training.external_optimizer import *
 from tensorflow.contrib.opt.python.training.lazy_adam_optimizer import *
+from tensorflow.contrib.opt.python.training.nadam_optimizer import *
 from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
+from tensorflow.contrib.opt.python.training.nadam_optimizer import *
 from tensorflow.contrib.opt.python.training.variable_clipping_optimizer import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['ExternalOptimizerInterface',
-                    'LazyAdamOptimizer',
-                    'MovingAverageOptimizer',
-                    'ScipyOptimizerInterface',
-                    'VariableClippingOptimizer']
+
+_allowed_symbols = [
+    'DelayCompensatedGradientDescentOptimizer',
+    'DropStaleGradientOptimizer', 'ExternalOptimizerInterface',
+    'LazyAdamOptimizer', 'NadamOptimizer', 'MovingAverageOptimizer',
+    'ScipyOptimizerInterface', 'VariableClippingOptimizer'
+]
 
 remove_undocumented(__name__, _allowed_symbols)

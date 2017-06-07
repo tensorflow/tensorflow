@@ -13,9 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {TABS} from '../../tf-globals/globals';
+
 describe('fast tab switch', () => {
   window.HTMLImports.whenReady(() => {
     let tb = d3.select('tf-tensorboard');
+    // tslint:disable-next-line:no-any be quiet tsc
     var tabs = (<any>tb.node()).$.tabs;
 
     // This test will select the events tab. Once the events tab
@@ -23,9 +26,9 @@ describe('fast tab switch', () => {
     // the images tab wihout waiting for the graph tab to finish
     // rendering. Finally, it finishes when the images tab
     // has rendered and no errors were thrown.
-    let eventsTabIndex = TF.Globals.TABS.indexOf('events');
-    let imagesTabIndex = TF.Globals.TABS.indexOf('images');
-    let graphTabIndex = TF.Globals.TABS.indexOf('graphs');
+    const eventsTabIndex = TABS.indexOf('events');
+    const imagesTabIndex = TABS.indexOf('images');
+    const graphTabIndex = TABS.indexOf('graphs');
 
     // Listen for when the events tab rendered.
     tb.on('rendered', () => {

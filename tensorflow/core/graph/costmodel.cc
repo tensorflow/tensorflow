@@ -60,7 +60,7 @@ void CostModel::MergeFromLocal(const Graph& g, const CostModel& cm) {
     time_[global_id] += cm.time_[local_id];
     int num_slots = cm.slot_bytes_[local_id].size();
     if (num_slots > 0) {
-      if (slot_bytes_[global_id].size() == 0) {
+      if (slot_bytes_[global_id].empty()) {
         slot_bytes_[global_id].resize(num_slots);
       } else {
         CHECK_EQ(num_slots, slot_bytes_[global_id].size());
@@ -82,7 +82,7 @@ void CostModel::MergeFromGlobal(const CostModel& cm) {
     time_[i] += cm.time_[i];
     int num_slots = cm.slot_bytes_[i].size();
     if (num_slots > 0) {
-      if (slot_bytes_[i].size() == 0) {
+      if (slot_bytes_[i].empty()) {
         slot_bytes_[i].resize(num_slots);
       } else {
         CHECK_EQ(num_slots, slot_bytes_[i].size());
@@ -138,14 +138,14 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
   auto perslot = &slot_bytes_[id];
   auto max_mem_usage = &max_mem_usage_[id];
   auto output_port_alloc_ids = &output_port_alloc_ids_[id];
-  if (perslot->size() > 0) {
+  if (!perslot->empty()) {
     CHECK_EQ(num_outputs, perslot->size()) << "Cannot resize slot_bytes, node="
                                            << node->name();
   } else {
     perslot->resize(num_outputs, Bytes(-1));
     output_port_alloc_ids->resize(num_outputs, -1);
     max_mem_usage->output_port_mem.resize(num_outputs, Bytes(-1));
-    max_mem_usage->output_port_shape.resize(num_outputs, TensorShapeProto());
+    max_mem_usage->output_port_shape.resize(num_outputs, unknown_shape_);
     max_mem_usage->output_port_type.resize(num_outputs, DT_INVALID);
   }
 }
@@ -217,19 +217,17 @@ Microseconds CostModel::TimeEstimate(const Node* node) const {
 }
 
 void CostModel::CheckInitialized(const Graph& graph) const {
-  for (const Node* n : graph.nodes()) {
-    if (n->IsOp()) {
-      CHECK(static_cast<size_t>(n->id()) < time_.size() &&
-            time_[n->id()] >= Microseconds(0))
-          << ": no time estimate for " << n->DebugString();
+  for (const Node* n : graph.op_nodes()) {
+    CHECK(static_cast<size_t>(n->id()) < time_.size() &&
+          time_[n->id()] >= Microseconds(0))
+        << ": no time estimate for " << n->DebugString();
 
-      CHECK(static_cast<size_t>(n->id()) < slot_bytes_.size())
-          << ": no size estimate for " << n->DebugString();
-      const auto& perslot = slot_bytes_[n->id()];
-      for (size_t i = 0; i < perslot.size(); i++) {
-        CHECK_GE(perslot[i], Bytes(0)) << ": no size estimate for output# " << i
-                                       << " of " << n->DebugString();
-      }
+    CHECK(static_cast<size_t>(n->id()) < slot_bytes_.size())
+        << ": no size estimate for " << n->DebugString();
+    const auto& perslot = slot_bytes_[n->id()];
+    for (size_t i = 0; i < perslot.size(); i++) {
+      CHECK_GE(perslot[i], Bytes(0)) << ": no size estimate for output# " << i
+                                     << " of " << n->DebugString();
     }
   }
 }
@@ -256,26 +254,28 @@ void CostModel::RecordMaxMemorySize(const Node* node, int output_slot,
 
 Bytes CostModel::MaxMemorySize(const Node* node, int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size() ||
+      max_mem_usage_[id].output_port_mem.size() <= static_cast<size_t>(slot)) {
     return Bytes(0);
   }
   return max_mem_usage_[id].output_port_mem[slot];
 }
 
-TensorShapeProto CostModel::MaxMemoryShape(const Node* node, int slot) const {
+const TensorShapeProto& CostModel::MaxMemoryShape(const Node* node,
+                                                  int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
-    return TensorShapeProto();
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size() ||
+      max_mem_usage_[id].output_port_shape.size() <=
+          static_cast<size_t>(slot)) {
+    return unknown_shape_;
   }
   return max_mem_usage_[id].output_port_shape[slot];
 }
 
 DataType CostModel::MaxMemoryType(const Node* node, int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+  if (id < 0 || static_cast<size_t>(id) >= max_mem_usage_.size() ||
+      max_mem_usage_[id].output_port_type.size() <= static_cast<size_t>(slot)) {
     return DT_INVALID;
   }
   return max_mem_usage_[id].output_port_type[slot];
@@ -371,8 +371,8 @@ void CostModel::RecordAllocationId(const Node* node, int output_slot,
 
 int64 CostModel::AllocationId(const Node* node, int slot) const {
   const int id = Id(node);
-  if (id < 0 || static_cast<size_t>(id) >= slot_bytes_.size() ||
-      slot_bytes_[id].size() <= static_cast<size_t>(slot)) {
+  if (id < 0 || static_cast<size_t>(id) >= output_port_alloc_ids_.size() ||
+      output_port_alloc_ids_[id].size() <= static_cast<size_t>(slot)) {
     return -1;
   }
   return output_port_alloc_ids_[id][slot];
@@ -476,6 +476,14 @@ static void EstimateComputationCosts(const Graph& g, CostModel* cost_model) {
 }  // namespace
 
 void CostModel::InitFromGraph(const Graph& g) {
+  const int num_node_ids = g.num_node_ids();
+  slot_bytes_.reserve(num_node_ids);
+  count_.reserve(num_node_ids);
+  time_.reserve(num_node_ids);
+  max_mem_usage_.reserve(num_node_ids);
+  max_exec_time_.reserve(num_node_ids);
+  output_port_alloc_ids_.reserve(num_node_ids);
+
   AddNodesToCostModel(g, this);
   AssignSizes(g, this);
   EstimateComputationCosts(g, this);

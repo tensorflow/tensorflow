@@ -73,15 +73,21 @@ def _get_op_def(op):
 
 
 def _is_in_placeholders(op, func_arg_placeholders):
-  return op.values() and (op.values()[0].name in func_arg_placeholders)
+  """Checks whether any output of this op is in func_arg_placeholders."""
+  return op.values() and any(x.name in func_arg_placeholders
+                             for x in op.values())
 
 
-def _create_input_dict(function_graph, func_arg_placeholders):
+def _create_input_dict(function_graph,
+                       func_arg_placeholders,
+                       initial_value=None):
   """Create a mapping from graph tensor names to function tensor names."""
-  input_dict = {}
+  if initial_value is None:
+    input_dict = {}
+  else:
+    input_dict = dict(initial_value)
   for op in function_graph.get_operations():
     if _is_in_placeholders(op, func_arg_placeholders):
-      input_dict[op.values()[0].name] = op.values()[0].name
       input_dict[op.name] = op.name
     else:
       op_def = _get_op_def(op)
@@ -150,6 +156,10 @@ def _graph_to_function_def(graph, operations, inputs, outputs, out_names=None):
   used_names = set()
   func.signature.input_arg.extend(
       [_tensor_to_argdef(i, used_names=used_names) for i in inputs])
+  # Initializes the input map with all placeholder input tensors.
+  initial_dict = {}
+  for o, m in zip(inputs, func.signature.input_arg):
+    initial_dict[o.name] = m.name
   if out_names is None:
     used_names = set()
     func.signature.output_arg.extend(
@@ -165,7 +175,8 @@ def _graph_to_function_def(graph, operations, inputs, outputs, out_names=None):
     func.signature.output_arg.extend(
         [_tensor_to_argdef(o, name=n) for o, n in zip(outputs, out_names)])
   func_arg_placeholders = set([i.name for i in inputs])
-  input_dict = _create_input_dict(graph, func_arg_placeholders)
+  input_dict = _create_input_dict(graph, func_arg_placeholders,
+                                  initial_value=initial_dict)
 
   for op in operations:
     if _is_in_placeholders(op, func_arg_placeholders):
@@ -281,7 +292,7 @@ class _FuncGraph(ops.Graph):
   _FuncGraph overrides ops.Graph's create_op() so that we can keep
   track of every inputs into every op created inside the function.  If
   any input is from other graphs, we keep track of it in self.capture
-  and substitue the input with a place holder.
+  and substitute the input with a place holder.
 
   Each captured input's corresponding place holder is converted into a
   function argument and the caller passes in the captured tensor.
@@ -351,8 +362,7 @@ class _FuncGraph(ops.Graph):
           self.extra_inputs.append(x)
           ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
           # pylint: disable=protected-access
-          ph._handle_shape = x._handle_shape
-          ph._handle_dtype = x._handle_dtype
+          ph._handle_data = x._handle_data
           # pylint: enable=protected-access
           inputs[i] = ph
           self._captured[x] = ph

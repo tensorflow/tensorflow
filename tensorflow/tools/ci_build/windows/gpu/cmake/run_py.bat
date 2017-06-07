@@ -22,7 +22,7 @@ CD %BUILD_DIR%
 SET BUILD_CC_TESTS=OFF
 SET BUILD_PYTHON_TESTS=ON
 
-SET PIP_EXE="C:\Program Files\Anaconda3\Scripts\pip.exe"
+IF DEFINED PIP_EXE (ECHO PIP_EXE is set to %PIP_EXE%) ELSE (SET PIP_EXE="C:\Program Files\Anaconda3\Scripts\pip.exe")
 
 :: Run the CMAKE build to build the pip package.
 CALL %REPO_ROOT%\tensorflow\tools\ci_build\windows\gpu\cmake\run_build.bat

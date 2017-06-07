@@ -24,6 +24,8 @@ limitations under the License.
 
 %}
 
+%include "tensorflow/python/client/tf_sessionrun_wrapper.i"
+
 // Required to use PyArray_* functions.
 %init %{
 tensorflow::ImportNumpy();
@@ -69,7 +71,8 @@ tensorflow::ImportNumpy();
 // represented as a list of strings.
 %typemap(in) const tensorflow::NameVector& (
     tensorflow::NameVector temp,
-    tensorflow::Safe_PyObjectPtr temp_string_list(tensorflow::make_safe(nullptr))) {
+    tensorflow::Safe_PyObjectPtr temp_string_list(
+        tensorflow::make_safe(static_cast<PyObject*>(nullptr)))) {
   if (!PyList_Check($input)) {
     SWIG_fail;
   }
@@ -116,7 +119,7 @@ tensorflow::ImportNumpy();
 
 // Build a Python list of outputs and return it.
 %typemap(argout) tensorflow::PyObjectVector* out_values {
-  tensorflow::Safe_PyObjectVector out_values_safe;
+  std::vector<tensorflow::Safe_PyObjectPtr> out_values_safe;
   for (size_t i = 0; i < $1->size(); ++i) {
     out_values_safe.emplace_back(tensorflow::make_safe($1->at(i)));
   }
@@ -156,35 +159,66 @@ tensorflow::ImportNumpy();
       reinterpret_cast<const char*>($1.data), $1.length);
 }
 
-// Include the functions from c_api.h, except TF_Run.
-%ignoreall
-%unignore TF_Code;
-%unignore TF_Status;
-%unignore TF_Buffer;
-%unignore TF_NewBuffer;
-%unignore TF_NewBufferFromString;
-%unignore TF_DeleteBuffer;
-%unignore TF_GetBuffer;
-%unignore TF_NewStatus;
-%unignore TF_DeleteStatus;
-%unignore TF_GetCode;
-%unignore TF_Message;
-%unignore TF_SessionOptions;
+%inline %{
+// Helper function to convert a Python list of Tensors to a C++ vector of
+// TF_Outputs.
+//
+// Caller should have already checked that `py_tensor_list` is a list (this
+// isn't done in this function to allow for function-specific error messages)
+void PyTensorListToVector(PyObject* py_tensor_list,
+                          std::vector<TF_Output>* vec) {
+  size_t size = PyList_Size(py_tensor_list);
+  for (int i = 0; i < size; ++i) {
+    PyObject* item = PyList_GetItem(py_tensor_list, i);
+    TF_Output* input_ptr;
+    SWIG_ConvertPtr(item, reinterpret_cast<void**>(&input_ptr),
+                    SWIGTYPE_p_TF_Output, 0);
+    vec->push_back(*input_ptr);
+  }
+}
+%}
+
+// Converts input Python list of wrapped TF_Outputs into a single array
+%typemap(in) (const TF_Output* inputs, int num_inputs)
+    (std::vector<TF_Output> inputs) {
+  if (!PyList_Check($input)) {
+    SWIG_exception_fail(
+        SWIG_TypeError, "$symname: expected Python list of wrapped TF_Outputs");
+  }
+  PyTensorListToVector($input, &inputs);
+  $1 = inputs.data();
+  $2 = inputs.size();
+}
+
+// TODO(skyewm): SWIG emits a warning for the const char* in TF_WhileParams,
+// skip for now
+%ignore TF_WhileParams;
+%ignore TF_NewWhile;
+%ignore TF_FinishWhile;
+%ignore TF_AbortWhile;
+
+// These are defined below, avoid duplicate definitions
+%ignore TF_Run;
+%ignore TF_PRun;
+%ignore TF_PRunSetup;
+
+// We use TF_SessionRun_wrapper instead of TF_SessionRun
+%ignore TF_SessionRun;
+%unignore TF_SessionRun_wrapper;
+// The %exception block above releases the Python GIL for the length of each
+// wrapped method. We disable this behavior for TF_SessionRun_wrapper because it
+// uses Python method(s) that expect the GIL to be held (at least
+// PyArray_Return, maybe others).
+%noexception TF_SessionRun_wrapper;
+
+
 %rename("_TF_SetTarget") TF_SetTarget;
 %rename("_TF_SetConfig") TF_SetConfig;
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
-%unignore TF_DeleteSessionOptions;
-%unignore TF_NewDeprecatedSession;
-%unignore TF_CloseDeprecatedSession;
-%unignore TF_DeleteDeprecatedSession;
-%unignore TF_ExtendGraph;
-%unignore TF_NewLibrary;
-%unignore TF_LoadLibrary;
-%unignore TF_DeleteLibraryHandle;
-%unignore TF_GetOpList;
-%include "tensorflow/c/c_api.h"
-%ignoreall
 
+%include "tensorflow/c/c_api.h"
+
+%ignoreall
 %insert("python") %{
   def TF_NewSessionOptions(target=None, config=None):
     # NOTE: target and config are validated in the session constructor.

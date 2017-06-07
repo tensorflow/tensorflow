@@ -195,7 +195,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
 
   HloInstruction* root = computation->root_instruction();
   EXPECT_THAT(root, op::Constant());
-  EXPECT_TRUE(ShapeUtil::Equal(root->shape(), shape));
+  EXPECT_TRUE(ShapeUtil::Compatible(root->shape(), shape));
 
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   bool matched = true;

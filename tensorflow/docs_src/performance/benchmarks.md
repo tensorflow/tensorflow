@@ -4,7 +4,7 @@
 
 A selection of image classification models were tested across multiple platforms
 to create a point of reference for the TensorFlow community. The
-[Methodology](#methodology) section details how the test were executed and has
+[Methodology](#methodology) section details how the tests were executed and has
 links to the scripts used.
 
 ## Results for image classification models
@@ -92,7 +92,7 @@ addition to the batch sizes listed in the table, InceptionV3, ResNet-50,
 ResNet-152, and VGG16 were tested with a batch size of 32. Those results are in
 the *other results* section.
 
-Options            | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+Options            | InceptionV3 | ResNet-50 | ResNet-152 | AlexNet | VGG16
 ------------------ | ----------- | --------- | ---------- | ------- | -----
 Batch size per GPU | 64          | 64        | 64         | 512     | 64
 Optimizer          | sgd         | sgd       | sgd        | sgd     | sgd
@@ -120,7 +120,7 @@ VGG16       | replicated (with NCCL) | n/a
 
 **Training synthetic data**
 
-GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+GPUs | InceptionV3 | ResNet-50 | ResNet-152 | AlexNet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
 1    | 142         | 219       | 91.8       | 2987    | 154
 2    | 284         | 422       | 181        | 5658    | 295
@@ -129,7 +129,7 @@ GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 
 **Training real data**
 
-GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+GPUs | InceptionV3 | ResNet-50 | ResNet-152 | AlexNet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
 1    | 142         | 218       | 91.4       | 2890    | 154
 2    | 278         | 425       | 179        | 4448    | 284
@@ -182,7 +182,7 @@ addition to the batch sizes listed in the table, InceptionV3 and ResNet-50 were
 tested with a batch size of 32. Those results are in the *other results*
 section.
 
-Options            | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+Options            | InceptionV3 | ResNet-50 | ResNet-152 | AlexNet | VGG16
 ------------------ | ----------- | --------- | ---------- | ------- | -----
 Batch size per GPU | 64          | 64        | 32         | 512     | 32
 Optimizer          | sgd         | sgd       | sgd        | sgd     | sgd
@@ -199,7 +199,7 @@ The configuration used for each model was `variable_update` equal to
 
 **Training synthetic data**
 
-GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+GPUs | InceptionV3 | ResNet-50 | ResNet-152 | AlexNet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
 1    | 30.5        | 51.9      | 20.0       | 656     | 35.4
 2    | 57.8        | 99.0      | 38.2       | 1209    | 64.8
@@ -208,7 +208,7 @@ GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 
 **Training real data**
 
-GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+GPUs | InceptionV3 | ResNet-50 | ResNet-152 | AlexNet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
 1    | 30.6        | 51.2      | 20.0       | 639     | 34.2
 2    | 58.4        | 98.8      | 38.3       | 1136    | 62.9
@@ -257,7 +257,7 @@ addition to the batch sizes listed in the table, InceptionV3 and ResNet-50 were
 tested with a batch size of 32. Those results are in the *other results*
 section.
 
-Options            | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+Options            | InceptionV3 | ResNet-50 | ResNet-152 | AlexNet | VGG16
 ------------------ | ----------- | --------- | ---------- | ------- | -----
 Batch size per GPU | 64          | 64        | 32         | 512     | 32
 Optimizer          | sgd         | sgd       | sgd        | sgd     | sgd
@@ -281,7 +281,7 @@ VGG16       | parameter_server          | gpu
 
 **Training synthetic data**
 
-GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+GPUs | InceptionV3 | ResNet-50 | ResNet-152 | AlexNet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
 1    | 30.8        | 51.5      | 19.7       | 684     | 36.3
 2    | 58.7        | 98.0      | 37.6       | 1244    | 69.4
@@ -290,7 +290,7 @@ GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
 
 **Training real data**
 
-GPUs | InceptionV3 | ResNet-50 | ResNet-152 | Alexnet | VGG16
+GPUs | InceptionV3 | ResNet-50 | ResNet-152 | AlexNet | VGG16
 ---- | ----------- | --------- | ---------- | ------- | -----
 1    | 30.5        | 51.3      | 19.7       | 674     | 36.3
 2    | 59.0        | 94.9      | 38.2       | 1227    | 67.5
@@ -355,7 +355,7 @@ ResNet-50   | distributed_replicated | n/a                    | True
 ResNet-152  | distributed_replicated | n/a                    | True
 
 To simplify server setup, EC2 instances (p2.8xlarge) running worker servers also
-ran parameter servers. Equal numbers of parameter servers and work servers were
+ran parameter servers. Equal numbers of parameter servers and worker servers were
 used with the following exceptions:
 
 *   InceptionV3: 8 instances / 6 parameter servers

@@ -1,6 +1,6 @@
 # tfprof: A Profiling Tool for TensorFlow Models
 
-Author: Xin Pan (xpan@google.com, github: panyx0718)
+Author: Xin Pan (xpan@google.com, github: panyx0718), Jon Shlens, Yao Zhang
 
 Consultants: Jon Shlens, Pete Warden
 
@@ -8,23 +8,92 @@ Consultants: Jon Shlens, Pete Warden
 ###Major Features
 
 1.  Measure model parameters, float operations, tensor shapes.
-2.  Measure op execution times, requested memory size and device placement.
+2.  Profile op execution times, requested memory size and device placement.
 3.  Inspect checkpoint tensors' shapes and their values.
-4.  Explore model based on name scope or graph structure.
-5.  Selectively grouping/filtering/accounting/ordering ops.
+4.  Selectively group, filter, account and order ops.
 
-[Python API Tutorials](#python-api-tutorials): It can be called directly from
-Python codes. Results are either printed
-to stdout or dumped to file. tensorflow.tfprof.TFProfNode proto is returned from
-the API to allow users to perform further analysis.
+####tfprof supports 4 views to organize TensorFlow model profiles
 
-[CLI Tutorials](#cli-tutorials):
-It supports interactive mode for exploration and single-shot mode for
-scripts. Outputs can be dumped to files or printed in terminal.
+    *  code view: graph nodes are grouped by Python codes that generate them.
+    *  op view: graph nodes are grouped by operation type (E.g. MatMul, Conv2D) of the graph nodes.
+    *  scope view: graph nodes are organized based on name scope hierarchies.
+    *  graph view: graph nodes are organized based on op input/output.
+
+####For each view, there are 3 ways to display outputs:
+
+    *  stdout: Results are written to stdout.
+    *  timeline: Visualized in chrome browser as time series.
+    *  file: Results are dumped to file.
+
+
+[Demo](#demo)
+
+[Python API Tutorials](#python-api-tutorials): How to use directly from
+Python codes.
+
+[CLI Tutorials](#cli-tutorials): How to run from interactive command line.
 
 [Options](#options):
 tfprof supports many options to selectively account/display/order ops and
 statistics.
+
+
+## Demo
+### Attribute the TensorFlow graph running time to your Python codes.
+```shell
+tfprof> code -max_depth 1000 -show_name_regexes .*model_analyzer.*py.* -select micros -account_type_regexes .* -order_by micros
+_TFProfRoot (0us/22.44ms)
+  model_analyzer_test.py:149:run_filename_as_m...:none (0us/22.44ms)
+    model_analyzer_test.py:33:_run_code_in_main:none (0us/22.44ms)
+      model_analyzer_test.py:208:<module>:test.main() (0us/22.44ms)
+        model_analyzer_test.py:132:testComplexCodeView:x = lib.BuildFull... (0us/22.44ms)
+          model_analyzer_testlib.py:63:BuildFullModel:return sgd_op.min... (0us/21.83ms)
+          model_analyzer_testlib.py:58:BuildFullModel:cell, array_ops.c... (0us/333us)
+          model_analyzer_testlib.py:54:BuildFullModel:seq.append(array_... (0us/254us)
+            model_analyzer_testlib.py:42:BuildSmallModel:x = nn_ops.conv2d... (0us/134us)
+            model_analyzer_testlib.py:46:BuildSmallModel:initializer=init_... (0us/40us)
+            ...
+          model_analyzer_testlib.py:61:BuildFullModel:loss = nn_ops.l2_... (0us/28us)
+          model_analyzer_testlib.py:60:BuildFullModel:target = array_op... (0us/0us)
+        model_analyzer_test.py:134:testComplexCodeView:sess.run(variable... (0us/0us)
+```
+
+### Show your model variables and the number of parameters.
+```
+tfprof> scope -account_type_regexes VariableV2 -max_depth 4 -select params
+_TFProfRoot (--/930.58k params)
+  global_step (1/1 params)
+  init/init_conv/DW (3x3x3x16, 432/864 params)
+  pool_logit/DW (64x10, 640/1.28k params)
+    pool_logit/DW/Momentum (64x10, 640/640 params)
+  pool_logit/biases (10, 10/20 params)
+    pool_logit/biases/Momentum (10, 10/10 params)
+  unit_last/final_bn/beta (64, 64/128 params)
+  unit_last/final_bn/gamma (64, 64/128 params)
+  unit_last/final_bn/moving_mean (64, 64/64 params)
+  unit_last/final_bn/moving_variance (64, 64/64 params)
+```
+
+### Show the most expensive operation types.
+```
+tfprof> op -select micros,bytes,occurrence -order_by micros
+SoftmaxCrossEntropyWithLogits      36.58MB (100.00%, 0.05%),      1.37sec (100.00%, 23.56%),         30
+MatMul                        2720.57MB (99.95%, 3.66%),      988.90ms (76.44%, 17.05%),       3450
+ConcatV2                       741.37MB (96.29%, 1.00%),       421.44ms (59.38%, 7.27%),       6098
+Mul                           3957.24MB (95.29%, 5.33%),       418.90ms (52.12%, 7.22%),       9427
+Add                            740.05MB (89.96%, 1.00%),       335.26ms (44.89%, 5.78%),       2180
+Sub                             32.46MB (88.97%, 0.04%),       216.44ms (39.11%, 3.73%),       4372
+AddN                           733.21MB (88.92%, 0.99%),       208.46ms (35.38%, 3.59%),       5481
+Slice                          708.07MB (87.94%, 0.95%),       205.27ms (31.78%, 3.54%),       7277
+Fill                           954.27MB (86.98%, 1.28%),       154.50ms (28.24%, 2.66%),       9686
+Select                         312.33MB (85.70%, 0.42%),       123.04ms (25.58%, 2.12%),       5746
+Sigmoid                        152.57MB (85.28%, 0.21%),        96.66ms (23.46%, 1.67%),       2970
+```
+
+### Visualize time and memory.
+<left>
+[CodeTimeline](g3doc/graph_timeline.png)
+</left>
 
 ## Python API Tutorials
 
@@ -33,13 +102,23 @@ tfprof is part of TensorFlow core. Simply ```import tensorflow as tf```.
 ### Examine the shapes and sizes of all trainable Variables.
 ```python
 # Print trainable variable parameter statistics to stdout.
+# By default, statistics are associated with each graph node.
 param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
     tf.get_default_graph(),
     tfprof_options=tf.contrib.tfprof.model_analyzer.
         TRAINABLE_VARS_PARAMS_STAT_OPTIONS)
 
-# param_stats is tensorflow.tfprof.TFProfNode proto. It organize the statistics
-# of each graph node in tree scructure. Let's print the root below.
+
+# Set tfprof_cmd='code' to associate statistics with Python codes.
+opts = tf.contrib.tfprof.model_analyzer.TRAINABLE_VARS_PARAMS_STAT_OPTIONS
+opts['show_name_regexes'] = ['.*my_code1.py.*', '.*my_code2.py.*']
+param_stats = tf.contrib.tfprof.model_analyzer.print_model_analysis(
+    tf.get_default_graph(),
+    tfprof_cmd='code'
+    tfprof_options=opts)
+
+# param_stats is tensorflow.tfprof.TFGraphNodeProto proto.
+# Let's print the root below.
 sys.stdout.write('total_params: %d\n' % param_stats.total_parameters)
 ```
 
@@ -68,13 +147,11 @@ compute the memory and timing statistics.
 #
 # Note: When run on GPU, a kernel is first scheduled (enqueued) and then
 #       executed asynchronously. tfprof only tracks the execution time.
-#       Which is from proto CostGraphDef::Node::compute_cost.
 #       In addition, a substantial of time might be spent between Python and
 #       TensorFlow runtime, which is also not tracked by tfprof.
 #
-config = tf.ConfigProto(graph_options=tf.GraphOptions(build_cost_model=1))
 run_metadata = tf.RunMetadata()
-with tf.Session(config=config) as sess:
+with tf.Session() as sess:
   _ = sess.run(train_op,
                options=tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE),
                run_metadata=run_metadata)
@@ -84,15 +161,39 @@ Finally, you may run `print_model_analysis` to explore the timing and memory
 demands of the model.
 
 ``` python
+# See model_analyzer_test.py for more examples.
+#
 # Print to stdout an analysis of the memory usage and the timing information
-# from running the graph broken down by operations.
+# broken down by python codes.
+opts = tf.contrib.tfprof.model_analyzer.PRINT_ALL_TIMING_MEMORY.copy()
+opts['show_name_regexes'] = ['.*my_code.py.*']
+tf.contrib.tfprof.model_analyzer.print_model_analysis(
+    tf.get_default_graph(),
+    run_meta=run_metadata,
+    tfprof_cmd='code',
+    tfprof_options=opts)
+
+# Print to stdout an analysis of the memory usage and the timing information
+# broken down by operations.
 tf.contrib.tfprof.model_analyzer.print_model_analysis(
     tf.get_default_graph(),
     run_meta=run_metadata,
     tfprof_options=tf.contrib.tfprof.model_analyzer.PRINT_ALL_TIMING_MEMORY)
 ```
 
-Users can change ```tfprof_options``` to fully leverage tfprof's power.
+### Visualize
+
+```
+For example set opts['output'] = 'timeline:outfile=<filename>' to
+generate a timeline json file. Open a Chrome Browser, open URL
+chrome://tracing, and load the json file. Below are 2 examples of graph
+view and scope view. See code view example in later examples.
+```
+
+<left>
+[CodeTimeline](g3doc/graph_timeline.png)
+[CodeTimeline](g3doc/scope_timeline.png)
+</left>
 
 
 ## CLI Tutorials
@@ -112,40 +213,40 @@ bazel build --config opt tensorflow/tools/tfprof/...
 # Help information, including detail 'option' instructions.
 bazel-bin/tensorflow/tools/tfprof/tfprof help
 #
-# The following command start tfprof in one-shot mode.
-#
-bazel-bin/tensorflow/tools/tfprof/tfprof scope \
-    --graph_path=graph.pbtxt \
-    --max_depth=3
-#
 # The following commands will start tfprof interactive mode.
 #
 # Profile model shapes and parameters only.
 bazel-bin/tensorflow/tools/tfprof/tfprof \
     --graph_path=graph.pbtxt
 #
-# Additionally profile checkpoint statistics and values.
-# Use '-account_type_regexes _checkpoint_variables' to select
-# checkpoint tensors.
-bazel-bin/tensorflow/tools/tfprof/tfprof \
-    --graph_path=graph.pbtxt \
-    --checkpoint_path=model.ckpt
-#
 # Additionally profile ops requested memory and timing.
 # See CLI Input Files section on generating run_meta file.
 bazel-bin/tensorflow/tools/tfprof/tfprof \
     --graph_path=graph.pbtxt \
     --run_meta_path=run_meta \
+#
+# Additionally profile checkpoint statistics and values.
+# Use '-account_type_regexes _checkpoint_variables' to select
+# checkpoint tensors.
+bazel-bin/tensorflow/tools/tfprof/tfprof \
+    --graph_path=graph.pbtxt \
+    --run_meta_path=run_meta \
     --checkpoint_path=model.ckpt
 #
-# tfprof_log is used to define customized op types and float ops.
+# tfprof_log is used to define customized op types, float ops and code traces.
 # Use tfprof_logger.write_op_log() to create tfprof_log.
-# See 11) in Examples section on generating tfprof_log file.
+# See 12) in Examples section on generating tfprof_log file.
 bazel-bin/tensorflow/tools/tfprof/tfprof \
     --graph_path=graph.pbtxt \
     --run_meta_path=run_meta \
     --op_log_path=tfprof_log \
     --checkpoint_path=model.ckpt
+#
+# The following command start tfprof in one-shot mode.
+#
+bazel-bin/tensorflow/tools/tfprof/tfprof scope \
+    --graph_path=graph.pbtxt \
+    --max_depth=3
 ```
 Note that `graph.pbtxt` is an ASCII text format.
 
@@ -153,13 +254,13 @@ Note that `graph.pbtxt` is an ASCII text format.
 
 ```shell
 tfprof>
-tfprof>
 -max_depth                  4
 -min_bytes                  0
 -min_micros                 0
 -min_params                 0
 -min_float_ops              0
--device_regexes             .*
+-min_occurrence             0
+-step                       -1
 -order_by                   name
 -account_type_regexes       Variable,VariableV2
 -start_name_regexes         .*
@@ -167,14 +268,47 @@ tfprof>
 -show_name_regexes          .*
 -hide_name_regexes          IsVariableInitialized_[0-9]+,save\/.*,^zeros[0-9_]*
 -account_displayed_op_only  false
-# supported select fileds. Availability depends on --[run_meta|checkpoint|op_log]_path.
-# [bytes|micros|params|float_ops|num_hidden_ops|tensor_value|device|op_types]
+# supported select fields. Availability depends on --[run_meta|checkpoint|op_log]_path.
+# [bytes|micros|params|float_ops|occurrence|tensor_value|device|op_types]
 -select                     params
--viz                        false
--dump_to_file
+# format: output_type:key=value,key=value...
+# output_types: stdout (default), timeline, file.
+# key=value pairs:
+#   1. timeline: outfile=<filename>
+#   2. file: outfile=<filename>
+#   3. stdout: None.
+# E.g. timeline:outfile=/tmp/timeline.json
+-output
 ```
 
-3) I want to see the `BatchNorm`'s gamma value in checkpoint.
+3) I want to see which line of my python codes costs most time!
+
+```shell
+# Requires --graph_path --op_log_path
+tfprof> code -max_depth 1000 -show_name_regexes .*model_analyzer.*py.* -select micros -account_type_regexes .* -order_by micros
+_TFProfRoot (0us/22.44ms)
+  model_analyzer_test.py:149:run_filename_as_m...:none (0us/22.44ms)
+    model_analyzer_test.py:33:_run_code_in_main:none (0us/22.44ms)
+      model_analyzer_test.py:208:<module>:test.main() (0us/22.44ms)
+        model_analyzer_test.py:132:testComplexCodeView:x = lib.BuildFull... (0us/22.44ms)
+          model_analyzer_testlib.py:63:BuildFullModel:return sgd_op.min... (0us/21.83ms)
+          model_analyzer_testlib.py:58:BuildFullModel:cell, array_ops.c... (0us/333us)
+          model_analyzer_testlib.py:54:BuildFullModel:seq.append(array_... (0us/254us)
+            model_analyzer_testlib.py:42:BuildSmallModel:x = nn_ops.conv2d... (0us/134us)
+            model_analyzer_testlib.py:46:BuildSmallModel:initializer=init_... (0us/40us)
+            ...
+          model_analyzer_testlib.py:61:BuildFullModel:loss = nn_ops.l2_... (0us/28us)
+          model_analyzer_testlib.py:60:BuildFullModel:target = array_op... (0us/0us)
+        model_analyzer_test.py:134:testComplexCodeView:sess.run(variable... (0us/0us)
+```
+
+Set ```-output timeline:outfile=<filename>``` to generate timeline instead of stdout.
+<left>
+[CodeTimeline](g3doc/code_timeline.png)
+</left>
+
+
+4) I want to see the `BatchNorm`'s gamma value in checkpoint.
 
 ```shell
 # Requires --graph_path, --checkpoint_path.
@@ -186,7 +320,7 @@ _TFProfRoot ()
 [1.57 1.83 1.30 1.25 1.59 1.14 1.26 0.82 1.19 1.10 1.48 1.01 0.82 1.23 1.21 1.14 ],
 ```
 
-4) I want to see my checkpoint tensors shape and number of parameters.
+5) I want to see my checkpoint tensors shape and number of parameters.
 
 ```shell
 # Requires --graph_path, --checkpoint_path.
@@ -205,7 +339,7 @@ _TFProfRoot (--/930.58k params)
   unit_last/final_bn/moving_variance (64, 64/64 params)
 ```
 
-5) I defined an op named ‘cost’ to calculate the loss. I want to know what ops
+6) I defined an op named ‘cost’ to calculate the loss. I want to know what ops
 it depends on take a long time to run. Hint: Use the ‘graph’ command to explore
 graph dependencies.
 
@@ -221,7 +355,7 @@ _TFProfRoot (0us/3.61sec)
   unit_3_3/sub2/conv2/Conv2D (10.26ms/3.60sec)
 ```
 
-6) I want to know the expensive operations during the back propagation.
+7) I want to know the expensive operations during the back propagation.
 Hint: tensorflow prepend ‘gradient’ to your defined name scopes. Use the ‘scope’
 command to explore based on name scope hierarchies.
 
@@ -238,7 +372,7 @@ _TFProfRoot (0us/2.29sec)
   ...
 ```
 
-7) Show the number of float operations in the model.
+8) Show the number of float operations in the model.
 Note: float operations calculation depends on
 1) op.RegisterStatistics. If an op doesn’t
 have RegisterStatistics defined, its float operations cannot be counted.
@@ -263,7 +397,7 @@ _TFProfRoot (0/17.63b flops)
   ...
 ```
 
-8) Show the number of parameters of all `tf.trainable_variables()` in the model.
+9) Show the number of parameters of all `tf.trainable_variables()` in the model.
 
 ```shell
 # Requires --graph_path --op_log_path.
@@ -283,7 +417,7 @@ generated by write_op_log() Python API. write_op_log() help users create some
 common op types implicitly. Users can define their own op types and log it
 through the write_op_log() API.
 
-9) What if I’m lazy and don’t want to define op type? I have given my ops
+109) What if I’m lazy and don’t want to define op type? I have given my ops
 well-defined names in my model’s code. And want to use names to select a group
 of ops. Let’s try it!
 
@@ -301,7 +435,7 @@ in terminal. Otherwise, tfprof accounts all ops matched by
 `-account_type_regexes` recursively even if they are hidden due to some
 options such as -max_depth.
 
-10) TensorFlow has built-in op types. For example, built-in op type `Variable`
+11) TensorFlow has built-in op types. For example, built-in op type `Variable`
 seems to include `Variable's` created by your model. However, be careful when
 depending on it because TensorFlow creates extra `Variable` ops implicitly and
 the implicitly created ops can have the same prefix as the `Variable's` you
@@ -312,7 +446,7 @@ appended to their names. This might cause you “model capacity” calculation
 to get wrong.
 
 ```shell
-tfprof> scope -account_type_regexes Variable -max_depth 4 -select params
+tfprof> scope -account_type_regexes VariableV2 -max_depth 4 -select params
 _TFProfRoot (--/930.58k params)
   global_step (1/1 params)
   init/init_conv/DW (3x3x3x16, 432/864 params)
@@ -327,7 +461,7 @@ _TFProfRoot (--/930.58k params)
 ```
 
 
-11) A example of defining extra op type for ops using `OpLog`
+12) A example of defining extra op type for ops using `OpLog`
 
 First, in Python code, create an `OpLog` proto and add op type
 information to it:
@@ -375,10 +509,10 @@ the tool adds all `Variables` inside `tf.trainable_variables()` to
 12) Run tfprof in one-shot mode and dump result to file.
 
 ```shell
-# Printed to stdout if --dump_to_file is not set.
+# By default output to stdout. Use -output option to change output types.
 tfprof scope --graph_path=graph.pbtxt  \
              --max_depth=3 \
-             --dump_to_file="/tmp/dump"
+             --output="file:outfile=/tmp/dump"
 Reading Files...
 Parsing GraphDef...
 Preparing Views...
@@ -463,19 +597,21 @@ provides checkpointed tensors' values.
 
 `-min_float_ops`: Show ops that contain at least this number of float operations. Only available if an op has op.RegisterStatistics() defined and OpLog is provided
 
-`-device_regexes`: Show ops that a placed on the specified devices. regexes are comma-separated.
+`-min_occurrence`: Show ops that appear at least this number of times. Only available in "op" view.
 
-`-order_by`: Order the results by [name|depth|bytes|micros|params|float_ops]
+`-step`: Show the stats of the this step when multiple steps of RunMetadata were added. By default, show the average of all steps."
 
-`-account_type_regexes`: Account and display the ops whose types match one of the type regexes specified. tfprof allow user to define extra op types for ops through tensorflow.tfprof.OpLog proto. regexes are comma-sperated.
+`-order_by`: Order the results by [name|depth|bytes|micros|params|float_ops|occurrence]
+
+`-account_type_regexes`: Account and display the ops whose types match one of the type regexes specified. tfprof allow user to define extra op types for ops through tensorflow.tfprof.OpLog proto. regexes are comma-separated.
 
 `-start_name_regexes`: Show ops starting from the ops that matches the regexes, recursively. regexes are comma-separated.
 
-`-trim_name_regexes`: Hide ops starting from the ops that matches the regexes, recursively, regexes are comma-seprated.
+`-trim_name_regexes`: Hide ops starting from the ops that matches the regexes, recursively, regexes are comma-separated.
 
-`-show_name_regexes`: Show ops that match the regexes. regexes are comma-seprated.
+`-show_name_regexes`: Show ops that match the regexes. regexes are comma-separated.
 
-`-hide_name_regexes`: Hide ops that match the regexes. regexes are comma-seprated.
+`-hide_name_regexes`: Hide ops that match the regexes. regexes are comma-separated.
 
 Notes: For each op, `-account_type_regexes` is first evaluated, only ops with
 types matching the specified regexes are accounted and selected for displayed.
@@ -488,6 +624,11 @@ as long as they match the `-account_xxx` options.
 
 `-account_displayed_op_only`: If True, only account the statistics of ops eventually displayed. If False, account all op statistics matching -account_type_regexes recursively.
 
-`-select`: Comma-separated list of metrics to show: [bytes|micros|params|float_ops|num_hidden_ops|tensor_value|device|op_types].
+`-select`: Comma-separated list of metrics to show: [bytes|micros|params|float_ops|occurrence|tensor_value|device|op_types].
 
-`-dump_to_file`: Dump the output to a file, instead of terminal.
+`-output`: Output results as stdout, file or timeline.
+The format is ```output_type:key=value,key=value```.
+For example: ```timeline:outfile=<filename>```.
+timeline: key=outfile, value=<filename>.
+stdout: none.
+file: key=outfile, value=<filename>.

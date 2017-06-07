@@ -22,8 +22,11 @@ namespace tensorflow {
 namespace grappler {
 
 bool IsConcat(const NodeDef& node);
+bool IsConstant(const NodeDef& node);
 bool IsDequeueOp(const NodeDef& node);
+bool IsMerge(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
+bool IsReduction(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 
