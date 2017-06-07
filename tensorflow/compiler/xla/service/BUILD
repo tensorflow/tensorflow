@@ -1446,7 +1446,6 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla/legacy_flags:hlo_pass_pipeline_flags",
         "//tensorflow/core:lib",
     ],
 )

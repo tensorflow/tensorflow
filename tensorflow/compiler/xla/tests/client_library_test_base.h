@@ -57,8 +57,10 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   void SetSeed(uint64 seed) { execution_options_.set_seed(seed); }
 
-  void SetDebugOptions(const DebugOptions& debug_options) {
-    *(execution_options_.mutable_debug_options()) = debug_options;
+  // Provides mutable access to the execution DebugOptions field; this lets
+  // tests tweak the options that will be used to compile/run the graph.
+  DebugOptions* mutable_debug_options() {
+    return execution_options_.mutable_debug_options();
   }
 
   // TODO(b/25566808): Add helper that populates a literal from a testdata file.

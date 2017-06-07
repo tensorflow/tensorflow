@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/hlo_pass_pipeline_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -45,7 +45,10 @@ Client* GetOrCreateLocalClientOrDie(se::Platform* platform) {
 }  // namespace
 
 ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
-    : client_(GetOrCreateLocalClientOrDie(platform)) {}
+    : client_(GetOrCreateLocalClientOrDie(platform)) {
+  *(execution_options_.mutable_debug_options()) =
+      legacy_flags::GetDebugOptionsFromFlags();
+}
 
 string ClientLibraryTestBase::TestName() const {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
