@@ -3051,6 +3051,8 @@ tf_kernel_library(
 cc_library(
     name = "parsing",
     deps = [
+	":decode_csv_first_n_op",
+	":decode_csv_selected_columns_op",
         ":decode_csv_op",
         ":decode_raw_op",
         ":example_parsing_ops",
@@ -3066,6 +3068,18 @@ PARSING_DEPS = [
     "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
 ]
+
+tf_kernel_library(
+    name = "decode_csv_first_n_op",
+    prefix = "decode_csv_first_n_op",
+    deps = PARSING_DEPS,
+)
+
+tf_kernel_library(
+    name = "decode_csv_selected_columns_op",
+    prefix = "decode_csv_selected_columns_op",
+    deps = PARSING_DEPS,
+)
 
 tf_kernel_library(
     name = "decode_csv_op",
