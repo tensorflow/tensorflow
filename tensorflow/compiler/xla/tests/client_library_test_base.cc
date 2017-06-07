@@ -48,6 +48,15 @@ ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
     : client_(GetOrCreateLocalClientOrDie(platform)) {
   *(execution_options_.mutable_debug_options()) =
       legacy_flags::GetDebugOptionsFromFlags();
+
+  // Disabling constant_folding so that tests (usually written using Constants)
+  // will exercise the intended code paths, instead of being constant folded.
+  //
+  // TODO(b/38354253): Constant folding is currently disabled. Change tests to
+  // use Parameters instead of Constants, and re-enable constant folding by
+  // default.
+  execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+      "constant_folding");
 }
 
 string ClientLibraryTestBase::TestName() const {
