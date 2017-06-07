@@ -15,3 +15,10 @@
 def tensorboard_webcomponent_library(**kwargs):
   """Rules referencing this will be deleted from the codebase soon."""
   pass
+
+def _legacy_js_impl(target, ctx):
+  return struct()
+
+legacy_js = aspect(
+    implementation=_legacy_js_impl,
+    attr_aspects=["exports"])

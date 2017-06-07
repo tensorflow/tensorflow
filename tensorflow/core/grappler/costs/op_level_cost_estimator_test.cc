@@ -34,11 +34,17 @@ void DescribeMatrix(int rows, int columns, OpInfo *op_features) {
   input->set_dtype(DT_FLOAT);
 }
 
+void SetCpuDevice(OpInfo* op_features) {
+  auto device = op_features->mutable_device();
+  device->set_type("CPU");
+  device->set_num_cores(1);
+  device->set_frequency(2000);  // Mhz
+}
+
 // Returns an OpInfo for MatMul with the minimum set of fields set up.
 OpInfo DescribeMatMul(int m, int n, int l, int k) {
   OpInfo op_features;
-  auto device = op_features.mutable_device();
-  device->set_type("CPU");
+  SetCpuDevice(&op_features);
   op_features.set_op("MatMul");
 
   DescribeMatrix(m, l, &op_features);
@@ -49,8 +55,7 @@ OpInfo DescribeMatMul(int m, int n, int l, int k) {
 // Returns an OpInfo for MatMul with unknown input shapes.
 OpInfo DescribeMatMulUnknownShape() {
   OpInfo op_features;
-  auto device = op_features.mutable_device();
-  device->set_type("CPU");
+  SetCpuDevice(&op_features);
   op_features.set_op("MatMul");
 
   auto input = op_features.add_inputs();
@@ -80,8 +85,7 @@ void DescribeArbitraryRankInput(const std::vector<int>& dims, DataType dtype,
 OpInfo DescribeBatchMatMul(const std::vector<int>& dims_a,
                            const std::vector<int>& dims_b) {
   OpInfo op_features;
-  auto device = op_features.mutable_device();
-  device->set_type("CPU");
+  SetCpuDevice(&op_features);
   op_features.set_op("BatchMatMul");
 
   DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_features);
@@ -105,8 +109,7 @@ void DescribeTensor4D(int dim0, int dim1, int dim2, int dim3,
 OpInfo DescribeConvolution(int batch, int ix, int iy, int iz1, int iz2, int kx,
                            int ky, int oz) {
   OpInfo op_features;
-  auto device = op_features.mutable_device();
-  device->set_type("CPU");
+  SetCpuDevice(&op_features);
   op_features.set_op("Conv2D");
 
   DescribeTensor4D(batch, ix, iy, iz1, &op_features);

@@ -31,6 +31,8 @@ constexpr char kNoOp[] = "NoOp";
 constexpr char kReshape[] = "Reshape";
 constexpr char kRecv[] = "_Recv";
 constexpr char kBatchMatMul[] = "BatchMatMul";
+constexpr char kVariable[] = "Variable";
+constexpr char kVariableV2[] = "VariableV2";
 
 OpLevelCostEstimator::OpLevelCostEstimator() {
   // Syntactic sugar to build and return a lambda that takes an OpInfo and
@@ -53,6 +55,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kReshape, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kVariable, wrap(&OpLevelCostEstimator::PredictNoOp)},
+      {kVariableV2, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)}};
 }
 
@@ -567,7 +571,7 @@ int64 OpLevelCostEstimator::CalculateSingleInputSize(
   for (const auto& dim : input_shape.dim()) {
     input_size *= dim.size();
   }
-  return input_size * DataTypeSize(input.dtype());
+  return input_size * DataTypeSize(BaseType(input.dtype()));
 }
 
 int64 OpLevelCostEstimator::CalculateInputSize(
@@ -589,7 +593,7 @@ int64 OpLevelCostEstimator::CalculateOutputSize(
   for (const auto& output : op_features.outputs()) {
     DataType dt = output.dtype();
     const auto& original_output_shape = output.shape();
-    int64 output_size = DataTypeSize(dt);
+    int64 output_size = DataTypeSize(BaseType(dt));
     int num_dims = std::max(1, original_output_shape.dim_size());
     auto output_shape = MaybeGetMinimumShape(original_output_shape, num_dims,
                                              found_unknown_shapes);

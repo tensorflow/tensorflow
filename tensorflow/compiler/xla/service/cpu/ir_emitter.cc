@@ -1365,7 +1365,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";
   // Check that all while-related buffers share an allocation slice.
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshape(
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
       [this, &xla_while](const Shape& /*subshape*/,
                          const ShapeIndex& index) -> Status {

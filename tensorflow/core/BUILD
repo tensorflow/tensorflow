@@ -460,6 +460,7 @@ cc_library(
     deps = [
         ":lib",
         ":op_gen_overrides_proto_cc",
+        ":protos_all_cc",
     ],
 )
 
@@ -1581,6 +1582,7 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
+        "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:required",
         "//third_party/eigen3",
     ],

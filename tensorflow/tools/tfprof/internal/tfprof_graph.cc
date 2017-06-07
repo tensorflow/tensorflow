@@ -81,8 +81,7 @@ const ShowNode* TFGraph::ShowInternal(const Options& opts, Timeline* timeline) {
   // 1. Account and aggregate the stats based on the graph structure.
   // Returns a graph consists of accounted nodes.
   std::set<string> visits;
-  std::vector<GraphNode*> roots =
-      Account(root_->children, opts, timeline, &visits);
+  std::vector<GraphNode*> roots = Account(root_->children, opts, &visits);
   for (GraphNode* n : roots) {
     root_->AggregateTotalStats(n);
   }
@@ -105,7 +104,7 @@ const ShowNode* TFGraph::ShowInternal(const Options& opts, Timeline* timeline) {
   Format(root->show_children, &root->formatted_str, root->mutable_proto());
 
   if (timeline) {
-    timeline->GenerateGraphTimeline(root);
+    timeline->GenerateGraphTimeline(root->show_children);
   }
   return root;
 }
@@ -208,29 +207,21 @@ std::vector<GraphNode*> TFGraph::PrintGraph(const std::vector<GraphNode*> roots,
 
 std::vector<GraphNode*> TFGraph::Account(const std::vector<GraphNode*>& roots,
                                          const Options& opts,
-                                         Timeline* timeline,
                                          std::set<string>* visits) {
   std::vector<GraphNode*> act_nodes;
   for (GraphNode* node : roots) {
     if (visits->find(node->name()) != visits->end()) continue;
     visits->insert(node->name());
     // Depth-first.
-    std::vector<GraphNode*> act_cnodes =
-        Account(node->children, opts, timeline, visits);
+    std::vector<GraphNode*> act_cnodes = Account(node->children, opts, visits);
 
     node->account = ReAccount(node, opts);
     if (node->account) {
       node->show_children.clear();
       node->ResetTotalStats();
       node->AddSelfToTotalStats();
-      if (timeline) {
-        timeline->TrackNode(node);
-      }
       // Aggregate its accounted children stats.
       for (GraphNode* c : act_cnodes) {
-        if (timeline) {
-          timeline->TrackNodeConnection(node, c);
-        }
         node->AggregateTotalStats(c);
         node->show_children.push_back(c);
       }

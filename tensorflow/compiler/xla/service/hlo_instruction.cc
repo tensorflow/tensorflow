@@ -1445,7 +1445,9 @@ string HloInstruction::ToString(bool compact_operands,
       // Concatenate elements in "v" with spaces separating them, but ignoring
       // empty entries.
       for (const auto& s : v) {
-        if (s.empty()) continue;
+        if (s.empty()) {
+          continue;
+        }
         StrAppend(&operands, (first ? "" : " "), s);
         first = false;
       }
@@ -2183,13 +2185,14 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
       std::function<UseKind(const HloInstruction&)> reuses_parameter_elements =
           [i, &cache, &reuses_parameter_elements](const HloInstruction& hlo) {
             auto plus = [](const UseKind& a, const UseKind& b) {
-              if (a == UseKind::kNoUse) return b;
-              if (b == UseKind::kNoUse) return a;
-              if (a == UseKind::kReuse || b == UseKind::kReuse) {
+              if (a == UseKind::kNoUse) {
+                return b;
+              } else if (b == UseKind::kNoUse) {
+                return a;
+              } else if (a == UseKind::kReuse || b == UseKind::kReuse) {
                 return UseKind::kReuse;
-              }
-              if (a == UseKind::kUsePermutingElements ||
-                  b == UseKind::kUsePermutingElements) {
+              } else if (a == UseKind::kUsePermutingElements ||
+                         b == UseKind::kUsePermutingElements) {
                 return UseKind::kReuse;
               }
               CHECK(UseKind::kUse == a && UseKind::kUse == b);
