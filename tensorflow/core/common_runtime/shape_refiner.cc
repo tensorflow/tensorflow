@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/public/session.h"
@@ -256,6 +257,85 @@ Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
   return Status::OK();
 }
 
+Status ShapeRefiner::TryToInferTensorOutputFromInputShapes(const Edge* edge,
+                                                           Tensor* output,
+                                                           bool* success) {
+  *success = false;
+  const Node* node = edge->src();
+  auto it = node_to_context_.find(node);
+  if (it == node_to_context_.end()) {
+    return errors::FailedPrecondition("Node does not have context.");
+  }
+  InferenceContext* c = it->second.get();
+
+  if (node->def().op() == "Shape") {
+    // If input shapes to the shape op are fully defined,
+    // we can infer the shape op's output tensor.
+    bool fully_defined_inputs = c->FullyDefined(c->input(0));
+    if (fully_defined_inputs) {
+      int input_rank = c->Rank(c->input(0));
+      Tensor t(node->output_type(0), TensorShape({input_rank}));
+      if (node->output_type(0) == DT_INT32) {
+        auto flat = t.flat<int>();
+        for (int i = 0; i < input_rank; i++) {
+          int64 dimension = c->Value(c->Dim(c->input(0), i));
+          if (!FastBoundsCheck(dimension, std::numeric_limits<int32>::max())) {
+            return errors::FailedPrecondition(
+                "Shape has output type int32, but dimension exceeds maximum "
+                "int32 value");
+          }
+          flat(i) = static_cast<int32>(dimension);
+        }
+      } else if (node->output_type(0) == DT_INT64) {
+        auto flat = t.flat<int64>();
+        for (int i = 0; i < input_rank; i++) {
+          flat(i) = c->Value(c->Dim(c->input(0), i));
+        }
+      } else {
+        return errors::FailedPrecondition(
+            "Shape has output type that is not int32 or int64");
+      }
+      *output = t;
+      *success = true;
+    }
+  } else if (node->def().op() == "Rank") {
+    bool rank_known = c->RankKnown(c->input(0));
+    if (rank_known) {
+      int32 input_rank = c->Rank(c->input(0));
+      Tensor t(node->output_type(0), TensorShape({}));
+      t.flat<int32>()(0) = input_rank;
+      *output = t;
+      *success = true;
+    }
+  } else if (node->def().op() == "Size") {
+    bool fully_defined_inputs = c->FullyDefined(c->input(0));
+    if (fully_defined_inputs) {
+      int32 rank = c->Rank(c->input(0));
+      Tensor t(node->output_type(0), TensorShape({}));
+      int64 size = 1;
+      for (int i = 0; i < rank; i++) {
+        size *= c->Value(c->Dim(c->input(0), i));
+      }
+      if (node->output_type(0) == DT_INT32) {
+        if (!FastBoundsCheck(size, std::numeric_limits<int32>::max())) {
+          return errors::FailedPrecondition(
+              "Size has output type int32, but size exceeds maximum int32 "
+              "value");
+        }
+        t.flat<int32>()(0) = static_cast<int32>(size);
+      } else if (node->output_type(0) == DT_INT64) {
+        t.flat<int64>()(0) = size;
+      } else {
+        return errors::FailedPrecondition(
+            "Size has output type that is not int32 or int64");
+      }
+      *output = t;
+      *success = true;
+    }
+  }
+  return Status::OK();
+}
+
 Status ShapeRefiner::ExtractConstantSubgraph(
     Node* target_node, Graph* out_graph, bool* is_constant_graph,
     std::vector<std::pair<string, Tensor>>* const_inputs) {
@@ -356,15 +436,27 @@ Status ShapeRefiner::ExtractConstantSubgraph(
                          dst_copy, current_edge->dst_input());
     }
 
-    // If we have a copy of the input tensor materialized already,
-    // then add to the list of inputs to feed and do not recurse further.
     const string& output_tensor_name =
         strings::StrCat(current_node->name(), ":", current_edge->src_output());
+
+    // Some tensor values can be inferred. For example, a shape op
+    // with input shapes fully defined can have its output tensor inferred.
+    Tensor tensor_inferred;
+    bool successfully_inferred_tensor = false;
+    TF_RETURN_IF_ERROR(TryToInferTensorOutputFromInputShapes(
+        current_edge, &tensor_inferred, &successfully_inferred_tensor));
+    if (successfully_inferred_tensor) {
+      const_inputs->emplace_back(output_tensor_name, tensor_inferred);
+      const_inputs_added.insert(output_tensor_name);
+      continue;
+    }
+
+    // If we have a copy of the input tensor materialized already,
+    // then add to the list of inputs to feed and do not recurse further.
     auto it = const_tensor_map_.find(output_tensor_name);
     if (it != const_tensor_map_.end() &&
         const_inputs_added.count(output_tensor_name) == 0) {
-      const_inputs->emplace_back(
-          std::make_pair(output_tensor_name, it->second));
+      const_inputs->emplace_back(output_tensor_name, it->second);
       const_inputs_added.insert(output_tensor_name);
       continue;
     }

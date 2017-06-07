@@ -67,17 +67,23 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
-  // function. function_name_prefix is the desired name of the function. If the
-  // name is not unique among already emitted functions then a suffix is
-  // appended to make the name unique. is_entry_computation indicates that this
-  // is the entry computation of the HLO module. If 'instruction_order' is given
-  // then the HLO instructions are emitted in the given order.  In this case,
-  // 'instruction_order' must be a topological sort of the set of nodes
-  // accessible from the root of the computation.
+  // function.
+  //
+  // function_name_prefix is the desired name of the function. If the name is
+  // not unique among already emitted functions then a suffix is appended to
+  // make the name unique.
+  //
+  // is_entry_computation indicates that this is the entry computation of the
+  // HLO module.
+  //
+  // If 'instruction_order' is not NULL, then the HLO instructions are emitted
+  // in the given order.  In this case, 'instruction_order' must be a
+  // topological sort of the set of nodes accessible from the root of the
+  // computation.
   StatusOr<llvm::Function*> EmitComputation(
       HloComputation* computation, const string& function_name_prefix,
       bool is_entry_computation,
-      std::vector<const HloInstruction*>* instruction_order = nullptr);
+      std::vector<const HloInstruction*>* instruction_order);
 
  protected:
   //

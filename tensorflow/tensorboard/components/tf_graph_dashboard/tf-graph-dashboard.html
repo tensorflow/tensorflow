@@ -78,11 +78,13 @@ out-hierarchy-params="{{_hierarchyParams}}"
         progress="[[_progress]]"
         debugger-data-enabled="[[debuggerDataEnabled]]"
         are-health-pills-loading="[[_areHealthPillsLoading]]"
+        debugger-numeric-alerts="[[_debuggerNumericAlerts]]"
         node-names-to-health-pills="[[_nodeNamesToHealthPills]]"
         all-steps-mode-enabled="{{allStepsModeEnabled}}"
         specific-health-pill-step="{{specificHealthPillStep}}"
         health-pill-step-index="[[_healthPillStepIndex]]"
         render-hierarchy="{{_renderHierarchy}}"
+        selected-node="{{_selectedNode}}"
         stats="[[_stats]]"
     ></tf-graph-board>
 </div>
@@ -128,12 +130,20 @@ Polymer({
     allStepsModeEnabled: Boolean,
     specificHealthPillStep: {type: Number, value: 0},
     healthPillsToggledOn: {type: Boolean, value: true, observer: '_healthPillsToggledOnChanged'},
+    _selectedNode: Object,
     _isAttached: Boolean,
     // Whether this dashboard is initialized. This dashboard should only be initialized once.
     _initialized: Boolean,
     // Whether health pills are currently being loaded, in which case we may want to say show a
     // spinner.
     _areHealthPillsLoading: Boolean,
+    // An array of alerts (in chronological order) provided by debugging libraries on when bad
+    // values (NaN, +/- Inf) appear.
+    _debuggerNumericAlerts: {
+      type: Array,
+      value: [],
+      notify: true,
+    },
     // Maps the names of nodes to an array of health pills (HealthPillDatums).
     _nodeNamesToHealthPills: {
       type: Object,
@@ -158,7 +168,7 @@ Polymer({
     'node-toggle-expand': '_handleNodeToggleExpand',
   },
   observers: [
-    '_maybeFetchHealthPills(allStepsModeEnabled, specificHealthPillStep)',
+    '_maybeFetchHealthPills(allStepsModeEnabled, specificHealthPillStep, _selectedNode)',
     '_maybeInitializeDashboard(backend, _isAttached)',
   ],
   attached: function() {
@@ -212,7 +222,7 @@ Polymer({
   },
   _requestHealthPills: function() {
     this.set('_areHealthPillsLoading', true);
-    const requestId = ++this._healthPillRequestId;
+    var requestId = ++this._healthPillRequestId;
 
     if (this._healthPillStepRequestTimerId !== null) {
       // A request for health pills is already scheduled to be initiated. Clear it, and schedule a
@@ -243,9 +253,17 @@ Polymer({
       return;
     }
 
-    const specificStep = this.allStepsModeEnabled ? this.specificHealthPillStep : undefined;
-    this.backend.healthPills(this._renderHierarchy.getNamesOfRenderedOps(), specificStep).then(
+    var specificStep = this.allStepsModeEnabled ? this.specificHealthPillStep : undefined;
+
+    var healthPillsPromise = this.backend.healthPills(
+        this._renderHierarchy.getNamesOfRenderedOps(), specificStep);
+    var alertsPromise = this.backend.debuggerNumericsAlerts();
+
+    Promise.all([healthPillsPromise, alertsPromise]).then(
         function(result) {
+      var healthPillsResult = result[0];
+      var alertsResult = result[1];
+
       if (!this.healthPillsToggledOn) {
         // The user has opted to hide health pills via the toggle button.
         return;
@@ -259,12 +277,13 @@ Polymer({
       // Set the index for which step to show for the health pills. By default, show the last step.
       // A precondition we assume (that Tensorboard's reservoir sampling guarantees) is that all
       // node names should be mapped to the same number of steps.
-      for (let nodeName in result) {
-        this.set('_healthPillStepIndex', result[nodeName].length - 1);
+      for (var nodeName in healthPillsResult) {
+        this.set('_healthPillStepIndex', healthPillsResult[nodeName].length - 1);
         break;
       }
 
-      this.set('_nodeNamesToHealthPills', result);
+      this.set('_debuggerNumericAlerts', alertsResult);
+      this.set('_nodeNamesToHealthPills', healthPillsResult);
       this.set('_areHealthPillsLoading', false);
       this.set('_healthPillStepRequestTimerId', null);
     }.bind(this));

@@ -163,7 +163,8 @@ std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
   return TransferFromDevice(result_shape, device_base);
 }
 
-string HloTestBase::TestName() const {
+/* static */
+string HloTestBase::TestName() {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
 }
 

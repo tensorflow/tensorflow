@@ -33,13 +33,13 @@ class FlatMapDatasetTest(test.TestCase):
   # pylint: disable=g-long-lambda
   def testFlatMapDataset(self):
     repeats = [1, 2, 3, 4, 5, 0, 1]
-    components = [np.array(repeats, dtype=np.int64)]
+    components = np.array(repeats, dtype=np.int64)
     iterator = (
         dataset_ops.Dataset.from_tensor_slices(components)
         .flat_map(lambda x: dataset_ops.Dataset.from_tensors([x]).repeat(x))
         .make_initializable_iterator())
     init_op = iterator.initializer
-    get_next, = iterator.get_next()
+    get_next = iterator.get_next()
 
     with self.test_session() as sess:
       sess.run(init_op)
@@ -51,14 +51,14 @@ class FlatMapDatasetTest(test.TestCase):
 
   def testNestedFlatMapDataset(self):
     repeats = [[1, 2], [3, 4], [5, 0], [1, 7]]
-    components = [np.array(repeats, dtype=np.int64)]
+    components = np.array(repeats, dtype=np.int64)
     iterator = (
         dataset_ops.Dataset.from_tensor_slices(components)
-        .flat_map(lambda x: dataset_ops.Dataset.from_tensor_slices([x])
-                  .flat_map(lambda y: dataset_ops.Dataset.from_tensors([y])
+        .flat_map(lambda x: dataset_ops.Dataset.from_tensor_slices(x)
+                  .flat_map(lambda y: dataset_ops.Dataset.from_tensors(y)
                             .repeat(y))).make_initializable_iterator())
     init_op = iterator.initializer
-    get_next, = iterator.get_next()
+    get_next = iterator.get_next()
 
     with self.test_session() as sess:
       sess.run(init_op)
@@ -72,15 +72,15 @@ class FlatMapDatasetTest(test.TestCase):
 
   def testSharedResourceNestedFlatMapDataset(self):
     repeats = [[1, 2], [3, 4], [5, 0], [1, 7]]
-    components = [np.array(repeats, dtype=np.int64)]
+    components = np.array(repeats, dtype=np.int64)
     iterator = (
         dataset_ops.Dataset.from_tensor_slices(components)
-        .flat_map(lambda x: dataset_ops.Dataset.from_tensor_slices([x])
-                  .flat_map(lambda y: dataset_ops.Dataset.from_tensors([y])
+        .flat_map(lambda x: dataset_ops.Dataset.from_tensor_slices(x)
+                  .flat_map(lambda y: dataset_ops.Dataset.from_tensors(y)
                             .repeat(y))).make_initializable_iterator(
                                 shared_name="shared_flat_map_iterator"))
     init_op = iterator.initializer
-    get_next, = iterator.get_next()
+    get_next = iterator.get_next()
 
     # Create two concurrent sessions that share the same iterator
     # resource on the same server, and verify that a random

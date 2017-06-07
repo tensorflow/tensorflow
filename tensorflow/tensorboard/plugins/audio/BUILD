@@ -41,6 +41,16 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "audio_demo",
+    srcs = ["audio_demo.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "@six_archive//:six",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(["**"]),

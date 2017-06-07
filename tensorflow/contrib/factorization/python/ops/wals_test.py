@@ -197,6 +197,10 @@ class WALSMatrixFactorizationTest(test.TestCase):
   def use_cache(self):
     return False
 
+  @property
+  def max_sweeps(self):
+    return None
+
   def setUp(self):
     self._num_rows = 5
     self._num_cols = 7
@@ -245,6 +249,7 @@ class WALSMatrixFactorizationTest(test.TestCase):
         num_col_shards=self._num_col_shards,
         row_weights=self._row_weights,
         col_weights=self._col_weights,
+        max_sweeps=self.max_sweeps,
         use_factors_weights_cache_for_training=self.use_cache,
         use_gramian_cache_for_training=self.use_cache)
 
@@ -356,6 +361,19 @@ class WALSMatrixFactorizationTest(test.TestCase):
         loss = {}.""".format(loss, true_loss))
 
 
+class WALSMatrixFactorizationTestSweeps(WALSMatrixFactorizationTest):
+
+  @property
+  def max_sweeps(self):
+    return 2
+
+  # We set the column steps to None so that we rely only on max_sweeps to stop
+  # training.
+  @property
+  def col_steps(self):
+    return None
+
+
 class WALSMatrixFactorizationTestCached(WALSMatrixFactorizationTest):
 
   @property
@@ -421,6 +439,7 @@ class SweepHookTest(test.TestCase):
 
     with self.test_session() as sess:
       is_row_sweep_var = variables.Variable(True)
+      completed_sweeps_var = variables.Variable(0)
       sweep_hook = wals_lib._SweepHook(
           is_row_sweep_var,
           self._train_op,
@@ -430,7 +449,8 @@ class SweepHookTest(test.TestCase):
           self._input_col_indices_ph,
           self._row_prep_ops,
           self._col_prep_ops,
-          self._init_ops)
+          self._init_ops,
+          completed_sweeps_var)
       mon_sess = monitored_session._HookedSession(sess, [sweep_hook])
       sess.run([variables.global_variables_initializer()])
 
@@ -447,6 +467,8 @@ class SweepHookTest(test.TestCase):
       mon_sess.run(self._train_op, ind_feed([3, 4], [0, 1, 2, 3, 4, 5, 6]))
       self.assertFalse(sess.run(is_row_sweep_var),
                        msg='Row sweep is complete but is_row_sweep is True.')
+      self.assertTrue(sess.run(completed_sweeps_var) == 1,
+                      msg='Completed sweeps should be equal to 1.')
       self.assertTrue(sweep_hook._is_sweep_done,
                       msg='Sweep is complete but is_sweep_done is False.')
       # Col init ops should run. Col sweep not completed.
@@ -464,6 +486,28 @@ class SweepHookTest(test.TestCase):
                       msg='Col sweep is complete but is_row_sweep is False')
       self.assertTrue(sweep_hook._is_sweep_done,
                       msg='Sweep is complete but is_sweep_done is False.')
+      self.assertTrue(sess.run(completed_sweeps_var) == 2,
+                      msg='Completed sweeps should be equal to 2.')
+
+
+class StopAtSweepHookTest(test.TestCase):
+
+  def test_stop(self):
+    hook = wals_lib._StopAtSweepHook(last_sweep=10)
+    completed_sweeps = variables.Variable(
+        8, name=wals_lib.WALSMatrixFactorization.COMPLETED_SWEEPS)
+    train_op = state_ops.assign_add(completed_sweeps, 1)
+    hook.begin()
+
+    with self.test_session() as sess:
+      sess.run([variables.global_variables_initializer()])
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      mon_sess.run(train_op)
+      # completed_sweeps is 9 after running train_op.
+      self.assertFalse(mon_sess.should_stop())
+      mon_sess.run(train_op)
+      # completed_sweeps is 10 after running train_op.
+      self.assertTrue(mon_sess.should_stop())
 
 
 if __name__ == '__main__':

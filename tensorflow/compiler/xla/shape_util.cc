@@ -618,6 +618,11 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   return return_shape;
 }
 
+/* static */
+bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
+  return !IsTuple(GetSubshape(shape, index));
+}
+
 /* static */ Shape ShapeUtil::StripDegenerateDimensions(const Shape& shape) {
   std::vector<int64> dimension_sizes;
   std::vector<int64> degenerate_dimensions;
@@ -676,7 +681,7 @@ namespace {
 // Helper for ForEachSubshape which visits the subshapes of the given shape in
 // DFS pre-order starting with the index.
 Status ForEachSubshapeHelper(const Shape& shape,
-                             const ShapeUtil::VisitorFunction& func,
+                             const ShapeUtil::StatusVisitorFunction& func,
                              ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(shape)) {
@@ -693,7 +698,7 @@ Status ForEachSubshapeHelper(const Shape& shape,
 // Helper for ForEachMutableSubshape which visits the subshapes of the given
 // shape in DFS pre-order starting with the index.
 Status ForEachMutableSubshapeHelper(
-    Shape* shape, const ShapeUtil::MutatingVisitorFunction& func,
+    Shape* shape, const ShapeUtil::MutatingStatusVisitorFunction& func,
     ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(*shape)) {
@@ -709,14 +714,40 @@ Status ForEachMutableSubshapeHelper(
 
 }  // namespace
 
-/* static */ Status ShapeUtil::ForEachSubshape(const Shape& shape,
-                                               const VisitorFunction& func) {
+/* static */ void ShapeUtil::ForEachSubshape(const Shape& shape,
+                                             const VisitorFunction& func) {
+  ShapeIndex index;
+  ForEachSubshapeHelper(
+      shape,
+      [&func](const Shape& subshape, const ShapeIndex& index) {
+        func(subshape, index);
+        return Status::OK();
+      },
+      &index)
+      .IgnoreError();
+}
+
+/* static */ void ShapeUtil::ForEachMutableSubshape(
+    Shape* shape, const MutatingVisitorFunction& func) {
+  ShapeIndex index;
+  ForEachMutableSubshapeHelper(
+      shape,
+      [&func](Shape* subshape, const ShapeIndex& index) {
+        func(subshape, index);
+        return Status::OK();
+      },
+      &index)
+      .IgnoreError();
+}
+
+/* static */ Status ShapeUtil::ForEachSubshapeWithStatus(
+    const Shape& shape, const StatusVisitorFunction& func) {
   ShapeIndex index;
   return ForEachSubshapeHelper(shape, func, &index);
 }
 
-/* static */ Status ShapeUtil::ForEachMutableSubshape(
-    Shape* shape, const MutatingVisitorFunction& func) {
+/* static */ Status ShapeUtil::ForEachMutableSubshapeWithStatus(
+    Shape* shape, const MutatingStatusVisitorFunction& func) {
   ShapeIndex index;
   return ForEachMutableSubshapeHelper(shape, func, &index);
 }
