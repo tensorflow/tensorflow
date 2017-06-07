@@ -9,6 +9,7 @@ ts_web_library(
     name = "webcomponentsjs",
     srcs = ["@org_definitelytyped//:webcomponents.js.d.ts"],
     path = "/webcomponentsjs",
+    visibility = ["//visibility:public"],
     exports = ["@org_polymer_webcomponentsjs"],
 )
 
@@ -16,6 +17,7 @@ ts_web_library(
     name = "polymer",
     srcs = ["@org_definitelytyped//:polymer.d.ts"],
     path = "/polymer",
+    visibility = ["//visibility:public"],
     exports = ["@org_polymer"],
     deps = [":webcomponentsjs"],
 )
@@ -27,6 +29,7 @@ ts_web_library(
         "@org_definitelytyped//:lodash.d.ts",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = ["@com_lodash"],
 )
 
@@ -39,6 +42,7 @@ ts_web_library(
         "@org_threejs//:three.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 ts_web_library(
@@ -48,6 +52,7 @@ ts_web_library(
         "@com_numericjs//:numeric.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 ts_web_library(
@@ -57,6 +62,7 @@ ts_web_library(
         "@io_github_waylonflinn_weblas//:weblas.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 ts_web_library(
@@ -66,6 +72,7 @@ ts_web_library(
         "@io_github_cpettitt_graphlib//:graphlib.core.min.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = [":lodash"],
 )
 
@@ -76,6 +83,7 @@ ts_web_library(
         "@io_github_cpettitt_dagre//:dagre.core.min.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = [
         ":graphlib",
         ":lodash",
@@ -90,6 +98,7 @@ ts_web_library(
         "@org_d3js//:d3.min.js",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
 )
 
 ts_web_library(
@@ -99,6 +108,7 @@ ts_web_library(
         "plottable.html",
     ],
     path = "/tf-imports",
+    visibility = ["//visibility:public"],
     deps = [
         ":d3",
         ":plottable_js_css",
@@ -119,6 +129,7 @@ ts_web_library(
 ts_web_library(
     name = "web_component_tester",
     testonly = 1,
+    visibility = ["//visibility:public"],
     exports = [
         ":chai_typings",
         ":mocha_typings",
