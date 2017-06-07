@@ -752,7 +752,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   native.new_http_archive(
       name = "io_angular_clutz",
-      build_file = "//third_party:clutz.BUILD",
+      build_file = str(Label("//third_party:clutz.BUILD")),
       sha256 = "2981de41d1ff4774b544423da9a2cd8beb3be649e95aef2ef2fd83957300b3fe",
       strip_prefix = "clutz-b0db5ade9bb535d387f05292316c422790c9848e",
       urls = [
