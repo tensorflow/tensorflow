@@ -38,6 +38,7 @@ from tensorflow.python.layers import pooling as pooling_layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sparse_ops
@@ -66,6 +67,7 @@ __all__ = ['avg_pool2d',
            'linear',
            'pool',
            'max_pool2d',
+           'maxout',
            'one_hot_encoding',
            'relu',
            'relu6',
@@ -1664,6 +1666,57 @@ def max_pool2d(inputs,
                                         data_format=df,
                                         _scope=sc)
     outputs = layer.apply(inputs)
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
+def maxout(inputs,
+           num_units,
+           axis=None,
+           outputs_collections=None,
+           scope=None):
+  """Adds a maxout op from https://arxiv.org/abs/1302.4389
+
+    "Maxout Networks"
+
+    Ian J. Goodfellow, David Warde-Farley, Mehdi Mirza, Aaron Courville, Yoshua
+    Bengio
+
+
+  Max pooling is performed in given filter/channel dimension. This can also be
+  used after fully-connected layers to reduce number of features.
+
+
+  Args:
+    inputs: A Tensor on which maxout will be performed
+    num_units: Specifies how many features will remain after max pooling at the
+      channel dimension. This must be multiple of number of channels.
+    axis: The dimension where max pooling will be performed. Default is the
+      last dimension.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: if num_units is not multiple of number of features.
+    """
+  with ops.name_scope(scope, 'MaxOut', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    shape = inputs.get_shape().as_list()
+    if axis is None:
+      # Assume that channel is the last dimension
+      axis = -1
+    num_channels = shape[axis]
+    if num_channels % num_units:
+      raise ValueError('number of features({}) is not '
+                       'a multiple of num_units({})'
+              .format(num_channels, num_units))
+    shape[axis] = -1
+    shape += [num_channels // num_units]
+    outputs = math_ops.reduce_max(gen_array_ops.reshape(inputs, shape), -1,
+                                  keep_dims=False)
     return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
