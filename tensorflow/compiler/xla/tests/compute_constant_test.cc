@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/hlo_pass_pipeline_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -46,14 +45,8 @@ ClientType client_types[] = {ClientType::kLocal, ClientType::kCompileOnly};
 class ComputeConstantTest : public ::testing::Test {
  public:
   explicit ComputeConstantTest(
-      perftools::gputools::Platform* platform = nullptr,
-      tensorflow::gtl::ArraySlice<string> disabled_pass_names = {})
-      : platform_(platform) {
-    legacy_flags::HloPassPipelineFlags* flags =
-        legacy_flags::GetHloPassPipelineFlags();
-    flags->xla_disable_hlo_passes =
-        tensorflow::str_util::Join(disabled_pass_names, ",");
-  }
+      perftools::gputools::Platform* platform = nullptr)
+      : platform_(platform) {}
 
   string TestName() const {
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();

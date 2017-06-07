@@ -68,7 +68,7 @@ class GraphNode : public ShowNode {
  public:
   explicit GraphNode(TFGraphNode* node) : ShowNode(node) {}
 
-  bool Trackable(int64 step) { return node->trackable(step); }
+  bool Trackable(int64 step) const { return node->trackable(step); }
 
   std::vector<GraphNode*> children;
   std::vector<GraphNode*> show_children;

@@ -222,7 +222,9 @@ const Eigen::ThreadPoolDevice* Backend::eigen_intra_op_thread_pool_device()
 }
 
 tensorflow::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
-  if (intra_op_thread_pool_wrapper_ == nullptr) return nullptr;
+  if (intra_op_thread_pool_wrapper_ == nullptr) {
+    return nullptr;
+  }
   return intra_op_thread_pool_wrapper_->pool.get();
 }
 

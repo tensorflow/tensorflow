@@ -295,19 +295,31 @@ class ShapeUtil {
   static const Shape& GetSubshape(const Shape& shape, const ShapeIndex& index);
   static Shape* GetMutableSubshape(Shape* shape, const ShapeIndex& index);
 
-  // Calls the given visitor function for each subshape of the given shape.
-  // Returns early if an error status is returned. Subshapes are visited in DFS
-  // pre-order starting with the entire shape (index {}).
-  using VisitorFunction = std::function<Status(const Shape& /*subshape*/,
-                                               const ShapeIndex& /*index*/)>;
-  static Status ForEachSubshape(const Shape& shape,
-                                const VisitorFunction& func);
+  // Returns whether the given index in the given shape is a leaf element of the
+  // shape.
+  static bool IsLeafIndex(const Shape& shape, const ShapeIndex& index);
 
-  // Mutating variant of ForEachSubshape.
+  // Calls the given visitor function for each subshape of the given shape.
+  // Subshapes are visited in DFS pre-order starting with the entire shape
+  // (index {}).
+  using VisitorFunction = std::function<void(const Shape& /*subshape*/,
+                                             const ShapeIndex& /*index*/)>;
+  static void ForEachSubshape(const Shape& shape, const VisitorFunction& func);
   using MutatingVisitorFunction =
+      std::function<void(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
+  static void ForEachMutableSubshape(Shape* shape,
+                                     const MutatingVisitorFunction& func);
+
+  // Variants of ForEach(Mutable)Subshape which propagate Status from the
+  // visitor function.
+  using StatusVisitorFunction = std::function<Status(
+      const Shape& /*subshape*/, const ShapeIndex& /*index*/)>;
+  static Status ForEachSubshapeWithStatus(const Shape& shape,
+                                          const StatusVisitorFunction& func);
+  using MutatingStatusVisitorFunction =
       std::function<Status(Shape* /*subshape*/, const ShapeIndex& /*index*/)>;
-  static Status ForEachMutableSubshape(Shape* shape,
-                                       const MutatingVisitorFunction& func);
+  static Status ForEachMutableSubshapeWithStatus(
+      Shape* shape, const MutatingStatusVisitorFunction& func);
 
   // Removes all degenerate dimensions (size one) from the given shape. The
   // stripped minor_to_major preserves the relative ordering of non-degenerate

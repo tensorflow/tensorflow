@@ -35,9 +35,19 @@ bool IsDequeueOp(const NodeDef& node) {
          op == "QueueDequeueUpToV2" || op == "QueueDequeueUpTo";
 }
 
+bool IsIdentity(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Identity";
+}
+
 bool IsMerge(const NodeDef& node) {
   const auto op = node.op();
   return op == "Merge";
+}
+
+bool IsNoOp(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "NoOp";
 }
 
 bool IsPlaceholder(const NodeDef& node) {
@@ -46,10 +56,25 @@ bool IsPlaceholder(const NodeDef& node) {
          op == "PlaceholderWithDefault";
 }
 
+bool IsRecv(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "_Recv";
+}
+
 bool IsReduction(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Sum" || op == "Prod" || op == "Min" || op == "Max" ||
          op == "Mean" || op == "Any" || op == "All";
+}
+
+bool IsSend(const NodeDef& node) {
+  const auto op = node.op();
+  return op == "_Send";
+}
+
+bool IsSwitch(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Switch";
 }
 
 bool IsTranspose(const NodeDef& node) {

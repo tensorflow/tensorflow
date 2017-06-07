@@ -32,10 +32,10 @@ from tensorflow.python.platform import test
 class ShuffleDatasetTest(test.TestCase):
 
   def testShuffleDataset(self):
-    components = [
+    components = (
         np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
         np.array([9.0, 10.0, 11.0, 12.0])
-    ]
+    )
     count_placeholder = array_ops.placeholder_with_default(
         constant_op.constant(5, dtypes.int64), shape=[])
     buffer_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
@@ -47,7 +47,7 @@ class ShuffleDatasetTest(test.TestCase):
     shuffle_dataset = repeat_dataset.shuffle(buffer_size_placeholder,
                                              seed_placeholder)
 
-    self.assertEqual([c.shape[1:] for c in components],
+    self.assertEqual(tuple([c.shape[1:] for c in components]),
                      shuffle_dataset.output_shapes)
 
     # Create initialization ops for iterators without and with
@@ -132,7 +132,7 @@ class ShuffleDatasetTest(test.TestCase):
         sess.run(get_next)
 
   def testDefaultArguments(self):
-    components = np.array([0, 1, 2, 3, 4])
+    components = [0, 1, 2, 3, 4]
     iterator = (dataset_ops.Dataset.from_tensor_slices(components).shuffle(5)
                 .repeat().make_one_shot_iterator())
 

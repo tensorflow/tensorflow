@@ -85,10 +85,9 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
                                             default_batch_size=None):
   """Build a serving_input_receiver_fn expecting fed tf.Examples.
 
-  Creates an input_fn that expects a serialized tf.Example fed into a string
-  placeholder.  The function parses the tf.Example according to the provided
-  feature_spec, and returns all parsed Tensors as features.  This input_fn is
-  for use at serving time, so the labels return value is always None.
+  Creates a serving_input_receiver_fn that expects a serialized tf.Example fed
+  into a string placeholder.  The function parses the tf.Example according to
+  the provided feature_spec, and returns all parsed Tensors as features.
 
   Args:
     feature_spec: a dict of string to `VarLenFeature`/`FixedLenFeature`.

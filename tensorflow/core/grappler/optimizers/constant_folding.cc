@@ -99,17 +99,67 @@ Status NumOutputs(const NodeDef& node, int* num_outputs) {
   }
   return Status::OK();
 }
+
+string AsControlDependency(const NodeDef& node) {
+  return strings::StrCat("^", node.name());
+}
+
 }  // namespace
 
 ConstantFolding::ConstantFolding() {
-  ops_to_preserve_ =
-      std::regex("Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader");
+  ops_to_preserve_ = std::regex(
+      "Placeholder.*|Const|.*Save.*|.*Restore.*|.*Reader|Enter|Exit|"
+      "NextIteration");
+}
+
+string ConstantFolding::AddControlDependency(const string& input_name) {
+  const NodeDef* node = node_map_->GetNode(input_name);
+  if (!IsSwitch(*node)) {
+    return AsControlDependency(*node);
+  } else {
+    // We can't anchor control dependencies directly on the switch node: unlike
+    // other nodes only one of the outputs of the switch node will be generated
+    // when the switch node is executed, and we need to make sure the control
+    // dependency is only triggered when the corresponding output is triggered.
+    // We start by looking for an identity node connected to the output of the
+    // switch node, and use it to anchor the control dependency.
+    auto outputs = node_map_->GetOutputs(node->name());
+    for (const NodeDef* node : outputs) {
+      if (IsIdentity(*node)) {
+        CHECK_EQ(1, node->input_size());
+        if (IsSameInput(node->input(0), input_name)) {
+          return AsControlDependency(*node);
+        }
+      }
+    }
+    // We haven't found an existing node where we can anchor the control
+    // dependency: add a new identity node.
+    int position = 0;
+    string ctrl_dep_name = ParseNodeName(input_name, &position);
+    strings::StrAppend(&ctrl_dep_name, "_", position);
+    ctrl_dep_name = AddPrefixToNodeName(ctrl_dep_name, kConstantFoldingCtrl);
+    const DataType output_type = node->attr().at("T").type();
+
+    NodeDef* added_node = graph_.add_node();
+    added_node->set_name(ctrl_dep_name);
+    added_node->set_op("Identity");
+    (*added_node->mutable_attr())["T"].set_type(output_type);
+    *added_node->add_input() = input_name;
+    node_map_->AddNode(added_node->name(), added_node);
+    node_map_->AddOutput(node->name(), added_node->name());
+    return AsControlDependency(*added_node);
+  }
 }
 
 Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
   GraphProperties properties(item);
   TF_RETURN_IF_ERROR(properties.InferStatically());
-  for (NodeDef& node : *graph_.mutable_node()) {
+  // We may add some nodes to the graph to encode control dependencies: there is
+  // no need to process these, so only iterate over the nodes of the input
+  // graph.
+  const int node_count = graph_.node_size();
+  for (int i = 0; i < node_count; ++i) {
+    NodeDef& node = *graph_.mutable_node(i);
     const string op = node.op();
     if (op != "Shape" && op != "Size" && op != "Rank") {
       continue;
@@ -179,9 +229,14 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
         value.AsProtoTensorContent(
             (*node.mutable_attr())["value"].mutable_tensor());
 
-        // Turn the inputs into control dependencies.
-        CHECK_EQ(1, node.input_size());
-        node.set_input(0, strings::StrCat("^", NodeName(node.input(0))));
+        // Turn the data input into a control dependency: this is needed to
+        // ensure that the constant value will only be generated in the cases
+        // where the shape/rank/size would have been generated in the original
+        // graph. Additional inputs are extra control dependencies that we
+        // preserve.
+        CHECK_LE(1, node.input_size());
+        string ctrl_dep = AddControlDependency(node.input(0));
+        node.set_input(0, ctrl_dep);
       }
     }
   }
@@ -328,8 +383,14 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     if (output_tensors.size() > 1) {
       node_name = strings::StrCat(node_name, "-", i);
     }
-    outputs->push_back(CreateNodeDef(node_name, output_tensors[i]));
-    delete output_tensors[i].tensor;
+    if (output_tensors[i].tensor) {
+      outputs->push_back(CreateNodeDef(node_name, output_tensors[i]));
+      delete output_tensors[i].tensor;
+    } else {
+      // Create an empty NodeDef to identify dead outputs (e.g. the output of a
+      // switch that's not selected by the switch predicate).
+      outputs->push_back(NodeDef());
+    }
   }
   return Status::OK();
 }
@@ -338,7 +399,14 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
   std::vector<NodeDef> const_nodes;
   TF_RETURN_IF_ERROR(EvaluateOneFoldable(node, &const_nodes));
 
+  NodeDef* constant_output = nullptr;
   for (const auto& const_node : const_nodes) {
+    if (const_node.name().empty()) {
+      // Dead output: we can't create a constant to encode its value, so we'll
+      // just skip it. We'll preserve the edges that originate from that output
+      // below to preserve the overall behavior of the graph wrt dead edges.
+      continue;
+    }
     NodeDef* added_node = output->add_node();
     *added_node = const_node;
     node_map_->AddNode(added_node->name(), added_node);
@@ -355,6 +423,11 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
         }
       }
     }
+
+    // All the constant nodes encoding output values have the same control
+    // dependencies (since these are the control dependencies of the node we're
+    // trying to fold). Record one such constant node.
+    constant_output = added_node;
   }
 
   auto outputs = node_map_->GetOutputs(node.name());
@@ -364,10 +437,21 @@ Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
       string node_name = ParseNodeName(output->input(i), &position);
       if (node_name == node.name()) {
         if (position < 0) {
-          *output->mutable_input(i) =
-              strings::StrCat("^", const_nodes[0].name());
-        } else {
+          // Propagate control dependencies if possible. If not, we'll just
+          // preserve the existing control dependencies.
+          if (constant_output != nullptr) {
+            *output->mutable_input(i) = AsControlDependency(*constant_output);
+          }
+
+        } else if (position < const_nodes.size() &&
+                   !const_nodes[position].name().empty()) {
+          // Replace alive outputs with the corresponding constant.
           *output->mutable_input(i) = const_nodes[position].name();
+        } else {
+          // Leave this edge alone.
+          VLOG(1) << "Preserving edge from " << node.name() << ":" << position
+                  << "[" << node.op() << "] to " << output->name() << ":" << i
+                  << "[" << output->op() << "]";
         }
       }
     }

@@ -176,23 +176,28 @@ function adjustPathPointsForMarker(points: render.Point[],
   let refX = +marker.attr('refX');
   let pathNode = <SVGPathElement> path.node();
   if (isStart) {
-    let fractionStickingOut = refX / viewBoxWidth;
-    let length = markerWidth * fractionStickingOut;
-    let point = pathNode.getPointAtLength(length);
+    // The edge flows downwards. Do not make the edge go the whole way, lest we
+    // clobber the arrowhead.
+    const fractionStickingOut = 1 - refX / viewBoxWidth;
+    const length = markerWidth * fractionStickingOut;
+    const point = pathNode.getPointAtLength(length);
     // Figure out how many segments of the path we need to remove in order
     // to shorten the path.
-    let segIndex = pathNode.getPathSegAtLength(length);
+    const segIndex = pathNode.getPathSegAtLength(length);
     // Update the very first segment.
     points[segIndex - 1] = {x: point.x, y: point.y};
     // Ignore every point before segIndex - 1.
     return points.slice(segIndex - 1);
   } else {
-    let fractionStickingOut = 1 - refX / viewBoxWidth;
-    let length = pathNode.getTotalLength() - markerWidth * fractionStickingOut;
-    let point = pathNode.getPointAtLength(length);
+    // The edge flows upwards. Do not make the edge go the whole way, lest we
+    // clobber the arrowhead.
+    const fractionStickingOut = 1 - refX / viewBoxWidth;
+    const length =
+        pathNode.getTotalLength() - markerWidth * fractionStickingOut;
+    const point = pathNode.getPointAtLength(length);
     // Figure out how many segments of the path we need to remove in order
     // to shorten the path.
-    let segIndex = pathNode.getPathSegAtLength(length);
+    const segIndex = pathNode.getPathSegAtLength(length);
     // Update the very last segment.
     points[segIndex] = {x: point.x, y: point.y};
     // Ignore every point after segIndex.
@@ -221,6 +226,9 @@ export function appendEdge(edgeGroup, d: EdgeData,
   if (d.label && d.label.structural) {
     edgeClass += ' ' + Class.Edge.STRUCTURAL;
   }
+  if (d.label && d.label.metaedge && d.label.metaedge.numRefEdges) {
+    edgeClass += ' ' + Class.Edge.REFERENCE_EDGE;
+  }
   // Give the path a unique id, which will be used to link
   // the textPath (edge label) to this path.
   let pathId = 'path_' + getEdgeKey(d);
@@ -232,10 +240,18 @@ export function appendEdge(edgeGroup, d: EdgeData,
                  .style('stroke-width', strokeWidth + 'px');
 
   // Check if there is a reference edge and add an arrowhead of the right size.
-  if (d.label && d.label.metaedge && d.label.metaedge.numRefEdges) {
-    let markerId = `ref-arrowhead-${arrowheadMap(strokeWidth)}`;
-    path.style('marker-start', `url(#${markerId})`);
-    d.label.startMarkerId = markerId;
+  if (d.label && d.label.metaedge) {
+    if (d.label.metaedge.numRefEdges) {
+      // We have a reference edge.
+      const markerId = `reference-arrowhead-${arrowheadMap(strokeWidth)}`;
+      path.style('marker-start', `url(#${markerId})`);
+      d.label.startMarkerId = markerId;
+    } else {
+      // We have a dataflow edge.
+      const markerId = `dataflow-arrowhead-${arrowheadMap(strokeWidth)}`;
+      path.style('marker-end', `url(#${markerId})`);
+      d.label.endMarkerId = markerId;
+    }
   }
 
   if (d.label == null || d.label.metaedge == null) {

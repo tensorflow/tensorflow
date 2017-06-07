@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_gen_lib.h"
 
 #include <vector>
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
