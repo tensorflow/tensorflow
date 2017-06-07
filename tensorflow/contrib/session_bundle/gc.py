@@ -100,7 +100,7 @@ def largest_export_versions(n):
 
 @deprecated('2017-06-30', 'Please use SavedModel instead.')
 def one_of_every_n_export_versions(n):
-  r"""Creates a filter that keeps one of every n export versions.
+  """Creates a filter that keeps one of every n export versions.
 
   Args:
     n: interval size.

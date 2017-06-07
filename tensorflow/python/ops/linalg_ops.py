@@ -285,7 +285,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
 
 # pylint: disable=redefined-builtin
 def norm(tensor, ord='euclidean', axis=None, keep_dims=False, name=None):
-  r"""Computes the norm of vectors, matrices, and tensors.
+  """Computes the norm of vectors, matrices, and tensors.
 
   This function can compute several different vector norms (the 1-norm, the
   Euclidean or 2-norm, the inf-norm, and in general the p-norm for p > 0) and

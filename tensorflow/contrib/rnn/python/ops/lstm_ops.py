@@ -49,7 +49,7 @@ def _lstm_block_cell(x,
                      cell_clip=None,
                      use_peephole=None,
                      name=None):
-  r"""Computes the LSTM cell forward propagation for 1 time step.
+  """Computes the LSTM cell forward propagation for 1 time step.
 
   This implementation uses 1 weight matrix and 1 bias vector, and there's an
   optional peephole connection.
@@ -149,7 +149,7 @@ def _block_lstm(seq_len_max,
                 cell_clip=None,
                 use_peephole=None,
                 name=None):
-  r"""TODO(williamchan): add doc.
+  """TODO(williamchan): add doc.
 
   Args:
     seq_len_max: A `Tensor` of type `int64`.

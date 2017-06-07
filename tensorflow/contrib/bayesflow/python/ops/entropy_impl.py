@@ -60,7 +60,7 @@ def elbo_ratio(log_p,
                seed=None,
                form=None,
                name='elbo_ratio'):
-  r"""Estimate of the ratio appearing in the `ELBO` and `KL` divergence.
+  """Estimate of the ratio appearing in the `ELBO` and `KL` divergence.
 
   With `p(z) := exp{log_p(z)}`, this `Op` returns an approximation of
 
@@ -325,7 +325,7 @@ def renyi_alpha(step,
                 alpha_min,
                 alpha_max=0.99999,
                 name='renyi_alpha'):
-  r"""Exponentially decaying `Tensor` appropriate for Renyi ratios.
+  """Exponentially decaying `Tensor` appropriate for Renyi ratios.
 
   When minimizing the Renyi divergence for `0 <= alpha < 1` (or maximizing the
   Renyi equivalent of elbo) in high dimensions, it is not uncommon to experience
