@@ -118,6 +118,43 @@ static void SharedValidation(OpKernelContext* context,
   }
 }
 
+// Extracted out code in SliceOp::Compute so that MklSliceOp can reuse this
+// generic code
+template <typename T>
+static void SharedSliceCommonCases(OpKernelContext* context,
+                                   TensorShape* output_shape,
+                                   gtl::InlinedVector<int64, 4>* begin,
+                                   gtl::InlinedVector<int64, 4>* size,
+                                   Tensor** result,
+                                   bool* done) {
+  bool is_identity = true;
+  bool slice_dim0 = true;
+  *done = false;
+
+  SharedValidation(context, output_shape, &is_identity, &slice_dim0, begin,
+                   size);
+  if (!context->status().ok()) return;
+  const Tensor& input = context->input(0);
+  if (is_identity) {
+    VLOG(1) << "Slice identity";
+    context->set_output(0, input);
+    *done = true;
+    return;
+  }
+
+  if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), (*begin)[0],
+                                          (*size)[0])) {
+    VLOG(1) << "Slice dim 0: " << input.shape().DebugString();
+    CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
+    context->set_output(0, input.Slice((*begin)[0], (*begin)[0] + (*size)[0]));
+    *done = true;
+    return;
+  }
+
+  OP_REQUIRES_OK(context, context->allocate_output(0, *output_shape, result));
+}
+
+
 template <typename Device, typename T>
 class SliceOp : public OpKernel {
  public:
@@ -125,29 +162,15 @@ class SliceOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     TensorShape output_shape;
-    bool is_identity = true;
-    bool slice_dim0 = true;
     gtl::InlinedVector<int64, 4> begin;
     gtl::InlinedVector<int64, 4> size;
-    SharedValidation(context, &output_shape, &is_identity, &slice_dim0, &begin,
-                     &size);
-    if (!context->status().ok()) return;
-    const Tensor& input = context->input(0);
-    if (is_identity) {
-      VLOG(1) << "Slice identity";
-      context->set_output(0, input);
-      return;
-    }
-
-    if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0], size[0])) {
-      VLOG(1) << "Slice dim 0: " << input.shape().DebugString();
-      CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
-      context->set_output(0, input.Slice(begin[0], begin[0] + size[0]));
-      return;
-    }
-
     Tensor* result = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &result));
+    bool done = false;
+    SharedSliceCommonCases<T>(context, &output_shape, &begin, &size, &result,
+                              &done);
+    if (!context->status().ok() || done == true) return;
+
+    const Tensor& input = context->input(0);
     const int input_dims = input.dims();
 
     if (output_shape.num_elements() > 0) {
@@ -213,27 +236,15 @@ class MklSliceOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     TensorShape output_shape;
-    bool is_identity = true;
-    bool slice_dim0 = true;
     gtl::InlinedVector<int64, 4> begin;
     gtl::InlinedVector<int64, 4> size;
-    SharedValidation(context, &output_shape, &is_identity, &slice_dim0, &begin,
-                     &size);
-    if (!context->status().ok()) return;
-    const Tensor& input = context->input(0);
-    if (is_identity) {
-      context->set_output(0, input);
-      return;
-    }
-
-    if (slice_dim0 && IsDim0SliceAligned<T>(input.shape(), begin[0], size[0])) {
-      CHECK_GE(input.dims(), 1);  // Otherwise, is_identity should be true.
-      context->set_output(0, input.Slice(begin[0], begin[0] + size[0]));
-      return;
-    }
-
     Tensor* result = nullptr;
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &result));
+    bool done = false;
+    SharedSliceCommonCases<T>(context, &output_shape, &begin, &size, &result,
+                              &done);
+    if (!context->status().ok() || done == true) return;
+
+    const Tensor& input = context->input(0);
     const int input_dims = input.dims();
 
     if (output_shape.num_elements() > 0) {
@@ -253,10 +264,10 @@ class MklSliceOp : public OpKernel {
         }
         return;
       }
-#define HANDLE_DIM(NDIM)                                  \
-  if (input_dims == NDIM) {                               \
-    this->HandleCase<NDIM>(context, begin, size, result); \
-    return;                                               \
+#define HANDLE_DIM(NDIM)                            \
+  if (input_dims == NDIM) {                         \
+    HandleCase<NDIM>(context, begin, size, result); \
+    return;                                         \
   }
 
       HANDLE_DIM(1);
