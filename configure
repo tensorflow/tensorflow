@@ -11,19 +11,11 @@ popd > /dev/null
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
 
 function is_linux() {
-  if [[ "${PLATFORM}" == "linux" ]]; then
-    true
-  else
-    false
-  fi
+  [[ "${PLATFORM}" == "linux" ]]
 }
 
 function is_macos() {
-  if [[ "${PLATFORM}" == "darwin" ]]; then
-    true
-  else
-    false
-  fi
+  [[ "${PLATFORM}" == "darwin" ]]
 }
 
 function is_windows() {
