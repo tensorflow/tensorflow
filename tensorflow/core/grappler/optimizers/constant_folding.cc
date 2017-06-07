@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -53,7 +54,7 @@ class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
 
 class DeviceSimple : public DeviceBase {
  public:
-  DeviceSimple() : DeviceBase(nullptr) {
+  DeviceSimple() : DeviceBase(Env::Default()) {
     eigen_worker_threads_.num_threads = 1;
     eigen_worker_threads_.workers = new thread::ThreadPool(
         Env::Default(), "constant_folding", eigen_worker_threads_.num_threads);
