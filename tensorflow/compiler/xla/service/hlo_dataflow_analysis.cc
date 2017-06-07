@@ -43,6 +43,17 @@ namespace xla {
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
 
+string HloLocation::ToString() const {
+  string index_str =
+      ShapeUtil::IsTuple(instruction->shape()) ? (" " + index.ToString()) : "";
+  return StrCat(instruction->FullyQualifiedName(), index_str);
+}
+
+std::ostream& operator<<(std::ostream& out, const HloLocation& location) {
+  out << location.ToString();
+  return out;
+}
+
 string HloUse::ToString() const {
   string index_str =
       ShapeUtil::IsTuple(instruction->operand(operand_number)->shape())
@@ -55,6 +66,13 @@ string HloUse::ToString() const {
 std::ostream& operator<<(std::ostream& out, const HloUse& use) {
   out << use.ToString();
   return out;
+}
+
+HloValue::HloValue(HloValue::Id id, HloInstruction* instruction,
+                   const ShapeIndex& index, bool is_phi)
+    : id_(id), is_phi_(is_phi) {
+  // The defining location is always the first element in the locations_ vector.
+  AddLocation(instruction, index);
 }
 
 bool HloValue::operator==(const HloValue& other) const {
@@ -70,34 +88,95 @@ bool HloValue::operator!=(const HloValue& other) const {
 
 string HloValue::ToShortString() const {
   string index_str =
-      ShapeUtil::IsTuple(instruction_->shape()) ? index_.ToString() : "";
-  return StrCat(is_phi_ ? "PHI " : "", instruction_->FullyQualifiedName(),
+      ShapeUtil::IsTuple(instruction()->shape()) ? index().ToString() : "";
+  return StrCat(is_phi_ ? "PHI " : "", instruction()->FullyQualifiedName(),
                 index_str);
 }
 
 string HloValue::ToString(int indent) const {
   string indentation(indent, ' ');
-  string out = StrCat(indentation, ToShortString(), ", uses:\n");
+  string out = StrCat(indentation, ToShortString(), ", locations:\n");
+  for (const HloLocation& location : locations()) {
+    StrAppend(&out, indentation, "  ", location.ToString(), "\n");
+  }
+  StrAppend(&out, indentation, " uses:\n");
   for (const HloUse& use : uses()) {
     StrAppend(&out, indentation, "  ", use.ToString(), "\n");
   }
   return out;
 }
 
-void HloValue::AddUse(HloInstruction* instruction, int64 operand_number,
-                      const ShapeIndex& operand_index) {
-  HloUse use = {instruction, operand_number, operand_index};
-  CHECK(std::find(uses_.begin(), uses_.end(), use) == uses_.end());
-  uses_.push_back(std::move(use));
+void HloValue::AddLocation(HloInstruction* instruction,
+                           const ShapeIndex& index) {
+  // The given location should not already exist in locations_.
+  for (const HloLocation& location : locations_) {
+    DCHECK(!(location.instruction == instruction && location.index == index));
+  }
+
+  locations_.push_back(HloLocation{instruction, index});
+
+  //  Update uses.
+  for (HloInstruction* user : instruction->users()) {
+    for (int64 operand_number : user->OperandIndices(instruction)) {
+      if (!DoesNotUseOperandBuffer(instruction, index, user)) {
+        for (const HloUse& use : uses_) {
+          // Verify that this use does not already exist.
+          DCHECK(!(use.instruction == user &&
+                   use.operand_number == operand_number &&
+                   use.operand_index == index));
+        }
+
+        uses_.push_back(HloUse{user, operand_number, index});
+      }
+    }
+  }
+
+  // Update liveout status of this HloValue.
+  const HloModule& module = *instruction->parent()->parent();
+  if (instruction == module.entry_computation()->root_instruction()) {
+    live_out_of_module_ = true;
+  }
 }
 
-void HloValue::RemoveUse(HloInstruction* instruction, int64 operand_number,
-                         const ShapeIndex& operand_index) {
-  HloUse use = {instruction, operand_number, operand_index};
-  auto it = std::find(uses_.begin(), uses_.end(), use);
-  CHECK(it != uses_.end());
-  uses_.erase(it);
-  DCHECK(std::find(uses_.begin(), uses_.end(), use) == uses_.end());
+void HloValue::RemoveLocation(HloInstruction* instruction,
+                              const ShapeIndex& index) {
+  // The defining location cannot be removed.
+  CHECK(!(instruction == this->instruction() && index == this->index()));
+
+  int64 size_before = locations_.size();
+  locations_.erase(
+      std::remove_if(locations_.begin(), locations_.end(),
+                     [instruction, &index](const HloLocation& location) {
+                       return location.instruction == instruction &&
+                              location.index == index;
+                     }),
+      locations_.end());
+  // Only a single location should have been removed.
+  CHECK_EQ(locations_.size(), size_before - 1);
+
+  //  Update uses which referred to this location.
+  uses_.erase(std::remove_if(uses_.begin(), uses_.end(),
+                             [instruction, &index](const HloUse& use) {
+                               return use.instruction->operand(
+                                          use.operand_number) == instruction &&
+                                      use.operand_index == index;
+                             }),
+              uses_.end());
+
+  const HloModule& module = *instruction->parent()->parent();
+  if (instruction == module.entry_computation()->root_instruction()) {
+    // Value has been removed from a location in the entry root instruction.
+    // Check if the value is still live out of the module by walking all
+    // remaining locations.
+    live_out_of_module_ = false;
+    for (const HloLocation& location : locations()) {
+      if (location.instruction ==
+          module.entry_computation()->root_instruction()) {
+        live_out_of_module_ = true;
+        break;
+      }
+    }
+  }
 }
 
 std::ostream& operator<<(std::ostream& out, const HloValue& value) {
@@ -159,11 +238,11 @@ std::ostream& operator<<(std::ostream& out,
 
 string InstructionValueSet::ToString() const {
   string out =
-      StrCat("InstructionValueSet(", ShapeUtil::HumanString(shape()), ")");
-  ForEachElement(
-      [this, &out](const ShapeIndex& index, const HloValueSet& value_set) {
-        StrAppend(&out, index.ToString(), " : ", value_set.ToString(), "\n");
-      });
+      StrCat("InstructionValueSet(", ShapeUtil::HumanString(shape()), ")\n");
+  ForEachElement([this, &out](const ShapeIndex& index,
+                              const HloValueSet& value_set) {
+    StrAppend(&out, "  ", index.ToString(), " : ", value_set.ToString(), "\n");
+  });
   return out;
 }
 
@@ -315,30 +394,19 @@ InstructionValueSet HloDataflowAnalysis::Phi(
           *value_set = GetInstructionValueSet(instruction).element(index);
           return;
         }
-        // Return the unique value at the current index in the given
-        // InstructionValueSet. Returns null if the value has not yet been
-        // determined.
-        auto unique_value_or_null = [this,
-                                     &index](const InstructionValueSet& ivset) {
-          const HloValueSet& vset = ivset.element(index);
-          CHECK_LE(vset.value_ids().size(), 1);
-          return vset.value_ids().empty() ? nullptr
-                                          : &GetValue(vset.GetUniqueValueId());
-        };
 
-        // Save the old value at this index.
-        const HloValue* old_value =
-            unique_value_or_null(GetInstructionValueSet(instruction));
-        bool old_value_is_phi = old_value != nullptr && old_value->is_phi() &&
-                                ValueIsDefinedAt(instruction, index);
+        // Identify the existing phi value at this index if it exists.
+        const HloValue* existing_phi_value = nullptr;
+        if (ValueIsDefinedAt(instruction, index) &&
+            GetUniqueValueAt(instruction, index).is_phi()) {
+          existing_phi_value = &GetUniqueValueAt(instruction, index);
+        }
 
         // Construct a vector of unique value IDs of the inputs.
         std::vector<HloValue::Id> input_value_ids;
         for (const InstructionValueSet* input : inputs) {
-          // All values must be unique.
-          const HloValue* input_value = unique_value_or_null(*input);
-          if (input_value != nullptr) {
-            input_value_ids.push_back(input_value->id());
+          for (HloValue::Id value_id : input->element(index).value_ids()) {
+            input_value_ids.push_back(value_id);
           }
         }
         input_value_ids.erase(
@@ -348,9 +416,9 @@ InstructionValueSet HloDataflowAnalysis::Phi(
         // Remove the existing phi value (if it exists). The phi can be its own
         // input, for example, in while body parameters where the body passes
         // through the parameter value.
-        if (old_value_is_phi) {
+        if (existing_phi_value != nullptr) {
           auto it = std::find(input_value_ids.begin(), input_value_ids.end(),
-                              old_value->id());
+                              existing_phi_value->id());
           if (it != input_value_ids.end()) {
             input_value_ids.erase(it);
           }
@@ -360,20 +428,20 @@ InstructionValueSet HloDataflowAnalysis::Phi(
           if (input_value_ids.size() == 1) {
             *value_set = HloValueSet({input_value_ids[0]});
           }
-          if (old_value_is_phi) {
+          if (existing_phi_value) {
             // The merge point does not have multiple distinct inputs (which are
             // not the phi value itself). Therefore there is no need to insert a
             // phi value because there is a single reaching definition (or no
             // reaching definition).
-            DeleteHloValue(old_value->id());
+            DeleteHloValue(existing_phi_value->id());
           }
         } else if (input_value_ids.size() > 1) {
           // Multiple distinct values reach this point. A phi value is
           // necessary.
-          if (old_value_is_phi) {
+          if (existing_phi_value) {
             // A phi value already exists so reuse it in the new
             // InstructionValueSet.
-            *value_set = HloValueSet({old_value->id()});
+            *value_set = HloValueSet({existing_phi_value->id()});
           } else {
             // Create a new phi value.
             *value_set =
@@ -384,61 +452,40 @@ InstructionValueSet HloDataflowAnalysis::Phi(
   return new_value_set;
 }
 
-void HloDataflowAnalysis::UpdateUsesOfValuesAt(
+void HloDataflowAnalysis::UpdateLocationsOfValuesAt(
     HloInstruction* instruction, const InstructionValueSet& new_value_set,
     const InstructionValueSet* prev_value_set) {
-  for (HloInstruction* user : instruction->users()) {
-    for (int64 operand_number : user->OperandIndices(instruction)) {
-      if (prev_value_set != nullptr) {
-        // Remove uses from the old value set.
-        prev_value_set->ForEachElement(
-            [this, instruction, user, operand_number](
-                const ShapeIndex& index, const HloValueSet& value_set) {
-              for (HloValue::Id value_id : value_set.value_ids()) {
-                // HloValues in the previous value set may have been deleted.
-                if (!ContainsKey(values_, value_id)) {
-                  continue;
-                }
-                if (!DoesNotUseOperandBuffer(instruction, index, user)) {
-                  GetValue(value_id).RemoveUse(user, operand_number, index);
-                }
-              }
-            });
-      }
-      // Add uses in the new value set.
-      new_value_set.ForEachElement(
-          [this, instruction, user, operand_number](
-              const ShapeIndex& index, const HloValueSet& value_set) {
-            for (HloValue::Id value_id : value_set.value_ids()) {
-              if (!DoesNotUseOperandBuffer(instruction, index, user)) {
-                GetValue(value_id).AddUse(user, operand_number, index);
-              }
-            }
-          });
-    }
-  }
-}
-
-void HloDataflowAnalysis::UpdateLiveOutValues(
-    const InstructionValueSet& new_root_value_set,
-    const InstructionValueSet* prev_root_value_set) {
-  if (prev_root_value_set != nullptr) {
-    // Clear the old live out set.
-    prev_root_value_set->ForEachElement(
-        [this](const ShapeIndex& index, const HloValueSet& value_set) {
+  if (prev_value_set != nullptr) {
+    // Remove locations from the old value set.
+    prev_value_set->ForEachElement(
+        [this, instruction](const ShapeIndex& index,
+                            const HloValueSet& value_set) {
           for (HloValue::Id value_id : value_set.value_ids()) {
             // HloValues in the previous value set may have been deleted.
             if (!ContainsKey(values_, value_id)) {
               continue;
             }
-            GetValue(value_id).set_live_out_of_module(false);
+            // Don't remove the defining location of the value.
+            HloValue& value = GetValue(value_id);
+            if (instruction == value.instruction()) {
+              CHECK_EQ(index, value.index());
+            } else {
+              value.RemoveLocation(instruction, index);
+            }
           }
         });
   }
-  new_root_value_set.ForEachElement(
-      [this](const ShapeIndex& index, const HloValueSet& value_set) {
+  // Add locations in the new value set.
+  new_value_set.ForEachElement(
+      [this, instruction](const ShapeIndex& index,
+                          const HloValueSet& value_set) {
         for (HloValue::Id value_id : value_set.value_ids()) {
-          GetValue(value_id).set_live_out_of_module(true);
+          HloValue& value = GetValue(value_id);
+          if (instruction == value.instruction()) {
+            CHECK_EQ(index, value.index());
+          } else {
+            value.AddLocation(instruction, index);
+          }
         }
       });
 }
@@ -483,9 +530,11 @@ InstructionValueSet HloDataflowAnalysis::RecomputeSelectValueSet(
   std::vector<const InstructionValueSet*> inputs = {
       &GetInstructionValueSet(select->operand(1)),
       &GetInstructionValueSet(select->operand(2))};
-  InstructionValueSet new_value_set =
-      ssa_form_ ? Phi(select, inputs, /*skip_top_level=*/true)
-                : InstructionValueSet::Union(inputs);
+  // A phi value is not defined at a kSelect instruction because kSelect does
+  // not create a new value. Rather it forwards a value from its operands. This
+  // contrasts with kWhile instruction (which does define a phi value) which has
+  // in-place update semantics.
+  InstructionValueSet new_value_set = InstructionValueSet::Union(inputs);
   *new_value_set.mutable_element(/*index=*/{}) =
       GetInstructionValueSet(select).element(/*index=*/{});
   return new_value_set;
@@ -577,8 +626,13 @@ void HloDataflowAnalysis::UpdateInstructionsAndPropagate(
 
     if (GetInstructionValueSet(instruction) == old_value) {
       // No change to the instruction's value set.
+      VLOG(4) << "No change.";
       continue;
     }
+
+    VLOG(4) << "New value set for " << instruction->name() << ": "
+            << GetInstructionValueSet(instruction);
+    VLOG(4) << "Previously: " << old_value;
 
     // Instruction value was updated. Add users to work list.
     for (HloInstruction* user : instruction->users()) {
@@ -617,13 +671,8 @@ void HloDataflowAnalysis::UpdateInstructionsAndPropagate(
     // Update uses. First clear all of the old uses at the particular
     // operands. Then add the new uses. There may be overlap between the old
     // uses and new uses.
-    UpdateUsesOfValuesAt(instruction, GetInstructionValueSet(instruction),
-                         &old_value);
-
-    // Reset module live-out values.
-    if (instruction == module_->entry_computation()->root_instruction()) {
-      UpdateLiveOutValues(GetInstructionValueSet(instruction), &old_value);
-    }
+    UpdateLocationsOfValuesAt(instruction, GetInstructionValueSet(instruction),
+                              &old_value);
   }
 }
 
@@ -745,12 +794,10 @@ Status HloDataflowAnalysis::InitializeInstructionValueSets() {
           define_all_values();
           break;
       }
-      UpdateUsesOfValuesAt(instruction.get(),
-                           GetInstructionValueSet(instruction.get()));
+      UpdateLocationsOfValuesAt(instruction.get(),
+                                GetInstructionValueSet(instruction.get()));
     }
   }
-  UpdateLiveOutValues(
-      GetInstructionValueSet(module_->entry_computation()->root_instruction()));
   return Status::OK();
 }
 

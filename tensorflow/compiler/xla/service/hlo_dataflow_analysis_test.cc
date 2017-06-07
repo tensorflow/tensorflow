@@ -89,6 +89,15 @@ TEST_P(HloDataflowAnalysisTest, BinaryOperation) {
   EXPECT_TRUE(analysis.ValueIsDefinedAt(constant2));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(add));
 
+  // Verify the locations of the values. These locations are all trivial because
+  // there are no instructions which forward values.
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant1).locations(),
+              UnorderedElementsAre(HloLocation{constant1, {}}));
+  EXPECT_THAT(analysis.GetValueDefinedAt(constant2).locations(),
+              UnorderedElementsAre(HloLocation{constant2, {}}));
+  EXPECT_THAT(analysis.GetValueDefinedAt(add).locations(),
+              UnorderedElementsAre(HloLocation{add, {}}));
+
   // Verify the uses of the values.
   EXPECT_THAT(analysis.GetValueDefinedAt(constant1).uses(),
               UnorderedElementsAre(HloUse{add, 0, {}}));
@@ -134,6 +143,18 @@ TEST_P(HloDataflowAnalysisTest, TupleAndGtes) {
   EXPECT_FALSE(analysis.ValueIsDefinedAt(gte1));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(add));
 
+  // Verify the locations of the values.
+  EXPECT_THAT(
+      analysis.GetValueDefinedAt(param0).locations(),
+      UnorderedElementsAre(HloLocation{param0, {}}, HloLocation{tuple, {0}},
+                           HloLocation{gte0, {}}));
+  EXPECT_THAT(
+      analysis.GetValueDefinedAt(param1).locations(),
+      UnorderedElementsAre(HloLocation{param1, {}}, HloLocation{tuple, {1}},
+                           HloLocation{gte1, {}}));
+  EXPECT_THAT(analysis.GetValueDefinedAt(tuple).locations(),
+              UnorderedElementsAre(HloLocation{tuple, {}}));
+
   // Verify uses. Of interest is that a GetTupleElement instruction is only a
   // use of the top-level value in the tuple operand.
   EXPECT_THAT(analysis.GetValueDefinedAt(param0).uses(),
@@ -173,6 +194,14 @@ TEST_P(HloDataflowAnalysisTest, NestedTuple) {
 
   EXPECT_EQ(analysis.values().size(), 4);
 
+  // Verify locations and uses.
+  EXPECT_THAT(
+      analysis.GetValueDefinedAt(constant1).locations(),
+      UnorderedElementsAre(
+          HloLocation{constant1, {}}, HloLocation{tuple, {0}},
+          HloLocation{nested_tuple, {0, 0}}, HloLocation{nested_tuple, {1, 0}},
+          HloLocation{nested_tuple, {2}}, HloLocation{gte_tuple, {0}},
+          HloLocation{gte_out, {}}));
   EXPECT_THAT(analysis.GetValueDefinedAt(constant1).uses(),
               UnorderedElementsAre(
                   HloUse{tuple, 0, {}}, HloUse{nested_tuple, 0, {0}},
@@ -860,30 +889,6 @@ TEST_P(HloDataflowAnalysisTest, TupleSelect) {
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select34));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select1234));
 
-  if (ssa_form) {
-    // All non-top-level elements should be phi instructions except for
-    // %select11 which selects between the same values.
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(select11, /*index=*/{0}));
-    EXPECT_THAT(HloValuesAt(select11, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1)));
-
-    EXPECT_TRUE(analysis.ValueIsDefinedAt(select12, /*index=*/{0}));
-    EXPECT_TRUE(analysis.GetValueDefinedAt(select12, /*index=*/{0}).is_phi());
-
-    EXPECT_TRUE(analysis.ValueIsDefinedAt(select34, /*index=*/{0}));
-    EXPECT_TRUE(analysis.GetValueDefinedAt(select34, /*index=*/{0}).is_phi());
-
-    EXPECT_TRUE(analysis.ValueIsDefinedAt(select1234, /*index=*/{0}));
-    EXPECT_TRUE(analysis.GetValueDefinedAt(select1234, /*index=*/{0}).is_phi());
-
-    EXPECT_THAT(analysis.GetValueDefinedAt(constant1).uses(),
-                UnorderedElementsAre(
-                    HloUse{tuple1, 0, {}}, HloUse{select11, 1, {0}},
-                    HloUse{select11, 2, {0}}, HloUse{select12, 1, {0}}));
-    EXPECT_THAT(
-        analysis.GetValueDefinedAt(constant2).uses(),
-        UnorderedElementsAre(HloUse{tuple2, 0, {}}, HloUse{select12, 2, {0}}));
-  } else {
     EXPECT_FALSE(analysis.ValueIsDefinedAt(select11, /*index=*/{0}));
     EXPECT_FALSE(analysis.ValueIsDefinedAt(select12, /*index=*/{0}));
     EXPECT_FALSE(analysis.ValueIsDefinedAt(select34, /*index=*/{0}));
@@ -912,7 +917,6 @@ TEST_P(HloDataflowAnalysisTest, TupleSelect) {
         analysis.GetValueDefinedAt(constant2).uses(),
         UnorderedElementsAre(HloUse{tuple2, 0, {}}, HloUse{select12, 2, {0}},
                              HloUse{select1234, 1, {0}}));
-  }
 }
 
 TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
@@ -948,14 +952,6 @@ TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
 
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select));
 
-  if (ssa_form) {
-    EXPECT_TRUE(analysis.ValueIsDefinedAt(select, /*index=*/{0}));
-    EXPECT_TRUE(analysis.ValueIsDefinedAt(select, /*index=*/{1}));
-    EXPECT_TRUE(analysis.ValueIsDefinedAt(select, /*index=*/{1, 0}));
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(select, /*index=*/{1, 1}));
-    EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 1}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant3)));
-  } else {
     EXPECT_THAT(HloValuesAt(select, /*index=*/{0}),
                 UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
                                      analysis.GetValueDefinedAt(constant4)));
@@ -967,7 +963,6 @@ TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {
                                      analysis.GetValueDefinedAt(constant5)));
     EXPECT_THAT(HloValuesAt(select, /*index=*/{1, 1}),
                 UnorderedElementsAre(analysis.GetValueDefinedAt(constant3)));
-  }
 }
 
 TEST_P(HloDataflowAnalysisTest, TupleSelectToWhile) {
@@ -1045,19 +1040,16 @@ TEST_P(HloDataflowAnalysisTest, TupleSelectToWhile) {
   const HloDataflowAnalysis& analysis = RunAnalysis(ssa_form);
 
   if (ssa_form) {
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(xla_while, /*index=*/{0}));
-    EXPECT_THAT(HloValuesAt(xla_while, /*index=*/{0}),
-                UnorderedElementsAre(
-                    analysis.GetValueDefinedAt(select, /*index=*/{0})));
-
+    EXPECT_TRUE(analysis.ValueIsDefinedAt(xla_while, /*index=*/{0}));
+    EXPECT_TRUE(analysis.GetValueDefinedAt(xla_while, /*index=*/{0}).is_phi());
     EXPECT_TRUE(analysis.ValueIsDefinedAt(xla_while, /*index=*/{1}));
     EXPECT_TRUE(analysis.GetValueDefinedAt(xla_while, /*index=*/{1}).is_phi());
+
+    EXPECT_FALSE(analysis.ValueIsDefinedAt(select, /*index=*/{0}));
 
     EXPECT_FALSE(analysis.GetValueDefinedAt(constant1).live_out_of_module());
     EXPECT_FALSE(analysis.GetValueDefinedAt(constant2).live_out_of_module());
     EXPECT_FALSE(analysis.GetValueDefinedAt(constant3).live_out_of_module());
-    EXPECT_TRUE(
-        analysis.GetValueDefinedAt(select, /*index=*/{0}).live_out_of_module());
     EXPECT_TRUE(analysis.GetValueDefinedAt(xla_while, /*index=*/{1})
                     .live_out_of_module());
   } else {

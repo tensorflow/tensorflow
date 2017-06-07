@@ -43,6 +43,23 @@ limitations under the License.
 
 namespace xla {
 
+// Abstraction which identifies a specific point in the XLA graph. An
+// HloLocation specifies a ShapeIndex within the output of a specific
+// instruction.
+struct HloLocation {
+  HloInstruction* instruction;
+  ShapeIndex index;
+
+  string ToString() const;
+
+  bool operator==(const HloLocation& other) const {
+    return instruction == other.instruction && index == other.index;
+  }
+  bool operator!=(const HloLocation& other) const { return !(*this == other); }
+};
+
+std::ostream& operator<<(std::ostream& out, const HloLocation& location);
+
 // Defines a single use of an HLO value.
 struct HloUse {
   // Instruction at which the value is used.
@@ -93,12 +110,10 @@ class HloValue {
 
   // Construct an HloValue defined by 'instruction' at shape index 'index'. If
   // is_phi is true, then this value is a phi value, for example, at the
-  // parameter of a while body computation or in a select instruction. Phi
-  // values are only used in the SSA dataflow analysis
-  // (HloDataflowAnalysis::ssa_form_ is true).
+  // parameter of a while body computation. Phi values are only used in the SSA
+  // dataflow analysis (HloDataflowAnalysis::ssa_form_ is true).
   HloValue(HloValue::Id id, HloInstruction* instruction,
-           const ShapeIndex& index, bool is_phi = false)
-      : id_(id), instruction_(instruction), index_(index), is_phi_(is_phi) {}
+           const ShapeIndex& index, bool is_phi = false);
 
   // Return a unique identifier for this HloValue. This value is used for stable
   // sorting and iteration
@@ -107,26 +122,31 @@ class HloValue {
   // Returns whether this value is a phi value.
   bool is_phi() const { return is_phi_; }
 
+  // Return the location where this value is defined.
+  const HloLocation& DefinitionLocation() const { return locations_[0]; }
+
   // Return the instruction which defines this HloValue.
-  HloInstruction* instruction() const { return instruction_; }
+  HloInstruction* instruction() const {
+    return DefinitionLocation().instruction;
+  }
 
   // Return the shape index at which this HloValue is defined in the output of
   // instruction().
-  const ShapeIndex& index() const { return index_; }
+  const ShapeIndex& index() const { return DefinitionLocation().index; }
 
-  // Add or remove a use of the HloValue at a particular operand of an
-  // instruction.
-  void AddUse(HloInstruction* instruction, int64 operand_number,
-              const ShapeIndex& operand_index);
-  void RemoveUse(HloInstruction* instruction, int64 operand_number,
-                 const ShapeIndex& operand_index);
+  // Add or remove a location at which the HloValue appears. The definition
+  // location can not be removed. The uses of the HloValue are updated.
+  void AddLocation(HloInstruction* instruction, const ShapeIndex& index);
+  void RemoveLocation(HloInstruction* instruction, const ShapeIndex& index);
+
+  // Return all locations of the HloValue in the module.
+  const std::vector<HloLocation>& locations() const { return locations_; }
 
   // Return all uses of the HloValue.
   const std::vector<HloUse>& uses() const { return uses_; }
 
   // Set/get whether this HloValue is live out of the module.
   bool live_out_of_module() const { return live_out_of_module_; }
-  void set_live_out_of_module(bool value) { live_out_of_module_ = value; }
 
   bool operator==(const HloValue& other) const;
   bool operator!=(const HloValue& other) const;
@@ -140,14 +160,12 @@ class HloValue {
   // Unique identifier for this HloValue. Used for stable sorting and iteration.
   const Id id_;
 
-  // The instruction defining this value.
-  HloInstruction* const instruction_;
-
-  // Shape index at which this value is defined.
-  const ShapeIndex index_;
-
   // Whether this instruction is a phi value.
   const bool is_phi_;
+
+  // The set of locations of this HloValue. The first element is always the
+  // location of the definition.
+  std::vector<HloLocation> locations_;
 
   // The set of uses of this HloValue.
   std::vector<HloUse> uses_;
@@ -233,15 +251,14 @@ class HloDataflowAnalysis {
   //
   //   ssa_form : If true then new values are defined at merge points in the XLA
   //     graph. Abusing nomenclature somewhat, we call these "phi values".
-  //     Merge points exist at Select instructions, While instructions (formed
-  //     by the init value and loop backedge), and subcomputations which are
-  //     called via kCall from more than one callsite. The SSA form is minimal
-  //     in that a new phi value is defined only if the merge point is reachable
-  //     by multiple different values. The SSA form is also in loop-closed form
-  //     in that no values defined inside of a loop (while body) is used outside
-  //     of the loop. In SSA form every location in the HLO graph (instruction
-  //     and ShapeIndex) has a single unique value (a unique reaching
-  //     definition).
+  //     Merge points exist at While instructions (formed by the init value and
+  //     loop backedge), and subcomputations which are called via kCall from
+  //     more than one callsite. The SSA form is minimal in that a new phi value
+  //     is defined only if the merge point is reachable by multiple different
+  //     values. The SSA form is also in loop-closed form in that no values
+  //     defined inside of a loop (while body) is used outside of the loop. In
+  //     SSA form every location in the HLO graph (instruction and ShapeIndex)
+  //     has a single unique value (a unique reaching definition).
   //
   //     If ssa_form is false, then merge points do not define new
   //     values. Rather, the HloValueSet for the merge point contains the union
@@ -351,26 +368,16 @@ class HloDataflowAnalysis {
       tensorflow::gtl::ArraySlice<const InstructionValueSet*> inputs,
       bool skip_top_level = false);
 
-  // Updates the HloUses of the HloValues contained in the output of the given
-  // instruction at all of the users of 'instruction'. This should be called
-  // after the instruction value set of 'instruction' has been
-  // changed. 'prev_value_set' must point to the previous state of the value set
-  // prior to the change. 'prev_value_set' may be null if this is the first time
-  // uses are being computed. The previous state is necessary to efficiently
-  // remove uses which have been eliminated due to changes in the instructions'
-  // InstructionValueSet.
-  void UpdateUsesOfValuesAt(
+  // Updates the locations of the HloValues in the output of the given
+  // instruction. This should be called after the instruction value set of
+  // 'instruction' has been changed. 'prev_value_set' must point to the previous
+  // state of the value set prior to the change. 'prev_value_set' may be null if
+  // this is the first time locations are being computed. The previous state is
+  // necessary to efficiently remove locations which have been eliminated due to
+  // changes in the instructions' InstructionValueSet.
+  void UpdateLocationsOfValuesAt(
       HloInstruction* instruction, const InstructionValueSet& new_value_set,
       const InstructionValueSet* prev_value_set = nullptr);
-
-  // Updates the values live out of the module. This should be called after
-  // the instruction value set of the root instruction of the entry computation
-  // has been changed. 'prev_root_value_set' should point to the previous
-  // InstructionValueSet of the entry root instruction. 'prev_root_set' can be
-  // nullptr if this is the first time live-out values are being computed.
-  void UpdateLiveOutValues(
-      const InstructionValueSet& new_root_value_set,
-      const InstructionValueSet* prev_root_value_set = nullptr);
 
   HloModule* const module_;
   const bool ssa_form_;
