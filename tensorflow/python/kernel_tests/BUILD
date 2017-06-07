@@ -967,7 +967,6 @@ tf_py_test(
     name = "reader_ops_test",
     size = "small",
     srcs = ["reader_ops_test.py"],
-    tags = ["no_windows"],
     additional_deps = [
         "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
@@ -981,6 +980,7 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     data = ["//tensorflow/core:lmdb_testdata"],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
