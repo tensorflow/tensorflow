@@ -347,6 +347,25 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "tensor_array_ops_test",
+    size = "small",
+    srcs = ["tensor_array_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:tensor_array_grad",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "ternary_ops_test",
     size = "small",
     srcs = ["ternary_ops_test.py"],
