@@ -967,6 +967,7 @@ tf_py_test(
     name = "reader_ops_test",
     size = "small",
     srcs = ["reader_ops_test.py"],
+    tags = ["no_windows"],
     additional_deps = [
         "@six_archive//:six",
         "//tensorflow/core:protos_all_py",
