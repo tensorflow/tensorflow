@@ -229,11 +229,13 @@ Status ConstantFolding::MaterializeShapes(const GrapplerItem& item) {
         value.AsProtoTensorContent(
             (*node.mutable_attr())["value"].mutable_tensor());
 
-        // Turn the inputs into control dependencies: this is needed to ensure
-        // that the constant value will only be generated in the cases where the
-        // shape/rank/size would have been generated in the original graph.
+        // Turn the data input into a control dependency: this is needed to
+        // ensure that the constant value will only be generated in the cases
+        // where the shape/rank/size would have been generated in the original
+        // graph. Additional inputs are extra control dependencies that we
+        // preserve.
+        CHECK_LE(1, node.input_size());
         string ctrl_dep = AddControlDependency(node.input(0));
-        CHECK_EQ(1, node.input_size());
         node.set_input(0, ctrl_dep);
       }
     }
