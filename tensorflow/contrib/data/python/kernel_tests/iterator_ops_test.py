@@ -25,12 +25,26 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
 
 class IteratorTest(test.TestCase):
+
+  def testAttemptingGradientsRaiseExceptions(self):
+    component = constant_op.constant([1])
+    side = constant_op.constant(0)
+    add = lambda x: x + side
+    dataset = dataset_ops.Dataset.from_tensor_slices(component).map(add)
+    value = dataset.make_one_shot_iterator().get_next()
+    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
+      gradients_impl.gradients(value, component)
+    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
+      gradients_impl.gradients(value, side)
+    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
+      gradients_impl.gradients(value, [component, side])
 
   def testOneShotIterator(self):
     components = [np.arange(7),

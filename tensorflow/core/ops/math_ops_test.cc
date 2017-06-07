@@ -27,6 +27,7 @@ TEST(MathOpsTest, AddN_ShapeFn) {
   ShapeInferenceTestOp op("AddN");
   auto set_n = [&op](int n) {
     std::vector<NodeDefBuilder::NodeOut> src_list;
+    src_list.reserve(n);
     for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
     TF_ASSERT_OK(NodeDefBuilder("test", "AddN")
                      .Input(src_list)
@@ -188,36 +189,70 @@ TEST(MathOpsTest, Select_ShapeFn) {
   INFER_ERROR("Dimension 2 in both shapes must be equal, but are 3 and 5", op,
               "[2,?,5];[?,?,3];[?,2,?]");
 
-  // Test that handle shapes were merged.
+  // Test that handles were merged.
+  //
+  // Tests below will modify handle_data and call run_inference_for_handles to
+  // rerun shape inference, updating the context <c>.
   const OpRegistrationData* op_reg_data;
   TF_ASSERT_OK(OpRegistry::Global()->LookUp(op.name, &op_reg_data));
-  TensorShapeProto i0;
-  i0.add_dim()->set_size(1);
-  i0.add_dim()->set_size(-1);
-  TensorShapeProto i1;
-  i1.add_dim()->set_size(-1);
-  i1.add_dim()->set_size(2);
+  typedef std::vector<std::pair<TensorShapeProto, DataType>> ShapeDtypeV;
+  std::vector<std::unique_ptr<ShapeDtypeV>> handle_data;
+  std::unique_ptr<shape_inference::InferenceContext> c;
+  Status run_status;
+  auto run_inference_for_handles = [&]() -> Status {
+    CHECK(op_reg_data->shape_inference_fn != nullptr);
+    c.reset(new shape_inference::InferenceContext(
+        TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
+        {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
+        handle_data));
+    TF_CHECK_OK(c->construction_status());
+    Status s = c->Run(op_reg_data->shape_inference_fn);
+    LOG(INFO) << "Inference got " << s;
+    return s;
+  };
+  auto shape_proto = [](std::initializer_list<int64> dim_sizes) {
+    TensorShapeProto p;
+    for (auto i : dim_sizes) p.add_dim()->set_size(i);
+    return p;
+  };
 
-  ASSERT_TRUE(op_reg_data->shape_inference_fn != nullptr);
-  shape_inference::InferenceContext c(
-      TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
-      {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
-      {TensorShapeProto(), i0, i1}, {});
-  TF_ASSERT_OK(c.construction_status());
-  TF_ASSERT_OK(c.Run(op_reg_data->shape_inference_fn));
-  EXPECT_TRUE(c.FullyDefined(c.output_handle_shape(0)));
-  EXPECT_EQ("[1,2]", c.DebugString(c.output_handle_shape(0)));
+  TensorShapeProto i0 = shape_proto({1, -1});
+  TensorShapeProto i1 = shape_proto({-1, 2});
+  TensorShapeProto unknown_shape;
+  unknown_shape.set_unknown_rank(true);
+  TensorShapeProto scalar;
+
+  handle_data.emplace_back(
+      new ShapeDtypeV{{scalar, DT_FLOAT}, {unknown_shape, DT_INT32}});
+  handle_data.emplace_back(new ShapeDtypeV{{i0, DT_FLOAT}, {i1, DT_INT32}});
+  handle_data.emplace_back(
+      new ShapeDtypeV{{i1, DT_FLOAT}, {unknown_shape, DT_INT32}});
+
+  TF_ASSERT_OK(run_inference_for_handles());
+  auto* out = c->output_handle_shapes_and_types(0);
+  ASSERT_EQ(2, out->size());
+  EXPECT_EQ("[1,2]", c->DebugString(out->at(0).shape));
+  EXPECT_EQ(DT_FLOAT, out->at(0).dtype);
+  EXPECT_EQ("[?,2]", c->DebugString(out->at(1).shape));
+  EXPECT_EQ(DT_INT32, out->at(1).dtype);
 
   // Expect an error when the shapes can't be merged.
-  TensorShapeProto i2;
-  i1.add_dim()->set_size(2);
-  i1.add_dim()->set_size(2);
-  shape_inference::InferenceContext c2(
-      TF_GRAPH_DEF_VERSION, &op.node_def, op_reg_data->op_def,
-      {TensorShapeProto(), TensorShapeProto(), TensorShapeProto()}, {}, {},
-      {TensorShapeProto(), i0, i2}, {});
-  TF_ASSERT_OK(c.construction_status());
-  EXPECT_FALSE(c2.Run(op_reg_data->shape_inference_fn).ok());
+  handle_data[2]->at(0).first = shape_proto({2, 2});
+  EXPECT_TRUE(StringPiece(run_inference_for_handles().error_message())
+                  .contains("must be equal, but are 1 and 2"));
+  handle_data[2]->at(0).first = i1;  // restore to valid
+
+  // Expect an error when the types can't be merged.
+  handle_data[2]->at(1).second = DT_INT64;
+  EXPECT_TRUE(StringPiece(run_inference_for_handles().error_message())
+                  .contains("pointing to different dtypes"));
+  handle_data[2]->at(1).second = DT_INT32;  // restore to valid
+
+  // Expect an error when different numbers of tensors are merged.
+  handle_data[2]->push_back({i1, DT_FLOAT});
+  EXPECT_TRUE(StringPiece(run_inference_for_handles().error_message())
+                  .contains("pointing to different numbers of tensors"));
+  handle_data[2]->pop_back();  // restore to valid.
 }
 
 TEST(MathOpsTest, Range_ShapeFn) {

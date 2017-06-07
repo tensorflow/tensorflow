@@ -28,6 +28,7 @@ TEST(ControlFlowOpsTest, Merge_ShapeFn) {
 
   int n = 3;
   std::vector<NodeDefBuilder::NodeOut> src_list;
+  src_list.reserve(n);
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
   TF_ASSERT_OK(NodeDefBuilder("test", "Merge")
                    .Input(src_list)
@@ -54,6 +55,7 @@ TEST(ControlFlowOpsTest, RefSelect_ShapeFn) {
 
   int n = 3;
   std::vector<NodeDefBuilder::NodeOut> src_list;
+  src_list.reserve(n);
   for (int i = 0; i < n; ++i) src_list.emplace_back("a", 1, DT_FLOAT_REF);
   TF_ASSERT_OK(NodeDefBuilder("test", "RefSelect")
                    .Input("index", 0, DT_INT32)

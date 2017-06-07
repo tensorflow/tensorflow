@@ -83,9 +83,10 @@ TEST(LiteralTestUtilTest, ExpectNearFailurePlacesResultsInTemporaryDirectory) {
   LOG(INFO) << "results: [" << tensorflow::str_util::Join(results, ", ") << "]";
   EXPECT_EQ(3, results.size());
   for (const string& result : results) {
-    Literal literal;
+    LiteralProto literal_proto;
     TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), result,
-                                            &literal));
+                                            &literal_proto));
+    Literal literal(literal_proto);
     if (result.find("expected") != string::npos) {
       EXPECT_EQ("2", LiteralUtil::ToString(literal));
     } else if (result.find("actual") != string::npos) {

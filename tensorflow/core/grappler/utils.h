@@ -34,7 +34,7 @@ class NodeMap {
   NodeDef* GetNode(const string& name);
   std::set<NodeDef*> GetOutputs(const string& node_name);
   // This method doesn't record the outputs of the added node; the outputs need
-  // to be explictly added by the AddOutput method.
+  // to be explicitly added by the AddOutput method.
   void AddNode(const string& name, NodeDef* node);
   void AddOutput(const string& node, const string& output);
   void UpdateOutput(const string& node, const string& old_output,
@@ -46,6 +46,10 @@ class NodeMap {
   std::unordered_map<string, std::set<NodeDef*>> outputs_;
 };
 
+// True iff 'name' refers to a control inputs, i.e. a node name prefixed with
+// the ^ character.
+bool IsControlInput(const string& name);
+
 // Return the node name corresponding to 'name' if name is valid, or the empty
 // string otherwise.
 string NodeName(const string& name);
@@ -56,7 +60,11 @@ int NodePosition(const string& name);
 // Returns the node name and position in a single call.
 string ParseNodeName(const string& name, int* position);
 
-// Add a prefix to a node name
+// Add a prefix to a node name with a custom delimiter.
+string AddPrefixToNodeName(const string& name, const string& prefix,
+                           const string& delimiter);
+
+// Add a prefix to a node name.
 string AddPrefixToNodeName(const string& name, const string& prefix);
 
 // Executes a 'fn' in the 'thread_pool'. The method waits for the configured

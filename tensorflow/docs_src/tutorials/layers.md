@@ -585,7 +585,7 @@ hand-drawn digits) and training labels (the corresponding value from 0–9 for
 each image) as [numpy
 arrays](https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html)
 in `train_data` and `train_labels`, respectively. Similarly, we store the
-evalulation feature data (10,000 images) and evaluation labels in `eval_data`
+evaluation feature data (10,000 images) and evaluation labels in `eval_data`
 and `eval_labels`, respectively.
 
 ### Create the Estimator {#create-the-estimator}

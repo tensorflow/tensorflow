@@ -53,7 +53,7 @@ Device* DeviceSet::FindDeviceByName(const string& name) const {
 
 // static
 int DeviceSet::DeviceTypeOrder(const DeviceType& d) {
-  return DeviceFactory::DevicePriority(d.type());
+  return DeviceFactory::DevicePriority(d.type_string());
 }
 
 static bool DeviceTypeComparator(const DeviceType& a, const DeviceType& b) {

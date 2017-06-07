@@ -169,6 +169,7 @@ void ComputationTracker::ComputeComputationPostOrder(
 
 StatusOr<std::unique_ptr<HloModule>> ComputationTracker::BuildHloModule(
     const VersionedComputationHandle& entry_handle,
+    const HloModuleConfig& config,
     bool include_unreachable_instructions) const {
   tensorflow::mutex_lock lock(computation_mutex_);
 
@@ -208,7 +209,7 @@ StatusOr<std::unique_ptr<HloModule>> ComputationTracker::BuildHloModule(
 
   string module_name =
       tensorflow::strings::StrCat(entry_computation->name(), "_module");
-  auto module = MakeUnique<HloModule>(module_name, entry_handle);
+  auto module = MakeUnique<HloModule>(module_name, entry_handle, config);
   for (auto versioned_handle : post_order) {
     UserComputation* computation =
         ResolveInternal(versioned_handle.handle).ValueOrDie();

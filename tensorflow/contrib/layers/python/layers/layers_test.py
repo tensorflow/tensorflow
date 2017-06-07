@@ -2584,11 +2584,11 @@ class LayerNormTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'undefined rank'):
         _layers.layer_norm(inputs)
 
-  def testUnknownLastDim(self):
+  def testParamsDimsNotFullyDefined(self):
     with ops.Graph().as_default() as g, self.test_session(g):
       inputs = array_ops.placeholder(dtype=dtypes.float32)
       inputs.set_shape(tensor_shape.TensorShape((5, 3, 3, None)))
-      with self.assertRaisesRegexp(ValueError, 'undefined last dimension'):
+      with self.assertRaisesRegexp(ValueError, 'is not fully defined'):
         _layers.layer_norm(inputs)
 
   def testCreateOp(self):
@@ -2634,38 +2634,71 @@ class LayerNormTest(test.TestCase):
       # output_train and output_eval should be the same.
       self.assertAllClose(sess.run([output_train]), sess.run([output_eval]))
 
-  def doOutputTest(self, input_shape, tol=1e-3):
+  def doOutputTest(self, input_shape, tol=1e-5, begin_norm_axis=1,
+                   dtype=dtypes.float64):
+    expected_mean = np.zeros(input_shape[:begin_norm_axis])
+    expected_var = np.ones(input_shape[:begin_norm_axis])
     for mu in [0.0, 1e2]:
       for sigma in [1.0, 0.1]:
-        input_values = np.random.rand(*input_shape) * sigma + mu
-        expected_mean = np.zeros(input_shape[0])
-        expected_var = np.ones(input_shape[0])
+        input_values = np.random.randn(*input_shape) * sigma + mu
         with ops.Graph().as_default() as g:
           with self.test_session(graph=g) as sess:
-            inputs = constant_op.constant(input_values, shape=input_shape,
-                                          dtype=dtypes.float32)
-            output_op = _layers.layer_norm(inputs, scope='LN')
+            inputs = constant_op.constant(
+                input_values, shape=input_shape, dtype=dtype)
+            output_t = _layers.layer_norm(
+                inputs, begin_norm_axis=begin_norm_axis, scope='LN')
             # Initialize all variables
             sess.run(variables_lib.global_variables_initializer())
             # The mean and variance of the output should be close to 0 and 1
             # respectively.
-            moments_axis = tuple([i for i in range(1, len(input_shape))])
-            outputs = sess.run(output_op)
+            if begin_norm_axis < 0:
+              begin_norm_axis = len(input_shape) + begin_norm_axis
+            moments_axis = tuple(range(begin_norm_axis, len(input_shape)))
+            with variable_scope.variable_scope('LN', reuse=True):
+              beta_var = variable_scope.get_variable('beta', dtype=dtype)
+              gamma_var = variable_scope.get_variable('gamma', dtype=dtype)
+            outputs, beta, gamma = sess.run((output_t, beta_var, gamma_var))
             # Make sure that there are no NaNs
             self.assertFalse(np.isnan(outputs).any())
             mean = np.mean(outputs, axis=moments_axis)
             var = np.var(outputs, axis=moments_axis)
-            self.assertAllClose(mean, expected_mean, rtol=tol, atol=tol)
-            self.assertAllClose(var, expected_var, rtol=tol, atol=tol)
+            # Layer-norm implemented in numpy
+            eps = 1e-12
+            expected_out = (
+                (gamma * (
+                    input_values
+                    - np.mean(input_values, axis=moments_axis, keepdims=True))
+                 / np.sqrt(
+                     eps
+                     + np.var(input_values, axis=moments_axis, keepdims=True)))
+                + beta)
+            self.assertAllClose(expected_mean, mean, atol=tol, rtol=tol)
+            self.assertAllClose(expected_var, var, atol=tol)
+            # The full computation gets a bigger tolerance
+            self.assertAllClose(expected_out, outputs, atol=5 * tol)
 
   def testOutput2DInput(self):
     self.doOutputTest((10, 300))
 
+  def testOutput2DInputDegenerateNormAxis(self):
+    with self.assertRaisesRegexp(ValueError, r'must be < rank\(inputs\)'):
+      self.doOutputTest((10, 300), begin_norm_axis=2)
+
   def testOutput4DInput(self):
     self.doOutputTest((100, 10, 10, 3))
 
+  def testOutput4DInputNormOnInnermostAxis(self):
+    # Equivalent tests
+    self.doOutputTest((100, 10, 10, 3), begin_norm_axis=3, tol=1e-4,
+                      dtype=dtypes.float64)
+    self.doOutputTest((100, 10, 10, 3), begin_norm_axis=-1, tol=1e-4,
+                      dtype=dtypes.float64)
+
   def testOutputSmallInput(self):
     self.doOutputTest((10, 10, 10, 30))
+
+  def testOutputSmallInputNormOnInnermostAxis(self):
+    self.doOutputTest((10, 10, 10, 30), begin_norm_axis=3)
 
   def testOutputBigInput(self):
     self.doOutputTest((1, 100, 100, 1))

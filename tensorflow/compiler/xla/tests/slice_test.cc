@@ -37,6 +37,7 @@ class SliceTest : public ClientLibraryTestBase {
   template <typename NativeT>
   void RunSliceTenToTwo() {
     std::vector<NativeT> constant;
+    constant.reserve(10);
     for (int i = 0; i < 10; ++i) {
       constant.push_back(static_cast<NativeT>(i));
     }

@@ -112,17 +112,15 @@ TEST_F(QuantizeTrainingTest, SignedInput) {
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(identity->name(), "/QuantizeAndDequantizeV2"),
                &identity_q_node));
-  NodeDef identity_q = identity_q_node->def();
   ASSERT_EQ("true",
-            SummarizeAttrValue(identity_q.attr().find("signed_input")->second));
+            SummarizeAttrValue(*identity_q_node->attrs().Find("signed_input")));
   // Quantize_and_dequantize node for relu should have signed_input==false.
   Node* relu_q_node;
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(relu->name(), "/QuantizeAndDequantizeV2"),
                &relu_q_node));
-  NodeDef relu_q = relu_q_node->def();
   ASSERT_EQ("false",
-            SummarizeAttrValue(relu_q.attr().find("signed_input")->second));
+            SummarizeAttrValue(*relu_q_node->attrs().Find("signed_input")));
 }
 
 TEST_F(QuantizeTrainingTest, RangeGivenTrue) {
@@ -165,17 +163,15 @@ TEST_F(QuantizeTrainingTest, RangeGivenTrue) {
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(relu6->name(), "/QuantizeAndDequantizeV2"),
                &relu6_q_node));
-  NodeDef identity_q = relu6_q_node->def();
   ASSERT_EQ("true",
-            SummarizeAttrValue(identity_q.attr().find("range_given")->second));
+            SummarizeAttrValue(*relu6_q_node->attrs().Find("range_given")));
   // Quantize_and_dequantize node for relu should have range_given==true.
   Node* relu_q_node;
   TF_ASSERT_OK(
       FindNode(g, strings::StrCat(relu->name(), "/QuantizeAndDequantizeV2"),
                &relu_q_node));
-  NodeDef relu_q = relu_q_node->def();
   ASSERT_EQ("true",
-            SummarizeAttrValue(relu_q.attr().find("range_given")->second));
+            SummarizeAttrValue(*relu_q_node->attrs().Find("range_given")));
 }
 
 TEST_F(QuantizeTrainingTest, WithBackwardNodes_QuantizeAndDequantize) {

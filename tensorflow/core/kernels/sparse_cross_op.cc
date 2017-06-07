@@ -452,6 +452,7 @@ class SparseCrossOp : public OpKernel {
     ExtractFeatureData(indices_list_in, batch_size, &feature_counts,
                        &feature_start_indices);
 
+    columns.reserve(values_list_in.size());
     for (int i = 0; i < values_list_in.size(); ++i) {
       columns.emplace_back(new SparseTensorColumn<InternalType>(
           values_list_in[i], std::move(feature_counts[i]),

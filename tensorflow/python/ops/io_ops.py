@@ -26,6 +26,7 @@ See the @{$python/io_ops} guide.
 @@WholeFileReader
 @@IdentityReader
 @@TFRecordReader
+@@LMDBReader
 @@FixedLengthRecordReader
 @@decode_csv
 @@decode_raw
@@ -441,6 +442,25 @@ class TFRecordReader(ReaderBase):
 
 
 ops.NotDifferentiable("TFRecordReader")
+
+
+class LMDBReader(ReaderBase):
+  """A Reader that outputs the records from a LMDB file.
+
+  See ReaderBase for supported methods.
+  """
+  def __init__(self, name=None, options=None):
+    """Create a LMDBReader.
+
+    Args:
+      name: A name for the operation (optional).
+      options: A LMDBRecordOptions object (optional).
+    """
+    rr = gen_io_ops._lmdb_reader(name=name)
+    super(LMDBReader, self).__init__(rr)
+
+
+ops.NotDifferentiable("LMDBReader")
 
 
 class IdentityReader(ReaderBase):

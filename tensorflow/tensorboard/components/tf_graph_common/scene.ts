@@ -80,8 +80,11 @@ module tf.graph.scene {
    * backend.ts.
    */
   export interface HealthPill {
+    device_name: string;
     node_name: string;
     output_slot: number;
+    dtype: string;
+    shape: number[];
     value: number[];
     wall_time: number;
     step: number;
@@ -104,7 +107,7 @@ module tf.graph.scene {
     },
     {
       background_color: '#FF8D00',
-      label: '- ∞',
+      label: '-∞',
     },
     {
       background_color: '#EAEAEA',
@@ -120,7 +123,7 @@ module tf.graph.scene {
     },
     {
       background_color: '#003ED4',
-      label: '+ ∞',
+      label: '+∞',
     },
   ];
 
@@ -151,19 +154,21 @@ module tf.graph.scene {
             svgRect.width / sceneSize.width, svgRect.height / sceneSize.height,
             2);
     let params = layout.PARAMS.graph;
-    let zoomEvent =
-        d3zoom.scale(scale)
-            .on('zoomend.fitted',
-                () => {
-                  // Remove the listener for the zoomend event,
-                  // so we don't get called at the end of regular zoom events,
-                  // just those that fit the graph to screen.
-                  d3zoom.on('zoomend.fitted', null);
-                  callback();
-                })
-            .translate([params.padding.paddingLeft, params.padding.paddingTop])
-            .event;
-    d3.select(zoomG).transition().duration(500).call(zoomEvent);
+    const transform = d3.zoomIdentity
+        .scale(scale)
+        .translate(params.padding.paddingLeft, params.padding.paddingTop);
+
+    d3.select(svg)
+        .transition()
+        .duration(500)
+        .call(d3zoom.transform, transform)
+        .on('end.fitted', () => {
+          // Remove the listener for the zoomend event,
+          // so we don't get called at the end of regular zoom events,
+          // just those that fit the graph to screen.
+          d3zoom.on('end.fitted', null);
+          callback();
+        });
 };
 
 /**
@@ -184,7 +189,7 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
   if (!node) {
     return false;
   }
-  let translate = d3zoom.translate();
+
   // Check if the selected node is off-screen in either
   // X or Y dimension in either direction.
   let nodeBox = node.getBBox();
@@ -203,18 +208,22 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
   let svgRect = svg.getBoundingClientRect();
   if (isOutsideOfBounds(pointTL.x, pointBR.x, svgRect.width) ||
       isOutsideOfBounds(pointTL.y, pointBR.y, svgRect.height)) {
-    // Determine the amount to transform the graph in both X and Y
-    // dimensions in order to center the selected node. This takes into
-    // acount the position of the node, the size of the svg scene, the
-    // amount the scene has been scaled by through zooming, and any previous
-    // transform already performed by this logic.
+    // Determine the amount to translate the graph in both X and Y dimensions in
+    // order to center the selected node. This takes into account the position
+    // of the node, the size of the svg scene, the amount the scene has been
+    // scaled by through zooming, and any previous transforms already performed
+    // by this logic.
     let centerX = (pointTL.x + pointBR.x) / 2;
     let centerY = (pointTL.y + pointBR.y) / 2;
     let dx = ((svgRect.width / 2) - centerX);
     let dy = ((svgRect.height / 2) - centerY);
-    let zoomEvent = d3zoom.translate([translate[0] + dx, translate[1] + dy])
-        .event;
-    d3.select(zoomG).transition().duration(500).call(zoomEvent);
+
+    // We translate by this amount. We divide the X and Y translations by the
+    // scale to undo how translateBy scales the translations (in d3 v4).
+    const svgTransform = d3.zoomTransform(svg);
+    d3.select(svg).transition().duration(500).call(
+        d3zoom.translateBy, dx / svgTransform.k, dy / svgTransform.k);
+
     return true;
   }
   return false;
@@ -232,7 +241,7 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
  * @return selection of the element
  */
 export function selectOrCreateChild(
-    container, tagName: string, className?: string | string[], before?) {
+    container, tagName: string, className?: string | string[], before?): d3.Selection<any, any, any, any> {
   let child = selectChild(container, tagName, className);
   if (!child.empty()) {
     return child;
@@ -269,7 +278,7 @@ export function selectOrCreateChild(
  * @return selection of the element, or an empty selection
  */
 export function selectChild(
-    container, tagName: string, className?: string | string[]) {
+    container, tagName: string, className?: string | string[]): d3.Selection<any, any, any, any> {
   let children = container.node().childNodes;
   for (let i = 0; i < children.length; i++) {
     let child = children[i];
@@ -325,7 +334,7 @@ export function selectChild(
 export function buildGroup(container,
     renderNode: render.RenderGroupNodeInfo,
     sceneElement,
-    sceneClass: string) {
+    sceneClass: string): d3.Selection<any, any, any, any> {
   sceneClass = sceneClass || Class.Scene.GROUP;
   let isNewSceneGroup = selectChild(container, 'g', sceneClass).empty();
   let sceneGroup = selectOrCreateChild(container, 'g', sceneClass);
@@ -451,12 +460,11 @@ export function translate(selection, x0: number, y0: number) {
  */
 export function positionRect(rect, cx: number, cy: number, width: number,
     height: number) {
-  rect.transition().attr({
-    x: cx - width / 2,
-    y: cy - height / 2,
-    width: width,
-    height: height
-  });
+  rect.transition()
+    .attr('x', cx - width / 2)
+    .attr('y', cy - height / 2)
+    .attr('width', width)
+    .attr('height', height);
 };
 
 /**
@@ -497,12 +505,11 @@ export function positionButton(button, renderNode: render.RenderNodeInfo) {
  */
 export function positionEllipse(ellipse, cx: number, cy: number,
     width: number, height: number) {
-  ellipse.transition().attr({
-    cx: cx,
-    cy: cy,
-    rx: width / 2,
-    ry: height / 2
-  });
+  ellipse.transition()
+    .attr('cx', cx)
+    .attr('cy', cy)
+    .attr('rx', width / 2)
+    .attr('ry', height / 2);
 };
 
 /**
@@ -529,18 +536,29 @@ function _addHealthPill(
     nodeGroupElement: SVGElement, healthPill: HealthPill,
     nodeInfo: render.RenderNodeInfo) {
   // Check if text already exists at location.
-  d3.select(nodeGroupElement.parentNode).selectAll('.health-pill').remove();
+  d3.select(nodeGroupElement.parentNode as any).selectAll('.health-pill').remove();
 
   if (!nodeInfo || !healthPill) {
     return;
   }
 
+  const deviceName = healthPill.device_name;
+  const dtypeName = healthPill.dtype;
+  let shapeStr = '(';
+  for (const dimSize of healthPill.shape) {
+    shapeStr += dimSize + ',';
+  }
+  shapeStr += ')';
   let lastHealthPillData = healthPill.value;
 
   // For now, we only visualize the 6 values that summarize counts of tensor
   // elements of various categories: -Inf, negative, 0, positive, Inf, and NaN.
   let lastHealthPillOverview = lastHealthPillData.slice(2, 8);
   let totalCount = lastHealthPillData[1];
+  const minVal = lastHealthPillData[8];
+  const maxVal = lastHealthPillData[9];
+  const meanVal = lastHealthPillData[10];
+  const stddevVal = Math.sqrt(lastHealthPillData[11]);
 
   let healthPillWidth = 60;
   let healthPillHeight = 10;
@@ -587,7 +605,7 @@ function _addHealthPill(
 
     // Include this number in the title that appears on hover.
     titleOnHoverTextEntries.push(
-        healthPillEntries[i].label + ': ' + lastHealthPillOverview[i]);
+        '#(' + healthPillEntries[i].label + '): ' + lastHealthPillOverview[i]);
   }
   healthPillDefs.appendChild(healthPillGradient);
 
@@ -600,8 +618,12 @@ function _addHealthPill(
 
   // Show a title with specific counts on hover.
   let titleSvg = document.createElementNS(svgNamespace, 'title');
-  titleSvg.textContent = titleOnHoverTextEntries.join(', ');
+  titleSvg.textContent = 'Device: ' + deviceName + '\ndtype: ' + dtypeName +
+      '\nshape: ' + shapeStr + '\n\n#(elements): ' + totalCount + '\n' +
+      titleOnHoverTextEntries.join(', ') + '\n\nmin: ' + minVal +
+      ', max: ' + maxVal + '\nmean: ' + meanVal + ', stddev: ' + stddevVal;
   healthPillGroup.appendChild(titleSvg);
+  // TODO(cais): Make the tooltip content prettier.
 
   // Center this health pill just right above the node for the op.
   let healthPillX = nodeInfo.x - healthPillWidth / 2;
@@ -634,10 +656,8 @@ function _addHealthPill(
     }
 
     let statsSvg = document.createElementNS(svgNamespace, 'text');
-    const minString =
-        humanizeHealthPillStat(lastHealthPillData[8], shouldRoundOnesDigit);
-    const maxString =
-        humanizeHealthPillStat(lastHealthPillData[9], shouldRoundOnesDigit);
+    const minString = humanizeHealthPillStat(minVal, shouldRoundOnesDigit);
+    const maxString = humanizeHealthPillStat(maxVal, shouldRoundOnesDigit);
     statsSvg.textContent = minString + ' ~ ' + maxString;
     statsSvg.classList.add('health-pill-stats');
     statsSvg.setAttribute('x', String(healthPillWidth / 2));
@@ -671,7 +691,7 @@ export function addHealthPills(
         // Only show health pill data for this node if it is available.
         let healthPills = nodeNamesToHealthPills[nodeInfo.node.name];
         let healthPill = healthPills ? healthPills[healthPillStepIndex] : null;
-        _addHealthPill(this, healthPill, nodeInfo);
+        _addHealthPill((this as SVGElement), healthPill, nodeInfo);
       });
 };
 

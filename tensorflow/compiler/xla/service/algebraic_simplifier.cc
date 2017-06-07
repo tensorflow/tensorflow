@@ -336,6 +336,12 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add,
 
 Status AlgebraicSimplifierVisitor::HandleCopy(HloInstruction* copy,
                                               HloInstruction* operand) {
+  // If a copy feeds a copy, make it a single copy.
+  if (operand->opcode() == HloOpcode::kCopy) {
+    return ReplaceWithNewInstruction(
+        copy, HloInstruction::CreateUnary(copy->shape(), HloOpcode::kCopy,
+                                          operand->operands()[0]));
+  }
   // All copies can be eliminated (assuming layout constraints are satisified).
   ReplaceInstructionIfSameShape(copy, operand);
   return Status::OK();
@@ -958,6 +964,15 @@ StatusOr<bool> AlgebraicSimplifierVisitor::
 
 Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
   auto operand = reshape->mutable_operand(0);
+
+  // Reshape directly to empty constant if the shape contains zero-element
+  // dimension.
+  if (ShapeUtil::HasZeroElements(reshape->shape())) {
+    auto empty_constant = HloInstruction::CreateConstant(
+        LiteralUtil::CreateFromShape(reshape->shape()));
+
+    return ReplaceWithNewInstruction(reshape, std::move(empty_constant));
+  }
 
   // Delete no-op reshapes, i.e. where shape = operand shape.
   if (SameShape(reshape, operand)) {

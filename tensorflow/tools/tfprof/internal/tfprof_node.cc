@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -26,24 +27,31 @@ namespace tfprof {
 // For CPU, op_end_rel is the kernel time, while all_end_rel_micros includes
 // some post-processing.
 // Here, we only consider kernel time for simplicity.
-void TFGraphNode::AddStepStat(const string& device,
-                              const NodeExecStats* step_stat) {
-  step_stat_ = step_stat;
-  CHECK(step_stat_);
-
+void TFGraphNode::AddStepStat(int64 step, const string& device,
+                              const NodeExecStats& step_stat) {
   string dev = str_util::Lowercase(device);
 
-  devices_.insert(dev);
-  op_kernel_execs_[dev].push_back(std::make_pair(
-      step_stat_->all_start_micros(), step_stat_->op_end_rel_micros()));
-
-  for (const auto& output : step_stat_->output()) {
-    if (output.has_tensor_description() &&
-        output.tensor_description().has_allocation_description()) {
-      requested_bytes_ += output.tensor_description()
-                              .allocation_description()
-                              .requested_bytes();
+  // TODO(xpan): Test it.
+  if (RE2::FullMatch(dev, "/job:.*/replica:\\d+/task:\\d+/[a-z]+:\\d+")) {
+    if (!canonical_device_.empty()) {
+      if (canonical_device_ != dev) {
+        fprintf(stderr, "Unexpected: graph node changed device: %s->%s.\n",
+                canonical_device_.c_str(), dev.c_str());
+        return;
+      }
+    } else {
+      canonical_device_ = dev;
+      // TODO(xpan): Support things other than gpu?
+      host_device_ = StringReplace(dev, "gpu:\\d+", "cpu:0");
+      AddOpType(canonical_device_);
     }
+  }
+
+  ExecStep& exec = execs_[step];
+  exec.AddTimeStats(dev, step_stat);
+
+  if (dev == canonical_device_) {
+    exec.AddMemoryStats(dev, step_stat);
   }
 }
 }  // namespace tfprof

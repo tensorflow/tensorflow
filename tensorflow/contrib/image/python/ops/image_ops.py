@@ -266,7 +266,7 @@ def bipartite_match(
     top_k=-1):
   """Find bipartite matching based on a given distance matrix.
 
-  A greedy bi-partite matching alogrithm is used to obtain the matching with
+  A greedy bi-partite matching algorithm is used to obtain the matching with
   the (greedy) minimum distance.
 
   Args:

@@ -422,7 +422,7 @@ class HParams(object):
     elif issubclass(param_type, float):
       typename = 'float'
     else:
-      raise ValueError('Unsupported paramter type: %s' % str(param_type))
+      raise ValueError('Unsupported parameter type: %s' % str(param_type))
 
     suffix = 'list' if is_list else 'value'
     return '_'.join([typename, suffix])

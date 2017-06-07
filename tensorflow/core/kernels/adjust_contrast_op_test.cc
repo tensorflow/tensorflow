@@ -73,6 +73,7 @@ TEST_F(AdjustContrastOpTest, Big_99x99x3) {
   TF_EXPECT_OK(InitOp());
 
   std::vector<float> values;
+  values.reserve(99 * 99 * 3);
   for (int i = 0; i < 99 * 99 * 3; ++i) {
     values.push_back(i % 255);
   }

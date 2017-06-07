@@ -19,7 +19,7 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python.platform import gfile
+import tensorflow as tf
 
 
 def IsGCSPath(path):
@@ -29,7 +29,7 @@ def IsGCSPath(path):
 def ListDirectoryAbsolute(directory):
   """Yields all files in the given directory. The paths are absolute."""
   return (os.path.join(directory, path)
-          for path in gfile.ListDirectory(directory))
+          for path in tf.gfile.ListDirectory(directory))
 
 
 def ListRecursively(top):
@@ -37,8 +37,8 @@ def ListRecursively(top):
 
   For each of `top` and its subdirectories, yields a tuple containing the path
   to the directory and the path to each of the contained files.  Note that
-  unlike os.Walk()/gfile.Walk(), this does not list subdirectories and the file
-  paths are all absolute.
+  unlike os.Walk()/tf.gfile.Walk(), this does not list subdirectories and the
+  file paths are all absolute.
 
   If the directory does not exist, this yields nothing.
 
@@ -47,6 +47,6 @@ def ListRecursively(top):
   Yields:
     A list of (dir_path, file_paths) tuples.
   """
-  for dir_path, _, filenames in gfile.Walk(top):
+  for dir_path, _, filenames in tf.gfile.Walk(top):
     yield (dir_path, (os.path.join(dir_path, filename)
                       for filename in filenames))

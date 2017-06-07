@@ -1,23 +1,29 @@
 package(default_visibility = ["//tensorflow:internal"])
 
+load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
+load("//tensorflow/tensorboard:vulcanize.bzl", "tensorboard_html_binary")
+
 licenses(["notice"])  # Apache 2.0
 
-exports_files(["LICENSE"])
+ts_web_library(
+    name = "tensorboard",
+    srcs = [
+        "analytics.html",
+        "tensorboard.html",
+    ],
+    path = "/",
+    deps = ["//tensorflow/tensorboard/components/tf_tensorboard"],
+)
+
+tensorboard_html_binary(
+    name = "index",
+    input_path = "/tensorboard.html",
+    output_path = "/index.html",
+    deps = [":tensorboard"],
+)
 
 filegroup(
     name = "all_files",
-    srcs = glob(
-        [
-            "tf_*/**/*",
-            "vz_*/**/*",
-        ],
-        exclude = [
-            "**/tf_model_zoo/*",
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ) + [
-        "BUILD",
-    ],
-    visibility = ["//tensorflow:__subpackages__"],
+    srcs = glob(["**"]),
+    tags = ["notsan"],
 )

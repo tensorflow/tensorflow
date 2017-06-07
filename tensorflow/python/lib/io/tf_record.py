@@ -123,4 +123,5 @@ class TFRecordWriter(object):
 
   def close(self):
     """Close the file."""
-    self._writer.Close()
+    with errors.raise_exception_on_not_ok_status() as status:
+      self._writer.Close(status)

@@ -325,6 +325,15 @@ class ControlFlowTest(test.TestCase):
     with self.assertRaisesRegexp(TypeError, "must not be a Python bool"):
       _ = control_flow_ops.cond(False, fn1, fn2)
 
+  def testCondInt(self):
+    p = array_ops.placeholder(dtypes.bool, shape=[])
+    v = constant_op.constant(10)
+    fn1 = lambda: math_ops.add(v, 1)
+    fn2 = lambda: math_ops.subtract(v, 1)
+    y = control_flow_ops.cond(p, fn1, fn2)
+    grad = gradients_impl.gradients(y, [v])
+    self.assertAllEqual([None], grad)
+
   def testFetchables(self):
     with self.test_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
@@ -1076,6 +1085,27 @@ class ControlFlowTest(test.TestCase):
                                            (constant_op.constant(5),))
       self.assertEqual(0, sess.run(loop))
 
+  def testWhileCondWithControl_1(self):
+    with self.test_session():
+      v = variable_scope.get_variable(
+          "v", [], initializer=init_ops.constant_initializer(2))
+      i0 = constant_op.constant(0)
+      with ops.control_dependencies([i0]):
+        def loop_condition(i):
+          return i < 4
+
+        def loop_body(i):
+          some_cond = control_flow_ops.cond(
+              constant_op.constant(True),
+              lambda: state_ops.assign(v, math_ops.square(v)),
+              lambda: v)
+          with ops.control_dependencies([some_cond]):
+            return i + 1
+      r = control_flow_ops.while_loop(loop_condition, loop_body, (i0,))
+      variables.global_variables_initializer().run()
+      self.assertEqual(4, r.eval())
+      self.assertAllClose(65536.0, v.eval())
+
   def testWhileCondExitControl(self):
     with self.test_session():
       v = variables.Variable(1)
@@ -1393,7 +1423,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(45, rx.eval())
 
   def _testWhileGrad_ColocateGradients(self, colocate):
-    gpu_dev_name = test.gpu_device_name() if test.is_gpu_available(
+    gpu_dev_name = test.gpu_device_name().lower() if test.is_gpu_available(
     ) else "/gpu:0"
     gpu_short_name = gpu_dev_name.split("/")[-1]
 

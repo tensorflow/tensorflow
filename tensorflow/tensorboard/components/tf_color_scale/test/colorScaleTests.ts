@@ -13,34 +13,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-module TF {
-  let assert = chai.assert;
+let assert = chai.assert;
 
-  describe('ColorScale', function() {
-    let ccs: ColorScale;
+import {ColorScale} from '../colorScale'
 
-    beforeEach(function() { ccs = new ColorScale(); });
+describe('ColorScale', function() {
+  let ccs: ColorScale;
 
-    it('Returns consistent colors', function() {
-      ccs.domain(['train', 'eval', 'test']);
-      let trainColor = ccs.scale('train');
-      let trainColor2 = ccs.scale('train');
-      assert.equal(trainColor, trainColor2);
-    });
-
-    it('Returns consistent colors after new domain', function() {
-      ccs.domain(['train', 'eval']);
-      let trainColor = ccs.scale('train');
-      ccs.domain(['train', 'eval', 'test']);
-      let trainColor2 = ccs.scale('train');
-      assert.equal(trainColor, trainColor2);
-    });
-
-    it('Throws an error if string is not in the domain', function() {
-      ccs.domain(['red', 'yellow', 'green']);
-      assert.throws(function() {
-        ccs.scale('not in domain');
-      }, 'String was not in the domain.');
-    });
+  beforeEach(function() {
+    ccs = new ColorScale();
   });
-}
+
+  it('Returns consistent colors', function() {
+    ccs.domain(['train', 'eval', 'test']);
+    let trainColor = ccs.scale('train');
+    let trainColor2 = ccs.scale('train');
+    assert.equal(trainColor, trainColor2);
+  });
+
+  it('Returns consistent colors after new domain', function() {
+    ccs.domain(['train', 'eval']);
+    let trainColor = ccs.scale('train');
+    ccs.domain(['train', 'eval', 'test']);
+    let trainColor2 = ccs.scale('train');
+    assert.equal(trainColor, trainColor2);
+  });
+
+  it('Throws an error if string is not in the domain', function() {
+    ccs.domain(['red', 'yellow', 'green']);
+    assert.throws(function() {
+      ccs.scale('not in domain');
+    }, 'String was not in the domain.');
+  });
+});

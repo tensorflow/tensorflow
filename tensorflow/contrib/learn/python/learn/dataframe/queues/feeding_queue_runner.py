@@ -19,6 +19,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import
-from tensorflow.python.estimator.inputs.queues.feeding_queue_runner import _FeedingQueueRunner as FeedingQueueRunner
-# pylint: enable=unused-import
+from tensorflow.python.estimator.inputs.queues.feeding_queue_runner import _FeedingQueueRunner
+from tensorflow.python.util.deprecation import deprecated
+
+
+class FeedingQueueRunner(_FeedingQueueRunner):
+
+  @deprecated('2017-06-15', 'Moved to tf.contrib.training.FeedingQueueRunner.')
+  def __init__(self, *args, **kwargs):
+    super(FeedingQueueRunner, self).__init__(*args, **kwargs)

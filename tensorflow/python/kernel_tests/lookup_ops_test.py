@@ -280,6 +280,18 @@ class IndexTableFromFile(test.TestCase):
       lookup_ops.tables_initializer().run()
       self.assertAllEqual((1, 2, 3), ids.eval())
 
+  def test_string_index_table_from_file_tensor_filename(self):
+    vocabulary_file = self._createVocabFile("f2i_vocab1.txt")
+    with self.test_session():
+      vocabulary_file = constant_op.constant(vocabulary_file)
+      table = lookup_ops.index_table_from_file(
+          vocabulary_file=vocabulary_file, num_oov_buckets=1)
+      ids = table.lookup(constant_op.constant(["salad", "surgery", "tarkus"]))
+
+      self.assertRaises(errors_impl.OpError, ids.eval)
+      lookup_ops.tables_initializer().run()
+      self.assertAllEqual((1, 2, 3), ids.eval())
+
   def test_int32_index_table_from_file(self):
     vocabulary_file = self._createVocabFile(
         "f2i_vocab2.txt", values=("42", "1", "-1000"))
@@ -340,7 +352,11 @@ class IndexTableFromFile(test.TestCase):
               860),  # 3 + fingerprint("toccata") mod 300.
           ids.eval())
 
-  def test_index_table_from_file_with_only_oov_buckets(self):
+  def test_index_table_from_file_fails_with_empty_vocabulary_file_name(self):
+    self.assertRaises(
+        ValueError, lookup_ops.index_table_from_file, vocabulary_file="")
+
+  def test_index_table_from_file_fails_with_empty_vocabulary(self):
     self.assertRaises(
         ValueError, lookup_ops.index_table_from_file, vocabulary_file=None)
 

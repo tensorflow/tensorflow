@@ -59,18 +59,25 @@ tf-audio-dashboard displays a dashboard that loads audio from a TensorFlow run.
     </style>
   </template>
   <script>
-    TF.Dashboard.TfAudioDashboard = Polymer({
+    import {DashboardBehavior} from "../tf-dashboard-common/dashboard-behavior";
+    import {ReloadBehavior} from "../tf-dashboard-common/reload-behavior";
+    import {BackendBehavior} from "../tf-backend/behavior";
+
+    Polymer({
       is: "tf-audio-dashboard",
       factoryImpl: function(backend) {
         this.backend = backend;
       },
       properties: {
-        dataType: {value: "audio"},
+        dataType: {
+          type: Object,
+          value: "audio",
+        },
       },
       behaviors: [
-        TF.Dashboard.DashboardBehavior("audio"),
-        TF.Dashboard.ReloadBehavior("tf-audio-loader"),
-        TF.Backend.Behavior
+        DashboardBehavior("audio"),
+        ReloadBehavior("tf-audio-loader"),
+        BackendBehavior,
       ],
       attached: function() {
         this.async(function() {

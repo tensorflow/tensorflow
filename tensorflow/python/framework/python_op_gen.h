@@ -31,7 +31,7 @@ void PrintPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
                     bool require_shapes);
 string GetPythonOps(const OpList& ops, const std::vector<string>& hidden_ops,
                     bool require_shapes);
-string GetPythonOp(const OpDef& op_def, bool is_hidden, const string& op_name);
+string GetPythonOp(const OpDef& op_def, const string& function_name);
 
 // Get the python wrappers for a list of ops in a OpList.
 // `op_list_buf` should be a pointer to a buffer containing
