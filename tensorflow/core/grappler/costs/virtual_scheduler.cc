@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
+
+#include <math.h>
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
@@ -226,7 +229,9 @@ void VirtualScheduler::MaybeUpdateInputOutput(const NodeDef* node) {
 }
 
 float VirtualScheduler::Round2(const float x) const {
-  return std::round(100.0 * x) / 100.0;
+  // Not using std::round from <cmath> here because not all platforms seem to
+  // support that (specifically Android).
+  return ::round(100.0 * x) / 100.0;
 }
 
 bool VirtualScheduler::IsPersistentNode(const NodeDef* node) const {
