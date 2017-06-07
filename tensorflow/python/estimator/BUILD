@@ -208,9 +208,20 @@ py_test(
     deps = [
         ":dnn_linear_combined",
         ":dnn_testing_utils",
+        ":export_export",
         ":linear_testing_utils",
+        ":numpy_io",
+        ":pandas_io",
+        ":prediction_keys",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+        "//tensorflow/python/feature_column",
     ],
 )
 
