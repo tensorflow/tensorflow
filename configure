@@ -3,6 +3,8 @@
 set -e
 set -o pipefail
 
+MIN_BAZEL_VERSION=0.4.5
+
 # Find out the absolute path to where ./configure resides
 pushd `dirname $0` > /dev/null
 SOURCE_BASE_DIR=`pwd -P`
@@ -162,6 +164,22 @@ function setup_python {
   # Write tools/python_bin_path.sh
   echo "export PYTHON_BIN_PATH=\"$PYTHON_BIN_PATH\"" > tools/python_bin_path.sh
 }
+
+function version {
+  echo "$@" | awk -F. '{ printf("%03d%03d%03d\n", $1,$2,$3); }';
+}
+
+
+bazel version > bazel.version
+curr_bazel_version=$(head -n 1 bazel.version | cut -d ' ' -f3)
+rm -f bazel.version
+
+echo "You have bazel $curr_bazel_version installed."
+if [ "$(version "$MIN_BAZEL_VERSION")" -gt "$(version "$curr_bazel_version")" ]; then
+  echo "Please upgrade your bazel installation to version $MIN_BAZEL_VERSION or higher to build TensorFlow!"
+  echo "Exiting..."
+  exit 1
+fi
 
 # This file contains customized config settings.
 rm -f .tf_configure.bazelrc
