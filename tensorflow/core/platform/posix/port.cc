@@ -32,7 +32,7 @@ limitations under the License.
 #ifdef SNAPPY
 #include "snappy.h"
 #endif
-#if defined(__APPLE__) && defined(__MACH__)
+#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__)
 #include <thread>
 #endif
 
@@ -56,7 +56,7 @@ int NumSchedulableCPUs() {
   }
   perror("sched_getaffinity");
 #endif
-#if defined(__APPLE__) && defined(__MACH__)
+#if (defined(__APPLE__) && defined(__MACH__)) || defined(__FreeBSD__)
   unsigned int count = std::thread::hardware_concurrency();
   if (count > 0) return static_cast<int>(count);
 #endif
