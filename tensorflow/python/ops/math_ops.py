@@ -1686,7 +1686,7 @@ def matmul(a,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-  The inputs must, following any transpositions, be tensors of rank ≥ 2 
+  The inputs must, following any transpositions, be tensors of rank >= 2 
   where the inner 2 dimensions specify valid matrix multiplication arguments, 
   and any further outer dimensions match.
 
