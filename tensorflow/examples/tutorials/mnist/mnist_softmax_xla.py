@@ -102,6 +102,14 @@ if __name__ == '__main__':
       default='/tmp/tensorflow/mnist/input_data',
       help='Directory for storing input data')
   parser.add_argument(
-      '--xla', type=bool, default=True, help='Turn xla via JIT on')
+      '--no-xla',
+      dest='xla', action='store_false',
+      help='Turn xla via JIT off (default is on)')
+  parser.add_argument(
+      '--xla',
+      dest='xla', action='store_true',
+      help='Turn xla via JIT on (default is on)')
+  parser.set_defaults(xla=True)
+
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
