@@ -184,7 +184,7 @@ def init_from_checkpoint(checkpoint_dir, assignment_map):
     var3 = tf.get_variable(name="my1", shape=[100, 100],
                            partitioner=lambda shape, dtype: [5, 1])
     ...
-    # Specify which variables to intialize from checkpoint.
+    # Specify which variables to initialize from checkpoint.
     init_from_checkpoint(checkpoint_dir, {
       'some_var': 'test/my_var',
       'some_scope/': 'test2/'})
