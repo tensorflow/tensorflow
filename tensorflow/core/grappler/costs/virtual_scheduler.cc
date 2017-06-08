@@ -626,7 +626,6 @@ Costs VirtualScheduler::Summary() const {
                 << (persisent_ops.count(op) > 0 ? ": persistent op)" : ")");
       }
     }
-    VLOG(1) << "Per-op execution time (and memory usage at peak memory usage):";
     if (critical_path_costs.execution_time <= state.GetCurrTime()) {
       critical_path_costs = state.device_costs;
     }
