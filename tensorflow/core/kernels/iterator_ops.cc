@@ -307,7 +307,7 @@ class IteratorGetNextOp : public AsyncOpKernel {
       core::ScopedUnref unref_iterator(iterator);
 
       std::vector<Tensor> components;
-      bool end_of_sequence;
+      bool end_of_sequence = false;
 
       IteratorContext::Params params;
       params.env = ctx->env();
