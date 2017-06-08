@@ -99,9 +99,7 @@ function setup_python {
 
   if [ -z "$PYTHON_LIB_PATH" ]; then
     # Split python_path into an array of paths, this allows path containing spaces
-    IFS=','
-    python_lib_path=($(python_path))
-    unset IFS
+    IFS=',' read -r -a python_lib_path <<< "$(python_path)"
 
     if [ 1 = "$USE_DEFAULT_PYTHON_LIB_PATH" ]; then
       PYTHON_LIB_PATH=${python_lib_path[0]}
