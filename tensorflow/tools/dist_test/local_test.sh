@@ -70,7 +70,7 @@ get_container_id_by_image_name() {
     # Get the id of a container by image name
     # Usage: get_docker_container_id_by_image_name <img_name>
 
-    echo $(docker ps | grep $1 | awk '{print $1}')
+    docker ps | grep $1 | awk '{print $1}'
 }
 
 # Parse input arguments
