@@ -92,7 +92,7 @@ NEW_TFREC_URL=$(grep "Using input path" "${LOG_FILE}" | \
 if [[ -z ${NEW_TFREC_URL} ]]; then
   die "FAIL: Unable to determine the URL to the new tfrecord file in GCS"
 fi
-if [[ "${GSUTIL_BIN}" rm "${NEW_TFREC_URL}" ]]
+if "${GSUTIL_BIN}" rm "${NEW_TFREC_URL}"
 then
   echo "Cleaned up new tfrecord file in GCS: ${NEW_TFREC_URL}"
 else
