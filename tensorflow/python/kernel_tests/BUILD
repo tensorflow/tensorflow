@@ -980,6 +980,7 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     data = ["//tensorflow/core:lmdb_testdata"],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2377,7 +2378,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "stage_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["stage_op_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
@@ -2391,7 +2392,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "map_stage_op_test",
-    size = "medium",
+    size = "large",
     srcs = ["map_stage_op_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
