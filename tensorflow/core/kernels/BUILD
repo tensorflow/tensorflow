@@ -4468,7 +4468,6 @@ tf_cc_test(
 tf_cc_test(
     name = "quantization_utils_test",
     srcs = ["quantization_utils_test.cc"],
-    tags = ["noasan"],  # http://b/62136754
     deps = [
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
