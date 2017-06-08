@@ -984,7 +984,8 @@ def raw_rnn(cell, loop_fn,
 
     if emit_structure is not None:
       flat_emit_structure = nest.flatten(emit_structure)
-      flat_emit_size = [emit.get_shape() for emit in flat_emit_structure]
+      flat_emit_size = [emit.shape if emit.shape.is_fully_defined() else
+                        array_ops.shape(emit) for emit in flat_emit_structure]
       flat_emit_dtypes = [emit.dtype for emit in flat_emit_structure]
     else:
       emit_structure = cell.output_size

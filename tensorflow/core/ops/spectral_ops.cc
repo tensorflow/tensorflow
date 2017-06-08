@@ -201,6 +201,10 @@ Since the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the
 `fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,
 followed by the `fft_length / 2` positive-frequency terms.
 
+Along the axis `RFFT` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+
 input: A float32 tensor.
 fft_length: An int32 tensor of shape [1]. The FFT length.
 output: A complex64 tensor of the same rank as `input`. The inner-most
@@ -230,6 +234,10 @@ dimension of `input` (`fft_length = 2 * (inner - 1)`). If the FFT length used to
 compute `input` is odd, it should be provided since it cannot be inferred
 properly.
 
+Along the axis `IRFFT` is computed on, if `fft_length / 2 + 1` is smaller
+than the corresponding dimension of `input`, the dimension is cropped. If it is
+larger, the dimension is padded with zeros.
+
 input: A complex64 tensor.
 fft_length: An int32 tensor of shape [1]. The FFT length.
 output: A float32 tensor of the same rank as `input`. The inner-most
@@ -256,6 +264,10 @@ Since the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the
 `fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
 of `output`: the zero-frequency term, followed by the `fft_length / 2`
 positive-frequency terms.
+
+Along each axis `RFFT2D` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
 
 input: A float32 tensor.
 fft_length: An int32 tensor of shape [2]. The FFT length for each dimension.
@@ -287,6 +299,11 @@ from the size of the inner-most 2 dimensions of `input`. If the FFT length used
 to compute `input` is odd, it should be provided since it cannot be inferred
 properly.
 
+Along each axis `IRFFT2D` is computed on, if `fft_length` (or
+`fft_length / 2 + 1` for the inner-most dimension) is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+
 input: A complex64 tensor.
 fft_length: An int32 tensor of shape [2]. The FFT length for each dimension.
 output: A float32 tensor of the same rank as `input`. The inner-most 2
@@ -313,6 +330,10 @@ Since the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the
 `fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
 of `output`: the zero-frequency term, followed by the `fft_length / 2`
 positive-frequency terms.
+
+Along each axis `RFFT3D` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
 
 input: A float32 tensor.
 fft_length: An int32 tensor of shape [3]. The FFT length for each dimension.
@@ -343,6 +364,11 @@ the DFT of a real-valued signal. If `fft_length` is not provided, it is computed
 from the size of the inner-most 3 dimensions of `input`. If the FFT length used
 to compute `input` is odd, it should be provided since it cannot be inferred
 properly.
+
+Along each axis `IRFFT3D` is computed on, if `fft_length` (or
+`fft_length / 2 + 1` for the inner-most dimension) is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
 
 input: A complex64 tensor.
 fft_length: An int32 tensor of shape [3]. The FFT length for each dimension.

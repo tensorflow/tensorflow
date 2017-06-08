@@ -59,8 +59,9 @@ Status CheckSignature(const DataTypeVector& types,
 
 bool XlaCompiler::Argument::operator==(
     const XlaCompiler::Argument& other) const {
-  if (std::tie(kind, type, shape, name) !=
-      std::tie(other.kind, other.type, other.shape, other.name)) {
+  if (std::tie(kind, type, shape, name, tensor_array_size) !=
+      std::tie(other.kind, other.type, other.shape, other.name,
+               other.tensor_array_size)) {
     return false;
   }
   if (constant_value.shape() != other.constant_value.shape()) {
@@ -264,8 +265,9 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
     switch (args[i].kind) {
       case XlaCompiler::Argument::kVariable:
         variables.push_back(i);
-        context_arg.value.is_constant = false;
         context_arg.is_variable = true;
+        context_arg.value.is_constant = false;
+        context_arg.tensor_array_size = args[i].tensor_array_size;
         break;
       case XlaCompiler::Argument::kParameter:
         parameters.push_back(i);
@@ -274,6 +276,7 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
       case XlaCompiler::Argument::kUninitializedVariable:
         context_arg.is_variable = true;
         context_arg.value.is_constant = true;
+        context_arg.tensor_array_size = args[i].tensor_array_size;
         break;
       case XlaCompiler::Argument::kConstant:
         context_arg.value.is_constant = true;
@@ -337,7 +340,7 @@ Status BuildArguments(const std::vector<XlaCompiler::Argument>& args,
 // type of the final output.
 Status BuildComputation(
     const std::vector<XlaContext::HandleOrConstant>& retvals,
-    const std::unordered_map<int, XlaContext::Variable>& variable_map,
+    const std::vector<std::unique_ptr<XlaVariable>>& variables,
     bool has_side_effects, bool return_updated_values_for_all_variables,
     xla::ComputationBuilder* builder, xla::Computation* computation,
     int* num_nonconst_outputs,
@@ -352,27 +355,27 @@ Status BuildComputation(
   *num_nonconst_outputs = elems.size();
 
   // Add return values for variables whose values have changed.
-  std::vector<std::pair<int, const XlaContext::Variable*>> variables;
-  variables.reserve(variable_map.size());
-  for (const auto& entry : variable_map) {
-    variables.emplace_back(entry.first, &entry.second);
+  std::vector<const XlaVariable*> arg_vars;
+  arg_vars.reserve(variables.size());
+  for (const auto& var : variables) {
+    if (var->arg_num >= 0) {
+      arg_vars.push_back(var.get());
+    }
   }
-  std::sort(variables.begin(), variables.end(),
-            [](const std::pair<int, const XlaContext::Variable*>& a,
-               const std::pair<int, const XlaContext::Variable*>& b) {
-              return a.first < b.first;
+  std::sort(arg_vars.begin(), arg_vars.end(),
+            [](const XlaVariable* a, const XlaVariable* b) {
+              return a->arg_num < b->arg_num;
             });
 
-  for (const auto& entry : variables) {
-    bool modified =
-        entry.second->value.handle() != entry.second->initial_value.handle();
+  for (const XlaVariable* var : arg_vars) {
+    bool modified = var->value.handle() != var->initial_value.handle();
     if (return_updated_values_for_all_variables || modified) {
       variable_updates->emplace_back();
       XlaCompiler::VariableUpdate& update = variable_updates->back();
-      update.input_index = entry.first;
-      update.type = entry.second->type;
+      update.input_index = var->arg_num;
+      update.type = var->type;
       update.modified = modified;
-      elems.push_back(entry.second->value);
+      elems.push_back(var->value);
     }
   }
 

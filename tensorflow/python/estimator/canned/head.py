@@ -302,7 +302,8 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
   Raises:
     ValueError: if `n_classes`, `metric_class_ids` or `label_keys` is invalid.
   """
-  if label_vocabulary is not None and not isinstance(label_vocabulary, list):
+  if label_vocabulary is not None and not isinstance(label_vocabulary,
+                                                     (list, tuple)):
     raise ValueError('label_vocabulary should be a list. Given type: {}'.format(
         type(label_vocabulary)))
 
@@ -356,14 +357,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
       label_ids = lookup_ops.index_table_from_tensor(
           vocabulary_list=tuple(self._label_vocabulary),
           name='class_id_lookup').lookup(labels)
-    assert_less = check_ops.assert_less(
-        label_ids,
-        ops.convert_to_tensor(self._n_classes, dtype=label_ids.dtype),
-        message='Label IDs must < n_classes')
-    assert_greater = check_ops.assert_non_negative(
-        label_ids, message='Label Ids must >= 0')
-    with ops.control_dependencies((assert_less, assert_greater)):
-      return array_ops.identity(label_ids)
+    return _assert_range(label_ids, self._n_classes)
 
   def create_estimator_spec(
       self, features, mode, logits, labels=None, train_op_fn=None):
@@ -459,7 +453,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
 
 
 def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
-    weight_feature_key=None, thresholds=None):
+    weight_feature_key=None, thresholds=None, label_vocabulary=None):
   """Creates a `Head` for single label binary classification.
 
   This head uses `sigmoid_cross_entropy_with_logits` loss.
@@ -475,6 +469,11 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
       generated for each threshold value. This threshold is applied to the
       logistic values to determine the binary classification (i.e., above the
       threshold is `true`, below is `false`.
+    label_vocabulary: A list of strings represents possible label values. If it
+      is not given, that means labels are already encoded within [0, 1]. If
+      given, labels must be string type and have any value in
+      `label_vocabulary`. Also there will be errors if vocabulary is not
+      provided and labels are string.
 
   Returns:
     An instance of `Head` for binary classification.
@@ -483,50 +482,81 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
     ValueError: if `thresholds` contains a value outside of `(0, 1)`.
   """
   thresholds = tuple(thresholds) if thresholds else tuple()
+  if label_vocabulary is not None and not isinstance(label_vocabulary,
+                                                     (list, tuple)):
+    raise ValueError('label_vocabulary should be a list. Given type: {}'.format(
+        type(label_vocabulary)))
+
   for threshold in thresholds:
     if (threshold <= 0.0) or (threshold >= 1.0):
       raise ValueError('thresholds not in (0, 1): %s.' % (thresholds,))
   return _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(
-      weight_feature_key=weight_feature_key, thresholds=thresholds)
+      weight_feature_key=weight_feature_key,
+      thresholds=thresholds,
+      label_vocabulary=label_vocabulary)
 
 
 class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
   """See `_binary_logistic_head_with_sigmoid_cross_entropy_loss`."""
 
-  def __init__(self, weight_feature_key=None, thresholds=None):
+  def __init__(self,
+               weight_feature_key=None,
+               thresholds=None,
+               label_vocabulary=None):
     self._weight_feature_key = weight_feature_key
     self._thresholds = thresholds
+    self._label_vocabulary = label_vocabulary
 
   @property
   def logits_dimension(self):
     return 1
 
-  def _eval_metric_ops(
-      self, labels, logits, logistic, scores, classes, unweighted_loss,
-      weights=None):
-    with ops.name_scope(
-        None, 'metrics',
-        (labels, logits, logistic, scores, classes, unweighted_loss, weights)):
+  def _eval_metric_ops(self,
+                       labels,
+                       logits,
+                       logistic,
+                       scores,
+                       class_ids,
+                       unweighted_loss,
+                       weights=None):
+    with ops.name_scope(None, 'metrics', (labels, logits, logistic, scores,
+                                          class_ids, unweighted_loss, weights)):
       keys = metric_keys.MetricKeys
       labels_mean = _indicator_labels_mean(
           labels=labels, weights=weights, name=keys.LABEL_MEAN)
       metric_ops = {
           # Estimator already adds a metric for loss.
-          keys.LOSS_MEAN: metrics_lib.mean(
-              unweighted_loss, weights=weights, name=keys.LOSS_MEAN),
-          keys.ACCURACY: metrics_lib.accuracy(
-              labels=labels, predictions=classes, weights=weights,
-              name=keys.ACCURACY),
-          keys.PREDICTION_MEAN: _predictions_mean(
-              predictions=logistic, weights=weights, name=keys.PREDICTION_MEAN),
-          keys.LABEL_MEAN: labels_mean,
-          keys.ACCURACY_BASELINE: _accuracy_baseline(labels_mean),
-          keys.AUC: _auc(
-              labels=labels, predictions=logistic, weights=weights,
-              name=keys.AUC),
-          keys.AUC_PR: _auc(
-              labels=labels, predictions=logistic, weights=weights, curve='PR',
-              name=keys.AUC_PR)
+          keys.LOSS_MEAN:
+              metrics_lib.mean(
+                  unweighted_loss, weights=weights, name=keys.LOSS_MEAN),
+          keys.ACCURACY:
+              metrics_lib.accuracy(
+                  labels=labels,
+                  predictions=class_ids,
+                  weights=weights,
+                  name=keys.ACCURACY),
+          keys.PREDICTION_MEAN:
+              _predictions_mean(
+                  predictions=logistic,
+                  weights=weights,
+                  name=keys.PREDICTION_MEAN),
+          keys.LABEL_MEAN:
+              labels_mean,
+          keys.ACCURACY_BASELINE:
+              _accuracy_baseline(labels_mean),
+          keys.AUC:
+              _auc(
+                  labels=labels,
+                  predictions=logistic,
+                  weights=weights,
+                  name=keys.AUC),
+          keys.AUC_PR:
+              _auc(
+                  labels=labels,
+                  predictions=logistic,
+                  weights=weights,
+                  curve='PR',
+                  name=keys.AUC_PR)
       }
       for threshold in self._thresholds:
         accuracy_key = keys.ACCURACY_AT_THRESHOLD % threshold
@@ -559,27 +589,39 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
       two_class_logits = array_ops.concat(
           (array_ops.zeros_like(logits), logits), 1, name='two_class_logits')
       scores = nn.softmax(two_class_logits, name=pred_keys.PROBABILITIES)
-      classes = array_ops.reshape(
+      class_ids = array_ops.reshape(
           math_ops.argmax(two_class_logits, axis=1), (-1, 1), name='classes')
+      if self._label_vocabulary:
+        table = lookup_ops.index_to_string_table_from_tensor(
+            vocabulary_list=self._label_vocabulary, name='class_string_lookup')
+        classes = table.lookup(class_ids)
+      else:
+        classes = string_ops.as_string(class_ids, name='str_classes')
       predictions = {
           pred_keys.LOGITS: logits,
           pred_keys.LOGISTIC: logistic,
           pred_keys.PROBABILITIES: scores,
-          pred_keys.CLASS_IDS: classes
+          pred_keys.CLASS_IDS: class_ids,
+          pred_keys.CLASSES: classes,
       }
       if mode == model_fn.ModeKeys.PREDICT:
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
-            export_outputs={'': export_output.ClassificationOutput(
-                scores=scores,
-                # `ClassificationOutput` requires string classes.
-                # TODO(ptucker): Support label_keys.
-                classes=string_ops.as_string(classes, name='str_classes'))})
+            export_outputs={
+                '':
+                    export_output.ClassificationOutput(
+                        scores=scores, classes=classes)
+            })
 
       # Eval.
-      labels = _check_labels(_maybe_expand_dim(math_ops.to_float(labels)),
-                             self.logits_dimension)
+      labels = _check_labels(_maybe_expand_dim(labels), self.logits_dimension)
+      if self._label_vocabulary is not None:
+        labels = lookup_ops.index_table_from_tensor(
+            vocabulary_list=tuple(self._label_vocabulary),
+            name='class_id_lookup').lookup(labels)
+      labels = math_ops.to_float(labels)
+      labels = _assert_range(labels, 2)
       unweighted_loss = nn.sigmoid_cross_entropy_with_logits(
           labels=labels, logits=logits, name='loss')
       weights = (
@@ -598,7 +640,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                 logits=logits,
                 logistic=logistic,
                 scores=scores,
-                classes=classes,
+                class_ids=class_ids,
                 unweighted_loss=unweighted_loss,
                 weights=weights))
 
@@ -721,3 +763,14 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
           predictions=predictions,
           loss=training_loss,
           train_op=train_op_fn(training_loss))
+
+
+def _assert_range(labels, n_classes):
+  assert_less = check_ops.assert_less(
+      labels,
+      ops.convert_to_tensor(n_classes, dtype=labels.dtype),
+      message='Label IDs must < n_classes')
+  assert_greater = check_ops.assert_non_negative(
+      labels, message='Label IDs must >= 0')
+  with ops.control_dependencies((assert_less, assert_greater)):
+    return array_ops.identity(labels)

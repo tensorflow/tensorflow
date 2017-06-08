@@ -787,27 +787,28 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
   // and unmodified_dim_pair have size >1. Otherwise, returns true and appends
   // the degerenate input/output dimensions in the gap to
   // deleted_indices/inserted_indices respectively.
-  auto check_modified_dims = [&shape_pre, &shape_post, &deleted_indices,
-                              &inserted_indices](
-      std::pair<int64, int64> prior_unmodified_dim_pair,
-      std::pair<int64, int64> unmodified_dim_pair) {
-    for (int64 modified_input_dim = prior_unmodified_dim_pair.first + 1;
-         modified_input_dim < unmodified_dim_pair.first; ++modified_input_dim) {
-      if (shape_pre.dimensions(modified_input_dim) > 1) {
-        return false;
-      }
-      deleted_indices.push_back(modified_input_dim);
-    }
-    for (int64 modified_output_dim = prior_unmodified_dim_pair.second + 1;
-         modified_output_dim < unmodified_dim_pair.second;
-         ++modified_output_dim) {
-      if (shape_post.dimensions(modified_output_dim) > 1) {
-        return false;
-      }
-      inserted_indices.push_back(modified_output_dim);
-    }
-    return true;
-  };
+  auto check_modified_dims =
+      [&shape_pre, &shape_post, &deleted_indices, &inserted_indices](
+          std::pair<int64, int64> prior_unmodified_dim_pair,
+          std::pair<int64, int64> unmodified_dim_pair) {
+        for (int64 modified_input_dim = prior_unmodified_dim_pair.first + 1;
+             modified_input_dim < unmodified_dim_pair.first;
+             ++modified_input_dim) {
+          if (shape_pre.dimensions(modified_input_dim) > 1) {
+            return false;
+          }
+          deleted_indices.push_back(modified_input_dim);
+        }
+        for (int64 modified_output_dim = prior_unmodified_dim_pair.second + 1;
+             modified_output_dim < unmodified_dim_pair.second;
+             ++modified_output_dim) {
+          if (shape_post.dimensions(modified_output_dim) > 1) {
+            return false;
+          }
+          inserted_indices.push_back(modified_output_dim);
+        }
+        return true;
+      };
 
   std::vector<std::pair<int64, int64>> unmodified_dims =
       DimensionsUnmodifiedByReshape(shape_pre, shape_post);
@@ -1220,6 +1221,9 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     tensorflow::gtl::ArraySlice<int64> count,
     tensorflow::gtl::ArraySlice<int64> incr,
     const IndexVisitorFunction& visitor_function) {
+  if (ShapeUtil::HasZeroElements(shape)) {
+    return;
+  }
   DCHECK_EQ(Rank(shape), base.size());
   DCHECK_EQ(incr.size(), base.size());
   DCHECK_EQ(count.size(), base.size());

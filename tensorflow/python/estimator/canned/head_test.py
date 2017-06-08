@@ -206,7 +206,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
         })
 
     with self.test_session():
-      with self.assertRaisesOpError('Label Ids must >= 0'):
+      with self.assertRaisesOpError('Label IDs must >= 0'):
         spec.loss.eval({
             labels_placeholder: labels_2x1_with_negative_id,
             logits_placeholder: logits_2x3
@@ -743,8 +743,8 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     self.assertEqual(1, head.logits_dimension)
 
     # Both logits and labels should be shape (batch_size, 1).
-    values_2x1 = np.array(((43.,), (44.,),))
-    values_3x1 = np.array(((45.,), (46.,), (47.,),))
+    values_2x1 = np.array(((0.,), (1.,),))
+    values_3x1 = np.array(((0.,), (1.,), (0.,),))
 
     # Static shape.
     with self.assertRaisesRegexp(
@@ -788,28 +788,13 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     self.assertEqual(1, head.logits_dimension)
 
     # Create estimator spec.
-    logits = np.array(((45,), (-41,),), dtype=np.int32)
+    logits = [[45.], [-41.]]
     spec = head.create_estimator_spec(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.PREDICT,
         logits=logits)
 
-    expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS:
-            logits.astype(np.float32),
-        prediction_keys.PredictionKeys.LOGISTIC:
-            _sigmoid(logits).astype(np.float32),
-        prediction_keys.PredictionKeys.PROBABILITIES:
-            np.array(((0., 1.), (1., 0.),), dtype=np.float32),
-        prediction_keys.PredictionKeys.CLASS_IDS:
-            np.array(((1,), (0,)), dtype=np.int64),
-    }
-
     # Assert spec contains expected tensors.
-    self.assertItemsEqual(expected_predictions.keys(), spec.predictions.keys())
-    self.assertEqual(
-        {k: v.dtype for k, v in six.iteritems(expected_predictions)},
-        {k: v.dtype.as_numpy_dtype for k, v in six.iteritems(spec.predictions)})
     self.assertIsNone(spec.loss)
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNone(spec.train_op)
@@ -821,7 +806,37 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     with self.test_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNone(spec.scaffold.summary_op)
-      self.assertAllClose(expected_predictions, sess.run(spec.predictions))
+      predictions = sess.run(spec.predictions)
+      self.assertAllClose(logits,
+                          predictions[prediction_keys.PredictionKeys.LOGITS])
+      self.assertAllClose(
+          _sigmoid(np.array(logits)),
+          predictions[prediction_keys.PredictionKeys.LOGISTIC])
+      self.assertAllClose(
+          [[0., 1.],
+           [1., 0.]], predictions[prediction_keys.PredictionKeys.PROBABILITIES])
+      self.assertAllClose([[1], [0]],
+                          predictions[prediction_keys.PredictionKeys.CLASS_IDS])
+      self.assertAllEqual([[b'1'], [b'0']],
+                          predictions[prediction_keys.PredictionKeys.CLASSES])
+
+  def test_predict_with_vocabulary_list(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        label_vocabulary=['aang', 'iroh'])
+
+    logits = [[1.], [0.]]
+    expected_classes = [[b'iroh'], [b'aang']]
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.PREDICT,
+        logits=logits)
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertAllEqual(
+          expected_classes,
+          sess.run(spec.predictions[prediction_keys.PredictionKeys.CLASSES]))
 
   def test_eval(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
@@ -834,17 +849,6 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         logits=logits,
         labels=np.array(((1,), (1,),), dtype=np.int32))
 
-    expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS:
-            logits.astype(np.float32),
-        prediction_keys.PredictionKeys.LOGISTIC:
-            _sigmoid(logits).astype(np.float32),
-        prediction_keys.PredictionKeys.PROBABILITIES:
-            np.array(((0., 1.), (1., 0.),), dtype=np.float32),
-        # TODO(ptucker): Should this be (batch_size, 1) instead of (batch_size)?
-        prediction_keys.PredictionKeys.CLASS_IDS:
-            np.array(((1,), (0,)), dtype=np.int64),
-    }
     keys = metric_keys.MetricKeys
     expected_metrics = {
         # loss = sum(cross_entropy(labels, logits)) = sum(0, 41) = 41
@@ -859,10 +863,6 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     }
 
     # Assert spec contains expected tensors.
-    self.assertItemsEqual(expected_predictions.keys(), spec.predictions.keys())
-    self.assertEqual(
-        {k: v.dtype for k, v in six.iteritems(expected_predictions)},
-        {k: v.dtype.as_numpy_dtype for k, v in six.iteritems(spec.predictions)})
     self.assertIsNotNone(spec.loss)
     self.assertItemsEqual(expected_metrics.keys(), spec.eval_metric_ops.keys())
     self.assertIsNone(spec.train_op)
@@ -875,14 +875,33 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       self.assertIsNone(spec.scaffold.summary_op)
       value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
       update_ops = {k: spec.eval_metric_ops[k][1] for k in spec.eval_metric_ops}
-      predictions, loss, metrics = sess.run((
-          spec.predictions, spec.loss, update_ops))
-      self.assertAllClose(expected_predictions, predictions)
+      loss, metrics = sess.run((spec.loss, update_ops))
       self.assertAllClose(41., loss)
       # Check results of both update (in `metrics`) and value ops.
       self.assertAllClose(expected_metrics, metrics)
       self.assertAllClose(
           expected_metrics, {k: value_ops[k].eval() for k in value_ops})
+
+  def test_eval_with_vocabulary_list(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        label_vocabulary=['aang', 'iroh'])
+
+    # Create estimator spec.
+    logits = np.array(((45,), (-41,),), dtype=np.float32)
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.float32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=[[b'iroh'], [b'iroh']])
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNone(spec.scaffold.summary_op)
+      value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
+      update_ops = {k: spec.eval_metric_ops[k][1] for k in spec.eval_metric_ops}
+      sess.run(update_ops)
+      self.assertAllClose(1. / 2,
+                          value_ops[metric_keys.MetricKeys.ACCURACY].eval())
 
   def test_eval_with_thresholds(self):
     thresholds = [0.25, 0.5, 0.75]
@@ -942,23 +961,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         labels=np.array(((1,), (1,),), dtype=np.float64),
         train_op_fn=_train_op_fn)
 
-    expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS:
-            logits.astype(np.float32),
-        prediction_keys.PredictionKeys.LOGISTIC:
-            _sigmoid(logits).astype(np.float32),
-        prediction_keys.PredictionKeys.PROBABILITIES:
-            np.array(((0., 1.), (1., 0.),), dtype=np.float32),
-        # TODO(ptucker): Should this be (batch_size, 1) instead of (batch_size)?
-        prediction_keys.PredictionKeys.CLASS_IDS:
-            np.array(((1,), (0,)), dtype=np.int64),
-    }
-
     # Assert spec contains expected tensors.
-    self.assertItemsEqual(expected_predictions.keys(), spec.predictions.keys())
-    self.assertEqual(
-        {k: v.dtype for k, v in six.iteritems(expected_predictions)},
-        {k: v.dtype.as_numpy_dtype for k, v in six.iteritems(spec.predictions)})
     self.assertIsNotNone(spec.loss)
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNotNone(spec.train_op)
@@ -969,9 +972,8 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     with self.test_session() as sess:
       _initialize_variables(self, spec.scaffold)
       self.assertIsNotNone(spec.scaffold.summary_op)
-      predictions, loss, train_result, summary_str = sess.run((
-          spec.predictions, spec.loss, spec.train_op, spec.scaffold.summary_op))
-      self.assertAllClose(expected_predictions, predictions)
+      loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
+                                                  spec.scaffold.summary_op))
       self.assertAllClose(expected_loss, loss)
       self.assertEqual(expected_train_result, train_result)
       _assert_simple_summaries(self, {
@@ -995,28 +997,23 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
         mode=model_fn.ModeKeys.PREDICT,
         logits=logits)
 
-    expected_predictions = {
-        prediction_keys.PredictionKeys.LOGITS:
-            logits.astype(np.float32),
-        prediction_keys.PredictionKeys.LOGISTIC:
-            _sigmoid(logits).astype(np.float32),
-        prediction_keys.PredictionKeys.PROBABILITIES:
-            np.array(((0., 1.), (1., 0.), (0., 1.)), dtype=np.float32),
-        # TODO(ptucker): Should this be (batch_size, 1) instead of (batch_size)?
-        prediction_keys.PredictionKeys.CLASS_IDS:
-            np.array(((1,), (0,), (1,)), dtype=np.int64),
-    }
-
-    # Assert spec contains expected tensors.
-    self.assertItemsEqual(expected_predictions.keys(), spec.predictions.keys())
-    self.assertEqual(
-        {k: v.dtype for k, v in six.iteritems(expected_predictions)},
-        {k: v.dtype.as_numpy_dtype for k, v in six.iteritems(spec.predictions)})
-
     # Assert predictions, loss, and metrics.
     with self.test_session() as sess:
       _initialize_variables(self, spec.scaffold)
-      self.assertAllClose(expected_predictions, sess.run(spec.predictions))
+      predictions = sess.run(spec.predictions)
+      self.assertAllClose(
+          logits.astype(np.float32),
+          predictions[prediction_keys.PredictionKeys.LOGITS])
+      self.assertAllClose(
+          _sigmoid(logits).astype(np.float32),
+          predictions[prediction_keys.PredictionKeys.LOGISTIC])
+      self.assertAllClose(
+          [[0., 1.], [1., 0.],
+           [0., 1.]], predictions[prediction_keys.PredictionKeys.PROBABILITIES])
+      self.assertAllClose([[1], [0], [1]],
+                          predictions[prediction_keys.PredictionKeys.CLASS_IDS])
+      self.assertAllEqual([[b'1'], [b'0'], [b'1']],
+                          predictions[prediction_keys.PredictionKeys.CLASSES])
 
   def test_weighted_multi_example_eval(self):
     """3 examples, 1 batch."""
