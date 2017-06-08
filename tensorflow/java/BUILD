@@ -9,20 +9,13 @@ load("build_defs", "JAVACOPTS")
 
 java_library(
     name = "tensorflow",
-    srcs = [":java_sources"],
+    srcs = [
+        ":java_op_sources",
+        ":java_sources",
+    ],
     data = [":libtensorflow_jni"],
     javacopts = JAVACOPTS,
     visibility = ["//visibility:public"],
-)
-
-# Operator convenience wrappers for the core tensorflow library.
-java_library(
-    name = "tensorflow_op",
-    srcs = [
-        ":java_op_sources",
-    ],
-    javacopts = JAVACOPTS,
-    deps = [":tensorflow"],
 )
 
 # NOTE(ashankar): Rule to include the Java API in the Android Inference Library
@@ -164,7 +157,6 @@ java_test(
     test_class = "org.tensorflow.op.ScopeTest",
     deps = [
         ":tensorflow",
-        ":tensorflow_op",
         ":testutil",
         "@junit",
     ],
