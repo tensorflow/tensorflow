@@ -47,7 +47,7 @@ num_cpus() {
 # Get the hash of the last non-merge git commit on the current branch.
 # Usage: get_last_non_merge_git_commit
 get_last_non_merge_git_commit() {
-  echo $(git rev-list --no-merges -n 1 HEAD)
+  git rev-list --no-merges -n 1 HEAD
 }
 
 # List files changed (i.e., added, removed or revised) in the last non-merge
@@ -75,7 +75,7 @@ get_py_files_to_check() {
 
     echo "${PY_FILES}"
   else
-    echo $(find tensorflow -name '*.py')
+    find tensorflow -name '*.py'
   fi
 }
 
