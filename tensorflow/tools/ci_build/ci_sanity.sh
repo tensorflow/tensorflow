@@ -166,7 +166,7 @@ do_pylint() {
   PYLINT_END_TIME=$(date +'%s')
 
   echo ""
-  echo "pylint took $((${PYLINT_END_TIME} - ${PYLINT_START_TIME})) s"
+  echo "pylint took $((PYLINT_END_TIME - PYLINT_START_TIME)) s"
   echo ""
 
   grep -E '(\[E|\[W0311|\[W0312)' ${OUTPUT_FILE} > ${ERRORS_FILE}
@@ -248,7 +248,7 @@ do_pep8() {
   PEP8_END_TIME=$(date +'%s')
 
   echo ""
-  echo "pep8 took $((${PEP8_END_TIME} - ${PEP8_START_TIME})) s"
+  echo "pep8 took $((PEP8_END_TIME - PEP8_START_TIME)) s"
   echo ""
 
   if [[ -s ${PEP8_OUTPUT_FILE} ]]; then
@@ -278,7 +278,7 @@ do_buildifier(){
   BUILDIFIER_END_TIME=$(date +'%s')
 
   echo ""
-  echo "buildifier took $((${BUILDIFIER_END_TIME} - ${BUILDIFIER_START_TIME})) s"
+  echo "buildifier took $((BUILDIFIER_END_TIME - BUILDIFIER_START_TIME)) s"
   echo ""
 
   if [[ -s ${BUILDIFIER_OUTPUT_FILE} ]]; then
@@ -329,7 +329,7 @@ do_external_licenses_check(){
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
 
   echo
-  echo "do_external_licenses_check took $((${EXTERNAL_LICENSES_CHECK_END_TIME} - ${EXTERNAL_LICENSES_CHECK_START_TIME})) s"
+  echo "do_external_licenses_check took $((EXTERNAL_LICENSES_CHECK_END_TIME - EXTERNAL_LICENSES_CHECK_START_TIME)) s"
   echo
 
   if [[ -s ${MISSING_LICENSES_FILE} ]] || [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
