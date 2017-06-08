@@ -32,41 +32,34 @@ import java.util.regex.Pattern;
  * <p>This class is package private, user code creates {@link Scope} which internally delegates
  * calls to an underlying {@code NameScope}.
  *
- * <p>This class is thread-safe.
+ * <p>This class is <b>not</b> thread-safe.
  */
 final class NameScope {
 
   NameScope withSubScope(String scopeName) {
-    if (baseName == null) {
-      checkPattern(OP_NAME_REGEX, scopeName);
-    } else {
-      checkPattern(SUBSCOPE_NAME_REGEX, scopeName);
-    }
+    checkPattern(NAME_REGEX, scopeName);
 
-    if (baseOpName != null) {
-      // Use the base name instead to derive the subscope.
-      scopeName = baseOpName;
-    }
+    // Override with opName if it exists.
+    String actualName = (opName != null) ? opName : scopeName;
 
-    String newBaseName = fullyQualify(makeUnique(scopeName));
-    return new NameScope(newBaseName, null, null);
+    String newPrefix = fullyQualify(makeUnique(actualName));
+    return new NameScope(newPrefix, null, null);
   }
 
   NameScope withName(String name) {
-    checkPattern(OP_NAME_REGEX, name);
+    checkPattern(NAME_REGEX, name);
 
-    // All context except for the baseOpName is shared with the new scope.
-    return new NameScope(baseName, name, ids);
+    // All context except for the opName is shared with the new scope.
+    return new NameScope(opPrefix, name, ids);
   }
 
-  String makeOpName(String opName) {
-    checkPattern(OP_NAME_REGEX, opName);
+  String makeOpName(String name) {
+    checkPattern(NAME_REGEX, name);
 
-    if (baseOpName != null) {
-      opName = baseOpName;
-    }
-    opName = makeUnique(opName);
-    return fullyQualify(opName);
+    // Override with opName if it exists.
+    String actualName = (opName != null) ? opName : name;
+
+    return fullyQualify(makeUnique(actualName));
   }
 
   /**
@@ -79,9 +72,9 @@ final class NameScope {
     this(null, null, null);
   }
 
-  private NameScope(String baseName, String baseOpName, Map<String, Integer> ids) {
-    this.baseName = baseName;
-    this.baseOpName = baseOpName;
+  private NameScope(String opPrefix, String opName, Map<String, Integer> ids) {
+    this.opPrefix = opPrefix;
+    this.opName = opName;
     if (ids != null) {
       this.ids = ids;
     } else {
@@ -101,33 +94,31 @@ final class NameScope {
   // The second use of makeUnique("a") updates ids to "a" -> 2
   // and returns "a_1", and so on.
   private String makeUnique(String id) {
-    synchronized (ids) {
-      if (!ids.containsKey(id)) {
-        ids.put(id, 1);
-        return id;
-      } else {
-        int cur = ids.get(id);
-        ids.put(id, cur + 1);
-        return String.format("%s_%d", id, cur);
-      }
+    if (!ids.containsKey(id)) {
+      ids.put(id, 1);
+      return id;
+    } else {
+      int cur = ids.get(id);
+      ids.put(id, cur + 1);
+      return String.format("%s_%d", id, cur);
     }
   }
 
   private String fullyQualify(String name) {
-    if (baseName != null) {
-      return String.format("%s/%s", baseName, name);
+    if (opPrefix != null) {
+      return String.format("%s/%s", opPrefix, name);
     } else {
       return name;
     }
   }
 
-  // If baseName is non-null, it is a prefix applied to all names
+  // If opPrefix is non-null, it is a prefix applied to all names
   // created by this instance.
-  private final String baseName;
+  private final String opPrefix;
 
-  // If baseOpName is non-null, it is used to derive the unique name
+  // If opName is non-null, it is used to derive the unique name
   // for operators rather than the provided default name.
-  private final String baseOpName;
+  private final String opName;
 
   // NameScope generates unique names by appending a numeric suffix if
   // needed. This is a map containing names already created by this
@@ -153,6 +144,5 @@ final class NameScope {
   // LETTER_DIGIT_DOT, followed by zero or more LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE. SLASH is not
   // permitted in actual user-supplied names to NameScope - it is used as a reserved character to
   // separate subcomponents within fully qualified names.
-  private static final Pattern OP_NAME_REGEX = Pattern.compile("[A-Za-z0-9.][A-Za-z0-9_.\\-]*");
-  private static final Pattern SUBSCOPE_NAME_REGEX = Pattern.compile("[A-Za-z0-9_.\\-]+");
+  private static final Pattern NAME_REGEX = Pattern.compile("[A-Za-z0-9.][A-Za-z0-9_.\\-]*");
 }
