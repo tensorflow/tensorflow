@@ -326,7 +326,7 @@ def switch(data, pred, dtype=None, name=None):
 def _SwitchRefOrTensor(data, pred, name="Switch"):
   """Forwards `data` to an output determined by `pred`.
 
-  If `pred` is false, the `data` input is forwared to the first output.
+  If `pred` is false, the `data` input is forwarded to the first output.
   Otherwise, the data goes to the second output.
 
   This op handles `Tensor`s and `IndexedSlices`.

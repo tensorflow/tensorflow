@@ -439,7 +439,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot,
         dot, HloInstruction::CreateBroadcast(dot->shape(), zero, {}));
   }
 
-  // Simplify dot(transpose(a), transpose(b)) to tranpose(dot(b,a)).
+  // Simplify dot(transpose(a), transpose(b)) to transpose(dot(b,a)).
   if (lhs->IsRank2Transpose() && rhs->IsRank2Transpose()) {
     auto new_dot = computation_->AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::PermuteDimensions({1, 0}, dot->shape()), HloOpcode::kDot,

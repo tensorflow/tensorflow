@@ -143,7 +143,7 @@ class StatusOr {
       : status_(std::move(other.status_)),
         value_(std::move(other.value_)) {}
 
-  // Move assignment opeartor to avoid unnecessary copy.
+  // Move assignment operator to avoid unnecessary copy.
   // T must be assignable from U
   template <typename U>
   StatusOr& operator=(StatusOr<U>&& other) {
