@@ -3895,6 +3895,37 @@ op {
   description: "the gradient.  This class performs the softmax operation for you, so inputs\nshould be e.g. linear projections of outputs by an LSTM."
 }
 op {
+  name: "CacheDataset"
+  input_arg {
+    name: "input_dataset"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "filename"
+    description: "A path on the filesystem where we should cache the dataset. Note: this\nwill be a directory."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  summary: "Creates a dataset that caches elements from `input_dataset`."
+  description: "A CacheDataset will iterate over the input_dataset, and store tensors. If the\ncache already exists, the cache will be used. If the cache is inappropriate\n(e.g. cannot be opened, contains tensors of the wrong shape / size), an error\nwill the returned when used."
+  is_stateful: true
+}
+op {
   name: "Cast"
   input_arg {
     name: "x"
