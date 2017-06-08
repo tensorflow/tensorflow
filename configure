@@ -80,7 +80,7 @@ function setup_python {
     fromuser=""
     if [ -z "$PYTHON_BIN_PATH" ]; then
       default_python_bin_path=$(which python || which python3 || true)
-      read -pr "Please specify the location of python. [Default is $default_python_bin_path]: " PYTHON_BIN_PATH
+      read -r -p "Please specify the location of python. [Default is $default_python_bin_path]: " PYTHON_BIN_PATH
       fromuser="1"
       if [ -z "$PYTHON_BIN_PATH" ]; then
         PYTHON_BIN_PATH=$default_python_bin_path
@@ -185,7 +185,7 @@ setup_python
 ## Set up MKL related environment settings
 while [ "$TF_NEED_MKL" == "" ]; do
   fromuser=""
-  read -pr "Do you wish to build TensorFlow with MKL support? [y/N] " INPUT
+  read -r -p "Do you wish to build TensorFlow with MKL support? [y/N] " INPUT
   fromuser="1"
   case $INPUT in
     [Yy]* ) echo "MKL support will be enabled for TensorFlow"; TF_NEED_MKL=1;;
@@ -200,7 +200,7 @@ OSNAME=`uname -s`
 if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
   while [ "$TF_DOWNLOAD_MKL" == "" ]; do
     fromuser=""
-    read -pr "Do you wish to download MKL LIB from the web? [Y/n] " INPUT
+    read -r -p "Do you wish to download MKL LIB from the web? [Y/n] " INPUT
     fromuser="1"
     case $INPUT in
       [Yy]* ) TF_DOWNLOAD_MKL=1;;
@@ -227,7 +227,7 @@ if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
     default_mkl_path=/opt/intel/mklml
     fromuser=""
     if [ -z "$MKL_INSTALL_PATH" ]; then
-      read -pr "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
+      read -r -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
       fromuser="1"
     fi
     if [ -z "$MKL_INSTALL_PATH" ]; then
@@ -282,7 +282,7 @@ fi # TF_NEED_MKL
 ## Set up architecture-dependent optimization flags.
 if [ -z "$CC_OPT_FLAGS" ]; then
   default_cc_opt_flags="-march=native"
-  read -pr "Please specify optimization flags to use during compilation when bazel option "\
+  read -r -p "Please specify optimization flags to use during compilation when bazel option "\
 "\"--config=opt\" is specified [Default is $default_cc_opt_flags]: " CC_OPT_FLAGS
   if [ -z "$CC_OPT_FLAGS" ]; then
     CC_OPT_FLAGS=$default_cc_opt_flags
@@ -299,7 +299,7 @@ fi
 
 if is_linux; then
   while [ "$TF_NEED_JEMALLOC" == "" ]; do
-    read -pr "Do you wish to use jemalloc as the malloc implementation? [Y/n] "\
+    read -r -p "Do you wish to use jemalloc as the malloc implementation? [Y/n] "\
       INPUT
     case $INPUT in
       [Yy]* ) echo "jemalloc enabled"; TF_NEED_JEMALLOC=1;;
@@ -317,7 +317,7 @@ if [[ "$TF_NEED_JEMALLOC" == "1" ]]; then
 fi
 
 while [[ "$TF_NEED_GCP" == "" ]]; do
-  read -pr "Do you wish to build TensorFlow with "\
+  read -r -p "Do you wish to build TensorFlow with "\
 "Google Cloud Platform support? [y/N] " INPUT
   case $INPUT in
     [Yy]* ) echo "Google Cloud Platform support will be enabled for "\
@@ -335,7 +335,7 @@ if [[ "$TF_NEED_GCP" == "1" ]]; then
 fi
 
 while [[ "$TF_NEED_HDFS" == "" ]]; do
-  read -pr "Do you wish to build TensorFlow with "\
+  read -r -p "Do you wish to build TensorFlow with "\
 "Hadoop File System support? [y/N] " INPUT
   case $INPUT in
     [Yy]* ) echo "Hadoop File System support will be enabled for "\
@@ -354,7 +354,7 @@ fi
 
 ## Enable XLA.
 while [[ "$TF_ENABLE_XLA" == "" ]]; do
-  read -pr "Do you wish to build TensorFlow with the XLA just-in-time compiler (experimental)? [y/N] " INPUT
+  read -r -p "Do you wish to build TensorFlow with the XLA just-in-time compiler (experimental)? [y/N] " INPUT
   case $INPUT in
     [Yy]* ) echo "XLA JIT support will be enabled for TensorFlow"; TF_ENABLE_XLA=1;;
     [Nn]* ) echo "No XLA JIT support will be enabled for TensorFlow"; TF_ENABLE_XLA=0;;
@@ -369,7 +369,7 @@ fi
 
 # Verbs configuration
 while [ "$TF_NEED_VERBS" == "" ]; do
-  read -pr "Do you wish to build TensorFlow with "\
+  read -r -p "Do you wish to build TensorFlow with "\
 "VERBS support? [y/N] " INPUT
   case $INPUT in
     [Yy]* ) echo "VERBS support will be enabled for "\
@@ -399,7 +399,7 @@ chmod a+x ${GEN_GIT_SOURCE}
 
 ## Set up SYCL-related environment settings
 while [ "$TF_NEED_OPENCL" == "" ]; do
-  read -pr "Do you wish to build TensorFlow with OpenCL support? [y/N] " INPUT
+  read -r -p "Do you wish to build TensorFlow with OpenCL support? [y/N] " INPUT
   case $INPUT in
     [Yy]* ) echo "OpenCL support will be enabled for TensorFlow"; TF_NEED_OPENCL=1;;
     [Nn]* ) echo "No OpenCL support will be enabled for TensorFlow"; TF_NEED_OPENCL=0;;
@@ -411,7 +411,7 @@ done
 ## Set up Cuda-related environment settings
 
 while [ "$TF_NEED_CUDA" == "" ]; do
-  read -pr "Do you wish to build TensorFlow with CUDA support? [y/N] " INPUT
+  read -r -p "Do you wish to build TensorFlow with CUDA support? [y/N] " INPUT
   case $INPUT in
     [Yy]* ) echo "CUDA support will be enabled for TensorFlow"; TF_NEED_CUDA=1;;
     [Nn]* ) echo "No CUDA support will be enabled for TensorFlow"; TF_NEED_CUDA=0;;
@@ -428,7 +428,7 @@ write_action_env_to_bazelrc "TF_NEED_OPENCL" "$TF_NEED_OPENCL"
 
 if [ "$TF_NEED_CUDA" == "1" ]; then
 while [[ "$TF_CUDA_CLANG" == "" ]]; do
-  read -pr "Do you want to use clang as CUDA compiler? [y/N] " INPUT
+  read -r -p "Do you want to use clang as CUDA compiler? [y/N] " INPUT
   case $INPUT in
     [Yy]* ) echo "Clang will be used as CUDA compiler"; TF_CUDA_CLANG=1;;
     [Nn]* ) echo "nvcc will be used as CUDA compiler"; TF_CUDA_CLANG=0;;
@@ -445,7 +445,7 @@ while [[ "$TF_CUDA_CLANG" == "1" ]] && true; do
   fromuser=""
   if [ -z "$CLANG_CUDA_COMPILER_PATH" ]; then
     default_clang_host_compiler_path=$(which clang || true)
-    read -pr "Please specify which clang should be used as device and host compiler. [Default is $default_clang_host_compiler_path]: " CLANG_CUDA_COMPILER_PATH
+    read -r -p "Please specify which clang should be used as device and host compiler. [Default is $default_clang_host_compiler_path]: " CLANG_CUDA_COMPILER_PATH
     fromuser="1"
     if [ -z "$CLANG_CUDA_COMPILER_PATH" ]; then
       CLANG_CUDA_COMPILER_PATH="$default_clang_host_compiler_path"
@@ -468,7 +468,7 @@ done
 while true; do
   # Configure the Cuda SDK version to use.
   if [ -z "$TF_CUDA_VERSION" ]; then
-    read -pr "Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 8.0]: " TF_CUDA_VERSION
+    read -r -p "Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 8.0]: " TF_CUDA_VERSION
   fi
 
   fromuser=""
@@ -486,7 +486,7 @@ while true; do
         default_cuda_path=/opt/cuda
       fi
     fi
-    read -pr "Please specify the location where CUDA $TF_CUDA_VERSION toolkit is installed. Refer to README.md for more details. [Default is $default_cuda_path]: " CUDA_TOOLKIT_PATH
+    read -r -p "Please specify the location where CUDA $TF_CUDA_VERSION toolkit is installed. Refer to README.md for more details. [Default is $default_cuda_path]: " CUDA_TOOLKIT_PATH
     fromuser="1"
     if [ -z "$CUDA_TOOLKIT_PATH" ]; then
       CUDA_TOOLKIT_PATH="$default_cuda_path"
@@ -540,7 +540,7 @@ while [[ "$TF_CUDA_CLANG" != "1" ]] && ! is_windows && true; do
     if [ -L "$cuda_bin_symlink" ]; then
       default_gcc_host_compiler_path=$(readlink $cuda_bin_symlink)
     fi
-    read -pr "Please specify which gcc should be used by nvcc as the host compiler. [Default is $default_gcc_host_compiler_path]: " GCC_HOST_COMPILER_PATH
+    read -r -p "Please specify which gcc should be used by nvcc as the host compiler. [Default is $default_gcc_host_compiler_path]: " GCC_HOST_COMPILER_PATH
     fromuser="1"
     if [ -z "$GCC_HOST_COMPILER_PATH" ]; then
       GCC_HOST_COMPILER_PATH="$default_gcc_host_compiler_path"
@@ -563,13 +563,13 @@ done
 while true; do
   # Configure the cuDNN version to use.
   if [ -z "$TF_CUDNN_VERSION" ]; then
-    read -pr "Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 6.0]: " TF_CUDNN_VERSION
+    read -r -p "Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 6.0]: " TF_CUDNN_VERSION
   fi
 
   fromuser=""
   if [ -z "$CUDNN_INSTALL_PATH" ]; then
     default_cudnn_path=${CUDA_TOOLKIT_PATH}
-    read -pr "Please specify the location where cuDNN $TF_CUDNN_VERSION library is installed. Refer to README.md for more details. [Default is $default_cudnn_path]: " CUDNN_INSTALL_PATH
+    read -r -p "Please specify the location where cuDNN $TF_CUDNN_VERSION library is installed. Refer to README.md for more details. [Default is $default_cudnn_path]: " CUDNN_INSTALL_PATH
     fromuser="1"
     if [ -z "$CUDNN_INSTALL_PATH" ]; then
       CUDNN_INSTALL_PATH=$default_cudnn_path
@@ -651,7 +651,7 @@ Please specify a list of comma-separated Cuda compute capabilities you want to b
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
 Please note that each additional compute capability significantly increases your build time and binary size.
 EOF
-    read -pr "[Default is: \"3.5,5.2\"]: " TF_CUDA_COMPUTE_CAPABILITIES
+    read -r -p "[Default is: \"3.5,5.2\"]: " TF_CUDA_COMPUTE_CAPABILITIES
     fromuser=1
   fi
   if [ -z "$TF_CUDA_COMPUTE_CAPABILITIES" ]; then
@@ -707,7 +707,7 @@ while true; do
   fromuser=""
   if [ -z "$HOST_CXX_COMPILER" ]; then
     default_cxx_host_compiler=$(which g++ || true)
-    read -pr "Please specify which C++ compiler should be used as the host C++ compiler. [Default is $default_cxx_host_compiler]: " HOST_CXX_COMPILER
+    read -r -p "Please specify which C++ compiler should be used as the host C++ compiler. [Default is $default_cxx_host_compiler]: " HOST_CXX_COMPILER
     fromuser="1"
     if [ -z "$HOST_CXX_COMPILER" ]; then
       HOST_CXX_COMPILER=$default_cxx_host_compiler
@@ -731,7 +731,7 @@ while true; do
   fromuser=""
   if [ -z "$HOST_C_COMPILER" ]; then
     default_c_host_compiler=$(which gcc || true)
-    read -pr "Please specify which C compiler should be used as the host C compiler. [Default is $default_c_host_compiler]: " HOST_C_COMPILER
+    read -r -p "Please specify which C compiler should be used as the host C compiler. [Default is $default_c_host_compiler]: " HOST_C_COMPILER
     fromuser="1"
     if [ -z "$HOST_C_COMPILER" ]; then
       HOST_C_COMPILER=$default_c_host_compiler
@@ -757,7 +757,7 @@ while true; do
   # Point to ComputeCpp root
   if [ -z "$COMPUTECPP_TOOLKIT_PATH" ]; then
     default_computecpp_toolkit_path=/usr/local/computecpp
-    read -pr "Please specify the location where ComputeCpp for SYCL $TF_OPENCL_VERSION is installed. [Default is $default_computecpp_toolkit_path]: " COMPUTECPP_TOOLKIT_PATH
+    read -r -p "Please specify the location where ComputeCpp for SYCL $TF_OPENCL_VERSION is installed. [Default is $default_computecpp_toolkit_path]: " COMPUTECPP_TOOLKIT_PATH
     fromuser="1"
     if [ -z "$COMPUTECPP_TOOLKIT_PATH" ]; then
       COMPUTECPP_TOOLKIT_PATH=$default_computecpp_toolkit_path
@@ -788,7 +788,7 @@ fi
 
 
 while [ "$TF_NEED_MPI" == "" ]; do
-  read -pr "Do you wish to build TensorFlow with "\
+  read -r -p "Do you wish to build TensorFlow with "\
 "MPI support? [y/N] " INPUT
   case $INPUT in
     [Yy]* ) echo "MPI support will be enabled for "\
@@ -811,7 +811,7 @@ while true; do
     if [ -z "$MPI_HOME" ]; then
         #Get the base folder by removing the bin path
         default_mpi_path=$(dirname $(dirname $(which mpirun)) || dirname $(dirname $(which mpiexec))  || true)
-        read -pr "Please specify the MPI toolkit folder. [Default is $default_mpi_path]: " MPI_HOME
+        read -r -p "Please specify the MPI toolkit folder. [Default is $default_mpi_path]: " MPI_HOME
         fromuser="1"
         if [ -z "$MPI_HOME" ]; then
             MPI_HOME=$default_mpi_path
