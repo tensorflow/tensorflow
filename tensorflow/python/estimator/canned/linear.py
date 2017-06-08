@@ -191,10 +191,10 @@ class LinearClassifier(estimator.Estimator):
     """
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
-          weight_feature_key=weight_feature_key)
+          weight_column=weight_feature_key)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
-          n_classes, weight_feature_key=weight_feature_key)
+          n_classes, weight_column=weight_feature_key)
     super(LinearClassifier, self).__init__(
         model_fn=_linear_model_fn,
         model_dir=model_dir,
@@ -284,11 +284,15 @@ class LinearRegressor(estimator.Estimator):
         config=config,
         params={
             # pylint: disable=protected-access
-            'head': head_lib._regression_head_with_mean_squared_error_loss(
-                label_dimension=label_dimension,
-                weight_feature_key=weight_feature_key),
+            'head':
+                head_lib._regression_head_with_mean_squared_error_loss(
+                    label_dimension=label_dimension,
+                    weight_column=weight_feature_key),
             # pylint: enable=protected-access
-            'feature_columns': feature_columns,
-            'optimizer': optimizer,
-            'partitioner': partitioner,
+            'feature_columns':
+                feature_columns,
+            'optimizer':
+                optimizer,
+            'partitioner':
+                partitioner,
         })

@@ -394,6 +394,7 @@ py_library(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:weights_broadcast_ops",
+        "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",
     ],
 )

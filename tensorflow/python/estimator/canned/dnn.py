@@ -230,10 +230,10 @@ class DNNClassifier(estimator.Estimator):
     """
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
-          weight_feature_key=weight_feature_key)
+          weight_column=weight_feature_key)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
-          n_classes, weight_feature_key=weight_feature_key)
+          n_classes, weight_column=weight_feature_key)
     def _model_fn(features, labels, mode, config):
       return _dnn_model_fn(
           features=features,
@@ -351,9 +351,10 @@ class DNNRegressor(estimator.Estimator):
           features=features,
           labels=labels,
           mode=mode,
-          head=head_lib._regression_head_with_mean_squared_error_loss(  # pylint: disable=protected-access
+          head=head_lib.  # pylint: disable=protected-access
+          _regression_head_with_mean_squared_error_loss(
               label_dimension=label_dimension,
-              weight_feature_key=weight_feature_key),
+              weight_column=weight_feature_key),
           hidden_units=hidden_units,
           feature_columns=tuple(feature_columns or []),
           optimizer=optimizer,
