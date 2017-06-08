@@ -57,6 +57,7 @@ cc_header_only_library(
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_evaluator",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:stream_executor_headers_lib",
     ],
