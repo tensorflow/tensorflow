@@ -3797,7 +3797,7 @@ func TensorArrayWriteV3(scope *Scope, handle tf.Output, index tf.Output, value t
 //
 // TensorArray gradient calls use an accumulator TensorArray object.  If
 // multiple gradients are calculated and run in the same session, the multiple
-// gradient nodes may accidentally flow throuth the same accumulator TensorArray.
+// gradient nodes may accidentally flow through the same accumulator TensorArray.
 // This double counts and generally breaks the TensorArray gradient flow.
 //
 // The solution is to identify which gradient call this particular
@@ -13463,6 +13463,11 @@ func Cross(scope *Scope, a tf.Output, b tf.Output) (product tf.Output) {
 // to compute `input` is odd, it should be provided since it cannot be inferred
 // properly.
 //
+// Along each axis `IRFFT2D` is computed on, if `fft_length` (or
+// `fft_length / 2 + 1` for the inner-most dimension) is smaller than the
+// corresponding dimension of `input`, the dimension is cropped. If it is larger,
+// the dimension is padded with zeros.
+//
 // Arguments:
 //	input: A complex64 tensor.
 //	fft_length: An int32 tensor of shape [2]. The FFT length for each dimension.
@@ -16691,6 +16696,10 @@ func Zeta(scope *Scope, x tf.Output, q tf.Output) (z tf.Output) {
 // compute `input` is odd, it should be provided since it cannot be inferred
 // properly.
 //
+// Along the axis `IRFFT` is computed on, if `fft_length / 2 + 1` is smaller
+// than the corresponding dimension of `input`, the dimension is cropped. If it is
+// larger, the dimension is padded with zeros.
+//
 // Arguments:
 //	input: A complex64 tensor.
 //	fft_length: An int32 tensor of shape [1]. The FFT length.
@@ -16873,6 +16882,10 @@ func AssignAddVariableOp(scope *Scope, resource tf.Output, value tf.Output) (o *
 // Since the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the
 // `fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,
 // followed by the `fft_length / 2` positive-frequency terms.
+//
+// Along the axis `RFFT` is computed on, if `fft_length` is smaller than the
+// corresponding dimension of `input`, the dimension is cropped. If it is larger,
+// the dimension is padded with zeros.
 //
 // Arguments:
 //	input: A float32 tensor.
@@ -17168,6 +17181,10 @@ func MaxPoolGradGrad(scope *Scope, orig_input tf.Output, orig_output tf.Output, 
 // `fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
 // of `output`: the zero-frequency term, followed by the `fft_length / 2`
 // positive-frequency terms.
+//
+// Along each axis `RFFT3D` is computed on, if `fft_length` is smaller than the
+// corresponding dimension of `input`, the dimension is cropped. If it is larger,
+// the dimension is padded with zeros.
 //
 // Arguments:
 //	input: A float32 tensor.
@@ -17513,6 +17530,11 @@ func StringSplit(scope *Scope, input tf.Output, delimiter tf.Output) (indices tf
 // from the size of the inner-most 3 dimensions of `input`. If the FFT length used
 // to compute `input` is odd, it should be provided since it cannot be inferred
 // properly.
+//
+// Along each axis `IRFFT3D` is computed on, if `fft_length` (or
+// `fft_length / 2 + 1` for the inner-most dimension) is smaller than the
+// corresponding dimension of `input`, the dimension is cropped. If it is larger,
+// the dimension is padded with zeros.
 //
 // Arguments:
 //	input: A complex64 tensor.
@@ -18935,6 +18957,10 @@ func Erfc(scope *Scope, x tf.Output) (y tf.Output) {
 // `fft_length / 2 + 1` unique components of the FFT for the inner-most dimension
 // of `output`: the zero-frequency term, followed by the `fft_length / 2`
 // positive-frequency terms.
+//
+// Along each axis `RFFT2D` is computed on, if `fft_length` is smaller than the
+// corresponding dimension of `input`, the dimension is cropped. If it is larger,
+// the dimension is padded with zeros.
 //
 // Arguments:
 //	input: A float32 tensor.

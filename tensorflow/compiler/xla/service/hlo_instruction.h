@@ -775,6 +775,9 @@ class HloInstruction {
  private:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
 
+  // Helper class for computing OperandElementUse for kFusion.
+  class FusionReusesParamElements;
+
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(
       const Shape& shape, HloOpcode opcode,

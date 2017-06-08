@@ -1740,6 +1740,7 @@ Status Literal::Populate(
                             stride_config.dimensions, stride_config.step,
                             init_function);
   } else {
+    // For scalars.
     data.at(0) = generator({});
   }
   return Status::OK();

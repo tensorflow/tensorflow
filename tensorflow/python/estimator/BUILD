@@ -460,6 +460,7 @@ py_library(
     deps = [
         ":estimator",
         ":export_export",
+        ":linear",
         ":metric_keys",
         ":numpy_io",
         ":pandas_io",

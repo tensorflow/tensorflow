@@ -157,14 +157,17 @@ class XlaOpKernelContext {
   // 'index'.
   Status ReadVariableInput(int index, xla::ComputationDataHandle* value);
 
-  // Sets output 'index' to be a reference to variable 'variable_id'. Used
-  // to propagate resource variables through the compilation.
-  void SetVariableOutput(int index, int variable_id);
-
   // Assigns the value `handle` to the variable referenced by input
   // `variable_index`. Marks the operator as having side effects.
   Status AssignVariable(int variable_index, DataType type,
                         const xla::ComputationDataHandle& handle);
+
+  // Sets '*variable' to the variable associated with input `index`.
+  Status GetVariableInput(int index, XlaVariable** variable);
+
+  // Sets output 'index' to be a reference to variable 'variable'. Used
+  // to propagate resource variables through the compilation.
+  void SetVariableOutput(int index, XlaVariable* variable);
 
   // Returns a human-readable debug string describing 'variable_index'.
   string VariableDebugString(int variable_index);

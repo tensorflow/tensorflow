@@ -22,8 +22,10 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import spectral_ops
@@ -295,6 +297,38 @@ class RFFTOpsTest(BaseFFTOpsTest):
           self._CompareBackward(c2r.astype(np.complex64), rank, (size,) * rank,
                                 use_placeholder=True)
 
+  def testFftLength(self):
+    for rank in VALID_FFT_RANKS:
+      for dims in xrange(rank, rank + 3):
+        for size in (5, 6):
+          inner_dim = size // 2 + 1
+          r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
+              (size,) * dims)
+          c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
+                       10).reshape((size,) * (dims - 1) + (inner_dim,))
+
+          # Test truncation (FFT size < dimensions).
+          fft_length = (size - 2,) * rank
+          self._CompareForward(r2c.astype(np.float32), rank, fft_length)
+          self._CompareBackward(c2r.astype(np.complex64), rank, fft_length)
+
+          # Confirm it works with unknown shapes as well.
+          self._CompareForward(r2c.astype(np.float32), rank, fft_length,
+                               use_placeholder=True)
+          self._CompareBackward(c2r.astype(np.complex64), rank, fft_length,
+                                use_placeholder=True)
+
+          # Test padding (FFT size > dimensions).
+          fft_length = (size + 2,) * rank
+          self._CompareForward(r2c.astype(np.float32), rank, fft_length)
+          self._CompareBackward(c2r.astype(np.complex64), rank, fft_length)
+
+          # Confirm it works with unknown shapes as well.
+          self._CompareForward(r2c.astype(np.float32), rank, fft_length,
+                               use_placeholder=True)
+          self._CompareBackward(c2r.astype(np.complex64), rank, fft_length,
+                                use_placeholder=True)
+
   def testRandom(self):
     np.random.seed(12345)
 
@@ -324,10 +358,10 @@ class RFFTOpsTest(BaseFFTOpsTest):
       for dims in xrange(0, rank):
         x = np.zeros((1,) * dims).astype(np.complex64)
         with self.assertRaisesWithPredicateMatch(
-            ValueError, "Shape must be .*rank {}.*".format(rank)):
+            ValueError, "Shape .* must have rank at least {}".format(rank)):
           self._tfFFT(x, rank)
         with self.assertRaisesWithPredicateMatch(
-            ValueError, "Shape must be .*rank {}.*".format(rank)):
+            ValueError, "Shape .* must have rank at least {}".format(rank)):
           self._tfIFFT(x, rank)
       for dims in xrange(rank, rank + 2):
         x = np.zeros((1,) * rank)
@@ -335,10 +369,10 @@ class RFFTOpsTest(BaseFFTOpsTest):
         # Test non-rank-1 fft_length produces an error.
         fft_length = np.zeros((1, 1)).astype(np.int32)
         with self.assertRaisesWithPredicateMatch(ValueError,
-                                                 "Shape must be .*rank 1"):
+                                                 "Shape .* must have rank 1"):
           self._tfFFT(x, rank, fft_length)
         with self.assertRaisesWithPredicateMatch(ValueError,
-                                                 "Shape must be .*rank 1"):
+                                                 "Shape .* must have rank 1"):
           self._tfIFFT(x, rank, fft_length)
 
         # Test wrong fft_length length.
@@ -350,24 +384,46 @@ class RFFTOpsTest(BaseFFTOpsTest):
             ValueError, "Dimension must be .*but is {}.*".format(rank + 1)):
           self._tfIFFT(x, rank, fft_length)
 
+      # Test that calling the kernel directly without padding to fft_length
+      # produces an error.
+      rffts_for_rank = {1: [gen_spectral_ops.rfft, gen_spectral_ops.irfft],
+                        2: [gen_spectral_ops.rfft2d, gen_spectral_ops.irfft2d],
+                        3: [gen_spectral_ops.rfft3d, gen_spectral_ops.irfft3d]}
+      rfft_fn, irfft_fn = rffts_for_rank[rank]
+      with self.assertRaisesWithPredicateMatch(
+          errors.InvalidArgumentError,
+          "Input dimension .* must have length of at least 6 but got: 5"):
+        x = np.zeros((5,) * rank).astype(np.float32)
+        fft_length = [6] * rank
+        with self.test_session():
+          rfft_fn(x, fft_length).eval()
+      # TODO(rjryan): Remove when CPU-based IRFFT is supported.
+      if test.is_gpu_available(cuda_only=True):
+        with self.assertRaisesWithPredicateMatch(
+            errors.InvalidArgumentError,
+            "Input dimension .* must have length of at least .* but got: 3"):
+          x = np.zeros((3,) * rank).astype(np.complex64)
+          fft_length = [6] * rank
+          with self.test_session():
+            irfft_fn(x, fft_length).eval()
+
   def testGrad_Simple(self):
-    for rank in VALID_FFT_RANKS:
-      # rfft3d/irfft3d do not have gradients yet.
-      if rank == 3:
-        continue
-      for dims in xrange(rank, rank + 2):
-        for size in (
-            5,
-            6,):
-          re = np.ones(shape=(size,) * dims, dtype=np.float32)
-          im = -np.ones(shape=(size,) * dims, dtype=np.float32)
-          self._checkGradReal(self._tfFFTForRank(rank), re, use_gpu=True)
-          self._checkGradComplex(
-              self._tfIFFTForRank(rank),
-              re,
-              im,
-              result_is_complex=False,
-              use_gpu=True)
+    if test.is_gpu_available(cuda_only=True):
+      for rank in VALID_FFT_RANKS:
+        # rfft3d/irfft3d do not have gradients yet.
+        if rank == 3:
+          continue
+        for dims in xrange(rank, rank + 2):
+          for size in (5, 6):
+            re = np.ones(shape=(size,) * dims, dtype=np.float32)
+            im = -np.ones(shape=(size,) * dims, dtype=np.float32)
+            self._checkGradReal(self._tfFFTForRank(rank), re, use_gpu=True)
+            self._checkGradComplex(
+                self._tfIFFTForRank(rank),
+                re,
+                im,
+                result_is_complex=False,
+                use_gpu=True)
 
   def testGrad_Random(self):
     np.random.seed(54321)
