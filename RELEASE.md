@@ -1,5 +1,5 @@
 # Release 1.2.0
-
+Testing 1.2 branch
 ## Major Features and Improvements
 * Python 3.6 support on Windows.
 * Added `tf.layers.conv3d_transpose` layer for spatio temporal deconvolution.
