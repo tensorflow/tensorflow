@@ -70,6 +70,15 @@ class _Conv(base.Layer):
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
+    groups: Integer, the number of channel groups. A channel group includes a
+      subset of input channels and output channels. The output channels in a
+      channel group are only connected to the input channels of the same group.
+      Assume the number of input channels is `n`, the number of output channels
+      is `m`, and the number of groups is `g`. Each group has `n/g` input
+      channels and `m/g` output channels which are connected via a kernel slice
+      with shape `(filter_height, filter_width, n/g, m/g)`. The full kernel has
+      the shape `(filter_height, filter_width, n/g, m)` and is split on the
+      output dimension.
     kernel_initializer: An initializer for the convolution kernel.
     bias_initializer: An initializer for the bias vector. If None, no bias will
       be applied.
@@ -90,6 +99,7 @@ class _Conv(base.Layer):
                dilation_rate=1,
                activation=None,
                use_bias=True,
+               groups=1,
                kernel_initializer=None,
                bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
@@ -110,6 +120,7 @@ class _Conv(base.Layer):
         dilation_rate, rank, 'dilation_rate')
     self.activation = activation
     self.use_bias = use_bias
+    self.groups = groups
     self.kernel_initializer = kernel_initializer
     self.bias_initializer = bias_initializer
     self.kernel_regularizer = kernel_regularizer
@@ -127,7 +138,15 @@ class _Conv(base.Layer):
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
     input_dim = input_shape[channel_axis].value
-    kernel_shape = self.kernel_size + (input_dim, self.filters)
+    if input_dim % self.groups != 0:
+      raise ValueError('The number of input channels is not divisible '
+                       'by the number of channel group. %d %% %d = %d' %
+                       (input_dim, self.groups, input_dim % self.groups))
+    if self.filters % self.groups != 0:
+      raise ValueError('The number of output channels is not divisible '
+                       'by the number of channel group. %d %% %d = %d' %
+                       (self.filters, self.groups, self.filters % self.groups))
+    kernel_shape = self.kernel_size + (input_dim // self.groups, self.filters)
 
     self.kernel = self.add_variable(name='kernel',
                                     shape=kernel_shape,
@@ -149,13 +168,30 @@ class _Conv(base.Layer):
     self.built = True
 
   def call(self, inputs):
-    outputs = nn.convolution(
-        input=inputs,
-        filter=self.kernel,
-        dilation_rate=self.dilation_rate,
-        strides=self.strides,
-        padding=self.padding.upper(),
-        data_format=utils.convert_data_format(self.data_format, self.rank + 2))
+    if self.groups == 1:
+      outputs = nn.convolution(
+          input=inputs,
+          filter=self.kernel,
+          dilation_rate=self.dilation_rate,
+          strides=self.strides,
+          padding=self.padding.upper(),
+          data_format=utils.convert_data_format(self.data_format, self.rank + 2))
+    else:
+      if self.data_format == 'channels_first':
+        channel_axis = 1
+      else:
+        channel_axis = -1
+      input_slices = array_ops.split(inputs, self.groups, axis=channel_axis)
+      kernel_slices = array_ops.split(self.kernel, self.groups, axis=-1)
+      output_slices = [nn.convolution(
+          input=input_slice,
+          filter=kernel_slice,
+          dilation_rate=self.dilation_rate,
+          strides=self.strides,
+          padding=self.padding.upper(),
+          data_format=utils.convert_data_format(self.data_format, self.rank + 2))
+          for input_slice, kernel_slice in zip(input_slices, kernel_slices)]
+      outputs = array_ops.concat(output_slices, axis=channel_axis)
 
     if self.bias is not None:
       if self.data_format == 'channels_first':
@@ -244,6 +280,15 @@ class Conv1D(_Conv):
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
+    groups: Integer, the number of channel groups. A channel group includes a
+      subset of input channels and output channels. The output channels in a
+      channel group are only connected to the input channels of the same group.
+      Assume the number of input channels is `n`, the number of output channels
+      is `m`, and the number of groups is `g`. Each group has `n/g` input
+      channels and `m/g` output channels which are connected via a kernel slice
+      with shape `(filter_height, filter_width, n/g, m/g)`. The full kernel has
+      the shape `(filter_height, filter_width, n/g, m)` and is split on the
+      output dimension.
     kernel_initializer: An initializer for the convolution kernel.
     bias_initializer: An initializer for the bias vector. If None, no bias will
       be applied.
@@ -263,6 +308,7 @@ class Conv1D(_Conv):
                dilation_rate=1,
                activation=None,
                use_bias=True,
+               groups=1,
                kernel_initializer=None,
                bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
@@ -281,6 +327,7 @@ class Conv1D(_Conv):
         dilation_rate=dilation_rate,
         activation=activation,
         use_bias=use_bias,
+        groups=groups,
         kernel_initializer=kernel_initializer,
         bias_initializer=bias_initializer,
         kernel_regularizer=kernel_regularizer,
@@ -299,6 +346,7 @@ def conv1d(inputs,
            dilation_rate=1,
            activation=None,
            use_bias=True,
+           groups=1,
            kernel_initializer=None,
            bias_initializer=init_ops.zeros_initializer(),
            kernel_regularizer=None,
@@ -338,6 +386,15 @@ def conv1d(inputs,
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
+    groups: Integer, the number of channel groups. A channel group includes a
+      subset of input channels and output channels. The output channels in a
+      channel group are only connected to the input channels of the same group.
+      Assume the number of input channels is `n`, the number of output channels
+      is `m`, and the number of groups is `g`. Each group has `n/g` input
+      channels and `m/g` output channels which are connected via a kernel slice
+      with shape `(filter_height, filter_width, n/g, m/g)`. The full kernel has
+      the shape `(filter_height, filter_width, n/g, m)` and is split on the
+      output dimension.
     kernel_initializer: An initializer for the convolution kernel.
     bias_initializer: An initializer for the bias vector. If None, no bias will
       be applied.
@@ -362,6 +419,7 @@ def conv1d(inputs,
       dilation_rate=dilation_rate,
       activation=activation,
       use_bias=use_bias,
+      groups=groups,
       kernel_initializer=kernel_initializer,
       bias_initializer=bias_initializer,
       kernel_regularizer=kernel_regularizer,
@@ -413,6 +471,15 @@ class Conv2D(_Conv):
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
+    groups: Integer, the number of channel groups. A channel group includes a
+      subset of input channels and output channels. The output channels in a
+      channel group are only connected to the input channels of the same group.
+      Assume the number of input channels is `n`, the number of output channels
+      is `m`, and the number of groups is `g`. Each group has `n/g` input
+      channels and `m/g` output channels which are connected via a kernel slice
+      with shape `(filter_height, filter_width, n/g, m/g)`. The full kernel has
+      the shape `(filter_height, filter_width, n/g, m)` and is split on the
+      output dimension.
     kernel_initializer: An initializer for the convolution kernel.
     bias_initializer: An initializer for the bias vector. If None, no bias will
       be applied.
@@ -432,6 +499,7 @@ class Conv2D(_Conv):
                dilation_rate=(1, 1),
                activation=None,
                use_bias=True,
+               groups=1,
                kernel_initializer=None,
                bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
@@ -450,6 +518,7 @@ class Conv2D(_Conv):
         dilation_rate=dilation_rate,
         activation=activation,
         use_bias=use_bias,
+        groups=groups,
         kernel_initializer=kernel_initializer,
         bias_initializer=bias_initializer,
         kernel_regularizer=kernel_regularizer,
@@ -468,6 +537,7 @@ def conv2d(inputs,
            dilation_rate=(1, 1),
            activation=None,
            use_bias=True,
+           groups=1,
            kernel_initializer=None,
            bias_initializer=init_ops.zeros_initializer(),
            kernel_regularizer=None,
@@ -514,6 +584,15 @@ def conv2d(inputs,
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
+    groups: Integer, the number of channel groups. A channel group includes a
+      subset of input channels and output channels. The output channels in a
+      channel group are only connected to the input channels of the same group.
+      Assume the number of input channels is `n`, the number of output channels
+      is `m`, and the number of groups is `g`. Each group has `n/g` input
+      channels and `m/g` output channels which are connected via a kernel slice
+      with shape `(filter_height, filter_width, n/g, m/g)`. The full kernel has
+      the shape `(filter_height, filter_width, n/g, m)` and is split on the
+      output dimension.
     kernel_initializer: An initializer for the convolution kernel.
     bias_initializer: An initializer for the bias vector. If None, no bias will
       be applied.
@@ -538,6 +617,7 @@ def conv2d(inputs,
       dilation_rate=dilation_rate,
       activation=activation,
       use_bias=use_bias,
+      groups=groups,
       kernel_initializer=kernel_initializer,
       bias_initializer=bias_initializer,
       kernel_regularizer=kernel_regularizer,
@@ -590,6 +670,15 @@ class Conv3D(_Conv):
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
+    groups: Integer, the number of channel groups. A channel group includes a
+      subset of input channels and output channels. The output channels in a
+      channel group are only connected to the input channels of the same group.
+      Assume the number of input channels is `n`, the number of output channels
+      is `m`, and the number of groups is `g`. Each group has `n/g` input
+      channels and `m/g` output channels which are connected via a kernel slice
+      with shape `(filter_height, filter_width, n/g, m/g)`. The full kernel has
+      the shape `(filter_height, filter_width, n/g, m)` and is split on the
+      output dimension.
     kernel_initializer: An initializer for the convolution kernel.
     bias_initializer: An initializer for the bias vector. If None, no bias will
       be applied.
@@ -609,6 +698,7 @@ class Conv3D(_Conv):
                dilation_rate=(1, 1, 1),
                activation=None,
                use_bias=True,
+               groups=1,
                kernel_initializer=None,
                bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
@@ -627,6 +717,7 @@ class Conv3D(_Conv):
         dilation_rate=dilation_rate,
         activation=activation,
         use_bias=use_bias,
+        groups=groups,
         kernel_initializer=kernel_initializer,
         bias_initializer=bias_initializer,
         kernel_regularizer=kernel_regularizer,
@@ -645,6 +736,7 @@ def conv3d(inputs,
            dilation_rate=(1, 1, 1),
            activation=None,
            use_bias=True,
+           groups=1,
            kernel_initializer=None,
            bias_initializer=init_ops.zeros_initializer(),
            kernel_regularizer=None,
@@ -692,6 +784,15 @@ def conv3d(inputs,
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
+    groups: Integer, the number of channel groups. A channel group includes a
+      subset of input channels and output channels. The output channels in a
+      channel group are only connected to the input channels of the same group.
+      Assume the number of input channels is `n`, the number of output channels
+      is `m`, and the number of groups is `g`. Each group has `n/g` input
+      channels and `m/g` output channels which are connected via a kernel slice
+      with shape `(filter_height, filter_width, n/g, m/g)`. The full kernel has
+      the shape `(filter_height, filter_width, n/g, m)` and is split on the
+      output dimension.
     kernel_initializer: An initializer for the convolution kernel.
     bias_initializer: An initializer for the bias vector. If None, no bias will
       be applied.
@@ -716,6 +817,7 @@ def conv3d(inputs,
       dilation_rate=dilation_rate,
       activation=activation,
       use_bias=use_bias,
+      groups=groups,
       kernel_initializer=kernel_initializer,
       bias_initializer=bias_initializer,
       kernel_regularizer=kernel_regularizer,
@@ -1047,6 +1149,15 @@ class Conv2DTranspose(Conv2D):
     activation: Activation function. Set it to None to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
+    groups: Integer, the number of channel groups. A channel group includes a
+      subset of input channels and output channels. The output channels in a
+      channel group are only connected to the input channels of the same group.
+      Assume the number of input channels is `n`, the number of output channels
+      is `m`, and the number of groups is `g`. Each group has `n/g` input
+      channels and `m/g` output channels which are connected via a kernel slice
+      with shape `(filter_height, filter_width, n/g, m/g)`. The full kernel has
+      the shape `(filter_height, filter_width, n/g, m)` and is split on the
+      output dimension.
     kernel_initializer: An initializer for the convolution kernel.
     bias_initializer: An initializer for the bias vector. If None, no bias will
       be applied.
@@ -1065,6 +1176,7 @@ class Conv2DTranspose(Conv2D):
                data_format='channels_last',
                activation=None,
                use_bias=True,
+               groups=1,
                kernel_initializer=None,
                bias_initializer=init_ops.zeros_initializer(),
                kernel_regularizer=None,
@@ -1081,6 +1193,7 @@ class Conv2DTranspose(Conv2D):
         data_format=data_format,
         activation=activation,
         use_bias=use_bias,
+        groups=groups,
         kernel_initializer=kernel_initializer,
         bias_initializer=bias_initializer,
         kernel_regularizer=kernel_regularizer,
@@ -1103,9 +1216,17 @@ class Conv2DTranspose(Conv2D):
     if input_shape[channel_axis] is None:
       raise ValueError('The channel dimension of the inputs '
                        'should be defined. Found `None`.')
-    input_dim = input_shape[channel_axis]
+    input_dim = input_shape[channel_axis].value
+    if input_dim % self.groups != 0:
+      raise ValueError('The number of input channels is not divisible '
+                       'by the number of channel group. %d %% %d = %d' %
+                       (input_dim, self.groups, input_dim % self.groups))
+    if self.filters % self.groups != 0:
+      raise ValueError('The number of output channels is not divisible '
+                       'by the number of channel group. %d %% %d = %d' %
+                       (self.filters, self.groups, self.filters % self.groups))
     self.input_spec = base.InputSpec(ndim=4, axes={channel_axis: input_dim})
-    kernel_shape = self.kernel_size + (self.filters, input_dim)
+    kernel_shape = self.kernel_size + (self.filters, input_dim // self.groups)
 
     self.kernel = self.add_variable(name='kernel',
                                     shape=kernel_shape,
@@ -1146,20 +1267,37 @@ class Conv2DTranspose(Conv2D):
                                            self.padding,
                                            stride_w)
     if self.data_format == 'channels_first':
-      output_shape = (batch_size, self.filters, out_height, out_width)
+      output_shape = (batch_size, self.filters // self.groups, out_height, out_width)
       strides = (1, 1, stride_h, stride_w)
     else:
-      output_shape = (batch_size, out_height, out_width, self.filters)
+      output_shape = (batch_size, out_height, out_width, self.filters // self.groups)
       strides = (1, stride_h, stride_w, 1)
 
     output_shape_tensor = array_ops.stack(output_shape)
-    outputs = nn.conv2d_transpose(
-        inputs,
-        self.kernel,
-        output_shape_tensor,
-        strides,
-        padding=self.padding.upper(),
-        data_format=utils.convert_data_format(self.data_format, ndim=4))
+    if self.groups == 1:
+      outputs = nn.conv2d_transpose(
+          inputs,
+          self.kernel,
+          output_shape_tensor,
+          strides,
+          padding=self.padding.upper(),
+          data_format=utils.convert_data_format(self.data_format, ndim=4))
+    else:
+      if self.data_format == 'channels_first':
+        channel_axis = 1
+      else:
+        channel_axis = -1
+      input_slices = array_ops.split(inputs, self.groups, axis=channel_axis)
+      kernel_slices = array_ops.split(self.kernel, self.groups, axis=-2)
+      output_slices = [nn.convolution(
+          input_slice,
+          kernel_slice,
+          output_shape_tensor,
+          strides,
+          padding=self.padding.upper(),
+          data_format=utils.convert_data_format(self.data_format, ndim=4))
+          for input_slice, kernel_slice in zip(input_slices, kernel_slices)]
+      outputs = array_ops.concat(output_slices, axis=channel_axis)
 
     # Infer the static output shape:
     out_shape = inputs.get_shape().as_list()
@@ -1211,6 +1349,7 @@ def conv2d_transpose(inputs,
                      data_format='channels_last',
                      activation=None,
                      use_bias=True,
+                     groups=1,
                      kernel_initializer=None,
                      bias_initializer=init_ops.zeros_initializer(),
                      kernel_regularizer=None,
@@ -1247,6 +1386,15 @@ def conv2d_transpose(inputs,
     activation: Activation function. Set it to `None` to maintain a
       linear activation.
     use_bias: Boolean, whether the layer uses a bias.
+    groups: Integer, the number of channel groups. A channel group includes a
+      subset of input channels and output channels. The output channels in a
+      channel group are only connected to the input channels of the same group.
+      Assume the number of input channels is `n`, the number of output channels
+      is `m`, and the number of groups is `g`. Each group has `n/g` input
+      channels and `m/g` output channels which are connected via a kernel slice
+      with shape `(filter_height, filter_width, n/g, m/g)`. The full kernel has
+      the shape `(filter_height, filter_width, n/g, m)` and is split on the
+      output dimension.
     kernel_initializer: An initializer for the convolution kernel.
     bias_initializer: An initializer for the bias vector. If `None`, then no
       bias will be applied.
@@ -1270,6 +1418,7 @@ def conv2d_transpose(inputs,
       data_format=data_format,
       activation=activation,
       use_bias=use_bias,
+      groups=groups,
       kernel_initializer=kernel_initializer,
       bias_initializer=bias_initializer,
       kernel_regularizer=kernel_regularizer,
