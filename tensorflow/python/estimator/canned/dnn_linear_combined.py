@@ -347,7 +347,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     """
     linear_feature_columns = linear_feature_columns or []
     dnn_feature_columns = dnn_feature_columns or []
-    self._feature_columns = linear_feature_columns + dnn_feature_columns
+    self._feature_columns = (
+        list(linear_feature_columns) + list(dnn_feature_columns))
     if not self._feature_columns:
       raise ValueError('Either linear_feature_columns or dnn_feature_columns '
                        'must be defined.')

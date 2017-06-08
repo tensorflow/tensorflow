@@ -39,8 +39,8 @@ _LEARNING_RATE = 0.05
 
 
 def _add_hidden_layer_summary(value, tag):
-  summary.scalar('%s_fraction_of_zero_values' % tag, nn.zero_fraction(value))
-  summary.histogram('%s_activation' % tag, value)
+  summary.scalar('%s/fraction_of_zero_values' % tag, nn.zero_fraction(value))
+  summary.histogram('%s/activation' % tag, value)
 
 
 def _dnn_model_fn(

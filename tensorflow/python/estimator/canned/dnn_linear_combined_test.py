@@ -313,6 +313,54 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
         batch_size=batch_size)
 
 
+# A function to mimic dnn-classifier init reuse same tests.
+def _dnn_classifier_fn(
+    hidden_units,
+    feature_columns,
+    model_dir=None,
+    n_classes=2,
+    weight_feature_key=None,
+    optimizer='Adagrad',
+    config=None,
+    input_layer_partitioner=None):
+  return dnn_linear_combined.DNNLinearCombinedClassifier(
+      model_dir=model_dir,
+      dnn_hidden_units=hidden_units,
+      dnn_feature_columns=feature_columns,
+      dnn_optimizer=optimizer,
+      n_classes=n_classes,
+      weight_feature_key=weight_feature_key,
+      input_layer_partitioner=input_layer_partitioner,
+      config=config)
+
+
+class DNNOnlyClassifierEvaluateTest(
+    dnn_testing_utils.BaseDNNClassifierEvaluateTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNClassifierEvaluateTest.__init__(
+        self, _dnn_classifier_fn)
+
+
+class DNNOnlyClassifierPredictTest(
+    dnn_testing_utils.BaseDNNClassifierPredictTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNClassifierPredictTest.__init__(
+        self, _dnn_classifier_fn)
+
+
+class DNNOnlyClassifierTrainTest(
+    dnn_testing_utils.BaseDNNClassifierTrainTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNClassifierTrainTest.__init__(
+        self, _dnn_classifier_fn)
+
+
 class DNNLinearCombinedClassifierIntegrationTest(test.TestCase):
 
   def setUp(self):
