@@ -20,7 +20,7 @@ source "${SCRIPT_DIR}/build_helper.subr"
 JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
 
 function less_than_required_version() {
-  echo $1 | (IFS=. read major minor micro
+  echo $1 | (IFS=. read -r major minor micro
     if [ $major -ne $2 ]; then
       [ $major -lt $2 ]
     elif [ $minor -ne $3 ]; then
