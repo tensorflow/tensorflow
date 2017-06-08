@@ -55,7 +55,9 @@ class SplitVOpBase : public OpKernel {
     const TensorShape& input_shape = input.shape();
     const Tensor& split_tensor = context->input(1);
 
-    const int32 split_dim = context->input(2).flat<int32>()(0);
+    const int32 split_dim_orig = context->input(2).flat<int32>()(0);
+    const int32 split_dim =
+        split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
     OP_REQUIRES(
         context,
@@ -79,14 +81,21 @@ class SplitVOpBase : public OpKernel {
 
     OP_REQUIRES(
         context, 0 <= split_dim && split_dim < input.dims(),
-        errors::InvalidArgument("0 <= split_dim < number of input dimensions (",
-                                input.dims(), "), but got ", split_dim));
+        errors::InvalidArgument("-input rank(-", input.dims(),
+                                ") <= split_dim < input rank (", input.dims(),
+                                "), but got ", split_dim_orig));
 
     Tlen input_size_split_dim = input_shape.dim_size(split_dim);
 
     // Special case 1: num_split == 1. Nothing to do.
     if (num_split == 1) {
       context->set_output(0, context->input(0));
+      OP_REQUIRES(
+          context, (*split_sizes_vec)[0] == input_size_split_dim,
+          errors::InvalidArgument("If there is only one output, it must have "
+                                  "the same size as the input. Input size: ",
+                                  input_size_split_dim,
+                                  " output size: ", (*split_sizes_vec)[0]));
       *done = true;
       return;
     }
@@ -118,8 +127,9 @@ class SplitVOpBase : public OpKernel {
                                 "specified.  Got: ",
                                 determined_size));
 
-    if (neg_one_dim >= 0)
+    if (neg_one_dim >= 0) {
       (*split_sizes_vec)[neg_one_dim] = input_size_split_dim - determined_size;
+    }
 
     // Special case 2: split along the 1st dimension. We can share the
     // underlying buffer.
@@ -139,7 +149,6 @@ class SplitVOpBase : public OpKernel {
       *done = true;
       return;
     }
-    return;
   }
 
   template <typename IndexType>
@@ -181,7 +190,9 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
     const int32 num_split = Base::num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32 split_dim = context->input(2).flat<int32>()(0);
+    const int32 split_dim_orig = context->input(2).flat<int32>()(0);
+    const int32 split_dim =
+        split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
 
     // Android also uses int32 indexing, so check here also.
     OP_REQUIRES(
@@ -251,7 +262,9 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
     const int32 num_split = Base::num_outputs();
     const Tensor& input = context->input(0);
     const TensorShape& input_shape = input.shape();
-    const int32 split_dim = context->input(2).flat<int32>()(0);
+    const int32 split_dim_orig = context->input(2).flat<int32>()(0);
+    const int32 split_dim =
+        split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
     OP_REQUIRES(context, FastBoundsCheck(input.NumElements(),
                                          std::numeric_limits<int32>::max()),
                 errors::InvalidArgument("Split on GPU requires input size "

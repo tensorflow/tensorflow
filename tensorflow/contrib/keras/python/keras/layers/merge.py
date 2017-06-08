@@ -111,6 +111,7 @@ class _Merge(Layer):
       self._reshape_required = False
     else:
       self._reshape_required = True
+    self.built = True
 
   def call(self, inputs):
     if self._reshape_required:
@@ -138,7 +139,8 @@ class _Merge(Layer):
             batch_size = x_shape[0]
             new_shape = K.concatenate([x_shape[1:], K.expand_dims(batch_size)])
             x_transposed = K.reshape(x,
-                                     K.stack([batch_size, K.prod(x_shape[1:])]))
+                                     K.stack([batch_size,
+                                              K.prod(x_shape[1:])]))
             x_transposed = K.permute_dimensions(x_transposed, (1, 0))
             x_transposed = K.reshape(x_transposed, new_shape)
             reshaped_inputs.append(x_transposed)
@@ -302,6 +304,7 @@ class Concatenate(_Merge):
                        'inputs with matching shapes '
                        'except for the concat axis. '
                        'Got inputs shapes: %s' % (input_shape))
+    self.built = True
 
   def call(self, inputs):
     if not isinstance(inputs, list):
@@ -414,6 +417,7 @@ class Dot(_Merge):
       raise ValueError('Dimension incompatibility '
                        '%s != %s. ' % (shape1[axes[0]], shape2[axes[1]]) +
                        'Layer shapes: %s, %s' % (shape1, shape2))
+    self.built = True
 
   def call(self, inputs):
     x1 = inputs[0]

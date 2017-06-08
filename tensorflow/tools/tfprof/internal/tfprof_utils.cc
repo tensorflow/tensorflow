@@ -94,7 +94,7 @@ string StripQuote(const string& s) {
   return s.substr(start, end - start + 1);
 }
 
-tensorflow::Status ReturnError(const std::vector<string> pieces, int idx) {
+tensorflow::Status ReturnError(const std::vector<string>& pieces, int idx) {
   string val;
   if (pieces.size() > idx + 1) {
     val = pieces[idx + 1];
@@ -110,7 +110,7 @@ bool CaseEqual(StringPiece s1, StringPiece s2) {
 }
 
 bool StringToBool(StringPiece str, bool* value) {
-  CHECK(value != NULL) << "NULL output boolean given.";
+  CHECK(value != nullptr) << "NULL output boolean given.";
   if (CaseEqual(str, "true") || CaseEqual(str, "t") || CaseEqual(str, "yes") ||
       CaseEqual(str, "y") || CaseEqual(str, "1")) {
     *value = true;
@@ -170,13 +170,18 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       }
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[5]) {
-      if (pieces.size() <= i + 1) {
+      if (pieces.size() <= i + 1 ||
+          !strings::safe_strto64(pieces[i + 1], &opts->min_occurrence)) {
         return ReturnError(pieces, i);
       }
-      opts->device_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
-                                             str_util::SkipEmpty());
       ++i;
     } else if (pieces[i] == tensorflow::tfprof::kOptions[6]) {
+      if (pieces.size() <= i + 1 ||
+          !strings::safe_strto64(pieces[i + 1], &opts->step)) {
+        return ReturnError(pieces, i);
+      }
+      ++i;
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[7]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
@@ -188,42 +193,42 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       }
       opts->order_by = *order_by;
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[7]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[8]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->account_type_regexes = str_util::Split(StripQuote(pieces[i + 1]),
                                                    ',', str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[8]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[9]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->start_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                  str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[9]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[10]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->trim_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                 str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[10]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[11]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->show_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                 str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[11]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[12]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
       opts->hide_name_regexes = str_util::Split(StripQuote(pieces[i + 1]), ',',
                                                 str_util::SkipEmpty());
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[12]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[13]) {
       if ((pieces.size() > i + 1 && pieces[i + 1].find("-") == 0) ||
           pieces.size() == i + 1) {
         opts->account_displayed_op_only = true;
@@ -233,7 +238,7 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       } else {
         ++i;
       }
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[13]) {
+    } else if (pieces[i] == tensorflow::tfprof::kOptions[14]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
@@ -250,20 +255,14 @@ tensorflow::Status ParseCmdLine(const string& line, string* cmd,
       }
       opts->select = requested_set;
       ++i;
-    } else if (pieces[i] == tensorflow::tfprof::kOptions[14]) {
-      if ((pieces.size() > i + 1 && pieces[i + 1].find("-") == 0) ||
-          pieces.size() == i + 1) {
-        opts->viz = true;
-      } else if (!StringToBool(pieces[i + 1], &opts->viz)) {
-        return ReturnError(pieces, i);
-      } else {
-        ++i;
-      }
     } else if (pieces[i] == tensorflow::tfprof::kOptions[15]) {
       if (pieces.size() <= i + 1) {
         return ReturnError(pieces, i);
       }
-      opts->dump_to_file = StripQuote(pieces[i + 1]);
+
+      tensorflow::Status s =
+          ParseOutput(pieces[i + 1], &opts->output_type, &opts->output_options);
+      if (!s.ok()) return s;
       ++i;
     } else {
       return ReturnError(pieces, i);
@@ -298,8 +297,10 @@ void PrintHelp() {
       "float operations. Only available if an op has "
       "op.RegisterStatistics() defined and OpLog is "
       "provided\n\n"
-      "  -device_regexes: Show ops that a placed on the specified devices. "
-      "regexes are comma-separated.\n\n"
+      "  -min_occurrence: Show the op types that are at least used this number "
+      "of times. Only available in op view.\n\n"
+      "  -step: Show the stats of a step when multiple steps of "
+      "RunMetadata were added. By default (-1), show the average of all steps."
       "  -order_by: Order the results by [name|depth|bytes|micros|params|"
       "float_ops]\n\n"
       "  -account_type_regexes: Account and display the ops whose types match "
@@ -332,7 +333,7 @@ void PrintHelp() {
       "ops eventually displayed. If False, account all "
       "op statistics matching -account_type_regexes recursively.\n\n"
       "  -select: Comma-separated list of metrics to show: [bytes|micros|"
-      "params|float_ops|num_hidden_ops|tensor_value|device|op_types]."
+      "params|float_ops|tensor_value|device|op_types]."
       "\n\n"
       "  -dump_to_file: Dump the output to a file, instead of terminal.\n\n"
       ""

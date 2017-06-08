@@ -344,7 +344,7 @@ def _prepare_sequence_inputs(inputs, states):
   key = _check_rank(inputs.key, 0)
 
   if length.dtype != dtypes.int32:
-    raise TypeError("length dtype must be int32, but recieved: %s" %
+    raise TypeError("length dtype must be int32, but received: %s" %
                     length.dtype)
   if key.dtype != dtypes.string:
     raise TypeError("key dtype must be string, but received: %s" % key.dtype)
@@ -1443,6 +1443,7 @@ def batch_sequences_with_states(input_key,
       input_length = input_length if input_length is not None else length
     elif input_sequences:
       # Assert that value_length is a multiple of num_unroll.
+      checked_input_sequences = {}
       for key, value in input_sequences.items():
         if (isinstance(value, sparse_tensor.SparseTensor) or
             isinstance(value, sparse_tensor.SparseTensorValue)):
@@ -1460,11 +1461,13 @@ def batch_sequences_with_states(input_key,
                           ", but saw value: ",
                           string_ops.as_string(value_length),
                           ". Consider setting pad=True."])])]):
-            input_sequences[key] = sparse_tensor.SparseTensor(
-                indices=value.indices,
+            checked_input_sequences[key] = sparse_tensor.SparseTensor(
+                indices=array_ops.identity(
+                    value.indices, name="multiple_of_checked"),
                 values=array_ops.identity(
                     value.values, name="multiple_of_checked"),
-                dense_shape=value.dense_shape)
+                dense_shape=array_ops.identity(
+                    value.dense_shape, name="multiple_of_checked"))
         else:
           if not isinstance(value, ops.Tensor):
             try:
@@ -1490,9 +1493,9 @@ def batch_sequences_with_states(input_key,
                       ])
                   ])
           ]):
-            input_sequences[key] = array_ops.identity(
+            checked_input_sequences[key] = array_ops.identity(
                 value, name="multiple_of_checked")
-
+      input_sequences = checked_input_sequences
     # Move SparseTensors in context into input_sequences.
     _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll)
     # Deconstruct SparseTensors in sequence into a dense Tensor before inputting
@@ -1670,7 +1673,7 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
     shape = array_ops.concat(
         [array_ops.expand_dims(value_length, 0), sp_tensor.dense_shape], 0)
 
-    # Construct new indices by mutliplying old ones and prepending [0, n).
+    # Construct new indices by multiplying old ones and prepending [0, n).
     # First multiply indices n times along a newly created 0-dimension.
     multiplied_indices = array_ops.tile(
         array_ops.expand_dims(sp_tensor.indices, 0),
@@ -1691,7 +1694,6 @@ def _move_sparse_tensor_out_context(input_context, input_sequences, num_unroll):
     ind = array_ops.expand_dims(ind, 1)
     ind = array_ops.expand_dims(ind, 2)
     ind = array_ops.tile(ind, [1, dim0, 1])
-    array_ops.reshape(ind, array_ops.stack([n, dim0, 1]))
 
     # Concatenate both and reshape.
     indices = array_ops.concat([ind, multiplied_indices], 2)

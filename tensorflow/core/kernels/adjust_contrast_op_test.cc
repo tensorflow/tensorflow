@@ -16,7 +16,6 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -73,6 +72,7 @@ TEST_F(AdjustContrastOpTest, Big_99x99x3) {
   TF_EXPECT_OK(InitOp());
 
   std::vector<float> values;
+  values.reserve(99 * 99 * 3);
   for (int i = 0; i < 99 * 99 * 3; ++i) {
     values.push_back(i % 255);
   }

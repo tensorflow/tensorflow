@@ -441,7 +441,9 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       DepthwiseConv2dNativeOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_CPU_KERNEL);
+#if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)
 TF_CALL_double(REGISTER_CPU_KERNEL);
+#endif
 
 #if GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(

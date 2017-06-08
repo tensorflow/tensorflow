@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/testlib.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -34,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/debug.pb.h"
-#include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/port.h"
 
@@ -187,7 +185,10 @@ TEST_F(GrpcSessionDebugTest, FileDebugURL) {
     IsSingleFloatValue(outputs[0], 4.0);
 
     std::vector<Tensor> dumped_tensors;
-    LoadTensorDumps("n", &dumped_tensors);
+    LoadTensorDumps(io::JoinPath(DebugNodeKey::DeviceNameToDevicePath(
+                                     cluster->devices()[0].name()),
+                                 "n"),
+                    &dumped_tensors);
 
     if (i == 0 || i == 5) {
       ASSERT_EQ(0, dumped_tensors.size());
@@ -267,7 +268,10 @@ TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
         TF_CHECK_OK(session->Close());
 
         std::vector<Tensor> dumped_tensors;
-        LoadTensorDumps("n", &dumped_tensors);
+        LoadTensorDumps(
+            io::JoinPath(DebugNodeKey::DeviceNameToDevicePath(a_dev.name()),
+                         "n"),
+            &dumped_tensors);
         ASSERT_EQ(1, dumped_tensors.size());
         ASSERT_EQ(TensorShape({2, 2}), dumped_tensors[0].shape());
         for (size_t i = 0; i < 4; ++i) {

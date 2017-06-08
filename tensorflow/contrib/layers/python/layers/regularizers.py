@@ -124,7 +124,15 @@ def l1_l2_regularizer(scale_l1=1.0, scale_l2=1.0, scope=None):
   Raises:
     ValueError: If scale is negative or if scale is not a float.
   """
+  if isinstance(scale_l1, numbers.Integral):
+    raise ValueError('scale_l1 cannot be an integer: %s' % (scale_l1,))
+  if isinstance(scale_l2, numbers.Integral):
+    raise ValueError('scale_l2 cannot be an integer: %s' % (scale_l2,))
   scope = scope or 'l1_l2_regularizer'
+  if scale_l1 == 0.:
+    return l2_regularizer(scale_l2, scope)
+  if scale_l2 == 0.:
+    return l1_regularizer(scale_l1, scope)
   return sum_regularizer([l1_regularizer(scale_l1),
                           l2_regularizer(scale_l2)],
                          scope=scope)

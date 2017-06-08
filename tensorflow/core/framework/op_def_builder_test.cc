@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/op_def_builder.h"
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -73,7 +74,7 @@ class OpDefBuilderTest : public ::testing::Test {
     }
   }
 
-  void ExpectFailure(const OpDefBuilder& builder, string error) {
+  void ExpectFailure(const OpDefBuilder& builder, const string& error) {
     OpRegistrationData op_reg_data;
     Status status = builder.Finalize(&op_reg_data);
     EXPECT_FALSE(status.ok());

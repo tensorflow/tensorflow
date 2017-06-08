@@ -197,11 +197,16 @@ class Recurrent(Layer):
       To reset the states of your model, call `.reset_states()` on either
       a specific layer, or on your entire model.
 
-  # Note on specifying initial states in RNNs
-      You can specify the initial state of RNN layers by calling them with
-      the keyword argument `initial_state`. The value of `initial_state`
-      should be a tensor or list of tensors representing the initial state
-      of the RNN layer.
+  # Note on specifying the initial state of RNNs
+      You can specify the initial state of RNN layers symbolically by
+      calling them with the keyword argument `initial_state`. The value of
+      `initial_state` should be a tensor or list of tensors representing
+      the initial state of the RNN layer.
+
+      You can specify the initial state of RNN layers numerically by
+      calling `reset_states` with the keyword argument `states`. The value of
+      `states` should be a numpy array or list of numpy arrays representing
+      the initial state of the RNN layer.
   """
 
   def __init__(self,
@@ -218,7 +223,7 @@ class Recurrent(Layer):
     self.unroll = unroll
     self.implementation = implementation
     self.supports_masking = True
-    self.input_spec = InputSpec(ndim=3)
+    self.input_spec = [InputSpec(ndim=3)]
     self.state_spec = None
     self.dropout = 0
     self.recurrent_dropout = 0
@@ -235,6 +240,8 @@ class Recurrent(Layer):
 
   def compute_mask(self, inputs, mask):
     if self.return_sequences:
+      if isinstance(mask, list):
+        return mask[0]
       return mask
     else:
       return None
@@ -245,15 +252,15 @@ class Recurrent(Layer):
   def get_constants(self, inputs, training=None):
     return []
 
-  def get_initial_states(self, inputs):
+  def get_initial_state(self, inputs):
     # build an all-zero tensor of shape (samples, output_dim)
     initial_state = K.zeros_like(inputs)  # (samples, timesteps, input_dim)
     initial_state = K.sum(initial_state, axis=(1, 2))  # (samples,)
     initial_state = K.expand_dims(initial_state)  # (samples, 1)
     initial_state = K.tile(initial_state, [1,
                                            self.units])  # (samples, output_dim)
-    initial_states = [initial_state for _ in range(len(self.states))]
-    return initial_states
+    initial_state = [initial_state for _ in range(len(self.states))]
+    return initial_state
 
   def preprocess_input(self, inputs, training=None):
     return inputs
@@ -263,50 +270,62 @@ class Recurrent(Layer):
     # and if it a Keras tensor,
     # then add it to the inputs and temporarily
     # modify the input spec to include the state.
-    if initial_state is not None:
-      if hasattr(initial_state, '_keras_history'):
-        # Compute the full input spec, including state
-        input_spec = self.input_spec
-        state_spec = self.state_spec
-        if not isinstance(state_spec, list):
-          state_spec = [state_spec]
-        self.input_spec = [input_spec] + state_spec
+    if initial_state is None:
+      return super(Recurrent, self).__call__(inputs, **kwargs)
 
-        # Compute the full inputs, including state
-        if not isinstance(initial_state, (list, tuple)):
-          initial_state = [initial_state]
-        inputs = [inputs] + list(initial_state)
+    if not isinstance(initial_state, (list, tuple)):
+      initial_state = [initial_state]
 
-        # Perform the call
-        output = super(Recurrent, self).__call__(inputs, **kwargs)
+    is_keras_tensor = hasattr(initial_state[0], '_keras_history')
+    for tensor in initial_state:
+      if hasattr(tensor, '_keras_history') != is_keras_tensor:
+        raise ValueError('The initial state of an RNN layer cannot be'
+                         ' specified with a mix of Keras tensors and'
+                         ' non-Keras tensors')
 
-        # Restore original input spec
-        self.input_spec = input_spec
-        return output
-      else:
-        kwargs['initial_state'] = initial_state
-    return super(Recurrent, self).__call__(inputs, **kwargs)
+    if is_keras_tensor:
+      # Compute the full input spec, including state
+      input_spec = self.input_spec
+      state_spec = self.state_spec
+      if not isinstance(input_spec, list):
+        input_spec = [input_spec]
+      if not isinstance(state_spec, list):
+        state_spec = [state_spec]
+      self.input_spec = input_spec + state_spec
 
-  def call(self, inputs, mask=None, initial_state=None, training=None):
+      # Compute the full inputs, including state
+      inputs = [inputs] + list(initial_state)
+
+      # Perform the call
+      output = super(Recurrent, self).__call__(inputs, **kwargs)
+
+      # Restore original input spec
+      self.input_spec = input_spec
+      return output
+    else:
+      kwargs['initial_state'] = initial_state
+      return super(Recurrent, self).__call__(inputs, **kwargs)
+
+  def call(self, inputs, mask=None, training=None, initial_state=None):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if initial_state is not None:
-      if not isinstance(initial_state, (list, tuple)):
-        initial_states = [initial_state]
-      else:
-        initial_states = list(initial_state)
     if isinstance(inputs, list):
-      initial_states = inputs[1:]
+      initial_state = inputs[1:]
       inputs = inputs[0]
+    elif initial_state is not None:
+      pass
     elif self.stateful:
-      initial_states = self.states
+      initial_state = self.states
     else:
-      initial_states = self.get_initial_states(inputs)
+      initial_state = self.get_initial_state(inputs)
 
-    if len(initial_states) != len(self.states):
+    if isinstance(mask, list):
+      mask = mask[0]
+
+    if len(initial_state) != len(self.states):
       raise ValueError('Layer has ' + str(len(self.states)) +
-                       ' states but was passed ' + str(len(initial_states)) +
+                       ' states but was passed ' + str(len(initial_state)) +
                        ' initial states.')
     input_shape = K.int_shape(inputs)
     if self.unroll and input_shape[1] is None:
@@ -326,7 +345,7 @@ class Recurrent(Layer):
     last_output, outputs, states = K.rnn(
         self.step,
         preprocessed_input,
-        initial_states,
+        initial_state,
         go_backwards=self.go_backwards,
         mask=mask,
         constants=constants,
@@ -347,13 +366,10 @@ class Recurrent(Layer):
     else:
       return last_output
 
-  def reset_states(self, states_value=None):
+  def reset_states(self, states=None):
     if not self.stateful:
       raise AttributeError('Layer must be stateful.')
-    if not self.input_spec:
-      raise RuntimeError('Layer has never been called '
-                         'and thus has no states.')
-    batch_size = self.input_spec.shape[0]
+    batch_size = self.input_spec[0].shape[0]
     if not batch_size:
       raise ValueError('If a RNN is stateful, it needs to know '
                        'its batch size. Specify the batch size '
@@ -365,28 +381,27 @@ class Recurrent(Layer):
                        '- If using the functional API, specify '
                        'the time dimension by passing a '
                        '`batch_shape` argument to your Input layer.')
-    if states_value is not None:
-      if not isinstance(states_value, (list, tuple)):
-        states_value = [states_value]
-      if len(states_value) != len(self.states):
-        raise ValueError('The layer has ' + str(len(self.states)) +
-                         ' states, but the `states_value` '
-                         'argument passed '
-                         'only has ' + str(len(states_value)) + ' entries')
+    # initialize state if None
     if self.states[0] is None:
       self.states = [K.zeros((batch_size, self.units)) for _ in self.states]
-      if not states_value:
-        return
-    for i, state in enumerate(self.states):
-      if states_value:
-        value = states_value[i]
+    elif states is None:
+      for state in self.states:
+        K.set_value(state, np.zeros((batch_size, self.units)))
+    else:
+      if not isinstance(states, (list, tuple)):
+        states = [states]
+      if len(states) != len(self.states):
+        raise ValueError('Layer ' + self.name + ' expects ' +
+                         str(len(self.states)) + ' states, '
+                         'but it received ' + str(len(states)) +
+                         ' state values. Input received: ' + str(states))
+      for index, (value, state) in enumerate(zip(states, self.states)):
         if value.shape != (batch_size, self.units):
-          raise ValueError('Expected state #' + str(i) + ' to have shape ' +
-                           str((batch_size, self.units)) +
-                           ' but got array with shape ' + str(value.shape))
-      else:
-        value = np.zeros((batch_size, self.units))
-      K.set_value(state, value)
+          raise ValueError('State ' + str(index) +
+                           ' is incompatible with layer ' + self.name +
+                           ': expected shape=' + str((batch_size, self.units)) +
+                           ', found shape=' + str(value.shape))
+        K.set_value(state, value)
 
   def get_config(self):
     config = {
@@ -477,6 +492,7 @@ class SimpleRNN(Recurrent):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
+    self.state_spec = InputSpec(shape=(None, self.units))
 
   def build(self, input_shape):
     if isinstance(input_shape, list):
@@ -485,8 +501,7 @@ class SimpleRNN(Recurrent):
 
     batch_size = input_shape[0] if self.stateful else None
     self.input_dim = input_shape[2]
-    self.input_spec = InputSpec(shape=(batch_size, None, self.input_dim))
-    self.state_spec = InputSpec(shape=(batch_size, self.units))
+    self.input_spec[0] = InputSpec(shape=(batch_size, None, self.input_dim))
 
     self.states = [None]
     if self.stateful:
@@ -707,16 +722,15 @@ class GRU(Recurrent):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
+    self.state_spec = InputSpec(shape=(None, self.units))
 
   def build(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    self.input_spec = InputSpec(shape=input_shape)
     batch_size = input_shape[0] if self.stateful else None
     self.input_dim = input_shape[2]
-    self.input_spec = InputSpec(shape=(batch_size, None, self.input_dim))
-    self.state_spec = InputSpec(shape=(batch_size, self.units))
+    self.input_spec[0] = InputSpec(shape=(batch_size, None, self.input_dim))
 
     self.states = [None]
     if self.stateful:
@@ -1020,19 +1034,18 @@ class LSTM(Recurrent):
 
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
+    self.state_spec = [
+        InputSpec(shape=(None, self.units)),
+        InputSpec(shape=(None, self.units))
+    ]
 
   def build(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    self.input_spec = InputSpec(shape=input_shape)
     batch_size = input_shape[0] if self.stateful else None
     self.input_dim = input_shape[2]
-    self.input_spec = InputSpec(shape=(batch_size, None, self.input_dim))
-    self.state_spec = [
-        InputSpec(shape=(batch_size, self.units)), InputSpec(
-            shape=(batch_size, self.units))
-    ]
+    self.input_spec[0] = InputSpec(shape=(batch_size, None, self.input_dim))
 
     self.states = [None, None]
     if self.stateful:
@@ -1052,16 +1065,22 @@ class LSTM(Recurrent):
         constraint=self.recurrent_constraint)
 
     if self.use_bias:
+      if self.unit_forget_bias:
+
+        def bias_initializer(_, *args, **kwargs):
+          return K.concatenate([
+              self.bias_initializer((self.units,), *args, **kwargs),
+              initializers.Ones()((self.units,), *args, **kwargs),
+              self.bias_initializer((self.units * 2,), *args, **kwargs),
+          ])
+      else:
+        bias_initializer = self.bias_initializer
       self.bias = self.add_weight(
           shape=(self.units * 4,),
           name='bias',
-          initializer=self.bias_initializer,
+          initializer=bias_initializer,
           regularizer=self.bias_regularizer,
           constraint=self.bias_constraint)
-      if self.unit_forget_bias:
-        bias_value = np.zeros((self.units * 4,))
-        bias_value[self.units:self.units * 2] = 1.
-        K.set_value(self.bias, bias_value)
     else:
       self.bias = None
 

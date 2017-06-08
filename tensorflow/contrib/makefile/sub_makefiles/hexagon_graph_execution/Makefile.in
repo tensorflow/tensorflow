@@ -47,7 +47,6 @@ GRAPH_TRANSFER_SRCS := \
 tensorflow/cc/framework/scope.cc \
 tensorflow/cc/framework/ops.cc \
 tensorflow/cc/ops/const_op.cc \
-tensorflow/core/kernels/function_ops.cc \
 tensorflow/core/kernels/hexagon/graph_transfer_utils.cc \
 tensorflow/core/kernels/hexagon/graph_transferer.cc \
 tensorflow/core/kernels/hexagon/hexagon_control_wrapper.cc \

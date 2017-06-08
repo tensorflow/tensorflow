@@ -52,11 +52,10 @@ class TuplePointsToAnalysisTest : public HloTestBase {
     module_->AddEntryComputation(std::move(computation));
   }
 
-  void RunAnalysis(const bool include_loop_fusion_instructions = false) {
+  void RunAnalysis() {
     CHECK_NOTNULL(module_.get());
-    points_to_analysis_ = TuplePointsToAnalysis::Run(
-                              module_.get(), include_loop_fusion_instructions)
-                              .ConsumeValueOrDie();
+    points_to_analysis_ =
+        TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
   }
 
   // Returns the LogicalBuffer defined at the given instruction and
@@ -112,7 +111,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
             .ValueOrDie();
     std::vector<BufferAlias> expected_aliases;
     for (auto& pair : expected) {
-      expected_aliases.push_back(BufferAlias(*buffer, pair.first, pair.second));
+      expected_aliases.push_back(BufferAlias(pair.first, pair.second));
     }
     EXPECT_THAT(points_to_analysis_->GetBufferAliases(*buffer),
                 UnorderedElementsAreArray(expected_aliases));
@@ -609,7 +608,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
     auto* fusion = module_->entry_computation()->root_instruction();
     EXPECT_THAT(fusion, op::Fusion(tuple_param0));
     // Run points-to analysis (should include fused instructions from 'fusion').
-    RunAnalysis(/*include_loop_fusion_instructions=*/true);
+    RunAnalysis();
 
     // Check points-to set of fusion parameter associated with 'tuple_param0'.
     auto* fusion_param = GetFusionParameterForOperand(fusion, tuple_param0);

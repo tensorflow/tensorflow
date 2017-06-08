@@ -46,6 +46,7 @@ apt-get install -y --no-install-recommends \
     git \
     libcurl4-openssl-dev \
     libtool \
+    mlocate \
     openjdk-8-jdk \
     openjdk-8-jre-headless \
     pkg-config \
@@ -62,6 +63,9 @@ apt-get install -y --no-install-recommends \
     wget \
     zip \
     zlib1g-dev
+
+# populate the database
+updatedb
 
 if [[ "$1" != "--without_cmake" ]]; then
   apt-get install -y --no-install-recommends \

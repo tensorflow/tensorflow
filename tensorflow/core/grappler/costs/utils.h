@@ -21,10 +21,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -40,14 +43,22 @@ std::vector<OpInfo::TensorProperties> FindInputFeatures(
     const std::unordered_map<string, const NodeDef*>& name_to_node);
 
 // Returns the DeviceProperties of the device on which 'node' runs.
-OpInfo::DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node);
+DeviceProperties GetDeviceInfo(const CostGraphDef::Node& node);
+DeviceProperties GetDeviceInfo(const string& device_str);
 
-// Returns the DeviceProperties of the CPU on which grappler is running.
-OpInfo::DeviceProperties GetLocalCPUInfo();
+// Return a string describing a node given a nodeinfo.
+string GetOpDescription(const OpInfo& op_info);
 
-// Returns the DeviceProperties for the specified GPU attached to the server on
-// which grappler is running.
-OpInfo::DeviceProperties GetLocalGPUInfo(int gpu_id);
+// Builds the OpInfo for node without filling its device information, given all
+// nodes in the graph and its input properties.
+OpInfo BuildOpInfoWithoutDevice(
+    const NodeDef& node,
+    const std::unordered_map<string, const NodeDef*>& name_to_node,
+    const std::vector<OpInfo::TensorProperties>& inputs);
+
+// Gather performance data from a cost graph.
+OpPerformanceList CostGraphToOpPerformanceData(const CostGraphDef& cost_graph,
+                                               const GraphDef& graph);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

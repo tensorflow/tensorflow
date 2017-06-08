@@ -94,6 +94,9 @@ cc_library(
         "@%ws%//tensorflow:linux_ppc64le": [
             "-lpthread",
         ],
+        "@%ws%//tensorflow:linux_x86_64": [
+            "-lpthread",
+        ],
         "//conditions:default": [
         ],
     }),

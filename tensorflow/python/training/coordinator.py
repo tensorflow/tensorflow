@@ -62,7 +62,7 @@ class Coordinator(object):
   #### Exception handling:
 
   A thread can report an exception to the coordinator as part of the
-  `should_stop()` call.  The exception will be re-raised from the
+  `request_stop()` call.  The exception will be re-raised from the
   `coord.join()` call.
 
   Thread code:
@@ -366,7 +366,7 @@ class Coordinator(object):
     # If any thread is still alive, wait for the grace period to expire.
     # By the time this check is executed, threads may still be shutting down,
     # so we add a sleep of increasing duration to give them a chance to shut
-    # down without loosing too many cycles.
+    # down without losing too many cycles.
     # The sleep duration is limited to the remaining grace duration.
     stop_wait_secs = 0.001
     while any(t.is_alive() for t in threads) and stop_grace_period_secs >= 0.0:

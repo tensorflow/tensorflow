@@ -94,7 +94,7 @@ class GrpcSession : public Session {
       const std::vector<string>& output_names,
       std::vector<Tensor>* outputs) override;
 
-  std::vector<DeviceAttributes> ListDevices();
+  Status ListDevices(std::vector<DeviceAttributes>* response) override;
 
  protected:
   // Takes ownership of `*master`.

@@ -223,13 +223,16 @@ class StopAtStepHook(session_run_hook.SessionRunHook):
     if self._global_step_tensor is None:
       raise RuntimeError("Global step should be created to use StopAtStepHook.")
 
+  def after_create_session(self, session, coord):
+    if self._last_step is None:
+      global_step = session.run(self._global_step_tensor)
+      self._last_step = global_step + self._num_steps
+
   def before_run(self, run_context):  # pylint: disable=unused-argument
     return SessionRunArgs(self._global_step_tensor)
 
   def after_run(self, run_context, run_values):
     global_step = run_values.results
-    if self._last_step is None:
-      self._last_step = global_step + self._num_steps - 1
     if global_step >= self._last_step:
       run_context.request_stop()
 

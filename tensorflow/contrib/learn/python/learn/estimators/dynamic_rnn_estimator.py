@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
-from tensorflow.contrib.framework.python.framework import deprecated
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
@@ -116,7 +115,7 @@ def dict_to_state_tuple(input_dict, cell):
 
 
 def _concatenate_context_input(sequence_input, context_input):
-  """Replicates `context_input` accross all timesteps of `sequence_input`.
+  """Replicates `context_input` across all timesteps of `sequence_input`.
 
   Expands dimension 1 of `context_input` then tiles it `sequence_length` times.
   This value is appended to `sequence_input` on dimension 2 and the result is
@@ -178,7 +177,7 @@ def build_sequence_input(features,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features i.e. features that apply accross all time
+      describing context features i.e. features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     weight_collections: List of graph collections to which weights are added.
@@ -420,7 +419,7 @@ def _get_dynamic_rnn_model_fn(
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
+      describing context features, i.e., features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     predict_probabilities: A boolean indicating whether to predict probabilities
@@ -598,13 +597,13 @@ class DynamicRnnEstimator(estimator.Estimator):
         `ProblemType.CLASSIFICATION` or `ProblemType.LINEAR_REGRESSION`.
       prediction_type: whether the `Estimator` should return a value for each
         step in the sequence, or just a single value for the final time step.
-        Must be one of `ProblemType.SINGLE_VALUE` or
-        `ProblemType.MULTIPLE_VALUE`.
+        Must be one of `PredictionType.SINGLE_VALUE` or
+        `PredictionType.MULTIPLE_VALUE`.
       sequence_feature_columns: An iterable containing all the feature columns
         describing sequence features. All items in the iterable should be
         instances of classes derived from `FeatureColumn`.
       context_feature_columns: An iterable containing all the feature columns
-        describing context features, i.e., features that apply accross all time
+        describing context features, i.e., features that apply across all time
         steps. All items in the set should be instances of classes derived from
         `FeatureColumn`.
       num_classes: the number of classes for a classification problem. Only

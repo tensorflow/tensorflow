@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/cluster.pb.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -95,7 +96,7 @@ void MakeGRPCCluster(const SessionOptions& options, int n,
   options_copy.target = (*workers)[0];
   std::unique_ptr<GrpcSession> session;
   TF_CHECK_OK(GrpcSession::Create(options_copy, &session));
-  *devices = session->ListDevices();
+  TF_CHECK_OK(session->ListDevices(devices));
 }
 
 struct Cluster {

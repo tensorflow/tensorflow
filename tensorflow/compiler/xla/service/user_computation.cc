@@ -17,9 +17,12 @@ limitations under the License.
 
 #include <algorithm>
 #include <set>
+#include <stack>
+#include <unordered_map>
 #include <utility>
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/user_computation_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -1868,10 +1871,16 @@ class ComputationLowerer {
       bool include_unreachable_instructions);
 
  private:
+  // Traverses the computation 'root' using a DFS, calling 'visit' in postorder.
+  void TraversePostorder(
+      const ComputationDataHandle& root,
+      std::unordered_map<int64, HloInstruction*>* visited,
+      const std::function<void(const ComputationDataHandle&)>& visit);
+
   // DFS visitor of the UserComputation operations which lowers the operations
   // to HLO instructions.
-  HloInstruction* Visit(const ComputationDataHandle& handle,
-                        std::map<int64, HloInstruction*>* visited);
+  void Visit(const ComputationDataHandle& handle,
+             std::unordered_map<int64, HloInstruction*>* instructions);
 
   // Resolves a ComputationHandle and Version to a previously lowered
   // HloComputation using the hlo_resolver_ function.
@@ -1879,22 +1888,308 @@ class ComputationLowerer {
       const ComputationHandle& handle,
       VersionedComputationHandle::Version version);
 
+  // This function takes an input value which is being implicitly broadcast into
+  // an output shape and figures out the right kBroadcast instruction(s)
+  // necessary to replicate the implicit broadcast semantics explicitly.
+  HloInstruction* ImplicitBroadcastToExplicitBroadcast(
+      HloInstruction* operand, const Shape& output_shape);
+
   HloComputation::Builder hlo_builder_;
   const SessionComputation& session_computation_;
   const VersionedComputationHandle::Version version_;
   const UserComputation::HloComputationResolver hlo_resolver_;
 };
 
+// Calls 'apply' on each operand of 'request'.
+static void ForEachOperand(
+    const OperationRequest& request,
+    const std::function<void(const ComputationDataHandle& param)>& apply) {
+  switch (request.request().op_case()) {
+    case OpRequest::kRngRequest: {
+      const RngRequest& rng_request = request.request().rng_request();
+      for (const ComputationDataHandle& param : rng_request.parameter()) {
+        apply(param);
+      }
+      break;
+    }
+
+    case OpRequest::kConstantRequest:
+      break;
+    case OpRequest::kGetTupleElementRequest: {
+      const GetTupleElementRequest& get_tuple_element_request =
+          request.request().get_tuple_element_request();
+      apply(get_tuple_element_request.operand());
+      break;
+    }
+
+    case OpRequest::kSliceRequest: {
+      const SliceRequest& slice_request = request.request().slice_request();
+      apply(slice_request.operand());
+      break;
+    }
+
+    case OpRequest::kDynamicSliceRequest: {
+      const DynamicSliceRequest& dynamic_slice_request =
+          request.request().dynamic_slice_request();
+      apply(dynamic_slice_request.operand());
+      apply(dynamic_slice_request.start_indices());
+      break;
+    }
+
+    case OpRequest::kDynamicUpdateSliceRequest: {
+      const DynamicUpdateSliceRequest& dynamic_update_slice_request =
+          request.request().dynamic_update_slice_request();
+      apply(dynamic_update_slice_request.operand());
+      apply(dynamic_update_slice_request.update());
+      apply(dynamic_update_slice_request.start_indices());
+      break;
+    }
+
+    case OpRequest::kConcatenateRequest: {
+      const ConcatenateRequest& concatenate_request =
+          request.request().concatenate_request();
+      for (const ComputationDataHandle& handle :
+           concatenate_request.operands()) {
+        apply(handle);
+      }
+      break;
+    }
+
+    case OpRequest::kConvolveRequest: {
+      const ConvolveRequest& convolve_request =
+          request.request().convolve_request();
+      apply(convolve_request.lhs());
+      apply(convolve_request.rhs());
+      break;
+    }
+
+    case OpRequest::kCrossReplicaSumRequest: {
+      const CrossReplicaSumRequest& cross_replica_sum_request =
+          request.request().cross_replica_sum_request();
+      apply(cross_replica_sum_request.operand());
+      break;
+    }
+
+    case OpRequest::kInfeedRequest:
+      break;
+
+    case OpRequest::kOutfeedRequest: {
+      const OutfeedRequest& outfeed_request =
+          request.request().outfeed_request();
+      apply(outfeed_request.operand());
+      break;
+    }
+
+    case OpRequest::kMapRequest: {
+      const MapRequest& map_request = request.request().map_request();
+      for (const ComputationDataHandle& handle : map_request.operands()) {
+        apply(handle);
+      }
+      break;
+    }
+
+    case OpRequest::kReduceRequest: {
+      const ReduceRequest& reduce_request = request.request().reduce_request();
+      apply(reduce_request.operand());
+      apply(reduce_request.init_value());
+      break;
+    }
+
+    case OpRequest::kReduceWindowRequest: {
+      const ReduceWindowRequest& reduce_window_request =
+          request.request().reduce_window_request();
+      apply(reduce_window_request.operand());
+      apply(reduce_window_request.init_value());
+      break;
+    }
+
+    case OpRequest::kSelectAndScatterRequest: {
+      const SelectAndScatterRequest& select_and_scatter_request =
+          request.request().select_and_scatter_request();
+      apply(select_and_scatter_request.operand());
+      apply(select_and_scatter_request.source());
+      apply(select_and_scatter_request.init_value());
+
+      break;
+    }
+
+    case OpRequest::kBroadcastRequest: {
+      const BroadcastRequest& broadcast_request =
+          request.request().broadcast_request();
+      apply(broadcast_request.operand());
+      break;
+    }
+
+    case OpRequest::kReshapeRequest: {
+      const ReshapeRequest& reshape_request =
+          request.request().reshape_request();
+      apply(reshape_request.operand());
+      break;
+    }
+
+    case OpRequest::kTransposeRequest: {
+      const TransposeRequest& transpose_request =
+          request.request().transpose_request();
+      apply(transpose_request.operand());
+      break;
+    }
+
+    case OpRequest::kReverseRequest: {
+      const ReverseRequest& reverse_request =
+          request.request().reverse_request();
+      apply(reverse_request.operand());
+      break;
+    }
+
+    case OpRequest::kPadRequest: {
+      const PadRequest& pad_request = request.request().pad_request();
+      apply(pad_request.operand());
+      apply(pad_request.padding_value());
+      break;
+    }
+
+    case OpRequest::kRecvRequest:
+    case OpRequest::kParameterRequest:
+      break;
+
+    case OpRequest::kConvertRequest: {
+      const ConvertRequest& convert_request =
+          request.request().convert_request();
+      apply(convert_request.operand());
+      break;
+    }
+
+    case OpRequest::kWhileRequest: {
+      const WhileRequest& while_request = request.request().while_request();
+      apply(while_request.init());
+      break;
+    }
+
+    case OpRequest::kTernaryOpRequest: {
+      const TernaryOpRequest& ternary_op_request =
+          request.request().ternary_op_request();
+      apply(ternary_op_request.lhs());
+      apply(ternary_op_request.rhs());
+      apply(ternary_op_request.ehs());
+      break;
+    }
+
+    case OpRequest::kVariadicOpRequest: {
+      const VariadicOpRequest& variadic_op_request =
+          request.request().variadic_op_request();
+      for (const ComputationDataHandle& handle :
+           variadic_op_request.operands()) {
+        apply(handle);
+      }
+      break;
+    }
+
+    case OpRequest::kCallRequest: {
+      const CallRequest& call_request = request.request().call_request();
+      for (const ComputationDataHandle& handle : call_request.operands()) {
+        apply(handle);
+      }
+      break;
+    }
+
+    case OpRequest::kCustomCallRequest: {
+      const CustomCallRequest& cc_request =
+          request.request().custom_call_request();
+      for (const ComputationDataHandle& operand : cc_request.operands()) {
+        apply(operand);
+      }
+      break;
+    }
+
+    case OpRequest::kUnaryOpRequest: {
+      const UnaryOpRequest& unary_op_request =
+          request.request().unary_op_request();
+      apply(unary_op_request.operand());
+      break;
+    }
+
+    case OpRequest::kBinaryOpRequest: {
+      const BinaryOpRequest& binary_op_request =
+          request.request().binary_op_request();
+      apply(binary_op_request.rhs());
+      apply(binary_op_request.lhs());
+      break;
+    }
+
+    case OpRequest::kTraceRequest: {
+      const TraceRequest& trace_request = request.request().trace_request();
+      apply(trace_request.operand());
+      break;
+    }
+
+    case OpRequest::kSendRequest: {
+      const SendRequest& send_request = request.request().send_request();
+      apply(send_request.operand());
+      break;
+    }
+
+    case OpRequest::OP_NOT_SET:
+      LOG(FATAL) << "OperationRequest doesn't contain a request";
+
+    default:
+      LOG(FATAL) << "Unexpected request type: " << request.request().op_case();
+  }
+}
+
+void ComputationLowerer::TraversePostorder(
+    const ComputationDataHandle& root,
+    std::unordered_map<int64, HloInstruction*>* visited,
+    const std::function<void(const ComputationDataHandle&)>& visit) {
+  // Stack containing {handle, enter} pairs. The 'enter' value describes whether
+  // we are entering or leaving 'handle'.
+  std::stack<std::pair<ComputationDataHandle, bool>> work;
+  work.push({root, true});
+  while (!work.empty()) {
+    ComputationDataHandle handle;
+    bool enter;
+    std::tie(handle, enter) = work.top();
+    work.pop();
+
+    if (enter) {
+      // We are entering 'handle'. The first time we enter 'handle', we add it
+      // to 'visited' with a nullptr value. If 'handle' is already in 'visited',
+      // we do not visit it again. This algorithm only uses the presence of
+      // a handle in 'visited', but we use a map so we can use the same data
+      // structure to store the HloInstruction outputs.
+      if (visited->emplace(handle.handle(), nullptr).second) {
+        const OperationRequest& request =
+            session_computation_.requests().at(handle.handle());
+        // Push the corresponding 'leave' action onto the stack, followed by
+        // the operands.
+        work.push({handle, false});
+        ForEachOperand(request, [&work](const ComputationDataHandle& child) {
+          work.push({child, true});
+        });
+      }
+    } else {
+      // We are leaving 'handle'. We have visited the operands of 'handle', and
+      // now can visit the 'handle' itself.
+      visit(handle);
+    }
+  }
+}
+
 StatusOr<std::unique_ptr<HloComputation>> ComputationLowerer::Lower(
     bool include_unreachable_instructions) {
   // Map from ComputationDataHandle to HLO instruction. Serves as a record of
   // which operations have been visited as well as a cache for looking up
   // ComputationDataHandles as HloInstructions.
-  std::map<int64, HloInstruction*> visited;
+  std::unordered_map<int64, HloInstruction*> instructions;
 
   TF_ASSIGN_OR_RETURN(const OperationRequest* root_request,
                       GetRoot(version_, session_computation_));
-  HloInstruction* hlo_root = Visit(root_request->output_handle(), &visited);
+
+  auto visit = [&](const ComputationDataHandle& handle) {
+    Visit(handle, &instructions);
+  };
+  TraversePostorder(root_request->output_handle(), &instructions, visit);
+  HloInstruction* hlo_root =
+      instructions.at(root_request->output_handle().handle());
 
   if (include_unreachable_instructions) {
     // Iterate through all computation data handles, and visit any unvisited
@@ -1902,9 +2197,7 @@ StatusOr<std::unique_ptr<HloComputation>> ComputationLowerer::Lower(
     for (int64 request_num = 1; request_num <= version_; ++request_num) {
       TF_ASSIGN_OR_RETURN(const OperationRequest* request,
                           LookUpRequest(request_num, session_computation_));
-      if (visited.count(request->output_handle().handle()) == 0) {
-        Visit(request->output_handle(), &visited);
-      }
+      TraversePostorder(request->output_handle(), &instructions, visit);
     }
   }
 
@@ -1918,25 +2211,62 @@ HloComputation* ComputationLowerer::ResolveComputation(
   return hlo_resolver_(checked_handle);
 }
 
-HloInstruction* ComputationLowerer::Visit(
-    const ComputationDataHandle& handle,
-    std::map<int64, HloInstruction*>* visited) {
-  CHECK_LE(handle.handle(), version_);
-  if (visited->count(handle.handle()) != 0) {
-    return (*visited)[handle.handle()];
+HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
+    HloInstruction* operand, const Shape& output_shape) {
+  CHECK(ShapeUtil::IsScalar(operand->shape()) ||
+        ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(output_shape));
+  Shape broadcast_shape = ShapeUtil::MakeShape(
+      operand->shape().element_type(), AsInt64Slice(output_shape.dimensions()));
+  // Do explicit broadcast for scalar.
+  if (ShapeUtil::IsScalar(operand->shape())) {
+    return hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
+        broadcast_shape, operand, AsInt64Slice(broadcast_shape.dimensions())));
   }
+  // Do explicit broadcast for degenerate broadcast.
+  std::vector<int64> broadcast_dimensions;
+  std::vector<int64> reshaped_dimensions;
+  for (int i = 0; i < ShapeUtil::Rank(operand->shape()); i++) {
+    if (operand->shape().dimensions(i) > 1) {
+      broadcast_dimensions.push_back(i);
+      reshaped_dimensions.push_back(operand->shape().dimensions(i));
+    }
+  }
+  // Eliminate the size one dimensions.
+  HloInstruction* reshaped_operand =
+      hlo_builder_.AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(operand->shape().element_type(),
+                               reshaped_dimensions),
+          operand));
+  // Broadcast 'reshape' up to the larger size.
+  return hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
+      broadcast_shape, reshaped_operand, broadcast_dimensions));
+}
 
+void ComputationLowerer::Visit(
+    const ComputationDataHandle& handle,
+    std::unordered_map<int64, HloInstruction*>* instructions) {
+  CHECK_LE(handle.handle(), version_);
+  CHECK(instructions->at(handle.handle()) == nullptr);
   const OperationRequest& request =
       session_computation_.requests().at(handle.handle());
+  auto add_instruction = [&](std::unique_ptr<HloInstruction> instruction) {
+    HloInstruction* hlo_instruction =
+        hlo_builder_.AddInstruction(std::move(instruction));
+    hlo_instruction->set_metadata(request.request().metadata());
+    return hlo_instruction;
+  };
+  auto lookup_instruction = [&](const ComputationDataHandle& handle) {
+    return instructions->at(handle.handle());
+  };
   HloInstruction* hlo_instruction;
   switch (request.request().op_case()) {
     case OpRequest::kRngRequest: {
       const RngRequest& rng_request = request.request().rng_request();
       std::vector<HloInstruction*> parameters;
       for (const ComputationDataHandle& param : rng_request.parameter()) {
-        parameters.push_back(Visit(param, visited));
+        parameters.push_back(lookup_instruction(param));
       }
-      hlo_instruction = hlo_builder_.AddInstruction(HloInstruction::CreateRng(
+      hlo_instruction = add_instruction(HloInstruction::CreateRng(
           request.output_shape(), rng_request.distribution(), parameters));
       break;
     }
@@ -1944,9 +2274,8 @@ HloInstruction* ComputationLowerer::Visit(
     case OpRequest::kConstantRequest: {
       const ConstantRequest& constant_request =
           request.request().constant_request();
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateConstant(
-              LiteralUtil::CloneToUnique(constant_request.literal())));
+      hlo_instruction = add_instruction(HloInstruction::CreateConstant(
+          LiteralUtil::CloneToUnique(Literal(constant_request.literal()))));
       break;
     }
 
@@ -1954,18 +2283,16 @@ HloInstruction* ComputationLowerer::Visit(
       const GetTupleElementRequest& get_tuple_element_request =
           request.request().get_tuple_element_request();
       HloInstruction* operand =
-          Visit(get_tuple_element_request.operand(), visited);
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateGetTupleElement(
-              request.output_shape(), operand,
-              get_tuple_element_request.index()));
+          lookup_instruction(get_tuple_element_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateGetTupleElement(
+          request.output_shape(), operand, get_tuple_element_request.index()));
       break;
     }
 
     case OpRequest::kSliceRequest: {
       const SliceRequest& slice_request = request.request().slice_request();
-      HloInstruction* operand = Visit(slice_request.operand(), visited);
-      hlo_instruction = hlo_builder_.AddInstruction(HloInstruction::CreateSlice(
+      HloInstruction* operand = lookup_instruction(slice_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateSlice(
           request.output_shape(), operand,
           AsInt64Slice(slice_request.start_indices()),
           AsInt64Slice(slice_request.limit_indices())));
@@ -1975,14 +2302,14 @@ HloInstruction* ComputationLowerer::Visit(
     case OpRequest::kDynamicSliceRequest: {
       const DynamicSliceRequest& dynamic_slice_request =
           request.request().dynamic_slice_request();
-      HloInstruction* operand = Visit(dynamic_slice_request.operand(), visited);
+      HloInstruction* operand =
+          lookup_instruction(dynamic_slice_request.operand());
       HloInstruction* start_indices =
-          Visit(dynamic_slice_request.start_indices(), visited);
+          lookup_instruction(dynamic_slice_request.start_indices());
 
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateDynamicSlice(
-              request.output_shape(), operand, start_indices,
-              AsInt64Slice(dynamic_slice_request.slice_sizes())));
+      hlo_instruction = add_instruction(HloInstruction::CreateDynamicSlice(
+          request.output_shape(), operand, start_indices,
+          AsInt64Slice(dynamic_slice_request.slice_sizes())));
       break;
     }
 
@@ -1990,13 +2317,13 @@ HloInstruction* ComputationLowerer::Visit(
       const DynamicUpdateSliceRequest& dynamic_update_slice_request =
           request.request().dynamic_update_slice_request();
       HloInstruction* operand =
-          Visit(dynamic_update_slice_request.operand(), visited);
+          lookup_instruction(dynamic_update_slice_request.operand());
       HloInstruction* update =
-          Visit(dynamic_update_slice_request.update(), visited);
+          lookup_instruction(dynamic_update_slice_request.update());
       HloInstruction* start_indices =
-          Visit(dynamic_update_slice_request.start_indices(), visited);
+          lookup_instruction(dynamic_update_slice_request.start_indices());
       hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
+          add_instruction(HloInstruction::CreateDynamicUpdateSlice(
               request.output_shape(), operand, update, start_indices));
       break;
     }
@@ -2007,24 +2334,22 @@ HloInstruction* ComputationLowerer::Visit(
       std::vector<HloInstruction*> operands;
       for (const ComputationDataHandle& handle :
            concatenate_request.operands()) {
-        HloInstruction* operand = Visit(handle, visited);
+        HloInstruction* operand = lookup_instruction(handle);
         operands.push_back(operand);
       }
-      hlo_instruction = hlo_builder_.AddInstruction(
-          HloInstruction::CreateConcatenate(request.output_shape(), operands,
-                                            concatenate_request.dimension()));
+      hlo_instruction = add_instruction(HloInstruction::CreateConcatenate(
+          request.output_shape(), operands, concatenate_request.dimension()));
       break;
     }
 
     case OpRequest::kConvolveRequest: {
       const ConvolveRequest& convolve_request =
           request.request().convolve_request();
-      HloInstruction* lhs = Visit(convolve_request.lhs(), visited);
-      HloInstruction* rhs = Visit(convolve_request.rhs(), visited);
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateConvolve(
-              request.output_shape(), lhs, rhs, convolve_request.window(),
-              convolve_request.dimension_numbers()));
+      HloInstruction* lhs = lookup_instruction(convolve_request.lhs());
+      HloInstruction* rhs = lookup_instruction(convolve_request.rhs());
+      hlo_instruction = add_instruction(HloInstruction::CreateConvolve(
+          request.output_shape(), lhs, rhs, convolve_request.window(),
+          convolve_request.dimension_numbers()));
       break;
     }
 
@@ -2032,28 +2357,25 @@ HloInstruction* ComputationLowerer::Visit(
       const CrossReplicaSumRequest& cross_replica_sum_request =
           request.request().cross_replica_sum_request();
       HloInstruction* operand =
-          Visit(cross_replica_sum_request.operand(), visited);
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateCrossReplicaSum(
-              request.output_shape(), operand));
+          lookup_instruction(cross_replica_sum_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateCrossReplicaSum(
+          request.output_shape(), operand));
       break;
     }
 
     case OpRequest::kInfeedRequest: {
       const InfeedRequest& infeed_request = request.request().infeed_request();
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateInfeed(
-              request.output_shape(), infeed_request.config()));
+      hlo_instruction = add_instruction(HloInstruction::CreateInfeed(
+          request.output_shape(), infeed_request.config()));
       break;
     }
 
     case OpRequest::kOutfeedRequest: {
       const OutfeedRequest& outfeed_request =
           request.request().outfeed_request();
-      HloInstruction* operand = Visit(outfeed_request.operand(), visited);
-      hlo_instruction = hlo_builder_.AddInstruction(
-          HloInstruction::CreateOutfeed(outfeed_request.shape(), operand,
-                                        outfeed_request.outfeed_config()));
+      HloInstruction* operand = lookup_instruction(outfeed_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateOutfeed(
+          outfeed_request.shape(), operand, outfeed_request.outfeed_config()));
       break;
     }
 
@@ -2061,7 +2383,7 @@ HloInstruction* ComputationLowerer::Visit(
       const MapRequest& map_request = request.request().map_request();
       std::vector<HloInstruction*> operands;
       for (const ComputationDataHandle& handle : map_request.operands()) {
-        HloInstruction* operand = Visit(handle, visited);
+        HloInstruction* operand = lookup_instruction(handle);
         operands.push_back(operand);
       }
       CHECK_EQ(1, request.embedded_computation_versions_size());
@@ -2069,42 +2391,42 @@ HloInstruction* ComputationLowerer::Visit(
           request.embedded_computation_versions(0);
       HloComputation* map_computation =
           ResolveComputation(map_request.to_apply(), map_version);
-      hlo_instruction = hlo_builder_.AddInstruction(HloInstruction::CreateMap(
+      hlo_instruction = add_instruction(HloInstruction::CreateMap(
           request.output_shape(), operands, map_computation));
       break;
     }
 
     case OpRequest::kReduceRequest: {
       const ReduceRequest& reduce_request = request.request().reduce_request();
-      HloInstruction* operand = Visit(reduce_request.operand(), visited);
-      HloInstruction* init_value = Visit(reduce_request.init_value(), visited);
+      HloInstruction* operand = lookup_instruction(reduce_request.operand());
+      HloInstruction* init_value =
+          lookup_instruction(reduce_request.init_value());
       CHECK_EQ(1, request.embedded_computation_versions_size());
       VersionedComputationHandle::Version reduce_version =
           request.embedded_computation_versions(0);
       HloComputation* reduce_computation =
           ResolveComputation(reduce_request.to_apply(), reduce_version);
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateReduce(
-              request.output_shape(), operand, init_value,
-              AsInt64Slice(reduce_request.dimensions()), reduce_computation));
+      hlo_instruction = add_instruction(HloInstruction::CreateReduce(
+          request.output_shape(), operand, init_value,
+          AsInt64Slice(reduce_request.dimensions()), reduce_computation));
       break;
     }
 
     case OpRequest::kReduceWindowRequest: {
       const ReduceWindowRequest& reduce_window_request =
           request.request().reduce_window_request();
-      HloInstruction* operand = Visit(reduce_window_request.operand(), visited);
+      HloInstruction* operand =
+          lookup_instruction(reduce_window_request.operand());
       HloInstruction* init_value =
-          Visit(reduce_window_request.init_value(), visited);
+          lookup_instruction(reduce_window_request.init_value());
       CHECK_EQ(1, request.embedded_computation_versions_size());
       VersionedComputationHandle::Version reduce_window_version =
           request.embedded_computation_versions(0);
       HloComputation* reduce_window_computation = ResolveComputation(
           reduce_window_request.to_apply(), reduce_window_version);
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateReduceWindow(
-              request.output_shape(), operand, init_value,
-              reduce_window_request.window(), reduce_window_computation));
+      hlo_instruction = add_instruction(HloInstruction::CreateReduceWindow(
+          request.output_shape(), operand, init_value,
+          reduce_window_request.window(), reduce_window_computation));
       break;
     }
 
@@ -2112,11 +2434,11 @@ HloInstruction* ComputationLowerer::Visit(
       const SelectAndScatterRequest& select_and_scatter_request =
           request.request().select_and_scatter_request();
       HloInstruction* operand =
-          Visit(select_and_scatter_request.operand(), visited);
+          lookup_instruction(select_and_scatter_request.operand());
       HloInstruction* source =
-          Visit(select_and_scatter_request.source(), visited);
+          lookup_instruction(select_and_scatter_request.source());
       HloInstruction* init_value =
-          Visit(select_and_scatter_request.init_value(), visited);
+          lookup_instruction(select_and_scatter_request.init_value());
       CHECK_EQ(2, request.embedded_computation_versions_size());
       VersionedComputationHandle::Version select_version =
           request.embedded_computation_versions(0);
@@ -2126,18 +2448,17 @@ HloInstruction* ComputationLowerer::Visit(
           select_and_scatter_request.select(), select_version);
       HloComputation* scatter_computation = ResolveComputation(
           select_and_scatter_request.scatter(), scatter_version);
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateSelectAndScatter(
-              request.output_shape(), operand, select_computation,
-              select_and_scatter_request.window(), source, init_value,
-              scatter_computation));
+      hlo_instruction = add_instruction(HloInstruction::CreateSelectAndScatter(
+          request.output_shape(), operand, select_computation,
+          select_and_scatter_request.window(), source, init_value,
+          scatter_computation));
       break;
     }
 
     case OpRequest::kBroadcastRequest: {
       const BroadcastRequest& broadcast_request =
           request.request().broadcast_request();
-      HloInstruction* operand = Visit(broadcast_request.operand(), visited);
+      HloInstruction* operand = lookup_instruction(broadcast_request.operand());
       std::vector<int64> broadcast_dimensions;
       // The client-level broadcast instruction just appends dimensions on the
       // left (adds lowest numbered dimensions). The HLO broadcast op is more
@@ -2146,33 +2467,32 @@ HloInstruction* ComputationLowerer::Visit(
       // to append dimensions on the left the broadcast_dimensions should just
       // be the n highest dimension numbers of the output shape where n is
       // the number of input dimensions.
+      broadcast_dimensions.reserve(ShapeUtil::Rank(operand->shape()));
       for (int i = 0; i < ShapeUtil::Rank(operand->shape()); ++i) {
         broadcast_dimensions.push_back(i +
                                        ShapeUtil::Rank(request.output_shape()) -
                                        ShapeUtil::Rank(operand->shape()));
       }
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
-              request.output_shape(), operand, broadcast_dimensions));
+      hlo_instruction = add_instruction(HloInstruction::CreateBroadcast(
+          request.output_shape(), operand, broadcast_dimensions));
       break;
     }
 
     case OpRequest::kReshapeRequest: {
       const ReshapeRequest& reshape_request =
           request.request().reshape_request();
-      HloInstruction* operand = Visit(reshape_request.operand(), visited);
+      HloInstruction* operand = lookup_instruction(reshape_request.operand());
       HloInstruction* transposed;
       if (IsIdentityPermutation(AsInt64Slice(reshape_request.dimensions()))) {
         transposed = operand;
       } else {
-        transposed =
-            hlo_builder_.AddInstruction(HloInstruction::CreateTranspose(
-                ShapeUtil::PermuteDimensions(InversePermutation(AsInt64Slice(
-                                                 reshape_request.dimensions())),
-                                             operand->shape()),
-                operand, AsInt64Slice(reshape_request.dimensions())));
+        transposed = add_instruction(HloInstruction::CreateTranspose(
+            ShapeUtil::PermuteDimensions(
+                InversePermutation(AsInt64Slice(reshape_request.dimensions())),
+                operand->shape()),
+            operand, AsInt64Slice(reshape_request.dimensions())));
       }
-      hlo_instruction = hlo_builder_.AddInstruction(
+      hlo_instruction = add_instruction(
           HloInstruction::CreateReshape(request.output_shape(), transposed));
       break;
     }
@@ -2180,33 +2500,31 @@ HloInstruction* ComputationLowerer::Visit(
     case OpRequest::kTransposeRequest: {
       const TransposeRequest& transpose_request =
           request.request().transpose_request();
-      HloInstruction* operand = Visit(transpose_request.operand(), visited);
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateTranspose(
-              ShapeUtil::PermuteDimensions(InversePermutation(AsInt64Slice(
-                                               transpose_request.dimensions())),
-                                           operand->shape()),
-              operand, AsInt64Slice(transpose_request.dimensions())));
+      HloInstruction* operand = lookup_instruction(transpose_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateTranspose(
+          ShapeUtil::PermuteDimensions(
+              InversePermutation(AsInt64Slice(transpose_request.dimensions())),
+              operand->shape()),
+          operand, AsInt64Slice(transpose_request.dimensions())));
       break;
     }
 
     case OpRequest::kReverseRequest: {
       const ReverseRequest& reverse_request =
           request.request().reverse_request();
-      HloInstruction* operand = Visit(reverse_request.operand(), visited);
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateReverse(
-              request.output_shape(), operand,
-              AsInt64Slice(reverse_request.dimensions())));
+      HloInstruction* operand = lookup_instruction(reverse_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateReverse(
+          request.output_shape(), operand,
+          AsInt64Slice(reverse_request.dimensions())));
       break;
     }
 
     case OpRequest::kPadRequest: {
       const PadRequest& pad_request = request.request().pad_request();
-      HloInstruction* operand = Visit(pad_request.operand(), visited);
+      HloInstruction* operand = lookup_instruction(pad_request.operand());
       HloInstruction* padding_value =
-          Visit(pad_request.padding_value(), visited);
-      hlo_instruction = hlo_builder_.AddInstruction(HloInstruction::CreatePad(
+          lookup_instruction(pad_request.padding_value());
+      hlo_instruction = add_instruction(HloInstruction::CreatePad(
           request.output_shape(), operand, padding_value,
           pad_request.padding_config()));
       break;
@@ -2214,7 +2532,7 @@ HloInstruction* ComputationLowerer::Visit(
 
     case OpRequest::kRecvRequest: {
       const RecvRequest& recv_request = request.request().recv_request();
-      hlo_instruction = hlo_builder_.AddInstruction(HloInstruction::CreateRecv(
+      hlo_instruction = add_instruction(HloInstruction::CreateRecv(
           request.output_shape(), recv_request.channel_handle().handle()));
       break;
     }
@@ -2222,18 +2540,17 @@ HloInstruction* ComputationLowerer::Visit(
     case OpRequest::kParameterRequest: {
       const ParameterRequest& parameter_request =
           request.request().parameter_request();
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateParameter(
-              parameter_request.parameter(), request.output_shape(),
-              parameter_request.name()));
+      hlo_instruction = add_instruction(HloInstruction::CreateParameter(
+          parameter_request.parameter(), request.output_shape(),
+          parameter_request.name()));
       break;
     }
 
     case OpRequest::kConvertRequest: {
       const ConvertRequest& convert_request =
           request.request().convert_request();
-      HloInstruction* operand = Visit(convert_request.operand(), visited);
-      hlo_instruction = hlo_builder_.AddInstruction(
+      HloInstruction* operand = lookup_instruction(convert_request.operand());
+      hlo_instruction = add_instruction(
           HloInstruction::CreateConvert(request.output_shape(), operand));
       break;
     }
@@ -2249,8 +2566,8 @@ HloInstruction* ComputationLowerer::Visit(
           request.embedded_computation_versions(1);
       HloComputation* body =
           ResolveComputation(while_request.body(), body_version);
-      HloInstruction* init = Visit(while_request.init(), visited);
-      hlo_instruction = hlo_builder_.AddInstruction(HloInstruction::CreateWhile(
+      HloInstruction* init = lookup_instruction(while_request.init());
+      hlo_instruction = add_instruction(HloInstruction::CreateWhile(
           request.output_shape(), condition, body, init));
       break;
     }
@@ -2258,13 +2575,12 @@ HloInstruction* ComputationLowerer::Visit(
     case OpRequest::kTernaryOpRequest: {
       const TernaryOpRequest& ternary_op_request =
           request.request().ternary_op_request();
-      HloInstruction* lhs = Visit(ternary_op_request.lhs(), visited);
-      HloInstruction* rhs = Visit(ternary_op_request.rhs(), visited);
-      HloInstruction* ehs = Visit(ternary_op_request.ehs(), visited);
+      HloInstruction* lhs = lookup_instruction(ternary_op_request.lhs());
+      HloInstruction* rhs = lookup_instruction(ternary_op_request.rhs());
+      HloInstruction* ehs = lookup_instruction(ternary_op_request.ehs());
       auto hlo_opcode = TernaryOperationToHloOpcode(ternary_op_request.triop());
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateTernary(
-              request.output_shape(), hlo_opcode, lhs, rhs, ehs));
+      hlo_instruction = add_instruction(HloInstruction::CreateTernary(
+          request.output_shape(), hlo_opcode, lhs, rhs, ehs));
       break;
     }
 
@@ -2274,14 +2590,13 @@ HloInstruction* ComputationLowerer::Visit(
       std::vector<HloInstruction*> operands;
       for (const ComputationDataHandle& handle :
            variadic_op_request.operands()) {
-        HloInstruction* operand = Visit(handle, visited);
+        HloInstruction* operand = lookup_instruction(handle);
         operands.push_back(operand);
       }
       auto hlo_opcode =
           VariadicOperationToHloOpcode(variadic_op_request.varop());
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateVariadic(
-              request.output_shape(), hlo_opcode, operands));
+      hlo_instruction = add_instruction(HloInstruction::CreateVariadic(
+          request.output_shape(), hlo_opcode, operands));
       break;
     }
 
@@ -2289,14 +2604,14 @@ HloInstruction* ComputationLowerer::Visit(
       const CallRequest& call_request = request.request().call_request();
       std::vector<HloInstruction*> operands;
       for (const ComputationDataHandle& handle : call_request.operands()) {
-        operands.push_back(Visit(handle, visited));
+        operands.push_back(lookup_instruction(handle));
       }
       CHECK_EQ(1, request.embedded_computation_versions_size());
       VersionedComputationHandle::Version call_version =
           request.embedded_computation_versions(0);
       HloComputation* call_computation =
           ResolveComputation(call_request.to_apply(), call_version);
-      hlo_instruction = hlo_builder_.AddInstruction(HloInstruction::CreateCall(
+      hlo_instruction = add_instruction(HloInstruction::CreateCall(
           request.output_shape(), operands, call_computation));
       break;
     }
@@ -2306,20 +2621,19 @@ HloInstruction* ComputationLowerer::Visit(
           request.request().custom_call_request();
       std::vector<HloInstruction*> operands;
       for (const ComputationDataHandle& operand : cc_request.operands()) {
-        operands.push_back(Visit(operand, visited));
+        operands.push_back(lookup_instruction(operand));
       }
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateCustomCall(
-              cc_request.shape(), operands, cc_request.call_target_name()));
+      hlo_instruction = add_instruction(HloInstruction::CreateCustomCall(
+          cc_request.shape(), operands, cc_request.call_target_name()));
       break;
     }
 
     case OpRequest::kUnaryOpRequest: {
       const UnaryOpRequest& unary_op_request =
           request.request().unary_op_request();
-      HloInstruction* operand = Visit(unary_op_request.operand(), visited);
+      HloInstruction* operand = lookup_instruction(unary_op_request.operand());
       auto hlo_opcode = UnaryOperationToHloOpcode(unary_op_request.unop());
-      hlo_instruction = hlo_builder_.AddInstruction(HloInstruction::CreateUnary(
+      hlo_instruction = add_instruction(HloInstruction::CreateUnary(
           request.output_shape(), hlo_opcode, operand));
       break;
     }
@@ -2327,8 +2641,8 @@ HloInstruction* ComputationLowerer::Visit(
     case OpRequest::kBinaryOpRequest: {
       const BinaryOpRequest& binary_op_request =
           request.request().binary_op_request();
-      HloInstruction* lhs = Visit(binary_op_request.lhs(), visited);
-      HloInstruction* rhs = Visit(binary_op_request.rhs(), visited);
+      HloInstruction* lhs = lookup_instruction(binary_op_request.lhs());
+      HloInstruction* rhs = lookup_instruction(binary_op_request.rhs());
       auto hlo_opcode = BinaryOperationToHloOpcode(binary_op_request.binop());
       if (binary_op_request.broadcast_dimensions_size() > 0) {
         // Emit a broadcast instruction to perform the "broadcast in dimension"
@@ -2347,23 +2661,35 @@ HloInstruction* ComputationLowerer::Visit(
         // identical to the HLO broadcast semantics so the broadcast_dimensions
         // field can just be passed to the instruction builder.
         HloInstruction* broadcasted_operand =
-            hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
+            add_instruction(HloInstruction::CreateBroadcast(
                 broadcast_shape, operand_to_broadcast,
                 AsInt64Slice(binary_op_request.broadcast_dimensions())));
 
         lhs = (lhs == operand_to_broadcast) ? broadcasted_operand : lhs;
         rhs = (rhs == operand_to_broadcast) ? broadcasted_operand : rhs;
       }
-      hlo_instruction =
-          hlo_builder_.AddInstruction(HloInstruction::CreateBinary(
-              request.output_shape(), hlo_opcode, lhs, rhs));
+      if (legacy_flags::GetUserComputationFlags()
+              ->xla_eliminate_hlo_implicit_broadcast) {
+        if (!ShapeUtil::SameDimensions(request.output_shape(), lhs->shape())) {
+          // lhs side is being implicitly broadcast. Change to explicit.
+          lhs =
+              ImplicitBroadcastToExplicitBroadcast(lhs, request.output_shape());
+        }
+
+        if (!ShapeUtil::SameDimensions(request.output_shape(), rhs->shape())) {
+          rhs =
+              ImplicitBroadcastToExplicitBroadcast(rhs, request.output_shape());
+        }
+      }
+      hlo_instruction = add_instruction(HloInstruction::CreateBinary(
+          request.output_shape(), hlo_opcode, lhs, rhs));
       break;
     }
 
     case OpRequest::kTraceRequest: {
       const TraceRequest& trace_request = request.request().trace_request();
-      HloInstruction* operand = Visit(trace_request.operand(), visited);
-      hlo_instruction = hlo_builder_.AddInstruction(
+      HloInstruction* operand = lookup_instruction(trace_request.operand());
+      hlo_instruction = add_instruction(
           HloInstruction::CreateTrace(trace_request.tag(), operand));
       operand->set_tracing(hlo_instruction);
       break;
@@ -2371,8 +2697,8 @@ HloInstruction* ComputationLowerer::Visit(
 
     case OpRequest::kSendRequest: {
       const SendRequest& send_request = request.request().send_request();
-      HloInstruction* operand = Visit(send_request.operand(), visited);
-      hlo_instruction = hlo_builder_.AddInstruction(HloInstruction::CreateSend(
+      HloInstruction* operand = lookup_instruction(send_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateSend(
           operand, send_request.channel_handle().handle()));
       break;
     }
@@ -2383,9 +2709,7 @@ HloInstruction* ComputationLowerer::Visit(
     default:
       LOG(FATAL) << "Unexpected request type: " << request.request().op_case();
   }
-  hlo_instruction->set_metadata(request.request().metadata());
-  (*visited)[handle.handle()] = hlo_instruction;
-  return hlo_instruction;
+  (*instructions)[handle.handle()] = hlo_instruction;
 }
 
 }  // namespace

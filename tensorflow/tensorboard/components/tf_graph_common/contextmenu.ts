@@ -48,11 +48,10 @@ export function getMenu(menu: ContextMenuItem[]) {
   return function(data, index: number): void {
     // Position and display the menu.
     let event = <MouseEvent>d3.event;
-    menuSelection.style({
-      'display': 'block',
-      'left': (event.layerX + 1) + 'px',
-      'top': (event.layerY + 1) + 'px'
-    });
+    menuSelection
+      .style('display', 'block')
+      .style('left', (event.layerX + 1) + 'px')
+      .style('top', (event.layerY + 1) + 'px');
 
     // Stop the event from propagating further.
     event.preventDefault();

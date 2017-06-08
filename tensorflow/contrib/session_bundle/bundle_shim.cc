@@ -341,7 +341,7 @@ Status ConvertSessionBundleToSavedModelBundle(
   saved_model_bundle->session = std::move(session_bundle.session);
 
   // Copy the meta graph def from the SessionBundle to the SavedModelBundle.
-  saved_model_bundle->meta_graph_def.CopyFrom(session_bundle.meta_graph_def);
+  saved_model_bundle->meta_graph_def = session_bundle.meta_graph_def;
 
   // Convert signatures from session-bundle to signature-defs in
   // saved-model-bundle.
@@ -363,6 +363,8 @@ Status LoadSessionBundleOrSavedModelBundle(
     return LoadSavedModel(session_options, run_options, export_dir,
                           saved_model_tags, saved_model_bundle);
   } else if (IsPossibleExportDirectory(export_dir)) {
+    LOG(ERROR) << "Found possible SessionBundle in export directory. "
+                  "SessionBundle is deprecated. Use SavedModel instead.";
     LOG(INFO) << "Attempting to up-convert SessionBundle to SavedModelBundle "
                  "in bundle-shim from: "
               << export_dir;

@@ -51,8 +51,8 @@ class GraphTest : public ::testing::Test {
   GraphTest() : graph_(OpRegistry::Global()) {}
   ~GraphTest() override {}
 
-  static void VerifyNodes(Node* node, std::vector<Node*> expected_in,
-                          std::vector<Node*> expected_out) {
+  static void VerifyNodes(Node* node, const std::vector<Node*>& expected_in,
+                          const std::vector<Node*>& expected_out) {
     std::vector<Node*> in;
     for (const Edge* e : node->in_edges()) {
       in.push_back(e->src());
@@ -110,6 +110,7 @@ class GraphTest : public ::testing::Test {
   // are readable.
   static std::vector<string> Stringify(const std::vector<Node*>& nodes) {
     std::vector<string> result;
+    result.reserve(nodes.size());
     for (Node* n : nodes) {
       result.push_back(n->DebugString());
     }
@@ -318,21 +319,21 @@ TEST_F(GraphTest, AddAttr) {
   n1->AddAttr("_a", "new_attr");
 
   string attr;
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->def(), "_a", &attr));
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
 
   Node* n2 = graph_.CopyNode(n1);
 
   n1->AddAttr("_b", "new_attr_2");
 
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->def(), "_a", &attr));
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->def(), "_b", &attr));
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n1->attrs(), "_b", &attr));
   EXPECT_EQ("new_attr_2", attr);
 
-  EXPECT_EQ(Status::OK(), GetNodeAttr(n2->def(), "_a", &attr));
+  EXPECT_EQ(Status::OK(), GetNodeAttr(n2->attrs(), "_a", &attr));
   EXPECT_EQ("new_attr", attr);
-  EXPECT_NE(Status::OK(), GetNodeAttr(n2->def(), "_b", &attr));
+  EXPECT_NE(Status::OK(), GetNodeAttr(n2->attrs(), "_b", &attr));
 }
 
 // Convert edge iteration results into a sorted string.

@@ -42,7 +42,6 @@ TEST_OPTIONS = {
     'min_micros': 0,
     'min_params': 0,
     'min_float_ops': 0,
-    'device_regexes': ['.*'],
     'order_by': 'name',
     'account_type_regexes': ['.*'],
     'start_name_regexes': ['.*'],
@@ -51,7 +50,7 @@ TEST_OPTIONS = {
     'hide_name_regexes': [],
     'account_displayed_op_only': True,
     'select': ['params'],
-    'viz': False
+    'output': 'stdout',
 }
 
 # pylint: enable=bad-whitespace
@@ -76,8 +75,6 @@ class PrintModelAnalysisTest(test.TestCase):
     opts.min_micros = TEST_OPTIONS['min_micros']
     opts.min_params = TEST_OPTIONS['min_params']
     opts.min_float_ops = TEST_OPTIONS['min_float_ops']
-    for p in TEST_OPTIONS['device_regexes']:
-      opts.device_regexes.append(p)
     opts.order_by = TEST_OPTIONS['order_by']
     for p in TEST_OPTIONS['account_type_regexes']:
       opts.account_type_regexes.append(p)
@@ -92,16 +89,17 @@ class PrintModelAnalysisTest(test.TestCase):
     opts.account_displayed_op_only = TEST_OPTIONS['account_displayed_op_only']
     for p in TEST_OPTIONS['select']:
       opts.select.append(p)
-    opts.viz = TEST_OPTIONS['viz']
+    opts.output = TEST_OPTIONS['output']
 
     with session.Session() as sess, ops.device('/cpu:0'):
       _ = self._BuildSmallModel()
-      tfprof_pb = tfprof_output_pb2.TFProfNode()
+      tfprof_pb = tfprof_output_pb2.TFGraphNodeProto()
       tfprof_pb.ParseFromString(
-          print_mdl.PrintModelAnalysis(sess.graph.as_graph_def(
-          ).SerializeToString(), b'', b'', b'scope', opts.SerializeToString()))
+          print_mdl.PrintModelAnalysis(
+              sess.graph.as_graph_def().SerializeToString(),
+              b'', b'', b'scope', opts.SerializeToString()))
 
-      expected_pb = tfprof_output_pb2.TFProfNode()
+      expected_pb = tfprof_output_pb2.TFGraphNodeProto()
       text_format.Merge(r"""name: "_TFProfRoot"
       exec_micros: 0
       requested_bytes: 0
@@ -115,7 +113,6 @@ class PrintModelAnalysisTest(test.TestCase):
       total_exec_micros: 0
       total_requested_bytes: 0
       total_parameters: 0
-      device: "/device:CPU:0"
       float_ops: 0
       total_float_ops: 0
       }
@@ -127,7 +124,6 @@ class PrintModelAnalysisTest(test.TestCase):
       total_exec_micros: 0
       total_requested_bytes: 0
       total_parameters: 648
-      device: "/device:CPU:0"
       children {
       name: "DW/Assign"
       exec_micros: 0
@@ -135,7 +131,6 @@ class PrintModelAnalysisTest(test.TestCase):
       total_exec_micros: 0
       total_requested_bytes: 0
       total_parameters: 0
-      device: "/device:CPU:0"
       float_ops: 0
       total_float_ops: 0
       }
@@ -216,7 +211,6 @@ class PrintModelAnalysisTest(test.TestCase):
       total_exec_micros: 0
       total_requested_bytes: 0
       total_parameters: 0
-      device: "/device:CPU:0"
       float_ops: 0
       total_float_ops: 0
       }
@@ -230,7 +224,6 @@ class PrintModelAnalysisTest(test.TestCase):
       total_exec_micros: 0
       total_requested_bytes: 0
       total_parameters: 0
-      device: "/device:CPU:0"
       float_ops: 0
       total_float_ops: 0
       }

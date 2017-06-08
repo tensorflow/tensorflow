@@ -14,164 +14,306 @@ limitations under the License.
 ==============================================================================
 */
 
-// This header implements CudaSolverDN and CuBlas, which contain templatized
-// wrappers of linear algebra solvers in the cuBlas and cuSolverDN libraries
-// for use in TensorFlow kernels.
+// This header declares the class CudaSolver, which contains wrappers of linear
+// algebra solvers in the cuBlas and cuSolverDN libraries for use in TensorFlow
+// kernels.
 
 #ifdef GOOGLE_CUDA
+
+#include <functional>
+#include <vector>
 
 #include "cuda/include/cublas_v2.h"
 #include "cuda/include/cusolverDn.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
 
-// A class that provides a simplified templated API for the solver methods
-// in cuSolverDN (http://docs.nvidia.com/cuda/cusolver).
-// An object of this class wraps a cuSolverDN instance, and will launch
-// kernels on the cuda stream wrapped by the GPU device in the OpKernelContext
-// provided to the constructor. The class methods transparently fetch the output
-// status of the solvers (a.k.a. the LAPACK "info" output variable) without
-// having to manually synchronize the underlying Cuda stream.
-class CudaSolverDN {
+// Container of LAPACK info data (an array of int) generated on-device by
+// a CudaSolver call. One or more such objects can be passed to
+// CudaSolver::CopyLapackInfoToHostAsync() along with a callback to
+// check the LAPACK info data after the corresponding kernels
+// finish and LAPACK info has been copied from the device to the host.
+class DeviceLapackInfo;
+
+// Host-side copy of LAPACK info.
+class HostLapackInfo;
+
+// The CudaSolver class provides a simplified templated API for the dense linear
+// solvers implemented in cuSolverDN (http://docs.nvidia.com/cuda/cusolver) and
+// cuBlas (http://docs.nvidia.com/cuda/cublas/#blas-like-extension/).
+// An object of this class wraps static cuSolver and cuBlas instances,
+// and will launch Cuda kernels on the stream wrapped by the GPU device
+// in the OpKernelContext provided to the constructor.
+//
+// Notice: All the computational member functions are asynchronous and simply
+// launch one or more Cuda kernels on the Cuda stream wrapped by the CudaSolver
+// object. To check the final status of the kernels run, call
+// CopyLapackInfoToHostAsync() on the CudaSolver object to set a callback that
+// will be invoked with the status of the kernels launched thus far as
+// arguments.
+//
+// Example of an asynchronous TensorFlow kernel using CudaSolver:
+//
+// template <typename Scalar>
+// class SymmetricPositiveDefiniteSolveOpGpu : public AsyncOpKernel {
+//  public:
+//   explicit SymmetricPositiveDefiniteSolveOpGpu(OpKernelConstruction* context)
+//       : AsyncOpKernel(context) { }
+//   void ComputeAsync(OpKernelContext* context, DoneCallback done) final {
+//     // 1. Set up input and output device ptrs. See, e.g.,
+//     // matrix_inverse_op.cc for a full example.
+//     ...
+//
+//     // 2. Initialize the solver object.
+//     CudaSolver solver(context);
+//
+//     // 3. Launch the two compute kernels back to back on the stream without
+//     // synchronizing.
+//     std::vector<DeviceLapackInfo> dev_info;
+//     const int batch_size = 1;
+//     dev_info.emplace_back(context, batch_size, "potrf");
+//     // Compute the Cholesky decomposition of the input matrix.
+//     OP_REQUIRES_OK_ASYNC(context,
+//                          solver.Potrf(uplo, n, dev_matrix_ptrs, n,
+//                                       dev_info.back().mutable_data()),
+//                          done);
+//     dev_info.emplace_back(context, batch_size, "potrs");
+//     // Use the Cholesky decomposition of the input matrix to solve A X = RHS.
+//     OP_REQUIRES_OK_ASYNC(context,
+//                          solver.Potrs(uplo, n, nrhs, dev_matrix_ptrs, n,
+//                                       dev_output_ptrs, ldrhs,
+//                                       dev_info.back().mutable_data()),
+//                          done);
+//
+//     // 4. Check the status after the computation finishes and call done.
+//     // Capture dev_info so the underlying buffers don't get deallocated
+//     // before the kernels run.
+//     auto check_status = [context, done, dev_info](const Status& status,
+//       const std::vector<HostLapackInfo>& /* unused */) {
+//           // In this example we don't care about the exact cause of
+//           // death, so just check status.
+//           OP_REQUIRES_OK_ASYNC(context, status, done);
+//           done();
+//     };
+//     OP_REQUIRES_OK_ASYNC(context,
+//                          solver.CopyLapackInfoToHostAsync(
+//                            dev_info, std::move(check_status));
+//                          done);
+//   }
+// };
+
+class CudaSolver {
  public:
-  explicit CudaSolverDN(OpKernelContext* context);
-  virtual ~CudaSolverDN();
+  // This object stores a pointer to context, which must outlive it.
+  explicit CudaSolver(OpKernelContext* context);
+  virtual ~CudaSolver() {}
+
+  // Launches a memcpy of solver status data specified by dev_lapack_info from
+  // device to the host, and asynchronously invokes the given callback when the
+  // copy is complete. The first Status argument to the callback will be
+  // Status::OK if all lapack infos retrieved are zero, otherwise an error status
+  // is given. The second argument contains a host-side copy of the entire set
+  // of infos retrieved, and can be used for generating detailed error messages.
+  Status CopyLapackInfoToHostAsync(
+      const std::vector<DeviceLapackInfo>& dev_lapack_info,
+      std::function<void(const Status&, const std::vector<HostLapackInfo>&)>
+          info_checker_callback) const;
 
   // ====================================================================
-  // Templated wrappers for cuSolver functions start here.
+  // Wrappers for cuSolverDN and cuBlas solvers start here.
+  //
+  // Apart from capitalization of the first letter, the method names below map
+  // to those in cuSolverDN and cuBlas, which follow the naming convention in
+  // LAPACK see, e.g., http://docs.nvidia.com/cuda/cusolver/#naming-convention
 
-  // Cholesky factorization.
-  // Computes Cholesky factorization A = L * L^T.
-  // Returns Status::OK(), if the Cholesky factorization was successful.
-  // If info is not nullptr it is used to return the potrf info code:
-  // Returns zero if success, returns -i if the
-  // i-th parameter is wrong, returns i > 0, if the leading minor of order i is
-  // not positive definite, see:
+  // Computes the Cholesky factorization A = L * L^T for a single matrix.
+  // Returns Status::OK(), if the kernel was launched successfully. See:
   // http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrf
   template <typename Scalar>
-  Status potrf(cublasFillMode_t uplo, int n, Scalar* A, int lda,
-               int* info) const;
+  Status Potrf(cublasFillMode_t uplo, int n, Scalar* dev_A, int lda,
+               int* dev_lapack_info) const;
+
+  // Computes partially pivoted LU factorizations for a batch of matrices.
+  // Returns Status::OK() if the kernel was launched successfully.See:
+  // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrfbatched
+  template <typename Scalar>
+  Status GetrfBatched(int n, const Scalar* host_a_dev_ptrs[], int lda,
+                      int* dev_pivots, DeviceLapackInfo* dev_lapack_info,
+                      int batch_size) const;
+
+  // Computes matrix inverses for a batch of matrices. Uses the outputs from
+  // GetrfBatched. Returns Status::OK() if the kernel was launched successfully.
+  // See:
+  // http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getribatched
+  template <typename Scalar>
+  Status GetriBatched(int n, const Scalar* host_a_dev_ptrs[], int lda,
+                      const int* dev_pivots,
+                      const Scalar* host_a_inverse_dev_ptrs[], int ldainv,
+                      DeviceLapackInfo* dev_lapack_info, int batch_size) const;
 
   /*
   TODO(rmlarsen, volunteers): Implement the kernels below.
   // Uses Cholesky factorization to solve A * X = B.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-potrs
   template <typename Scalar>
-  Status potrs(cublasFillMode_t uplo, int n, int nrhs, const Scalar* A, int lda,
-             Scalar* B, int ldb, int* info) const;
+  Status Potrs(cublasFillMode_t uplo, int n, int nrhs, const Scalar* dev_A, int
+  lda, Scalar* dev_B, int ldb, int* dev_lapack_info) const;
 
   // LU factorization.
   // Computes LU factorization with partial pivoting P * A = L * U.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrf
   template <typename Scalar>
-  Status getrf(int m, int n, Scalar* A, int lda, int* devIpiv,
-             int* devInfo) const;
+  Status Getrf(int m, int n, Scalar* dev_A, int lda, int* dev_pivots,
+             int* dev_lapack_info) const;
 
   // Uses LU factorization to solve A * X = B.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-getrs
   template <typename Scalar>
-  Status getrs(int n, int nrhs, const Scalar* A, int lda, const int* devIpiv,
-             Scalar* B, int ldb, int* devInfo) const;
+  Status Getrs(int n, int nrhs, const Scalar* dev_A, int lda, const int*
+  dev_pivots, Scalar* dev_B, int ldb, int* dev_lapack_info) const;
 
   // QR factorization.
   // Computes QR factorization A = Q * R.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-geqrf
   template <typename Scalar>
-  Status geqrf(int m, int n, Scalar* A, int lda, Scalar* TAU, int* devInfo)
-  const;
+  Status Geqrf(int m, int n, Scalar* dev_A, int lda, Scalar* dev_TAU, int*
+  devInfo) const;
 
   // Multiplies by Q.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-ormqr
   template <typename Scalar>
-  Status mqr(cublasSideMode_t side, cublasOperation_t trans, int m, int n, int
-  k, const Scalar* A, int lda, const Scalar* tau, Scalar* C, int ldc, int*
-  devInfo const);
+  Status Ormqr(cublasSideMode_t side, cublasOperation_t trans, int m, int n, int
+  k, const Scalar* dev_a, int lda, const Scalar* dev_tau, Scalar* dev_c, int
+  ldc, int* dev_lapack_info) const;
 
-  // Materializes Q.
+  // Generate Q.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-orgqr
   template <typename Scalar>
-  Status gqr(int m, int n, int k, Scalar* A, int lda, const Scalar* tau,
-           int* devInfo) const;
+  Status Orgqr(int m, int n, int k, Scalar* dev_A, int lda, const Scalar*
+  dev_tau, int* dev_lapack_info) const;
 
   // Symmetric/Hermitian Eigen decomposition.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-syevd
   template <typename Scalar>
-  Status evd(cusolverEigMode_t jobz, cublasFillMode_t uplo, int n, Scalar* A,
-           int lda, Scalar* W, int* devInfo) const;
+  Status Syevd(cusolverEigMode_t jobz, cublasFillMode_t uplo, int n, Scalar*
+  dev_A, int lda, Scalar* dev_W, int* dev_lapack_info) const;
 
   // Singular value decomposition.
   // See: http://docs.nvidia.com/cuda/cusolver/#cuds-lt-t-gt-gesvd
   template <typename Scalar>
-  Status gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* A,
-             int lda, Scalar* S, Scalar* U, int ldu, Scalar* VT, int ldvt,
-             int* devInfo);
-*/
-
- private:
-  // Copies dev_info status back from the device to host and uses event manager
-  // to wait (with a timeout) until the copy has finished. Returns an error if
-  // the copy fails to complete successfully within the timeout period.
-  Status GetInfo(const int* dev_info, int* host_info) const;
-
-  OpKernelContext* context_;  // not owned.
-  cudaStream_t cuda_stream_;
-  cusolverDnHandle_t handle_;
-};
-
-/*
-  TODO(rmlarsen, volunteers): Implement the kernels below. These are utils and
-batched solvers not currently wrapped by stream executor. class CudaBlas {
- public:
-  // Initializes a cuSolverDN handle that will launch kernels using the
-  // cuda stream wrapped by the GPU device in context.
-  explicit CudaBlas(OpKernelContext* context);
-  virtual ~CudaBlas();
-
-  // Templatized wrappers for cuBlas functions.
-
-  // Matrix addition, copy and transposition.
-  // See: http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-geam
-  template <typename Scalar>
-  Status geam(cublasOperation_t transa, cublasOperation_t transb, int m, int n,
-            const Scalar* alpha, const Scalar* A, int lda, const Scalar* beta,
-            const Scalar* B, int ldb, Scalar* C, int ldc) const;
-
-  // Batched LU fatorization.
-  // See:
-http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrfbatched
-  template <typename Scalar>
-  Status getrfBatched(int n, Scalar* Aarray[], int lda, int* PivotArray,
-                    int* infoArray, int batchSize) const;
+  Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
+             int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
+             int ldvt, int* dev_lapack_info);
 
   // Batched linear solver using LU factorization from getrfBatched.
   // See:
-http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrsbatched
+  http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getrsbatched
   template <typename Scalar>
-  Status getrsBatched(cublasOperation_t trans, int n, int nrhs,
-                    const Scalar* Aarray[], int lda, const int* devIpiv,
-                    Scalar* Barray[], int ldb, int* info, int batchSize) const;
-
-  // Batched matrix inverse.
-  // See:
-http://docs.nvidia.com/cuda/cublas/index.html#cublas-lt-t-gt-getribatched
-  template <typename Scalar>
-  Status getriBatched(cublasHandle_t handle, int n, Scalar* Aarray[], int lda,
-                    int* PivotArray, Scalar* Carray[], int ldc, int* infoArray,
-                    int batchSize);
+  Status GetrsBatched(cublasOperation_t trans, int n, int nrhs,
+                    const Scalar* dev_Aarray[], int lda, const int* devIpiv,
+                    Scalar* dev_Barray[], int ldb, int* info, int batch_size)
+  const;
+  */
 
  private:
-  // Copies dev_info status back from the device to host and uses event manager
-  // to wait (with a timeout) until the copy has finished. Returns an error if
-  // the copy fails to complete successfully within the timeout period.
-  Status GetInfo(const int* dev_info, int* host_info) const;
-
   OpKernelContext* context_;  // not owned.
   cudaStream_t cuda_stream_;
-  cublasHandle_t handle_;
+  cusolverDnHandle_t cusolver_dn_handle_;
+  cublasHandle_t cublas_handle_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(CudaSolver);
 };
-*/
+
+// Helper class to allocate scratch memory and keep track of debug info.
+// Mostly a thin wrapper around Tensor.
+template <typename Scalar>
+class ScratchSpace {
+ public:
+  ScratchSpace(OpKernelContext* context, int size, bool on_host)
+      : ScratchSpace(context, size, "", on_host) {}
+
+  ScratchSpace(OpKernelContext* context, int size, const string& debug_info,
+               bool on_host)
+      : context_(context), debug_info_(debug_info), on_host_(on_host) {
+    AllocatorAttributes alloc_attr;
+    if (on_host) {
+      // Allocate pinned memory on the host to avoid unnecessary
+      // synchronization.
+      alloc_attr.set_on_host(true);
+      alloc_attr.set_gpu_compatible(true);
+    }
+    TF_CHECK_OK(context->allocate_temp(DataTypeToEnum<Scalar>::value,
+                                       TensorShape({size}), &scratch_tensor_,
+                                       alloc_attr));
+  }
+
+  virtual ~ScratchSpace() {}
+
+  Scalar* mutable_data() {
+    return scratch_tensor_.template flat<Scalar>().data();
+  }
+  const Scalar* data() const {
+    return scratch_tensor_.template flat<Scalar>().data();
+  }
+  int64 bytes() const { return scratch_tensor_.TotalBytes(); }
+  int64 size() const { return scratch_tensor_.NumElements(); }
+  const string& debug_info() const { return debug_info_; }
+
+  // Returns true if this ScratchSpace is in host memory.
+  bool on_host() const { return on_host_; }
+
+ protected:
+  OpKernelContext* context() const { return context_; }
+
+ private:
+  OpKernelContext* context_;  // not owned
+  const string debug_info_;
+  const bool on_host_;
+  Tensor scratch_tensor_;
+};
+
+class HostLapackInfo : public ScratchSpace<int> {
+ public:
+  HostLapackInfo(OpKernelContext* context, int size, const string& debug_info)
+      : ScratchSpace<int>(context, size, debug_info, /* on_host */ true){};
+};
+
+class DeviceLapackInfo : public ScratchSpace<int> {
+ public:
+  DeviceLapackInfo(OpKernelContext* context, int size, const string& debug_info)
+      : ScratchSpace<int>(context, size, debug_info, /* on_host */ false) {}
+
+  // Allocates a new scratch space on the host and launches a copy of the
+  // contents of *this to the new scratch space. Sets success to true if
+  // the copy kernel was launched successfully.
+  HostLapackInfo CopyToHost(bool* success) const {
+    CHECK(success != nullptr);
+    HostLapackInfo copy(context(), size(), debug_info());
+    auto stream = context()->op_device_context()->stream();
+    perftools::gputools::DeviceMemoryBase wrapped_src(
+        static_cast<void*>(const_cast<int*>(this->data())));
+    *success =
+        stream->ThenMemcpy(copy.mutable_data(), wrapped_src, this->bytes())
+            .ok();
+    return copy;
+  }
+};
+
+namespace functor {
+// Helper functor to transpose and conjugate all matrices in a flattened batch.
+template <typename Device, typename Scalar>
+struct AdjointBatchFunctor {
+  // We assume that the tensor sizes are correct.
+  void operator()(const Device& d,
+                  typename TTypes<Scalar, 3>::ConstTensor input,
+                  typename TTypes<Scalar, 3>::Tensor output);
+};
+}  // namespace functor
 
 }  // namespace tensorflow
 

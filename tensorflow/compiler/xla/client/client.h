@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -152,8 +153,7 @@ class Client {
       const Computation& computation) const;
 
   // Returns the Shape of the given array specified by 'data'. The shape
-  // includes the Layout of the array as it is stored on the service. The layout
-  // information is useful for calling TransferInProcess.
+  // includes the Layout of the array as it is stored on the service.
   StatusOr<Shape> GetShape(const GlobalData& data);
 
   // As above, but returns the shape of the provided computation (parameter
@@ -164,24 +164,6 @@ class Client {
   // Creates a channel handle that can be used to transfer data between
   // two computations via a pair of Send and Recv instructions.
   StatusOr<ChannelHandle> CreateChannelHandle();
-
-  // If the service is running in the same process as the client then the
-  // following "InProcess" transfer methods may be used. These methods enable
-  // more efficient transfer of arrays to and from the service.
-
-  // Transfer array from the service into the given buffer. The buffer must be
-  // large enough to hold the array. The array is copied verbatim (memcpy) from
-  // the service. The method GetShape should be called ahead of time
-  // to get the shape and layout of the array as it is stored in the
-  // service. The shape and layout can be used to determine how large the buffer
-  // needs to be.
-  Status TransferInProcess(const GlobalData& data, void* destination);
-
-  // Transfer array to the service from the given buffer with the given shape
-  // and layout. The service creates an internal copy of the data so the client
-  // can free the buffer when this method returns.
-  StatusOr<std::unique_ptr<GlobalData>> TransferToServerInProcess(
-      const Shape& shape, const void* buffer);
 
   StatusOr<Computation> LoadSnapshot(const SessionModule& module);
 

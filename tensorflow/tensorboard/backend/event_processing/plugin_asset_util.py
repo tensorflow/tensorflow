@@ -19,15 +19,21 @@ from __future__ import print_function
 
 import os.path
 
-from tensorflow.python.framework import errors_impl
-from tensorflow.python.platform import gfile
+
+import tensorflow as tf
+
 
 _PLUGINS_DIR = "plugins"
 
 
 def _IsDirectory(parent, item):
   """Helper that returns if parent/item is a directory."""
-  return gfile.IsDirectory(os.path.join(parent, item))
+  return tf.gfile.IsDirectory(os.path.join(parent, item))
+
+
+def PluginDirectory(logdir, plugin_name):
+  """Returns the plugin directory for plugin_name."""
+  return os.path.join(logdir, _PLUGINS_DIR, plugin_name)
 
 
 def ListPlugins(logdir):
@@ -43,9 +49,9 @@ def ListPlugins(logdir):
     a list of plugin names, as strings
   """
   plugins_dir = os.path.join(logdir, _PLUGINS_DIR)
-  if not gfile.IsDirectory(plugins_dir):
+  if not tf.gfile.IsDirectory(plugins_dir):
     return []
-  entries = gfile.ListDirectory(plugins_dir)
+  entries = tf.gfile.ListDirectory(plugins_dir)
   return [x for x in entries if _IsDirectory(plugins_dir, x)]
 
 
@@ -61,10 +67,10 @@ def ListAssets(logdir, plugin_name):
     not exist (either because the logdir doesn't exist, or because the plugin
     didn't register) an empty list is returned.
   """
-  plugin_dir = os.path.join(logdir, _PLUGINS_DIR, plugin_name)
-  if not gfile.IsDirectory(plugin_dir):
+  plugin_dir = PluginDirectory(logdir, plugin_name)
+  if not tf.gfile.IsDirectory(plugin_dir):
     return []
-  entries = gfile.ListDirectory(plugin_dir)
+  entries = tf.gfile.ListDirectory(plugin_dir)
   return [x for x in entries if not _IsDirectory(plugin_dir, x)]
 
 
@@ -83,11 +89,11 @@ def RetrieveAsset(logdir, plugin_name, asset_name):
     KeyError: if the asset does not exist.
   """
 
-  asset_path = os.path.join(logdir, _PLUGINS_DIR, plugin_name, asset_name)
+  asset_path = os.path.join(PluginDirectory(logdir, plugin_name), asset_name)
   try:
-    with gfile.Open(asset_path, "r") as f:
+    with tf.gfile.Open(asset_path, "r") as f:
       return f.read()
-  except errors_impl.NotFoundError:
+  except tf.errors.NotFoundError:
     raise KeyError("Asset path %s not found" % asset_path)
-  except errors_impl.OpError as e:
+  except tf.errors.OpError as e:
     raise KeyError("Couldn't read asset path: %s, OpError %s" % (asset_path, e))

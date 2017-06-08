@@ -30,8 +30,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/simple_placer.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -371,15 +371,15 @@ Status DirectSession::Run(const NamedTensorList& inputs,
 }
 
 Status DirectSession::CreateDebuggerState(
-    const DebugOptions& debug_options, int64 session_run_count,
-    int64 executor_step_count, const std::vector<string>& input_names,
+    const DebugOptions& debug_options, int64 session_run_index,
+    int64 executor_step_index, const std::vector<string>& input_names,
     const std::vector<string>& output_names,
     const std::vector<string>& target_names,
     std::unique_ptr<DebuggerStateInterface>* debugger_state) {
   TF_RETURN_IF_ERROR(
       DebuggerStateRegistry::CreateState(debug_options, debugger_state));
   TF_RETURN_IF_ERROR(debugger_state->get()->PublishDebugMetadata(
-      debug_options.global_step(), session_run_count, executor_step_count,
+      debug_options.global_step(), session_run_index, executor_step_index,
       input_names, output_names, target_names));
   return Status::OK();
 }
@@ -391,7 +391,7 @@ Status DirectSession::DecorateAndPublishGraphForDebug(
       DebugGraphDecoratorRegistry::CreateDecorator(debug_options, &decorator));
 
   TF_RETURN_IF_ERROR(decorator->DecorateGraph(graph, device));
-  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph));
+  TF_RETURN_IF_ERROR(decorator->PublishGraph(*graph, device->name()));
   return Status::OK();
 }
 
@@ -1352,6 +1352,17 @@ Status DirectSession::CreateGraphs(
   std::swap(*input_types, client_graph->feed_types);
   std::swap(*output_types, client_graph->fetch_types);
   return s;
+}
+
+::tensorflow::Status DirectSession::ListDevices(
+    std::vector<DeviceAttributes>* response) {
+  response->clear();
+  response->reserve(devices_.size());
+  for (Device* d : devices_) {
+    const DeviceAttributes& attrs = d->attributes();
+    response->emplace_back(attrs);
+  }
+  return ::tensorflow::Status::OK();
 }
 
 ::tensorflow::Status DirectSession::Reset(

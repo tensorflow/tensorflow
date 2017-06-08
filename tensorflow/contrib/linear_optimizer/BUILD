@@ -111,13 +111,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":sdca_ops_py",
-        ":sparse_feature_column_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
-        "//tensorflow/python:math_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:training",
@@ -129,6 +127,7 @@ py_test(
     name = "sdca_estimator_test",
     srcs = ["python/sdca_estimator_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":sdca_estimator_py",
         "//tensorflow/contrib/layers:layers_py",

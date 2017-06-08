@@ -42,7 +42,7 @@ xla::Computation Doubler(xla::Client* client) {
 int main(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
-  auto client = xla::ClientLibrary::LocalClientOrDie();
+  auto client = xla::ClientLibrary::GetOrCreateCompileOnlyClient().ValueOrDie();
 
   xla::ComputationBuilder builder(client, "aot_test_helper");
   auto opaque_shape = xla::ShapeUtil::MakeOpaqueShape();
@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
   llvm::Triple triple(xla::llvm_ir::AsStringRef(triple_string));
 
   xla::Computation computation = builder.Build().ConsumeValueOrDie();
-  xla::LocalClient::AheadOfTimeComputationInstance instance{
+  xla::CompileOnlyClient::AotComputationInstance instance{
       &computation, /*argument_layouts=*/{&opaque_shape}, &r0f32};
 
   xla::cpu::CpuAotCompilationOptions options(

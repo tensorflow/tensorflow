@@ -28,19 +28,18 @@ from tensorflow.python.platform import test
 
 
 def _random_pd_matrix(n, rng):
-  """Random postive definite matrix."""
+  """Random positive definite matrix."""
   temp = rng.randn(n, n)
   return temp.dot(temp.T)
 
 
 class CholeskySolveTest(test.TestCase):
-  _use_gpu = False
 
   def setUp(self):
     self.rng = np.random.RandomState(0)
 
   def test_works_with_five_different_random_pos_def_matrices(self):
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       for n in range(1, 6):
         for np_type, atol in [(np.float32, 0.05), (np.float64, 1e-5)]:
           # Create 2 x n x n matrix
@@ -55,17 +54,13 @@ class CholeskySolveTest(test.TestCase):
                 rhs, math_ops.matmul(array, x).eval(), atol=atol)
 
 
-class CholeskySolveGpuTest(CholeskySolveTest):
-  _use_gpu = True
-
-
 class EyeTest(test.TestCase):
 
   def test_non_batch_2x2(self):
     num_rows = 2
     dtype = np.float32
     np_eye = np.eye(num_rows).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       eye = linalg_ops.eye(num_rows, dtype=dtype)
       self.assertAllEqual((num_rows, num_rows), eye.get_shape())
       self.assertAllEqual(np_eye, eye.eval())
@@ -75,7 +70,7 @@ class EyeTest(test.TestCase):
     num_columns = 3
     dtype = np.float32
     np_eye = np.eye(num_rows, num_columns).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       eye = linalg_ops.eye(num_rows, num_columns=num_columns, dtype=dtype)
       self.assertAllEqual((num_rows, num_columns), eye.get_shape())
       self.assertAllEqual(np_eye, eye.eval())
@@ -85,7 +80,7 @@ class EyeTest(test.TestCase):
     batch_shape = [1, 3]
     dtype = np.float32
     np_eye = np.eye(num_rows).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       eye = linalg_ops.eye(num_rows, batch_shape=batch_shape, dtype=dtype)
       self.assertAllEqual(batch_shape + [num_rows, num_rows], eye.get_shape())
       eye_v = eye.eval()
@@ -98,7 +93,7 @@ class EyeTest(test.TestCase):
     batch_shape = [1, 3]
     dtype = np.float32
     np_eye = np.eye(num_rows).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       num_rows_ph = array_ops.placeholder(dtypes.int32)
       batch_shape_ph = array_ops.placeholder(dtypes.int32)
       eye = linalg_ops.eye(num_rows_ph, batch_shape=batch_shape_ph, dtype=dtype)
@@ -115,7 +110,7 @@ class EyeTest(test.TestCase):
     batch_shape = [1, 3]
     dtype = np.float32
     np_eye = np.eye(num_rows, num_columns).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       eye = linalg_ops.eye(num_rows,
                            num_columns=num_columns,
                            batch_shape=batch_shape,
@@ -133,7 +128,7 @@ class EyeTest(test.TestCase):
     batch_shape = [1, 3]
     dtype = np.float32
     np_eye = np.eye(num_rows, num_columns).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       num_rows_ph = array_ops.placeholder(dtypes.int32)
       num_columns_ph = array_ops.placeholder(dtypes.int32)
       batch_shape_ph = array_ops.placeholder(dtypes.int32)
@@ -154,7 +149,7 @@ class EyeTest(test.TestCase):
     num_rows = 0
     dtype = np.int64
     np_eye = np.eye(num_rows).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       eye = linalg_ops.eye(num_rows, dtype=dtype)
       self.assertAllEqual((num_rows, num_rows), eye.get_shape())
       self.assertAllEqual(np_eye, eye.eval())
@@ -164,7 +159,7 @@ class EyeTest(test.TestCase):
     num_columns = 0
     dtype = np.int64
     np_eye = np.eye(num_rows, num_columns).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       eye = linalg_ops.eye(num_rows, num_columns=num_columns, dtype=dtype)
       self.assertAllEqual((num_rows, num_columns), eye.get_shape())
       self.assertAllEqual(np_eye, eye.eval())
@@ -174,7 +169,7 @@ class EyeTest(test.TestCase):
     num_columns = 2
     dtype = np.int64
     np_eye = np.eye(num_rows, num_columns).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       eye = linalg_ops.eye(num_rows, num_columns=num_columns, dtype=dtype)
       self.assertAllEqual((num_rows, num_columns), eye.get_shape())
       self.assertAllEqual(np_eye, eye.eval())
@@ -184,7 +179,7 @@ class EyeTest(test.TestCase):
     batch_shape = [1, 3]
     dtype = np.float32
     np_eye = np.eye(num_rows).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       eye = linalg_ops.eye(num_rows, batch_shape=batch_shape, dtype=dtype)
       self.assertAllEqual((1, 3, 0, 0), eye.get_shape())
       eye_v = eye.eval()
@@ -198,7 +193,7 @@ class EyeTest(test.TestCase):
     batch_shape = [1, 3]
     dtype = np.float32
     np_eye = np.eye(num_rows, num_columns).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       eye = linalg_ops.eye(num_rows,
                            num_columns=num_columns,
                            batch_shape=batch_shape,
@@ -216,7 +211,7 @@ class EyeTest(test.TestCase):
     batch_shape = [1, 3]
     dtype = np.float32
     np_eye = np.eye(num_rows, num_columns).astype(dtype)
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       eye = linalg_ops.eye(num_rows,
                            num_columns=num_columns,
                            batch_shape=batch_shape,

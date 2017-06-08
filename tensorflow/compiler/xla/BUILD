@@ -17,6 +17,7 @@ package_group(
     ],
 )
 
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 
 # Filegroup used to collect source files for dependency checking.
@@ -44,6 +45,23 @@ xla_proto_library(
     ],
 )
 
+# This is a headers target that extra XLA devices can use to prevent
+# circular dependencies.  Devices that are compiled as separate shared
+# objects can also use it to prevent linking of library code.
+cc_header_only_library(
+    name = "xla_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_proto",
+        "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:stream_executor_headers_lib",
+    ],
+)
+
 cc_library(
     name = "test",
     testonly = 1,
@@ -59,7 +77,10 @@ cc_library(
     name = "types",
     hdrs = ["types.h"],
     visibility = [":friends"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -95,7 +116,6 @@ cc_test(
         ":test",
         ":test_helpers",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -162,7 +182,10 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":status_macros",
+        ":statusor",
         ":types",
+        ":util",
         "//tensorflow/core:lib",
     ],
 )
@@ -216,7 +239,7 @@ cc_test(
         ":test_helpers",
         ":types",
         ":util",
-        "//tensorflow/core:test",
+        ":xla_data_proto",
         "//tensorflow/core:test_main",
     ],
 )
@@ -229,7 +252,6 @@ cc_test(
         ":test",
         ":test_helpers",
         "//tensorflow/compiler/xla/legacy_flags:layout_util_flags",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )
@@ -240,7 +262,6 @@ cc_test(
     deps = [
         ":shape_util",
         ":test",
-        ":test_helpers",
         ":xla_data_proto",
         "//tensorflow/core:test_main",
     ],
@@ -463,7 +484,6 @@ cc_test(
         ":text_literal_writer",
         ":types",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
 )

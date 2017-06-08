@@ -39,6 +39,7 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import main_op
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import saver_test_utils
 from tensorflow.python.util import compat
 
@@ -150,6 +151,27 @@ class SavedModelTest(test.TestCase):
       with self.assertRaisesRegexp(IOError, "Cannot parse file.*%s" %
                                    constants.SAVED_MODEL_FILENAME_PBTXT):
         loader.load(sess, ["foo"], export_dir)
+
+  def testVerifySessionGraphUsage(self):
+    export_dir = os.path.join(test.get_temp_dir(),
+                              "test_verify_session_graph_usage")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    with self.test_session(graph=ops.Graph()) as sess:
+      self._init_and_validate_variable(sess, "v", 42)
+      builder.add_meta_graph_and_variables(sess, [tag_constants.TRAINING])
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    # Build a session and supply it to the load operation.
+    sess = session.Session(graph=ops.Graph())
+    loader.load(sess, [tag_constants.TRAINING], export_dir)
+
+    # Check the variable within the scope of the session and its graph.
+    with sess:
+      self.assertEqual(
+          42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
   def testSequence(self):
     export_dir = os.path.join(test.get_temp_dir(), "test_sequence")
@@ -787,6 +809,66 @@ class SavedModelTest(test.TestCase):
       loader.load(sess, [tag_constants.TRAINING], export_dir)
       self.assertEqual(
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
+
+  def testClearExtraneousSavers(self):
+    export_dir = os.path.join(test.get_temp_dir(),
+                              "test_clear_extraneous_savers")
+    builder = saved_model_builder.SavedModelBuilder(export_dir)
+
+    # Create a variable and a Saver.
+    with ops.Graph().as_default() as graph:
+      with session.Session(
+          target="",
+          config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:
+        self._init_and_validate_variable(sess, "v", 42)
+
+        # Add two Savers, which should be removed in
+        # add_meta_graph_and_variables() in favor of the locally added one.
+        saver1 = tf_saver.Saver()
+        graph.add_to_collection(ops.GraphKeys.SAVERS, saver1)
+        saver2 = tf_saver.Saver()
+        graph.add_to_collection(ops.GraphKeys.SAVERS, saver2)
+
+        # Confirm there are two SaverDefs.
+        savers = graph.get_collection(ops.GraphKeys.SAVERS)
+        self.assertEqual(2, len(savers))
+
+        # Confirm there are two Save and two Restore ops.
+        save_op_names = set([x.name for x in graph.get_operations()
+                             if x.type == "SaveV2"])
+        self.assertSetEqual(set(["save/SaveV2", "save_1/SaveV2"]),
+                            save_op_names)
+
+        restore_op_names = set([x.name for x in graph.get_operations()
+                                if x.type == "RestoreV2"])
+        self.assertSetEqual(set(["save/RestoreV2", "save_1/RestoreV2"]),
+                            restore_op_names)
+
+        # The SavedModel builder adds its own Saver' for a total of three.
+        builder.add_meta_graph_and_variables(
+            sess, [tag_constants.TRAINING], clear_devices=True)
+
+    # Save the SavedModel to disk.
+    builder.save()
+
+    # Restore the graph.
+    with ops.Graph().as_default() as graph:
+      with self.test_session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.TRAINING], export_dir)
+        self.assertEqual(
+            42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
+
+        # Confirm that the reloaded graph has only one SaverDef.
+        savers = ops.get_collection(ops.GraphKeys.SAVERS)
+        self.assertEqual(1, len(savers))
+
+        # The reloaded graph should have exactly one Save and one Restore op.
+        save_op_names = set([x.name for x in graph.get_operations()
+                             if x.type == "SaveV2"])
+        self.assertSetEqual(set(["save_2/SaveV2"]), save_op_names)
+        restore_op_names = set([x.name for x in graph.get_operations()
+                                if x.type == "RestoreV2"])
+        self.assertSetEqual(set(["save_2/RestoreV2"]), restore_op_names)
 
 
 if __name__ == "__main__":

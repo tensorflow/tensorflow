@@ -65,7 +65,7 @@ using ::tensorflow::strings::StrCat;
       WrapUnique(new HloInstruction(HloOpcode::kTrace, ShapeUtil::MakeNil()));
   instruction->operands_.push_back(operand);
   instruction->literal_.reset(new Literal);
-  *instruction->literal_->mutable_u8s() += tag;
+  instruction->literal_->append_u8s(tag);
   return instruction;
 }
 
@@ -1083,7 +1083,7 @@ bool HloInstruction::Identical(
   // general, there is no need to check shape because shape is inferred from the
   // shape of the operands.
   if (opcode() != other.opcode() ||
-      !ContainersEqual(operands(), other.operands(), eq_operands)) {
+      !ContainersEqual(operands(), other.operands(), std::move(eq_operands))) {
     return false;
   }
 
@@ -1445,7 +1445,9 @@ string HloInstruction::ToString(bool compact_operands,
       // Concatenate elements in "v" with spaces separating them, but ignoring
       // empty entries.
       for (const auto& s : v) {
-        if (s.empty()) continue;
+        if (s.empty()) {
+          continue;
+        }
         StrAppend(&operands, (first ? "" : " "), s);
         first = false;
       }
@@ -1484,6 +1486,7 @@ string HloInstruction::ToString(bool compact_operands,
   }
   if (!slice_starts_.empty() && !slice_limits_.empty()) {
     std::vector<string> bounds;
+    bounds.reserve(slice_starts_.size());
     for (int i = 0; i < slice_starts_.size(); ++i) {
       bounds.push_back(
           StrCat("[", slice_starts_[i], ":", slice_limits_[i], "]"));
@@ -1533,6 +1536,51 @@ string HloInstruction::ToShortString() const {
                     .c_str());
 }
 
+HloInstructionProto HloInstruction::ToProto() const {
+  HloInstructionProto proto;
+  proto.set_name(name_);
+  proto.set_opcode(HloOpcodeString(opcode_));
+  *proto.mutable_shape() = shape_;
+  for (const HloInstruction* operand : operands_) {
+    *proto.add_operand_names() = operand->name();
+  }
+  for (const HloInstruction* control : control_predecessors_) {
+    *proto.add_control_predecessor_names() = control->name();
+  }
+  for (const HloComputation* computation : called_computations_) {
+    *proto.add_called_computation_names() = computation->name();
+  }
+  *proto.mutable_metadata() = metadata_;
+  switch (opcode_) {
+    case HloOpcode::kConstant:
+      *proto.mutable_literal() = literal_->ToProto();
+      break;
+    case HloOpcode::kParameter:
+      proto.set_parameter_number(parameter_number_);
+      proto.set_parameter_name(parameter_name_);
+      break;
+    case HloOpcode::kFusion: {
+      HloComputationProto* proto_fused_computation =
+          proto.mutable_fused_instructions_computation();
+      proto_fused_computation->set_name(FullyQualifiedName());
+
+      // Fill in fused instructions. Note that fused_instructions() returns in
+      // reverse post-order (i.e. root first), so we reverse to get post-order.
+      for (auto fused_it = fused_instructions().rbegin();
+           fused_it != fused_instructions().rend(); ++fused_it) {
+        HloInstructionProto fused_proto = (*fused_it)->ToProto();
+        proto_fused_computation->add_instructions()->Swap(&fused_proto);
+      }
+      break;
+    }
+    case HloOpcode::kGetTupleElement:
+      proto.set_tuple_index(tuple_index_);
+      break;
+    default: {}  // Nothing to do
+  }
+  return proto;
+}
+
 string HloInstruction::ToCategory() const {
   if (opcode() == HloOpcode::kTranspose || opcode() == HloOpcode::kCopy ||
       opcode() == HloOpcode::kReshape) {
@@ -1570,7 +1618,9 @@ string HloInstruction::ToCategory() const {
           return "non-elementwise fusion";
         }
       case FusionKind::kInput:
-        return "reduce fusion";
+        return "input fusion";
+      case FusionKind::kOutput:
+        return "output fusion";
       case FusionKind::kTransposeDot:
         return "dot fusion";
       case FusionKind::kConvBackwardFilter:
@@ -1600,10 +1650,10 @@ void HloInstruction::set_tracing(HloInstruction* trace_instruction) {
   trace_instruction_ = trace_instruction;
 }
 
-const string& HloInstruction::tracing_tag() const {
+string HloInstruction::TracingTag() const {
   CHECK_EQ(HloOpcode::kTrace, opcode());
   CHECK(literal_ != nullptr);
-  return literal_->u8s();
+  return literal_->u8s_string();
 }
 
 bool HloInstruction::IsFused() const {
@@ -1618,7 +1668,6 @@ bool HloInstruction::IsFusable() const {
 
   // Some kinds of instructions don't make sense to fuse.
   switch (opcode_) {
-    case HloOpcode::kFusion:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kParameter:
@@ -1781,7 +1830,7 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
     case HloOpcode::kSlice:
       return visitor->HandleSlice(this, operands_[0]);
     case HloOpcode::kDynamicSlice:
-      return visitor->HandleDynamicSlice(this, operands_);
+      return visitor->HandleDynamicSlice(this, operands_[0], operands_[1]);
     case HloOpcode::kDynamicUpdateSlice:
       return visitor->HandleDynamicUpdateSlice(this, operands_[0], operands_[1],
                                                operands_[2]);
@@ -2136,13 +2185,14 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
       std::function<UseKind(const HloInstruction&)> reuses_parameter_elements =
           [i, &cache, &reuses_parameter_elements](const HloInstruction& hlo) {
             auto plus = [](const UseKind& a, const UseKind& b) {
-              if (a == UseKind::kNoUse) return b;
-              if (b == UseKind::kNoUse) return a;
-              if (a == UseKind::kReuse || b == UseKind::kReuse) {
+              if (a == UseKind::kNoUse) {
+                return b;
+              } else if (b == UseKind::kNoUse) {
+                return a;
+              } else if (a == UseKind::kReuse || b == UseKind::kReuse) {
                 return UseKind::kReuse;
-              }
-              if (a == UseKind::kUsePermutingElements ||
-                  b == UseKind::kUsePermutingElements) {
+              } else if (a == UseKind::kUsePermutingElements ||
+                         b == UseKind::kUsePermutingElements) {
                 return UseKind::kReuse;
               }
               CHECK(UseKind::kUse == a && UseKind::kUse == b);
@@ -2186,6 +2236,8 @@ string ToString(HloInstruction::FusionKind kind) {
       return "kLoop";
     case HloInstruction::FusionKind::kInput:
       return "kInput";
+    case HloInstruction::FusionKind::kOutput:
+      return "kOutput";
     case HloInstruction::FusionKind::kTransposeDot:
       return "kTransposeDot";
     case HloInstruction::FusionKind::kConvBackwardFilter:

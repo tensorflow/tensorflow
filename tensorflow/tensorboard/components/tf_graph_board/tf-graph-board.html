@@ -17,6 +17,7 @@ limitations under the License.
 
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../tf-graph/tf-graph.html">
+<link rel="import" href="../tf-graph-common/tf-graph-common.html">
 <link rel="import" href="../tf-graph-info/tf-graph-info.html">
 <link rel="import" href="../paper-progress/paper-progress.html">
 
@@ -137,7 +138,7 @@ paper-progress {
               render-hierarchy="{{renderHierarchy}}"
               devices-for-stats="[[devicesForStats]]"
               stats="[[stats]]"
-              selected-node="{{_selectedNode}}"
+              selected-node="{{selectedNode}}"
               highlighted-node="{{_highlightedNode}}"
               color-by="[[colorBy]]"
               color-by-params="{{colorByParams}}"
@@ -152,13 +153,14 @@ paper-progress {
               graph-hierarchy="[[graphHierarchy]]"
               render-hierarchy="[[renderHierarchy]]"
               graph="[[graph]]"
-              selected-node="{{_selectedNode}}"
+              selected-node="{{selectedNode}}"
               selected-node-include="{{_selectedNodeInclude}}"
               highlighted-node="{{_highlightedNode}}"
               color-by="[[colorBy]]"
               color-by-params="[[colorByParams]]"
               debugger-data-enabled="[[debuggerDataEnabled]]"
               are-health-pills-loading="[[areHealthPillsLoading]]"
+              debugger-numeric-alerts="[[debuggerNumericAlerts]]"
               node-names-to-health-pills="[[nodeNamesToHealthPills]]"
               all-steps-mode-enabled="{{allStepsModeEnabled}}"
               specific-health-pill-step="{{specificHealthPillStep}}"
@@ -179,10 +181,9 @@ Polymer({
     graph: Object,
     stats: Object,
     /**
-     * @type {value: number, msg: string}
-     *
      * A number between 0 and 100 denoting the % of progress
      * for the progress bar and the displayed message.
+     * @type {{value: number, msg: string}}
      */
     progress: Object,
     colorBy: String,
@@ -198,6 +199,12 @@ Polymer({
     debuggerDataEnabled: Boolean,
     // Whether health pills are currently being loaded.
     areHealthPillsLoading: Boolean,
+    // An array of alerts (in chronological order) provided by debugging libraries on when bad
+    // values (NaN, +/- Inf) appear.
+    debuggerNumericAlerts: {
+      type: Array,
+      notify: true,
+    },
     // A mapping between node name to the tf.graph.scene.HealthPill to render.
     nodeNamesToHealthPills: Object,
     // Whether the user can request health pills for individual steps from the server. This can be
@@ -217,7 +224,10 @@ Polymer({
     // The step of health pills to show throughout the graph.
     healthPillStepIndex: Number,
     // Private API: Data routing between child components.
-    _selectedNode: String,
+    selectedNode: {
+      type: String,
+      notify: true,
+    },
     // The enum value of the include property of the selected node.
     _selectedNodeInclude: Number,
     _highlightedNode: String
@@ -226,7 +236,7 @@ Polymer({
     'node-toggle-extract': '_nodeToggleExtract'
   },
   observers: [
-    '_updateNodeInclude(_selectedNode)'
+    '_updateNodeInclude(selectedNode)'
   ],
   /** True if the progress is not complete yet (< 100 %). */
   _isNotComplete: function(progress) {
@@ -248,7 +258,7 @@ Polymer({
       node ? node.include : tf.graph.InclusionType.UNSPECIFIED);
   },
   _nodeToggleExtract: function() {
-    this._updateNodeInclude(this._selectedNode);
+    this._updateNodeInclude(this.selectedNode);
   }
 });
 </script>

@@ -109,7 +109,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     self.assertEqual(actual_signature_def, expected_signature_def)
 
   def test_build_standardized_signature_def_classification2(self):
-    """Tests multiple output tensors that include classes and probabilites."""
+    """Tests multiple output tensors that include classes and probabilities."""
     input_tensors = {
         "input-1":
             array_ops.placeholder(

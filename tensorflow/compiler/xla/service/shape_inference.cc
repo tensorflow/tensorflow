@@ -227,7 +227,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 /* static */ StatusOr<Shape> ShapeInference::InferConcatOpShape(
     tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
     const int64 dimension) {
-  if (arg_shapes.size() == 0) {
+  if (arg_shapes.empty()) {
     return InvalidArgument("Concatenate expects at least one argument");
   }
   if (dimension < 0 || dimension >= ShapeUtil::Rank(*arg_shapes[0])) {
@@ -244,8 +244,11 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     }
     if (ShapeUtil::Rank(*arg_shape) != ShapeUtil::Rank(*shape)) {
       return InvalidArgument(
-          "cannot concatenate arrays with different ranks: %lld vs %lld",
-          ShapeUtil::Rank(*arg_shape), ShapeUtil::Rank(*shape));
+          "Cannot concatenate arrays with different ranks: %lld (%s) vs %lld "
+          "(%s)",
+          ShapeUtil::Rank(*arg_shape),
+          ShapeUtil::HumanString(*arg_shape).c_str(), ShapeUtil::Rank(*shape),
+          ShapeUtil::HumanString(*shape).c_str());
     }
     if (arg_shape->element_type() != shape->element_type()) {
       return InvalidArgument(
@@ -544,7 +547,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InferDegenerateDimensionBroadcastShape(operation, lhs, rhs);
   } else {
     // Ranks do not match, so perform InDim broadcasting using
-    // broadcast_dimensions. Scalar broadcasting is a special case of this).
+    // broadcast_dimensions. Scalar broadcasting is a special case of this.
     const Shape& larger_shape =
         ShapeUtil::Rank(lhs) > ShapeUtil::Rank(rhs) ? lhs : rhs;
     const Shape& smaller_shape =
@@ -676,7 +679,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 /* static */ StatusOr<Shape> ShapeInference::InferMapShape(
     tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
     const ProgramShape& to_apply) {
-  if (arg_shapes.size() == 0) {
+  if (arg_shapes.empty()) {
     return InvalidArgument("Map expects at least one argument");
   }
 
@@ -1084,9 +1087,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   const int64 start_num_dims = start_indices_shape.dimensions(0);
   if (ShapeUtil::Rank(operand_shape) != start_num_dims) {
     return InvalidArgument(
-        "dynamic slice start number of dimensions %lld must match rank %lld of "
-        "slice input",
-        start_num_dims, ShapeUtil::Rank(operand_shape));
+        "dynamic slice start number of dimensions %lld (%s) must match rank "
+        "%lld of slice input (%s)",
+        start_num_dims, ShapeUtil::HumanString(start_indices_shape).c_str(),
+        ShapeUtil::Rank(operand_shape),
+        ShapeUtil::HumanString(operand_shape).c_str());
   }
 
   if (slice_sizes.size() != ShapeUtil::Rank(operand_shape)) {
@@ -1098,7 +1103,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int64 dim = 0; dim < slice_sizes.size(); ++dim) {
     const int64 input_dim_size = operand_shape.dimensions(dim);
     const int64 slice_dim_size = slice_sizes[dim];
-    if (slice_dim_size <= 0) {
+    if (slice_dim_size < 0) {
       return InvalidArgument("negative size index to dynamic slice: %lld",
                              slice_dim_size);
     }
@@ -1145,9 +1150,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   const int64 start_num_dims = start_indices_shape.dimensions(0);
   if (ShapeUtil::Rank(operand_shape) != start_num_dims) {
     return InvalidArgument(
-        "dynamic update slice start number of dimensions %lld must match "
-        "rank %lld of slice input",
-        start_num_dims, ShapeUtil::Rank(operand_shape));
+        "dynamic slice start number of dimensions %lld (%s) must match rank "
+        "%lld of slice input (%s)",
+        start_num_dims, ShapeUtil::HumanString(start_indices_shape).c_str(),
+        ShapeUtil::Rank(operand_shape),
+        ShapeUtil::HumanString(operand_shape).c_str());
   }
 
   if (ShapeUtil::Rank(update_shape) != ShapeUtil::Rank(operand_shape)) {
@@ -1168,9 +1175,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int64 dim = 0; dim < ShapeUtil::Rank(operand_shape); ++dim) {
     const int64 input_dim_size = operand_shape.dimensions(dim);
     const int64 update_dim_size = update_shape.dimensions(dim);
-    if (update_dim_size <= 0) {
+    if (update_dim_size < 0) {
       return InvalidArgument(
-          "size index %lld to dynamic update slice must be > 0",
+          "size index %lld to dynamic update slice must be >= 0",
           update_dim_size);
     }
     if (update_dim_size > input_dim_size) {

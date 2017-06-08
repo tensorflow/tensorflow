@@ -422,7 +422,7 @@ class ReferenceUtil {
   static std::unique_ptr<Array2D<T1>> ApplyElementwise2D(
       F&& f, const Array2D<T1>& array1, const Array2D<Ts>&... arrays) {
     AssertSameSize2D(array1, arrays...);
-    auto result = MakeUnique<Array2D<T1>>(array1.n1(), array1.n1());
+    auto result = MakeUnique<Array2D<T1>>(array1.n1(), array1.n2());
     for (int64 i = 0; i < array1.n1(); ++i) {
       for (int64 j = 0; j < array1.n2(); ++j) {
         (*result)(i, j) = f(array1(i, j), arrays(i, j)...);

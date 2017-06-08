@@ -20,20 +20,19 @@ from __future__ import print_function
 
 from tensorflow.contrib import layers
 from tensorflow.contrib import rnn as rnn_cell
-from tensorflow.contrib.framework.python.framework import deprecated
 from tensorflow.contrib.layers.python.layers import feature_column_ops
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import rnn_common
-from tensorflow.contrib.rnn.python.ops import core_rnn
 from tensorflow.contrib.training.python.training import sequence_queueing_state_saver as sqss
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import rnn
 from tensorflow.python.training import momentum as momentum_opt
 from tensorflow.python.util import nest
 
@@ -65,7 +64,7 @@ def construct_state_saving_rnn(cell,
     final_state: The final state output by the RNN
   """
   with ops.name_scope(scope):
-    rnn_outputs, final_state = core_rnn.static_state_saving_rnn(
+    rnn_outputs, final_state = rnn.static_state_saving_rnn(
         cell=cell,
         inputs=inputs,
         state_saver=state_saver,
@@ -145,7 +144,7 @@ def _prepare_features_for_sqss(features, labels, mode,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
+      describing context features, i.e., features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
 
@@ -262,7 +261,7 @@ def _read_batch(cell,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
+      describing context features, i.e., features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     num_threads: The Python integer number of threads enqueuing input examples
@@ -421,7 +420,7 @@ def _get_rnn_model_fn(cell_type,
       describing sequence features. All items in the set should be instances
       of classes derived from `FeatureColumn`.
     context_feature_columns: An iterable containing all the feature columns
-      describing context features, i.e., features that apply accross all time
+      describing context features, i.e., features that apply across all time
       steps. All items in the set should be instances of classes derived from
       `FeatureColumn`.
     predict_probabilities: A boolean indicating whether to predict probabilities
@@ -564,7 +563,7 @@ class StateSavingRnnEstimator(estimator.Estimator):
         describing sequence features. All items in the set should be instances
         of classes derived from `FeatureColumn`.
       context_feature_columns: An iterable containing all the feature columns
-        describing context features, i.e., features that apply accross all time
+        describing context features, i.e., features that apply across all time
         steps. All items in the set should be instances of classes derived from
         `FeatureColumn`.
       num_classes: The number of classes for categorization. Used only and

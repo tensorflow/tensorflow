@@ -27,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
@@ -334,8 +335,8 @@ int Main(int argc, char** argv) {
       Flag("show_memory", &show_memory, "whether to list stats by memory used"),
       Flag("memory_limit", &memory_limit,
            "how many items to show by memory used"),
-      Flag("show_type", &show_time, "whether to list stats by op type"),
-      Flag("show_summary", &show_time,
+      Flag("show_type", &show_type, "whether to list stats by op type"),
+      Flag("show_summary", &show_summary,
            "whether to show a summary of the stats"),
       Flag("show_flops", &show_flops, "whether to estimate the model's FLOPs"),
       Flag("warmup_runs", &warmup_runs, "how many runs to initialize model"),
@@ -422,6 +423,12 @@ int Main(int argc, char** argv) {
     CHECK(str_util::SplitAndParseAsInts(input_layer_shapes[n], ',', &sizes))
         << "Incorrect size string specified: " << input_layer_shapes[n];
     for (int i = 0; i < sizes.size(); ++i) {
+      int32 size = sizes[i];
+      if (size == -1) {
+        LOG(ERROR) << "Any unknown sizes in the shapes (-1's) must be replaced"
+                   << " with the size you want to benchmark with.";
+        return -1;
+      }
       input.shape.AddDim(sizes[i]);
     }
     input.name = input_layers[n];
@@ -531,10 +538,12 @@ int Main(int argc, char** argv) {
     std::map<string, int64> node_type_map_count;
     std::map<string, int64> node_type_map_time;
     std::map<string, int64> node_type_map_memory;
+    std::map<string, int64> node_type_map_times_called;
 
     int64 accumulated_us;
     stats->ComputeStatsByType(&node_type_map_count, &node_type_map_time,
-                              &node_type_map_memory, &accumulated_us);
+                              &node_type_map_memory,
+                              &node_type_map_times_called, &accumulated_us);
     for (const auto& time : node_type_map_time) {
       std::stringstream stream;
       stream << benchmark_name << "_" << time.first;

@@ -37,34 +37,19 @@ limitations under the License.
 namespace tensorflow {
 namespace tfprof {
 
-class ScopeNode : public ShowNode {
- public:
-  explicit ScopeNode(TFNode* node) : ShowNode(node) {}
-  ~ScopeNode() override {}
-
-  void AggregateTotalStats(ScopeNode* node) {
-    ShowNode::AggregateTotalStats(node);
-  }
-
-  void AddSelfToTotalStats() { ShowNode::AddSelfToTotalStats(); }
-
-  void ResetTotalStats() { ShowNode::ResetTotalStats(); }
-
-  std::vector<ScopeNode*> children;
-};
-
 class TFScope : public TFShow {
  public:
   explicit TFScope(checkpoint::CheckpointReader* ckpt_reader)
-      : TFShow(ckpt_reader) {}
+      : TFShow(ckpt_reader), root_(nullptr) {}
   ~TFScope() override {}
 
-  void AddNode(TFNode* node) override;
+  void AddNode(TFGraphNode* node) override;
 
   void Build() override;
 
  private:
-  const ShowNode* ShowInternal(const Options& opts) override;
+  const ShowNode* ShowInternal(const Options& opts,
+                               Timeline* timeline) override;
 
   ScopeNode* CreateParentNode(const string& name);
 
@@ -75,11 +60,15 @@ class TFScope : public TFShow {
                                      const Options& opts, int depth,
                                      int last_ident);
 
-  void Account(const std::vector<ScopeNode*>& roots, const Options& opts);
+  std::vector<ScopeNode*> Account(const std::vector<ScopeNode*>& roots,
+                                  const Options& opts);
 
-  std::vector<ScopeNode*> roots_;
+  void Format(const std::vector<ScopeNode*> roots, string* display_str,
+              TFGraphNodeProto* proto);
+
+  ScopeNode* root_;
   std::vector<std::unique_ptr<NodeDef>> node_defs_;
-  std::map<string, std::unique_ptr<TFNode>> parent_nodes_;
+  std::map<string, std::unique_ptr<TFGraphNode>> parent_nodes_;
   std::map<string, std::unique_ptr<ScopeNode>> nodes_map_;
 };
 }  // namespace tfprof

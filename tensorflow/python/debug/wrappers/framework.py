@@ -219,6 +219,9 @@ class OnRunStartAction(object):
   # Run once with debug tensor-watching.
   DEBUG_RUN = "debug_run"
 
+  # Run once with profiler.
+  PROFILE_RUN = "profile_run"
+
   # Run without debug tensor-watching.
   NON_DEBUG_RUN = "non_debug_run"
 
@@ -348,12 +351,6 @@ class BaseDebugWrapperSession(session.SessionInterface):
 
     _check_type(sess, session.BaseSession)
 
-    # TODO(cais): Remove this check once tfdbg is integrated with GrpcSession.
-    if sess.sess_str:
-      raise NotImplementedError(
-          "Non-DirectSession support is not available from TensorFlow "
-          "Debugger yet (sess_str=%s)" % sess.sess_str)
-
     # The session being wrapped.
     self._sess = sess
     self._thread_name_filter_pattern = (re.compile(thread_name_filter)
@@ -431,7 +428,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
       decorated_run_options = options or config_pb2.RunOptions()
       run_metadata = run_metadata or config_pb2.RunMetadata()
 
-      self._decorate_run_options(
+      self._decorate_run_options_for_debug(
           decorated_run_options,
           run_start_resp.debug_urls,
           debug_ops=run_start_resp.debug_ops,
@@ -459,6 +456,19 @@ class BaseDebugWrapperSession(session.SessionInterface):
           run_metadata=run_metadata,
           client_graph_def=self._sess.graph.as_graph_def(),
           tf_error=tf_error)
+
+    elif run_start_resp.action == OnRunStartAction.PROFILE_RUN:
+      decorated_run_options = options or config_pb2.RunOptions()
+      run_metadata = run_metadata or config_pb2.RunMetadata()
+      self._decorate_run_options_for_profile(decorated_run_options)
+      retvals = self._sess.run(fetches,
+                               feed_dict=feed_dict,
+                               options=decorated_run_options,
+                               run_metadata=run_metadata)
+      run_end_req = OnRunEndRequest(
+          run_start_resp.action,
+          run_metadata=run_metadata,
+          client_graph_def=self._sess.graph.as_graph_def())
 
     elif (run_start_resp.action == OnRunStartAction.NON_DEBUG_RUN or
           run_start_resp.action == OnRunStartAction.INVOKE_STEPPER):
@@ -502,14 +512,15 @@ class BaseDebugWrapperSession(session.SessionInterface):
     raise NotImplementedError(
         "partial_run is not implemented for debug-wrapper sessions.")
 
-  def _decorate_run_options(self,
-                            run_options,
-                            debug_urls,
-                            debug_ops="DebugIdentity",
-                            node_name_regex_whitelist=None,
-                            op_type_regex_whitelist=None,
-                            tensor_dtype_regex_whitelist=None,
-                            tolerate_debug_op_creation_failures=False):
+  def _decorate_run_options_for_debug(
+      self,
+      run_options,
+      debug_urls,
+      debug_ops="DebugIdentity",
+      node_name_regex_whitelist=None,
+      op_type_regex_whitelist=None,
+      tensor_dtype_regex_whitelist=None,
+      tolerate_debug_op_creation_failures=False):
     """Modify a RunOptions object for debug tensor watching.
 
     Specifies request for outputting partition graphs. Adds
@@ -539,6 +550,15 @@ class BaseDebugWrapperSession(session.SessionInterface):
         op_type_regex_whitelist=op_type_regex_whitelist,
         tensor_dtype_regex_whitelist=tensor_dtype_regex_whitelist,
         tolerate_debug_op_creation_failures=tolerate_debug_op_creation_failures)
+
+  def _decorate_run_options_for_profile(self, run_options):
+    """Modify a RunOptions object for profiling TensorFlow graph execution.
+
+    Args:
+      run_options: (RunOptions) the modified RunOptions object.
+    """
+
+    run_options.trace_level = config_pb2.RunOptions.FULL_TRACE
 
   @abc.abstractmethod
   def on_session_init(self, request):
@@ -646,7 +666,7 @@ class WatchOptions(object):
         are set, the two filtering operations will occur in a logical `AND`
         relation. In other words, a node will be included if and only if it
         hits both whitelists.
-      tensor_dtype_regex_whitelist: Regular-experssion whitelist for Tensor
+      tensor_dtype_regex_whitelist: Regular-expression whitelist for Tensor
         data type, e.g., `"^int.*"`.
         This whitelist operates in logical `AND` relations to the two whitelists
         above.

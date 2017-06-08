@@ -18,11 +18,14 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/cc/training/queue_runner.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -57,6 +60,8 @@ SingleMachine::~SingleMachine() {
   // Reset the thread-pool so that there are no outstanding Session::Run(...)s
   // when we delete the session.
   thread_pool_.reset();
+
+  Reset(options_, {}).IgnoreError();
 }
 
 Status SingleMachine::Provision() {
@@ -65,16 +70,12 @@ Status SingleMachine::Provision() {
     return status;
   }
 
-  DeviceAttributes attr;
-  attr.set_name("/job:localhost/replica:0/task:0/cpu:0");
-  attr.set_device_type("CPU");
-  devices_.push_back(attr);
+  DeviceProperties attr = GetLocalCPUInfo();
+  devices_["/job:localhost/replica:0/task:0/cpu:0"] = GetLocalCPUInfo();
 
   for (int i = 0; i < num_gpus_; ++i) {
-    DeviceAttributes attr;
-    attr.set_name(strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i));
-    attr.set_device_type("GPU");
-    devices_.push_back(attr);
+    devices_[strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i)] =
+        GetLocalGPUInfo(i);
   }
   return Status::OK();
 }
@@ -87,6 +88,31 @@ Status SingleMachine::Initialize(const GrapplerItem& item) {
     last_graph_ = nullptr;
     queue_runner_defs_ = item.queue_runners;
     last_graph_id_ = item.id;
+  }
+  return Status::OK();
+}
+
+Status SingleMachine::Shutdown() {
+  TF_RETURN_IF_ERROR(CloseSession(true /*use_timeout*/));
+
+  // Delete the threadpool: this ensures that all the pending closures complete
+  // before we return. Note that if that if TF deadlocked on us, the closures
+  // will never complete, and the call to thread_pool_.reset() will never
+  // return: therefore we need to delete the threadpool with the background
+  // thread. That thread itself will also never complete, so the user should
+  // abort the process to avoid leaking too many resources.
+  auto n = std::make_shared<Notification>();
+  Env::Default()->SchedClosure([this, n]() {
+    thread_pool_.reset();
+    n->Notify();
+  });
+  int64 timeout_us = 1000000ll * timeout_s_;
+  const bool notified = WaitForNotificationWithTimeout(n.get(), timeout_us);
+  if (!notified) {
+    // Let the caller know that we can't shutdown the session properly since
+    // there are calls to Session::Run() still running.
+    return errors::Unavailable("The session is still running graphs after ",
+                               timeout_s_, " seconds");
   }
   return Status::OK();
 }
@@ -111,6 +137,8 @@ Status SingleMachine::Run(const GraphDef& graph_def,
         for (auto node : *init_metadata_.mutable_cost_graph()->mutable_node()) {
           node.clear_compute_cost();
         }
+        // Also clear the timeline to save memory
+        init_metadata_.clear_step_stats();
       }
       for (int i = 0; i < queue_runner_defs_.size(); ++i) {
         std::unique_ptr<QueueRunner> queue_runner;
@@ -133,15 +161,17 @@ Status SingleMachine::Run(const GraphDef& graph_def,
     }
   }
 
-  TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, metadata));
-
   if (metadata) {
-    // Add the costs of initialization and the queue runners.
-    metadata->MergeFrom(init_metadata_);
-    return coordinator_->ExportCostGraph(metadata->mutable_cost_graph());
+    TF_RETURN_IF_ERROR(RunWithTimeout(feed, fetch, metadata));
+    // Merge the costs of the initialization and the queue runners.
+    CostGraphDef queue_costs;
+    TF_RETURN_IF_ERROR(coordinator_->ExportCostGraph(&queue_costs));
+    MergeCosts(metadata->mutable_cost_graph(), init_metadata_.cost_graph(),
+               queue_costs);
   } else {
-    return Status::OK();
+    return RunWithTimeout(feed, fetch, nullptr);
   }
+  return Status::OK();
 }
 
 Status SingleMachine::RunWithTimeout(
@@ -159,10 +189,11 @@ Status SingleMachine::RunWithTimeout(
     mutex_lock l(close_mu_);
     CHECK(!closing_);
   }
+
   auto status = std::make_shared<Status>();
   auto local_metadata = std::make_shared<RunMetadata>();
   const bool executed_in_time = ExecuteWithTimeout(
-      [this, status, local_metadata, &feed, &fetch]() {
+      [this, status, local_metadata, feed, fetch]() {
         *status = session_->Run(run_options_, feed, {}, fetch, nullptr,
                                 local_metadata.get());
       },
@@ -226,11 +257,7 @@ Status SingleMachine::ResetSession() {
     LOG(INFO) << "Cleaning up previous session";
 
     // Make sure the session is properly closed
-    TF_RETURN_IF_ERROR(CloseSession(true /*use_timeout*/));
-
-    // Flush all the pending closures (if any).
-    thread_pool_.reset(new thread::ThreadPool(
-        Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
+    TF_RETURN_IF_ERROR(Shutdown());
 
     // We need to Reset the session to ensure that all the variables are
     // deleted. But first we need to delete the session since Reset()
@@ -241,12 +268,47 @@ Status SingleMachine::ResetSession() {
 
   LOG(INFO) << "Starting new session";
 
+  // Create a new threadpool
+  thread_pool_.reset(new thread::ThreadPool(
+      Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
+
   session_.reset(NewSession(options_));
   CHECK(session_ != nullptr);
 
   coordinator_.reset(new Coordinator());
 
   return Status::OK();
+}
+
+void SingleMachine::MergeCosts(CostGraphDef* graph_costs,
+                               const CostGraphDef& init_costs,
+                               const CostGraphDef& queue_costs) {
+  graph_costs->mutable_node()->Reserve(graph_costs->node_size() +
+                                       init_costs.node_size() +
+                                       queue_costs.node_size());
+  std::unordered_set<string> nodes_seen;
+  for (const auto& node : graph_costs->node()) {
+    nodes_seen.insert(node.name());
+  }
+
+  // The costs obtained by running the main graph could be more stable than
+  // the one we get from the queue runners since the queue runners run
+  // asynchronously.
+  for (const auto& node : queue_costs.node()) {
+    if (nodes_seen.find(node.name()) != nodes_seen.end()) {
+      continue;
+    }
+    graph_costs->add_node()->MergeFrom(node);
+  }
+
+  // Don't overwrite the costs with that generated during initialization since
+  // these are possibly outdated.
+  for (const auto& node : init_costs.node()) {
+    if (nodes_seen.find(node.name()) != nodes_seen.end()) {
+      continue;
+    }
+    graph_costs->add_node()->MergeFrom(node);
+  }
 }
 
 }  // namespace grappler

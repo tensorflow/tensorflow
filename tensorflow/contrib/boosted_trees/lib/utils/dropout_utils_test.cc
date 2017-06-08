@@ -54,6 +54,7 @@ class DropoutUtilsTest : public ::testing::Test {
 TEST_F(DropoutUtilsTest, DropoutProbabilityTest) {
   std::vector<int32> dropped_trees;
   std::vector<float> original_weights;
+  std::unordered_set<int32> trees_not_to_drop;
 
   // Do not drop any trees
   {
@@ -61,8 +62,9 @@ TEST_F(DropoutUtilsTest, DropoutProbabilityTest) {
     config.set_dropout_probability(0.0);
     config.set_learning_rate(1.0);
 
-    TF_EXPECT_OK(DropoutUtils::DropOutTrees(kSeed, config, weights_,
-                                            &dropped_trees, &original_weights));
+    TF_EXPECT_OK(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
+                                            weights_, &dropped_trees,
+                                            &original_weights));
 
     // Nothing changed
     EXPECT_TRUE(dropped_trees.empty());
@@ -74,8 +76,9 @@ TEST_F(DropoutUtilsTest, DropoutProbabilityTest) {
     config.set_dropout_probability(1.0);
     config.set_learning_rate(1.0);
 
-    TF_EXPECT_OK(DropoutUtils::DropOutTrees(kSeed, config, weights_,
-                                            &dropped_trees, &original_weights));
+    TF_EXPECT_OK(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
+                                            weights_, &dropped_trees,
+                                            &original_weights));
 
     // No trees left
     EXPECT_EQ(kNumTrees, dropped_trees.size());
@@ -94,8 +97,9 @@ TEST_F(DropoutUtilsTest, DropoutProbabilityTest) {
       // draw random seeds
       uint random_generator_seed = static_cast<uint>(std::clock());
       uint32 seed = rand_r(&random_generator_seed) % 100 + i;
-      TF_EXPECT_OK(DropoutUtils::DropOutTrees(
-          seed, config, weights_, &dropped_trees, &original_weights));
+      TF_EXPECT_OK(DropoutUtils::DropOutTrees(seed, config, trees_not_to_drop,
+                                              weights_, &dropped_trees,
+                                              &original_weights));
 
       // We would expect 400-600 trees left
       EXPECT_NEAR(500, kNumTrees - dropped_trees.size(), 100);
@@ -112,7 +116,73 @@ TEST_F(DropoutUtilsTest, DropoutProbabilityTest) {
   }
 }
 
+TEST_F(DropoutUtilsTest, DropoutIgnoresNotToDropTest) {
+  std::vector<int32> dropped_trees;
+  std::vector<float> original_weights;
+
+  // Empty do not drop set.
+  {
+    std::unordered_set<int32> trees_not_to_drop;
+
+    LearningRateDropoutDrivenConfig config;
+    config.set_dropout_probability(1.0);
+    config.set_learning_rate(1.0);
+
+    TF_EXPECT_OK(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
+                                            weights_, &dropped_trees,
+                                            &original_weights));
+
+    // No trees left
+    EXPECT_EQ(kNumTrees, dropped_trees.size());
+    EXPECT_EQ(kNumTrees, original_weights.size());
+    EXPECT_EQ(original_weights, weights_);
+  }
+
+  // Do not drop any trees
+  {
+    std::unordered_set<int32> trees_not_to_drop;
+    for (int i = 0; i < kNumTrees; ++i) {
+      trees_not_to_drop.insert(i);
+    }
+
+    LearningRateDropoutDrivenConfig config;
+    config.set_dropout_probability(1.0);
+    config.set_learning_rate(1.0);
+
+    TF_EXPECT_OK(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
+                                            weights_, &dropped_trees,
+                                            &original_weights));
+
+    // No trees were dropped - they all were in do not drop set.
+    EXPECT_EQ(0, dropped_trees.size());
+    EXPECT_EQ(0, original_weights.size());
+  }
+  // Do not drop some trees
+  {
+    std::unordered_set<int32> trees_not_to_drop;
+    trees_not_to_drop.insert(0);
+    trees_not_to_drop.insert(34);
+
+    LearningRateDropoutDrivenConfig config;
+    config.set_dropout_probability(1.0);
+    config.set_learning_rate(1.0);
+
+    TF_EXPECT_OK(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
+                                            weights_, &dropped_trees,
+                                            &original_weights));
+
+    // No trees were dropped - they all were in do not drop set.
+    EXPECT_EQ(kNumTrees - 2, dropped_trees.size());
+    EXPECT_EQ(kNumTrees - 2, original_weights.size());
+    EXPECT_TRUE(std::find(dropped_trees.begin(), dropped_trees.end(), 0) ==
+                dropped_trees.end());
+    EXPECT_TRUE(std::find(dropped_trees.begin(), dropped_trees.end(), 34) ==
+                dropped_trees.end());
+  }
+}
+
 TEST_F(DropoutUtilsTest, DropoutSeedTest) {
+  std::unordered_set<int32> trees_not_to_drop;
   // Different seeds remove different trees
   {
     LearningRateDropoutDrivenConfig config;
@@ -128,9 +198,11 @@ TEST_F(DropoutUtilsTest, DropoutSeedTest) {
     DecisionTreeEnsembleConfig new_ensemble_2;
 
     TF_EXPECT_OK(DropoutUtils::DropOutTrees(
-        kSeed + 1, config, weights_, &dropped_trees_1, &original_weights_1));
+        kSeed + 1, config, trees_not_to_drop, weights_, &dropped_trees_1,
+        &original_weights_1));
     TF_EXPECT_OK(DropoutUtils::DropOutTrees(
-        kSeed + 2, config, weights_, &dropped_trees_2, &original_weights_2));
+        kSeed + 2, config, trees_not_to_drop, weights_, &dropped_trees_2,
+        &original_weights_2));
 
     EXPECT_FALSE(dropped_trees_1 == dropped_trees_2);
     EXPECT_FALSE(original_weights_1 == original_weights_2);
@@ -149,10 +221,12 @@ TEST_F(DropoutUtilsTest, DropoutSeedTest) {
     DecisionTreeEnsembleConfig new_ensemble_1;
     DecisionTreeEnsembleConfig new_ensemble_2;
 
-    TF_EXPECT_OK(DropoutUtils::DropOutTrees(
-        kSeed, config, weights_, &dropped_trees_1, &original_weights_1));
-    TF_EXPECT_OK(DropoutUtils::DropOutTrees(
-        kSeed, config, weights_, &dropped_trees_2, &original_weights_2));
+    TF_EXPECT_OK(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
+                                            weights_, &dropped_trees_1,
+                                            &original_weights_1));
+    TF_EXPECT_OK(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
+                                            weights_, &dropped_trees_2,
+                                            &original_weights_2));
 
     EXPECT_TRUE(dropped_trees_1 == dropped_trees_2);
     EXPECT_TRUE(original_weights_1 == original_weights_2);
@@ -162,13 +236,15 @@ TEST_F(DropoutUtilsTest, DropoutSeedTest) {
 TEST_F(DropoutUtilsTest, InvalidConfigTest) {
   std::vector<int32> dropped_trees;
   std::vector<float> original_weights;
+  std::unordered_set<int32> trees_not_to_drop;
   // Negative prob
   {
     LearningRateDropoutDrivenConfig config;
     config.set_dropout_probability(-1.34);
 
-    EXPECT_FALSE(DropoutUtils::DropOutTrees(kSeed, config, weights_,
-                                            &dropped_trees, &original_weights)
+    EXPECT_FALSE(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
+                                            weights_, &dropped_trees,
+                                            &original_weights)
                      .ok());
   }
   // Larger than 1 prob of dropping a tree.
@@ -176,8 +252,9 @@ TEST_F(DropoutUtilsTest, InvalidConfigTest) {
     LearningRateDropoutDrivenConfig config;
     config.set_dropout_probability(1.34);
 
-    EXPECT_FALSE(DropoutUtils::DropOutTrees(kSeed, config, weights_,
-                                            &dropped_trees, &original_weights)
+    EXPECT_FALSE(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
+                                            weights_, &dropped_trees,
+                                            &original_weights)
                      .ok());
   }
   // Negative probability of skipping dropout.
@@ -187,8 +264,9 @@ TEST_F(DropoutUtilsTest, InvalidConfigTest) {
     config.set_probability_of_skipping_dropout(-10);
 
     DecisionTreeEnsembleConfig new_ensemble;
-    EXPECT_FALSE(DropoutUtils::DropOutTrees(kSeed, config, weights_,
-                                            &dropped_trees, &original_weights)
+    EXPECT_FALSE(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
+                                            weights_, &dropped_trees,
+                                            &original_weights)
                      .ok());
   }
   // Larger than 1 probability of skipping dropout.
@@ -198,8 +276,9 @@ TEST_F(DropoutUtilsTest, InvalidConfigTest) {
     config.set_probability_of_skipping_dropout(1.2);
 
     DecisionTreeEnsembleConfig new_ensemble;
-    EXPECT_FALSE(DropoutUtils::DropOutTrees(kSeed, config, weights_,
-                                            &dropped_trees, &original_weights)
+    EXPECT_FALSE(DropoutUtils::DropOutTrees(kSeed, config, trees_not_to_drop,
+                                            weights_, &dropped_trees,
+                                            &original_weights)
                      .ok());
   }
 }
@@ -216,6 +295,7 @@ void ExpectVecsEquiv(const std::vector<float>& vec1,
 std::vector<float> GetWeightsByIndex(const std::vector<float>& weights,
                                      const std::vector<int>& indices) {
   std::vector<float> res;
+  res.reserve(indices.size());
   for (const int index : indices) {
     res.push_back(weights[index]);
   }
@@ -249,11 +329,11 @@ TEST_F(DropoutUtilsTest, GetTreesWeightsForAddingTreesTest) {
       std::vector<int32> num_updates =
           std::vector<int32>(current_weights.size(), 1);
       DropoutUtils::GetTreesWeightsForAddingTrees(
-          dropped_1, GetWeightsByIndex(current_weights, dropped_1), 1,
-          &current_weights, &num_updates);
+          dropped_1, GetWeightsByIndex(current_weights, dropped_1),
+          current_weights.size(), 1, &current_weights, &num_updates);
       DropoutUtils::GetTreesWeightsForAddingTrees(
-          dropped_2, GetWeightsByIndex(current_weights, dropped_2), 1,
-          &current_weights, &num_updates);
+          dropped_2, GetWeightsByIndex(current_weights, dropped_2),
+          current_weights.size(), 1, &current_weights, &num_updates);
       res_1 = current_weights;
     }
     // Do another order
@@ -263,11 +343,11 @@ TEST_F(DropoutUtilsTest, GetTreesWeightsForAddingTreesTest) {
           std::vector<int32>(current_weights.size(), 1);
 
       DropoutUtils::GetTreesWeightsForAddingTrees(
-          dropped_2, GetWeightsByIndex(current_weights, dropped_2), 1,
-          &current_weights, &num_updates);
+          dropped_2, GetWeightsByIndex(current_weights, dropped_2),
+          current_weights.size(), 1, &current_weights, &num_updates);
       DropoutUtils::GetTreesWeightsForAddingTrees(
-          dropped_1, GetWeightsByIndex(current_weights, dropped_1), 1,
-          &current_weights, &num_updates);
+          dropped_1, GetWeightsByIndex(current_weights, dropped_1),
+          current_weights.size(), 1, &current_weights, &num_updates);
       res_2 = current_weights;
     }
     // The vectors are the same, but the last two elements have the same sum.
@@ -294,11 +374,11 @@ TEST_F(DropoutUtilsTest, GetTreesWeightsForAddingTreesTest) {
       std::vector<int32> num_updates =
           std::vector<int32>(current_weights.size(), 1);
       DropoutUtils::GetTreesWeightsForAddingTrees(
-          dropped_1, GetWeightsByIndex(current_weights, dropped_1), 1,
-          &current_weights, &num_updates);
+          dropped_1, GetWeightsByIndex(current_weights, dropped_1),
+          current_weights.size(), 1, &current_weights, &num_updates);
       DropoutUtils::GetTreesWeightsForAddingTrees(
-          dropped_2, GetWeightsByIndex(current_weights, dropped_2), 1,
-          &current_weights, &num_updates);
+          dropped_2, GetWeightsByIndex(current_weights, dropped_2),
+          current_weights.size(), 1, &current_weights, &num_updates);
       res_1 = current_weights;
     }
     // Do another order
@@ -307,11 +387,11 @@ TEST_F(DropoutUtilsTest, GetTreesWeightsForAddingTreesTest) {
       std::vector<int32> num_updates =
           std::vector<int32>(current_weights.size(), 1);
       DropoutUtils::GetTreesWeightsForAddingTrees(
-          dropped_2, GetWeightsByIndex(current_weights, dropped_2), 1,
-          &current_weights, &num_updates);
+          dropped_2, GetWeightsByIndex(current_weights, dropped_2),
+          current_weights.size(), 1, &current_weights, &num_updates);
       DropoutUtils::GetTreesWeightsForAddingTrees(
-          dropped_1, GetWeightsByIndex(current_weights, dropped_1), 1,
-          &current_weights, &num_updates);
+          dropped_1, GetWeightsByIndex(current_weights, dropped_1),
+          current_weights.size(), 1, &current_weights, &num_updates);
       res_2 = current_weights;
     }
     EXPECT_EQ(res_1.size(), 7);
@@ -322,6 +402,48 @@ TEST_F(DropoutUtilsTest, GetTreesWeightsForAddingTreesTest) {
     MergeLastElements(2, &res_2);
 
     ExpectVecsEquiv(res_1, res_2);
+  }
+}
+
+TEST_F(DropoutUtilsTest, GetTreesWeightsForAddingTreesIndexTest) {
+  std::vector<float> weights = {1.0, 1.0, 1.0, 1.0, 1.0};
+  std::vector<int32> dropped = {0, 3};
+
+  std::vector<float> res;
+  std::vector<float> res_2;
+
+  // The tree that is added does not yet have an entry in weights vector.
+  {
+    std::vector<float> current_weights = weights;
+    std::vector<int32> num_updates =
+        std::vector<int32>(current_weights.size(), 1);
+    DropoutUtils::GetTreesWeightsForAddingTrees(
+        dropped, GetWeightsByIndex(current_weights, dropped),
+        current_weights.size(), 1, &current_weights, &num_updates);
+    EXPECT_EQ(current_weights.size(), weights.size() + 1);
+    EXPECT_EQ(num_updates.size(), weights.size() + 1);
+
+    std::vector<int32> expected_num_updates = {2, 1, 1, 2, 1, 1};
+    std::vector<float> expected_weights = {2.0 / 3, 1, 1, 2.0 / 3, 1, 2.0 / 3};
+    EXPECT_EQ(expected_weights, current_weights);
+    EXPECT_EQ(expected_num_updates, num_updates);
+  }
+  // The tree that is added has already an entry in weights and updates (batch
+  // mode).
+  {
+    std::vector<float> current_weights = weights;
+    std::vector<int32> num_updates =
+        std::vector<int32>(current_weights.size(), 1);
+    DropoutUtils::GetTreesWeightsForAddingTrees(
+        dropped, GetWeightsByIndex(current_weights, dropped),
+        current_weights.size() - 1, 1, &current_weights, &num_updates);
+    EXPECT_EQ(current_weights.size(), weights.size());
+    EXPECT_EQ(num_updates.size(), weights.size());
+
+    std::vector<int32> expected_num_updates = {2, 1, 1, 2, 2};
+    std::vector<float> expected_weights = {2.0 / 3, 1, 1, 2.0 / 3, 2.0 / 3};
+    EXPECT_EQ(expected_weights, current_weights);
+    EXPECT_EQ(expected_num_updates, num_updates);
   }
 }
 

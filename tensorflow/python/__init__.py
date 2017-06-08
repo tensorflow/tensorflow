@@ -54,7 +54,9 @@ from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.protobuf.meta_graph_pb2 import TensorInfo
+from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.core.protobuf.config_pb2 import *
+from tensorflow.core.protobuf.tensorflow_server_pb2 import *
 from tensorflow.core.protobuf.rewriter_config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
@@ -74,6 +76,7 @@ from tensorflow.python.ops.standard_ops import *
 
 # Bring in subpackages.
 from tensorflow.python.estimator import estimator_lib as estimator
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import metrics
@@ -131,6 +134,7 @@ _allowed_symbols = [
     'AttrValue',
     'AutoParallelOptions',
     'ConfigProto',
+    'ClusterDef',
     'DeviceSpec',
     'Event',
     'GPUOptions',
@@ -141,6 +145,7 @@ _allowed_symbols = [
     'GraphOptions',
     'HistogramProto',
     'LogMessage',
+    'MetaGraphDef',
     'NameAttrList',
     'NodeDef',
     'OptimizerOptions',
@@ -210,6 +215,7 @@ _allowed_symbols.extend([
     'compat',
     'errors',
     'estimator',
+    'feature_column',
     'flags',
     'gfile',
     'graph_util',

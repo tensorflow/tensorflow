@@ -33,6 +33,8 @@ class SingleMachine : public Cluster {
   ~SingleMachine() override;
 
   Status Provision() override;
+  Status Shutdown() override;
+
   Status Initialize(const GrapplerItem& item) override;
   Status Run(const GraphDef& item,
              const std::vector<std::pair<string, Tensor>>& feed,
@@ -47,6 +49,8 @@ class SingleMachine : public Cluster {
                         RunMetadata* run_metadata, int64 timeout_s);
   Status ResetSession();
   Status CloseSession(bool use_timeout);
+  void MergeCosts(CostGraphDef* graph_costs, const CostGraphDef& init_costs,
+                  const CostGraphDef& queue_costs);
 
   const int num_gpus_;
   std::unique_ptr<Session> session_;

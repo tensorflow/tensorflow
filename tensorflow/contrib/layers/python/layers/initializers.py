@@ -36,7 +36,8 @@ def xavier_initializer(uniform=True, seed=None, dtype=dtypes.float32):
   Xavier Glorot and Yoshua Bengio (2010):
            [Understanding the difficulty of training deep feedforward neural
            networks. International conference on artificial intelligence and
-           statistics.](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.207.2059&rep=rep1&type=pdf)
+           statistics.](
+           http://www.jmlr.org/proceedings/papers/v9/glorot10a/glorot10a.pdf)
 
   This initializer is designed to keep the scale of the gradients roughly the
   same in all layers. In uniform distribution this ends up being the range:
@@ -46,7 +47,7 @@ def xavier_initializer(uniform=True, seed=None, dtype=dtypes.float32):
   Args:
     uniform: Whether to use uniform or normal distributed random initialization.
     seed: A Python integer. Used to create random seeds. See
-      @{set_random_seed} for behavior.
+          @{tf.set_random_seed} for behavior.
     dtype: The data type. Only floating point types are supported.
 
   Returns:
@@ -96,7 +97,7 @@ def variance_scaling_initializer(factor=2.0, mode='FAN_IN', uniform=False,
     mode: String.  'FAN_IN', 'FAN_OUT', 'FAN_AVG'.
     uniform: Whether to use uniform or normal distributed random initialization.
     seed: A Python integer. Used to create random seeds. See
-      @{set_random_seed} for behavior.
+          @{tf.set_random_seed} for behavior.
     dtype: The data type. Only floating point types are supported.
 
   Returns:

@@ -46,6 +46,7 @@ See the @{$python/contrib.layers} guide.
 @@embed_sequence
 
 @@apply_regularization
+@@l1_l2_regularizer
 @@l1_regularizer
 @@l2_regularizer
 @@sum_regularizer

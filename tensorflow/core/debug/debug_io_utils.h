@@ -40,11 +40,25 @@ struct DebugWatchAndURLSpec {
   const bool gated_grpc;
 };
 
+struct DebugNodeKey {
+  DebugNodeKey(const string& device_name, const string& node_name,
+               const int32 output_slot, const string& debug_op);
+
+  static const string DeviceNameToDevicePath(const string& device_name);
+
+  const string device_name;
+  const string node_name;
+  const int32 output_slot;
+  const string debug_op;
+  const string debug_node_name;
+  const string device_path;
+};
+
 class DebugIO {
  public:
   static Status PublishDebugMetadata(
-      const int64 global_step, const int64 session_run_count,
-      const int64 executor_step_count, const std::vector<string>& input_names,
+      const int64 global_step, const int64 session_run_index,
+      const int64 executor_step_index, const std::vector<string>& input_names,
       const std::vector<string>& output_names,
       const std::vector<string>& target_nodes,
       const std::unordered_set<string>& debug_urls);
@@ -52,25 +66,21 @@ class DebugIO {
   // Publish a tensor to a debug target URL.
   //
   // Args:
-  //   tensor_name: Name of the tensor being published: node_name followed by
-  //     a colon, followed by the output slot index. E.g., "node_a:0".
-  //     N.B.: Use the original tensor name, i.e., name of the input tensor to
-  //     the debug op, even if the debug_op is not DebugIdentity.
-  //   debug_op: Name of the debug op, e.g., "DebugIdentity".
+  //   debug_node_key: A DebugNodeKey identifying the debug node.
   //   tensor: The Tensor object being published.
   //   wall_time_us: Time stamp for the Tensor. Unit: microseconds (us).
   //   debug_urls: An array of debug target URLs, e.g.,
   //     "file:///foo/tfdbg_dump", "grpc://localhost:11011"
   //   gated_grpc: Whether this call is subject to gRPC gating.
-  static Status PublishDebugTensor(const string& tensor_name,
-                                   const string& debug_op, const Tensor& tensor,
+  static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
+                                   const Tensor& tensor,
                                    const uint64 wall_time_us,
                                    const gtl::ArraySlice<string>& debug_urls,
                                    const bool gated_grpc);
 
   // Convenience overload of the method above for no gated_grpc by default.
-  static Status PublishDebugTensor(const string& tensor_name,
-                                   const string& debug_op, const Tensor& tensor,
+  static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
+                                   const Tensor& tensor,
                                    const uint64 wall_time_us,
                                    const gtl::ArraySlice<string>& debug_urls);
 
@@ -79,7 +89,7 @@ class DebugIO {
   // Args:
   //   graph: The graph to be published.
   //   debug_urls: The set of debug URLs to publish the graph to.
-  static Status PublishGraph(const Graph& graph,
+  static Status PublishGraph(const Graph& graph, const string& device_name,
                              const std::unordered_set<string>& debug_urls);
 
   // Determine whether a copy node needs to perform deep-copy of input tensor.
@@ -129,6 +139,11 @@ class DebugIO {
 
   static Status CloseDebugURL(const string& debug_url);
 
+  static const char* const kMetadataFilePrefix;
+  static const char* const kCoreMetadataTag;
+  static const char* const kDeviceTag;
+  static const char* const kGraphTag;
+
   static const char* const kFileURLScheme;
   static const char* const kGrpcURLScheme;
 };
@@ -150,16 +165,12 @@ class DebugFileIO {
   //   /tmp/tfdbg_dump/foo/bar_0_DebugIdentity_1467891234512345.
   //
   // Args:
-  //   node_name: Name of the node from which the tensor is output.
-  //   output_slot: Output slot index.
-  //   debug_op: Name of the debug op, e.g., "DebugIdentity".
-  //   tensor: The Tensor object to be dumped to file.
+  //   debug_node_key: A DebugNodeKey identifying the debug node.
   //   wall_time_us: Wall time at which the Tensor is generated during graph
   //     execution. Unit: microseconds (us).
   //   dump_root_dir: Root directory for dumping the tensor.
   //   dump_file_path: The actual dump file path (passed as reference).
-  static Status DumpTensorToDir(const string& node_name,
-                                const int32 output_slot, const string& debug_op,
+  static Status DumpTensorToDir(const DebugNodeKey& debug_node_key,
                                 const Tensor& tensor, const uint64 wall_time_us,
                                 const string& dump_root_dir,
                                 string* dump_file_path);
@@ -174,8 +185,7 @@ class DebugFileIO {
   //   debug_op: Name of the debug op, e.g., DebugIdentity.
   //   wall_time_us: Time stamp of the dumped tensor, in microseconds (us).
   static string GetDumpFilePath(const string& dump_root_dir,
-                                const string& node_name,
-                                const int32 output_slot, const string& debug_op,
+                                const DebugNodeKey& debug_node_key,
                                 const uint64 wall_time_us);
 
   static Status DumpEventProtoToFile(const Event& event_proto,
@@ -184,9 +194,10 @@ class DebugFileIO {
 
  private:
   // Encapsulate the Tensor in an Event protobuf and write it to file.
-  static Status DumpTensorToEventFile(
-      const string& node_name, const int32 output_slot, const string& debug_op,
-      const Tensor& tensor, const uint64 wall_time_us, const string& file_path);
+  static Status DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
+                                      const Tensor& tensor,
+                                      const uint64 wall_time_us,
+                                      const string& file_path);
 
   // Implemented ad hoc here for now.
   // TODO(cais): Replace with shared implementation once http://b/30497715 is
@@ -215,8 +226,16 @@ class DebugGrpcChannel {
 
   virtual ~DebugGrpcChannel() {}
 
-  // Query whether the gRPC channel is ready for use.
-  bool is_channel_ready();
+  // Attempt to establish connection with server.
+  //
+  // Args:
+  //   timeout_micros: Timeout (in microseconds) for the attempt to establish
+  //     the connection.
+  //
+  // Returns:
+  //   OK Status iff connection is successfully established before timeout,
+  //   otherwise return an error Status.
+  Status Connect(const int64 timeout_micros);
 
   // Write an Event proto to the debug gRPC stream.
   //
@@ -234,6 +253,7 @@ class DebugGrpcChannel {
   Status ReceiveServerRepliesAndClose();
 
  private:
+  string server_stream_addr_;
   string url_;
   ::grpc::ClientContext ctx_;
   std::shared_ptr<::grpc::Channel> channel_;
@@ -247,10 +267,11 @@ class DebugGrpcChannel {
 class DebugGrpcIO {
  public:
   // Send a tensor through a debug gRPC stream.
-  static Status SendTensorThroughGrpcStream(
-      const string& node_name, const int32 output_slot, const string& debug_op,
-      const Tensor& tensor, const uint64 wall_time_us,
-      const string& grpc_stream_url, const bool gated);
+  static Status SendTensorThroughGrpcStream(const DebugNodeKey& debug_node_key,
+                                            const Tensor& tensor,
+                                            const uint64 wall_time_us,
+                                            const string& grpc_stream_url,
+                                            const bool gated);
 
   // Send an Event proto through a debug gRPC stream.
   // Thread-safety: Safe with respect to other calls to the same method and
@@ -302,6 +323,7 @@ class DebugGrpcIO {
   static void CreateEmptyEnabledSet(const string& grpc_debug_url);
 
   static mutex streams_mu;
+  static int64 channel_connection_timeout_micros;
 
   friend class GrpcDebugTest;
   friend class DebugNumericSummaryOpTest;

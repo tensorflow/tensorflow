@@ -20,16 +20,12 @@ from __future__ import print_function
 import os
 import shutil
 
-from tensorflow.core.framework.summary_pb2 import HistogramProto
-from tensorflow.core.framework.summary_pb2 import Summary
-from tensorflow.core.util.event_pb2 import SessionLog
-from tensorflow.python.framework import test_util
-from tensorflow.python.platform import googletest
-from tensorflow.python.training.summary_io import SummaryWriter
+import tensorflow as tf
+
 from tensorflow.tensorboard.backend.event_processing import event_file_inspector as efi
 
 
-class EventFileInspectorTest(test_util.TensorFlowTestCase):
+class EventFileInspectorTest(tf.test.TestCase):
 
   def setUp(self):
     self.logdir = os.path.join(self.get_temp_dir(), 'tfevents')
@@ -49,15 +45,15 @@ class EventFileInspectorTest(test_util.TensorFlowTestCase):
       subdir = os.path.join(self.logdir, subdir_)
       self._MakeDirectoryIfNotExists(subdir)
 
-      sw = SummaryWriter(subdir)
+      sw = tf.summary.FileWriter(subdir)
       for datum in data:
-        summary = Summary()
+        summary = tf.Summary()
         if 'simple_value' in datum:
           summary.value.add(tag=datum['tag'],
                             simple_value=datum['simple_value'])
           sw.add_summary(summary, global_step=datum['step'])
         elif 'histo' in datum:
-          summary.value.add(tag=datum['tag'], histo=HistogramProto())
+          summary.value.add(tag=datum['tag'], histo=tf.HistogramProto())
           sw.add_summary(summary, global_step=datum['step'])
         elif 'session_log' in datum:
           sw.add_session_log(datum['session_log'], global_step=datum['step'])
@@ -126,13 +122,34 @@ class EventFileInspectorTest(test_util.TensorFlowTestCase):
 
   def testSessionLogSummaries(self):
     data = [
-        {'session_log': SessionLog(status=SessionLog.START), 'step': 0},
-        {'session_log': SessionLog(status=SessionLog.CHECKPOINT), 'step': 1},
-        {'session_log': SessionLog(status=SessionLog.CHECKPOINT), 'step': 2},
-        {'session_log': SessionLog(status=SessionLog.CHECKPOINT), 'step': 3},
-        {'session_log': SessionLog(status=SessionLog.STOP), 'step': 4},
-        {'session_log': SessionLog(status=SessionLog.START), 'step': 5},
-        {'session_log': SessionLog(status=SessionLog.STOP), 'step': 6},
+        {
+            'session_log': tf.SessionLog(status=tf.SessionLog.START),
+            'step': 0
+        },
+        {
+            'session_log': tf.SessionLog(status=tf.SessionLog.CHECKPOINT),
+            'step': 1
+        },
+        {
+            'session_log': tf.SessionLog(status=tf.SessionLog.CHECKPOINT),
+            'step': 2
+        },
+        {
+            'session_log': tf.SessionLog(status=tf.SessionLog.CHECKPOINT),
+            'step': 3
+        },
+        {
+            'session_log': tf.SessionLog(status=tf.SessionLog.STOP),
+            'step': 4
+        },
+        {
+            'session_log': tf.SessionLog(status=tf.SessionLog.START),
+            'step': 5
+        },
+        {
+            'session_log': tf.SessionLog(status=tf.SessionLog.STOP),
+            'step': 6
+        },
     ]
 
     self._WriteScalarSummaries(data)
@@ -169,4 +186,4 @@ class EventFileInspectorTest(test_util.TensorFlowTestCase):
                                                        (15, 3)])
 
 if __name__ == '__main__':
-  googletest.main()
+  tf.test.main()

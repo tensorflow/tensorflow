@@ -65,10 +65,6 @@ import org.tensorflow.demo.R;
  * Artistic Style" (https://arxiv.org/abs/1610.07629)
  */
 public class StylizeActivity extends CameraActivity implements OnImageAvailableListener {
-  static {
-    System.loadLibrary("tensorflow_demo");
-  }
-
   private static final Logger LOGGER = new Logger();
 
   private static final String MODEL_FILE = "file:///android_asset/stylize_quantized.pb";
@@ -509,17 +505,17 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
       final int yRowStride = planes[0].getRowStride();
       final int uvRowStride = planes[1].getRowStride();
       final int uvPixelStride = planes[1].getPixelStride();
+
       ImageUtils.convertYUV420ToARGB8888(
           yuvBytes[0],
           yuvBytes[1],
           yuvBytes[2],
-          rgbBytes,
           previewWidth,
           previewHeight,
           yRowStride,
           uvRowStride,
           uvPixelStride,
-          false);
+          rgbBytes);
 
       image.close();
     } catch (final Exception e) {

@@ -55,7 +55,7 @@ work, but there may be bugs or performance issues.
 The first step in using TensorBoard is acquiring data from your TensorFlow run.
 For this, you need [summary ops](https://www.tensorflow.org/api_docs/python/tf/summary).
 Summary ops are ops, like
-[`tf.matmul`](https://www.tensorflow.org/versions/r1.1/api_docs/python/tf/matmul)
+[`tf.matmul`](https://www.tensorflow.org/versions/r1.2/api_docs/python/tf/matmul)
 or
 [`tf.nn.relu`](https://www.tensorflow.org/versions/master/api_docs/python/tf/nn/relu),
 which means they take in tensors, produce tensors, and are evaluated from within
@@ -303,19 +303,14 @@ events. This behavior may be disabled with the flag
 
 ### How can I export data from TensorBoard?
 
-If you'd like to export data to visualize elsewhere (e.g. iPython Notebook),
-that's possible too. You can directly depend on the underlying classes that
-TensorBoard uses for loading data: `python/summary/event_accumulator.py` (for
-loading data from a single run) or `python/summary/event_multiplexer.py` (for
-loading data from multiple runs, and keeping it organized). These classes load
-groups of event files, discard data that was "orphaned" by TensorFlow crashes,
-and organize the data by tag.
+The Scalar Dashboard supports exporting data; you can click the "enable
+download links" option in the left-hand bar. Then, each plot will provide
+download links for the data it contains.
 
-As another option, there is a script
-(`tensorboard/scripts/serialize_tensorboard.py`) which will load a logdir just
-like TensorBoard does, but write all of the data out to disk as json instead of
-starting a server. This script is setup to make "fake TensorBoard backends" for
-testing, so it is a bit rough around the edges.
+If you need access to the full dataset, you can read the event files that
+TensorBoard consumes by using the [`summary_iterator`](https://github.com/tensorflow/tensorflow/blob/e7f333b5f8b3c53b21d149d8d14c0cebbde431aa/tensorflow/python/summary/summary_iterator.py#L313)
+method.
+
 
 ### Can I overlap multiple plots?
 
@@ -335,7 +330,9 @@ TensorBoard uses [reservoir
 sampling](https://en.wikipedia.org/wiki/Reservoir_sampling) to downsample your
 data so that it can be loaded into RAM. You can modify the number of elements it
 will keep per tag in
-[tensorboard/backend/server.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/backend/server.py).
+[tensorboard/backend/application.py](https://www.github.com/tensorflow/tensorflow/blob/r1.1/tensorflow/tensorboard/backend/application.py).
+See this [StackOverflow question](http://stackoverflow.com/questions/43702546/tensorboard-doesnt-show-all-data-points/)
+for some more information.
 
 ### I get a network security popup every time I run TensorBoard on a mac!
 

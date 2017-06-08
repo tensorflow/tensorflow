@@ -164,7 +164,7 @@ class HParams(object):
   import argparse
   parser = argparse.ArgumentParser(description='Train my model.')
   parser.add_argument('--hparams', type=str,
-                      help='Comma seperated list of "name=value" pairs.')
+                      help='Comma separated list of "name=value" pairs.')
   args = parser.parse_args()
   ...
   def my_program():
@@ -422,7 +422,7 @@ class HParams(object):
     elif issubclass(param_type, float):
       typename = 'float'
     else:
-      raise ValueError('Unsupported paramter type: %s' % str(param_type))
+      raise ValueError('Unsupported parameter type: %s' % str(param_type))
 
     suffix = 'list' if is_list else 'value'
     return '_'.join([typename, suffix])

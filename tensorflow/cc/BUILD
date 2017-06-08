@@ -57,7 +57,6 @@ cc_library(
     deps = [
         ":cc_ops",
         ":client_session",
-        ":grad_op_registry",
         ":gradients",
         ":ops",
         ":scope",
@@ -91,6 +90,7 @@ cc_library(
     deps = [
         ":array_grad",
         ":math_grad",
+        ":nn_grad",
     ],
 )
 
@@ -389,6 +389,16 @@ tf_gen_op_wrappers_cc(
 )
 
 tf_gen_op_wrappers_cc(
+    name = "functional_ops",
+    include_internal_ops = 1,
+    op_lib_names = [
+        "functional_ops",
+    ],
+    pkg = "//tensorflow/core",
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_gen_op_wrappers_cc(
     name = "resource_variable_ops",
     include_internal_ops = 1,
     op_lib_names = [
@@ -501,7 +511,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core/kernels:ops_util",
     ],
 )

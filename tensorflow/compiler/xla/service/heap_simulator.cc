@@ -53,12 +53,41 @@ std::vector<const LogicalBuffer*> UniqueOperandSourceBuffers(
 
 /*static*/
 StatusOr<HeapSimulator::Result> HeapSimulator::Run(
-    std::unique_ptr<HeapAlgorithm> algorithm,
-    const std::vector<const HloInstruction*>& instruction_sequence,
-    const HloComputation& computation,
+    std::unique_ptr<HeapAlgorithm> algorithm, const HloModule& module,
+    const SequentialHloOrdering::HloModuleSequence& module_sequence,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_fn,
     const FlatSet<const LogicalBuffer*>* buffers_to_assign) {
+  HeapSimulator heap(std::move(algorithm), size_fn, buffers_to_assign,
+                     &module_sequence);
+  const HloComputation* entry_computation = module.entry_computation();
+  const std::vector<const HloInstruction*>& instruction_sequence =
+      FindOrDie(module_sequence, entry_computation);
+  TF_RETURN_IF_ERROR(heap.RunComputation(
+      *entry_computation, instruction_sequence, points_to_analysis));
+  return heap.Finish();
+}
+
+/*static*/
+StatusOr<HeapSimulator::Result> HeapSimulator::Run(
+    std::unique_ptr<HeapAlgorithm> algorithm, const HloComputation& computation,
+    const std::vector<const HloInstruction*>& instruction_sequence,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_fn,
+    const FlatSet<const LogicalBuffer*>* buffers_to_assign) {
+  HeapSimulator heap(std::move(algorithm), size_fn, buffers_to_assign,
+                     /*module_sequence=*/nullptr);
+  TF_RETURN_IF_ERROR(heap.RunComputation(computation, instruction_sequence,
+                                         points_to_analysis));
+  return heap.Finish();
+}
+
+// Runs a heap simulation for the given 'computation', assuming the given
+// 'instruction_sequence'.
+Status HeapSimulator::RunComputation(
+    const HloComputation& computation,
+    const std::vector<const HloInstruction*>& instruction_sequence,
+    const TuplePointsToAnalysis& points_to_analysis) {
   // The goal here is to minimize memory usage, assuming the given sequential
   // ordering of instructions.  The strategy is to walk through the instruction
   // sequence, calling Alloc and Free on the underlying heap algorithm.  The
@@ -67,7 +96,6 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
   // 'live_buffers' tracks the liveness of each buffer that we assign, by
   // associating it with a set of HloInstructions that need to be visited.  When
   // the set becomes empty, the buffer is no longer used, and can be freed.
-  HeapSimulator heap(std::move(algorithm), size_fn, buffers_to_assign);
   FlatMap<const LogicalBuffer*, FlatSet<const HloInstruction*>> live_buffers;
 
   const HloInstruction* root = computation.root_instruction();
@@ -90,7 +118,7 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
     // lifetime of buffers that aren't already connected by a data dependency.
     std::vector<const LogicalBuffer*> dead_buffers_to_free;
     for (const LogicalBuffer* buffer : buffers_defined_by_instruction) {
-      if (heap.IgnoreBuffer(buffer)) {
+      if (IgnoreBuffer(buffer)) {
         continue;
       }
       for (const BufferAlias& alias :
@@ -127,7 +155,7 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
     std::vector<const LogicalBuffer*> operand_buffers_to_free;
     for (const LogicalBuffer* operand_buffer :
          UniqueOperandSourceBuffers(instruction, points_to_analysis)) {
-      if (heap.IgnoreBuffer(operand_buffer)) {
+      if (IgnoreBuffer(operand_buffer)) {
         continue;
       }
       live_buffers[operand_buffer].erase(instruction);
@@ -142,10 +170,10 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
     // happen before dead or operand buffers are freed; the instruction reads
     // the operand buffers to produce its output.
     //
-    // INVARIANT: Either heap.Alloc or heap.ShareBuffer will be called for each
-    // buffer that we should assign.
+    // INVARIANT: Either Alloc or ShareBuffer will be called for each buffer
+    // that we should assign.
     for (const LogicalBuffer* buffer : buffers_defined_by_instruction) {
-      if (heap.IgnoreBuffer(buffer)) {
+      if (IgnoreBuffer(buffer)) {
         continue;
       }
 
@@ -156,27 +184,53 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
       bool shared = false;
       for (const LogicalBuffer* operand_buffer : operand_buffers_to_free) {
         if (buffer->instruction()->IsUserOf(operand_buffer->instruction()) &&
+            buffer->instruction()->opcode() != HloOpcode::kCopy &&
             CanShareOperandBufferWithUser(
                 operand_buffer->instruction(), operand_buffer->index(),
                 buffer->instruction(), buffer->index(), points_to_analysis)) {
-          heap.ShareBuffer(buffer, operand_buffer);
+          ShareBuffer(buffer, operand_buffer, instruction);
           shared = true;
           break;
         }
       }
 
       if (!shared) {
-        heap.Alloc(buffer);
+        Alloc(buffer, instruction);
       }
+    }
+
+    // If the whole module is sequential, we can save memory by running the
+    // heap-simulation for sub-computations inline. E.g. the buffers for the
+    // condition and body of a kWhile instruction are only live for the duration
+    // of the instruction itself.
+    //
+    // The order that the sub-computations are simulated does not affect
+    // correctness; since the whole module is sequential, we know that the
+    // sub-computations will never be run concurrently.
+    if (module_sequence_ != nullptr) {
+      if (instruction->opcode() == HloOpcode::kCall ||
+          instruction->opcode() == HloOpcode::kWhile) {
+        for (const HloComputation* called_computation :
+             instruction->called_computations()) {
+          const std::vector<const HloInstruction*>& called_sequence =
+              FindOrDie(*module_sequence_, called_computation);
+          TF_RETURN_IF_ERROR(RunComputation(
+              *called_computation, called_sequence, points_to_analysis));
+        }
+      }
+
+      // Other sub-computations (e.g. Map, Reduce, ...) are skipped; they are
+      // assigned "thread-local" allocations, meaning their buffers are not
+      // allocated up-front at the beginning of the computation.
     }
 
     // Free buffers that are no longer live.  This is the earliest point that we
     // can de-allocate; right after the last use of the buffer.
     for (const LogicalBuffer* buffer : dead_buffers_to_free) {
-      heap.Free(buffer);
+      Free(buffer, instruction);
     }
     for (const LogicalBuffer* buffer : operand_buffers_to_free) {
-      heap.Free(buffer);
+      Free(buffer, instruction);
     }
   }
 
@@ -187,20 +241,24 @@ StatusOr<HeapSimulator::Result> HeapSimulator::Run(
     const FlatSet<const HloInstruction*>& pending = buffer_pending.second;
     CHECK_EQ(pending.size(), 1) << *buffer;
     CHECK(*pending.begin() == nullptr) << *buffer;
-    heap.Free(buffer);
+    Free(buffer, root);
   }
 
-  return heap.Finish();
+  return Status::OK();
 }
 
 HeapSimulator::HeapSimulator(
     std::unique_ptr<HeapAlgorithm> algorithm,
     const LogicalBuffer::SizeFunction& size_fn,
-    const FlatSet<const LogicalBuffer*>* buffers_to_assign)
+    const FlatSet<const LogicalBuffer*>* buffers_to_assign,
+    const SequentialHloOrdering::HloModuleSequence* module_sequence)
     : no_fragmentation_stats_(MakeUnique<NoFragmentationStatsHeap>()),
       algorithm_(std::move(algorithm)),
       size_fn_(size_fn),
-      buffers_to_assign_(buffers_to_assign) {}
+      buffers_to_assign_(buffers_to_assign),
+      module_sequence_(module_sequence) {
+  debug_trace_.set_whole_module_simulation(module_sequence_ != nullptr);
+}
 
 HeapSimulator::~HeapSimulator() {}
 
@@ -215,7 +273,8 @@ bool HeapSimulator::IgnoreBuffer(const LogicalBuffer* buffer) const {
 }
 
 // Alloc always calls the underlying heap algorithm.
-void HeapSimulator::Alloc(const LogicalBuffer* buffer) {
+void HeapSimulator::Alloc(const LogicalBuffer* buffer,
+                          const HloInstruction* instruction) {
   CHECK(allocated_buffers_.count(buffer) == 0)
       << "Alloc called on allocated buffer: " << *buffer;
   CHECK(freed_buffers_.count(buffer) == 0)
@@ -225,13 +284,17 @@ void HeapSimulator::Alloc(const LogicalBuffer* buffer) {
   const int64 size = size_fn_(*buffer);
   algorithm_->Alloc(buffer, size);
   no_fragmentation_stats_->Alloc(buffer, size);
+
+  FillDebugTrace(HeapSimulatorTrace::Event::ALLOC, buffer, instruction,
+                 nullptr);
 }
 
 // Free calls the underlying algorithm for non-shared buffers, and for shared
 // buffers whose group liveness has expired.  Shared group liveness is tracked
 // by maintaining a refcount; the Free call on the last buffer in the group
 // causes Free to be called on the underlying algorithm.
-void HeapSimulator::Free(const LogicalBuffer* buffer) {
+void HeapSimulator::Free(const LogicalBuffer* buffer,
+                         const HloInstruction* instruction) {
   auto shared_it = shared_buffers_.find(buffer);
   if (shared_it != shared_buffers_.end()) {
     std::shared_ptr<SharedGroup> group = shared_it->second;
@@ -253,6 +316,8 @@ void HeapSimulator::Free(const LogicalBuffer* buffer) {
   const int64 size = size_fn_(*buffer);
   algorithm_->Free(buffer, size);
   no_fragmentation_stats_->Free(buffer, size);
+
+  FillDebugTrace(HeapSimulatorTrace::Event::FREE, buffer, instruction, nullptr);
 }
 
 // ShareBuffer associates buffers with their SharedGroup in shared_buffers_.
@@ -260,7 +325,8 @@ void HeapSimulator::Free(const LogicalBuffer* buffer) {
 // Alloc.  The 'shared' buffer must be a previously allocated or shared buffer.
 // Both 'buffer' and 'shared' will be associated with the same SharedGroup.
 void HeapSimulator::ShareBuffer(const LogicalBuffer* buffer,
-                                const LogicalBuffer* shared) {
+                                const LogicalBuffer* shared,
+                                const HloInstruction* instruction) {
   CHECK_LE(size_fn_(*buffer), size_fn_(*shared))
       << "ShareBuffer oversized buffer" << *buffer << " shared: " << *shared;
   CHECK(allocated_buffers_.count(buffer) == 0)
@@ -270,11 +336,13 @@ void HeapSimulator::ShareBuffer(const LogicalBuffer* buffer,
   CHECK(freed_buffers_.count(shared) == 0)
       << "ShareBuffer called on freed shared buffer: " << *shared;
 
+  const LogicalBuffer* canonical = nullptr;
   auto shared_it = shared_buffers_.find(shared);
   if (shared_it != shared_buffers_.end()) {
     // The 'shared' buffer already has a group; it might be the canonical, but
     // also might not be.  Just add 'buffer' to the existing group.
     std::shared_ptr<SharedGroup> group = shared_it->second;
+    canonical = group->canonical;
     ++group->refcount;
     shared_buffers_.emplace(buffer, group);
   } else {
@@ -283,11 +351,15 @@ void HeapSimulator::ShareBuffer(const LogicalBuffer* buffer,
     CHECK(allocated_buffers_.count(shared) > 0)
         << "ShareBuffer called on non-allocated shared buffer: " << *shared;
     auto group = std::make_shared<SharedGroup>();
-    group->canonical = shared;
+    canonical = shared;
+    group->canonical = canonical;
     group->refcount = 2;
     shared_buffers_.emplace(buffer, group);
     shared_buffers_.emplace(shared, group);
   }
+
+  FillDebugTrace(HeapSimulatorTrace::Event::SHARE_WITH, buffer, instruction,
+                 canonical);
 }
 
 HeapSimulator::Result HeapSimulator::Finish() {
@@ -309,13 +381,38 @@ HeapSimulator::Result HeapSimulator::Finish() {
         result.chunk_map.emplace(buffer, chunk);
       }
     }
+    // If we were told to assign specific buffers, make sure we've assigned
+    // exactly that many buffers.
+    if (buffers_to_assign_ != nullptr) {
+      CHECK_EQ(buffers_to_assign_->size(), result.chunk_map.size());
+    }
   }
 
   // Fragmentation is the difference between the actual and ideal sizes.
   const Result no_frag_result = no_fragmentation_stats_->Finish();
   result.fragmentation_size = result.heap_size - no_frag_result.heap_size;
 
+  // Copy the debug trace we collected to the final result.
+  result.debug_trace.Swap(&debug_trace_);
+
   return result;
+}
+
+void HeapSimulator::FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
+                                   const LogicalBuffer* buffer,
+                                   const HloInstruction* instruction,
+                                   const LogicalBuffer* share_with_canonical) {
+  HeapSimulatorTrace::Event* event = debug_trace_.add_events();
+  event->set_kind(kind);
+  event->set_buffer_id(buffer->id());
+  event->set_computation_name(instruction->parent()->name());
+  event->set_instruction_name(instruction->name());
+  if (kind == HeapSimulatorTrace::Event::SHARE_WITH) {
+    CHECK(share_with_canonical != nullptr);
+    event->set_share_with_canonical_id(share_with_canonical->id());
+  } else {
+    CHECK(share_with_canonical == nullptr);
+  }
 }
 
 void NoFragmentationStatsHeap::Alloc(const LogicalBuffer* buffer, int64 size) {

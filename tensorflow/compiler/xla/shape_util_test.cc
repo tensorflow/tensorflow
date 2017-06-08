@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace {
@@ -321,6 +322,30 @@ TEST(ShapeUtilTest, GetSubshape) {
                        ShapeUtil::GetSubshape(nested_tuple_shape, {2, 0})));
 }
 
+TEST(ShapeUtilTest, IsLeafIndex) {
+  // Test array shape.
+  Shape array_shape = ShapeUtil::MakeShape(F32, {42, 42, 123});
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(array_shape, {}));
+
+  // Test tuple shape.
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({array_shape, array_shape});
+  EXPECT_FALSE(ShapeUtil::IsLeafIndex(tuple_shape, {}));
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(tuple_shape, {0}));
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(tuple_shape, {1}));
+
+  // Test nested tuple shape.
+  Shape nested_tuple_shape = ShapeUtil::MakeTupleShape(
+      {array_shape, ShapeUtil::MakeTupleShape({array_shape, array_shape}),
+       ShapeUtil::MakeTupleShape(
+           {ShapeUtil::MakeTupleShape({array_shape, array_shape}),
+            array_shape})});
+  EXPECT_FALSE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {}));
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {0}));
+  EXPECT_FALSE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {1}));
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {1, 0}));
+  EXPECT_TRUE(ShapeUtil::IsLeafIndex(nested_tuple_shape, {1, 1}));
+}
+
 TEST(ShapeUtilTest, HumanString) {
   Shape opaque = ShapeUtil::MakeOpaqueShape();
   Shape scalar = ShapeUtil::MakeShape(F32, {});
@@ -379,13 +404,12 @@ TEST(ShapeUtilTest, HumanString) {
 TEST(ShapeUtilTest, ForEachSubshapeArray) {
   const Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   int calls = 0;
-  EXPECT_IS_OK(ShapeUtil::ForEachSubshape(
+  ShapeUtil::ForEachSubshape(
       shape, [&calls, &shape](const Shape& subshape, const ShapeIndex& index) {
         EXPECT_EQ(&shape, &subshape);
         EXPECT_TRUE(index.empty());
         ++calls;
-        return tensorflow::Status::OK();
-      }));
+      });
   EXPECT_EQ(1, calls);
 }
 
@@ -395,7 +419,7 @@ TEST(ShapeUtilTest, ForEachSubshapeNestedTuple) {
        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {101}),
                                   ShapeUtil::MakeShape(PRED, {33})})});
   int calls = 0;
-  EXPECT_IS_OK(ShapeUtil::ForEachSubshape(
+  ShapeUtil::ForEachSubshape(
       shape, [&calls, &shape](const Shape& subshape, const ShapeIndex& index) {
         EXPECT_TRUE(
             ShapeUtil::Equal(subshape, ShapeUtil::GetSubshape(shape, index)));
@@ -407,8 +431,7 @@ TEST(ShapeUtilTest, ForEachSubshapeNestedTuple) {
           EXPECT_EQ(33, ShapeUtil::ElementsIn(subshape));
         }
         ++calls;
-        return tensorflow::Status::OK();
-      }));
+      });
   EXPECT_EQ(5, calls);
 }
 
@@ -418,7 +441,7 @@ TEST(ShapeUtilTest, ForEachMutableSubshapeNestedTuple) {
        ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(F32, {101}),
                                   ShapeUtil::MakeShape(PRED, {33})})});
   int calls = 0;
-  EXPECT_IS_OK(ShapeUtil::ForEachMutableSubshape(
+  ShapeUtil::ForEachMutableSubshape(
       &shape, [&calls, &shape](const Shape* subshape, const ShapeIndex& index) {
         // Pointer values should be equal
         EXPECT_EQ(subshape, ShapeUtil::GetMutableSubshape(&shape, index));
@@ -430,8 +453,7 @@ TEST(ShapeUtilTest, ForEachMutableSubshapeNestedTuple) {
           EXPECT_EQ(33, ShapeUtil::ElementsIn(*subshape));
         }
         ++calls;
-        return tensorflow::Status::OK();
-      }));
+      });
   EXPECT_EQ(5, calls);
 }
 
@@ -520,6 +542,59 @@ TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {
   EXPECT_FALSE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithLayout(F32, {3, 2, 2}, {0, 1, 2}),
       ShapeUtil::MakeShapeWithLayout(F32, {6, 2}, {0, 1})));
+}
+
+TEST(AlignmentTest, AlignLayoutsWithoutTrivialDimensions) {
+  Shape input = ShapeUtil::MakeShapeWithLayout(xla::F32, {3, 8, 5, 7, 11},
+                                               {3, 2, 1, 0, 4});
+  auto aligned_shape = ShapeUtil::AlignLayouts(
+      input, ShapeUtil::MakeShape(xla::F32, {4, 3, 2, 7, 5, 11}));
+  EXPECT_TRUE(aligned_shape);
+  EXPECT_THAT(aligned_shape.value().layout().minor_to_major(),
+              ElementsAre(4, 3, 2, 1, 0, 5));
+  EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(input, aligned_shape.value()));
+
+  aligned_shape = ShapeUtil::AlignLayouts(
+      input, ShapeUtil::MakeShape(xla::F32, {3, 2, 4, 35, 11}));
+  EXPECT_TRUE(aligned_shape);
+  EXPECT_THAT(aligned_shape.value().layout().minor_to_major(),
+              ElementsAre(3, 2, 1, 0, 4));
+  EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(input, aligned_shape.value()));
+}
+
+TEST(AlignmentTest, AlignLayoutsWithTrivialDimensions) {
+  Shape input =
+      ShapeUtil::MakeShapeWithLayout(xla::F32, {1, 3, 8, 1, 5, 7, 1, 11, 1, 1},
+                                     {5, 0, 4, 2, 1, 3, 6, 7, 9, 8});
+  auto aligned_shape = ShapeUtil::AlignLayouts(
+      input, ShapeUtil::MakeShape(xla::F32, {1, 4, 1, 3, 2, 7, 5, 11, 1}));
+  EXPECT_TRUE(aligned_shape);
+  EXPECT_THAT(aligned_shape.value().layout().minor_to_major(),
+              ElementsAre(6, 5, 4, 3, 1, 7, 0, 2, 8));
+  EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(input, aligned_shape.value()));
+}
+
+// A test case where the consecutive elements of the input shape belonging to
+// the same layout part are not in descending order.
+TEST(AlignmentTest, AlignLayoutsWithoutTrivialDimensionsWrongInputLayout) {
+  // Same physical layout as in AlignLayoutsWithoutTrivialDimensions, except
+  // that the first two dimension numbers are exchanged.
+  Shape input = ShapeUtil::MakeShapeWithLayout(xla::F32, {3, 8, 5, 7, 11},
+                                               {2, 3, 1, 0, 4});
+  auto aligned_shape = ShapeUtil::AlignLayouts(
+      input, ShapeUtil::MakeShape(xla::F32, {4, 3, 2, 7, 5, 11}));
+  EXPECT_FALSE(aligned_shape);
+}
+
+// A test case where the physical layout of the input shape does not place all
+// dimensions that belong to the same alignment part consecutively.
+TEST(AlignmentTest,
+     AlignLayoutsWithoutTrivialDimensionsNonConsecutiveAlignmentPart) {
+  Shape input = ShapeUtil::MakeShapeWithLayout(xla::F32, {3, 8, 5, 7, 11},
+                                               {3, 2, 1, 0, 4});
+  auto aligned_shape = ShapeUtil::AlignLayouts(
+      input, ShapeUtil::MakeShape(xla::F32, {4, 3, 2, 5, 77}));
+  EXPECT_FALSE(aligned_shape);
 }
 
 }  // namespace

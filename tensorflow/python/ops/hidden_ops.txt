@@ -191,6 +191,7 @@ WholeFileReader
 TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
+LMDBReader
 
 # linalg_ops
 BatchCholesky
@@ -330,6 +331,9 @@ SerializeSparse
 SparseAdd
 SparseAddGrad
 SparseConcat
+SparseCross
+SparseFillEmptyRows
+SparseFillEmptyRowsGrad
 SparseSplit
 SparseSelectLastK
 SparseReorder

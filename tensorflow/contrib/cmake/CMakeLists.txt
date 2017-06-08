@@ -74,15 +74,23 @@ add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC)
   add_definitions(-DWIN32 -DOS_WIN -D_MBCS -DWIN64 -DWIN32_LEAN_AND_MEAN -DNOGDI -DPLATFORM_WINDOWS)
-  add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH -D_ITERATOR_DEBUG_LEVEL=0)
+  add_definitions(-DTENSORFLOW_USE_EIGEN_THREADPOOL -DEIGEN_HAS_C99_MATH)
   add_definitions(-DTF_COMPILE_LIBRARY)
-  add_definitions(-DNDEBUG /O2)  # Equivalent of -c opt in Bazel.
-  add_definitions(/bigobj /nologo /EHsc /GF /FC /MP /Gm-)
+  add_definitions(/bigobj /nologo /EHsc /GF /MP /Gm-)
   # Suppress warnings to reduce build log size.
   add_definitions(/wd4267 /wd4244 /wd4800 /wd4503 /wd4554 /wd4996 /wd4348 /wd4018)
   add_definitions(/wd4099 /wd4146 /wd4267 /wd4305 /wd4307)
   add_definitions(/wd4715 /wd4722 /wd4723 /wd4838 /wd4309 /wd4334)
+  add_definitions(/wd4003 /wd4244 /wd4267 /wd4503 /wd4506 /wd4800 /wd4996)
+  # Suppress linker warnings.
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
+  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /ignore:4049 /ignore:4197 /ignore:4217 /ignore:4221")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
+  set(CMAKE_CXX_FLAGS_DEBUG "/D_DEBUG /MDd /Ob0")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /D_ITERATOR_DEBUG_LEVEL=0")
+  set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /D_ITERATOR_DEBUG_LEVEL=0")
+  set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /D_ITERATOR_DEBUG_LEVEL=0")
 endif()
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -112,7 +120,6 @@ endif()
 if (tensorflow_ENABLE_JEMALLOC_SUPPORT)
   add_definitions(-DTENSORFLOW_USE_JEMALLOC -DJEMALLOC_EXPORT=)
 endif()
-
 
 if(tensorflow_USE_SYSTEM_ZLIB)
 
@@ -330,9 +337,6 @@ else(tensorflow_USE_SYSTEM_PROTOBUF)
 
 endif(tensorflow_USE_SYSTEM_PROTOBUF)
 
-
-
-# this stuff will be needed no matter what
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
@@ -342,9 +346,6 @@ include_directories(
   ${tensorflow_source_dir}
   ${CMAKE_CURRENT_BINARY_DIR}
   )
-
-
-
 
 if(tensorflow_ENABLE_SSL_SUPPORT)
   include(boringssl)
@@ -385,6 +386,9 @@ if (tensorflow_ENABLE_GPU)
     add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.0,3.5,5.2)
 
     # add cudnn
+    if(NOT CUDNN_HOME)
+      set(CUDNN_HOME ${CUDA_TOOLKIT_TARGET_DIR})
+    endif(NOT CUDNN_HOME)
     include_directories(${CUDNN_HOME})
     set(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_CUFFT_LIBRARIES}
       ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDA_cusolver_LIBRARY} ${CUDNN_HOME}/lib/x64/cudnn.lib)
@@ -417,6 +421,12 @@ if (tensorflow_ENABLE_GPU)
   endif()
 endif()
 
+# Find python executable
+include(FindPythonInterp)
+if(NOT ${PYTHONINTERP_FOUND})
+    message(FATAL_ERROR "CMake was unable to find a python interpreter.")
+endif()
+
 # Let's get to work!
 include(tf_core_framework.cmake)
 # NOTE: Disabled until issue #3996 is fixed.
@@ -437,13 +447,13 @@ endif()
 # We include tf_cc_ops first, because tf_c depends on tf_cc.
 include(tf_cc_ops.cmake)
 include(tf_c.cmake)
+include(tf_grappler.cmake)
 if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)
 endif()
 include(tf_tools.cmake)
 if(tensorflow_BUILD_PYTHON_BINDINGS)
-  include(tensorboard)
   include(tf_python.cmake)
 endif()
 if(tensorflow_BUILD_SHARED_LIB)

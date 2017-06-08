@@ -366,6 +366,7 @@ llvm_target_list = [
             ("-gen-asm-matcher", "lib/Target/ARM/ARMGenAsmMatcher.inc"),
             ("-gen-dag-isel", "lib/Target/ARM/ARMGenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/ARM/ARMGenFastISel.inc"),
+            ("-gen-global-isel", "lib/Target/ARM/ARMGenGlobalISel.inc"),
             ("-gen-callingconv", "lib/Target/ARM/ARMGenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/ARM/ARMGenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/ARM/ARMGenDisassemblerTables.inc"),
@@ -435,10 +436,21 @@ llvm_target_list = [
             "include/llvm/IR/Intrinsics*.td",
             "include/llvm/TableGen/*.td",
             "include/llvm/Target/*.td",
+            "include/llvm/Target/GlobalISel/*.td",
         ]),
     )
     for target in llvm_target_list
 ]
+
+# This target is used to provide *.def files to x86_code_gen.
+# Files with '.def' extension are not allowed in 'srcs' of 'cc_library' rule.
+cc_library(
+    name = "x86_defs",
+    hdrs = glob([
+        "lib/Target/X86/*.def",
+    ]),
+    visibility = ["//visibility:private"],
+)
 
 cc_library(
     name = "aarch64_asm_parser",
@@ -627,6 +639,7 @@ cc_library(
         "lib/Analysis/*.cpp",
         "lib/Analysis/*.inc",
         "include/llvm/Transforms/Utils/Local.h",
+        "include/llvm/Transforms/Scalar.h",
         "lib/Analysis/*.h",
     ]),
     hdrs = glob([
@@ -729,6 +742,7 @@ cc_library(
         "lib/Target/ARM/MCTargetDesc/*.cpp",
         "lib/Target/ARM/MCTargetDesc/*.inc",
         "lib/Target/ARM/*.h",
+        "include/llvm/CodeGen/GlobalISel/GISelAccessor.h",
     ]),
     hdrs = glob([
         "include/llvm/Target/ARM/MCTargetDesc/*.h",
@@ -909,6 +923,7 @@ cc_library(
         ":bit_writer",
         ":config",
         ":core",
+        ":instrumentation",
         ":mc",
         ":profile_data",
         ":scalar",
@@ -1107,6 +1122,9 @@ cc_library(
         "lib/Transforms/IPO/*.c",
         "lib/Transforms/IPO/*.cpp",
         "lib/Transforms/IPO/*.inc",
+        "include/llvm/Transforms/SampleProfile.h",
+        "include/llvm-c/Transforms/IPO.h",
+        "include/llvm-c/Transforms/PassManagerBuilder.h",
         "lib/Transforms/IPO/*.h",
     ]),
     hdrs = glob([
@@ -1116,6 +1134,7 @@ cc_library(
     ]),
     deps = [
         ":analysis",
+        ":bit_reader",
         ":bit_writer",
         ":config",
         ":core",
@@ -1372,6 +1391,7 @@ cc_library(
         "lib/Transforms/ObjCARC/*.c",
         "lib/Transforms/ObjCARC/*.cpp",
         "lib/Transforms/ObjCARC/*.inc",
+        "include/llvm/Transforms/ObjCARC.h",
         "lib/Transforms/ObjCARC/*.h",
     ]),
     hdrs = glob([
@@ -1681,6 +1701,7 @@ cc_library(
         "lib/Support/Unix/*.inc",
         "lib/Support/Unix/*.h",
         "include/llvm-c/*.h",
+        "include/llvm/CodeGen/MachineValueType.h",
         "lib/Support/*.h",
     ]),
     hdrs = glob([
@@ -1689,7 +1710,11 @@ cc_library(
         "include/llvm/Support/*.inc",
         "include/llvm/ADT/*.h",
         "include/llvm/Support/ELFRelocs/*.def",
-    ]) + ["include/llvm/Support/DataTypes.h"],
+        "include/llvm/Support/WasmRelocs/*.def",
+    ]) + [
+        "include/llvm/Support/DataTypes.h",
+        "include/llvm/ExecutionEngine/ObjectMemoryBuffer.h",
+    ],
     deps = [
         ":config",
         ":demangle",
@@ -1786,6 +1811,7 @@ cc_library(
         ":analysis",
         ":config",
         ":core",
+        ":scalar",
         ":support",
         ":transform_utils",
     ],
@@ -1865,6 +1891,7 @@ cc_library(
         ":support",
         ":target",
         ":x86_asm_printer",
+        ":x86_defs",
         ":x86_desc",
         ":x86_info",
         ":x86_utils",

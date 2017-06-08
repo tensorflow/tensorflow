@@ -34,13 +34,21 @@ NodeMap::NodeMap(GraphDef* graph) : graph_(graph) {
   }
 }
 
-NodeDef* NodeMap::GetNode(const string& name) {
+NodeDef* NodeMap::GetNode(const string& name) const {
   string node_name = NodeName(name);
-  return nodes_[node_name];
+  auto it = nodes_.find(node_name);
+  if (it == nodes_.end()) {
+    return nullptr;
+  }
+  return it->second;
 }
 
-std::set<NodeDef*> NodeMap::GetOutputs(const string& node_name) {
-  return outputs_[node_name];
+const std::set<NodeDef*>& NodeMap::GetOutputs(const string& node_name) const {
+  auto it = outputs_.find(node_name);
+  if (it == outputs_.end()) {
+    return empty_set_;
+  }
+  return it->second;
 }
 
 void NodeMap::AddNode(const string& name, NodeDef* node) {
@@ -55,6 +63,17 @@ void NodeMap::UpdateOutput(const string& node, const string& old_output,
                            const string& new_output) {
   outputs_[node].erase(nodes_[old_output]);
   outputs_[node].insert(nodes_[new_output]);
+}
+
+bool IsSameInput(const string& name1, const string& name2) {
+  if (name1 == name2) {
+    return true;
+  }
+  int position1;
+  string node1 = ParseNodeName(name1, &position1);
+  int position2;
+  string node2 = ParseNodeName(name2, &position2);
+  return (position1 == position2) && (node1 == node2);
 }
 
 string ParseNodeName(const string& name, int* position) {
@@ -83,6 +102,10 @@ string ParseNodeName(const string& name, int* position) {
   }
 }
 
+bool IsControlInput(const string& name) {
+  return !name.empty() && name[0] == '^';
+}
+
 string NodeName(const string& name) {
   int position;
   return ParseNodeName(name, &position);
@@ -94,13 +117,18 @@ int NodePosition(const string& name) {
   return position;
 }
 
-string AddPrefixToNodeName(const string& name, const string& prefix) {
+string AddPrefixToNodeName(const string& name, const string& prefix,
+                           const string& delimiter) {
   if (!name.empty()) {
     if (name[0] == '^') {
-      return strings::StrCat("^", prefix, "/", name.substr(1));
+      return strings::StrCat("^", prefix, delimiter, name.substr(1));
     }
   }
-  return strings::StrCat(prefix, "/", name);
+  return strings::StrCat(prefix, delimiter, name);
+}
+
+string AddPrefixToNodeName(const string& name, const string& prefix) {
+  return AddPrefixToNodeName(name, prefix, "/");
 }
 
 bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
@@ -116,10 +144,7 @@ bool ExecuteWithTimeout(std::function<void()> fn, const int64 timeout_in_ms,
   });
   const bool notified =
       WaitForNotificationWithTimeout(done.get(), timeout_in_ms * 1000);
-  if (!notified) {
-    return false;
-  }
-  return true;
+  return notified;
 }
 
 }  // end namespace grappler

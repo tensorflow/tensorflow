@@ -30,7 +30,7 @@ tf_module {
   }
   member_method {
     name: "audio"
-    argspec: "args=[\'name\', \'tensor\', \'sample_rate\', \'max_outputs\', \'collections\'], varargs=None, keywords=None, defaults=[\'3\', \'None\'], "
+    argspec: "args=[\'name\', \'tensor\', \'sample_rate\', \'max_outputs\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'3\', \'None\', \'None\'], "
   }
   member_method {
     name: "get_summary_description"
@@ -38,11 +38,11 @@ tf_module {
   }
   member_method {
     name: "histogram"
-    argspec: "args=[\'name\', \'values\', \'collections\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'name\', \'values\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "image"
-    argspec: "args=[\'name\', \'tensor\', \'max_outputs\', \'collections\'], varargs=None, keywords=None, defaults=[\'3\', \'None\'], "
+    argspec: "args=[\'name\', \'tensor\', \'max_outputs\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'3\', \'None\', \'None\'], "
   }
   member_method {
     name: "merge"
@@ -54,7 +54,7 @@ tf_module {
   }
   member_method {
     name: "scalar"
-    argspec: "args=[\'name\', \'tensor\', \'collections\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'name\', \'tensor\', \'collections\', \'family\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "tensor_summary"

@@ -29,6 +29,14 @@ import threading
 import numpy as np
 import six
 
+_portpicker_import_error = None
+try:
+  import portpicker  # pylint: disable=g-import-not-at-top
+except ImportError as _error:
+  _portpicker_import_error = _error
+  portpicker = None
+
+# pylint: disable=g-import-not-at-top
 from google.protobuf import descriptor_pool
 from google.protobuf import text_format
 
@@ -45,6 +53,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util.protobuf import compare
 
@@ -218,6 +227,31 @@ def NCHWToNHWC(input_tensor):
     return [input_tensor[a] for a in new_axes[ndims]]
 
 
+# TODO(skyewm): remove this eventually
+def disable_c_api(fn):
+  """Decorator for disabling the C API on a test.
+
+  Note this disables the C API after running the test class's setup/teardown
+  methods.
+
+  Args:
+    fn: the function to be wrapped
+
+  Returns:
+    The wrapped function
+  """
+  # pylint: disable=protected-access
+  def disable_c_api_wrapper(*args, **kwargs):
+    prev_value = ops._USE_C_API
+    ops._USE_C_API = False
+    try:
+      fn(*args, **kwargs)
+    finally:
+      ops._USE_C_API = prev_value
+  # pylint: disable=protected-access
+  return disable_c_api_wrapper
+
+
 class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow.
   """
@@ -250,7 +284,7 @@ class TensorFlowTestCase(googletest.TestCase):
     """Returns a unique temporary directory for the test to use.
 
     If you call this method multiple times during in a test, it will return the
-    same folder. However, accross different runs the directories will be
+    same folder. However, across different runs the directories will be
     different. This will ensure that across different runs tests will not be
     able to pollute each others environment.
     If you need multiple unique directories within a single test, you should
@@ -776,3 +810,62 @@ class TensorFlowTestCase(googletest.TestCase):
     assertItemsEqual = googletest.TestCase.assertCountEqual
 
     # pylint: enable=invalid-name
+
+
+def create_local_cluster(num_workers, num_ps, protocol="grpc"):
+  """Create and start local servers and return the associated `Server` objects.
+
+  Example:
+  ```python
+  workers, _ = tf.test.create_local_cluster(num_workers=2, num_ps=2)
+
+  worker_sessions = [tf.Session(w.target) for w in workers]
+
+  with tf.device("/job:ps/task:0"):
+    ...
+  with tf.device("/job:ps/task:1"):
+    ...
+  with tf.device("/job:worker/task:0"):
+    ...
+  with tf.device("/job:worker/task:1"):
+    ...
+
+  worker_sessions[0].run(...)
+  ```
+
+  Args:
+    num_workers: Number of worker servers to start.
+    num_ps: Number of PS servers to start.
+    protocol: Communication protocol.  Allowed values are documented in
+      the documentation of `tf.train.Server`.
+
+  Returns:
+    A tuple `(worker_servers, ps_servers)`.  `worker_servers` is a list
+    of `num_workers` objects of type `tf.train.Server` (all running locally);
+    and `ps_servers` is a list of `num_ps` objects of similar type.
+
+  Raises:
+    ImportError: if portpicker module was not found at load time
+  """
+  if _portpicker_import_error:
+    raise _portpicker_import_error  # pylint: disable=raising-bad-type
+  worker_ports = [portpicker.pick_unused_port() for _ in range(num_workers)]
+  ps_ports = [portpicker.pick_unused_port() for _ in range(num_ps)]
+  cluster_dict = {
+      "worker": ["localhost:%s" % port for port in worker_ports],
+      "ps": ["localhost:%s" % port for port in ps_ports]
+  }
+  cs = server_lib.ClusterSpec(cluster_dict)
+
+  workers = [
+      server_lib.Server(
+          cs, job_name="worker", protocol=protocol, task_index=ix, start=True)
+      for ix in range(num_workers)
+  ]
+  ps_servers = [
+      server_lib.Server(
+          cs, job_name="ps", protocol=protocol, task_index=ix, start=True)
+      for ix in range(num_ps)
+  ]
+
+  return workers, ps_servers
