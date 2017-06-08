@@ -596,7 +596,7 @@ while true; do
     CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
   fi
 
-  if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
+  if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" ] || [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
     export TF_CUDNN_VERSION
     write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
     export CUDNN_INSTALL_PATH
@@ -819,7 +819,7 @@ while true; do
     fi
 
     #Check that the include and library folders are where we expect them to be
-    if [ -e "$MPI_HOME/include" -a -e "$MPI_HOME/lib" ]; then
+    if [ -e "$MPI_HOME/include" ] && [ -e "$MPI_HOME/lib" ]; then
         break
     fi
  
