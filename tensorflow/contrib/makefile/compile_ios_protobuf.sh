@@ -30,17 +30,17 @@ fi
 
 JOB_COUNT="${JOB_COUNT:-$(get_job_count)}"
 
-GENDIR=`pwd`/gen/protobuf_ios/
+GENDIR=$(pwd)/gen/protobuf_ios/
 LIBDIR=${GENDIR}lib
 mkdir -p ${LIBDIR}
 
 OSX_VERSION=darwin14.0.0
 
-IPHONEOS_PLATFORM=`xcrun --sdk iphoneos --show-sdk-platform-path`
-IPHONEOS_SYSROOT=`xcrun --sdk iphoneos --show-sdk-path`
-IPHONESIMULATOR_PLATFORM=`xcrun --sdk iphonesimulator --show-sdk-platform-path`
-IPHONESIMULATOR_SYSROOT=`xcrun --sdk iphonesimulator --show-sdk-path`
-IOS_SDK_VERSION=`xcrun --sdk iphoneos --show-sdk-version`
+IPHONEOS_PLATFORM=$(xcrun --sdk iphoneos --show-sdk-platform-path)
+IPHONEOS_SYSROOT=$(xcrun --sdk iphoneos --show-sdk-path)
+IPHONESIMULATOR_PLATFORM=$(xcrun --sdk iphonesimulator --show-sdk-platform-path)
+IPHONESIMULATOR_SYSROOT=$(xcrun --sdk iphonesimulator --show-sdk-path)
+IOS_SDK_VERSION=$(xcrun --sdk iphoneos --show-sdk-version)
 MIN_SDK_VERSION=8.0
 
 CFLAGS="-DNDEBUG -Os -pipe -fPIC -fno-exceptions"
