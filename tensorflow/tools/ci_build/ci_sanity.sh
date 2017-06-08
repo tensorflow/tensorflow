@@ -172,7 +172,7 @@ do_pylint() {
   grep -E '(\[E|\[W0311|\[W0312)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
-  while read LINE; do
+  while read -r LINE; do
     IS_WHITELISTED=0
     for WL_REGEX in ${ERROR_WHITELIST}; do
       if [[ ! -z $(echo ${LINE} | grep "${WL_REGEX}") ]]; then
