@@ -80,7 +80,7 @@ fi
 
 # cmake (CPU) builds do not require configuration.
 if [[ "${CONTAINER_TYPE}" == "cmake" ]]; then
-  CI_COMMAND_PREFIX=""
+  CI_COMMAND_PREFIX=("")
 fi
 
 # Use nvidia-docker if the container is GPU.
