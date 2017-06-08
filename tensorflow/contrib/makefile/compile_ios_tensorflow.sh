@@ -31,7 +31,7 @@ function less_than_required_version() {
   )
 }
 
-ACTUAL_XCODE_VERSION=`xcodebuild -version | head -n 1 | sed 's/Xcode //'`
+ACTUAL_XCODE_VERSION=$(xcodebuild -version | head -n 1 | sed 's/Xcode //')
 REQUIRED_XCODE_VERSION=7.3.0
 if less_than_required_version $ACTUAL_XCODE_VERSION 7 3 0
 then
