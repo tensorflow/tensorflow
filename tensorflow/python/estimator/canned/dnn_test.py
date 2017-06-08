@@ -305,12 +305,18 @@ class DNNClassifierPredictTest(test.TestCase):
     # logistic = exp(-2.08)/(1 + exp(-2.08)) = 0.11105597
     # probabilities = [1-logistic, logistic] = [0.88894403, 0.11105597]
     # class_ids = argmax(probabilities) = [0]
-    self.assertAllClose({
-        prediction_keys.PredictionKeys.LOGITS: [-2.08],
-        prediction_keys.PredictionKeys.LOGISTIC: [0.11105597],
-        prediction_keys.PredictionKeys.PROBABILITIES: [0.88894403, 0.11105597],
-        prediction_keys.PredictionKeys.CLASS_IDS: [0],
-    }, next(dnn_classifier.predict(input_fn=input_fn)))
+    predictions = next(dnn_classifier.predict(input_fn=input_fn))
+    self.assertAllClose([-2.08],
+                        predictions[prediction_keys.PredictionKeys.LOGITS])
+    self.assertAllClose([0.11105597],
+                        predictions[prediction_keys.PredictionKeys.LOGISTIC])
+    self.assertAllClose(
+        [0.88894403,
+         0.11105597], predictions[prediction_keys.PredictionKeys.PROBABILITIES])
+    self.assertAllClose([0],
+                        predictions[prediction_keys.PredictionKeys.CLASS_IDS])
+    self.assertAllEqual([b'0'],
+                        predictions[prediction_keys.PredictionKeys.CLASSES])
 
   def test_multi_dim(self):
     """Asserts predictions for multi-dimensional input and logits."""
@@ -542,6 +548,9 @@ class DNNClassifierIntegrationTest(test.TestCase):
       writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
+  def _as_label(self, data_in_float):
+    return np.rint(data_in_float).astype(np.int64)
+
   def _test_complete_flow(
       self, train_input_fn, eval_input_fn, predict_input_fn, input_dimension,
       n_classes, batch_size):
@@ -579,12 +588,13 @@ class DNNClassifierIntegrationTest(test.TestCase):
 
   def test_numpy_input_fn(self):
     """Tests complete flow with numpy_input_fn."""
-    n_classes = 2
+    n_classes = 3
     input_dimension = 2
     batch_size = 10
-    data = np.linspace(0., 2., batch_size * input_dimension, dtype=np.float32)
+    data = np.linspace(
+        0., n_classes - 1., batch_size * input_dimension, dtype=np.float32)
     x_data = data.reshape(batch_size, input_dimension)
-    y_data = np.reshape(data[:batch_size], (batch_size, 1))
+    y_data = np.reshape(self._as_label(data[:batch_size]), (batch_size, 1))
     # learn y = x
     train_input_fn = numpy_io.numpy_input_fn(
         x={'x': x_data},
@@ -615,11 +625,11 @@ class DNNClassifierIntegrationTest(test.TestCase):
     if not HAS_PANDAS:
       return
     input_dimension = 1
-    n_classes = 2
+    n_classes = 3
     batch_size = 10
-    data = np.linspace(0., 2., batch_size, dtype=np.float32)
+    data = np.linspace(0., n_classes - 1., batch_size, dtype=np.float32)
     x = pd.DataFrame({'x': data})
-    y = pd.Series(data)
+    y = pd.Series(self._as_label(data))
     train_input_fn = pandas_io.pandas_input_fn(
         x=x,
         y=y,
@@ -647,25 +657,28 @@ class DNNClassifierIntegrationTest(test.TestCase):
   def test_input_fn_from_parse_example(self):
     """Tests complete flow with input_fn constructed from parse_example."""
     input_dimension = 2
-    n_classes = 2
+    n_classes = 3
     batch_size = 10
-    data = np.linspace(0., 2., batch_size * input_dimension, dtype=np.float32)
+    data = np.linspace(
+        0., n_classes - 1., batch_size * input_dimension, dtype=np.float32)
     data = data.reshape(batch_size, input_dimension)
 
     serialized_examples = []
     for datum in data:
       example = example_pb2.Example(features=feature_pb2.Features(
           feature={
-              'x': feature_pb2.Feature(
-                  float_list=feature_pb2.FloatList(value=datum)),
-              'y': feature_pb2.Feature(
-                  float_list=feature_pb2.FloatList(value=datum[:1])),
+              'x':
+                  feature_pb2.Feature(float_list=feature_pb2.FloatList(
+                      value=datum)),
+              'y':
+                  feature_pb2.Feature(int64_list=feature_pb2.Int64List(
+                      value=self._as_label(datum[:1]))),
           }))
       serialized_examples.append(example.SerializeToString())
 
     feature_spec = {
         'x': parsing_ops.FixedLenFeature([input_dimension], dtypes.float32),
-        'y': parsing_ops.FixedLenFeature([1], dtypes.float32),
+        'y': parsing_ops.FixedLenFeature([1], dtypes.int64),
     }
     def _train_input_fn():
       feature_map = parsing_ops.parse_example(serialized_examples, feature_spec)
