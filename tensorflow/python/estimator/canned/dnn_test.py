@@ -28,7 +28,6 @@ from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import dnn_testing_utils
-from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export
 from tensorflow.python.estimator.inputs import numpy_io
@@ -65,73 +64,6 @@ class DNNModelFnTest(dnn_testing_utils.BaseDNNModelFnTest, test.TestCase):
     dnn_testing_utils.BaseDNNModelFnTest.__init__(self, dnn._dnn_model_fn)
 
 
-class DNNRegressorEvaluateTest(test.TestCase):
-
-  def setUp(self):
-    self._model_dir = tempfile.mkdtemp()
-
-  def tearDown(self):
-    if self._model_dir:
-      shutil.rmtree(self._model_dir)
-
-  def test_one_dim(self):
-    """Asserts evaluation metrics for one-dimensional input and logits."""
-    # Create checkpoint: num_inputs=1, hidden_units=(2, 2), num_outputs=1.
-    global_step = 100
-    dnn_testing_utils.create_checkpoint(
-        (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
-         ([[-1.], [1.]], [.3]),), global_step, self._model_dir)
-
-    # Create DNNRegressor and evaluate.
-    dnn_regressor = dnn.DNNRegressor(
-        hidden_units=(2, 2),
-        feature_columns=[feature_column.numeric_column('age')],
-        model_dir=self._model_dir)
-    def _input_fn():
-      return {'age': [[10.]]}, [[1.]]
-    # Uses identical numbers as DNNModelTest.test_one_dim_logits.
-    # See that test for calculation of logits.
-    # logits = [[-2.08]] => predictions = [-2.08].
-    # loss = (1+2.08)^2 = 9.4864
-    expected_loss = 9.4864
-    self.assertAllClose({
-        metric_keys.MetricKeys.LOSS: expected_loss,
-        metric_keys.MetricKeys.LOSS_MEAN: expected_loss,
-        ops.GraphKeys.GLOBAL_STEP: global_step
-    }, dnn_regressor.evaluate(input_fn=_input_fn, steps=1))
-
-  def test_multi_dim(self):
-    """Asserts evaluation metrics for multi-dimensional input and logits."""
-    # Create checkpoint: num_inputs=2, hidden_units=(2, 2), num_outputs=3.
-    global_step = 100
-    dnn_testing_utils.create_checkpoint(
-        (([[.6, .5], [-.6, -.5]], [.1, -.1]), ([[1., .8], [-.8, -1.]],
-                                               [.2, -.2]),
-         ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3,
-                                           .0]),), global_step, self._model_dir)
-    label_dimension = 3
-
-    # Create DNNRegressor and evaluate.
-    dnn_regressor = dnn.DNNRegressor(
-        hidden_units=(2, 2),
-        feature_columns=[feature_column.numeric_column('age', shape=[2])],
-        label_dimension=label_dimension,
-        model_dir=self._model_dir)
-    def _input_fn():
-      return {'age': [[10., 8.]]}, [[1., -1., 0.5]]
-    # Uses identical numbers as
-    # DNNModelFnTest.test_multi_dim_input_multi_dim_logits.
-    # See that test for calculation of logits.
-    # logits = [[-0.48, 0.48, 0.39]]
-    # loss = (1+0.48)^2 + (-1-0.48)^2 + (0.5-0.39)^2 = 4.3929
-    expected_loss = 4.3929
-    self.assertAllClose({
-        metric_keys.MetricKeys.LOSS: expected_loss,
-        metric_keys.MetricKeys.LOSS_MEAN: expected_loss / label_dimension,
-        ops.GraphKeys.GLOBAL_STEP: global_step
-    }, dnn_regressor.evaluate(input_fn=_input_fn, steps=1))
-
-
 class DNNClassifierEvaluateTest(
     dnn_testing_utils.BaseDNNClassifierEvaluateTest, test.TestCase):
 
@@ -141,67 +73,6 @@ class DNNClassifierEvaluateTest(
         self, _dnn_classifier_fn)
 
 
-class DNNRegressorPredictTest(test.TestCase):
-
-  def setUp(self):
-    self._model_dir = tempfile.mkdtemp()
-
-  def tearDown(self):
-    if self._model_dir:
-      shutil.rmtree(self._model_dir)
-
-  def test_one_dim(self):
-    """Asserts predictions for one-dimensional input and logits."""
-    # Create checkpoint: num_inputs=1, hidden_units=(2, 2), num_outputs=1.
-    dnn_testing_utils.create_checkpoint(
-        (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
-         ([[-1.], [1.]], [.3]),),
-        global_step=0,
-        model_dir=self._model_dir)
-
-    # Create DNNRegressor and predict.
-    dnn_regressor = dnn.DNNRegressor(
-        hidden_units=(2, 2),
-        feature_columns=(feature_column.numeric_column('x'),),
-        model_dir=self._model_dir)
-    input_fn = numpy_io.numpy_input_fn(
-        x={'x': np.array([[10.]])}, batch_size=1, shuffle=False)
-    # Uses identical numbers as DNNModelTest.test_one_dim_logits.
-    # See that test for calculation of logits.
-    # logits = [[-2.08]] => predictions = [-2.08].
-    self.assertAllClose({
-        prediction_keys.PredictionKeys.PREDICTIONS: [-2.08],
-    }, next(dnn_regressor.predict(input_fn=input_fn)))
-
-  def test_multi_dim(self):
-    """Asserts predictions for multi-dimensional input and logits."""
-    # Create checkpoint: num_inputs=2, hidden_units=(2, 2), num_outputs=3.
-    dnn_testing_utils.create_checkpoint(
-        (([[.6, .5], [-.6, -.5]], [.1, -.1]),
-         ([[1., .8], [-.8, -1.]], [.2, -.2]), ([[-1., 1., .5], [-1., 1., .5]],
-                                               [.3, -.3,
-                                                .0]),), 100, self._model_dir)
-
-    # Create DNNRegressor and predict.
-    dnn_regressor = dnn.DNNRegressor(
-        hidden_units=(2, 2),
-        feature_columns=(feature_column.numeric_column('x', shape=(2,)),),
-        label_dimension=3,
-        model_dir=self._model_dir)
-    input_fn = numpy_io.numpy_input_fn(
-        # Inputs shape is (batch_size, num_inputs).
-        x={'x': np.array([[10., 8.]])},
-        batch_size=1,
-        shuffle=False)
-    # Uses identical numbers as
-    # DNNModelFnTest.test_multi_dim_input_multi_dim_logits.
-    # See that test for calculation of logits.
-    # logits = [[-0.48, 0.48, 0.39]] => predictions = [-0.48, 0.48, 0.39]
-    self.assertAllClose({
-        prediction_keys.PredictionKeys.PREDICTIONS: [-0.48, 0.48, 0.39],
-    }, next(dnn_regressor.predict(input_fn=input_fn)))
-
-
 class DNNClassifierPredictTest(
     dnn_testing_utils.BaseDNNClassifierPredictTest, test.TestCase):
 
@@ -209,6 +80,46 @@ class DNNClassifierPredictTest(
     test.TestCase.__init__(self, methodName)
     dnn_testing_utils.BaseDNNClassifierPredictTest.__init__(
         self, _dnn_classifier_fn)
+
+
+class DNNClassifierTrainTest(
+    dnn_testing_utils.BaseDNNClassifierTrainTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNClassifierTrainTest.__init__(
+        self, _dnn_classifier_fn)
+
+
+def _dnn_regressor_fn(*args, **kwargs):
+  return dnn.DNNRegressor(*args, **kwargs)
+
+
+class DNNRegressorEvaluateTest(
+    dnn_testing_utils.BaseDNNRegressorEvaluateTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNRegressorEvaluateTest.__init__(
+        self, _dnn_regressor_fn)
+
+
+class DNNRegressorPredictTest(
+    dnn_testing_utils.BaseDNNRegressorPredictTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNRegressorPredictTest.__init__(
+        self, _dnn_regressor_fn)
+
+
+class DNNRegressorTrainTest(
+    dnn_testing_utils.BaseDNNRegressorTrainTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNRegressorTrainTest.__init__(
+        self, _dnn_regressor_fn)
 
 
 def _queue_parsed_features(feature_map):
@@ -554,172 +465,6 @@ class DNNClassifierIntegrationTest(test.TestCase):
         input_dimension=input_dimension,
         n_classes=n_classes,
         batch_size=batch_size)
-
-
-class DNNRegressorTrainTest(test.TestCase):
-
-  def setUp(self):
-    self._model_dir = tempfile.mkdtemp()
-
-  def tearDown(self):
-    if self._model_dir:
-      shutil.rmtree(self._model_dir)
-
-  def test_from_scratch_with_default_optimizer(self):
-    hidden_units = (2, 2)
-    dnn_regressor = dnn.DNNRegressor(
-        hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
-        model_dir=self._model_dir)
-
-    # Train for a few steps, then validate final checkpoint.
-    num_steps = 5
-    dnn_regressor.train(
-        input_fn=lambda: ({'age': ((1,),)}, ((10,),)), steps=num_steps)
-    dnn_testing_utils._assert_checkpoint(
-        self, num_steps, input_units=1, hidden_units=hidden_units,
-        output_units=1, model_dir=self._model_dir)
-
-  def test_from_scratch(self):
-    hidden_units = (2, 2)
-    mock_optimizer = dnn_testing_utils.mock_optimizer(
-        self, hidden_units=hidden_units)
-    dnn_regressor = dnn.DNNRegressor(
-        hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
-        optimizer=mock_optimizer,
-        model_dir=self._model_dir)
-    self.assertEqual(0, mock_optimizer.minimize.call_count)
-
-    # Train for a few steps, then validate optimizer, summaries, and
-    # checkpoint.
-    num_steps = 5
-    summary_hook = dnn_testing_utils._SummaryHook()
-    dnn_regressor.train(
-        input_fn=lambda: ({'age': ((1,),)}, ((5.,),)), steps=num_steps,
-        hooks=(summary_hook,))
-    self.assertEqual(1, mock_optimizer.minimize.call_count)
-    dnn_testing_utils._assert_checkpoint(
-        self, num_steps, input_units=1, hidden_units=hidden_units,
-        output_units=1, model_dir=self._model_dir)
-    summaries = summary_hook.summaries()
-    self.assertEqual(num_steps, len(summaries))
-    for summary in summaries:
-      summary_keys = [v.tag for v in summary.value]
-      self.assertIn(metric_keys.MetricKeys.LOSS, summary_keys)
-      self.assertIn(metric_keys.MetricKeys.LOSS_MEAN, summary_keys)
-
-  def test_one_dim(self):
-    """Asserts train loss for one-dimensional input and logits."""
-    base_global_step = 100
-    hidden_units = (2, 2)
-    dnn_testing_utils.create_checkpoint(
-        (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
-         ([[-1.], [1.]], [.3]),), base_global_step, self._model_dir)
-
-    # Uses identical numbers as DNNModelFnTest.test_one_dim_logits.
-    # See that test for calculation of logits.
-    # logits = [-2.08] => predictions = [-2.08]
-    # loss = (1 + 2.08)^2 = 9.4864
-    expected_loss = 9.4864
-    mock_optimizer = dnn_testing_utils.mock_optimizer(
-        self, hidden_units=hidden_units, expected_loss=expected_loss)
-    dnn_regressor = dnn.DNNRegressor(
-        hidden_units=hidden_units,
-        feature_columns=(feature_column.numeric_column('age'),),
-        optimizer=mock_optimizer,
-        model_dir=self._model_dir)
-    self.assertEqual(0, mock_optimizer.minimize.call_count)
-
-    # Train for a few steps, then validate optimizer, summaries, and
-    # checkpoint.
-    num_steps = 5
-    summary_hook = dnn_testing_utils._SummaryHook()
-    dnn_regressor.train(
-        input_fn=lambda: ({'age': [[10.]]}, [[1.]]), steps=num_steps,
-        hooks=(summary_hook,))
-    self.assertEqual(1, mock_optimizer.minimize.call_count)
-    summaries = summary_hook.summaries()
-    self.assertEqual(num_steps, len(summaries))
-    for summary in summaries:
-      dnn_testing_utils._assert_simple_summary(
-          self,
-          {
-              metric_keys.MetricKeys.LOSS_MEAN: expected_loss,
-              'dnn/dnn/hiddenlayer_0/fraction_of_zero_values': 0.,
-              'dnn/dnn/hiddenlayer_1/fraction_of_zero_values': 0.5,
-              'dnn/dnn/logits/fraction_of_zero_values': 0.,
-              metric_keys.MetricKeys.LOSS: expected_loss,
-          },
-          summary)
-    dnn_testing_utils._assert_checkpoint(
-        self, base_global_step + num_steps, input_units=1,
-        hidden_units=hidden_units, output_units=1, model_dir=self._model_dir)
-
-  def test_multi_dim(self):
-    """Asserts train loss for multi-dimensional input and logits."""
-    base_global_step = 100
-    hidden_units = (2, 2)
-    dnn_testing_utils.create_checkpoint(
-        (([[.6, .5], [-.6, -.5]], [.1, -.1]), ([[1., .8], [-.8, -1.]],
-                                               [.2, -.2]),
-         ([[-1., 1., .5], [-1., 1., .5]],
-          [.3, -.3, .0]),), base_global_step, self._model_dir)
-    input_dimension = 2
-    label_dimension = 3
-
-    # Uses identical numbers as
-    # DNNModelFnTest.test_multi_dim_input_multi_dim_logits.
-    # See that test for calculation of logits.
-    # logits = [[-0.48, 0.48, 0.39]]
-    # loss = (1+0.48)^2 + (-1-0.48)^2 + (0.5-0.39)^2 = 4.3929
-    expected_loss = 4.3929
-    mock_optimizer = dnn_testing_utils.mock_optimizer(
-        self, hidden_units=hidden_units, expected_loss=expected_loss)
-    dnn_regressor = dnn.DNNRegressor(
-        hidden_units=hidden_units,
-        feature_columns=[
-            feature_column.numeric_column('age', shape=[input_dimension])],
-        label_dimension=label_dimension,
-        optimizer=mock_optimizer,
-        model_dir=self._model_dir)
-    self.assertEqual(0, mock_optimizer.minimize.call_count)
-
-    # Train for a few steps, then validate optimizer, summaries, and
-    # checkpoint.
-    num_steps = 5
-    summary_hook = dnn_testing_utils._SummaryHook()
-    dnn_regressor.train(
-        input_fn=lambda: ({'age': [[10., 8.]]}, [[1., -1., 0.5]]),
-        steps=num_steps,
-        hooks=(summary_hook,))
-    self.assertEqual(1, mock_optimizer.minimize.call_count)
-    summaries = summary_hook.summaries()
-    self.assertEqual(num_steps, len(summaries))
-    for summary in summaries:
-      dnn_testing_utils._assert_simple_summary(
-          self,
-          {
-              metric_keys.MetricKeys.LOSS_MEAN: expected_loss / label_dimension,
-              'dnn/dnn/hiddenlayer_0/fraction_of_zero_values': 0.,
-              'dnn/dnn/hiddenlayer_1/fraction_of_zero_values': 0.5,
-              'dnn/dnn/logits/fraction_of_zero_values': 0.,
-              metric_keys.MetricKeys.LOSS: expected_loss,
-          },
-          summary)
-    dnn_testing_utils._assert_checkpoint(
-        self, base_global_step + num_steps, input_units=input_dimension,
-        hidden_units=hidden_units, output_units=label_dimension,
-        model_dir=self._model_dir)
-
-
-class DNNClassifierTrainTest(
-    dnn_testing_utils.BaseDNNClassifierTrainTest, test.TestCase):
-
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    test.TestCase.__init__(self, methodName)
-    dnn_testing_utils.BaseDNNClassifierTrainTest.__init__(
-        self, _dnn_classifier_fn)
 
 
 if __name__ == '__main__':
