@@ -205,7 +205,7 @@ if [[ -n "${PY_TAGS}" ]]; then
 $(echo ${WHL_BASE_NAME} | cut -d \- -f 2)-${PY_TAGS}-${PLATFORM_TAG}.whl
 
   if [[ ! -f "${WHL_DIR}/${NEW_WHL_BASE_NAME}" ]]; then
-    if [[ cp "${WHL_DIR}/${WHL_BASE_NAME}" "${WHL_DIR}/${NEW_WHL_BASE_NAME}" ]
+    if cp "${WHL_DIR}/${WHL_BASE_NAME}" "${WHL_DIR}/${NEW_WHL_BASE_NAME}"
     then
       echo "Copied wheel file: ${WHL_BASE_NAME} --> ${NEW_WHL_BASE_NAME}"
     else
@@ -243,7 +243,7 @@ echo "Installing pip whl file: ${WHL_PATH}"
 VENV_DIR="${PIP_TEST_ROOT}/venv"
 
 if [[ -d "${VENV_DIR}" ]]; then
-  if [[ rm -rf "${VENV_DIR}" ]]
+  if rm -rf "${VENV_DIR}"
   then
     echo "Removed existing virtualenv directory: ${VENV_DIR}"
   else
@@ -251,7 +251,7 @@ if [[ -d "${VENV_DIR}" ]]; then
   fi
 fi
 
-if [[ mkdir -p ${VENV_DIR} ]]
+if mkdir -p ${VENV_DIR}
 then
   echo "Created virtualenv directory: ${VENV_DIR}"
 else
