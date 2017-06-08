@@ -344,8 +344,12 @@ class StridedSliceAssignOp : public XlaOpKernel {
       // and remove this workaround.
       lhs = rhs;
     } else {
+      xla::PrimitiveType xla_index_type;
+      OP_REQUIRES_OK(ctx,
+                     DataTypeToPrimitiveType(index_type_, &xla_index_type));
       lhs = ctx->builder()->DynamicUpdateSlice(
-          lhs, rhs, ctx->builder()->ConstantR1<int64>(slice_begin));
+          lhs, rhs, ctx->builder()->ConstantR1<int64>(xla_index_type,
+                                                      slice_begin));
     }
 
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, lhs_type, lhs));
