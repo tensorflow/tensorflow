@@ -657,6 +657,18 @@ class Dataset(object):
     """
     return ShuffleDataset(self, buffer_size, seed)
 
+  def cache(self, filename):
+    """Caches the elements in this dataset.
+
+    Args:
+      filename: A `tf.string` scalar `tf.Tensor`, representing the name of a
+        directory on the filesystem to use for caching tensors in this Dataset.
+
+    Returns:
+      A `Dataset`.
+    """
+    return CacheDataset(self, filename)
+
   def take(self, count):
     """Creates a `Dataset` with at most `count` elements from this dataset.
 
@@ -1050,6 +1062,32 @@ class RangeDataset(Dataset):
   @property
   def output_types(self):
     return dtypes.int64
+
+
+class CacheDataset(Dataset):
+  """A `Dataset` that caches elements of its input."""
+
+  def __init__(self, input_dataset, filename):
+    """See `Dataset.cache()` for details."""
+    super(CacheDataset, self).__init__()
+    self._input_dataset = input_dataset
+    self._filename = ops.convert_to_tensor(
+        filename, dtype=dtypes.string, name="filename")
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.cache_dataset(
+        self._input_dataset.make_dataset_resource(),
+        filename=self._filename,
+        output_shapes=nest.flatten(self.output_shapes),
+        output_types=nest.flatten(self.output_types))
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
 
 
 class ShuffleDataset(Dataset):

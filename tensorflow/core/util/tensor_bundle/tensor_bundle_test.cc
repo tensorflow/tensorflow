@@ -64,6 +64,16 @@ void Expect(BundleReader* reader, const string& key,
   test::ExpectTensorEqual<T>(val, expected_val);
 }
 
+template <typename T>
+void ExpectNext(BundleReader* reader, const Tensor& expected_val) {
+  EXPECT_TRUE(reader->Valid());
+  reader->Next();
+  TF_ASSERT_OK(reader->status());
+  Tensor val;
+  TF_ASSERT_OK(reader->ReadCurrent(&val));
+  test::ExpectTensorEqual<T>(val, expected_val);
+}
+
 std::vector<string> AllTensorKeys(BundleReader* reader) {
   std::vector<string> ret;
   reader->Seek(kHeaderEntryKey);
@@ -141,6 +151,17 @@ void TestBasic() {
     Expect<T>(&reader, "foo_003", Constant_2x3<T>(3));
   }
   {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    EXPECT_TRUE(reader.Valid());
+    reader.Next();
+    EXPECT_FALSE(reader.Valid());
+  }
+  {
     BundleWriter writer(Env::Default(), Prefix("bar"));
     TF_EXPECT_OK(writer.Add("bar_003", Constant_2x3<T>(3)));
     TF_EXPECT_OK(writer.Add("bar_000", Constant_2x3<T>(0)));
@@ -159,6 +180,17 @@ void TestBasic() {
     Expect<T>(&reader, "bar_001", Constant_2x3<T>(1));
     Expect<T>(&reader, "bar_000", Constant_2x3<T>(0));
   }
+  {
+    BundleReader reader(Env::Default(), Prefix("bar"));
+    TF_ASSERT_OK(reader.status());
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    EXPECT_TRUE(reader.Valid());
+    reader.Next();
+    EXPECT_FALSE(reader.Valid());
+  }
   TF_ASSERT_OK(MergeBundles(Env::Default(), {Prefix("foo"), Prefix("bar")},
                             Prefix("merged")));
   {
@@ -176,6 +208,21 @@ void TestBasic() {
     Expect<T>(&reader, "foo_001", Constant_2x3<T>(1));
     Expect<T>(&reader, "foo_002", Constant_2x3<T>(2));
     Expect<T>(&reader, "foo_003", Constant_2x3<T>(3));
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("merged"));
+    TF_ASSERT_OK(reader.status());
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    ExpectNext<T>(&reader, Constant_2x3<T>(0));
+    ExpectNext<T>(&reader, Constant_2x3<T>(1));
+    ExpectNext<T>(&reader, Constant_2x3<T>(2));
+    ExpectNext<T>(&reader, Constant_2x3<T>(3));
+    EXPECT_TRUE(reader.Valid());
+    reader.Next();
+    EXPECT_FALSE(reader.Valid());
   }
 }
 

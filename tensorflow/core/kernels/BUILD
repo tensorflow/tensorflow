@@ -5413,9 +5413,23 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "cache_dataset_ops",
+    srcs = ["cache_dataset_ops.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/tensor_bundle",
+    ],
+)
+
+tf_kernel_library(
     name = "dataset_ops",
     deps = [
         ":batch_dataset_op",
+        ":cache_dataset_ops",
         ":dense_to_sparse_batch_dataset_op",
         ":filter_dataset_op",
         ":flat_map_dataset_op",
