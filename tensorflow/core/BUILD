@@ -1528,6 +1528,7 @@ cc_library(
 cc_library(
     name = "protos_cc",
     deps = ["//tensorflow/core/platform/default/build_config:protos_cc"],
+    visibility = ["//visibility:public"],
 )
 
 CORE_CPU_BASE_HDRS = [
