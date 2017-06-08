@@ -38,27 +38,22 @@ final class NameScope {
 
   NameScope withSubScope(String scopeName) {
     checkPattern(NAME_REGEX, scopeName);
-
     // Override with opName if it exists.
     String actualName = (opName != null) ? opName : scopeName;
-
     String newPrefix = fullyQualify(makeUnique(actualName));
     return new NameScope(newPrefix, null, null);
   }
 
   NameScope withName(String name) {
     checkPattern(NAME_REGEX, name);
-
     // All context except for the opName is shared with the new scope.
     return new NameScope(opPrefix, name, ids);
   }
 
   String makeOpName(String name) {
     checkPattern(NAME_REGEX, name);
-
     // Override with opName if it exists.
     String actualName = (opName != null) ? opName : name;
-
     return fullyQualify(makeUnique(actualName));
   }
 
@@ -130,19 +125,23 @@ final class NameScope {
       throw new IllegalArgumentException("Names cannot be null");
     }
     if (!pattern.matcher(name).matches()) {
-      throw new IllegalArgumentException(String.format("Invalid name '%s'", name));
+      throw new IllegalArgumentException(
+          String.format(
+              "invalid name: '%s' does not match the regular expression %s",
+              name, NAME_REGEX_STRING));
     }
   }
 
   // The constraints for operator and scope names originate from restrictions on node names
   // noted in the proto definition core/framework/node_def.proto for NodeDef and actually
   // implemented in core/framework/node_def_util.cc [Note that the proto comment does not include
-  // dash (-) in names, while the actual implementation permits it. These regexs follow the actual
+  // dash (-) in names, while the actual implementation permits it. This regex follows the actual
   // implementation.]
   //
-  // These two patterns are used to ensure fully qualified names always start with a
-  // LETTER_DIGIT_DOT, followed by zero or more LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE. SLASH is not
-  // permitted in actual user-supplied names to NameScope - it is used as a reserved character to
-  // separate subcomponents within fully qualified names.
-  private static final Pattern NAME_REGEX = Pattern.compile("[A-Za-z0-9.][A-Za-z0-9_.\\-]*");
+  // This pattern is used to ensure fully qualified names always start with a LETTER_DIGIT_DOT,
+  // followed by zero or more LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE. SLASH is not permitted in
+  // actual user-supplied names to NameScope - it is used as a reserved character to separate
+  // subcomponents within fully qualified names.
+  private static final String NAME_REGEX_STRING = "[A-Za-z0-9.][A-Za-z0-9_.\\-]*";
+  private static final Pattern NAME_REGEX = Pattern.compile(NAME_REGEX_STRING);
 }
