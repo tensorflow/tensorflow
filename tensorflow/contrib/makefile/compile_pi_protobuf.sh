@@ -17,7 +17,7 @@
 
 cd tensorflow/contrib/makefile
 
-GENDIR=`pwd`/gen/protobuf_pi/
+GENDIR=$(pwd)/gen/protobuf_pi/
 LIBDIR=${GENDIR}
 mkdir -p ${LIBDIR}
 
