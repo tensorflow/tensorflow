@@ -87,7 +87,7 @@ public class ScopeTest {
       Scope root = new Scope(g);
 
       final String[] invalid_names = {
-        "_", // Names are constrained to start with [A-Za-z0-9.]
+        "_", "-", "-x", // Names are constrained to start with [A-Za-z0-9.]
         null, "", "a$", // Invalid characters
         "a/b", // slashes not allowed
       };
@@ -99,7 +99,7 @@ public class ScopeTest {
         } catch (IllegalArgumentException ex) {
           // expected
         }
-        // Root scopes follow the same rules as opnames
+        // Subscopes follow the same rules
         try {
           root.withSubScope(name);
           fail("failed to catch invalid scope name: " + name);
@@ -108,8 +108,13 @@ public class ScopeTest {
         }
       }
 
-      // Non-root scopes have a less restrictive constraint.
-      assertEquals("a/_/hello", root.withSubScope("a").withSubScope("_").makeOpName("hello"));
+      // Unusual but valid names.
+      final String[] valid_names = {".", "..", "._-.", "a--."};
+
+      for (String name : valid_names) {
+        root.withName(name);
+        root.withSubScope(name);
+      }
     }
   }
 
@@ -175,7 +180,7 @@ public class ScopeTest {
   private static final class Const {
     private final Output output;
 
-    private static Const create(Scope s, Object v) {
+    static Const create(Scope s, Object v) {
       try (Tensor value = Tensor.create(v)) {
         return new Const(
             s.graph()
@@ -187,11 +192,11 @@ public class ScopeTest {
       }
     }
 
-    private Const(Output o) {
+    Const(Output o) {
       output = o;
     }
 
-    public Output output() {
+    Output output() {
       return output;
     }
   }
@@ -199,7 +204,7 @@ public class ScopeTest {
   private static final class Mean {
     private final Output output;
 
-    private static Mean create(Scope s, Output input, Output reductionIndices) {
+    static Mean create(Scope s, Output input, Output reductionIndices) {
       return new Mean(
           s.graph()
               .opBuilder("Mean", s.makeOpName("Mean"))
@@ -209,11 +214,11 @@ public class ScopeTest {
               .output(0));
     }
 
-    private Mean(Output o) {
+    Mean(Output o) {
       output = o;
     }
 
-    public Output output() {
+    Output output() {
       return output;
     }
   }
@@ -221,7 +226,7 @@ public class ScopeTest {
   private static final class SquaredDifference {
     private final Output output;
 
-    private static SquaredDifference create(Scope s, Output x, Output y) {
+    static SquaredDifference create(Scope s, Output x, Output y) {
       return new SquaredDifference(
           s.graph()
               .opBuilder("SquaredDifference", s.makeOpName("SquaredDifference"))
@@ -231,11 +236,11 @@ public class ScopeTest {
               .output(0));
     }
 
-    private SquaredDifference(Output o) {
+    SquaredDifference(Output o) {
       output = o;
     }
 
-    public Output output() {
+    Output output() {
       return output;
     }
   }
@@ -243,7 +248,7 @@ public class ScopeTest {
   private static final class Variance {
     private final Output output;
 
-    private static Variance create(Scope base, Output x) {
+    static Variance create(Scope base, Output x) {
       Scope s = base.withSubScope("variance");
       Output zero = Const.create(s.withName("zero"), new int[] {0}).output();
       Output sqdiff =
@@ -254,11 +259,11 @@ public class ScopeTest {
       return new Variance(Mean.create(s.withName("variance"), sqdiff, zero).output());
     }
 
-    private Variance(Output o) {
+    Variance(Output o) {
       output = o;
     }
 
-    public Output output() {
+    Output output() {
       return output;
     }
   }

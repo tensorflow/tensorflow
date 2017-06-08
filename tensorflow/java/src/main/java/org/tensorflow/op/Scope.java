@@ -37,7 +37,7 @@ import org.tensorflow.Graph;
  * public class Constant {
  *   public static Constant create(Scope scope, ...) {
  *      scope.graph().opBuilder(
- *        "Constant", scope.makeOpName("Constant"))
+ *        "Const", scope.makeOpName("Const"))
  *        .setAttr(...)
  *        .build()
  *      ...
@@ -61,17 +61,17 @@ import org.tensorflow.Graph;
  * // This op name will be "linear/W"
  * Constant.create(linear.withName("W"), ...);
  *
- * // This op will be "linear/Constant", using the default
+ * // This op will be "linear/Const", using the default
  * // name provided by Constant
  * Constant.create(linear, ...);
  *
- * // This op will be "linear/Constant_1", using the default
+ * // This op will be "linear/Const_1", using the default
  * // name provided by Constant and making it unique within
  * // this scope
  * Constant.create(linear, ...);
  * }</pre>
  *
- * <p>Scope objects are thread-safe.
+ * <p>Scope objects are <b>not</b> thread-safe.
  */
 public final class Scope {
 
@@ -96,12 +96,7 @@ public final class Scope {
    * name will be unique in the returned scope. All other properties are inherited from the current
    * scope.
    *
-   * <p>Valid child scope names must match one of the following regular expressions:
-   *
-   * <pre>{@code
-   * [A-Za-z0-9.][A-Za-z0-9_.\\-]* (for scopes at the root)
-   * [A-Za-z0-9_.\\-]+ (for other scopes)
-   * }</pre>
+   * <p>The child scope name must match the regular expression {@code [A-Za-z0-9.][A-Za-z0-9_.\-]*}
    *
    * @param childScopeName name for the new child scope
    * @return a new subscope
@@ -117,7 +112,7 @@ public final class Scope {
    * <p>Operations created within this scope will have a name of the form {@code
    * name/opName[_suffix]}. This lets you name a specific operator more meaningfully.
    *
-   * <p>Valid operator names must match the regular expression {@code [A-Za-z0-9.][A-Za-z0-9_.\\-]*}
+   * <p>Names must match the regular expression {@code [A-Za-z0-9.][A-Za-z0-9_.\-]*}
    *
    * @param opName name for an operator in the returned scope
    * @return a new Scope that uses opName for operations.
@@ -136,7 +131,7 @@ public final class Scope {
    * instance. Typical operator building code might look like
    *
    * <pre>{@code
-   * scope.graph().opBuilder("Constant", scope.makeOpName("Constant"))...
+   * scope.graph().opBuilder("Const", scope.makeOpName("Const"))...
    * }</pre>
    *
    * <p><b>Note:</b> if you provide a composite operator building class (i.e, a class that adds a
