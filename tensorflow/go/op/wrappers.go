@@ -1337,47 +1337,6 @@ func PlaceholderV2(scope *Scope, dtype tf.DataType, shape tf.Shape) (output tf.O
 	return op.Output(0)
 }
 
-// PlaceholderAttr is an optional argument to Placeholder.
-type PlaceholderAttr func(optionalAttr)
-
-// PlaceholderShape sets the optional shape attribute to value.
-//
-// value: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
-// shape is unconstrained.
-// If not specified, defaults to <unknown_rank:true >
-func PlaceholderShape(value tf.Shape) PlaceholderAttr {
-	return func(m optionalAttr) {
-		m["shape"] = value
-	}
-}
-
-// A placeholder op for a value that will be fed into the computation.
-//
-// N.B. This operation will fail with an error if it is executed. It is
-// intended as a way to represent a value that will always be fed, and to
-// provide attrs that enable the fed value to be checked at runtime.
-//
-// Arguments:
-//	dtype: The type of elements in the tensor.
-//
-// Returns A placeholder tensor that must be replaced using the feed mechanism.
-func Placeholder(scope *Scope, dtype tf.DataType, optional ...PlaceholderAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtype": dtype}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Placeholder",
-
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Pads a tensor with mirrored values.
 //
 // This operation pads a `input` with mirrored values according to the `paddings`
@@ -4931,6 +4890,76 @@ func FixedLengthRecordDataset(scope *Scope, filenames tf.Output, header_bytes tf
 		Input: []tf.Input{
 			filenames, header_bytes, record_bytes, footer_bytes,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// PlaceholderAttr is an optional argument to Placeholder.
+type PlaceholderAttr func(optionalAttr)
+
+// PlaceholderShape sets the optional shape attribute to value.
+//
+// value: (Optional) The shape of the tensor. If the shape has 0 dimensions, the
+// shape is unconstrained.
+// If not specified, defaults to <unknown_rank:true >
+func PlaceholderShape(value tf.Shape) PlaceholderAttr {
+	return func(m optionalAttr) {
+		m["shape"] = value
+	}
+}
+
+// A placeholder op for a value that will be fed into the computation.
+//
+// N.B. This operation will fail with an error if it is executed. It is
+// intended as a way to represent a value that will always be fed, and to
+// provide attrs that enable the fed value to be checked at runtime.
+//
+// Arguments:
+//	dtype: The type of elements in the tensor.
+//
+// Returns A placeholder tensor that must be replaced using the feed mechanism.
+func Placeholder(scope *Scope, dtype tf.DataType, optional ...PlaceholderAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtype": dtype}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Placeholder",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Creates a dataset that caches elements from `input_dataset`.
+//
+// A CacheDataset will iterate over the input_dataset, and store tensors. If the
+// cache already exists, the cache will be used. If the cache is inappropriate
+// (e.g. cannot be opened, contains tensors of the wrong shape / size), an error
+// will the returned when used.
+//
+// Arguments:
+//
+//	filename: A path on the filesystem where we should cache the dataset. Note: this
+// will be a directory.
+//
+//
+func CacheDataset(scope *Scope, input_dataset tf.Output, filename tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "CacheDataset",
+		Input: []tf.Input{
+			input_dataset, filename,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
