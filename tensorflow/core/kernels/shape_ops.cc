@@ -103,7 +103,7 @@ REGISTER_KERNEL_BUILDER(Name("Shape")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64>("out_type"),
                         ShapeOp<int64>);
-#endif
+#endif  // GOOGLE_CUDA
 
 // ShapeN ---------------------------------------
 REGISTER_KERNEL_BUILDER(Name("ShapeN")
@@ -153,7 +153,7 @@ REGISTER_KERNEL_BUILDER(Name("ShapeN")
                             .TypeConstraint<int32>("T")
                             .TypeConstraint<int64>("out_type"),
                         ShapeNOp<int64>);
-#endif
+#endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNEL(type)                               \
@@ -245,7 +245,7 @@ REGISTER_KERNEL_BUILDER(Name("Rank")
                             .HostMemory("input")
                             .HostMemory("output"),
                         RankOp);
-#endif
+#endif  // GOOGLE_CUDA
 
 // Size ------------------------------------------
 REGISTER_KERNEL_BUILDER(Name("Size")
@@ -294,7 +294,7 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                             .HostMemory("input")
                             .HostMemory("output"),
                         SizeOp<int64>);
-#endif
+#endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNEL(type)                               \
@@ -328,7 +328,7 @@ REGISTER_KERNEL_BUILDER(Name("Size")
                             .HostMemory("input")
                             .HostMemory("output"),
                         SizeOp<int64>);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // ExpandDims ------------------------------------
 REGISTER_KERNEL_BUILDER(Name("ExpandDims")
@@ -357,7 +357,7 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .HostMemory("dim")
                             .HostMemory("output"),
                         ExpandDimsOp);
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNEL(type)                           \
@@ -379,7 +379,7 @@ REGISTER_KERNEL_BUILDER(Name("ExpandDims")
                             .HostMemory("dim")
                             .HostMemory("output"),
                         ExpandDimsOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Squeeze ---------------------------------------
 REGISTER_KERNEL_BUILDER(Name("Squeeze").Device(DEVICE_CPU), SqueezeOp);
@@ -402,7 +402,7 @@ REGISTER_KERNEL_BUILDER(Name("Squeeze")
                             .HostMemory("input")
                             .HostMemory("output"),
                         SqueezeOp);
-#endif
+#endif  // GOOGLE_CUDA
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNEL(type)                                   \
@@ -419,6 +419,6 @@ REGISTER_KERNEL_BUILDER(Name("Squeeze")
                             .HostMemory("input")
                             .HostMemory("output"),
                         SqueezeOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow
