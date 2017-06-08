@@ -175,7 +175,7 @@ do_pylint() {
   while read LINE; do
     IS_WHITELISTED=0
     for WL_REGEX in ${ERROR_WHITELIST}; do
-      if [[ ! -z $(echo ${LINE} | grep "${WL_REGEX}") ]]; then
+      if echo ${LINE} | grep -q "${WL_REGEX}"; then
         echo "Found a whitelisted error:"
         echo "  ${LINE}"
         IS_WHITELISTED=1
