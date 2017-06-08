@@ -18,7 +18,7 @@ set -ex
 
 # Sanity test for the binary artifacts for the TensorFlow Java API.
 # - Unarchive
-# - Compile a trivial Java file that excercises the Java API and underlying
+# - Compile a trivial Java file that exercises the Java API and underlying
 #   native library.
 # - Run it
 
