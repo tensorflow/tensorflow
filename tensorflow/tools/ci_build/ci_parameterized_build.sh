@@ -532,9 +532,9 @@ if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
   DOCKERFILE="${TMP_DIR}/Dockerfile.${TF_BUILD_CONTAINER_TYPE}"
 
   # Replace a line in the Dockerfile
-  if [[ sed -i \
+  if sed -i \
       's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
-      "${DOCKERFILE}" ]]
+      "${DOCKERFILE}"
   then
     echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}"
   else
