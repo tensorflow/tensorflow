@@ -157,7 +157,7 @@ do_pylint() {
   NONWL_ERRORS_FILE="$(mktemp)_pylint_nonwl_errors.log"
 
   rm -rf ${OUTPUT_FILE}
-  rm -rf ${ERRORS_FLIE}
+  rm -rf ${ERRORS_FILE}
   rm -rf ${NONWL_ERRORS_FILE}
   touch ${NONWL_ERRORS_FILE}
 
