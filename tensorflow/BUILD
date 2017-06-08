@@ -485,3 +485,15 @@ cc_binary(
         "//tensorflow/core:tensorflow",
     ],
 )
+
+# Added build rule
+cc_binary(
+    name = "libtensorflow_all.so",
+    linkshared = 1,
+    linkopts = ["-Wl,--version-script=tensorflow/tf_version_script.lds"], # if use Mac remove this line
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:tensorflow",
+    ],
+)
