@@ -71,7 +71,7 @@ rm -rf ${LOG_FILE} || \
 
 # Invoke main Python file
 python "${GCS_SMOKE_PY}" --gcs_bucket_url="${GCS_BUCKET_URL}" \
-    2>&1 > "${LOG_FILE}"
+    > "${LOG_FILE}" 2>&1
 
 if [[ $? != "0" ]]; then
   cat ${LOG_FILE}
