@@ -120,7 +120,12 @@ class SecondOrStepTimer(object):
 class LoggingTensorHook(session_run_hook.SessionRunHook):
   """Prints the given tensors once every N local steps or once every N seconds.
 
-  The tensors will be printed to the log, with `INFO` severity.
+  The tensors will be printed to the log, with `INFO` severity. If you are not
+  seeing the logs, you might want to add the following line after your imports:
+  
+  ```python
+    tf.logging.set_verbosity(tf.logging.INFO)
+  ```
   """
 
   def __init__(self, tensors, every_n_iter=None, every_n_secs=None,
