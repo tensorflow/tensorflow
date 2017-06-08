@@ -1,3 +1,4 @@
+Testing 1.2 branch
 # Release 1.2.0
 
 ## Major Features and Improvements
