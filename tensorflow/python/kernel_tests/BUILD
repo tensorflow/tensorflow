@@ -799,7 +799,6 @@ tf_py_test(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:summary",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -2144,7 +2143,6 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -2632,7 +2630,6 @@ tf_py_test(
         "//tensorflow/python:sets",
         "//tensorflow/python:sparse_ops",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
