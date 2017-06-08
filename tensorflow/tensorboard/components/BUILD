@@ -22,6 +22,24 @@ tensorboard_html_binary(
     deps = [":tensorboard"],
 )
 
+ts_web_library(
+    name = "trace_viewer",
+    srcs = [
+        "trace_viewer.html",
+    ],
+    path = "/",
+    deps = [
+        "//tensorflow/tensorboard/components/tf_trace_viewer",
+    ],
+)
+
+tensorboard_html_binary(
+    name = "trace_viewer_index",
+    input_path = "/trace_viewer.html",
+    output_path = "/trace_viewer_index.html",
+    deps = [":trace_viewer"],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(["**"]),

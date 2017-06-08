@@ -5,11 +5,11 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>tf_ios_makefile_example</string>
+	<string>tf_simple_example</string>
 	<key>CFBundleExecutable</key>
-	<string>tf_ios_makefile_example</string>
+	<string>tf_simple_example</string>
 	<key>CFBundleIdentifier</key>
-	<string>Google.RunModel</string>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>

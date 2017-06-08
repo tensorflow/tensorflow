@@ -2,15 +2,15 @@
 
 This folder contains examples of how to build applications for iOS devices using TensorFlow.
 
-## Building the Examples
+## Running the Samples using CocoaPod
+ - You'll need Xcode 7.3 or later.
 
- - You'll need Xcode 7.3 or later, with the command-line tools installed.
+ - There are currently three examples: simple, benchmark, and camera. For now,
+   you can download the sample code by cloning the main tensorflow repository 
+   (we are planning to make the samples available as a separate repository
+   later).
 
- - Follow the instructions at
-   [tensorflow/contrib/makefile](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/makefile)
-   under "iOS" to compile a static library containing the core TensorFlow code.
-
- - From the root of the Tensorflow folder, download
+ - From the root of the tensorflow folder, download
    [Inception v1](https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip),
    and extract the label and graph files into the data folders inside both the
    simple and camera examples:
@@ -25,8 +25,62 @@ cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/camera/data/
 cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/simple/data/
 ```
 
- - Load the Xcode project inside the `simple` subfolder, and press Command-R to
-   build and run it on the simulator or your connected device.
+ - Change directory to one of the samples, download the TensorFlow-experimental
+   pod, and open the Xcode workspace. Observe: installing the pod can take a
+   long time since it is big (~450MB). For example, if you want to run the
+   simple example, then:
+```bash
+cd tensorflow/contrib/ios_examples/simple
+pod install
+open tf_simple_example.xcworkspace # obs, not the .xcodeproj directory
+```
+
+ - Run the simple app in the simulator. You should see a single-screen app with
+   a "Run Model" button. Tap that, and you should see some debug output appear
+   below indicating that the example Grace Hopper image in directory data has
+   been analyzed, with a military uniform recognized.
+
+ - Run the other samples using the same process. The camera example requires a
+   real device connected. Once you build and run that, you should get a live
+   camera view that you can point at objects to get real-time recognition
+   results.
+
+### Troubleshooting
+
+ - Make sure you use the TensorFlow-experimental pod (and not TensorFlow).
+  
+ - The TensorFlow-experimental pod is current about ~450MB. The reason it is 
+   so big is because we are bundling multiple platforms, and the pod includes
+   all TensorFlow functionality (e.g. operations). This is convenient during
+   development, but see below section on how you can build your own custom
+   TensorFlow library to reduce the size.
+
+### Creating Your own App
+
+ - Create your own app using Xcode then add a file named Podfile at the project
+   root directory with the following content:
+```bash
+target 'YourProjectName'
+       pod 'TensorFlow-experimental'
+```
+
+ - Then you run ```pod install``` to download and install the
+ TensorFlow-experimental pod, and finaly perform
+ ```open YourProjectName.xcworkspace``` and add your code.
+
+ - In your apps "Build Settings", make sure to add $(inherited) to sections
+   "Other Linker Flags", and "Header Search Paths".
+
+ - That's it. If you want to create your custom TensorFlow iOS library, for
+   example to reduce binary footprint, see below section.
+
+## Building the TensorFlow iOS libraries from source
+
+ - You'll need Xcode 7.3 or later, with the command-line tools installed.
+
+ - Follow the instructions at
+   [tensorflow/contrib/makefile](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/makefile)
+   under "iOS" to compile a static library containing the core TensorFlow code.
 
  - You should see a single-screen app with a "Run Model" button. Tap that, and
    you should see some debug output appear below indicating that the example
@@ -36,8 +90,8 @@ cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/simple/data/
    open up the Xcode project in the `camera` subfolder. Once you build and run
    that, you should get a live camera view that you can point at objects to get
    real-time recognition results.
-
-## Troubleshooting
+   
+### Troubleshooting
 
 If you're hitting problems, here's a checklist of common things to investigate:
 
@@ -52,7 +106,7 @@ If you're hitting problems, here's a checklist of common things to investigate:
    linked in properly. You'll have to make sure your project uses force_load, as
    described below.
 
-## Creating your Own App
+### Creating your Own App from your source libraries
 
 You'll need to update various settings in your app to link against
 TensorFlow. You can view them in the example projects, but here's a full
@@ -96,7 +150,7 @@ rundown:
    `-all_load` to avoid issues with Objective-C categories in static libraries,
    you may be able to replace it with the `-ObjC` flag.
 
-## Reducing the binary size
+### Reducing the binary size
 
 TensorFlow is a comparatively large library for a mobile device, so it will
 increase the size of your app. Currently on iOS we see around a 11 MB binary
@@ -115,17 +169,17 @@ looking at the simple example to examine its size. Here's how you do that:
 
  - Once the build's complete, open the Report Navigator and select the logs.
 
- - Near the bottom, you'll see a line saying "Touch tf_ios_makefile_example.app".
+ - Near the bottom, you'll see a line saying "Touch tf_simple_example.app".
 
  - Expand that line using the icon on the right, and copy the first argument to
    the Touch command.
 
  - Go to the terminal, type `ls -lah ` and then paste the path you copied.
 
- - For example it might look like `ls -lah /Users/petewarden/Library/Developer/Xcode/DerivedData/tf_ios_makefile_example-etdbksqytcnzeyfgdwiihzkqpxwr/Build/Products/Debug-iphoneos/tf_ios_makefile_example.app`
+ - For example it might look like `ls -lah /Users/petewarden/Library/Developer/Xcode/DerivedData/tf_simple_example-etdbksqytcnzeyfgdwiihzkqpxwr/Build/Products/Debug-iphoneos/tf_simple_example.app`
 
  - Running this command will show the size of the executable as the
-   `tf_ios_makefile_example` line.
+   `tf_simple_example` line.
 
 Right now you'll see a size of around 23 MB, since it's including two
 architectures (armv7 and arm64). As a first step, you should make sure the size

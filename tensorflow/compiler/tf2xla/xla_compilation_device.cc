@@ -119,6 +119,4 @@ void XlaExpression::set_constant_value(Tensor value) {
   constant_value_ = std::move(value);
 }
 
-void XlaExpression::set_variable_id(int id) { variable_id_ = id; }
-
 }  // namespace tensorflow

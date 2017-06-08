@@ -93,6 +93,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
         "//tensorflow/compiler/xla/legacy_flags:hlo_test_base_flags",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:backend",

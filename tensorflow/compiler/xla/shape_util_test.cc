@@ -467,6 +467,34 @@ TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
       ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape2)));
 }
 
+TEST(ShapeUtilTest, ForEachIndex) {
+  struct ShapeDimensionAndNumberInvocations {
+    std::vector<int64> dimensions;
+    int invocations;
+  } test_data[] = {
+      {{}, 1},     {{0}, 0},      {{16}, 16},          {{3, 0}, 0},
+      {{0, 2}, 0}, {{4, 16}, 64}, {{6, 11, 17}, 1122}, {{6, 11, 5, 17}, 5610},
+  };
+
+  for (const auto& data : test_data) {
+    Shape shape = ShapeUtil::MakeShape(F32, data.dimensions);
+    // Increments at every invocation.
+    int invocations = 0;
+    auto increment_func = [&invocations](const std::vector<int64>& indexes) {
+      invocations++;
+      return true;
+    };
+
+    std::vector<int64> zero_base(data.dimensions.size(), 0);
+    std::vector<int64> step(data.dimensions.size(), 1);
+
+    ShapeUtil::ForEachIndex(shape, zero_base, data.dimensions, step,
+                            increment_func);
+
+    EXPECT_EQ(invocations, data.invocations);
+  }
+}
+
 TEST(ShapeUtilTest, DimensionsUnmodifiedByReshape_1x1x1x1_to_1x1x1) {
   // All output dimensions should be unmodified. One of the input dimensions is
   // modified because the input rank is larger by one.
