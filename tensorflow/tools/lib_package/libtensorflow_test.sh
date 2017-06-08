@@ -26,7 +26,7 @@ CC="${CC}"
 TAR="${TAR}"
 
 [ -z "${CC}" ] && CC="/usr/bin/gcc"
-[ -z "${TAR}"] && TAR="tar"
+[ -z "${TAR}" ] && TAR="tar"
 
 # bazel tests run with ${PWD} set to the root of the bazel workspace
 TARFILE="${PWD}/tensorflow/tools/lib_package/libtensorflow.tar.gz"
