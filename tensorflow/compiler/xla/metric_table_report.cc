@@ -220,7 +220,14 @@ void MetricTableReport::AppendTableRow(const string& text, const double metric,
   const int64 max_metric_string_size =
       MetricString(expected_metric_sum_).size();
   string metric_string = MetricString(metric);
-  string padding(max_metric_string_size - metric_string.size() + 1, ' ');
+
+  // Don't try to make a gigantic string and crash if expected_metric_sum_ is
+  // wrong somehow.
+  int64 padding_len = 1;
+  if (max_metric_string_size >= metric_string.size()) {
+    padding_len += max_metric_string_size - metric_string.size();
+  }
+  string padding(padding_len, ' ');
   AppendLine(padding, metric_string, " (", MetricPercent(metric), " Σ",
              MetricPercent(running_metric_sum), ")   ", text);
 }
