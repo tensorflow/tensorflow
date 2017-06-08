@@ -163,6 +163,7 @@ cc_binary(
             LINKER_EXPORTED_SYMBOLS,
         ],
         "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
             "-s",

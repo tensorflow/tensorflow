@@ -132,6 +132,7 @@ sh_binary(
     srcs = ["build_pip_package.sh"],
     data = select({
         "//tensorflow:windows": [":simple_console_for_windows"],
+        "//tensorflow:windows_msvc": [":simple_console_for_windows"],
         "//conditions:default": [
             ":licenses",
             "MANIFEST.in",
