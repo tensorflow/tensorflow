@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package internal
+package wrap
 
 import (
 	"bytes"
@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
-	pb "github.com/tensorflow/tensorflow/tensorflow/go/genop/internal/proto/tensorflow/core/framework"
+	pb "github.com/tensorflow/tensorflow/tensorflow/go/pb/tensorflow/core/framework"
 )
 
 func TestGenerateOp(t *testing.T) {
