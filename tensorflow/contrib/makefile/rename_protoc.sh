@@ -1,4 +1,4 @@
-#!/bin/bash -e -x
+#!/bin/bash
 
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
@@ -14,6 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+
+set -e
+set -x
 
 PROTO_C_COMMAND=$1
 shift
