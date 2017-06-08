@@ -31,6 +31,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'inputs',
+    'canned',
     'export',
     'Estimator',
     'EstimatorSpec',
