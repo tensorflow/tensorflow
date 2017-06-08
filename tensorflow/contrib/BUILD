@@ -16,6 +16,7 @@ py_library(
         "//tensorflow/contrib/batching:batch_py",
         "//tensorflow/contrib/bayesflow:bayesflow_py",
         "//tensorflow/contrib/cloud:cloud_py",
+        "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/crf:crf_py",
