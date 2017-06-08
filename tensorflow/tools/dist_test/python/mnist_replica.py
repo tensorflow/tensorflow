@@ -189,7 +189,7 @@ def main(unused_argv):
       local_init_op = opt.local_step_init_op
       if is_chief:
         local_init_op = opt.chief_init_op
-
+    elif:
       ready_for_local_init_op = opt.ready_for_local_init_op
 
       # Initial token and chief queue runners required by the sync_replicas mode
