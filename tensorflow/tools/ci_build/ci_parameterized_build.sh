@@ -200,8 +200,8 @@ echo "  TF_BUILD_ENABLE_XLA=${TF_BUILD_ENABLE_XLA}"
 function get_cuda_capability_version() {
   if [[ ! -z $(which deviceQuery) ]]; then
     # The first listed device is used
-    echo $(deviceQuery | grep "CUDA Capability .* version" | \
-        head -1 | awk '{print $NF}')
+    deviceQuery | grep "CUDA Capability .* version" | \
+        head -1 | awk '{print $NF}'
   fi
 }
 
