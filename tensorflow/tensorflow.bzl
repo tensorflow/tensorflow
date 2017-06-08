@@ -112,6 +112,7 @@ def if_not_mobile(a):
 def if_not_windows(a):
   return select({
       clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": a,
   })
 
@@ -120,6 +121,7 @@ def if_x86(a):
   return select({
       clean_dep("//tensorflow:linux_x86_64"): a,
       clean_dep("//tensorflow:windows"): a,
+      clean_dep("//tensorflow:windows_msvc"): a,
       "//conditions:default": [],
   })
 
@@ -128,6 +130,15 @@ def if_darwin(a):
       clean_dep("//tensorflow:darwin"): a,
       "//conditions:default": [],
   })
+
+WIN_COPTS = [
+    "/DLANG_CXX11",
+    "/D__VERSION__=\\\"MSVC\\\"",
+    "/DPLATFORM_WINDOWS",
+    "/DTF_COMPILE_LIBRARY",
+    "/DEIGEN_HAS_C99_MATH",
+    "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
+]
 
 # LINT.IfChange
 def tf_copts():
@@ -144,14 +155,8 @@ def tf_copts():
               "-O2",
           ],
           clean_dep("//tensorflow:darwin"): [],
-          clean_dep("//tensorflow:windows"): [
-              "/DLANG_CXX11",
-              "/D__VERSION__=\\\"MSVC\\\"",
-              "/DPLATFORM_WINDOWS",
-              "/DTF_COMPILE_LIBRARY",
-              "/DEIGEN_HAS_C99_MATH",
-              "/DTENSORFLOW_USE_EIGEN_THREADPOOL",
-          ],
+          clean_dep("//tensorflow:windows"): WIN_COPTS,
+          clean_dep("//tensorflow:windows_msvc"): WIN_COPTS,
           clean_dep("//tensorflow:ios"): ["-std=c++11"],
           "//conditions:default": ["-pthread"]
       }))
@@ -996,6 +1001,7 @@ def tf_py_wrap_cc(name,
           clean_dep("//tensorflow:tf_exported_symbols.lds")
       ],
       clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
           clean_dep("//tensorflow:tf_version_script.lds")
@@ -1006,6 +1012,7 @@ def tf_py_wrap_cc(name,
           clean_dep("//tensorflow:tf_exported_symbols.lds")
       ],
       clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           clean_dep("//tensorflow:tf_version_script.lds")
       ]
