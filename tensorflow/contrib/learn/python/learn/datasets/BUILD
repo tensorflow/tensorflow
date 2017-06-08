@@ -97,3 +97,15 @@ py_test(
         "@six_archive//:six",
     ],
 )
+
+py_test(
+    name = "synthetic_test",
+    size = "small",
+    srcs = ["synthetic_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/learn",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
