@@ -937,9 +937,9 @@ def main(_):
       intermediate_frequency = FLAGS.intermediate_store_frequency
 
       if intermediate_frequency > 0 and (i % intermediate_frequency == 0) and i > 0:
-        intermediat_file_name = FLAGS.intermediate_output_graphs_dir + 'intermediate_' + str(i) + '.pb'
-        print('Save intermediate result to : ' + intermediat_file_name)
-        save_graph_to_file(sess, graph, intermediat_file_name)
+        intermediate_file_name = FLAGS.intermediate_output_graphs_dir + 'intermediate_' + str(i) + '.pb'
+        print('Save intermediate result to : ' + intermediate_file_name)
+        save_graph_to_file(sess, graph, intermediate_file_name)
                 
     # We've completed all our training, so run a final test evaluation on
     # some new images we haven't used before.
