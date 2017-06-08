@@ -13,5 +13,6 @@ RUN apt-get install -y \
     libtool \
     make \
     python \
+    sudo \
     unzip \
     zlib1g-dev

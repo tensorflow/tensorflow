@@ -40,6 +40,10 @@ if [[ $? != "0" ]]; then
   exit 1
 fi
 
+# By default, when docker writes files to host filesystem they are owned by
+# root. This script makes sure the current user owns these files.
+COMMAND_PREFIX="tensorflow/tools/ci_build/builds/with_the_same_user"
+
 COMMAND="tensorflow/contrib/makefile/build_all_linux.sh"
 
 # Run the command inside the container.
@@ -48,7 +52,13 @@ echo "Running ${COMMAND} inside ${DOCKER_IMG_NAME}..."
 # and share the PID namespace (--pid=host) so the process inside does not have
 # pid 1 and SIGKILL is propagated to the process inside (jenkins can kill it).
 docker run --rm --pid=host \
+    -e "CI_BUILD_HOME=${WORKSPACE}/tensorflow/contrib/makefile/downloads" \
+    -e "CI_BUILD_USER=$(id -u --name)" \
+    -e "CI_BUILD_UID=$(id -u)" \
+    -e "CI_BUILD_GROUP=$(id -g --name)" \
+    -e "CI_BUILD_GID=$(id -g)" \
     -v ${WORKSPACE}:/workspace \
     -w /workspace \
-    "${DOCKER_IMG_NAME}" \
+    ${DOCKER_IMG_NAME} \
+    ${COMMAND_PREFIX} \
     ${COMMAND}
