@@ -162,7 +162,7 @@ do_pylint() {
   touch ${NONWL_ERRORS_FILE}
 
   ${PYLINT_BIN} --rcfile="${PYLINTRC_FILE}" --output-format=parseable \
-      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} 2>&1 > ${OUTPUT_FILE}
+      --jobs=${NUM_CPUS} ${PYTHON_SRC_FILES} > ${OUTPUT_FILE} 2>&1
   PYLINT_END_TIME=$(date +'%s')
 
   echo ""
