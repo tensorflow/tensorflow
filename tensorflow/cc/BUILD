@@ -454,7 +454,6 @@ cc_library(
         ":client_session",
         ":ops",
         ":scope",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:tensorflow",
@@ -479,7 +478,7 @@ cc_binary(
     ],
     deps = [
         ":cc_ops",
-        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:all_kernels",  # buildcleaner: keep
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
