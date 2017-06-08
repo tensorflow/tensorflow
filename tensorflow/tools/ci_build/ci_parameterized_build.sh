@@ -574,7 +574,7 @@ rm -f ${TMP_SCRIPT}
 END_TIME=$(date +'%s')
 echo ""
 echo "Parameterized build ends with ${RESULT} at: $(date) "\
-"(Elapsed time: $((${END_TIME} - ${START_TIME})) s)"
+"(Elapsed time: $((END_TIME - START_TIME)) s)"
 
 
 # Clean up temporary directory if it exists
