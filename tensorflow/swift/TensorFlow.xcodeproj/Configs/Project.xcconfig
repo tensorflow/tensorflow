@@ -1,0 +1,7 @@
+PRODUCT_NAME = $(TARGET_NAME)
+SUPPORTED_PLATFORMS = macosx iphoneos iphonesimulator appletvos appletvsimulator watchos watchsimulator
+MACOSX_DEPLOYMENT_TARGET = 10.10
+DYLIB_INSTALL_NAME_BASE = @rpath
+OTHER_SWIFT_FLAGS = -DXcode
+COMBINE_HIDPI_IMAGES = YES
+USE_HEADERMAP = NO

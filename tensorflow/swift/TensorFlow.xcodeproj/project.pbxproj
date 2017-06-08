@@ -1,0 +1,340 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		293BECB41DA9C03800B9C31B /* Tensor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 293BECB31DA9C03800B9C31B /* Tensor.swift */; };
+		293BECB61DA9C10500B9C31B /* Shape.swift in Sources */ = {isa = PBXBuildFile; fileRef = 293BECB51DA9C10500B9C31B /* Shape.swift */; };
+		_LinkFileRef_TensorFlow_via_TensorFlowTests /* TensorFlow.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = "_____Product_TensorFlow" /* TensorFlow.framework */; };
+		__src_cc_ref_Sources/TensorFlow.swift /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = __PBXFileRef_Sources/TensorFlow.swift /* Session.swift */; };
+		__src_cc_ref_Tests/TensorFlowTests/TensorFlowTests.swift /* TensorFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = __PBXFileRef_Tests/TensorFlowTests/TensorFlowTests.swift /* TensorFlowTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		293BECB21DA9BD6E00B9C31B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = __RootObject_ /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = "______Target_TensorFlow";
+			remoteInfo = TensorFlow;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		293BECB31DA9C03800B9C31B /* Tensor.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Tensor.swift; sourceTree = "<group>"; };
+		293BECB51DA9C10500B9C31B /* Shape.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Shape.swift; sourceTree = "<group>"; };
+		__PBXFileRef_Package.swift /* Package.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Package.swift; sourceTree = "<group>"; };
+		__PBXFileRef_Sources/TensorFlow.swift /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
+		__PBXFileRef_TensorFlow.xcodeproj/Configs/Project.xcconfig /* TensorFlow.xcodeproj/Configs/Project.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = TensorFlow.xcodeproj/Configs/Project.xcconfig; sourceTree = "<group>"; };
+		__PBXFileRef_Tests/TensorFlowTests/TensorFlowTests.swift /* TensorFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TensorFlowTests.swift; sourceTree = "<group>"; };
+		"_____Product_TensorFlow" /* TensorFlow.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = TensorFlow.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		"_____Product_TensorFlowTests" /* TensorFlowTests.xctest */ = {isa = PBXFileReference; lastKnownFileType = file; path = TensorFlowTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		"___LinkPhase_TensorFlow" /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		"___LinkPhase_TensorFlowTests" /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 0;
+			files = (
+				_LinkFileRef_TensorFlow_via_TensorFlowTests /* TensorFlow.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		TestProducts_ /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				"_____Product_TensorFlowTests" /* TensorFlowTests.xctest */,
+			);
+			name = Tests;
+			sourceTree = "<group>";
+		};
+		"___RootGroup_" = {
+			isa = PBXGroup;
+			children = (
+				__PBXFileRef_Package.swift /* Package.swift */,
+				"_____Configs_" /* Configs */,
+				"_____Sources_" /* Sources */,
+				"_______Tests_" /* Tests */,
+				"____Products_" /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		"____Products_" /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				TestProducts_ /* Tests */,
+				"_____Product_TensorFlow" /* TensorFlow.framework */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		"_____Configs_" /* Configs */ = {
+			isa = PBXGroup;
+			children = (
+				__PBXFileRef_TensorFlow.xcodeproj/Configs/Project.xcconfig /* TensorFlow.xcodeproj/Configs/Project.xcconfig */,
+			);
+			name = Configs;
+			sourceTree = "<group>";
+		};
+		"_____Sources_" /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				"_______Group_TensorFlow" /* TensorFlow */,
+			);
+			name = Sources;
+			sourceTree = "<group>";
+		};
+		"_______Group_TensorFlow" /* TensorFlow */ = {
+			isa = PBXGroup;
+			children = (
+				__PBXFileRef_Sources/TensorFlow.swift /* Session.swift */,
+				293BECB31DA9C03800B9C31B /* Tensor.swift */,
+				293BECB51DA9C10500B9C31B /* Shape.swift */,
+			);
+			name = TensorFlow;
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		"_______Group_TensorFlowTests" /* TensorFlowTests */ = {
+			isa = PBXGroup;
+			children = (
+				__PBXFileRef_Tests/TensorFlowTests/TensorFlowTests.swift /* TensorFlowTests.swift */,
+			);
+			name = TensorFlowTests;
+			path = Tests/TensorFlowTests;
+			sourceTree = "<group>";
+		};
+		"_______Tests_" /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				"_______Group_TensorFlowTests" /* TensorFlowTests */,
+			);
+			name = Tests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		"______Target_TensorFlow" /* TensorFlow */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = "_______Confs_TensorFlow" /* Build configuration list for PBXNativeTarget "TensorFlow" */;
+			buildPhases = (
+				CompilePhase_TensorFlow /* Sources */,
+				"___LinkPhase_TensorFlow" /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TensorFlow;
+			productName = TensorFlow;
+			productReference = "_____Product_TensorFlow" /* TensorFlow.framework */;
+			productType = "com.apple.product-type.framework";
+		};
+		"______Target_TensorFlowTests" /* TensorFlowTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = "_______Confs_TensorFlowTests" /* Build configuration list for PBXNativeTarget "TensorFlowTests" */;
+			buildPhases = (
+				CompilePhase_TensorFlowTests /* Sources */,
+				"___LinkPhase_TensorFlowTests" /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				__Dependency_TensorFlow /* PBXTargetDependency */,
+			);
+			name = TensorFlowTests;
+			productName = TensorFlowTests;
+			productReference = "_____Product_TensorFlowTests" /* TensorFlowTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		__RootObject_ /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastUpgradeCheck = 9999;
+			};
+			buildConfigurationList = "___RootConfs_" /* Build configuration list for PBXProject "TensorFlow" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = "___RootGroup_";
+			productRefGroup = "____Products_" /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				"______Target_TensorFlow" /* TensorFlow */,
+				"______Target_TensorFlowTests" /* TensorFlowTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		CompilePhase_TensorFlow /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 0;
+			files = (
+				293BECB41DA9C03800B9C31B /* Tensor.swift in Sources */,
+				293BECB61DA9C10500B9C31B /* Shape.swift in Sources */,
+				__src_cc_ref_Sources/TensorFlow.swift /* Session.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CompilePhase_TensorFlowTests /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 0;
+			files = (
+				__src_cc_ref_Tests/TensorFlowTests/TensorFlowTests.swift /* TensorFlowTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		__Dependency_TensorFlow /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = "______Target_TensorFlow" /* TensorFlow */;
+			targetProxy = 293BECB21DA9BD6E00B9C31B /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		_ReleaseConf_TensorFlow /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_TESTABILITY = YES;
+				FRAMEWORK_SEARCH_PATHS = "$(PLATFORM_DIR)/Developer/Library/Frameworks";
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Packages/CTensorFlow-0.0.0",
+					"$(PROJECT_DIR)/../..",
+				);
+				INFOPLIST_FILE = TensorFlow.xcodeproj/TensorFlow_Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(TOOLCHAIN_DIR)/usr/lib/swift/macosx";
+				LIBRARY_SEARCH_PATHS = /usr/local/lib/tensorflow;
+				OTHER_LDFLAGS = "$(inherited)";
+				OTHER_SWIFT_FLAGS = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = TensorFlow;
+				PRODUCT_MODULE_NAME = "$(TARGET_NAME:c99extidentifier)";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SWIFT_VERSION = 3.0;
+			};
+			name = Release;
+		};
+		_ReleaseConf_TensorFlowTests /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
+				FRAMEWORK_SEARCH_PATHS = "$(PLATFORM_DIR)/Developer/Library/Frameworks";
+				HEADER_SEARCH_PATHS = "/Users/rxwei/Development/ML/tensorflow/tensorflow/swift/Packages/CTensorFlow-0.0.0";
+				INFOPLIST_FILE = TensorFlow.xcodeproj/TensorFlowTests_Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
+				OTHER_LDFLAGS = "$(inherited)";
+				OTHER_SWIFT_FLAGS = "$(inherited)";
+				SWIFT_VERSION = 3.0;
+			};
+			name = Release;
+		};
+		"___DebugConf_TensorFlow" /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ENABLE_TESTABILITY = YES;
+				FRAMEWORK_SEARCH_PATHS = "$(PLATFORM_DIR)/Developer/Library/Frameworks";
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/Packages/CTensorFlow-0.0.0",
+					"$(PROJECT_DIR)/../..",
+				);
+				INFOPLIST_FILE = TensorFlow.xcodeproj/TensorFlow_Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(TOOLCHAIN_DIR)/usr/lib/swift/macosx";
+				LIBRARY_SEARCH_PATHS = /usr/local/lib/tensorflow;
+				OTHER_LDFLAGS = "$(inherited)";
+				OTHER_SWIFT_FLAGS = "$(inherited)";
+				PRODUCT_BUNDLE_IDENTIFIER = TensorFlow;
+				PRODUCT_MODULE_NAME = "$(TARGET_NAME:c99extidentifier)";
+				PRODUCT_NAME = "$(TARGET_NAME:c99extidentifier)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 3.0;
+			};
+			name = Debug;
+		};
+		"___DebugConf_TensorFlowTests" /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				EMBEDDED_CONTENT_CONTAINS_SWIFT = YES;
+				FRAMEWORK_SEARCH_PATHS = "$(PLATFORM_DIR)/Developer/Library/Frameworks";
+				HEADER_SEARCH_PATHS = "/Users/rxwei/Development/ML/tensorflow/tensorflow/swift/Packages/CTensorFlow-0.0.0";
+				INFOPLIST_FILE = TensorFlow.xcodeproj/TensorFlowTests_Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "@loader_path/../Frameworks";
+				OTHER_LDFLAGS = "$(inherited)";
+				OTHER_SWIFT_FLAGS = "$(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 3.0;
+			};
+			name = Debug;
+		};
+		"_____Release_" /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = __PBXFileRef_TensorFlow.xcodeproj/Configs/Project.xcconfig /* TensorFlow.xcodeproj/Configs/Project.xcconfig */;
+			buildSettings = {
+			};
+			name = Release;
+		};
+		"_______Debug_" /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = __PBXFileRef_TensorFlow.xcodeproj/Configs/Project.xcconfig /* TensorFlow.xcodeproj/Configs/Project.xcconfig */;
+			buildSettings = {
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		"___RootConfs_" /* Build configuration list for PBXProject "TensorFlow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				"_______Debug_" /* Debug */,
+				"_____Release_" /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		"_______Confs_TensorFlow" /* Build configuration list for PBXNativeTarget "TensorFlow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				"___DebugConf_TensorFlow" /* Debug */,
+				_ReleaseConf_TensorFlow /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		"_______Confs_TensorFlowTests" /* Build configuration list for PBXNativeTarget "TensorFlowTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				"___DebugConf_TensorFlowTests" /* Debug */,
+				_ReleaseConf_TensorFlowTests /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = __RootObject_ /* Project object */;
+}
