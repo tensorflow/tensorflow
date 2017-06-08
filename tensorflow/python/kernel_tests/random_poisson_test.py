@@ -31,8 +31,8 @@ from tensorflow.python.platform import tf_logging
 class RandomPoissonTest(test.TestCase):
   """This is a large test due to the moments computation taking some time."""
 
-  def _Sampler(self, num, lam, dtype, use_gpu, seed=None):
-
+  def _Sampler(self, num, lam, dtype, use_gpu, seed=seed):
+    
     def func():
       with self.test_session(use_gpu=use_gpu, graph=ops.Graph()) as sess:
         rng = random_ops.random_poisson(lam, [num], dtype=dtype, seed=seed)
@@ -83,18 +83,15 @@ class RandomPoissonTest(test.TestCase):
             else:
               moments_i_mean = pow(g.moment(1), i)
               moments_i_squared = pow(g.moment(2), i)
-            moments_i_var = (
-                moments_i_squared - moments_i_mean * moments_i_mean)
+              moments_i_var = (moments_i_squared - moments_i_mean * moments_i_mean)
             # Assume every operation has a small numerical error.
             # It takes i multiplications to calculate one i-th moment.
             error_per_moment = i * 1e-6
-            total_variance = (
-                moments_i_var / moments_sample_count[i] + error_per_moment)
+            total_variance = (moments_i_var / moments_sample_count[i] + error_per_moment)
             if not total_variance:
               total_variance = 1e-10
             # z_test is approximately a unit normal distribution.
-            z_test = abs(
-                (moments[i] - moments_i_mean) / np.sqrt(total_variance))
+            z_test = abs((moments[i] - moments_i_mean) / np.sqrt(total_variance))
             self.assertLess(z_test, z_limit)
 
   # Checks that the CPU and GPU implementation returns the same results,
