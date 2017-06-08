@@ -14,7 +14,7 @@
 # ==============================================================================
 
 # pylint: disable=g-short-docstring-punctuation
-"""Sparse Tensor Representation. See the @{python/sparse_ops} guide.
+"""Sparse Tensor Representation. See the @{$python/sparse_ops} guide.
 
 @@SparseTensor
 @@SparseTensorValue
