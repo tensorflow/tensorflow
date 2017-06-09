@@ -62,6 +62,7 @@ mathematical functions to your graph.
 *   @{tf.cosh}
 *   @{tf.sinh}
 *   @{tf.asinh}
+*   @{tf.acosh}
 *   @{tf.lgamma}
 *   @{tf.digamma}
 *   @{tf.erf}

@@ -200,6 +200,17 @@ Status AsinhGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Asinh", AsinhGrad);
 
+Status AcoshGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForUnaryCwise(g, {
+      {{"y"}, "Acosh", {"x"}},
+      {{"sinh"}, "Sinh", {"y"}},
+      {{"dx"}, "Mul", {"dy", "sinh"}},  // dy * sinh(y)
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("Acosh", AcoshGrad);
+
 Status SigmoidGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForUnaryCwise(g, {

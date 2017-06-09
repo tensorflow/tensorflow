@@ -406,6 +406,15 @@ def _AsinhGrad(op, grad):
     return grad / math_ops.cosh(y)
 
 
+@ops.RegisterGradient("Acosh")
+def _AcoshGrad(op, grad):
+  """Returns grad * 1/sinh(y)."""
+  y = op.outputs[0]
+  with ops.control_dependencies([grad.op]):
+    y = math_ops.conj(y)
+    return grad / math_ops.sinh(y)
+
+
 @ops.RegisterGradient("TanhGrad")
 def _TanhGradGrad(op, grad):
   with ops.control_dependencies([grad.op]):
