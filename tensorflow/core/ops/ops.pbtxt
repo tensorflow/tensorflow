@@ -19394,7 +19394,7 @@ op {
     description: "If `True`, updating of the var and accum tensors will be protected\nby a lock; otherwise the behavior is undefined, but may exhibit less\ncontention."
   }
   summary: "Update \'*var\' according to the Ftrl-proximal scheme."
-  description: "accum_new = accum + grad * grad\nlinear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
+  description: "accum_new = accum + grad * grad\nlinear += grad - (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var\nquadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2\nvar = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0\naccum = accum_new"
   is_stateful: true
 }
 op {
