@@ -203,6 +203,19 @@ Status TanhGrad(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Tanh", TanhGrad);
 
+Status AsinhGrad(const Scope& scope, const Operation& op,
+                 const std::vector<Output>& grad_inputs,
+                 std::vector<Output>* grad_outputs) {
+  // y = asinh(x)
+  // dy/dx = 1 / cosh(y)
+  auto dydx = Reciprocal(scope, Cosh(scope, op.output(0)));
+  // grad(x) = grad(y) * conj(dy/dx)
+  grad_outputs->push_back(
+      Mul(scope, grad_inputs[0], ConjugateHelper(scope, dydx)));
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Asinh", AsinhGrad);
+
 Status SigmoidGrad(const Scope& scope, const Operation& op,
                    const std::vector<Output>& grad_inputs,
                    std::vector<Output>* grad_outputs) {

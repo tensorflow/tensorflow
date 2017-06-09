@@ -48,6 +48,7 @@ class CWiseUnaryGradTest : public ::testing::Test {
     SINH,
     COSH,
     TANH,
+    ASINH,
     SIGMOID,
     SIGN,
     SIN,
@@ -121,6 +122,9 @@ class CWiseUnaryGradTest : public ::testing::Test {
         break;
       case TANH:
         y = Tanh(scope_, x);
+        break;
+      case ASINH:
+        y = Asinh(scope_, x);
         break;
       case SIGMOID:
         y = Sigmoid(scope_, x);
@@ -411,6 +415,30 @@ TEST_F(CWiseUnaryGradTest, Tanh_Complex) {
     return dy * conjugate((one_ - y * y));
   };
   TestCWiseGrad<complex64>(TANH, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Asinh) {
+  auto x_fn = [this](const int i) { return RV({0, -1, 1, -2, 2, -3, 3}); };
+  auto dy_fn = [this](const float x) { return x + RV({-2, 2, -3, 3, -4, 4}); };
+  auto dx_fn = [this](const float x, const float dy) {
+    auto y = std::asinh(x);
+    return dy / std::cosh(y);
+  };
+  TestCWiseGrad<float>(ASINH, x_fn, dy_fn, dx_fn);
+}
+
+TEST_F(CWiseUnaryGradTest, Asinh_Complex) {
+  auto x_fn = [this](const int i) {
+    return CRV({{1, 0}, {0, 1}, {2, -1}, {1, 2}, {3, 4}});
+  };
+  auto dy_fn = [this](const complex64& x) {
+    return x + CRV({{-2, 2}, {-3, 3}, {1, -4}});
+  };
+  auto dx_fn = [this](const complex64& x, const complex64& dy) {
+    auto y = std::asinh(x);
+    return dy / conjugate(std::cosh(y));
+  };
+  TestCWiseGrad<complex64>(ASINH, x_fn, dy_fn, dx_fn);
 }
 
 TEST_F(CWiseUnaryGradTest, Sigmoid) {

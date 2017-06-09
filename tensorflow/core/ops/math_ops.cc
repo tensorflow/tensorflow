@@ -305,6 +305,10 @@ REGISTER_OP("Tanh").UNARY_COMPLEX().Doc(R"doc(
 Computes hyperbolic tangent of `x` element-wise.
 )doc");
 
+REGISTER_OP("Asinh").UNARY_COMPLEX().Doc(R"doc(
+Computes inverse hyperbolic sine of x element-wise.
+)doc");
+
 REGISTER_OP("TanhGrad").UNARY_GRADIENT_COMPLEX().Doc(R"doc(
 Computes the gradient for the tanh of `x` wrt its input.
 

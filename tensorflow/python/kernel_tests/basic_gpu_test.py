@@ -110,6 +110,7 @@ class MathBuiltinUnaryTest(test.TestCase):
     self._compare(data, np.abs, math_ops.abs, use_gpu)
     self._compare(data, np.arccos, math_ops.acos, use_gpu)
     self._compare(data, np.arcsin, math_ops.asin, use_gpu)
+    self._compare(data, np.arcsinh, math_ops.asinh, use_gpu)
     self._compare(data, np.arctan, math_ops.atan, use_gpu)
     self._compare(data, np.ceil, math_ops.ceil, use_gpu)
     self._compare(data, np.cos, math_ops.cos, use_gpu)

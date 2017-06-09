@@ -528,6 +528,19 @@ TEST_F(MathGradTest, Tanh) {
   test::ExpectClose(ans, dx);
 }
 
+TEST_F(MathGradTest, Asinh) {
+  auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
+                                 TensorShape({2, 3}));
+  auto g = [](float x) {
+    auto y = std::asinh(x);
+    return 1 / std::cosh(y);
+  };
+  auto dx = test::AsTensor<float>(
+      {g(-3.f), g(-2.f), g(-1.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
+  auto ans = SymGrad("Asinh", x);
+  test::ExpectClose(ans, dx);
+}
+
 TEST_F(MathGradTest, Sigmoid) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));

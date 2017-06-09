@@ -61,6 +61,7 @@ mathematical functions to your graph.
 *   @{tf.atan}
 *   @{tf.cosh}
 *   @{tf.sinh}
+*   @{tf.asinh}
 *   @{tf.lgamma}
 *   @{tf.digamma}
 *   @{tf.erf}
