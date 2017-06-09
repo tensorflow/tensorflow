@@ -613,6 +613,66 @@ class BaseEstimator(
   def model_dir(self):
     return self._model_dir
 
+  @deprecated('2017-03-25', 'Please use Estimator.export_savedmodel() instead.')
+  def export(self,
+             export_dir,
+             input_fn=export._default_input_fn,  # pylint: disable=protected-access
+             input_feature_key=None,
+             use_deprecated_input_fn=True,
+             signature_fn=None,
+             prediction_key=None,
+             default_batch_size=1,
+             exports_to_keep=None,
+             checkpoint_path=None):
+    """Exports inference graph into given dir.
+
+    Args:
+      export_dir: A string containing a directory to write the exported graph
+        and checkpoints.
+      input_fn: If `use_deprecated_input_fn` is true, then a function that given
+        `Tensor` of `Example` strings, parses it into features that are then
+        passed to the model. Otherwise, a function that takes no argument and
+        returns a tuple of (features, labels), where features is a dict of
+        string key to `Tensor` and labels is a `Tensor` that's currently not
+        used (and so can be `None`).
+      input_feature_key: Only used if `use_deprecated_input_fn` is false. String
+        key into the features dict returned by `input_fn` that corresponds to a
+        the raw `Example` strings `Tensor` that the exported model will take as
+        input. Can only be `None` if you're using a custom `signature_fn` that
+        does not use the first arg (examples).
+      use_deprecated_input_fn: Determines the signature format of `input_fn`.
+      signature_fn: Function that returns a default signature and a named
+        signature map, given `Tensor` of `Example` strings, `dict` of `Tensor`s
+        for features and `Tensor` or `dict` of `Tensor`s for predictions.
+      prediction_key: The key for a tensor in the `predictions` dict (output
+        from the `model_fn`) to use as the `predictions` input to the
+        `signature_fn`. Optional. If `None`, predictions will pass to
+        `signature_fn` without filtering.
+      default_batch_size: Default batch size of the `Example` placeholder.
+      exports_to_keep: Number of exports to keep.
+      checkpoint_path: the checkpoint path of the model to be exported. If it is
+          `None` (which is default), will use the latest checkpoint in
+          export_dir.
+
+    Returns:
+      The string path to the exported directory. NB: this functionality was
+      added ca. 2016/09/25; clients that depend on the return value may need
+      to handle the case where this function returns None because subclasses
+      are not returning a value.
+    """
+    # pylint: disable=protected-access
+    return export._export_estimator(
+        estimator=self,
+        export_dir=export_dir,
+        signature_fn=signature_fn,
+        prediction_key=prediction_key,
+        input_fn=input_fn,
+        input_feature_key=input_feature_key,
+        use_deprecated_input_fn=use_deprecated_input_fn,
+        default_batch_size=default_batch_size,
+        exports_to_keep=exports_to_keep,
+        checkpoint_path=checkpoint_path)
+
   @abc.abstractproperty
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
@@ -661,6 +721,32 @@ class BaseEstimator(
       A `ModelFnOps` object.
     """
     raise NotImplementedError('_get_eval_ops not implemented in BaseEstimator')
+
+  @deprecated(
+      '2016-09-23',
+      'The signature of the input_fn accepted by export is changing to be '
+      'consistent with what\'s used by tf.Learn Estimator\'s train/evaluate, '
+      'which makes this function useless. This will be removed after the '
+      'deprecation date.')
+  def _get_feature_ops_from_example(self, examples_batch):
+    """Returns feature parser for given example batch using features info.
+
+    This function requires `fit()` has been called.
+
+    Args:
+      examples_batch: batch of tf.Example
+
+    Returns:
+      features: `Tensor` or `dict` of `Tensor` objects.
+
+    Raises:
+      ValueError: If `_features_info` attribute is not available (usually
+      because `fit()` has not been called).
+    """
+    if self._features_info is None:
+      raise ValueError('Features information missing, was fit() ever called?')
+    return tensor_signature.create_example_parser_from_signatures(
+        self._features_info, examples_batch)
 
   def _check_inputs(self, features, labels):
     if self._features_info is not None:
