@@ -49,12 +49,13 @@ void ExecStep::AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
     if (op_end_rel_micros == 0) {
       ++op_end_rel_micros;
     }
-    latest_end_rel_micros_ =
-        std::max(latest_end_rel_micros_, op_end_rel_micros);
+    latest_end_micros_ = std::max(
+        latest_end_micros_, step_stat.all_start_micros() + op_end_rel_micros);
 
     op_execs_[dev].push_back(
         std::make_pair(step_stat.all_start_micros(), op_end_rel_micros));
 
+    // TODO(xpan): Can a stream only in stream:all or doesn't in stream at all?
     if (dev.find("stream") != dev.npos && dev.find("stream:all") == dev.npos) {
       gpu_kernel_execs_[dev].push_back(
           std::make_pair(step_stat.all_start_micros(), op_end_rel_micros));
@@ -142,12 +143,7 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
 }
 
 int64 ExecStep::exec_micros() const {
-  int64 total = 0;
-  for (const auto& execs : gpu_kernel_execs_) {
-    for (const auto& exec : execs.second) {
-      total += exec.second;
-    }
-  }
+  int64 total = accelerator_exec_micros();
   if (total > 0) return total;
 
   // If there is no gpu kernel time, fall back to assume it runs on cpu.
@@ -157,6 +153,16 @@ int64 ExecStep::exec_micros() const {
             node->name().c_str());
   }
   for (const auto& execs : op_execs_) {
+    for (const auto& exec : execs.second) {
+      total += exec.second;
+    }
+  }
+  return total;
+}
+
+int64 ExecStep::accelerator_exec_micros() const {
+  int64 total = 0;
+  for (const auto& execs : gpu_kernel_execs_) {
     for (const auto& exec : execs.second) {
       total += exec.second;
     }
@@ -195,6 +201,10 @@ TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec) {
     shape_pb.add_dim()->set_size(s);
   }
   return shape_pb;
+}
+
+bool IsAcceleratorDevice(const string& device) {
+  return device.find("gpu") != device.npos;
 }
 }  // namespace tfprof
 }  // namespace tensorflow

@@ -183,5 +183,10 @@ bool TFStats::Validate(const Options& opts) {
   }
   return true;
 }
+
+void TFStats::AddNodeForTest(const string& name,
+                             std::unique_ptr<TFGraphNode> node) {
+  nodes_map_[name] = std::move(node);
+}
 }  // namespace tfprof
 }  // namespace tensorflow

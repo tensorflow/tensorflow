@@ -119,8 +119,7 @@ void MemoryTracker::TrackNode(int64 step, const GraphNode* node) {
     return;
   }
   Device& dev = devices_[node->node->canonical_device()];
-  int64 end_micros = node->node->all_start_micros(step) +
-                     node->node->latest_end_rel_micros(step);
+  int64 end_micros = node->node->latest_end_micros(step);
   if (node->node->accelerator_persistent_bytes(step) != 0) {
     string tensor_name = strings::StrCat(node->name(), ":", -1);
     dev.earliest_ref[tensor_name] = node->node->all_start_micros(step);
@@ -165,8 +164,7 @@ void MemoryTracker::TrackNodeConnection(int64 step, const GraphNode* node,
   src_dev.tensor_size[tensor_name] = output_bytes;
   src_dev.earliest_ref[tensor_name] = src->node->all_start_micros(step);
 
-  int64 src_end_micros = src->node->all_start_micros(step) +
-                         src->node->latest_end_rel_micros(step);
+  int64 src_end_micros = src->node->latest_end_micros(step);
 
   if (src->node->canonical_device() != node->node->canonical_device()) {
     int64 transfer_micros =
@@ -181,13 +179,10 @@ void MemoryTracker::TrackNodeConnection(int64 step, const GraphNode* node,
     dest_dev.earliest_ref[dest_tensor_name] = transfer_micros;
     dest_dev.latest_ref[dest_tensor_name] =
         std::max(dest_dev.latest_ref[dest_tensor_name],
-                 node->node->all_start_micros(step) +
-                     node->node->latest_end_rel_micros(step));
+                 node->node->latest_end_micros(step));
   } else {
-    src_dev.latest_ref[tensor_name] =
-        std::max(src_dev.latest_ref[tensor_name],
-                 node->node->all_start_micros(step) +
-                     node->node->latest_end_rel_micros(step));
+    src_dev.latest_ref[tensor_name] = std::max(
+        src_dev.latest_ref[tensor_name], node->node->latest_end_micros(step));
   }
 }
 

@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 
 # XXX: this depends on pywrap_tensorflow and must come later
 from tensorflow.contrib.tfprof.python.tools.tfprof import model_analyzer
-from tensorflow.contrib.tfprof.python.tools.tfprof import model_analyzer_testlib as lib
+from tensorflow.contrib.tfprof.python.tools.tfprof.internal import model_analyzer_testlib as lib
 
 
 class PrintModelAnalysisTest(test.TestCase):

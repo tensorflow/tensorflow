@@ -19,7 +19,7 @@ For all tfprof views, the statistics are processed with the following procedures
    It's no limited operation name. In code view,
    it's the code trace. In op view, it's the operation type name. Different
    from `-account_type_regexes`, Statistics are used even if a name is not displayed.
-   For example, in code view, a callee might be hidden by its statistics is
+   For example, in code view, a callee might be hidden, but its statistics is
    still aggregated by it's caller. `-account_displayed_op_only`, however,
    breaks the rule and only use statistics of displayed names.
 

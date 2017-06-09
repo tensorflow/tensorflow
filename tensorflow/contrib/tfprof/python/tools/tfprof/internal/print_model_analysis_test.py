@@ -31,8 +31,9 @@ from tensorflow.python.platform import test
 from tensorflow.tools.tfprof import tfprof_options_pb2
 from tensorflow.tools.tfprof import tfprof_output_pb2
 
+# pylint: disable=g-bad-import-order
 # XXX: this depends on pywrap_tensorflow and must come later
-from tensorflow.contrib.tfprof.python.tools.tfprof import pywrap_tensorflow_print_model_analysis_lib as print_mdl
+from tensorflow.contrib.tfprof.python.tools.tfprof.internal import pywrap_tensorflow_print_model_analysis_lib as print_mdl
 
 # pylint: disable=bad-whitespace
 # pylint: disable=bad-continuation

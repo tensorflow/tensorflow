@@ -20,8 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.tfprof.python.tools.tfprof import pywrap_tensorflow_print_model_analysis_lib as print_mdl
 from tensorflow.contrib.tfprof.python.tools.tfprof import tfprof_logger
+from tensorflow.contrib.tfprof.python.tools.tfprof.internal import pywrap_tensorflow_print_model_analysis_lib as print_mdl
 from tensorflow.python.framework import errors
 from tensorflow.tools.tfprof import tfprof_options_pb2
 from tensorflow.tools.tfprof import tfprof_output_pb2
@@ -189,6 +189,8 @@ class Profiler(object):
         profiler.profile_graph(options=opts)
       else:
         _ = sess.run(...)
+    # Auto detect problems and generate advice.
+    profiler.advise()
   """
 
   def __init__(self, graph, op_log=None):
@@ -285,6 +287,10 @@ class Profiler(object):
     tfprof_node.ParseFromString(
         print_mdl.Profile('graph'.encode('utf-8'), opts.SerializeToString()))
     return tfprof_node
+
+  def advise(self):
+    """Automatically detect problems and generate reports."""
+    print_mdl.Advise()
 
 
 def print_model_analysis(graph,
