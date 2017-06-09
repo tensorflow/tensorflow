@@ -33,17 +33,17 @@ ExecutorExecutable::ExecutorExecutable(std::unique_ptr<HloModule> hlo_module)
 ExecutorExecutable::~ExecutorExecutable() {}
 
 static se::DeviceMemoryBase AllocateSingleOutput(sep::ExecutorExecutor* executor,
-                                                 Literal* literal) {
-  int64 size(xla::ShapeUtil::ByteSizeOf(literal->shape()));
+                                                 const Literal& literal) {
+  int64 size(xla::ShapeUtil::ByteSizeOf(literal.shape()));
   void* buf = executor->Allocate(size);
-  const void* src = LiteralUtil::InternalData(*literal);
+  const void* src = LiteralUtil::InternalData(literal);
   memcpy(buf, src, size);
   return se::DeviceMemoryBase(buf, size);
 }
 
 static se::DeviceMemoryBase AllocateOutputBuffer(sep::ExecutorExecutor* executor,
-                                                 Literal* literal) {
-  const Shape& shape = literal->shape();
+                                                 const Literal& literal) {
+  const Shape& shape = literal.shape();
   if (shape.element_type() != xla::TUPLE) {
     return AllocateSingleOutput(executor, literal);
   } else {
@@ -51,7 +51,7 @@ static se::DeviceMemoryBase AllocateOutputBuffer(sep::ExecutorExecutor* executor
     void** buf = reinterpret_cast<void**>(executor->Allocate(size));
     for (int64 n = 0; n < xla::ShapeUtil::TupleElementCount(shape); n++) {
       se::DeviceMemoryBase out =
-          AllocateSingleOutput(executor, literal->mutable_tuple_literals(n));
+          AllocateSingleOutput(executor, literal.tuple_literals(n));
       *buf++ = out.opaque();
     }
 
@@ -107,7 +107,7 @@ StatusOr<se::DeviceMemoryBase> ExecutorExecutable::ExecuteOnStream(
       static_cast<sep::ExecutorExecutor*>(executor->implementation()));
 
   se::DeviceMemoryBase ret =
-      AllocateOutputBuffer(executorExecutor, output.get());
+      AllocateOutputBuffer(executorExecutor, *(output.get()));
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
