@@ -4971,6 +4971,30 @@ op {
   summary: "Computes cos of x element-wise."
 }
 op {
+  name: "Cosh"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes hyperbolic cosine of x element-wise."
+}
+op {
   name: "CountUpTo"
   input_arg {
     name: "ref"
@@ -21739,6 +21763,30 @@ op {
     }
   }
   summary: "Computes sin of x element-wise."
+}
+op {
+  name: "Sinh"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes hyperbolic sine of x element-wise."
 }
 op {
   name: "Size"
