@@ -537,9 +537,9 @@ class Dataset(object):
 
     # The `datasets` argument may contain an arbitrary number of
     # datasets.
-    Dataset.zip((a, b, c) == { (1, 4, (7, 8)),
-                               (2, 5, (9, 10)),
-                               (3, 6, (11, 12)) }
+    Dataset.zip((a, b, c)) == { (1, 4, (7, 8)),
+                                (2, 5, (9, 10)),
+                                (3, 6, (11, 12)) }
 
     # The number of elements in the resulting dataset is the same as
     # the size of the smallest dataset in `datasets`.
