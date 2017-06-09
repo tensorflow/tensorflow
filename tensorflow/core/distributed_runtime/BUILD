@@ -51,6 +51,7 @@ cc_library(
     deps = [
         ":worker_interface",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -102,9 +103,7 @@ cc_library(
     deps = [
         ":graph_mgr",
         ":worker_cache",
-        "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:worker_proto_cc",
+        "//tensorflow/core:core_cpu_internal",
     ],
 )
 
@@ -137,7 +136,7 @@ cc_test(
 cc_library(
     name = "worker_env",
     hdrs = ["worker_env.h"],
-    deps = [],
+    deps = ["//tensorflow/core:lib"],
 )
 
 cc_library(
@@ -217,6 +216,7 @@ cc_library(
     hdrs = ["worker_cache.h"],
     deps = [
         ":worker_interface",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
 )
@@ -238,6 +238,7 @@ cc_library(
     name = "master_interface",
     hdrs = ["master_interface.h"],
     deps = [
+        ":call_options",
         ":message_wrappers",
         "//tensorflow/core:lib",
         "//tensorflow/core:master_proto_cc",
@@ -305,7 +306,8 @@ cc_library(
     hdrs = ["rendezvous_mgr_interface.h"],
     deps = [
         ":worker_env",
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -334,12 +336,18 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
     ],
 )
 
 cc_library(
     name = "master_env",
     hdrs = ["master_env.h"],
+    deps = [
+        ":worker_cache",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+    ],
 )
 
 cc_library(
