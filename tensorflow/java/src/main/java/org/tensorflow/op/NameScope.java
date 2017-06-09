@@ -128,7 +128,7 @@ final class NameScope {
       throw new IllegalArgumentException(
           String.format(
               "invalid name: '%s' does not match the regular expression %s",
-              name, NAME_REGEX_STRING));
+              name, NAME_REGEX.pattern()));
     }
   }
 
@@ -142,6 +142,5 @@ final class NameScope {
   // followed by zero or more LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE. SLASH is not permitted in
   // actual user-supplied names to NameScope - it is used as a reserved character to separate
   // subcomponents within fully qualified names.
-  private static final String NAME_REGEX_STRING = "[A-Za-z0-9.][A-Za-z0-9_.\\-]*";
-  private static final Pattern NAME_REGEX = Pattern.compile(NAME_REGEX_STRING);
+  private static final Pattern NAME_REGEX = Pattern.compile("[A-Za-z0-9.][A-Za-z0-9_.\\-]*");
 }
