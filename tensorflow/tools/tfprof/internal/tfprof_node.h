@@ -36,6 +36,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
+std::vector<int64> ShapeProtoToVec(const TensorShapeProto& shape_pb);
+
+TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec);
 
 class TFGraphNode;
 
@@ -110,30 +113,36 @@ class TFGraphNode {
   TFGraphNode(const NodeDef* node)
       : node_(node), float_ops_(0), op_(node->op()) {
     for (const auto& attr : node->attr()) {
-      // TODO(xpan): Also consider _output_shapes.
-      if (attr.first != "shape" || !attr.second.has_shape()) continue;
-      if (!shape_.empty()) {
-        fprintf(stderr, "Found duplicated shapes!\n");
-        continue;
-      }
-      std::vector<int64> shape_vec;
-      if (attr.second.shape().dim_size() == 0 &&
-          !attr.second.shape().unknown_rank()) {
-        // Scalar parameter with empty shape but known rank.
-        shape_vec.push_back(1);
-      } else {
-        for (const auto& d : attr.second.shape().dim()) {
-          shape_vec.push_back(d.size());
+      if (attr.first == "shape" && attr.second.has_shape()) {
+        if (!shape_.empty()) {
+          fprintf(stderr, "Found duplicated shapes!\n");
+          continue;
+        }
+        shape_ = ShapeProtoToVec(attr.second.shape());
+      } else if (attr.first == "_output_shapes" && attr.second.has_list()) {
+        if (!output_shapes_.empty()) {
+          fprintf(stderr, "Found duplicated output shapes!\n");
+          continue;
+        }
+        for (int i = 0; i < attr.second.list().shape_size(); ++i) {
+          output_shapes_[i] = ShapeProtoToVec(attr.second.list().shape(i));
         }
       }
-      update_shape(shape_vec);
     }
     op_types_.insert(node->op());
   }
 
-  void AddInput(TFGraphNode* input, int64 output_idx) {
-    inputs_[input->name()] = input;
-    output_idx_[input->name()] = output_idx;
+  void AddInput(TFGraphNode* input, int64 output_idx, int input_idx) {
+    src_output_idx_[input->name()] = output_idx;
+
+    inputs_[input_idx] = input;
+    const auto& output_shape = input->output_shapes().find(output_idx);
+    // Always create an empty vec even if the shape info might be missing.
+    std::vector<int64>& shape_vec = input_shapes_[input_idx];
+    if (output_shape != input->output_shapes().end()) {
+      shape_vec.assign(output_shape->second.begin(),
+                       output_shape->second.end());
+    }
   }
 
   void AddOpType(const string& op_type) { op_types_.insert(op_type); }
@@ -161,8 +170,10 @@ class TFGraphNode {
     return true;
   }
 
-  const std::map<string, TFGraphNode*>& inputs() const { return inputs_; }
-  const std::map<string, int64>& output_idx() const { return output_idx_; }
+  const std::map<int, TFGraphNode*>& inputs() const { return inputs_; }
+  const std::map<string, int64>& src_output_idx() const {
+    return src_output_idx_;
+  }
 
   // This is time spent in kernel execution.
   int64 kernel_exec_micros(int64 step) const {
@@ -255,19 +266,31 @@ class TFGraphNode {
   string canonical_device() const { return canonical_device_; }
   string host_device() const { return host_device_; }
   const std::set<string>& op_types() const { return op_types_; }
+
   const std::vector<int64>& shape() const { return shape_; }
 
- private:
-  void update_shape(const std::vector<int64>& shape) { shape_ = shape; }
+  const std::map<int, std::vector<int64>>& output_shapes() const {
+    return output_shapes_;
+  }
+  const std::map<int, std::vector<int64>>& input_shapes() const {
+    return input_shapes_;
+  }
 
-  std::map<string, TFGraphNode*> inputs_;
-  std::map<string, int64> output_idx_;
+ private:
+  std::map<int, TFGraphNode*> inputs_;
+  std::map<string, int64> src_output_idx_;
 
   const NodeDef* node_;
 
   CodeDef code_;
 
   std::vector<int64> shape_;
+  // Won't missing input_idx. But some shapes might be empty (unknown).
+  std::map<int, std::vector<int64>> input_shapes_;
+  // Could miss output_idx if no _output_shapes attr. some shapes can also
+  // be empty.
+  std::map<int, std::vector<int64>> output_shapes_;
+
   std::set<string> op_types_;
 
   std::map<int64, ExecStep> execs_;

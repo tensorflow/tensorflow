@@ -96,139 +96,285 @@ class PrintModelAnalysisTest(test.TestCase):
       tfprof_pb = tfprof_output_pb2.TFGraphNodeProto()
       tfprof_pb.ParseFromString(
           print_mdl.PrintModelAnalysis(
-              sess.graph.as_graph_def().SerializeToString(),
-              b'', b'', b'scope', opts.SerializeToString()))
+              sess.graph.as_graph_def(add_shapes=True).SerializeToString(),
+              b'',
+              b'',
+              b'scope',
+              opts.SerializeToString()))
 
       expected_pb = tfprof_output_pb2.TFGraphNodeProto()
       text_format.Merge(r"""name: "_TFProfRoot"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 648
-      children {
-      name: "Conv2D"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 0
-      float_ops: 0
-      total_float_ops: 0
-      }
-      children {
-      name: "DW"
-      exec_micros: 0
-      requested_bytes: 0
-      parameters: 648
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 648
-      children {
-      name: "DW/Assign"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 0
-      float_ops: 0
-      total_float_ops: 0
-      }
-      children {
-      name: "DW/Initializer"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 0
-      children {
-      name: "DW/Initializer/random_normal"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 0
-      children {
-      name: "DW/Initializer/random_normal/RandomStandardNormal"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 0
-      float_ops: 0
-      total_float_ops: 0
-      }
-      children {
-      name: "DW/Initializer/random_normal/mean"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 0
-      float_ops: 0
-      total_float_ops: 0
-      }
-      children {
-      name: "DW/Initializer/random_normal/mul"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 0
-      float_ops: 0
-      total_float_ops: 0
-      }
-      children {
-      name: "DW/Initializer/random_normal/shape"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 0
-      float_ops: 0
-      total_float_ops: 0
-      }
-      children {
-      name: "DW/Initializer/random_normal/stddev"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 0
-      float_ops: 0
-      total_float_ops: 0
-      }
-      float_ops: 0
-      total_float_ops: 0
-      }
-      float_ops: 0
-      total_float_ops: 0
-      }
-      children {
-      name: "DW/read"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 0
-      float_ops: 0
-      total_float_ops: 0
-      }
-      float_ops: 0
-      total_float_ops: 0
-      }
-      children {
-      name: "zeros"
-      exec_micros: 0
-      requested_bytes: 0
-      total_exec_micros: 0
-      total_requested_bytes: 0
-      total_parameters: 0
-      float_ops: 0
-      total_float_ops: 0
-      }
-      float_ops: 0
-      total_float_ops: 0""", expected_pb)
+          exec_micros: 0
+          requested_bytes: 0
+          total_exec_micros: 0
+          total_requested_bytes: 0
+          total_parameters: 648
+          children {
+            name: "Conv2D"
+            exec_micros: 0
+            requested_bytes: 0
+            total_exec_micros: 0
+            total_requested_bytes: 0
+            total_parameters: 0
+            float_ops: 0
+            total_float_ops: 0
+            input_shapes {
+              key: 0
+              value {
+                dim {
+                  size: 2
+                }
+                dim {
+                  size: 6
+                }
+                dim {
+                  size: 6
+                }
+                dim {
+                  size: 3
+                }
+              }
+            }
+            input_shapes {
+              key: 1
+              value {
+                dim {
+                  size: 6
+                }
+                dim {
+                  size: 6
+                }
+                dim {
+                  size: 3
+                }
+                dim {
+                  size: 6
+                }
+              }
+            }
+          }
+          children {
+            name: "DW"
+            exec_micros: 0
+            requested_bytes: 0
+            parameters: 648
+            total_exec_micros: 0
+            total_requested_bytes: 0
+            total_parameters: 648
+            children {
+              name: "DW/Assign"
+              exec_micros: 0
+              requested_bytes: 0
+              total_exec_micros: 0
+              total_requested_bytes: 0
+              total_parameters: 0
+              float_ops: 0
+              total_float_ops: 0
+              input_shapes {
+                key: 0
+                value {
+                  dim {
+                    size: 6
+                  }
+                  dim {
+                    size: 6
+                  }
+                  dim {
+                    size: 3
+                  }
+                  dim {
+                    size: 6
+                  }
+                }
+              }
+              input_shapes {
+                key: 1
+                value {
+                  dim {
+                    size: 6
+                  }
+                  dim {
+                    size: 6
+                  }
+                  dim {
+                    size: 3
+                  }
+                  dim {
+                    size: 6
+                  }
+                }
+              }
+            }
+            children {
+              name: "DW/Initializer"
+              exec_micros: 0
+              requested_bytes: 0
+              total_exec_micros: 0
+              total_requested_bytes: 0
+              total_parameters: 0
+              children {
+                name: "DW/Initializer/random_normal"
+                exec_micros: 0
+                requested_bytes: 0
+                total_exec_micros: 0
+                total_requested_bytes: 0
+                total_parameters: 0
+                children {
+                  name: "DW/Initializer/random_normal/RandomStandardNormal"
+                  exec_micros: 0
+                  requested_bytes: 0
+                  total_exec_micros: 0
+                  total_requested_bytes: 0
+                  total_parameters: 0
+                  float_ops: 0
+                  total_float_ops: 0
+                  input_shapes {
+                    key: 0
+                    value {
+                      dim {
+                        size: 4
+                      }
+                    }
+                  }
+                }
+                children {
+                  name: "DW/Initializer/random_normal/mean"
+                  exec_micros: 0
+                  requested_bytes: 0
+                  total_exec_micros: 0
+                  total_requested_bytes: 0
+                  total_parameters: 0
+                  float_ops: 0
+                  total_float_ops: 0
+                }
+                children {
+                  name: "DW/Initializer/random_normal/mul"
+                  exec_micros: 0
+                  requested_bytes: 0
+                  total_exec_micros: 0
+                  total_requested_bytes: 0
+                  total_parameters: 0
+                  float_ops: 0
+                  total_float_ops: 0
+                  input_shapes {
+                    key: 0
+                    value {
+                      dim {
+                        size: 6
+                      }
+                      dim {
+                        size: 6
+                      }
+                      dim {
+                        size: 3
+                      }
+                      dim {
+                        size: 6
+                      }
+                    }
+                  }
+                  input_shapes {
+                    key: 1
+                    value {
+                      dim {
+                        size: 1
+                      }
+                    }
+                  }
+                }
+                children {
+                  name: "DW/Initializer/random_normal/shape"
+                  exec_micros: 0
+                  requested_bytes: 0
+                  total_exec_micros: 0
+                  total_requested_bytes: 0
+                  total_parameters: 0
+                  float_ops: 0
+                  total_float_ops: 0
+                }
+                children {
+                  name: "DW/Initializer/random_normal/stddev"
+                  exec_micros: 0
+                  requested_bytes: 0
+                  total_exec_micros: 0
+                  total_requested_bytes: 0
+                  total_parameters: 0
+                  float_ops: 0
+                  total_float_ops: 0
+                }
+                float_ops: 0
+                total_float_ops: 0
+                input_shapes {
+                  key: 0
+                  value {
+                    dim {
+                      size: 6
+                    }
+                    dim {
+                      size: 6
+                    }
+                    dim {
+                      size: 3
+                    }
+                    dim {
+                      size: 6
+                    }
+                  }
+                }
+                input_shapes {
+                  key: 1
+                  value {
+                    dim {
+                      size: 1
+                    }
+                  }
+                }
+              }
+              float_ops: 0
+              total_float_ops: 0
+            }
+            children {
+              name: "DW/read"
+              exec_micros: 0
+              requested_bytes: 0
+              total_exec_micros: 0
+              total_requested_bytes: 0
+              total_parameters: 0
+              float_ops: 0
+              total_float_ops: 0
+              input_shapes {
+                key: 0
+                value {
+                  dim {
+                    size: 6
+                  }
+                  dim {
+                    size: 6
+                  }
+                  dim {
+                    size: 3
+                  }
+                  dim {
+                    size: 6
+                  }
+                }
+              }
+            }
+            float_ops: 0
+            total_float_ops: 0
+          }
+          children {
+            name: "zeros"
+            exec_micros: 0
+            requested_bytes: 0
+            total_exec_micros: 0
+            total_requested_bytes: 0
+            total_parameters: 0
+            float_ops: 0
+            total_float_ops: 0
+          }
+          float_ops: 0
+          total_float_ops: 0""", expected_pb)
       self.assertEqual(expected_pb, tfprof_pb)
 
 

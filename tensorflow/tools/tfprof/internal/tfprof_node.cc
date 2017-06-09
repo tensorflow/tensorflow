@@ -171,5 +171,30 @@ bool IsCombinedGPUStream(const string& device) {
 bool IsCPUDevice(const string& device) {
   return device.find("cpu:0") != device.npos;
 }
+
+std::vector<int64> ShapeProtoToVec(const TensorShapeProto& shape_pb) {
+  std::vector<int64> shape_vec;
+  if (shape_pb.dim_size() == 0 && !shape_pb.unknown_rank()) {
+    // Scalar parameter with empty shape but known rank.
+    shape_vec.push_back(1);
+  } else {
+    for (const auto& d : shape_pb.dim()) {
+      shape_vec.push_back(d.size());
+    }
+  }
+  return shape_vec;
+}
+
+TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec) {
+  TensorShapeProto shape_pb;
+  if (shape_vec.empty()) {
+    shape_pb.set_unknown_rank(true);
+    return shape_pb;
+  }
+  for (const int64 s : shape_vec) {
+    shape_pb.add_dim()->set_size(s);
+  }
+  return shape_pb;
+}
 }  // namespace tfprof
 }  // namespace tensorflow

@@ -206,7 +206,7 @@ class Profiler(object):
     # pylint: enable=protected-access
 
     print_mdl.NewProfiler(
-        self._graph.as_graph_def().SerializeToString(),
+        self._graph.as_graph_def(add_shapes=True).SerializeToString(),
         op_log.SerializeToString())
 
   def __del__(self):
@@ -329,7 +329,7 @@ def print_model_analysis(graph,
     tfprof_node = tfprof_output_pb2.TFMultiGraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.PrintModelAnalysis(
-            graph.as_graph_def().SerializeToString(),
+            graph.as_graph_def(add_shapes=True).SerializeToString(),
             run_meta_str,
             op_log.SerializeToString(),
             tfprof_cmd.encode('utf-8'),
@@ -338,7 +338,7 @@ def print_model_analysis(graph,
     tfprof_node = tfprof_output_pb2.TFGraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.PrintModelAnalysis(
-            graph.as_graph_def().SerializeToString(),
+            graph.as_graph_def(add_shapes=True).SerializeToString(),
             run_meta_str,
             op_log.SerializeToString(),
             tfprof_cmd.encode('utf-8'),

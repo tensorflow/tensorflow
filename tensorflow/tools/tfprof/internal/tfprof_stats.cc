@@ -105,7 +105,8 @@ void TFStats::ParseGraph() {
   }
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     const NodeDef* node_def = it->second->node_def();
-    for (string node_input : node_def->input()) {
+    for (int i = 0; i < node_def->input_size(); ++i) {
+      string node_input = node_def->input(i);
       int output_idx = 0;
       // input name format can be: "^node:src_output"
       auto prefix_pos = node_input.find(":");
@@ -124,7 +125,7 @@ void TFStats::ParseGraph() {
       if (input_node == nodes_map_.end()) {
         continue;
       }
-      it->second->AddInput(input_node->second.get(), output_idx);
+      it->second->AddInput(input_node->second.get(), output_idx, i);
     }
   }
 }

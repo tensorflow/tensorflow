@@ -72,7 +72,8 @@ as long as they match the `-account_xxx` options.
 
 `-account_displayed_op_only`: If True, only account the statistics of ops eventually displayed. If False, account all op statistics matching -account_type_regexes recursively.
 
-`-select`: Comma-separated list of metrics to show: [bytes|micros|params|float_ops|occurrence|tensor_value|device|op_types].
+`-select`: Comma-separated list of metrics to show:
+[bytes|micros|params|float_ops|occurrence|tensor_value|device|op_types|input_shapes].
 
 `-output`: Output results as stdout, file or timeline.
 The format is ```output_type:key=value,key=value```.

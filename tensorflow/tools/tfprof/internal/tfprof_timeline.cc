@@ -144,8 +144,8 @@ void MemoryTracker::TrackNodeConnection(int64 step, const GraphNode* node,
   if (!node->Trackable(step) || !src->Trackable(step)) {
     return;
   }
-  const auto& output_idx = node->node->output_idx().find(src->name());
-  if (output_idx == node->node->output_idx().end()) {
+  const auto& output_idx = node->node->src_output_idx().find(src->name());
+  if (output_idx == node->node->src_output_idx().end()) {
     return;
   }
   const auto& output = src->node->output_bytes(step).find(output_idx->second);
