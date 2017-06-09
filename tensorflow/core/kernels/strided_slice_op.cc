@@ -389,6 +389,7 @@ class StridedSliceAssignOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")     \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
+                              .HostMemory("ref")                 \
                               .HostMemory("begin")               \
                               .HostMemory("end")                 \
                               .HostMemory("strides"),            \
@@ -430,6 +431,7 @@ REGISTER_STRIDED_SLICE(bfloat16);
   REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")     \
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
+                              .HostMemory("ref")                 \
                               .HostMemory("begin")               \
                               .HostMemory("end")                 \
                               .HostMemory("strides")             \
@@ -516,6 +518,7 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
   REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")      \
                               .Device(DEVICE_SYCL)                \
                               .TypeConstraint<type>("T")          \
+                              .HostMemory("ref")                  \
                               .HostMemory("begin")                \
                               .HostMemory("end")                  \
                               .HostMemory("strides")              \
