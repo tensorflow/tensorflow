@@ -57,13 +57,12 @@ class Dataset : public DatasetBase {
     explicit Iterator(const Dataset<T>* dataset)
         : DatasetIterator<Dataset<T>>(dataset),
           dataset_(dataset),
-          num_elements_(dataset->sparse_tensor_.shape().dim_size(0)),
+          num_elements_(dataset->sparse_tensor_.shape()[0]),
           dense_shape_(DT_INT64, {dataset->sparse_tensor_.dims() - 1}),
           group_iterable_(dataset->sparse_tensor_.group({0})),
           iter_(group_iterable_.begin()) {
       for (size_t i = 0; i < dense_shape_.NumElements(); ++i) {
-        dense_shape_.vec<int64>()(i) =
-            dataset_->sparse_tensor_.shape().dim_size(i + 1);
+        dense_shape_.vec<int64>()(i) = dataset_->sparse_tensor_.shape()[i + 1];
       }
     }
 

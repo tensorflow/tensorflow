@@ -663,6 +663,21 @@ bool PartialTensorShapeUtils::AreIdentical(
   }
 }
 
+Status TensorShapeUtils::NumElements(gtl::ArraySlice<int64> shape,
+                                     int64* num_elements) {
+  int64 n = 1;
+  for (auto dim : shape) {
+    n = MultiplyWithoutOverflow(n, dim);
+    if (n < 0) {
+      return errors::InvalidArgument("Can't compute total size of shape [",
+                                     str_util::Join(shape, ","),
+                                     "]; product would overflow int64");
+    }
+  }
+  *num_elements = n;
+  return Status::OK();
+}
+
 template class TensorShapeBase<TensorShape>;
 template class TensorShapeBase<PartialTensorShape>;
 
