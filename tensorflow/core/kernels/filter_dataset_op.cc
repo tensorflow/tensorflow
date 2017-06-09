@@ -28,18 +28,16 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class FilterDatasetOp : public OpKernel {
+class FilterDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit FilterDatasetOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
+      : UnaryDatasetOpKernel(ctx),
+        graph_def_version_(ctx->graph_def_version()) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("predicate", &func_));
   }
 
-  void Compute(OpKernelContext* ctx) override {
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
     OpInputList inputs;
     OP_REQUIRES_OK(ctx, ctx->input_list("other_arguments", &inputs));
     std::vector<Tensor> other_arguments;
@@ -53,14 +51,7 @@ class FilterDatasetOp : public OpKernel {
                                                  std::move(other_arguments),
                                                  &captured_func));
 
-    DatasetBase* dataset = new Dataset(input, std::move(captured_func));
-
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(input, std::move(captured_func));
   }
 
  private:

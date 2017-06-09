@@ -148,12 +148,12 @@ class Dataset : public DatasetBase {
 };
 
 template <typename T>
-class SparseTensorSliceDatasetOp : public OpKernel {
+class SparseTensorSliceDatasetOp : public DatasetOpKernel {
  public:
   explicit SparseTensorSliceDatasetOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx) {}
+      : DatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     // Create a new SparseTensorSliceDatasetOp::Dataset, insert it in
     // the step container, and return it as the output.
     const Tensor* indices;
@@ -196,13 +196,7 @@ class SparseTensorSliceDatasetOp : public OpKernel {
     sparse::SparseTensor sparse_tensor(
         *indices, *values, TensorShape(dense_shape->vec<int64>()), std_order);
 
-    DatasetBase* dataset = new Dataset<T>(sparse_tensor);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset<T>(sparse_tensor);
   }
 
  private:

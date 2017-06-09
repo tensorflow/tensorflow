@@ -5163,6 +5163,7 @@ tf_mkl_kernel_library(
 
 cc_library(
     name = "dataset",
+    srcs = ["dataset.cc"],
     hdrs = ["dataset.h"],
     deps = [
         "//tensorflow/core:framework",
