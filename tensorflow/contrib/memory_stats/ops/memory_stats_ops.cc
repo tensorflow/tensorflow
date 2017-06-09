@@ -12,11 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
 
-REGISTER_OP("BytesLimit").Output("out: int64").SetIsStateful();
-REGISTER_OP("MaxBytesInUse").Output("out: int64").SetIsStateful();
+REGISTER_OP("BytesLimit")
+    .Output("out: int64")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+REGISTER_OP("MaxBytesInUse")
+    .Output("out: int64")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
 
 }  // namespace tensorflow
