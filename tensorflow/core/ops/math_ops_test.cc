@@ -27,6 +27,7 @@ TEST(MathOpsTest, AddN_ShapeFn) {
   ShapeInferenceTestOp op("AddN");
   auto set_n = [&op](int n) {
     std::vector<NodeDefBuilder::NodeOut> src_list;
+    src_list.reserve(n);
     for (int i = 0; i < n; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
     TF_ASSERT_OK(NodeDefBuilder("test", "AddN")
                      .Input(src_list)

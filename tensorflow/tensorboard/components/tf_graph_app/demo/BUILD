@@ -1,11 +1,11 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
+load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
 # bazel run //third_party/tensorflow/tensorboard/components/tf_graph_app/demo
-web_library(
+ts_web_library(
     name = "demo",
     srcs = ["index.html"] + glob(["data/**"]),
     path = "/tf-graph-app/demo",

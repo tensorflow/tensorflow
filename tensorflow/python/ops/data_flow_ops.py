@@ -1506,7 +1506,7 @@ class BaseStagingArea(object):
 
     return tensors
 
-  def _get_return_value(self, tensors):
+  def _get_return_value(self, tensors, indices):
     """Return the value to return from a get op.
 
     If the staging area has names, return a dictionary with the
@@ -1515,6 +1515,7 @@ class BaseStagingArea(object):
 
     Args:
       tensors: List of tensors from the get op.
+      indices: Indices of associated names and shapes
 
     Returns:
       A single tensor, a list of tensors, or a dictionary
@@ -1524,13 +1525,13 @@ class BaseStagingArea(object):
     tensors = self._create_device_transfers(tensors)
 
     # Sets shape
-    for output, shape in zip(tensors, self._shapes):
-      output.set_shape(shape)
+    for output, i in zip(tensors, indices):
+      output.set_shape(self._shapes[i])
 
     if self._names:
       # The returned values in `tensors` are in the same order as
       # the names in `self._names`.
-      return {n: tensors[i] for i, n in enumerate(self._names)}
+      return {self._names[i]: t for t, i in zip(tensors, indices)}
     elif len(tensors) == 1:
       return tensors[0]
     else:
@@ -1646,7 +1647,8 @@ class StagingArea(BaseStagingArea):
                         self._scope_vals(values)) as scope:
 
       # Hard-code indices for this staging area
-      indices = range(len(values)) if isinstance(values, (list, tuple)) else None
+      indices = (list(six.moves.range(len(values)))
+                  if isinstance(values, (list, tuple)) else None)
       vals, _ = self._check_put_dtypes(values, indices)
 
       with ops.colocate_with(self._coloc_op):
@@ -1660,7 +1662,8 @@ class StagingArea(BaseStagingArea):
     with ops.colocate_with(self._coloc_op):
       ret = get_fn()
 
-    return self._get_return_value(ret)
+    indices = list(six.moves.range(len(self._dtypes))) # Hard coded
+    return self._get_return_value(ret, indices)
 
   def get(self, name=None):
     """Gets one element from this staging area.
@@ -1802,11 +1805,16 @@ class MapStagingArea(BaseStagingArea):
   All get() and peek() commands block if the requested
   (key, value) pair is not present in the staging area.
 
-  Incomplete puts are supported and will be placed in an incomplete
-  hash until such time as all values associated with the key have
+  Partial puts are supported and will be placed in an incomplete
+  map until such time as all values associated with the key have
   been inserted. Once completed, this (key, value) pair will be
-  inserted into the main data structure. Data in the incomplete set
+  inserted into the map. Data in the incomplete map
   counts towards the memory limit, but not towards capacity limit.
+
+  Partial gets from the map are also supported.
+  This removes the partially requested tensors from the entry,
+  but the entry is only removed from the map once all tensors
+  associated with it are removed.
   """
 
   def __init__(self, dtypes, shapes=None, names=None, shared_name=None,
@@ -1901,7 +1909,38 @@ class MapStagingArea(BaseStagingArea):
                              memory_limit=self._memory_limit)
     return op
 
-  def peek(self, key, name=None):
+  def _get_indices_and_dtypes(self, indices=None):
+    if indices is None:
+      indices = list(six.moves.range(len(self._dtypes)))
+
+    if not isinstance(indices, (tuple, list)):
+      raise TypeError("Invalid indices type '%s'" % type(indices))
+
+    if len(indices) == 0:
+      raise ValueError("Empty indices")
+
+    if all(isinstance(i, str) for i in indices):
+      if self._names is None:
+        raise ValueError("String indices provided '%s', but this Staging Area "
+                        "was not created with names." % indices)
+
+      try:
+        indices = [self._names.index(n) for n in indices]
+      except ValueError:
+        raise ValueError("Named index '%s' not in "
+                        "Staging Area names '%s'" % (n, self._names))
+    elif all(isinstance(i, int) for i in indices):
+      pass
+    else:
+      raise TypeError("Mixed types in indices '%s'. "
+                      "May only be str or int" % indices)
+
+    dtypes = [self._dtypes[i] for i in indices]
+
+    return indices, dtypes
+
+
+  def peek(self, key, indices=None, name=None):
     """
     Peeks at staging area data associated with the key.
 
@@ -1910,6 +1949,10 @@ class MapStagingArea(BaseStagingArea):
 
     Args:
         key: Key associated with the required data
+        indices: Partial list of tensors to retrieve (optional).
+                A list of integer or string indices.
+                String indices are only valid if the Staging Area
+                has names associated with it.
         name: A name for the operation (optional)
 
     Returns:
@@ -1919,16 +1962,19 @@ class MapStagingArea(BaseStagingArea):
     if name is None:
       name = "%s_pop" % self._name
 
+    indices, dtypes = self._get_indices_and_dtypes(indices)
+
     with ops.colocate_with(self._coloc_op):
       result = self._peek_fn(key, shared_name=self._name,
-                      dtypes=self._dtypes,
+                      indices=indices,
+                      dtypes=dtypes,
                       name=name,
                       capacity=self._capacity,
                       memory_limit=self._memory_limit)
 
-    return self._get_return_value(result)
+    return self._get_return_value(result, indices)
 
-  def get(self, key=None, name=None):
+  def get(self, key=None, indices=None, name=None):
     """
     If the key is provided, the associated (key, value)
     is returned from the staging area. If the key is not
@@ -1944,18 +1990,21 @@ class MapStagingArea(BaseStagingArea):
 
     Args:
         key: Key associated with the required data (Optional)
+        indices: Partial list of tensors to retrieve (optional).
+                A list of integer or string indices.
+                String indices are only valid if the Staging Area
+                has names associated with it.
         name: A name for the operation (optional)
 
     Returns:
         The created op
     """
     if key is None:
-      return self._popitem(name)
+      return self._popitem(indices=indices, name=name)
     else:
-      return self._pop(key, name)
+      return self._pop(key, indices=indices, name=name)
 
-
-  def _pop(self, key, name=None):
+  def _pop(self, key, indices=None, name=None):
     """
     Remove and return the associated (key, value)
     is returned from the staging area. If the key is not
@@ -1964,6 +2013,10 @@ class MapStagingArea(BaseStagingArea):
 
     Args:
         key: Key associated with the required data
+        indices: Partial list of tensors to retrieve (optional).
+                A list of integer or string indices.
+                String indices are only valid if the Staging Area
+                has names associated with it.
         name: A name for the operation (optional)
 
     Returns:
@@ -1972,16 +2025,19 @@ class MapStagingArea(BaseStagingArea):
     if name is None:
       name = "%s_get" % self._name
 
+    indices, dtypes = self._get_indices_and_dtypes(indices)
+
     with ops.colocate_with(self._coloc_op):
       result = self._pop_fn(key, shared_name=self._name,
-                      dtypes=self._dtypes,
+                      indices=indices,
+                      dtypes=dtypes,
                       name=name,
                       capacity=self._capacity,
                       memory_limit=self._memory_limit)
 
-    return key, self._get_return_value(result)
+    return key, self._get_return_value(result, indices)
 
-  def _popitem(self, name=None):
+  def _popitem(self, indices=None, name=None):
     """
     If the staging area is ordered,
     the (key, value) with the smallest key will be returned.
@@ -1992,6 +2048,10 @@ class MapStagingArea(BaseStagingArea):
 
     Args:
         key: Key associated with the required data
+        indices: Partial list of tensors to retrieve (optional).
+                A list of integer or string indices.
+                String indices are only valid if the Staging Area
+                has names associated with it.
         name: A name for the operation (optional)
 
     Returns:
@@ -2000,9 +2060,12 @@ class MapStagingArea(BaseStagingArea):
     if name is None:
       name = "%s_get_nokey" % self._name
 
+    indices, dtypes = self._get_indices_and_dtypes(indices)
+
     with ops.colocate_with(self._coloc_op):
       key, result = self._popitem_fn(shared_name=self._name,
-                              dtypes=self._dtypes,
+                              indices=indices,
+                              dtypes=dtypes,
                               name=name,
                               capacity=self._capacity,
                               memory_limit=self._memory_limit)
@@ -2010,7 +2073,7 @@ class MapStagingArea(BaseStagingArea):
     # Separate keys and results out from
     # underlying namedtuple
     key = self._create_device_transfers(key)[0]
-    result = self._get_return_value(result)
+    result = self._get_return_value(result, indices)
 
     return key, result
 

@@ -86,13 +86,13 @@ public:
   // Public typedefs
   typedef std::vector<Tensor> Tuple;
   typedef gtl::optional<Tensor> OptionalTensor;
-  typedef std::vector<OptionalTensor> IncompleteTuple;
+  typedef std::vector<OptionalTensor> OptionalTuple;
 
-  typedef MapTraits<Ordered, Tuple> MapTraits_;
+  typedef MapTraits<Ordered, OptionalTuple> MapTraits_;
   typedef typename MapTraits_::MapType MapType;
   typedef typename MapTraits_::KeyType KeyType;
 
-  typedef MapTraits<false, IncompleteTuple> IncompleteTraits;
+  typedef MapTraits<false, OptionalTuple> IncompleteTraits;
   typedef typename IncompleteTraits::MapType IncompleteType;
 
 private:
@@ -150,6 +150,16 @@ private:
     });
   }
 
+  // Get number of bytes in the incomplete tuple
+  inline std::size_t get_tuple_bytes(const OptionalTuple & tuple)
+  {
+    return std::accumulate(tuple.begin(), tuple.end(), 0,
+      [](const std::size_t & lhs, const OptionalTensor & rhs) {
+        return lhs + rhs.has_value() ? rhs.value().TotalBytes() : 0;
+    });
+  }
+
+
   // Check that the index is within bounds
   inline Status check_index(const Tensor & key, std::size_t index)
   {
@@ -163,12 +173,47 @@ private:
     return Status::OK();
   }
 
+  inline Status copy_or_move_tensors(OptionalTuple & map_tuple,
+                                          const Tensor & key,
+                                          const Tensor & indices,
+                                          Tuple * output,
+                                          bool copy=false)
+  {
+    auto findices = indices.flat<int>();
+
+    // Return values at specified indices
+    for(std::size_t i = 0; i < findices.dimension(0); ++i)
+    {
+      std::size_t index = findices(i);
+
+      TF_RETURN_IF_ERROR(check_index(key, index));
+
+      // Insist on a value present at the specified index
+      if(!map_tuple[index].has_value())
+      {
+        return Status(errors::InvalidArgument("Tensor at index '",
+          index, "' for key '", key.scalar<int64>()(),
+          "' has already been removed."));
+      }
+
+      // Copy the contained tensor and
+      // remove from the OptionalTuple
+      output->push_back(map_tuple[index].value());
+
+      // Clear out the entry if we're not copying (moving)
+      if(!copy) {
+        map_tuple[index].reset();
+      }
+    }
+
+    return Status::OK();
+  }
 
   // Check that the optional value at the specified index
   // is uninitialized
   inline Status check_index_uninitialized(const Tensor & key,
                                   std::size_t index,
-                                  const IncompleteTuple & tuple)
+                                  const OptionalTuple & tuple)
   {
     if(tuple[index].has_value())
     {
@@ -212,7 +257,7 @@ private:
   // Insert incomplete data into the Barrier
   Status put_incomplete(const KeyType & key,
                         const Tensor & indices,
-                        Tuple *  tuple,
+                        OptionalTuple *  tuple,
                         mutex_lock &l)
   {
     auto findices = indices.flat<int>();
@@ -233,10 +278,10 @@ private:
     }
 
     // This key isn't present in the incomplete set
-    // Create IncompleteTuple and insert
+    // Create OptionalTuple and insert
     if(it == incomplete_.end())
     {
-      IncompleteTuple empty(dtypes_.size());
+      OptionalTuple empty(dtypes_.size());
 
       // Initialize empty tuple with given dta
       for(std::size_t i = 0; i < findices.dimension(0); ++i)
@@ -260,7 +305,7 @@ private:
     else
     {
       // Reference existing incomplete tuple
-      IncompleteTuple & present = it->second;
+      OptionalTuple & present = it->second;
 
       // Assign given data
       for(std::size_t i = 0; i < findices.dimension(0); ++i)
@@ -284,16 +329,12 @@ private:
       // If so, put the tuple in the actual map
       if(complete)
       {
-        // Create a tuple for insertion
-        Tuple new_tuple;
-
-        for(const auto & v: present)
-          { new_tuple.push_back(v.value()); }
+        OptionalTuple insert_tuple = std::move(it->second);
 
         // Remove from incomplete
         incomplete_.erase(it);
 
-        TF_RETURN_IF_ERROR(put_complete(key, &new_tuple, l));
+        TF_RETURN_IF_ERROR(put_complete(key, &insert_tuple, l));
       }
     }
 
@@ -301,7 +342,7 @@ private:
   }
 
   // Does the insertion into the actual staging area
-  Status put_complete(const KeyType & key, Tuple * tuple,
+  Status put_complete(const KeyType & key, OptionalTuple * tuple,
                     mutex_lock & l)
   {
     // Insert key and tuples into the map
@@ -322,7 +363,7 @@ public:
       current_bytes_(0) {}
 
   Status put(KeyType* key, const Tensor * indices,
-              Tuple* tuple)
+              OptionalTuple* tuple)
   {
     mutex_lock l(mu_);
 
@@ -362,11 +403,15 @@ public:
     return Status::OK();
   }
 
-  Status get(const KeyType* key, Tuple* tuple)
+  Status get(const KeyType* key, const Tensor * indices,
+                                  Tuple* tuple)
   {
     mutex_lock l(mu_);
 
-    typename MapType::const_iterator it;
+    // Sanity check the indices
+    TF_RETURN_IF_ERROR(check_index_ordering(*indices));
+
+    typename MapType::iterator it;
 
     // Wait until the element with the requested key is present
     not_empty_.wait(l, [&, this]() {
@@ -374,9 +419,9 @@ public:
       return it != map_.end();
     });
 
-    // Copy tensors into the tuple
-    for(const auto & tensor : it->second)
-      { tuple->push_back(tensor); }
+    TF_RETURN_IF_ERROR(copy_or_move_tensors(it->second, *key,
+                                                *indices, tuple,
+                                                true));
 
     // Update bytes in the Staging Area
     current_bytes_ -= get_tuple_bytes(*tuple);
@@ -384,9 +429,12 @@ public:
     return Status::OK();
   }
 
-  Status pop(const KeyType* key, Tuple* tuple)
+  Status pop(const KeyType* key, const Tensor * indices,  Tuple* tuple)
   {
     mutex_lock l(mu_);
+
+    // Sanity check the indices
+    TF_RETURN_IF_ERROR(check_index_ordering(*indices));
 
     typename MapType::iterator it;
 
@@ -396,11 +444,16 @@ public:
       return it != this->map_.end();
     });
 
-    // Move from the entry as its erased anyway
-    *tuple = std::move(it->second);
+    TF_RETURN_IF_ERROR(copy_or_move_tensors(it->second, *key,
+                                                *indices, tuple));
 
-    // Remove
-    map_.erase(it);
+    // Remove entry if all the values have been consumed
+    bool any_left = std::any_of(it->second.begin(), it->second.end(),
+                [](const OptionalTensor & T) { return T.has_value(); });
+
+    if(!any_left) {
+      map_.erase(it);
+    }
 
     // Update bytes in the Staging Area
     current_bytes_ -= get_tuple_bytes(*tuple);
@@ -410,17 +463,32 @@ public:
     return Status::OK();
   }
 
-  Status popitem(KeyType* key, Tuple* tuple)
+  Status popitem(KeyType* key, const Tensor * indices, Tuple* tuple)
   {
     mutex_lock l(mu_);
+
+    // Sanity check the indices
+    TF_RETURN_IF_ERROR(check_index_ordering(*indices));
 
     // Wait until map is not empty
     not_empty_.wait(l, [this]() { return !this->map_.empty(); });
 
     // Move from the first element and erase it
-    *tuple = std::move(map_.begin()->second);
-    *key = map_.begin()->first;
-    map_.erase(map_.begin());
+
+    auto it = map_.begin();
+
+    TF_RETURN_IF_ERROR(copy_or_move_tensors(it->second, *key,
+                                                *indices, tuple));
+
+    *key = it->first;
+
+    // Remove entry if all the values have been consumed
+    bool any_left = std::any_of(it->second.begin(), it->second.end(),
+                [](const OptionalTensor & T) { return T.has_value(); });
+
+    if(!any_left) {
+      map_.erase(it);
+    }
 
     // Update bytes in the Staging Area
     current_bytes_ -= get_tuple_bytes(*tuple);
@@ -499,7 +567,7 @@ class MapStageOp : public OpKernel
     StagingMap<Ordered>* map = nullptr;
     OP_REQUIRES_OK(ctx, GetStagingMap(ctx, def(), &map));
     core::ScopedUnref scope(map);
-    typename StagingMap<Ordered>::Tuple tuple;
+    typename StagingMap<Ordered>::OptionalTuple tuple;
 
     const Tensor * key_tensor;
     const Tensor * indices_tensor;
@@ -560,15 +628,18 @@ class MapUnstageOp : public OpKernel
     typename StagingMap<Ordered>::Tuple tuple;
 
     const Tensor * key_tensor;
+    const Tensor * indices_tensor;
     OpInputList values_tensor;
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
-    OP_REQUIRES_OK(ctx, map->pop(key_tensor, &tuple));
+    OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
+    OP_REQUIRES_OK(ctx, map->pop(key_tensor, indices_tensor, &tuple));
 
-    OP_REQUIRES(
-        ctx, tuple.size() == (size_t)ctx->num_outputs(),
-        errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
-                                " vs. ", ctx->num_outputs()));
+    OP_REQUIRES(ctx,
+        tuple.size() == indices_tensor->NumElements(),
+        errors::InvalidArgument("output/indices size mismatch: ", tuple.size(),
+                                " vs. ", indices_tensor->NumElements()));
+
     for (size_t i = 0; i < tuple.size(); ++i) {
       ctx->set_output(i, tuple[i]);
     }
@@ -581,16 +652,24 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage").Device(DEVICE_CPU),
                             MapUnstageOp<true>);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("MapUnstage").HostMemory("key")
-                            .Device(DEVICE_GPU), MapUnstageOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage").HostMemory("key")
-                            .Device(DEVICE_GPU), MapUnstageOp<true>);
+REGISTER_KERNEL_BUILDER(Name("MapUnstage")
+                        .HostMemory("key")
+                        .HostMemory("indices")
+                        .Device(DEVICE_GPU), MapUnstageOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage")
+                        .HostMemory("key")
+                        .HostMemory("indices")
+                        .Device(DEVICE_GPU), MapUnstageOp<true>);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapUnstage").HostMemory("key")
-                            .Device(DEVICE_SYCL), MapUnstageOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage").HostMemory("key")
-                            .Device(DEVICE_SYCL), MapUnstageOp<true>);
+REGISTER_KERNEL_BUILDER(Name("MapUnstage")
+                        .HostMemory("key")
+                        .HostMemory("indices")
+                        .Device(DEVICE_SYCL), MapUnstageOp<false>);
+REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstage")
+                        .HostMemory("key")
+                        .HostMemory("indices")
+                        .Device(DEVICE_SYCL), MapUnstageOp<true>);
 #endif // TENSORFLOW_USE_SYCL
 
 template <bool Ordered>
@@ -608,15 +687,18 @@ class MapPeekOp : public OpKernel
     typename StagingMap<Ordered>::Tuple tuple;
 
     const Tensor * key_tensor;
+    const Tensor * indices_tensor;
     OpInputList values_tensor;
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
-    OP_REQUIRES_OK(ctx, map->get(key_tensor, &tuple));
+    OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
+    OP_REQUIRES_OK(ctx, map->get(key_tensor, indices_tensor, &tuple));
 
-    OP_REQUIRES(
-        ctx, tuple.size() == (size_t)ctx->num_outputs(),
-        errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
-                                " vs. ", ctx->num_outputs()));
+    OP_REQUIRES(ctx,
+        tuple.size() == indices_tensor->NumElements(),
+        errors::InvalidArgument("output/indices size mismatch: ", tuple.size(),
+                                " vs. ", indices_tensor->NumElements()));
+
     for (size_t i = 0; i < tuple.size(); ++i) {
       ctx->set_output(i, tuple[i]);
     }
@@ -629,15 +711,23 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek").Device(DEVICE_CPU),
                       MapPeekOp<true>);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("MapPeek").HostMemory("key")
+REGISTER_KERNEL_BUILDER(Name("MapPeek")
+                      .HostMemory("key")
+                      .HostMemory("indices")
                       .Device(DEVICE_GPU), MapPeekOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek").HostMemory("key")
+REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek")
+                      .HostMemory("key")
+                      .HostMemory("indices")
                       .Device(DEVICE_GPU), MapPeekOp<true>);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapPeek").HostMemory("key")
+REGISTER_KERNEL_BUILDER(Name("MapPeek")
+                       .HostMemory("key")
+                       .HostMemory("indices")
                       .Device(DEVICE_SYCL), MapPeekOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek").HostMemory("key")
+REGISTER_KERNEL_BUILDER(Name("OrderedMapPeek")
+                       .HostMemory("key")
+                       .HostMemory("indices")
                       .Device(DEVICE_SYCL), MapPeekOp<true>);
 #endif // TENSORFLOW_USE_SYCL
 
@@ -660,18 +750,21 @@ class MapUnstageNoKeyOp : public OpKernel
     typename StagingMap<Ordered>::KeyType key;
     typename StagingMap<Ordered>::Tuple tuple;
 
-    OP_REQUIRES_OK(ctx, map->popitem(&key, &tuple));
+    const Tensor * indices_tensor;
+
+    OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
+    OP_REQUIRES_OK(ctx, map->popitem(&key, indices_tensor, &tuple));
 
     // Allocate a key tensor and assign the key as the first output
     ctx->set_output(0, key);
 
     // Set the rest of the outputs to the tuple Tensors
     OP_REQUIRES(ctx,
-      tuple.size() == (size_t)ctx->num_outputs()-1,
-      errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
-                              " vs. ", ctx->num_outputs()-1));
-    for (size_t i = 0; i < tuple.size(); ++i)
-    {
+        tuple.size() == indices_tensor->NumElements(),
+        errors::InvalidArgument("output/indices size mismatch: ", tuple.size(),
+                                " vs. ", indices_tensor->NumElements()));
+
+    for (size_t i = 0; i < tuple.size(); ++i) {
       ctx->set_output(i+1, tuple[i]);
     }
   }
@@ -683,16 +776,24 @@ REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey").Device(DEVICE_CPU),
                       MapUnstageNoKeyOp<true>);
 
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("MapUnstageNoKey").HostMemory("key")
+REGISTER_KERNEL_BUILDER(Name("MapUnstageNoKey")
+                       .HostMemory("key")
+                       .HostMemory("indices")
                       .Device(DEVICE_GPU), MapUnstageNoKeyOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey").HostMemory("key")
+REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey")
+                       .HostMemory("key")
+                       .HostMemory("indices")
                       .Device(DEVICE_GPU), MapUnstageNoKeyOp<true>);
 
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("MapUnstageNoKey").HostMemory("key")
+REGISTER_KERNEL_BUILDER(Name("MapUnstageNoKey")
+                       .HostMemory("key")
+                       .HostMemory("indices")
                       .Device(DEVICE_SYCL), MapUnstageNoKeyOp<false>);
-REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey").HostMemory("key")
+REGISTER_KERNEL_BUILDER(Name("OrderedMapUnstageNoKey")
+                       .HostMemory("key")
+                       .HostMemory("indices")
                       .Device(DEVICE_SYCL), MapUnstageNoKeyOp<true>);
 #endif // TENSORFLOW_USE_SYCL
 

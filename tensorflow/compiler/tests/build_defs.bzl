@@ -4,10 +4,11 @@ load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
 load("//tensorflow/compiler/tests:plugin.bzl", "plugins")
 
 def all_backends():
+  b = ["cpu"] + plugins.keys()
   if cuda_is_configured():
-    return ["cpu", "gpu"] + plugins.keys()
+    return b + ["gpu"]
   else:
-    return ["cpu"] + plugins.keys()
+    return b
 
 def tf_xla_py_test(name, srcs=[], deps=[], tags=[], data=[], main=None,
                    disabled_backends=None, **kwargs):

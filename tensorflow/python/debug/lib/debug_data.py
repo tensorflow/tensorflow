@@ -19,10 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import glob
 import json
 import os
 
 import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
@@ -32,9 +34,12 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import gfile
 
 
+# TODO(cais): Tie these string constants in with C++?
 METADATA_FILE_PREFIX = "_tfdbg_"
 CORE_METADATA_TAG = "core_metadata_"
 GRAPH_FILE_TAG = "graph_"
+DEVICE_TAG = "device_"
+
 FETCHES_INFO_FILE_TAG = "fetches_info_"
 FEED_KEYS_INFO_FILE_TAG = "feed_keys_info_"
 
@@ -156,10 +161,6 @@ def parse_node_or_tensor_name(name):
     return node_name, output_slot
   else:
     return name, None
-
-
-def _is_core_metadata_file(file_name):
-  return file_name.startswith(METADATA_FILE_PREFIX + CORE_METADATA_TAG)
 
 
 def _is_graph_file(file_name):
@@ -344,6 +345,28 @@ def extract_core_metadata_from_event_proto(event):
                        json_metadata["target_nodes"])
 
 
+def device_name_to_device_path(device_name):
+  """Convert device name to device path."""
+  device_name_items = device_name.split("/")
+  device_name_items = [item.replace(":", "_") for item in device_name_items]
+  return METADATA_FILE_PREFIX + DEVICE_TAG + ",".join(device_name_items)
+
+
+def device_path_to_device_name(device_dir):
+  """Parse device name from device path.
+
+  Args:
+    device_dir: (str) a directory name for the device.
+
+  Returns:
+    (str) parsed device name.
+  """
+  path_items = os.path.basename(device_dir)[
+      len(METADATA_FILE_PREFIX) + len(DEVICE_TAG):].split(",")
+  return "/".join([
+      path_item.replace("_", ":", 1) for path_item in path_items])
+
+
 class DebugTensorDatum(object):
   """A single tensor dumped by TensorFlow Debugger (tfdbg).
 
@@ -360,13 +383,17 @@ class DebugTensorDatum(object):
     """`DebugTensorDatum` constructor.
 
     Args:
-      dump_root: (`str`) Debug dump root directory.
+      dump_root: (`str`) Debug dump root directory. This path should not include
+        the path component that represents the device name (see also below).
       debug_dump_rel_path: (`str`) Path to a debug dump file, relative to the
-          `dump_root`. For example, suppose the debug dump root
-          directory is `/tmp/tfdbg_1` and the dump file is at
-          `/tmp/tfdbg_1/ns_1/node_a_0_DebugIdentity_123456789`, then
-          the value of the debug_dump_rel_path should be
-          `ns_1/node_a_0_DebugIdenity_1234456789`.
+        `dump_root`. The first item of this relative path is assumed to be
+        a path representing the name of the device that the Tensor belongs to.
+        See `device_path_to_device_name` for more details on the device path.
+        For example, suppose the debug dump root
+        directory is `/tmp/tfdbg_1` and the dump file is at
+        `/tmp/tfdbg_1/<device_path>/>ns_1/node_a_0_DebugIdentity_123456789`,
+        then the value of the debug_dump_rel_path should be
+        `<device_path>/ns_1/node_a_0_DebugIdenity_1234456789`.
 
     Raises:
       ValueError: If the base file name of the dump file does not conform to
@@ -374,14 +401,12 @@ class DebugTensorDatum(object):
         `node_name`_`output_slot`_`debug_op`_`timestamp`
     """
 
-    base = os.path.basename(debug_dump_rel_path)
-
+    path_components = os.path.normpath(debug_dump_rel_path).split(os.sep)
+    self._device_name = device_path_to_device_name(path_components[0])
+    base = path_components[-1]
     if base.count("_") < 3:
       raise ValueError(
           "Dump file path does not conform to the naming pattern: %s" % base)
-
-    # TODO(cais): Add hostname and pid to support dumps from distributed
-    #             sessions.
 
     self._extended_timestamp = base.split("_")[-1]
     # It may include an index suffix at the end if file path collision happened
@@ -395,30 +420,22 @@ class DebugTensorDatum(object):
     self._debug_op = base.split("_")[-2]
     self._output_slot = int(base.split("_")[-3])
 
-    namespace = os.path.dirname(debug_dump_rel_path).replace("\\", "/")
     node_base_name = "_".join(base.split("_")[:-3])
-    if not namespace or namespace == ".":
-      self._node_name = node_base_name
-    else:
-      self._node_name = namespace + "/" + node_base_name
+    self._node_name = "/".join(path_components[1:-1] + [node_base_name])
 
     self._file_path = os.path.join(dump_root, debug_dump_rel_path)
     self._dump_size_bytes = (gfile.Stat(self._file_path).length if
                              gfile.Exists(self._file_path) else None)
 
-    self._run_fetches_info = None
-    self._run_feed_keys_info = None
-
   def __str__(self):
-    return "{DebugTensorDatum: %s:%d @ %s @ %d}" % (self.node_name,
-                                                    self.output_slot,
-                                                    self.debug_op,
-                                                    self.timestamp)
+    return "{DebugTensorDatum (%s) %s:%d @ %s @ %d}" % (self.device_name,
+                                                        self.node_name,
+                                                        self.output_slot,
+                                                        self.debug_op,
+                                                        self.timestamp)
 
   def __repr__(self):
     return self.__str__()
-
-  # TODO(cais): (b/38325442) Add device name information to this class.
 
   def get_tensor(self):
     """Get tensor from the dump (`Event`) file.
@@ -463,6 +480,16 @@ class DebugTensorDatum(object):
     """
 
     return self._debug_op
+
+  @property
+  def device_name(self):
+    """Name of the device that the tensor belongs to.
+
+    Returns:
+      (`str`) device name.
+    """
+
+    return self._device_name
 
   @property
   def node_name(self):
@@ -529,6 +556,8 @@ class WatchKeyDoesNotExistInDebugDumpDirError(ValueError):
   pass
 
 
+# TODO(cais): This class is getting too large in line count. Refactor to make it
+# smaller and easier to maintain.
 class DebugDumpDir(object):
   """Data set from a debug-dump directory on filesystem.
 
@@ -548,23 +577,54 @@ class DebugDumpDir(object):
 
     Raises:
       IOError: If dump_root does not exist as a directory.
+      ValueError: If more than one core metadata file is found under the dump
+        root directory.
     """
 
     if not gfile.IsDirectory(dump_root):
       raise IOError("Dump root directory %s does not exist" % dump_root)
 
-    self._core_metadata = None
-    self._load_dumps(dump_root)
-    self._create_tensor_watch_maps()
-    self._load_partition_graphs(partition_graphs, validate)
+    self._core_metadata = []
+
+    # Find the list of devices.
+    self._dump_root = dump_root
+
+    self._load_core_metadata()
+    self._load_fetches_info()
+    self._load_feeds_info()
+    self._load_all_device_dumps(partition_graphs, validate)
 
     self._python_graph = None
 
-  def _load_dumps(self, dump_root):
-    """Load `DebugTensorDatum` instances from the dump root.
+  def _load_all_device_dumps(self, partition_graphs, validate):
+    """Load the dump data for all devices."""
+    device_dirs = glob.glob(os.path.join(
+        self._dump_root, METADATA_FILE_PREFIX + DEVICE_TAG + "*"))
 
-    Populates a list of `DebugTensorDatum` instance and sorts the list by
-    ascending timestamp.
+    self._device_names = []
+    self._t0s = {}
+    self._dump_tensor_data = {}
+    self._dump_graph_file_paths = {}
+    self._debug_watches = {}
+    self._watch_key_to_devices = {}
+    self._watch_key_to_datum = {}
+    self._watch_key_to_rel_time = {}
+    self._watch_key_to_dump_size_bytes = {}
+    for device_dir in device_dirs:
+      device_name = device_path_to_device_name(device_dir)
+      self._device_names.append(device_name)
+      self._load_device_dumps(device_name, device_dir)
+    self._load_partition_graphs(partition_graphs, validate)
+    self._calculate_t0()
+
+    for device_name in self._device_names:
+      self._create_tensor_watch_maps(device_name)
+
+  def _load_device_dumps(self, device_name, device_root):
+    """Load `DebugTensorDatum` instances from the dump root of a given device.
+
+    Populates a map {device_name: a list of `DebugTensorDatum`}, where the list
+    is sorted by  ascending timestamp.
 
     This sorting order reflects the order in which the TensorFlow executor
     processed the nodes of the graph. It is (one of many possible) topological
@@ -584,55 +644,67 @@ class DebugDumpDir(object):
     graphs may not be available, e.g., when the run errors out.
 
     Args:
-      dump_root: (`str`) Dump root directory.
+      device_name: (`str`) name of the device.
+      device_root: (`str`) dump root directory of the given device.
+
+    Raises:
+      ValueError: If GraphDef for the device is not available.
     """
 
-    self._dump_root = dump_root
-    self._dump_tensor_data = []
-    self._dump_graph_file_paths = []
-
-    self._debug_watches = collections.defaultdict(
+    self._dump_tensor_data[device_name] = []
+    self._debug_watches[device_name] = collections.defaultdict(
         lambda: collections.defaultdict(set))
 
-    for root, _, files in gfile.Walk(self._dump_root):
+    for root, _, files in gfile.Walk(device_root):
       for f in files:
-        if f.startswith(METADATA_FILE_PREFIX):
-          if _is_core_metadata_file(f):
-            self._load_core_metadata(os.path.join(self._dump_root, root, f))
+        if _is_graph_file(f):
+          self._dump_graph_file_paths[device_name] = os.path.join(
+              device_root, root, f)
+        else:
+          datum = self._dump_file_name_to_datum(root, f)
+          self._dump_tensor_data[device_name].append(datum)
+          self._debug_watches[device_name][datum.node_name][
+              datum.output_slot].add(datum.debug_op)
 
-          if _is_graph_file(f):
-            self._dump_graph_file_paths.append(
-                os.path.join(self._dump_root, root, f))
+    self._dump_tensor_data[device_name] = sorted(
+        self._dump_tensor_data[device_name],
+        key=lambda x: x.extended_timestamp)
 
-          if _is_run_fetches_info_file(f):
-            self._run_fetches_info = _load_log_message_from_event_file(
-                os.path.join(root, f))
-
-          if _is_run_feed_keys_info_file(f):
-            self._run_feed_keys_info = _load_log_message_from_event_file(
-                os.path.join(root, f))
-
-          continue
-
-        datum = self._dump_file_name_to_datum(root, f)
-        self._dump_tensor_data.append(datum)
-
-        self._debug_watches[datum.node_name][datum.output_slot].add(
-            datum.debug_op)
-
-    self._dump_tensor_data = sorted(
-        self._dump_tensor_data, key=lambda x: x.extended_timestamp)
-
-    if self._dump_tensor_data:
-      self._t0 = self._dump_tensor_data[0].timestamp
+    if self._dump_tensor_data[device_name]:
+      self._t0s[device_name] = self._dump_tensor_data[device_name][0].timestamp
     else:
-      self._t0 = None
+      self._t0s[device_name] = None
 
-  def _load_core_metadata(self, event_file_path):
-    event = event_pb2.Event()
-    with gfile.Open(event_file_path, "rb") as f:
-      event.ParseFromString(f.read())
-      self._core_metadata = extract_core_metadata_from_event_proto(event)
+  def _calculate_t0(self):
+    """Calculate the first timestamp across all devices."""
+    t0s = [t0 for t0 in six.itervalues(self._t0s) if t0 is not None]
+    self._t0 = min(t0s) if t0s else None
+
+  def _load_core_metadata(self):
+    core_metadata_files = glob.glob(os.path.join(
+        self._dump_root, METADATA_FILE_PREFIX + CORE_METADATA_TAG + "*"))
+    for core_metadata_file in core_metadata_files:
+      with gfile.Open(core_metadata_file, "rb") as f:
+        event = event_pb2.Event()
+        event.ParseFromString(f.read())
+        self._core_metadata.append(
+            extract_core_metadata_from_event_proto(event))
+
+  def _load_fetches_info(self):
+    fetches_info_files = glob.glob(os.path.join(
+        self._dump_root, METADATA_FILE_PREFIX + FETCHES_INFO_FILE_TAG + "*"))
+    self._run_fetches_info = []
+    for fetches_info_file in fetches_info_files:
+      self._run_fetches_info.append(
+          _load_log_message_from_event_file(fetches_info_file))
+
+  def _load_feeds_info(self):
+    feeds_info_files = glob.glob(os.path.join(
+        self._dump_root, METADATA_FILE_PREFIX + FEED_KEYS_INFO_FILE_TAG + "*"))
+    self._run_feed_keys_info = []
+    for feeds_info_file in feeds_info_files:
+      self._run_feed_keys_info.append(
+          _load_log_message_from_event_file(feeds_info_file))
 
   def _dump_file_name_to_datum(self, dir_name, file_name):
     """Obtain a DebugTensorDatum from the directory and file name.
@@ -648,34 +720,39 @@ class DebugDumpDir(object):
     # Calculate the relative path of the dump file with respect to the root.
     debug_dump_rel_path = os.path.join(
         os.path.relpath(dir_name, self._dump_root), file_name)
-
     return DebugTensorDatum(self._dump_root, debug_dump_rel_path)
 
-  def _create_tensor_watch_maps(self):
+  def _create_tensor_watch_maps(self, device_name):
     """Create maps from tensor watch keys to datum and to timestamps.
 
     Create a map from watch key (tensor name + debug op) to `DebugTensorDatum`
     item. Also make a map from watch key to relative timestamp.
     "relative" means (absolute timestamp - t0).
+
+    Args:
+      device_name: (str) name of the device.
     """
 
-    self._watch_key_to_datum = {}
-    self._watch_key_to_rel_time = {}
-    self._watch_key_to_dump_size_bytes = {}
-    for datum in self._dump_tensor_data:
-      if datum.watch_key not in self._watch_key_to_datum:
-        self._watch_key_to_datum[datum.watch_key] = [datum]
-        self._watch_key_to_rel_time[datum.watch_key] = [
-            datum.timestamp - self._t0
-        ]
-        self._watch_key_to_dump_size_bytes[datum.watch_key] = [
-            datum.dump_size_bytes
-        ]
+    self._watch_key_to_datum[device_name] = {}
+    self._watch_key_to_rel_time[device_name] = {}
+    self._watch_key_to_dump_size_bytes[device_name] = {}
+    for datum in self._dump_tensor_data[device_name]:
+      if datum.watch_key not in self._watch_key_to_devices:
+        self._watch_key_to_devices[datum.watch_key] = {device_name}
       else:
-        self._watch_key_to_datum[datum.watch_key].append(datum)
-        self._watch_key_to_rel_time[datum.watch_key].append(datum.timestamp -
-                                                            self._t0)
-        self._watch_key_to_dump_size_bytes[datum.watch_key].append(
+        self._watch_key_to_devices[datum.watch_key].add(device_name)
+
+      if datum.watch_key not in self._watch_key_to_datum[device_name]:
+        self._watch_key_to_datum[device_name][datum.watch_key] = [datum]
+        self._watch_key_to_rel_time[device_name][datum.watch_key] = [
+            datum.timestamp - self._t0]
+        self._watch_key_to_dump_size_bytes[device_name][datum.watch_key] = [
+            datum.dump_size_bytes]
+      else:
+        self._watch_key_to_datum[device_name][datum.watch_key].append(datum)
+        self._watch_key_to_rel_time[device_name][datum.watch_key].append(
+            datum.timestamp - self._t0)
+        self._watch_key_to_dump_size_bytes[device_name][datum.watch_key].append(
             datum.dump_size_bytes)
 
   def set_python_graph(self, python_graph):
@@ -733,22 +810,32 @@ class DebugDumpDir(object):
         `output_names`: Names of the output (fetched) Tensors.
         `target_nodes`: Names of the target nodes.
       If the core metadata have not been loaded, `None`.
+      If more than one core metadata files exist, return a list of the
+        `nametuple` described above.
     """
 
-    return self._core_metadata
+    output = self._core_metadata
+    return output[0] if len(output) == 1 else output
 
   @property
   def dumped_tensor_data(self):
-    return self._dump_tensor_data
+    """Retrieve dumped tensor data."""
+    if len(self.devices()) == 1:
+      return self._dump_tensor_data[self.devices()[0]]
+    else:
+      all_devices_data = six.itervalues(self._dump_tensor_data)
+      data = []
+      for device_data in all_devices_data:
+        data.extend(device_data)
+      return sorted(data, key=lambda x: x.extended_timestamp)
 
   @property
   def t0(self):
-    """Absolute timestamp of the first dumped tensor.
+    """Absolute timestamp of the first dumped tensor across all devices.
 
     Returns:
       (`int`) absolute timestamp of the first dumped tensor, in microseconds.
     """
-
     return self._t0
 
   @property
@@ -756,10 +843,10 @@ class DebugDumpDir(object):
     """Total number of dumped tensors in the dump root directory.
 
     Returns:
-      (`int`) total number of dumped tensors in the dump root directory.
+      (`int`) The total number of dumped tensors in the dump root directory.
     """
-
-    return len(self._dump_tensor_data)
+    return sum(len(self._dump_tensor_data[device_name])
+               for device_name in self._dump_tensor_data)
 
   def _load_partition_graphs(self, partition_graphs, validate):
     """Load and process partition graphs.
@@ -770,56 +857,73 @@ class DebugDumpDir(object):
     tensor dumps.
 
     Args:
-      partition_graphs: Partition graphs executed by the TensorFlow runtime,
-        represented as repeated fields of GraphDef.
-        If no partition_graph is available, use None.
+      partition_graphs: A repeated field of GraphDefs representing the
+          partition graphs executed by the TensorFlow runtime.
       validate: (`bool`) Whether the dump files are to be validated against the
         partition graphs.
+
+    Raises:
+      ValueError: If the partition GraphDef of one or more devices fail to be
+        loaded.
     """
 
-    if partition_graphs:
-      self._partition_graphs = partition_graphs
-    elif self._dump_graph_file_paths:
-      # In case partition graphs are not available from arguments, load them
-      # from the dump directory.
-      self._partition_graphs = [
-          _load_graph_def_from_event_file(dump_file_path)
-          for dump_file_path in self._dump_graph_file_paths
-      ]
-    else:
-      self._partition_graphs = None
-      return
-
     self._node_attributes = {}
-
     self._node_inputs = {}
     self._node_ctrl_inputs = {}
-
     self._node_recipients = {}
     self._node_ctrl_recipients = {}
-
-    self._devices = []
     self._node_devices = {}
     self._node_op_types = {}
+    self._copy_send_nodes = {}
 
-    self._copy_send_nodes = []
+    self._partition_graphs = {}
+    for device_name in self._device_names:
+      partition_graph = None
+      if device_name in self._dump_graph_file_paths:
+        partition_graph = _load_graph_def_from_event_file(
+            self._dump_graph_file_paths[device_name])
+      else:
+        partition_graph = self._find_partition_graph(partition_graphs,
+                                                     device_name)
 
-    for pg in self._partition_graphs:
-      for node in pg.node:
-        self._process_partition_graph_node(node)
+      if partition_graph:
+        self._partition_graphs[device_name] = partition_graph
 
-    self._prune_non_control_edges_of_debug_ops()
-    self._prune_control_edges_of_debug_ops()
+      self._node_attributes[device_name] = {}
+      self._node_inputs[device_name] = {}
+      self._node_ctrl_inputs[device_name] = {}
+      self._node_recipients[device_name] = {}
+      self._node_ctrl_recipients[device_name] = {}
+      self._node_op_types[device_name] = {}
+      self._copy_send_nodes[device_name] = []
 
-    self._populate_recipient_maps()
+      if partition_graph:
+        for node in partition_graph.node:
+          self._process_partition_graph_node(device_name, node)
 
-    if validate:
-      self._validate_dump_with_graphs()
+      self._prune_non_control_edges_of_debug_ops(device_name)
+      self._prune_control_edges_of_debug_ops(device_name)
 
-  def _process_partition_graph_node(self, node):
+      self._populate_recipient_maps(device_name)
+
+      if device_name in self._partition_graphs and validate:
+        self._validate_dump_with_graphs(device_name)
+
+  def _find_partition_graph(self, partition_graphs, device_name):
+    if partition_graphs is None:
+      return None
+    else:
+      for graph_def in partition_graphs:
+        for node_def in graph_def.node:
+          if node_def.device == device_name:
+            return graph_def
+      return None
+
+  def _process_partition_graph_node(self, device_name, node):
     """Process a node from the partition graphs.
 
     Args:
+      device_name: (str) device name.
       node: (NodeDef) A partition-graph node to be processed.
 
     Raises:
@@ -833,84 +937,91 @@ class DebugDumpDir(object):
       (watched_node_name, watched_output_slot, _,
        debug_op) = parse_debug_node_name(node.name)
 
-      self._debug_watches[watched_node_name][watched_output_slot].add(
-          debug_op)
+      self._debug_watches[device_name][watched_node_name][
+          watched_output_slot].add(debug_op)
 
       return
 
-    if node.name in self._node_inputs:
-      raise ValueError("Duplicate node name: '%s'" % node.name)
+    if node.name in self._node_inputs[device_name]:
+      raise ValueError("Duplicate node name on device %s: '%s'" %
+                       (device_name, node.name))
 
-    self._node_attributes[node.name] = node.attr
+    self._node_attributes[device_name][node.name] = node.attr
 
-    if node.device not in self._devices and node.device:
-      self._devices.append(node.device)
+    self._node_inputs[device_name][node.name] = []
+    self._node_ctrl_inputs[device_name][node.name] = []
+    self._node_recipients[device_name][node.name] = []
+    self._node_ctrl_recipients[device_name][node.name] = []
 
-    self._node_inputs[node.name] = []
-    self._node_ctrl_inputs[node.name] = []
-    self._node_recipients[node.name] = []
-    self._node_ctrl_recipients[node.name] = []
-
-    self._node_devices[node.name] = node.device
-    self._node_op_types[node.name] = node.op
+    if node.name not in self._node_devices:
+      self._node_devices[node.name] = set()
+    self._node_devices[node.name].add(node.device)
+    self._node_op_types[device_name][node.name] = node.op
 
     for inp in node.input:
       if is_copy_node(inp) and (node.op == "_Send" or node.op == "_Retval"):
-        self._copy_send_nodes.append(node.name)
+        self._copy_send_nodes[device_name].append(node.name)
 
       if inp.startswith("^"):
         cinp = inp[1:]
-        self._node_ctrl_inputs[node.name].append(cinp)
+        self._node_ctrl_inputs[device_name][node.name].append(cinp)
       else:
-        self._node_inputs[node.name].append(inp)
+        self._node_inputs[device_name][node.name].append(inp)
 
-  def _prune_nodes_from_input_and_recipient_maps(self, nodes_to_prune):
+  def _prune_nodes_from_input_and_recipient_maps(self,
+                                                 device_name,
+                                                 nodes_to_prune):
     """Prune nodes out of input and recipient maps.
 
     Args:
+      device_name: (`str`) device name.
       nodes_to_prune: (`list` of `str`) Names of the nodes to be pruned.
     """
 
     for node in nodes_to_prune:
-      del self._node_inputs[node]
-      del self._node_ctrl_inputs[node]
-      del self._node_recipients[node]
-      del self._node_ctrl_recipients[node]
+      del self._node_inputs[device_name][node]
+      del self._node_ctrl_inputs[device_name][node]
+      del self._node_recipients[device_name][node]
+      del self._node_ctrl_recipients[device_name][node]
 
-  def _prune_non_control_edges_of_debug_ops(self):
+  def _prune_non_control_edges_of_debug_ops(self, device_name):
     """Prune (non-control) edges related to debug ops.
 
     Prune the Copy ops and associated _Send ops inserted by the debugger out
     from the non-control inputs and output recipients map. Replace the inputs
     and recipients with original ones.
+
+    Args:
+      device_name: (`str`) device name.
     """
 
     copy_nodes = []
-    for node in self._node_inputs:
-      if node in self._copy_send_nodes:
+    for node in self._node_inputs[device_name]:
+      if node in self._copy_send_nodes[device_name]:
         continue
 
       if is_copy_node(node):
         copy_nodes.append(node)
 
-      inputs = self._node_inputs[node]
+      inputs = self._node_inputs[device_name][node]
 
       for i in xrange(len(inputs)):
         inp = inputs[i]
         if is_copy_node(inp):
           # Find the input to the Copy node, which should be the original
           # input to the node.
-          orig_inp = self._node_inputs[inp][0]
+          orig_inp = self._node_inputs[device_name][inp][0]
           inputs[i] = orig_inp
 
-    self._prune_nodes_from_input_and_recipient_maps(copy_nodes)
-    self._prune_nodes_from_input_and_recipient_maps(self._copy_send_nodes)
+    self._prune_nodes_from_input_and_recipient_maps(device_name, copy_nodes)
+    self._prune_nodes_from_input_and_recipient_maps(
+        device_name, self._copy_send_nodes[device_name])
 
-  def _prune_control_edges_of_debug_ops(self):
+  def _prune_control_edges_of_debug_ops(self, device_name):
     """Prune control edges related to the debug ops."""
 
-    for node in self._node_ctrl_inputs:
-      ctrl_inputs = self._node_ctrl_inputs[node]
+    for node in self._node_ctrl_inputs[device_name]:
+      ctrl_inputs = self._node_ctrl_inputs[device_name][node]
       debug_op_inputs = []
       for ctrl_inp in ctrl_inputs:
         if is_debug_node(ctrl_inp):
@@ -918,32 +1029,35 @@ class DebugDumpDir(object):
       for debug_op_inp in debug_op_inputs:
         ctrl_inputs.remove(debug_op_inp)
 
-  def _populate_recipient_maps(self):
+  def _populate_recipient_maps(self, device_name):
     """Populate the map from node name to recipient(s) of its output(s)."""
 
-    for node in self._node_inputs:
-      inputs = self._node_inputs[node]
+    for node in self._node_inputs[device_name]:
+      inputs = self._node_inputs[device_name][node]
       for inp in inputs:
         inp = get_node_name(inp)
-        if inp not in self._node_recipients:
-          self._node_recipients[inp] = []
-        self._node_recipients[inp].append(node)
+        if inp not in self._node_recipients[device_name]:
+          self._node_recipients[device_name][inp] = []
+        self._node_recipients[device_name][inp].append(node)
 
-    for node in self._node_ctrl_inputs:
-      ctrl_inputs = self._node_ctrl_inputs[node]
+    for node in self._node_ctrl_inputs[device_name]:
+      ctrl_inputs = self._node_ctrl_inputs[device_name][node]
       for ctrl_inp in ctrl_inputs:
-        if ctrl_inp in self._copy_send_nodes:
+        if ctrl_inp in self._copy_send_nodes[device_name]:
           continue
 
-        if ctrl_inp not in self._node_ctrl_recipients:
-          self._node_ctrl_recipients[ctrl_inp] = []
-        self._node_ctrl_recipients[ctrl_inp].append(node)
+        if ctrl_inp not in self._node_ctrl_recipients[device_name]:
+          self._node_ctrl_recipients[device_name][ctrl_inp] = []
+        self._node_ctrl_recipients[device_name][ctrl_inp].append(node)
 
-  def _validate_dump_with_graphs(self):
+  def _validate_dump_with_graphs(self, device_name):
     """Validate the dumped tensor data against the partition graphs.
 
     Only the watched nodes are validated by this method, because tfdbg allows
     clients to watch only a subset of the nodes.
+
+    Args:
+      device_name: (`str`) device name.
 
     Raises:
       LookupError: If the partition graphs have not been loaded yet.
@@ -952,33 +1066,35 @@ class DebugDumpDir(object):
         input relations on the partition graphs.
     """
 
-    if not self._partition_graphs:
-      raise LookupError("No partition graphs loaded.")
+    if not self._partition_graphs[device_name]:
+      raise LookupError(
+          "No partition graphs loaded for device %s" % device_name)
 
     # Verify that the node names in the dump data are all present in the
     # partition graphs.
-    for datum in self._dump_tensor_data:
-      if datum.node_name not in self._node_inputs:
-        raise ValueError("Node name '%s' is not found in partition graphs." %
-                         datum.node_name)
+    for datum in self._dump_tensor_data[device_name]:
+      if datum.node_name not in self._node_inputs[device_name]:
+        raise ValueError("Node name '%s' is not found in partition graphs of "
+                         "device %s." % (datum.node_name, device_name))
 
     pending_inputs = {}
-    for node in self._node_inputs:
+    for node in self._node_inputs[device_name]:
       pending_inputs[node] = []
-      inputs = self._node_inputs[node]
+      inputs = self._node_inputs[device_name][node]
       for inp in inputs:
         inp_node = get_node_name(inp)
         inp_output_slot = get_output_slot(inp)
         # Inputs from Enter and NextIteration nodes are not validated because
         # DebugNodeInserter::InsertNodes() in the debugger core skips creating
         # control edges from debug ops watching these types of nodes.
-        if (inp_node in self._debug_watches and
-            inp_output_slot in self._debug_watches[inp_node] and
-            self._node_op_types.get(inp) not in ("Enter", "NextIteration") and
+        if (inp_node in self._debug_watches[device_name] and
+            inp_output_slot in self._debug_watches[device_name][inp_node] and
+            self._node_op_types[device_name].get(inp) not in (
+                "Enter", "NextIteration") and
             (inp_node, inp_output_slot) not in pending_inputs[node]):
           pending_inputs[node].append((inp_node, inp_output_slot))
 
-    for i, datum in enumerate(self._dump_tensor_data):
+    for i, datum in enumerate(self._dump_tensor_data[device_name]):
       node = datum.node_name
       slot = datum.output_slot
       # In some cases (e.g., system clocks with insufficient precision),
@@ -986,13 +1102,13 @@ class DebugDumpDir(object):
       # following check examines this possibility and avoids raising an error if
       # that is the case.
       if not self._satisfied_at_timestamp(
-          pending_inputs[node], datum.timestamp, start_i=i + 1):
+          device_name, pending_inputs[node], datum.timestamp, start_i=i + 1):
         raise ValueError("Causality violated in timing relations of debug "
                          "dumps: %s (%d): "
                          "these input(s) are not satisfied: %s" %
                          (node, datum.timestamp, repr(pending_inputs[node])))
 
-      recipients = self._node_recipients[node]
+      recipients = self._node_recipients[device_name][node]
       for recipient in recipients:
         recipient_pending_inputs = pending_inputs[recipient]
         if (node, slot) in recipient_pending_inputs:
@@ -1004,12 +1120,13 @@ class DebugDumpDir(object):
             del recipient_pending_inputs[
                 recipient_pending_inputs.index((node, slot))]
 
-  def _satisfied_at_timestamp(self, pending, timestamp, start_i=0):
+  def _satisfied_at_timestamp(self, device_name, pending, timestamp, start_i=0):
     """Determine whether pending inputs are satisfied at given timestamp.
 
     Note: This method mutates the input argument "pending".
 
     Args:
+      device_name: (str) device name.
       pending: A list of 2-tuple (node_name, output_slot): the dependencies to
         check.
       timestamp: (int) the timestamp in question.
@@ -1023,7 +1140,7 @@ class DebugDumpDir(object):
     if not pending:
       return True
 
-    for datum in self._dump_tensor_data[start_i:]:
+    for datum in self._dump_tensor_data[device_name][start_i:]:
       if datum.timestamp > timestamp:
         break
       if (datum.timestamp == timestamp and
@@ -1042,7 +1159,7 @@ class DebugDumpDir(object):
     """Get the partition graphs.
 
     Returns:
-      Partition graphs as repeated fields of GraphDef.
+      Partition graphs as a list of GraphDef.
 
     Raises:
       LookupError: If no partition graphs have been loaded.
@@ -1051,50 +1168,90 @@ class DebugDumpDir(object):
     if self._partition_graphs is None:
       raise LookupError("No partition graphs have been loaded.")
 
-    return self._partition_graphs
+    return self._partition_graphs.values()
 
   @property
   def run_fetches_info(self):
     """Get a str representation of the fetches used in the Session.run() call.
 
     Returns:
-      If the information is available, a `str` obtained from `repr(fetches)`.
+      If the information is available from one `Session.run` call, a `str`
+        obtained from `repr(fetches)`.
+      If the information is available from multiple `Session.run` calls, a
+        `list` of `str` from `repr(fetches)`.
       If the information is not available, `None`.
     """
 
-    return self._run_fetches_info
+    output = self._run_fetches_info
+    return output[0] if len(output) == 1 else output
 
   @property
   def run_feed_keys_info(self):
     """Get a str representation of the feed_dict used in the Session.run() call.
 
     Returns:
-      If the information is available, a `str` obtained from `repr(feed_dict)`.
+      If the information is available from one `Session.run` call, a `str`
+        obtained from `repr(feed_dict)`.
+      If the information is available from multiple `Session.run` calls, a
+        `list` of `str` obtained from `repr(feed_dict)`.
       If the information is not available, `None`.
     """
 
-    return self._run_feed_keys_info
+    output = self._run_feed_keys_info
+    return output[0] if len(output) == 1 else output
 
-  def nodes(self):
+  def _infer_device_name(self, device_name, node_name):
+    if device_name is None:
+      if len(self.devices()) == 1:
+        return self.devices()[0]
+      else:
+        if node_name in self._node_devices:
+          if len(self._node_devices[node_name]) == 1:
+            return list(self._node_devices[node_name])[0]
+          else:
+            raise ValueError(
+                "There are multiple (%d) devices with nodes named '%s' but "
+                "device_name is not specified." %
+                (len(self._node_devices[node_name]), node_name))
+        else:
+          raise ValueError("None of the %d devices has a node named '%s'." %
+                           (len(self._device_names), node_name))
+    else:
+      return device_name
+
+  def nodes(self, device_name=None):
     """Get a list of all nodes from the partition graphs.
+
+    Args:
+      device_name: (`str`) name of device. If there is only one device, this
+        argumnet is optional.
 
     Returns:
       All nodes' names, as a list of str.
 
     Raises:
       LookupError: If no partition graphs have been loaded.
+      ValueError: If there are multiple devices, but device_name is not
+        specified.
     """
-
     if self._partition_graphs is None:
       raise LookupError("No partition graphs have been loaded.")
+    if device_name is None:
+      if len(self.devices()) == 1:
+        device_name = self.devices()[0]
+      else:
+        raise ValueError(
+            "There are multiple (%d) devices, but "
+            "device_name is not specified." % len(self.devices()))
+    return [node_name for node_name in self._node_inputs[device_name]]
 
-    return [node_name for node_name in self._node_inputs]
-
-  def node_attributes(self, node_name):
+  def node_attributes(self, node_name, device_name=None):
     """Get the attributes of a node.
 
     Args:
       node_name: Name of the node in question.
+      device_name: (`str`) name of the device. If there is only one device or if
+        node_name exists on only one device, this argumnet is optional.
 
     Returns:
       Attributes of the node.
@@ -1103,22 +1260,25 @@ class DebugDumpDir(object):
       LookupError: If no partition graphs have been loaded.
       ValueError: If no node named node_name exists.
     """
-
     if self._partition_graphs is None:
       raise LookupError("No partition graphs have been loaded.")
 
-    if node_name in self._node_attributes:
-      return self._node_attributes[node_name]
+    device_name = self._infer_device_name(device_name, node_name)
+    if node_name in self._node_attributes[device_name]:
+      return self._node_attributes[device_name][node_name]
     else:
-      raise ValueError("No node named \"%s\" exists." % node_name)
+      raise ValueError("No node named \"%s\" exists on device %s." % (
+          node_name, device_name))
 
-  def node_inputs(self, node_name, is_control=False):
+  def node_inputs(self, node_name, is_control=False, device_name=None):
     """Get the inputs of given node according to partition graphs.
 
     Args:
       node_name: Name of the node.
       is_control: (`bool`) Whether control inputs, rather than non-control
         inputs, are to be returned.
+      device_name: (`str`) name of the device. If there is only one device or if
+        node_name exists on only one device, this argumnet is optional.
 
     Returns:
       (`list` of `str`) inputs to the node, as a list of node names.
@@ -1133,21 +1293,27 @@ class DebugDumpDir(object):
       raise LookupError(
           "Node inputs are not loaded from partition graphs yet.")
 
-    if node_name not in self._node_inputs:
-      raise ValueError("Node '%s' does not exist in partition graphs." %
-                       node_name)
+    device_name = self._infer_device_name(device_name, node_name)
+    if node_name not in self._node_inputs[device_name]:
+      raise ValueError("Node '%s' does not exist in the partition graph of "
+                       "device %s." % (node_name, device_name))
 
     if is_control:
-      return self._node_ctrl_inputs[node_name]
+      return self._node_ctrl_inputs[device_name][node_name]
     else:
-      return self._node_inputs[node_name]
+      return self._node_inputs[device_name][node_name]
 
-  def transitive_inputs(self, node_name, include_control=True):
+  def transitive_inputs(self,
+                        node_name,
+                        include_control=True,
+                        device_name=None):
     """Get the transitive inputs of given node according to partition graphs.
 
     Args:
-      node_name: Name of the node
+      node_name: Name of the node.
       include_control: Include control inputs (True by default).
+      device_name: (`str`) name of the device. If there is only one device or if
+        node_name exists on only one device, this argumnet is optional.
 
     Returns:
       (`list` of `str`) all transitive inputs to the node, as a list of node
@@ -1163,9 +1329,11 @@ class DebugDumpDir(object):
       raise LookupError(
           "Node inputs are not loaded from partition graphs yet.")
 
-    if node_name not in self._node_inputs:
-      raise ValueError("Node '%s' does not exist in partition graphs." %
-                       node_name)
+    device_name = self._infer_device_name(device_name, node_name)
+    if node_name not in self._node_inputs[device_name]:
+      raise ValueError(
+          "Node '%s' does not exist in the partition graph of device %s." %
+          (node_name, device_name))
 
     inputs = []
 
@@ -1186,21 +1354,21 @@ class DebugDumpDir(object):
 
       # Stop the tracing at a Merge op, as it is generally impossible to infer
       # outside the runtime which input to the Merge op is alive.
-      if self._node_op_types[node] == "Merge":
+      if self._node_op_types[device_name][node] == "Merge":
         return
 
       if node in visited_nodes:
         return
       visited_nodes.append(node)
 
-      for inp in self._node_inputs[node]:
+      for inp in self._node_inputs[device_name][node]:
         if inp == node_name:
           continue
         inputs.append(inp)
         trace_inputs(inp)
 
       if include_control:
-        for ctrl_inp in self._node_ctrl_inputs[node]:
+        for ctrl_inp in self._node_ctrl_inputs[device_name][node]:
           if ctrl_inp == node_name:
             continue
           inputs.append(ctrl_inp)
@@ -1210,13 +1378,15 @@ class DebugDumpDir(object):
 
     return inputs
 
-  def node_recipients(self, node_name, is_control=False):
+  def node_recipients(self, node_name, is_control=False, device_name=None):
     """Get recipient of the given node's output according to partition graphs.
 
     Args:
       node_name: (`str`) name of the node.
       is_control: (`bool`) whether control outputs, rather than non-control
         outputs, are to be returned.
+      device_name: (`str`) name of the device. If there is only one device or if
+        node_name exists on only one device, this argumnet is optional.
 
     Returns:
       (`list` of `str`) all inputs to the node, as a list of node names.
@@ -1231,58 +1401,67 @@ class DebugDumpDir(object):
       raise LookupError(
           "Node recipients are not loaded from partition graphs yet.")
 
-    if node_name not in self._node_recipients:
-      raise ValueError("Node '%s' does not exist in partition graphs." %
-                       node_name)
+    device_name = self._infer_device_name(device_name, node_name)
+    if node_name not in self._node_recipients[device_name]:
+      raise ValueError(
+          "Node '%s' does not exist in the partition graph of device %s." %
+          (node_name, device_name))
 
     if is_control:
-      return self._node_ctrl_recipients[node_name]
+      return self._node_ctrl_recipients[device_name][node_name]
     else:
-      return self._node_recipients[node_name]
+      return self._node_recipients[device_name][node_name]
 
   def devices(self):
-    """Get the list of devices.
+    """Get the list of device names.
 
     Returns:
       (`list` of `str`) names of the devices.
-
-    Raises:
-      LookupError: If node inputs and control inputs have not been loaded
-         from partition graphs yet.
     """
 
-    if self._partition_graphs is None:
-      raise LookupError("Devices are not loaded from partition graphs yet.")
+    return self._device_names
 
-    return self._devices
-
-  def node_exists(self, node_name):
+  def node_exists(self, node_name, device_name=None):
     """Test if a node exists in the partition graphs.
 
     Args:
       node_name: (`str`) name of the node to be checked.
+      device_name: optional device name. If None, will search for the node
+        on all available devices. Otherwise, search for the node only on
+        the given device.
 
     Returns:
       A boolean indicating whether the node exists.
 
     Raises:
       LookupError: If no partition graphs have been loaded yet.
+      ValueError: If device_name is specified but cannot be found.
     """
 
     if self._node_inputs is None:
       raise LookupError(
           "Nodes have not been loaded from partition graphs yet.")
 
-    return node_name in self._node_inputs
+    if (device_name is not None) and device_name not in self._node_inputs:
+      raise ValueError(
+          "The specified device_name '%s' cannot be found." % device_name)
+
+    node_inputs_all_devices = (self._node_inputs if device_name is None
+                               else (self._node_inputs[device_name],))
+
+    return any(node_name in node_inputs_all_devices[dev_name]
+               for dev_name in node_inputs_all_devices)
 
   def node_device(self, node_name):
-    """Get the device of a node.
+    """Get the names of the devices that has nodes of the specified name.
 
     Args:
       node_name: (`str`) name of the node.
 
     Returns:
-      (`str`) name of the device on which the node is placed.
+      (`str` or `list` of `str`) name of the device(s) on which the node of the
+        given name is found. Returns a `str` if there is only one such device,
+        otherwise return a `list` of `str`.
 
     Raises:
       LookupError: If node inputs and control inputs have not been loaded
@@ -1298,13 +1477,16 @@ class DebugDumpDir(object):
       raise ValueError("Node '%s' does not exist in partition graphs." %
                        node_name)
 
-    return self._node_devices[node_name]
+    output = list(self._node_devices[node_name])
+    return output[0] if len(output) == 1 else output
 
-  def node_op_type(self, node_name):
+  def node_op_type(self, node_name, device_name=None):
     """Get the op type of given node.
 
     Args:
       node_name: (`str`) name of the node.
+      device_name: (`str`) name of the device. If there is only one device or if
+        node_name exists on only one device, this argumnet is optional.
 
     Returns:
       (`str`) op type of the node.
@@ -1319,17 +1501,21 @@ class DebugDumpDir(object):
       raise LookupError(
           "Node op types are not loaded from partition graphs yet.")
 
-    if node_name not in self._node_op_types:
-      raise ValueError("Node '%s' does not exist in partition graphs." %
-                       node_name)
+    device_name = self._infer_device_name(device_name, node_name)
+    if node_name not in self._node_op_types[device_name]:
+      raise ValueError(
+          "Node '%s' does not exist in the partition graph of device '%s'. " %
+          (node_name, device_name))
 
-    return self._node_op_types[node_name]
+    return self._node_op_types[device_name][node_name]
 
-  def debug_watch_keys(self, node_name):
+  def debug_watch_keys(self, node_name, device_name=None):
     """Get all tensor watch keys of given node according to partition graphs.
 
     Args:
       node_name: (`str`) name of the node.
+      device_name: (`str`) name of the device. If there is only one device or if
+        node_name exists on only one device, this argumnet is optional.
 
     Returns:
       (`list` of `str`) all debug tensor watch keys. Returns an empty list if
@@ -1340,35 +1526,61 @@ class DebugDumpDir(object):
         partition graphs yet.
     """
 
-    if node_name not in self._debug_watches:
+    try:
+      device_name = self._infer_device_name(device_name, node_name)
+    except ValueError:
+      return []
+
+    if node_name not in self._debug_watches[device_name]:
       return []
 
     watch_keys = []
-    for watched_slot in self._debug_watches[node_name]:
-      debug_ops = self._debug_watches[node_name][watched_slot]
+    for watched_slot in self._debug_watches[device_name][node_name]:
+      debug_ops = self._debug_watches[device_name][node_name][watched_slot]
       for debug_op in debug_ops:
         watch_keys.append(
             _get_tensor_watch_key(node_name, watched_slot, debug_op))
 
     return watch_keys
 
-  def watch_key_to_data(self, debug_watch_key):
+  def watch_key_to_data(self, debug_watch_key, device_name=None):
     """Get all `DebugTensorDatum` instances corresponding to a debug watch key.
 
     Args:
       debug_watch_key: (`str`) debug watch key.
+      device_name: (`str`) name of the device. If there is only one device or if
+        the specified debug_watch_key exists on only one device, this argumnet
+        is optional.
 
     Returns:
       A list of `DebugTensorDatum` instances that correspond to the debug watch
       key. If the watch key does not exist, returns an empty list.
 
     Raises:
-      ValueError: If the debug watch key does not exist.
+      ValueError: If there are multiple devices that have the debug_watch_key,
+        but device_name is not specified.
     """
+    if device_name is None:
+      matching_device_names = [
+          name for name in self._watch_key_to_datum
+          if debug_watch_key in self._watch_key_to_datum[name]]
+      if not matching_device_names:
+        return []
+      elif len(matching_device_names) == 1:
+        device_name = matching_device_names[0]
+      else:
+        raise ValueError(
+            "The debug watch key '%s' exists on multiple (%d) devices, but "
+            "device name is not specified." %
+            (debug_watch_key, len(matching_device_names)))
+    elif device_name not in self._debug_key_to_datum:
+      raise ValueError(
+          "There is no device named '%s' consisting of debug watch keys." %
+          device_name)
 
-    return self._watch_key_to_datum.get(debug_watch_key, [])
+    return self._watch_key_to_datum[device_name].get(debug_watch_key, [])
 
-  def find(self, predicate, first_n=0):
+  def find(self, predicate, first_n=0, device_name=None):
     """Find dumped tensor data by a certain predicate.
 
     Args:
@@ -1386,6 +1598,7 @@ class DebugDumpDir(object):
       first_n: (`int`) return only the first n `DebugTensotDatum` instances (in
         time order) for which the predicate returns True. To return all the
         `DebugTensotDatum` instances, let first_n be <= 0.
+      device_name: optional device name.
 
     Returns:
       A list of all `DebugTensorDatum` objects in this `DebugDumpDir` object
@@ -1394,22 +1607,31 @@ class DebugDumpDir(object):
     """
 
     matched_data = []
-    for datum in self._dump_tensor_data:
-      if predicate(datum, datum.get_tensor()):
-        matched_data.append(datum)
+    for device in (self._dump_tensor_data if device_name is None
+                   else (self._dump_tensor_data[device_name],)):
+      for datum in self._dump_tensor_data[device]:
+        if predicate(datum, datum.get_tensor()):
+          matched_data.append(datum)
 
-        if first_n > 0 and len(matched_data) >= first_n:
-          break
+          if first_n > 0 and len(matched_data) >= first_n:
+            return matched_data
 
     return matched_data
 
-  def get_tensor_file_paths(self, node_name, output_slot, debug_op):
+  def get_tensor_file_paths(self,
+                            node_name,
+                            output_slot,
+                            debug_op,
+                            device_name=None):
     """Get the file paths from a debug-dumped tensor.
 
     Args:
       node_name: (`str`) name of the node that the tensor is produced by.
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
+      device_name: (`str`) name of the device. If there is only one device or if
+        the specified debug_watch_key exists on only one device, this argumnet
+        is optional.
 
     Returns:
       List of file path(s) loaded. This is a list because each debugged tensor
@@ -1420,14 +1642,17 @@ class DebugDumpDir(object):
         the debug-dump data.
     """
 
+    device_name = self._infer_device_name(device_name, node_name)
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
-    if watch_key not in self._watch_key_to_datum:
+    if watch_key not in self._watch_key_to_datum[device_name]:
       raise WatchKeyDoesNotExistInDebugDumpDirError(
-          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
+          "Watch key \"%s\" does not exist in the debug dump of device %s" %
+          (watch_key, device_name))
 
-    return [datum.file_path for datum in self._watch_key_to_datum[watch_key]]
+    return [datum.file_path for datum in
+            self._watch_key_to_datum[device_name][watch_key]]
 
-  def get_tensors(self, node_name, output_slot, debug_op):
+  def get_tensors(self, node_name, output_slot, debug_op, device_name=None):
     """Get the tensor value from for a debug-dumped tensor.
 
     The tensor may be dumped multiple times in the dump root directory, so a
@@ -1437,6 +1662,9 @@ class DebugDumpDir(object):
       node_name: (`str`) name of the node that the tensor is produced by.
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
+      device_name: (`str`) name of the device. If there is only one device or if
+        the specified debug_watch_key exists on only one device, this argumnet
+        is optional.
 
     Returns:
       List of tensors (`numpy.ndarray`) loaded from the debug-dump file(s).
@@ -1447,13 +1675,20 @@ class DebugDumpDir(object):
     """
 
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
-    if watch_key not in self._watch_key_to_datum:
+    try:
+      device_name = self._infer_device_name(device_name, node_name)
+      return [datum.get_tensor() for datum in
+              self._watch_key_to_datum[device_name][watch_key]]
+    except (ValueError, KeyError):
       raise WatchKeyDoesNotExistInDebugDumpDirError(
-          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
+          "Watch key \"%s\" does not exist in the debug dump of device %s" %
+          (watch_key, device_name))
 
-    return [datum.get_tensor() for datum in self._watch_key_to_datum[watch_key]]
-
-  def get_rel_timestamps(self, node_name, output_slot, debug_op):
+  def get_rel_timestamps(self,
+                         node_name,
+                         output_slot,
+                         debug_op,
+                         device_name=None):
     """Get the relative timestamp from for a debug-dumped tensor.
 
     Relative timestamp means (absolute timestamp - `t0`), where `t0` is the
@@ -1465,6 +1700,9 @@ class DebugDumpDir(object):
       node_name: (`str`) name of the node that the tensor is produced by.
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
+      device_name: (`str`) name of the device. If there is only one device or if
+        the specified debug_watch_key exists on only one device, this argumnet
+        is optional.
 
     Returns:
       (`list` of `int`) list of relative timestamps.
@@ -1474,14 +1712,20 @@ class DebugDumpDir(object):
         exist in the debug dump data.
     """
 
+    device_name = self._infer_device_name(device_name, node_name)
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
-    if watch_key not in self._watch_key_to_datum:
+    if watch_key not in self._watch_key_to_datum[device_name]:
       raise WatchKeyDoesNotExistInDebugDumpDirError(
           "Watch key \"%s\" does not exist in the debug dump" % watch_key)
 
-    return self._watch_key_to_rel_time[watch_key]
+    # TODO(cais): Figure out whether this should be relative to the global t0.
+    return self._watch_key_to_rel_time[device_name][watch_key]
 
-  def get_dump_sizes_bytes(self, node_name, output_slot, debug_op):
+  def get_dump_sizes_bytes(self,
+                           node_name,
+                           output_slot,
+                           debug_op,
+                           device_name=None):
     """Get the sizes of the dump files for a debug-dumped tensor.
 
     Unit of the file size: byte.
@@ -1490,6 +1734,9 @@ class DebugDumpDir(object):
       node_name: (`str`) name of the node that the tensor is produced by.
       output_slot: (`int`) output slot index of tensor.
       debug_op: (`str`) name of the debug op.
+      device_name: (`str`) name of the device. If there is only one device or if
+        the specified debug_watch_key exists on only one device, this argumnet
+        is optional.
 
     Returns:
       (`list` of `int`): list of dump file sizes in bytes.
@@ -1499,12 +1746,14 @@ class DebugDumpDir(object):
         exist in the debug dump data.
     """
 
+    device_name = self._infer_device_name(device_name, node_name)
     watch_key = _get_tensor_watch_key(node_name, output_slot, debug_op)
-    if watch_key not in self._watch_key_to_datum:
+    if watch_key not in self._watch_key_to_datum[device_name]:
       raise WatchKeyDoesNotExistInDebugDumpDirError(
-          "Watch key \"%s\" does not exist in the debug dump" % watch_key)
+          "Watch key \"%s\" does not exist in the debug dump of device %s" %
+          (watch_key, device_name))
 
-    return self._watch_key_to_dump_size_bytes[watch_key]
+    return self._watch_key_to_dump_size_bytes[device_name][watch_key]
 
   def node_traceback(self, element_name):
     """Try to retrieve the Python traceback of node's construction.

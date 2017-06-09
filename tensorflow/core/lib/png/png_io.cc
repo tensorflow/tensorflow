@@ -125,7 +125,8 @@ char* check_metadata_string(const string& s) {
 void CommonFreeDecode(DecodeContext* context) {
   if (context->png_ptr) {
     png_destroy_read_struct(&context->png_ptr,
-                            context->info_ptr ? &context->info_ptr : NULL, 0);
+                            context->info_ptr ? &context->info_ptr : nullptr,
+                            nullptr);
     context->png_ptr = nullptr;
     context->info_ptr = nullptr;
   }
@@ -150,7 +151,7 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
   *width = static_cast<int>(context.width);
   CHECK_NOTNULL(height);
   *height = static_cast<int>(context.height);
-  if (components != NULL) {
+  if (components != nullptr) {
     switch (context.color_type) {
       case PNG_COLOR_TYPE_PALETTE:
         *components =
@@ -175,12 +176,12 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
         break;
     }
   }
-  if (channel_bit_depth != NULL) {
+  if (channel_bit_depth != nullptr) {
     *channel_bit_depth = context.bit_depth;
   }
-  if (metadata != NULL) {
+  if (metadata != nullptr) {
     metadata->clear();
-    png_textp text_ptr = NULL;
+    png_textp text_ptr = nullptr;
     int num_text = 0;
     png_get_text(context.png_ptr, context.info_ptr, &text_ptr, &num_text);
     for (int i = 0; i < num_text; i++) {
@@ -222,8 +223,8 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
   png_set_read_fn(context->png_ptr, context, StringReader);
   png_read_info(context->png_ptr, context->info_ptr);
   png_get_IHDR(context->png_ptr, context->info_ptr, &context->width,
-               &context->height, &context->bit_depth, &context->color_type, 0,
-               0, 0);
+               &context->height, &context->bit_depth, &context->color_type,
+               nullptr, nullptr, nullptr);
   if (context->error_condition) {
     VLOG(1) << ": DecodePNG <- error during header parsing.";
     CommonFreeDecode(context);
@@ -307,7 +308,7 @@ bool CommonFinishDecode(png_bytep data, int row_bytes, DecodeContext* context) {
   for (int p = 0; p < context->num_passes; ++p) {
     png_bytep row = data;
     for (int h = context->height; h-- != 0; row += row_bytes) {
-      png_read_row(context->png_ptr, row, NULL);
+      png_read_row(context->png_ptr, row, nullptr);
     }
   }
 
@@ -339,17 +340,17 @@ bool WriteImageToBuffer(
   if (width == 0 || height == 0) return false;
 
   png_string->resize(0);
-  png_infop info_ptr = NULL;
-  png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, NULL,
+  png_infop info_ptr = nullptr;
+  png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, nullptr,
                                                 ErrorHandler, WarningHandler);
-  if (png_ptr == NULL) return false;
+  if (png_ptr == nullptr) return false;
   if (setjmp(png_jmpbuf(png_ptr))) {
-    png_destroy_write_struct(&png_ptr, info_ptr ? &info_ptr : NULL);
+    png_destroy_write_struct(&png_ptr, info_ptr ? &info_ptr : nullptr);
     return false;
   }
   info_ptr = png_create_info_struct(png_ptr);
-  if (info_ptr == NULL) {
-    png_destroy_write_struct(&png_ptr, NULL);
+  if (info_ptr == nullptr) {
+    png_destroy_write_struct(&png_ptr, nullptr);
     return false;
   }
 
@@ -400,7 +401,7 @@ bool WriteImageToBuffer(
 
   png_byte* row = reinterpret_cast<png_byte*>(const_cast<void*>(image));
   for (; height--; row += row_bytes) png_write_row(png_ptr, row);
-  png_write_end(png_ptr, NULL);
+  png_write_end(png_ptr, nullptr);
 
   png_destroy_write_struct(&png_ptr, &info_ptr);
   return true;

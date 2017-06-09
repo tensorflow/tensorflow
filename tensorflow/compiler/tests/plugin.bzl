@@ -22,4 +22,3 @@ plugins = {
   "executor": {"device":"XLA_EXEC", "types":"DT_FLOAT,DT_INT32", "tags":[]},
 }
 
-

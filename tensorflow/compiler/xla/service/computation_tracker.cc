@@ -164,7 +164,6 @@ void ComputationTracker::ComputeComputationPostOrder(
 
   visited->insert(versioned_handle);
   post_order->push_back(versioned_handle);
-  return;
 }
 
 StatusOr<std::unique_ptr<HloModule>> ComputationTracker::BuildHloModule(

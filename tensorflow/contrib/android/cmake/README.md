@@ -43,6 +43,6 @@ Output
 - TensorFlow-Inference-release.aar
 
 File libtensorflow_inference.so should be packed under jni/${ANDROID_ABI}/
-in the above aar, and it is transparent to the app as it will acccess them via
+in the above aar, and it is transparent to the app as it will access them via
 equivalent java APIs.
 

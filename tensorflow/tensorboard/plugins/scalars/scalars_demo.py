@@ -23,8 +23,6 @@ import os.path
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.python.platform import app
-
 # Directory into which to write tensorboard data.
 LOGDIR = '/tmp/scalars_demo'
 
@@ -129,4 +127,4 @@ def main(unused_argv):
 
 
 if __name__ == '__main__':
-  app.run()
+  tf.app.run()

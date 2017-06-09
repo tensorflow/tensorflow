@@ -401,10 +401,23 @@ class InferenceContext {
 
   inline DimensionHandle UnknownDim() { return MakeDim(kUnknownDim); }
 
+  // Returns in <val> a scalar value from an input tensor <t>.  The input tensor
+  // must be a 1-dimensional int32 or int64 tensor.  Caller must ensure that the
+  // input tensor is not NULL.
+  Status GetScalarFromTensor(const Tensor* t, int64* val);
+
   // Returns a new dimension whose value is given by a scalar input tensor.
   // The input tensor must be in host memory, since it is dereferenced to get
   // the value.
   Status MakeDimForScalarInput(int idx, DimensionHandle* out);
+
+  // Returns a new dimension whose value is given by a scalar input tensor.
+  // This allows for a negative input dimension given the rank of a separate
+  // tensor.  This rank can be negative if unknown.
+  // The input tensor must be in host memory, since it is dereferenced to get
+  // the value.
+  Status MakeDimForScalarInputWithNegativeIndexing(int idx, int input_rank,
+                                                   DimensionHandle* out);
 
   // Look up the attr for the NodeDef being evaluated with name attr_name and
   // set *value to its value.  If no attr with attr_name is found in def(), or
@@ -478,35 +491,10 @@ class InferenceContext {
     return input_handle_shapes_and_types_[idx].get();
   }
 
-  // DEPRECATED: use input_handle_shapes_and_types.
-  ShapeHandle input_handle_shape(int idx);
-  // DEPRECATED: use input_handle_shapes_and_types.
-  DataType input_handle_dtype(int idx) const {
-    if (input_handle_shapes_and_types_[idx] == nullptr) {
-      return DT_INVALID;
-    } else {
-      DCHECK_EQ(input_handle_shapes_and_types_[idx]->size(), 1);
-      return (*input_handle_shapes_and_types_[idx])[0].dtype;
-    }
-  }
-
   void set_output_handle_shapes_and_types(
       int idx, const std::vector<ShapeAndType>& shapes_and_types) {
     output_handle_shapes_and_types_[idx].reset(
         new std::vector<ShapeAndType>(shapes_and_types));
-  }
-
-  // DEPRECATED: use output_handle_shapes_and_types.
-  ShapeHandle output_handle_shape(int idx) {
-    return output_handle_shapes_and_types_[idx] == nullptr
-               ? UnknownShape()
-               : (*output_handle_shapes_and_types_[idx])[0].shape;
-  }
-  // DEPRECATED: use output_handle_shapes_and_types.
-  DataType output_handle_dtype(int idx) const {
-    return output_handle_shapes_and_types_[idx] == nullptr
-               ? DT_INVALID
-               : (*output_handle_shapes_and_types_[idx])[0].dtype;
   }
 
   // Note that shape functions should usually call MakeShapeFromShapeTensor,

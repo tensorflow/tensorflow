@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import functools
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -519,7 +520,10 @@ class TextFileInitializer(TableInitializerBase):
           name=scope)
       # pylint: enable=protected-access
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
-    ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
+    # If the filename tensor is anything other than a string constant (e.g., if
+    # it is a placeholder) then it does not make sense to track it as an asset.
+    if constant_op.is_constant(filename):
+      ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
 
 
@@ -893,7 +897,7 @@ def index_table_from_file(vocabulary_file=None,
   ```
 
   Args:
-    vocabulary_file: The vocabulary filename.
+    vocabulary_file: The vocabulary filename, may be a constant scalar `Tensor`.
     num_oov_buckets: The number of out-of-vocabulary buckets.
     vocab_size: Number of the elements in the vocabulary, if known.
     default_value: The value to use for out-of-vocabulary feature values.
@@ -911,8 +915,9 @@ def index_table_from_file(vocabulary_file=None,
     ValueError: If `num_oov_buckets` is negative or `vocab_size` is not greater
       than zero.
   """
-  if not vocabulary_file:
-    raise ValueError("vocabulary_file must be specified.")
+  if vocabulary_file is None or (
+      isinstance(vocabulary_file, str) and not vocabulary_file):
+    raise ValueError("vocabulary_file must be specified and must not be empty.")
   if num_oov_buckets < 0:
     raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
                      % num_oov_buckets)
