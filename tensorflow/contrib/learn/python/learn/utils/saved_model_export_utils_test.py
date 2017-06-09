@@ -311,7 +311,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     dtype_int64 = types_pb2.DataType.Value("DT_INT64")
     dtype_float = types_pb2.DataType.Value("DT_FLOAT")
     expected_signature_def.inputs[
-        signature_constants.PREDICT_INPUTS].CopyFrom(
+        "input-1"].CopyFrom(
             meta_graph_pb2.TensorInfo(
                 name="input-tensor-1:0", dtype=dtype_float, tensor_shape=shape))
     expected_signature_def.outputs["classes"].CopyFrom(
@@ -516,8 +516,8 @@ class SavedModelExportUtilsTest(test.TestCase):
                                                              output_2, None),
         "default_input_alternative:head-3":
             signature_def_utils.predict_signature_def({
-                "input": input_example
-            }, {"output": output_3}),
+                "default input": input_example
+            }, {"some_output_3": output_3}),
         # "features_input_alternative:head-1":
         #     signature_def_utils.regression_signature_def(input_features,
         #                                                  output_1),
