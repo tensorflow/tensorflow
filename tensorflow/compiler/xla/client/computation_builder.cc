@@ -1499,8 +1499,8 @@ void ComputationBuilder::Send(const ComputationDataHandle& operand,
   OpResponse response;
 
   VLOG(2) << "making send request";
-  tensorflow::Status s = client_->stub()->Op(&op_request, &response);
-  VLOG(2) << "done with request";
+  Status s = client_->stub()->Op(&op_request, &response);
+  VLOG(2) << "done with op request";
 
   if (!s.ok()) {
     NoteError(s);
@@ -1524,9 +1524,7 @@ ComputationDataHandle ComputationBuilder::Recv(const Shape& shape,
   OpResponse response;
 
   VLOG(2) << "making recv request";
-  tensorflow::Status s = client_->stub()->Op(&op_request, &response);
-  VLOG(2) << "done with request";
-
+  Status s = client_->stub()->Op(&op_request, &response);
   return ParseOpResponse(s, &response);
 }
 
