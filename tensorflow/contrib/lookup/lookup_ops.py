@@ -44,32 +44,6 @@ from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.util.deprecation import deprecated
 
 
-@deprecated("2017-04-10", "Use `index_table_from_file`.")
-def string_to_index_table_from_file(vocabulary_file=None,
-                                    num_oov_buckets=0,
-                                    vocab_size=None,
-                                    default_value=-1,
-                                    hasher_spec=FastHashSpec,
-                                    name=None):
-  return index_table_from_file(
-      vocabulary_file, num_oov_buckets, vocab_size, default_value, hasher_spec,
-      key_dtype=dtypes.string, name=name)
-
-
-@deprecated("2017-04-10", "Use `index_table_from_tensor`.")
-def string_to_index_table_from_tensor(mapping,
-                                      num_oov_buckets=0,
-                                      default_value=-1,
-                                      hasher_spec=FastHashSpec,
-                                      name=None):
-  with ops.name_scope(name, "string_to_index") as scope:
-    mapping = ops.convert_to_tensor(mapping)
-  if dtypes.string != mapping.dtype.base_dtype:
-    raise ValueError("string_to_index_table_from_tensor requires string.")
-  return index_table_from_tensor(
-      mapping, num_oov_buckets, default_value, hasher_spec, name=scope)
-
-
 def index_table_from_tensor(mapping,
                             num_oov_buckets=0,
                             default_value=-1,
