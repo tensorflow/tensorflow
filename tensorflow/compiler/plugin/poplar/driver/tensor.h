@@ -2,7 +2,7 @@
 #define IPU_TENSOR_H_
 
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
