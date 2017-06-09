@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import unittest
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -553,6 +554,7 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
     self._compare(sp_t, reduction_axes, ndims, False)
     self._compare(sp_t, reduction_axes, ndims, True)
 
+  @unittest.skipIf(np.__version__ == "1.13.0", "numpy 1.13 bug")
   def testSimpleAndRandomInputs(self):
     sp_t = sparse_tensor.SparseTensor(self.ind, self.vals, self.dense_shape)
 
@@ -585,6 +587,7 @@ class SparseReduceSumTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError("Invalid reduction dimension 2"):
         sparse_ops.sparse_reduce_sum(sp_t, 2).eval()
 
+  @unittest.skipIf(np.__version__ == "1.13.0", "numpy 1.13 bug")
   def testGradient(self):
     np.random.seed(8161)
     test_dims = [(11, 1, 5, 7, 1), (2, 2)]
