@@ -868,7 +868,7 @@ class BaseLinearRegressorTrainingTest(object):
         expected_bias=bias)
 
 
-class BaseLinearClassiferTrainingTest(object):
+class BaseLinearClassifierTrainingTest(object):
 
   def __init__(self, n_classes):
     self._n_classes = n_classes
@@ -1195,10 +1195,10 @@ class BaseLinearClassiferTrainingTest(object):
         expected_bias=bias)
 
 
-class BaseLinearClassiferEvaluationTest(object):
+class BaseLinearClassifierEvaluationTest(object):
 
-  def __init__(self, n_classes, linear_classifer_fn):
-    self._linear_classifer_fn = linear_classifer_fn
+  def __init__(self, n_classes, linear_classifier_fn):
+    self._linear_classifier_fn = linear_classifier_fn
     self._n_classes = n_classes
 
   def setUp(self):
@@ -1228,7 +1228,7 @@ class BaseLinearClassiferEvaluationTest(object):
           100, name=ops.GraphKeys.GLOBAL_STEP, dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
-    est = self._linear_classifer_fn(
+    est = self._linear_classifier_fn(
         feature_columns=(feature_column_lib.numeric_column('age'),),
         n_classes=n_classes,
         model_dir=self._model_dir)
@@ -1286,7 +1286,7 @@ class BaseLinearClassiferEvaluationTest(object):
           dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
-    est = self._linear_classifer_fn(
+    est = self._linear_classifier_fn(
         feature_columns=(feature_column_lib.numeric_column('age'),),
         n_classes=n_classes,
         model_dir=self._model_dir)
@@ -1354,7 +1354,7 @@ class BaseLinearClassiferEvaluationTest(object):
           dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
-    est = self._linear_classifer_fn(
+    est = self._linear_classifier_fn(
         feature_columns=(feature_column_lib.numeric_column('age'),),
         n_classes=n_classes,
         weight_feature_key='w',
@@ -1408,3 +1408,94 @@ class BaseLinearClassiferEvaluationTest(object):
 
     self.assertAllClose(sorted_key_dict(expected_metrics),
                         sorted_key_dict(eval_metrics), rtol=1e-3)
+
+
+class BaseLinearClassifierPredictTest(object):
+
+  def __init__(self, n_classes, linear_classifier_fn):
+    self._n_classes = n_classes
+    self._linear_classifier_fn = linear_classifier_fn
+
+  def setUp(self):
+    self._model_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    if self._model_dir:
+      shutil.rmtree(self._model_dir)
+
+  def _testPredications(self, label_vocabulary, label_output_fn):
+    """Tests predict when all variables are one-dimensional."""
+    n_classes = self._n_classes
+    age = 1.
+
+    # For binary case, the expected weight has shape (1,1). For multi class
+    # case, the shape is (1, n_classes). In order to test the weights, set
+    # weights as 2.0 * range(n_classes).
+    age_weight = [[-11.0]] if n_classes == 2 else (
+        np.reshape(-11.0 * np.array(list(range(n_classes)), dtype=np.float32),
+                   (1, n_classes)))
+    bias = [10.0] if n_classes == 2 else [10.0] * n_classes
+
+    with ops.Graph().as_default():
+      variables.Variable(age_weight, name=AGE_WEIGHT_NAME)
+      variables.Variable(bias, name=BIAS_NAME)
+      variables.Variable(100, name='global_step', dtype=dtypes.int64)
+      save_variables_to_ckpt(self._model_dir)
+
+    est = self._linear_classifier_fn(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        label_vocabulary=label_vocabulary,
+        n_classes=self._n_classes,
+        model_dir=self._model_dir)
+
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x={'age': np.array([[age]])},
+        y=None,
+        batch_size=1,
+        num_epochs=1,
+        shuffle=False)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+
+    if n_classes == 2:
+      scalar_logits = np.asscalar(
+          np.reshape(np.array(age_weight) * age + bias, (1,)))
+      two_classes_logits = [0, scalar_logits]
+      two_classes_logits_exp = np.exp(two_classes_logits)
+      softmax = two_classes_logits_exp / two_classes_logits_exp.sum()
+
+      expected_predictions = {
+          'class_ids': [0],
+          'classes': [label_output_fn(0)],
+          'logistic': [sigmoid(np.array(scalar_logits))],
+          'logits': [scalar_logits],
+          'probabilities': softmax,
+      }
+    else:
+      onedim_logits = np.reshape(np.array(age_weight) * age + bias, (-1,))
+      class_ids = onedim_logits.argmax()
+      logits_exp = np.exp(onedim_logits)
+      softmax = logits_exp / logits_exp.sum()
+      expected_predictions = {
+          'class_ids': [class_ids],
+          'classes': [label_output_fn(class_ids)],
+          'logits': onedim_logits,
+          'probabilities': softmax,
+      }
+
+    self.assertEqual(1, len(predictions))
+    # assertAllClose cannot handle byte type.
+    self.assertEqual(expected_predictions['classes'], predictions[0]['classes'])
+    expected_predictions.pop('classes')
+    predictions[0].pop('classes')
+    self.assertAllClose(sorted_key_dict(expected_predictions),
+                        sorted_key_dict(predictions[0]))
+
+  def testWithoutLabelVocabulary(self):
+    self._testPredications(label_vocabulary=None,
+                           label_output_fn=lambda x: ('%s' % x).encode())
+
+  def testWithLabelVocabulary(self):
+    self._testPredications(
+        label_vocabulary=['class_vocab_{}'.format(i)
+                          for i in range(self._n_classes)],
+        label_output_fn=lambda x: ('class_vocab_%s' % x).encode())
