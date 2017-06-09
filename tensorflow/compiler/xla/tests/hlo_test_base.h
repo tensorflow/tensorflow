@@ -115,6 +115,11 @@ class HloTestBase : public ::testing::Test {
   std::unique_ptr<EigenThreadPoolWrapper> thread_pool_wrapper_;
 };
 
+// Convenience function that parses XLA debug options flags from argc/argv,
+// calls InitGoogleTest and then calls and returns RUN_ALL_TESTS. Intended to be
+// invoked from a test main() function.
+int ParseDebugOptionsFlagsAndRunTests(int argc, char** argv);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_TESTS_HLO_TEST_BASE_H_

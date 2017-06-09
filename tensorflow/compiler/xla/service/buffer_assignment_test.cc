@@ -254,7 +254,7 @@ TEST_F(BufferAssignmentTest, ScalarConstant) {
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   auto buffers = RunBufferAssignment(module.get());
@@ -272,7 +272,7 @@ TEST_F(BufferAssignmentTest, BufferForConst) {
       LiteralUtil::CreateR1<float>({4.1f, 4.2f, 4.3f, 4.4f})));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, const0, const1));
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   auto buffers = RunBufferAssignment(module.get());
@@ -290,7 +290,7 @@ TEST_F(BufferAssignmentTest, BufferForOutputConst) {
       LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 4.4f})));
   auto copy = builder.AddInstruction(
       HloInstruction::CreateUnary(const0->shape(), HloOpcode::kCopy, const0));
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   auto buffers = RunBufferAssignment(module.get());
@@ -317,7 +317,7 @@ TEST_F(BufferAssignmentTest, Basic) {
       HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_, HloOpcode::kSubtract, add, param1));
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   auto buffers = RunBufferAssignment(module.get());
@@ -367,7 +367,7 @@ TEST_F(BufferAssignmentTest, MultipleUsersForNode) {
       HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
   auto sub = builder.AddInstruction(
       HloInstruction::CreateBinary(f32vec100_, HloOpcode::kSubtract, add, mul));
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   auto buffers = RunBufferAssignment(module.get());
@@ -402,7 +402,7 @@ TEST_F(BufferAssignmentTest, TrivialMap) {
   // param0[100x10] ---> (map x+1)
   //
   // Builds the map function.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto map_computation =
       module->AddEmbeddedComputation(BuildMapComputationPlus1("f32+1"));
   auto inner_last = map_computation->root_instruction();
@@ -457,7 +457,7 @@ TEST_F(BufferAssignmentTest, CannotReuseInputBufferOfReduce) {
   // out-of-order reductions could overwrite an element before a use.)
   //
   // param0[100] --- (exp1) --- (exp2) --- (reduce x+1) --- (exp3)
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto reduce_computation =
       module->AddEmbeddedComputation(BuildMapComputationPlus1("f32+1"));
 
@@ -508,7 +508,7 @@ TEST_F(BufferAssignmentTest, ExampleWhile) {
   // const4[f32[4]] --- tuple --- while[condition, body]
   //
   // Builds the nested condition and body.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto condition_computation =
       module->AddEmbeddedComputation(BuildWhileConditionComputation("if<4"));
   auto body_computation =
@@ -588,7 +588,7 @@ TEST_F(BufferAssignmentTest, UnaryOpReuseChain) {
   auto neg = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, exp2));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -617,7 +617,7 @@ TEST_F(BufferAssignmentTest, ReuseNonOperandBuffer) {
   auto broadcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -650,7 +650,7 @@ TEST_F(BufferAssignmentTest, NoReuseLiveBuffer) {
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
   builder.AddInstruction(HloInstruction::CreateTuple({negate, broadcast}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -687,7 +687,7 @@ TEST_F(BufferAssignmentTest, NoReuseAliasedBuffer) {
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
   builder.AddInstruction(HloInstruction::CreateTuple({tuple, broadcast}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -722,7 +722,7 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBuffer) {
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::MakeShape(F32, {10, 4}), slice, {0}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -754,7 +754,7 @@ TEST_F(BufferAssignmentTest, ReuseOutputBufferIfExactlySized) {
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::MakeShape(F32, {10, 10}), slice, {0}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -792,7 +792,7 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBufferInTuple) {
       ShapeUtil::MakeShape(F32, {10, 4}), slice, {0}));
   builder.AddInstruction(HloInstruction::CreateTuple({broadcast}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -807,7 +807,7 @@ TEST_F(BufferAssignmentTest, EmbeddedComputationBuffers) {
   // Verify that buffers for embedded computations are properly marked as
   // thread-local and that embedded parameters are not marked as
   // is_entry_computation_parameter.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto vec_shape = ShapeUtil::MakeShape(F32, {42});
   auto scalar_shape = ShapeUtil::MakeShape(F32, {});
 
@@ -884,7 +884,7 @@ TEST_F(BufferAssignmentTest, TupleParameterAsOutput) {
                                     ShapeUtil::MakeShape(S32, {42})}),
       "param0"));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -919,7 +919,7 @@ TEST_F(BufferAssignmentTest, ElementOfNestedTupleParameterAsOutput) {
       builder.AddInstruction(HloInstruction::CreateGetTupleElement(
           ShapeUtil::GetSubshape(tuple_param->shape(), {1}), tuple_param, 1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -962,7 +962,7 @@ TEST_F(BufferAssignmentTest, DISABLED_TupleConstantAsOutput) {
       LiteralUtil::MakeTuple({LiteralUtil::CreateR0<int64>(0).get(),
                               LiteralUtil::CreateR0<int64>(1).get()})));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -976,7 +976,7 @@ TEST_F(BufferAssignmentTest, TupleCustomCallAsOutput) {
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(PRED, {1, 2, 3, 4}),
                                  ShapeUtil::MakeShape(S32, {101})}),
       /*operands=*/{}, /*custom_call_target=*/"foo_function"));
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -991,7 +991,7 @@ TEST_F(BufferAssignmentTest, TupleCustomCallAsOutput) {
 
 TEST_F(BufferAssignmentTest, TupleCallAsOutput) {
   // Test a computation which returns a tuple call value.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto elem_shape = f32vec4_;
   auto tuple_shape = ShapeUtil::MakeTupleShape({elem_shape});
 
@@ -1030,7 +1030,7 @@ TEST_F(BufferAssignmentTest, TupleChainedCallAsOutput) {
   // B: call(C, param)
   // C: call(D, param)
   // D: param
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto elem_shape = f32vec4_;
   auto tuple_shape = ShapeUtil::MakeTupleShape({elem_shape});
 
@@ -1101,7 +1101,7 @@ TEST_F(BufferAssignmentTest, BitcastAsOutput) {
   auto bitcast = builder.AddInstruction(
       HloInstruction::CreateUnary(param->shape(), HloOpcode::kBitcast, param));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -1127,7 +1127,7 @@ TEST_F(BufferAssignmentTest, AmbiguousBufferAsOutput) {
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
       tuple_shape, HloOpcode::kSelect, pred_param, tuple_param0, tuple_param1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -1165,7 +1165,7 @@ TEST_F(BufferAssignmentTest, TupleBufferNotReused) {
   auto copy = builder.AddInstruction(HloInstruction::CreateUnary(
       scalar_shape, HloOpcode::kCopy, tuple_element));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get());
 
@@ -1201,7 +1201,7 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
       HloInstruction::CreateConcatenate(shape_5x4, {dot_ab, dot_bc}, 1));
 
   // Run buffer assignment with alignment=1.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
   auto assignment = RunBufferAssignment(module.get(), /*alignment=*/1);
 
@@ -1498,3 +1498,7 @@ TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

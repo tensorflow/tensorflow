@@ -51,7 +51,7 @@ TEST_F(HloDceTest, NoDeadCode) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(3, computation->instruction_count());
@@ -81,7 +81,7 @@ TEST_F(HloDceTest, DeadParameters) {
   builder.AddInstruction(HloInstruction::CreateUnary(
       live_param->shape(), HloOpcode::kNegate, live_param));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(5, computation->instruction_count());
@@ -121,7 +121,7 @@ TEST_F(HloDceTest, ControlDependencies) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Add a control dependency between two instructions.
@@ -156,3 +156,7 @@ TEST_F(HloDceTest, ControlDependencies) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

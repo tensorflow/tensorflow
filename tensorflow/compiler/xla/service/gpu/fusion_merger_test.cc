@@ -25,7 +25,7 @@ namespace {
 
 class FusionMergerTest : public HloTestBase {
  protected:
-  FusionMergerTest() : module_(TestName()) {}
+  FusionMergerTest() : module_(CreateNewModule()) {}
 
   // Builds the following computation:
   //
@@ -86,7 +86,7 @@ class FusionMergerTest : public HloTestBase {
 
     // Create output Tuple.
     builder.AddInstruction(HloInstruction::CreateTuple({out0, out1, out2}));
-    return module_.AddEntryComputation(builder.Build());
+    return module_->AddEntryComputation(builder.Build());
   }
 
   // Builds the following computation:
@@ -154,7 +154,7 @@ class FusionMergerTest : public HloTestBase {
 
     // Create output Tuple.
     builder.AddInstruction(HloInstruction::CreateTuple({out0, out1}));
-    return module_.AddEntryComputation(builder.Build());
+    return module_->AddEntryComputation(builder.Build());
   }
 
   // Builds the following computation:
@@ -225,7 +225,7 @@ class FusionMergerTest : public HloTestBase {
 
     // Create output Tuple.
     builder.AddInstruction(HloInstruction::CreateTuple({out0, out1}));
-    return module_.AddEntryComputation(builder.Build());
+    return module_->AddEntryComputation(builder.Build());
   }
 
   Shape data_shape_ = ShapeUtil::MakeShape(F32, {4});
@@ -235,7 +235,7 @@ class FusionMergerTest : public HloTestBase {
   Shape tuple_shape4_ = ShapeUtil::MakeTupleShape(
       {data_shape_, data_shape_, data_shape_, data_shape_});
 
-  HloModule module_;
+  std::unique_ptr<HloModule> module_;
 };
 
 // Tests that we can merge a fusion instruction that is below threshold.
@@ -278,13 +278,15 @@ class FusionMergerTest : public HloTestBase {
 TEST_F(FusionMergerTest, MergeSharedFusionInstruction) {
   auto computation = BuildComputation0();
   // Run standard fusion passes.
-  EXPECT_TRUE(
-      GpuInstructionFusion(/*may_duplicate=*/false).Run(&module_).ValueOrDie());
-  EXPECT_FALSE(
-      GpuInstructionFusion(/*may_duplicate=*/true).Run(&module_).ValueOrDie());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/false)
+                  .Run(module_.get())
+                  .ValueOrDie());
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module_.get())
+                   .ValueOrDie());
   // Run fusion merger pass, which should merge the shared fusion instruction
   // into its two users.
-  EXPECT_TRUE(FusionMerger().Run(&module_).ValueOrDie());
+  EXPECT_TRUE(FusionMerger().Run(module_.get()).ValueOrDie());
 
   auto* root = computation->root_instruction();
   EXPECT_EQ(HloOpcode::kTuple, root->opcode());
@@ -338,14 +340,16 @@ TEST_F(FusionMergerTest, MergeSharedFusionInstruction) {
 TEST_F(FusionMergerTest, FlopsToBytesRatioThresholdExceeded) {
   BuildComputation1();
   // Run standard fusion passes.
-  EXPECT_TRUE(
-      GpuInstructionFusion(/*may_duplicate=*/false).Run(&module_).ValueOrDie());
-  EXPECT_FALSE(
-      GpuInstructionFusion(/*may_duplicate=*/true).Run(&module_).ValueOrDie());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/false)
+                  .Run(module_.get())
+                  .ValueOrDie());
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module_.get())
+                   .ValueOrDie());
   // Run fusion merger pass, which should detect that the flops/bytes of the
   // shared fusion instruction exceeds the threshold ratio, and therefore
   // cannot be merged with other fusion instructions.
-  EXPECT_FALSE(FusionMerger().Run(&module_).ValueOrDie());
+  EXPECT_FALSE(FusionMerger().Run(module_.get()).ValueOrDie());
 }
 
 // Tests that threshold for bytes transferred if merged is exceeded.
@@ -388,13 +392,15 @@ TEST_F(FusionMergerTest, FlopsToBytesRatioThresholdExceeded) {
 TEST_F(FusionMergerTest, BytesTransferredThresholdExeceeded) {
   BuildComputation2(/*add_extra_input=*/true);
   // Run standard fusion passes.
-  EXPECT_TRUE(
-      GpuInstructionFusion(/*may_duplicate=*/false).Run(&module_).ValueOrDie());
-  EXPECT_FALSE(
-      GpuInstructionFusion(/*may_duplicate=*/true).Run(&module_).ValueOrDie());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/false)
+                  .Run(module_.get())
+                  .ValueOrDie());
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module_.get())
+                   .ValueOrDie());
   // Run fusion merger pass, which should detect that the net bytes transferred
   // (if merged) would increase.
-  EXPECT_FALSE(FusionMerger().Run(&module_).ValueOrDie());
+  EXPECT_FALSE(FusionMerger().Run(module_.get()).ValueOrDie());
 }
 
 // Tests that threshold for bytes transferred if merged is not exceeded.
@@ -442,15 +448,21 @@ TEST_F(FusionMergerTest, BytesTransferredThresholdExeceeded) {
 TEST_F(FusionMergerTest, BytesTransferredThresholdNotExeceeded) {
   BuildComputation2(/*add_extra_input=*/false);
   // Run standard fusion passes.
-  EXPECT_TRUE(
-      GpuInstructionFusion(/*may_duplicate=*/false).Run(&module_).ValueOrDie());
-  EXPECT_FALSE(
-      GpuInstructionFusion(/*may_duplicate=*/true).Run(&module_).ValueOrDie());
+  EXPECT_TRUE(GpuInstructionFusion(/*may_duplicate=*/false)
+                  .Run(module_.get())
+                  .ValueOrDie());
+  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
+                   .Run(module_.get())
+                   .ValueOrDie());
   // Run fusion merger pass, which should detect that the net bytes transferred
   // (if merged) would not increase.
-  EXPECT_TRUE(FusionMerger().Run(&module_).ValueOrDie());
+  EXPECT_TRUE(FusionMerger().Run(module_.get()).ValueOrDie());
 }
 
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

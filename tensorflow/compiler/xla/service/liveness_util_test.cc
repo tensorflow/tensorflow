@@ -27,7 +27,7 @@ namespace {
 class PointsToAnalysisTestBase : public HloTestBase {
  protected:
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_ = MakeUnique<HloModule>(TestName());
+    module_ = CreateNewModule();
     computation_ = module_->AddEntryComputation(std::move(computation));
   }
 
@@ -344,7 +344,7 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     return builder.Build();
   };
 
-  module_ = MakeUnique<HloModule>(TestName());
+  module_ = CreateNewModule();
   HloComputation* cond_computation =
       module_->AddEmbeddedComputation(make_cond());
   HloComputation* body_computation =
@@ -366,3 +366,7 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

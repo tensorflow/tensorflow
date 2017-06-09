@@ -116,7 +116,7 @@ TEST_F(BufferLivenessTest, ElementwiseChain) {
   auto log = builder.AddInstruction(
       HloInstruction::CreateUnary(vec_, HloOpcode::kLog, exp));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
@@ -163,7 +163,7 @@ TEST_F(BufferLivenessTest, MultipleEntryParameters_Sequential) {
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(vec_, HloOpcode::kAdd, negate, exp));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   HloComputation* entry = module->AddEntryComputation(builder.Build());
 
   SequentialHloOrdering::HloModuleSequence sequence;
@@ -212,7 +212,7 @@ TEST_F(BufferLivenessTest, NonElementwiseOperand) {
   auto reverse =
       builder.AddInstruction(HloInstruction::CreateReverse(vec_, negate, {0}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
@@ -246,7 +246,7 @@ TEST_F(BufferLivenessTest, OverlappedBuffers) {
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(vec_, HloOpcode::kAdd, negate, exp));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
@@ -288,7 +288,7 @@ TEST_F(BufferLivenessTest, OverlappedBuffersSequentialOrder) {
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(vec_, HloOpcode::kAdd, negate, exp));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   SequentialHloOrdering::HloModuleSequence module_sequence;
@@ -330,7 +330,7 @@ TEST_F(BufferLivenessTest, TupleLiveOut) {
   auto outer_tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({inner_tuple, exp}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
@@ -350,7 +350,7 @@ TEST_F(BufferLivenessTest, TupleLiveOut) {
 
 TEST_F(BufferLivenessTest, EmbeddedComputation) {
   // Test MaybeLiveOut and MayInterfere for embedded computation.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
 
   auto embedded_builder = HloComputation::Builder(TestName() + "_embedded");
   auto embedded_param = embedded_builder.AddInstruction(
@@ -407,7 +407,7 @@ TEST_F(BufferLivenessTest, TupleConstantLiveOut) {
   builder.AddInstruction(HloInstruction::CreateGetTupleElement(
       inner_tuple0->shape(), tuple_constant, 0));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   auto liveness =
@@ -470,7 +470,7 @@ TEST_F(BufferLivenessTest, IndependentTupleElements) {
   auto tuple_root =
       builder.AddInstruction(HloInstruction::CreateTuple({add0, add1}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(BuildDummyComputation());
   module->AddEmbeddedComputation(builder.Build());
 
@@ -531,7 +531,7 @@ TEST_F(BufferLivenessTest, DependentTupleElements) {
   auto tuple_root =
       builder.AddInstruction(HloInstruction::CreateTuple({add0, add1}));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(BuildDummyComputation());
   module->AddEmbeddedComputation(builder.Build());
 
@@ -604,7 +604,7 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     auto tuple_root = builder.AddInstruction(
         HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
     // Build module and get reference to entry computation.
-    auto module = MakeUnique<HloModule>(TestName());
+    auto module = CreateNewModule();
     module->AddEntryComputation(BuildDummyComputation());
     auto* computation = module->AddEmbeddedComputation(builder.Build());
     // Create fusion instruction based on number of tuple element 1 users.
@@ -732,7 +732,7 @@ class DynamicUpdateSliceLivenessTest : public BufferLivenessTest {
     auto tuple_root = builder.AddInstruction(
         HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
     // Build module and get reference to entry computation.
-    auto module = MakeUnique<HloModule>(TestName());
+    auto module = CreateNewModule();
     module->AddEntryComputation(BuildDummyComputation());
     module->AddEmbeddedComputation(builder.Build());
     // Run BufferLiveness on 'module'.
@@ -785,3 +785,7 @@ TEST_F(DynamicUpdateSliceLivenessTest, WithInterference) {
 }  // namespace
 
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}
