@@ -1025,6 +1025,67 @@ op {
   description: "The centered RMSProp algorithm uses an estimate of the centered second moment\n(i.e., the variance) for normalization, as opposed to regular RMSProp, which\nuses the (uncentered) second moment. This often helps with training, but is\nslightly more expensive in terms of computation and memory.\n\nNote that in dense implementation of this algorithm, mg, ms, and mom will\nupdate even if the grad is zero, but in this sparse implementation, mg, ms,\nand mom will not update in iterations during which the grad is zero.\n\nmean_square = decay * mean_square + (1-decay) * gradient ** 2\nmean_grad = decay * mean_grad + (1-decay) * gradient\n\nDelta = learning_rate * gradient / sqrt(mean_square + epsilon - mean_grad ** 2)\n\nmg <- rho * mg_{t-1} + (1-rho) * grad\nms <- rho * ms_{t-1} + (1-rho) * grad * grad\nmom <- momentum * mom_{t-1} + lr * grad / sqrt(ms - mg * mg + epsilon)\nvar <- var - mom"
 }
 op {
+  name: "ApplyDelayCompensatedGradientDescent"
+  input_arg {
+    name: "var"
+    description: "Should be from a Variable()."
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "alpha"
+    description: "Scaling factor. Must be a scalar."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "delta"
+    description: "The change."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lambda"
+    description: "The variance parameter."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "shadow"
+    description: "Same as \"var\"."
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If `True`, the subtraction will be protected by a lock;\notherwise the behavior is undefined, but may exhibit less contention."
+  }
+  summary: "var -= alpha * (delta + lambda * delta * (var - shadow))"
+  description: "Update \'*shadow\' by changing it to the new value of \'var\'"
+  is_stateful: true
+}
+op {
   name: "ApplyFtrl"
   input_arg {
     name: "var"
@@ -5040,7 +5101,7 @@ op {
   }
   input_arg {
     name: "boxes"
-    description: "A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor\nspecifies the coordinates of a box in the `box_ind[i]` image and is specified\nin normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of\n`y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the\n`[0, 1]` interval of normalized image height is mapped to\n`[0, image_height - 1] in image height coordinates. We do allow y1 > y2, in\nwhich case the sampled crop is an up-down flipped version of the original\nimage. The width dimension is treated similarly. Normalized coordinates\noutside the `[0, 1]` range are allowed, in which case we use\n`extrapolation_value` to extrapolate the input image values."
+    description: "A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor\nspecifies the coordinates of a box in the `box_ind[i]` image and is specified\nin normalized coordinates `[y1, x1, y2, x2]`. A normalized coordinate value of\n`y` is mapped to the image coordinate at `y * (image_height - 1)`, so as the\n`[0, 1]` interval of normalized image height is mapped to\n`[0, image_height - 1]` in image height coordinates. We do allow `y1` > `y2`, in\nwhich case the sampled crop is an up-down flipped version of the original\nimage. The width dimension is treated similarly. Normalized coordinates\noutside the `[0, 1]` range are allowed, in which case we use\n`extrapolation_value` to extrapolate the input image values."
     type: DT_FLOAT
   }
   input_arg {
@@ -10060,6 +10121,33 @@ op {
   description: "Computes half the L2 norm of a tensor without the `sqrt`:\n\n    output = sum(t ** 2) / 2"
 }
 op {
+  name: "LMDBReader"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  summary: "A Reader that outputs the records from a LMDB file."
+  is_stateful: true
+}
+op {
   name: "LRN"
   input_arg {
     name: "input"
@@ -10928,6 +11016,45 @@ op {
   is_stateful: true
 }
 op {
+  name: "MapClear"
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op removes all elements in the underlying container."
+  is_stateful: true
+}
+op {
   name: "MapDataset"
   input_arg {
     name: "input_dataset"
@@ -10963,6 +11090,316 @@ op {
     minimum: 1
   }
   summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+  is_stateful: true
+}
+op {
+  name: "MapIncompleteSize"
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op returns the number of incomplete elements in the underlying container."
+  is_stateful: true
+}
+op {
+  name: "MapPeek"
+  input_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op peeks at the values at the specified key.  If the"
+  description: "underlying container does not contain this key\nthis op will block until it does."
+  is_stateful: true
+}
+op {
+  name: "MapSize"
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op returns the number of elements in the underlying container."
+  is_stateful: true
+}
+op {
+  name: "MapStage"
+  input_arg {
+    name: "key"
+    description: "int64"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "values"
+    description: "a list of tensors\ndtypes A list of data types that inserted values should adhere to."
+    type_list_attr: "fake_dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "Maximum number of elements in the Staging Area. If > 0, inserts\non the container will block when the capacity is reached."
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "fake_dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container. Otherwise,\na default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "It is necessary to match this name to the matching Unstage Op."
+  }
+  summary: "Stage (key, values) in the underlying container which behaves like a hashtable."
+  is_stateful: true
+}
+op {
+  name: "MapUnstage"
+  input_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op removes and returns the values associated with the key"
+  description: "from the underlying container.   If the underlying container\ndoes not contain this key, the op will block until it does."
+  is_stateful: true
+}
+op {
+  name: "MapUnstageNoKey"
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op removes and returns a random (key, value)"
+  description: "from the underlying container.   If the underlying container\ndoes not contain elements, the op will block until it does."
   is_stateful: true
 }
 op {
@@ -13253,6 +13690,356 @@ op {
     }
   }
   summary: "Returns a tensor of ones with the same shape and type as x."
+}
+op {
+  name: "OrderedMapClear"
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op removes all elements in the underlying container."
+  is_stateful: true
+}
+op {
+  name: "OrderedMapIncompleteSize"
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op returns the number of incomplete elements in the underlying container."
+  is_stateful: true
+}
+op {
+  name: "OrderedMapPeek"
+  input_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op peeks at the values at the specified key.  If the"
+  description: "underlying container does not contain this key\nthis op will block until it does.   This Op is optimized for\nperformance."
+  is_stateful: true
+}
+op {
+  name: "OrderedMapSize"
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op returns the number of elements in the underlying container."
+  is_stateful: true
+}
+op {
+  name: "OrderedMapStage"
+  input_arg {
+    name: "key"
+    description: "int64"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "values"
+    description: "a list of tensors\ndtypes A list of data types that inserted values should adhere to."
+    type_list_attr: "fake_dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "Maximum number of elements in the Staging Area. If > 0, inserts\non the container will block when the capacity is reached."
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "fake_dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this queue is placed in the given container. Otherwise,\na default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "It is necessary to match this name to the matching Unstage Op."
+  }
+  summary: "Stage (key, values) in the underlying container which behaves like a ordered"
+  description: "associative container.   Elements are ordered by key."
+  is_stateful: true
+}
+op {
+  name: "OrderedMapUnstage"
+  input_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op removes and returns the values associated with the key"
+  description: "from the underlying container.   If the underlying container\ndoes not contain this key, the op will block until it does."
+  is_stateful: true
+}
+op {
+  name: "OrderedMapUnstageNoKey"
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op removes and returns the (key, value) element with the smallest"
+  description: "key from the underlying container.   If the underlying container\ndoes not contain elements, the op will block until it does."
+  is_stateful: true
 }
 op {
   name: "Pack"
@@ -25167,8 +25954,26 @@ op {
   name: "Stage"
   input_arg {
     name: "values"
-    description: "a list of tensors"
+    description: "a list of tensors\ndtypes A list of data types that inserted values should adhere to."
     type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "Maximum number of elements in the Staging Area. If > 0, inserts\non the container will block when the capacity is reached."
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    description: "The maximum number of bytes allowed for Tensors in the Staging Area.\nIf > 0, inserts will block until sufficient space is available."
+    has_minimum: true
   }
   attr {
     name: "dtypes"
@@ -25194,6 +25999,138 @@ op {
   }
   summary: "Stage values similar to a lightweight Enqueue."
   description: "The basic functionality of this Op is similar to a queue with many\nfewer capabilities and options.  This Op is optimized for performance."
+  is_stateful: true
+}
+op {
+  name: "StageClear"
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op removes all elements in the underlying container."
+  is_stateful: true
+}
+op {
+  name: "StagePeek"
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op peeks at the values at the specified index.  If the"
+  description: "underlying container does not contain sufficient elements\nthis op will block until it does.   This Op is optimized for\nperformance."
+  is_stateful: true
+}
+op {
+  name: "StageSize"
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  summary: "Op returns the number of elements in the underlying container."
   is_stateful: true
 }
 op {
@@ -26085,33 +27022,6 @@ op {
     }
   }
   summary: "A Reader that outputs the records from a TensorFlow Records file."
-  is_stateful: true
-}
-op {
-  name: "LMDBReader"
-  output_arg {
-    name: "reader_handle"
-    description: "The handle to reference the Reader."
-    type: DT_STRING
-    is_ref: true
-  }
-  attr {
-    name: "container"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
-  }
-  attr {
-    name: "shared_name"
-    type: "string"
-    default_value {
-      s: ""
-    }
-    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
-  }
-  summary: "A Reader that outputs the records from a LMDB database."
   is_stateful: true
 }
 op {
@@ -28123,6 +29033,22 @@ op {
   output_arg {
     name: "values"
     type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
   }
   attr {
     name: "dtypes"

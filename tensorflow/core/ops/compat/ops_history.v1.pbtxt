@@ -1012,6 +1012,59 @@ op {
   }
 }
 op {
+  name: "ApplyDelayCompensatedGradientDescent"
+  input_arg {
+    name: "var"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "alpha"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "delta"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lambda"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "shadow"
+    type: DT_RESOURCE
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT64
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_UINT16
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_HALF
+      }
+    }
+  }
+  attr {
+    name: "use_locking"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "ApplyFtrl"
   input_arg {
     name: "var"
@@ -10587,6 +10640,29 @@ op {
   }
 }
 op {
+  name: "LMDBReader"
+  output_arg {
+    name: "reader_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "LRN"
   input_arg {
     name: "input"
@@ -11445,6 +11521,44 @@ op {
   is_stateful: true
 }
 op {
+  name: "MapClear"
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "MapDataset"
   input_arg {
     name: "input_dataset"
@@ -11478,6 +11592,302 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "MapIncompleteSize"
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "MapPeek"
+  input_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "MapSize"
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "MapStage"
+  input_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "values"
+    type_list_attr: "fake_dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "fake_dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "MapUnstage"
+  input_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "MapUnstageNoKey"
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   is_stateful: true
 }
@@ -13972,6 +14382,340 @@ op {
       }
     }
   }
+}
+op {
+  name: "OrderedMapClear"
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "OrderedMapIncompleteSize"
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "OrderedMapPeek"
+  input_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "OrderedMapSize"
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "OrderedMapStage"
+  input_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "values"
+    type_list_attr: "fake_dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "fake_dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "OrderedMapUnstage"
+  input_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "OrderedMapUnstageNoKey"
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "key"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "Pack"
@@ -24926,6 +25670,178 @@ op {
   is_stateful: true
 }
 op {
+  name: "Stage"
+  input_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "StageClear"
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "StagePeek"
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "StageSize"
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "StatelessRandomNormal"
   input_arg {
     name: "shape"
@@ -27642,6 +28558,50 @@ op {
   output_arg {
     name: "values"
     type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "Unstage"
+  output_arg {
+    name: "values"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "capacity"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "memory_limit"
+    type: "int"
+    default_value {
+      i: 0
+    }
+    has_minimum: true
   }
   attr {
     name: "dtypes"
