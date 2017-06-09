@@ -28,6 +28,7 @@ limitations under the License.
 namespace tensorflow {
 
 static const char* S3FileSystemAllocationTag = "S3FileSystemAllocation";
+static const size_t S3ReadAppendableFileBufferSize = 1024 * 1024;
 
 Status ParseS3Path(const string& fname, bool empty_object_ok, string* bucket,
                    string* object) {
@@ -165,6 +166,18 @@ class S3WritableFile : public WritableFile {
   std::shared_ptr<Aws::Utils::TempFile> outfile_;
 };
 
+class S3ReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
+ public:
+  S3ReadOnlyMemoryRegion(std::unique_ptr<char[]> data, uint64 length)
+      : data_(std::move(data)), length_(length) {}
+  const void* data() override { return reinterpret_cast<void*>(data_.get()); }
+  uint64 length() override { return length_; }
+
+ private:
+  std::unique_ptr<char[]> data_;
+  uint64 length_;
+};
+
 class S3FileSystem : public FileSystem {
  public:
   S3FileSystem() {
@@ -200,14 +213,50 @@ class S3FileSystem : public FileSystem {
 
   Status NewAppendableFile(const string& fname,
                            std::unique_ptr<WritableFile>* result) override {
-    return errors::Unimplemented("NewAppendableFile unimplemented");
+    std::unique_ptr<RandomAccessFile> reader;
+    TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &reader));
+    std::unique_ptr<char[]> buffer(new char[S3ReadAppendableFileBufferSize]);
+    Status status;
+    uint64 offset = 0;
+    StringPiece read_chunk;
+
+    string bucket, object;
+    TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
+    result->reset(new S3WritableFile(bucket, object));
+
+    while (true) {
+      status = reader->Read(offset, S3ReadAppendableFileBufferSize, &read_chunk,
+                            buffer.get());
+      if (status.ok()) {
+        (*result)->Append(read_chunk);
+        offset += S3ReadAppendableFileBufferSize;
+      } else if (status.code() == error::OUT_OF_RANGE) {
+        (*result)->Append(read_chunk);
+        break;
+      } else {
+        (*result).reset();
+        return status;
+      }
+    }
+
+    return Status::OK();
   }
 
   Status NewReadOnlyMemoryRegionFromFile(
       const string& fname,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override {
-    return errors::Unimplemented(
-        "NewReadOnlyMemoryRegionFromFile unimplemented");
+    uint64 size;
+    TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
+    std::unique_ptr<char[]> data(new char[size]);
+
+    std::unique_ptr<RandomAccessFile> file;
+    TF_RETURN_IF_ERROR(NewRandomAccessFile(fname, &file));
+
+    StringPiece piece;
+    TF_RETURN_IF_ERROR(file->Read(0, size, &piece, data.get()));
+
+    result->reset(new S3ReadOnlyMemoryRegion(std::move(data), size));
+    return Status::OK();
   }
 
   Status FileExists(const string& fname) override {
@@ -301,7 +350,6 @@ class S3FileSystem : public FileSystem {
     TF_RETURN_IF_ERROR(ParseS3Path(fname, false, &bucket, &object));
 
     Aws::S3::S3Client s3Client;
-
     Aws::S3::Model::HeadObjectRequest headObjectRequest;
     headObjectRequest.WithBucket(bucket.c_str()).WithKey(object.c_str());
     headObjectRequest.SetResponseStreamFactory([]() {
@@ -311,9 +359,9 @@ class S3FileSystem : public FileSystem {
     if (!headObjectOutcome.IsSuccess()) {
       std::vector<string> result;
       TF_RETURN_IF_ERROR(GetChildrenBounded(fname, 1, &result));
-      if (result.size() > 0) {
-        stats->is_directory = 1;
+      if (result.size() == 0) {
       }
+      stats->is_directory = 1;
     }
     stats->length = headObjectOutcome.GetResult().GetContentLength();
     stats->mtime_nsec =
