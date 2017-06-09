@@ -55,7 +55,7 @@ COMMAND=("$@")
 
 # Validate command line arguments.
 if [ "$#" -lt 1 ] || [ ! -e "${SCRIPT_DIR}/Dockerfile.${CONTAINER_TYPE}" ]; then
-  supported_container_types=$( find -1 ${SCRIPT_DIR}/Dockerfile.* | \
+  supported_container_types=$( ls -1 ${SCRIPT_DIR}/Dockerfile.* | \
       sed -n 's/.*Dockerfile\.\([^\/]*\)/\1/p' | tr '\n' ' ' )
   >&2 echo "Usage: $(basename $0) CONTAINER_TYPE COMMAND"
   >&2 echo "       CONTAINER_TYPE can be one of [ ${supported_container_types}]"
