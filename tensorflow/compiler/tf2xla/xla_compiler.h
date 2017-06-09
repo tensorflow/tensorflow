@@ -114,6 +114,10 @@ class XlaCompiler {
     // The name of this argument, used for debugging.
     string name;
 
+    // For a kVariable or kUninitializedVariable corresponding to a TensorArray,
+    // what is the tensor array's declared size?
+    int64 tensor_array_size = -1;
+
     bool operator==(const Argument& other) const;
   };
 

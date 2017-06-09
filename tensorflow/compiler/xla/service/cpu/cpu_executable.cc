@@ -54,7 +54,7 @@ CpuExecutable::CpuExecutable(
     std::unique_ptr<BufferAssignment> assignment,
     std::unique_ptr<HloModule> hlo_module, const string& entry_function_name,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx)
-    : Executable(std::move(hlo_module)),
+    : Executable(std::move(hlo_module), CpuExecutable::ShapeSizeBytes),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       hlo_to_profile_idx_(std::move(hlo_to_profile_idx)) {
@@ -311,10 +311,10 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
   TF_RETURN_IF_ERROR(
       result_buffer->mutable_shape_index_to_buffer_entry()
-          ->ForEachMutableElement(
+          ->ForEachMutableElementWithStatus(
               [&buffers, &buffers_in_result, &result_buffer, this](
-                  const ShapeIndex& index, bool is_leaf, size_t* buffer_entry) {
-                if (is_leaf) {
+                  const ShapeIndex& index, size_t* buffer_entry) {
+                if (ShapeUtil::IsLeafIndex(result_buffer->shape(), index)) {
                   const std::vector<const LogicalBuffer*>& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a
@@ -364,6 +364,14 @@ CpuExecutable::ExecuteAsyncOnStream(
   // TODO(b/30671675): Implement asynchronous execution mode.
   return Unimplemented(
       "Asynchronous execution on stream is not yet supported on CPU.");
+}
+
+/*static*/ int64 CpuExecutable::ShapeSizeBytes(const Shape& shape) {
+  // On the cpu, opaques are pointers.
+  if (ShapeUtil::IsOpaque(shape)) {
+    return sizeof(void*);
+  }
+  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
 const PointsToSet& CpuExecutable::GetRootPointsToSet() const {

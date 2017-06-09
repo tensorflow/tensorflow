@@ -99,8 +99,6 @@ struct Backend::EigenThreadPoolWrapper {
   std::unique_ptr<Backend> backend(
       new Backend(replica_count, platform, compiler, stream_executors,
                   transfer_manager, options.intra_op_parallelism_threads()));
-  TF_RETURN_IF_ERROR(backend->PoolStreams(kInitialStreamsToPool,
-                                          backend->default_stream_executor()));
   return std::move(backend);
 }
 
@@ -113,15 +111,6 @@ Backend::CreateDefaultBackend() {
   return CreateBackend(backend_options);
 }
 
-tensorflow::Status Backend::PoolStreams(int n, se::StreamExecutor* executor) {
-  std::vector<StreamPtr> primed;
-  for (int i = 0; i < n; ++i) {
-    TF_ASSIGN_OR_RETURN(auto stream, BorrowStream(executor));
-    primed.emplace_back(std::move(stream));
-  }
-  return tensorflow::Status::OK();
-}
-
 StatusOr<Backend::StreamPtr> Backend::BorrowStream(int device_ordinal) {
   TF_ASSIGN_OR_RETURN(auto exec, stream_executor(device_ordinal));
   return BorrowStream(exec);
@@ -129,6 +118,7 @@ StatusOr<Backend::StreamPtr> Backend::BorrowStream(int device_ordinal) {
 
 StatusOr<Backend::StreamPtr> Backend::BorrowStream(
     se::StreamExecutor* executor) {
+  tensorflow::mutex_lock l(mu_);
   if (0 == stream_pools_.count(executor)) {
     stream_pools_.emplace(std::piecewise_construct,
                           std::forward_as_tuple(executor),
@@ -232,7 +222,9 @@ const Eigen::ThreadPoolDevice* Backend::eigen_intra_op_thread_pool_device()
 }
 
 tensorflow::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
-  if (intra_op_thread_pool_wrapper_ == nullptr) return nullptr;
+  if (intra_op_thread_pool_wrapper_ == nullptr) {
+    return nullptr;
+  }
   return intra_op_thread_pool_wrapper_->pool.get();
 }
 

@@ -239,12 +239,11 @@ class SyclCastOp : public CastOpBase {
 };
 
 #define REGISTER_CAST_SYCL(srctype, dsttype)                    \
-  REGISTER_KERNEL_BUILDER(Name("Cast")                         \
-                              .TypeConstraint<srctype>("SrcT") \
-                              .TypeConstraint<dsttype>("DstT") \
+  REGISTER_KERNEL_BUILDER(Name("Cast")                          \
+                              .TypeConstraint<srctype>("SrcT")  \
+                              .TypeConstraint<dsttype>("DstT")  \
                               .Device(DEVICE_SYCL),             \
                           SyclCastOp)
-
 CURRY_TYPES2(REGISTER_CAST_SYCL, bool);
 CURRY_TYPES2(REGISTER_CAST_SYCL, int32);
 CURRY_TYPES2(REGISTER_CAST_SYCL, int64);

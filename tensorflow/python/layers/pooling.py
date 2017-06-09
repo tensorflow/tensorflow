@@ -262,16 +262,7 @@ class _Pooling2D(base.Layer):
     self.input_spec = base.InputSpec(ndim=4)
 
   def call(self, inputs):
-    if (self.data_format == 'channels_first' and
-        not framework.test_util.gpu_device_name()):
-      # `nn.convolution` is not implemented on CPU for `channels_first` format.
-      # TODO(chollet): remove this when `nn.convolution` is feature-complete.
-      data_format = 'channels_last'
-      inputs = array_ops.transpose(inputs, (0, 2, 3, 1))
-    else:
-      data_format = self.data_format
-
-    if data_format == 'channels_last':
+    if self.data_format == 'channels_last':
       pool_shape = (1,) + self.pool_size + (1,)
       strides = (1,) + self.strides + (1,)
     else:
@@ -282,11 +273,7 @@ class _Pooling2D(base.Layer):
         ksize=pool_shape,
         strides=strides,
         padding=self.padding.upper(),
-        data_format=utils.convert_data_format(data_format, 4))
-
-    if (self.data_format == 'channels_first' and
-        not framework.test_util.gpu_device_name()):
-      outputs = array_ops.transpose(outputs, (0, 3, 1, 2))
+        data_format=utils.convert_data_format(self.data_format, 4))
     return outputs
 
   def _compute_output_shape(self, input_shape):

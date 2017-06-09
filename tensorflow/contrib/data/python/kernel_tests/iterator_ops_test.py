@@ -25,6 +25,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
@@ -32,10 +33,23 @@ from tensorflow.python.training import server_lib
 
 class IteratorTest(test.TestCase):
 
+  def testAttemptingGradientsRaiseExceptions(self):
+    component = constant_op.constant([1])
+    side = constant_op.constant(0)
+    add = lambda x: x + side
+    dataset = dataset_ops.Dataset.from_tensor_slices(component).map(add)
+    value = dataset.make_one_shot_iterator().get_next()
+    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
+      gradients_impl.gradients(value, component)
+    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
+      gradients_impl.gradients(value, side)
+    with self.assertRaisesRegexp(LookupError, "No gradient defined"):
+      gradients_impl.gradients(value, [component, side])
+
   def testOneShotIterator(self):
-    components = [np.arange(7),
+    components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
-                  np.array(37.0) * np.arange(7)]
+                  np.array(37.0) * np.arange(7))
 
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
@@ -57,10 +71,10 @@ class IteratorTest(test.TestCase):
         sess.run(get_next)
 
   def testOneShotIteratorCaptureByValue(self):
-    components = [np.arange(7),
+    components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
-                  np.array(37.0) * np.arange(7)]
-    tensor_components = [ops.convert_to_tensor(c) for c in components]
+                  np.array(37.0) * np.arange(7))
+    tensor_components = tuple([ops.convert_to_tensor(c) for c in components])
 
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
@@ -82,9 +96,9 @@ class IteratorTest(test.TestCase):
         sess.run(get_next)
 
   def testOneShotIteratorInsideContainer(self):
-    components = [np.arange(7),
+    components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
-                  np.array(37.0) * np.arange(7)]
+                  np.array(37.0) * np.arange(7))
 
     def within_container():
       def _map_fn(x, y, z):
@@ -115,11 +129,11 @@ class IteratorTest(test.TestCase):
           sess.run(get_next)
 
   def testSimpleSharedResource(self):
-    components = [
+    components = (
         np.array(1, dtype=np.int64),
         np.array([1, 2, 3], dtype=np.int64),
         np.array(37.0, dtype=np.float64)
-    ]
+    )
 
     server = server_lib.Server.create_local_server()
 
@@ -152,8 +166,8 @@ class IteratorTest(test.TestCase):
       # new graph.
       iterator = dataset_ops.Iterator.from_structure(
           shared_name="shared_iterator",
-          output_types=[dtypes.int64, dtypes.int64, dtypes.float64],
-          output_shapes=[[], [3], []])
+          output_types=(dtypes.int64, dtypes.int64, dtypes.float64),
+          output_shapes=([], [3], []))
       get_next = iterator.get_next()
 
       with session.Session(server.target) as sess:
@@ -165,7 +179,7 @@ class IteratorTest(test.TestCase):
           sess.run(get_next)
 
   def testNotInitializedError(self):
-    components = [np.array(1), np.array([1, 2, 3]), np.array(37.0)]
+    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
     iterator = (dataset_ops.Dataset.from_tensors(components)
                 .make_initializable_iterator())
     get_next = iterator.get_next()

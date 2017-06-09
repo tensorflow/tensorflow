@@ -306,7 +306,7 @@ class PaddedBatchDatasetOp : public OpKernel {
             const TensorShape& element_shape =
                 batch_elements[i][component_index].shape();
             // TODO(mrry): Perform this check in the shape function if
-            // enough static information is avaiable to do so.
+            // enough static information is available to do so.
             if (element_shape.dims() != padded_shape.dims()) {
               return errors::InvalidArgument(
                   "All elements in a batch must have the same rank as the "

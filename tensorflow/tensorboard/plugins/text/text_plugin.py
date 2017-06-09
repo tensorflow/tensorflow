@@ -32,10 +32,9 @@ import bleach
 import markdown
 import six
 # pylint: enable=g-bad-import-order
+import tensorflow as tf
 from werkzeug import wrappers
 
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.summary import text_summary
 from tensorflow.tensorboard.backend import http_util
 from tensorflow.tensorboard.plugins import base_plugin
 
@@ -240,7 +239,7 @@ def text_array_to_html(text_arr):
 
 def process_string_tensor_event(event):
   """Convert a TensorEvent into a JSON-compatible response."""
-  string_arr = tensor_util.MakeNdarray(event.tensor_proto)
+  string_arr = tf.make_ndarray(event.tensor_proto)
   html = text_array_to_html(string_arr)
   return {
       'wall_time': event.wall_time,
@@ -256,7 +255,7 @@ class TextPlugin(base_plugin.TBPlugin):
 
   def index_impl(self):
     run_to_series = {}
-    name = text_summary.TextSummaryPluginAsset.plugin_name
+    name = 'tensorboard_text'
     run_to_assets = self.multiplexer.PluginAssets(name)
 
     for run, assets in run_to_assets.items():

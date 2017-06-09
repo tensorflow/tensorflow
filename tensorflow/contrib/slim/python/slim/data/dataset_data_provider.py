@@ -33,7 +33,7 @@ To read data using multiple readers simultaneous with shuffling:
       shuffle=True)
   images, labels = pascal_voc_data_provider.get(['images', 'labels'])
 
-Equivalently, one may request different fields of the same sample seperately:
+Equivalently, one may request different fields of the same sample separately:
 
   [images] = pascal_voc_data_provider.get(['images'])
   [labels] = pascal_voc_data_provider.get(['labels'])

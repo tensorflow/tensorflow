@@ -74,8 +74,11 @@ py_binary(
         "//tensorflow/python/debug:debug_pip",
         "//tensorflow/python/saved_model",
         "//tensorflow/python/tools:tools_pip",
-        "//tensorflow/tensorboard",
         # These targets don't build on Windows yet. Exclude them for now.
+        # rules_closure currently doesn't build on Windows due to
+        # https://github.com/bazelbuild/rules_closure/pull/206
+        # Since tensorboard dependes on rules_closure, exclude tensorboard until it's fixed.
+        # "//tensorflow/tensorboard",
         # "//tensorflow/contrib/ndlstm",
         # "//tensorflow/contrib/slim",
         # "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
@@ -96,7 +99,6 @@ filegroup(
         "//third_party/hadoop:LICENSE.txt",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
-        "@com_microsoft_typescript//:LICENSE.txt",
         "@curl//:COPYING",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
@@ -108,11 +110,11 @@ filegroup(
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
+        "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
         "@org_html5lib//:LICENSE",
         "@org_mozilla_bleach//:LICENSE",
-        "@org_nodejs//:LICENSE",
         "@org_pocoo_werkzeug//:LICENSE",
         "@org_pythonhosted_markdown//:LICENSE.md",
         "@png_archive//:LICENSE",
@@ -130,6 +132,7 @@ sh_binary(
     srcs = ["build_pip_package.sh"],
     data = select({
         "//tensorflow:windows": [":simple_console_for_windows"],
+        "//tensorflow:windows_msvc": [":simple_console_for_windows"],
         "//conditions:default": [
             ":licenses",
             "MANIFEST.in",

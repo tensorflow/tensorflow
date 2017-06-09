@@ -50,7 +50,8 @@ class GpuExecutable : public Executable {
   GpuExecutable(tensorflow::StringPiece ptx,
                 std::unique_ptr<ThunkSchedule> thunk_schedule,
                 std::unique_ptr<HloModule> hlo_module,
-                std::unique_ptr<BufferAssignment> assignment);
+                std::unique_ptr<BufferAssignment> assignment,
+                HloCostAnalysis::ShapeSizeFunction shape_size_function);
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }

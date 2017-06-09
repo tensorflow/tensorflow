@@ -61,7 +61,7 @@ ParallelCpuExecutable::ParallelCpuExecutable(
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
     std::unordered_map<const HloInstruction*, std::unique_ptr<unsigned char[]>>
         aligned_constants)
-    : Executable(std::move(hlo_module)),
+    : Executable(std::move(hlo_module), ParallelCpuExecutable::ShapeSizeBytes),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       functions_names_(std::move(function_names)),
@@ -406,10 +406,10 @@ StatusOr<std::unique_ptr<ShapedBuffer>> ParallelCpuExecutable::ExecuteOnStream(
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
   TF_RETURN_IF_ERROR(
       result_buffer->mutable_shape_index_to_buffer_entry()
-          ->ForEachMutableElement(
+          ->ForEachMutableElementWithStatus(
               [&buffers, &buffers_in_result, &result_buffer, this](
-                  const ShapeIndex& index, bool is_leaf, size_t* buffer_entry) {
-                if (is_leaf) {
+                  const ShapeIndex& index, size_t* buffer_entry) {
+                if (ShapeUtil::IsLeafIndex(result_buffer->shape(), index)) {
                   const std::vector<const LogicalBuffer*>& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a

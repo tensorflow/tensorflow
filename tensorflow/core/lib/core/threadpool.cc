@@ -47,7 +47,7 @@ struct EigenEnvironment {
                    const string& name)
       : env_(env), thread_options_(thread_options), name_(name) {}
 
-  EnvThread* CreateThread(const std::function<void()>& f) {
+  EnvThread* CreateThread(std::function<void()> f) {
     return env_->StartThread(thread_options_, name_, [=]() {
       // Set the processor flag to flush denormals to zero.
       port::ScopedFlushDenormal flush;

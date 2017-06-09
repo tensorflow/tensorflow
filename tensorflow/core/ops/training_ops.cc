@@ -23,11 +23,12 @@ using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 static ShapeHandle ShapeOrHandleShape(InferenceContext* c, int input) {
-  auto h_dtype = c->input_handle_dtype(input);
-  if (h_dtype == DT_INVALID) {
-    return c->input(input);
+  auto* handle_data = c->input_handle_shapes_and_types(input);
+  if (handle_data != nullptr && !handle_data->empty() &&
+      (*handle_data)[0].dtype != DT_INVALID) {
+    return (*handle_data)[0].shape;
   }
-  return c->input_handle_shape(input);
+  return c->input(input);
 }
 
 // Handle the gradient and, if <sparse>, indices inputs.
@@ -98,6 +99,28 @@ Update '*var' by subtracting 'alpha' * 'delta' from it.
 var: Should be from a Variable().
 alpha: Scaling factor. Must be a scalar.
 delta: The change.
+use_locking: If `True`, the subtraction will be protected by a lock;
+  otherwise the behavior is undefined, but may exhibit less contention.
+)doc");
+
+REGISTER_OP("ApplyDelayCompensatedGradientDescent")
+    .Input("var: resource")
+    .Input("alpha: T")
+    .Input("delta: T")
+    .Input("lambda: T")
+    .Input("shadow: resource")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .SetShapeFn(ApplyGradientDescentShapeFn)
+    .Doc(R"doc(
+var -= alpha * (delta + lambda * delta * (var - shadow))
+Update '*shadow' by changing it to the new value of 'var'
+
+var: Should be from a Variable().
+alpha: Scaling factor. Must be a scalar.
+delta: The change.
+lambda: The variance parameter.
+shadow: Same as "var".
 use_locking: If `True`, the subtraction will be protected by a lock;
   otherwise the behavior is undefined, but may exhibit less contention.
 )doc");

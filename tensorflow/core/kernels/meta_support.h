@@ -64,7 +64,7 @@ bool IsSupportedAndEnabled();
 //     sum((a_data[i, l] + offset_a) * (b_data[l, j] + offset_b)) : l in [0, k)
 //
 // If transpose_a is false the lhs operand has row major layout, otherwise
-// column major. Similarily transpose_b describes the layout of the rhs operand.
+// column major. Similarly transpose_b describes the layout of the rhs operand.
 // lda, ldb, and ldc are the strides of the lhs operand, rhs operand and the
 // result arrays.
 void QuantizedGemm(OpKernelContext* context, bool transpose_a, bool transpose_b,

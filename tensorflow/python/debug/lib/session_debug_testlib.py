@@ -53,7 +53,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
 
-class _RNNCellForTest(rnn_cell_impl._RNNCell):  # pylint: disable=protected-access
+class _RNNCellForTest(rnn_cell_impl.RNNCell):  # pylint: disable=protected-access
   """RNN cell for testing."""
 
   def __init__(self, input_output_size, state_size):
@@ -81,7 +81,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     if test.is_gpu_available():
       cls._expected_partition_graph_count = 2
       cls._expected_num_devices = 2
-      cls._main_device = "/job:localhost/replica:0/task:0/gpu:0"
+      gpu_name = test_util.gpu_device_name()
+      cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
       cls._expected_partition_graph_count = 1
       cls._expected_num_devices = 1
@@ -211,8 +212,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     # Since global_step is not explicitly specified, it should take its default
     # value: -1.
     self.assertEqual(-1, results.dump.core_metadata.global_step)
-    self.assertGreaterEqual(results.dump.core_metadata.session_run_count, 0)
-    self.assertGreaterEqual(results.dump.core_metadata.executor_step_count, 0)
+    self.assertGreaterEqual(results.dump.core_metadata.session_run_index, 0)
+    self.assertGreaterEqual(results.dump.core_metadata.executor_step_index, 0)
     self.assertEqual([], results.dump.core_metadata.input_names)
     self.assertEqual([results.w.name], results.dump.core_metadata.output_names)
     self.assertEqual([], results.dump.core_metadata.target_nodes)
@@ -249,8 +250,12 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertIn(results.v.op.type, results.dump.node_op_type(results.v_name))
     self.assertIn(results.w.op.type, results.dump.node_op_type(results.w_name))
 
-    with self.assertRaisesRegexp(
-        ValueError, "Node 'foo_bar' does not exist in partition graphs."):
+    if test_util.gpu_device_name():
+      expected_error_regexp = r"None of the .* devices has a node named "
+    else:
+      expected_error_regexp = (
+          r"Node \'foo_bar\' does not exist in the partition graph of device")
+    with self.assertRaisesRegexp(ValueError, expected_error_regexp):
       results.dump.node_op_type("foo_bar")
 
   def testDumpStringTensorsWorks(self):
@@ -436,9 +441,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       # Verify dump files
       self.assertTrue(os.path.isdir(self._dump_root))
 
-      self.assertTrue(os.path.isdir(os.path.join(self._dump_root, u_namespace)))
-      self.assertTrue(
-          os.path.isdir(os.path.join(self._dump_root, v_namespace, "v")))
+      u_glob_out = glob.glob(os.path.join(self._dump_root, "*", u_namespace))
+      v_glob_out = glob.glob(os.path.join(
+          self._dump_root, "*", v_namespace, "v"))
+      self.assertTrue(os.path.isdir(u_glob_out[0]))
+      self.assertTrue(os.path.isdir(v_glob_out[0]))
 
       dump = debug_data.DebugDumpDir(
           self._dump_root, partition_graphs=run_metadata.partition_graphs)
@@ -688,7 +695,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     u_read_name = u_name + "/read"
 
     # Test node name list lookup of the DebugDumpDir object.
-    node_names = dump.nodes()
+    if test_util.gpu_device_name():
+      node_names = dump.nodes(
+          device_name="/job:localhost/replica:0/task:0/gpu:0")
+    else:
+      node_names = dump.nodes()
     self.assertTrue(u_name in node_names)
     self.assertTrue(u_read_name in node_names)
 
@@ -698,7 +709,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(1, len(u_attr["shape"].shape.dim))
     self.assertEqual(2, u_attr["shape"].shape.dim[0].size)
 
-    with self.assertRaisesRegexp(ValueError, "No node named \"foo\" exists"):
+    if test_util.gpu_device_name():
+      expected_error_regexp = r"None of the .* devices has a node named "
+    else:
+      expected_error_regexp = r"No node named \"foo\" exists"
+    with self.assertRaisesRegexp(ValueError, expected_error_regexp):
       dump.node_attributes("foo")
 
   def testGraphStructureLookupGivesDebugWatchKeys(self):
@@ -721,7 +736,6 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(0, u_data[0].output_slot)
     self.assertEqual("DebugIdentity", u_data[0].debug_op)
     self.assertGreaterEqual(u_data[0].timestamp, 0)
-
     self.assertEqual([], dump.watch_key_to_data("foo"))
 
   def testGraphStructureLookupGivesNodeInputsAndRecipients(self):
@@ -752,12 +766,13 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual([], dump.node_recipients(w_name, is_control=True))
 
     # Test errors raised on invalid node names.
-    with self.assertRaisesRegexp(ValueError,
-                                 "does not exist in partition graphs"):
+    if test_util.gpu_device_name():
+      expected_error_regexp = r"None of the .* devices has a node named "
+    else:
+      expected_error_regexp = "does not exist in the partition graph of device "
+    with self.assertRaisesRegexp(ValueError, expected_error_regexp):
       dump.node_inputs(u_name + "foo")
-
-    with self.assertRaisesRegexp(ValueError,
-                                 "does not exist in partition graphs"):
+    with self.assertRaisesRegexp(ValueError, expected_error_regexp):
       dump.node_recipients(u_name + "foo")
 
     # Test transitive_inputs().
@@ -768,8 +783,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(
         set([u_name, u_read_name, v_name]), set(dump.transitive_inputs(w_name)))
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "does not exist in partition graphs"):
+    with self.assertRaisesRegexp(ValueError, expected_error_regexp):
       dump.transitive_inputs(u_name + "foo")
 
   def testGraphStructureLookupWithoutPartitionGraphsDoesNotErrorOut(self):
@@ -1066,14 +1080,16 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       y = array_ops.squeeze(ph, name="mismatch/y")
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
       debug_utils.watch_graph(
           run_options, sess.graph, debug_urls=self._debug_urls(), global_step=1)
 
-      sess.run(x, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options)
+      sess.run(x, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options,
+               run_metadata=run_metadata)
       dump1 = debug_data.DebugDumpDir(self._dump_root)
       self.assertEqual(1, dump1.core_metadata.global_step)
-      self.assertGreaterEqual(dump1.core_metadata.session_run_count, 0)
-      self.assertEqual(0, dump1.core_metadata.executor_step_count)
+      self.assertGreaterEqual(dump1.core_metadata.session_run_index, 0)
+      self.assertEqual(0, dump1.core_metadata.executor_step_index)
       self.assertEqual([ph.name], dump1.core_metadata.input_names)
       self.assertEqual([x.name], dump1.core_metadata.output_names)
       self.assertEqual([], dump1.core_metadata.target_nodes)
@@ -1084,15 +1100,15 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           run_options, sess.graph, debug_urls=self._debug_urls(), global_step=2)
 
       # Calling run() with the same feed, same output and same debug watch
-      # options should increment both session_run_count and
-      # executor_step_count.
+      # options should increment both session_run_index and
+      # executor_step_index.
       sess.run(x, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options)
       dump2 = debug_data.DebugDumpDir(self._dump_root)
       self.assertEqual(2, dump2.core_metadata.global_step)
-      self.assertEqual(dump1.core_metadata.session_run_count + 1,
-                       dump2.core_metadata.session_run_count)
-      self.assertEqual(dump1.core_metadata.executor_step_count + 1,
-                       dump2.core_metadata.executor_step_count)
+      self.assertEqual(dump1.core_metadata.session_run_index + 1,
+                       dump2.core_metadata.session_run_index)
+      self.assertEqual(dump1.core_metadata.executor_step_index + 1,
+                       dump2.core_metadata.executor_step_index)
       self.assertEqual([ph.name], dump2.core_metadata.input_names)
       self.assertEqual([x.name], dump2.core_metadata.output_names)
       self.assertEqual([], dump2.core_metadata.target_nodes)
@@ -1103,13 +1119,13 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
           run_options, sess.graph, debug_urls=self._debug_urls(), global_step=3)
 
       # Calling run() with a different output should increment
-      # session_run_count, but not executor_step_count.
+      # session_run_index, but not executor_step_index.
       sess.run(y, feed_dict={ph: np.array([[7.0, 8.0]])}, options=run_options)
       dump3 = debug_data.DebugDumpDir(self._dump_root)
       self.assertEqual(3, dump3.core_metadata.global_step)
-      self.assertEqual(dump2.core_metadata.session_run_count + 1,
-                       dump3.core_metadata.session_run_count)
-      self.assertEqual(0, dump3.core_metadata.executor_step_count)
+      self.assertEqual(dump2.core_metadata.session_run_index + 1,
+                       dump3.core_metadata.session_run_index)
+      self.assertEqual(0, dump3.core_metadata.executor_step_index)
       self.assertEqual([ph.name], dump3.core_metadata.input_names)
       self.assertEqual([y.name], dump3.core_metadata.output_names)
       self.assertEqual([], dump3.core_metadata.target_nodes)
@@ -1139,8 +1155,8 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       dump = debug_data.DebugDumpDir(self._dump_root)
 
-      self.assertGreaterEqual(dump.core_metadata.session_run_count, 0)
-      self.assertGreaterEqual(dump.core_metadata.executor_step_count, 0)
+      self.assertGreaterEqual(dump.core_metadata.session_run_index, 0)
+      self.assertGreaterEqual(dump.core_metadata.executor_step_index, 0)
       self.assertEqual([ph.name], dump.core_metadata.input_names)
       self.assertEqual([y.name], dump.core_metadata.output_names)
       self.assertEqual([], dump.core_metadata.target_nodes)
@@ -1189,7 +1205,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       self.assertAllClose([[
           1.0, 18.0, 4.0, 2.0, 2.0, 3.0, 2.0, 5.0, -3.0, 7.0, 0.85714286,
-          8.97959184
+          8.97959184, 1.0, 1.0, 18.0
       ]], dump.get_tensors("numeric_summary/a/read", 0, "DebugNumericSummary"))
 
   def testDebugNumericSummaryOnUninitializedTensorGivesCorrectResult(self):
@@ -1217,6 +1233,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
                                          "DebugNumericSummary")[0]
       self.assertAllClose([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
                           numeric_summary[0:8])
+      # Check dtype (index 12), ndims (index 13) and dimension sizes (index
+      # 14+).
+      self.assertAllClose([1.0, 1.0, 1.0], numeric_summary[12:])
       self.assertTrue(np.isinf(numeric_summary[8]))
       self.assertGreater(numeric_summary[8], 0.0)
       self.assertTrue(np.isinf(numeric_summary[9]))
@@ -1349,14 +1368,14 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       #   debug ops with mute_if_healthy=false attribute during validation.
 
       self.assertEqual(2, dump.size)
-      self.assertAllClose(
-          [[1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, np.inf, -np.inf, np.nan,
-            np.nan]],
-          dump.get_tensors("x", 0, "DebugNumericSummary"))
-      self.assertAllClose(
-          [[1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.inf, -np.inf, np.nan,
-            np.nan]],
-          dump.get_tensors("y", 0, "DebugNumericSummary"))
+      self.assertAllClose([[
+          1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, np.inf, -np.inf, np.nan,
+          np.nan, 1.0, 0.0
+      ]], dump.get_tensors("x", 0, "DebugNumericSummary"))
+      self.assertAllClose([[
+          1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, np.inf, -np.inf, np.nan,
+          np.nan, 1.0, 0.0
+      ]], dump.get_tensors("y", 0, "DebugNumericSummary"))
 
       # Another run with the default mute_if_healthy (false) value should
       # dump all the tensors.
@@ -1402,9 +1421,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       #   debug ops with mute_if_healthy=false attribute during validation.
 
       self.assertEqual(1, dump.size)
-      self.assertAllClose(
-          [[1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 12.0, 20.0, 16.0, 16.0]],
-          dump.get_tensors("x", 0, "DebugNumericSummary"))
+      self.assertAllClose([[
+          1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2.0, 12.0, 20.0, 16.0, 16.0, 1.0,
+          1.0, 2.0]], dump.get_tensors("x", 0, "DebugNumericSummary"))
 
   def testDebugQueueOpsDoesNotoErrorOut(self):
     with session.Session() as sess:
@@ -1525,7 +1544,7 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(30.0 + 1.0 * self._num_concurrent_runs * 100,
                           sess.run(v))
 
-      all_session_run_counts = []
+      all_session_run_indices = []
       for index in xrange(self._num_concurrent_runs):
         dump = debug_data.DebugDumpDir(self._dump_roots[index])
         self.assertTrue(dump.loaded_partition_graphs())
@@ -1538,8 +1557,8 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
             os.path.join(self._dump_roots[index], "_tfdbg_core*"))
 
         timestamps = []
-        session_run_counts = []
-        executor_step_counts = []
+        session_run_indices = []
+        executor_step_indices = []
         for core_metadata_file in core_metadata_files:
           with open(core_metadata_file, "rb") as f:
             event = event_pb2.Event()
@@ -1547,29 +1566,30 @@ class DebugConcurrentRunCallsTest(test_util.TensorFlowTestCase):
             core_metadata = (
                 debug_data.extract_core_metadata_from_event_proto(event))
             timestamps.append(event.wall_time)
-            session_run_counts.append(core_metadata.session_run_count)
-            executor_step_counts.append(core_metadata.executor_step_count)
+            session_run_indices.append(core_metadata.session_run_index)
+            executor_step_indices.append(core_metadata.executor_step_index)
 
-        all_session_run_counts.extend(session_run_counts)
+        all_session_run_indices.extend(session_run_indices)
 
-        # Assert that executor_step_count increases by one at a time.
-        executor_step_counts = zip(timestamps, executor_step_counts)
-        executor_step_counts = sorted(executor_step_counts, key=lambda x: x[0])
-        for i in xrange(len(executor_step_counts) - 1):
-          self.assertEquals(executor_step_counts[i][1] + 1,
-                            executor_step_counts[i + 1][1])
+        # Assert that executor_step_index increases by one at a time.
+        executor_step_indices = zip(timestamps, executor_step_indices)
+        executor_step_indices = sorted(
+            executor_step_indices, key=lambda x: x[0])
+        for i in xrange(len(executor_step_indices) - 1):
+          self.assertEquals(executor_step_indices[i][1] + 1,
+                            executor_step_indices[i + 1][1])
 
-        # Assert that session_run_count increase monotonically.
-        session_run_counts = zip(timestamps, session_run_counts)
-        session_run_counts = sorted(session_run_counts, key=lambda x: x[0])
-        for i in xrange(len(session_run_counts) - 1):
-          self.assertGreater(session_run_counts[i + 1][1],
-                             session_run_counts[i][1])
+        # Assert that session_run_index increase monotonically.
+        session_run_indices = zip(timestamps, session_run_indices)
+        session_run_indices = sorted(session_run_indices, key=lambda x: x[0])
+        for i in xrange(len(session_run_indices) - 1):
+          self.assertGreater(session_run_indices[i + 1][1],
+                             session_run_indices[i][1])
 
-      # Assert that the session_run_counts from the concurrent run() calls are
+      # Assert that the session_run_indices from the concurrent run() calls are
       # all unique.
-      self.assertEqual(len(all_session_run_counts),
-                       len(set(all_session_run_counts)))
+      self.assertEqual(len(all_session_run_indices),
+                       len(set(all_session_run_indices)))
 
 
 if __name__ == "__main__":

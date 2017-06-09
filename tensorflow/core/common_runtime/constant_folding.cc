@@ -83,7 +83,7 @@ bool IsConstantFoldable(const Node* n,
 }
 
 // Returns the constant foldable nodes in `nodes` in topological order.
-// Populates `constant_control_deps` with the non-constant control depedencies
+// Populates `constant_control_deps` with the non-constant control dependencies
 // of each constant node.
 void FindConstantFoldableNodes(
     const Graph* graph, ConstantFoldingOptions opts, std::vector<Node*>* nodes,

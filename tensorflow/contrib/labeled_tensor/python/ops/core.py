@@ -618,7 +618,7 @@ def identity(labeled_tensor, name=None):
 def slice_function(labeled_tensor, selection, name=None):
   """Slice out a subset of the tensor.
 
-  This is an analogue of tf.slice.
+  This is an analog of tf.slice.
   For example:
   >>> tensor = tf.reshape(tf.range(0, 6), [3, 2])
   >>> labeled_tensor = lt.LabeledTensor(tensor, ['a', ('b', ['foo', 'bar'])])
@@ -704,7 +704,7 @@ def transpose(labeled_tensor, axis_order=None, name=None):
     axis_names = list(labeled_tensor.axes.keys())
     permutation = [axis_names.index(n) for n in axis_order]
 
-    # Note: TensorFlow doesn't copy data for the identity tranpose.
+    # Note: TensorFlow doesn't copy data for the identity transpose.
     transpose_tensor = array_ops.transpose(
         labeled_tensor.tensor, permutation, name=scope)
 

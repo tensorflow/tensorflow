@@ -31,8 +31,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
-namespace se = ::perftools::gputools;
-
 namespace xla {
 
 /* static */ StatusOr<std::unique_ptr<CompileOnlyService>>
@@ -116,7 +114,7 @@ CompileOnlyService::CompileAheadOfTime(
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                         computation_tracker_.BuildHloModule(
-                            versioned_handle, &hlo_module_config,
+                            versioned_handle, hlo_module_config,
                             /*include_unreachable_instructions=*/true));
     hlo_modules.push_back(std::move(hlo_module));
   }

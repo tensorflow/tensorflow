@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -41,8 +42,10 @@ namespace {
 class VecOpsSimpleTest : public ClientLibraryTestBase {
  public:
   explicit VecOpsSimpleTest(perftools::gputools::Platform* platform = nullptr)
-      : ClientLibraryTestBase(platform,
-                              /*disabled_pass_names=*/{"algsimp", "inline"}) {}
+      : ClientLibraryTestBase(platform) {
+    mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
+    mutable_debug_options()->add_xla_disable_hlo_passes("inline");
+  }
 
   ErrorSpec error_spec_{0.0001};
 };
@@ -64,6 +67,7 @@ TEST_F(VecOpsSimpleTest, ExpManyValues) {
   for (int count : {63, 64, 65, 127, 128, 129, 17 * 4096}) {
     ComputationBuilder builder(client_, TestName());
     std::vector<float> exponents;
+    exponents.reserve(count);
     for (int i = 0; i < count; ++i) {
       exponents.push_back(i / static_cast<float>(count));
     }
@@ -71,6 +75,7 @@ TEST_F(VecOpsSimpleTest, ExpManyValues) {
     auto exp = builder.Exp(x);
 
     std::vector<float> expected;
+    expected.reserve(exponents.size());
     for (float exponent : exponents) {
       expected.push_back(std::exp(exponent));
     }
@@ -437,6 +442,7 @@ XLA_TEST_F(VecOpsSimpleTest, VectorPredicateNotEqual) {
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

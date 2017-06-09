@@ -133,7 +133,7 @@ Benefits of using this scheme:
 ## Best Practices in Building High-Performance Models
 
 Collected below are a couple of additional best practices that can improve
-performance and increase the flexiblity of models.
+performance and increase the flexibility of models.
 
 ### Build the model with both NHWC and NCHW
 

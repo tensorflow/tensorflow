@@ -798,7 +798,29 @@ class _FunctionPageInfo(object):
 
 
 class _ClassPageInfo(object):
-  """Collects docs for a class page."""
+  """Collects docs for a class page.
+
+  Attributes:
+    full_name: The fully qualified name of the object at the master
+      location. Aka `master_name`. For example: `tf.nn.sigmoid`.
+    short_name: The last component of the `full_name`. For example: `sigmoid`.
+    defined_in: The path to the file where this object is defined.
+    aliases: The list of all fully qualified names for the locations where the
+      object is visible in the public api. This includes the master location.
+    doc: A `_DocstringInfo` object representing the object's docstring (can be
+      created with `_parse_md_docstring`).
+    guides: A markdown string, of back links pointing to the api_guides that
+      reference this object.
+    bases: A list of `_LinkInfo` objects pointing to the docs for the parent
+      classes.
+    properties: A list of `_PropertyInfo` objects documenting the class'
+      properties (attributes that use `@property`).
+    methods: A list of `_MethodInfo` objects documenting the class' methods.
+    classes: A list of `_LinkInfo` objects pointing to docs for any nested
+      classes.
+    other_members: A list of `_OtherMemberInfo` objects documenting any other
+      object's defined inside the class object (mostly enum style fields).
+  """
 
   def __init__(self, full_name):
     self._full_name = full_name
@@ -807,105 +829,206 @@ class _ClassPageInfo(object):
     self._doc = None
     self._guides = None
 
+    self._bases = None
     self._properties = []
     self._methods = []
     self._classes = []
     self._other_members = []
 
   def for_function(self):
+    """Returns true if this object documents a function."""
     return False
 
   def for_class(self):
+    """Returns true if this object documents a class."""
     return True
 
   def for_module(self):
+    """Returns true if this object documents a module."""
     return False
 
   @property
   def full_name(self):
+    """Returns the documented object's fully qualified name."""
     return self._full_name
 
   @property
   def short_name(self):
+    """Returns the documented object's short name."""
     return self._full_name.split('.')[-1]
 
   @property
   def defined_in(self):
+    """Returns the path to the file where the documented object is defined."""
     return self._defined_in
 
   def set_defined_in(self, defined_in):
+    """Sets the `defined_in` path."""
     assert self.defined_in is None
     self._defined_in = defined_in
 
   @property
   def aliases(self):
+    """Returns a list of all full names for the documented object."""
     return self._aliases
 
   def set_aliases(self, aliases):
+    """Sets the `aliases` list.
+
+    Args:
+      aliases: A list of strings. Containing all the obejct's full names.
+    """
     assert self.aliases is None
     self._aliases = aliases
 
   @property
   def doc(self):
+    """Returns a `_DocstringInfo` created from the object's docstring."""
     return self._doc
 
   def set_doc(self, doc):
+    """Sets the `doc` field.
+
+    Args:
+      doc: An instance of `_DocstringInfo`.
+    """
     assert self.doc is None
     self._doc = doc
 
   @property
   def guides(self):
+    """Returns a markdown string containing backlinks to relevant api_guides."""
     return self._guides
 
   def set_guides(self, guides):
+    """Sets the `guides` field.
+
+    Args:
+      guides: A markdown string containing backlinks to all the api_guides that
+        link to the documented object.
+    """
     assert self.guides is None
     self._guides = guides
 
   @property
+  def bases(self):
+    """Returns a list of `_LinkInfo` objects pointing to the class' parents."""
+    return self._bases
+
+  def _set_bases(self, relative_path, parser_config):
+    """Builds the `bases` attribute, to document this class' parent-classes.
+
+    This method sets the `bases` to a list of `_LinkInfo` objects point to the
+    doc pages for the class' parents.
+
+    Args:
+      relative_path: The relative path from the doc this object describes to
+        the documentation root.
+      parser_config: An instance of `ParserConfig`.
+    """
+    bases = []
+    obj = parser_config.py_name_to_object(self.full_name)
+    for base in obj.__bases__:
+      base_full_name = parser_config.reverse_index.get(id(base), None)
+      if base_full_name is None:
+        continue
+      base_doc = _parse_md_docstring(base, relative_path,
+                                     parser_config.reference_resolver)
+      base_url = parser_config.reference_resolver.reference_to_url(
+          base_full_name, relative_path)
+
+      link_info = _LinkInfo(short_name=base_full_name.split('.')[-1],
+                            full_name=base_full_name, obj=base,
+                            doc=base_doc, url=base_url)
+      bases.append(link_info)
+
+    self._bases = bases
+
+  @property
   def properties(self):
+    """Returns a list of `_PropertyInfo` describing the class' properties."""
     return self._properties
 
   def _add_property(self, short_name, full_name, obj, doc):
+    """Adds a `_PropertyInfo` entry to the `properties` list.
+
+    Args:
+      short_name: The property's short name.
+      full_name: The property's fully qualified name.
+      obj: The property object itself
+      doc: The property's parsed docstring, a `_DocstringInfo`.
+    """
     property_info = _PropertyInfo(short_name, full_name, obj, doc)
     self._properties.append(property_info)
 
   @property
   def methods(self):
+    """Returns a list of `_MethodInfo` describing the class' methods."""
     return self._methods
 
   def _add_method(self, short_name, full_name, obj, doc, signature):
+    """Adds a `_MethodInfo` entry to the `methods` list.
+
+    Args:
+      short_name: The method's short name.
+      full_name: The method's fully qualified name.
+      obj: The method object itself
+      doc: The method's parsed docstring, a `_DocstringInfo`
+      signature: The method's parsed signature (see: `_generate_signature`)
+    """
     method_info = _MethodInfo(short_name, full_name, obj, doc, signature)
     self._methods.append(method_info)
 
   @property
   def classes(self):
+    """Returns a list of `_LinkInfo` pointing to any nested classes."""
     return self._classes
 
   def _add_class(self, short_name, full_name, obj, doc, url):
+    """Adds a `_LinkInfo` for a nested class to `classes` list.
+
+    Args:
+      short_name: The class' short name.
+      full_name: The class' fully qualified name.
+      obj: The class object itself
+      doc: The class' parsed docstring, a `_DocstringInfo`
+      url: A url pointing to where the nested class is documented.
+    """
     page_info = _LinkInfo(short_name, full_name, obj, doc, url)
 
     self._classes.append(page_info)
 
   @property
   def other_members(self):
+    """Returns a list of `_OtherMemberInfo` describing any other contents."""
     return self._other_members
 
   def _add_other_member(self, short_name, full_name, obj, doc):
+    """Adds an `_OtherMemberInfo` entry to the `other_members` list.
+
+    Args:
+      short_name: The class' short name.
+      full_name: The class' fully qualified name.
+      obj: The class object itself
+      doc: The class' parsed docstring, a `_DocstringInfo`
+    """
     other_member_info = _OtherMemberInfo(short_name, full_name, obj, doc)
     self._other_members.append(other_member_info)
 
   def collect_docs_for_class(self, py_class, parser_config):
-    """Collect information necessary specifically for a class's doc page.
+    """Collects information necessary specifically for a class's doc page.
 
-    Mainly, this is details about information about the class's members.
+    Mainly, this is details about the class's members.
 
     Args:
-      py_class: the class object being documented
+      py_class: The class object being documented
       parser_config: An instance of ParserConfig.
     """
     doc_path = documentation_path(self.full_name)
     relative_path = os.path.relpath(
         path='.', start=os.path.dirname(doc_path) or '.')
+
+    self._set_bases(relative_path, parser_config)
 
     for short_name in parser_config.tree[self.full_name]:
       # Remove builtin members that we never want to document.

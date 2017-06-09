@@ -78,7 +78,7 @@ class PosixWritableFile : public WritableFile {
       : filename_(fname), file_(f) {}
 
   ~PosixWritableFile() override {
-    if (file_ != NULL) {
+    if (file_ != nullptr) {
       // Ignoring any potential errors
       fclose(file_);
     }
@@ -97,7 +97,7 @@ class PosixWritableFile : public WritableFile {
     if (fclose(file_) != 0) {
       result = IOError(filename_, errno);
     }
-    file_ = NULL;
+    file_ = nullptr;
     return result;
   }
 
@@ -121,7 +121,9 @@ class PosixReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
  public:
   PosixReadOnlyMemoryRegion(const void* address, uint64 length)
       : address_(address), length_(length) {}
-  ~PosixReadOnlyMemoryRegion() { munmap(const_cast<void*>(address_), length_); }
+  ~PosixReadOnlyMemoryRegion() override {
+    munmap(const_cast<void*>(address_), length_);
+  }
   const void* data() override { return address_; }
   uint64 length() override { return length_; }
 
@@ -148,7 +150,7 @@ Status PosixFileSystem::NewWritableFile(const string& fname,
   string translated_fname = TranslateName(fname);
   Status s;
   FILE* f = fopen(translated_fname.c_str(), "w");
-  if (f == NULL) {
+  if (f == nullptr) {
     s = IOError(fname, errno);
   } else {
     result->reset(new PosixWritableFile(translated_fname, f));
@@ -161,7 +163,7 @@ Status PosixFileSystem::NewAppendableFile(
   string translated_fname = TranslateName(fname);
   Status s;
   FILE* f = fopen(translated_fname.c_str(), "a");
-  if (f == NULL) {
+  if (f == nullptr) {
     s = IOError(fname, errno);
   } else {
     result->reset(new PosixWritableFile(translated_fname, f));
@@ -203,11 +205,11 @@ Status PosixFileSystem::GetChildren(const string& dir,
   string translated_dir = TranslateName(dir);
   result->clear();
   DIR* d = opendir(translated_dir.c_str());
-  if (d == NULL) {
+  if (d == nullptr) {
     return IOError(dir, errno);
   }
   struct dirent* entry;
-  while ((entry = readdir(d)) != NULL) {
+  while ((entry = readdir(d)) != nullptr) {
     StringPiece basename = entry->d_name;
     if ((basename != ".") && (basename != "..")) {
       result->push_back(entry->d_name);

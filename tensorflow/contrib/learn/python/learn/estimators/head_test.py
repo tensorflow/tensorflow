@@ -1638,6 +1638,21 @@ class BinarySvmHeadTest(test.TestCase):
       }, model_fn_ops)
 
 
+class LossOnlyHead(test.TestCase):
+
+  def testNoPredictionsAndNoMetrics(self):
+    head = head_lib.loss_only_head(lambda: 1, head_name="const")
+    model_fn_ops = head.create_model_fn_ops(
+        features={},
+        mode=model_fn.ModeKeys.TRAIN,
+        train_op_fn=head_lib.no_op_train_fn)
+    self.assertDictEqual(model_fn_ops.predictions, {})
+    self.assertDictEqual(model_fn_ops.eval_metric_ops, {})
+    self.assertIsNotNone(model_fn_ops.loss)
+    with session.Session() as sess:
+      self.assertEqual(1, sess.run(model_fn_ops.loss))
+
+
 class MultiHeadTest(test.TestCase):
 
   def testInvalidHeads(self):
@@ -1672,7 +1687,8 @@ class MultiHeadTest(test.TestCase):
         n_classes=3, label_name="label1", head_name="head1")
     head2 = head_lib.multi_class_head(
         n_classes=4, label_name="label2", head_name="head2")
-    head = head_lib.multi_head((head1, head2))
+    head3 = head_lib.loss_only_head(lambda: 1.0, head_name="const")
+    head = head_lib.multi_head((head1, head2, head3))
     labels = {
         "label1": (1,),
         "label2": (1,)
@@ -1691,7 +1707,7 @@ class MultiHeadTest(test.TestCase):
     self.assertIsNone(model_fn_ops.output_alternatives)
 
     with session.Session() as sess:
-      self.assertAlmostEqual(2.224, sess.run(model_fn_ops.loss), places=3)
+      self.assertAlmostEqual(3.224, sess.run(model_fn_ops.loss), places=3)
 
   def testTrain_withHeadWeights(self):
     head1 = head_lib.multi_class_head(

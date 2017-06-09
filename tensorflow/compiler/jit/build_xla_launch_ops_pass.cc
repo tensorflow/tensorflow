@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -32,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
@@ -125,9 +123,9 @@ static Status ReplaceNodeWithXlaLaunch(Graph* graph, Node* node) {
 Status BuildXlaLaunchOpsPass::Run(const GraphOptimizationPassOptions& options) {
   Graph* graph = options.graph->get();
 
-  for (Node* n : graph->nodes()) {
+  for (Node* n : graph->op_nodes()) {
     // In all cases, only try to compile computational nodes.
-    if (!n->IsOp() || n->IsSend() || n->IsRecv() || n->IsControlFlow()) {
+    if (n->IsSend() || n->IsRecv() || n->IsControlFlow()) {
       continue;
     }
 

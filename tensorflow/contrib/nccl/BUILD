@@ -112,24 +112,25 @@ tf_custom_op_py_library(
     ],
 )
 
-cuda_py_test(
-    name = "nccl_ops_test",
-    size = "small",
-    srcs = ["python/ops/nccl_ops_test.py"],
-    additional_deps = [
-        ":nccl_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
-    ],
-    # Disabled on jenkins until errors finding nvmlShutdown are found.
-    tags = [
-        "manual",
-        "notap",
-    ],
-)
+# http://b/62064807
+# cuda_py_test(
+#     name = "nccl_ops_test",
+#     size = "small",
+#     srcs = ["python/ops/nccl_ops_test.py"],
+#     additional_deps = [
+#         ":nccl_py",
+#         "//tensorflow/python:array_ops",
+#         "//tensorflow/python:client_testlib",
+#         "//tensorflow/python:framework_for_generated_wrappers",
+#         "//tensorflow/python:framework_test_lib",
+#         "//tensorflow/python:platform_test",
+#     ],
+#     # Disabled on jenkins until errors finding nvmlShutdown are found.
+#     tags = [
+#         "manual",
+#         "notap",
+#     ],
+# )
 
 filegroup(
     name = "all_files",

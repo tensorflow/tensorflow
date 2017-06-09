@@ -59,10 +59,8 @@ using tensorflow::gtl::ArraySlice;
 using tensorflow::strings::StrCat;
 using tensorflow::AllocationDescription;
 using tensorflow::DataType;
-using tensorflow::Env;
 using tensorflow::Graph;
 using tensorflow::GraphDef;
-using tensorflow::mutex;
 using tensorflow::mutex_lock;
 using tensorflow::NameRangeMap;
 using tensorflow::NameRangesForNode;
@@ -73,11 +71,9 @@ using tensorflow::NodeBuilder;
 using tensorflow::OpDef;
 using tensorflow::OpRegistry;
 using tensorflow::PartialTensorShape;
-using tensorflow::Reset;
 using tensorflow::RunMetadata;
 using tensorflow::RunOptions;
 using tensorflow::Session;
-using tensorflow::SessionOptions;
 using tensorflow::Status;
 using tensorflow::Tensor;
 using tensorflow::TensorBuffer;
@@ -333,7 +329,7 @@ TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions* opt,
     return new TF_DeprecatedSession({session});
   } else {
     DCHECK_EQ(nullptr, session);
-    return NULL;
+    return nullptr;
   }
 }
 
@@ -507,7 +503,7 @@ static void TF_Run_Setup(int noutputs, TF_Tensor** c_outputs,
                          TF_Status* status) {
   status->status = Status::OK();
   for (int i = 0; i < noutputs; ++i) {
-    c_outputs[i] = NULL;
+    c_outputs[i] = nullptr;
   }
 }
 
@@ -718,6 +714,49 @@ TF_Buffer* TF_GetAllOpList() {
   return ret;
 }
 
+// --------------------------------------------------------------------------
+// ListDevices & SessionListDevices API
+
+void TF_DeleteDeviceList(TF_DeviceList* s) { delete s; }
+
+TF_DeviceList* TF_SessionListDevices(TF_Session* session, TF_Status* status) {
+  TF_DeviceList* response = new TF_DeviceList;
+  status->status = session->session->ListDevices(&response->response);
+  return response;
+}
+
+TF_DeviceList* TF_DeprecatedSessionListDevices(TF_DeprecatedSession* session,
+                                               TF_Status* status) {
+  TF_DeviceList* response = new TF_DeviceList;
+  status->status = session->session->ListDevices(&response->response);
+  return response;
+}
+
+int TF_DeviceListCount(const TF_DeviceList* list) {
+  return list->response.size();
+}
+
+#define TF_DEVICELIST_METHOD(return_type, method_name, accessor, err_val) \
+  return_type method_name(const TF_DeviceList* list, const int index,     \
+                          TF_Status* status) {                            \
+    if (list == nullptr) {                                                \
+      status->status = InvalidArgument("list is null!");                  \
+      return err_val;                                                     \
+    }                                                                     \
+    if (index < 0 || index >= list->response.size()) {                    \
+      status->status = InvalidArgument("index out of bounds");            \
+      return err_val;                                                     \
+    }                                                                     \
+    return list->response[index].accessor;                                \
+  }
+
+TF_DEVICELIST_METHOD(const char*, TF_DeviceListName, name().c_str(), nullptr);
+TF_DEVICELIST_METHOD(const char*, TF_DeviceListType, device_type().c_str(),
+                     nullptr);
+TF_DEVICELIST_METHOD(int64_t, TF_DeviceListMemoryBytes, memory_limit(), -1);
+
+#undef TF_DEVICELIST_METHOD
+
 }  // end extern "C"
 
 // --------------------------------------------------------------------------
@@ -766,6 +805,7 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
   }
 
   std::vector<tensorflow::shape_inference::DimensionHandle> dim_vec;
+  dim_vec.reserve(num_dims);
   for (int i = 0; i < num_dims; ++i) {
     dim_vec.push_back(ic->MakeDim(dims[i]));
   }
@@ -2118,7 +2158,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
     return new TF_Session(session, graph);
   } else {
     DCHECK_EQ(nullptr, session);
-    return NULL;
+    return nullptr;
   }
 }
 
@@ -2214,7 +2254,7 @@ static bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
     const auto num_nodes = graph.num_node_ids();
     if (session->last_num_graph_nodes < num_nodes) {
       GraphDef graph_def;
-      graph_def.mutable_versions()->CopyFrom(graph.versions());
+      *graph_def.mutable_versions() = graph.versions();
       // Fill graph_def with nodes with ids in the range
       // [session->last_num_graph_nodes, num_nodes), that is the nodes
       // added since the last TF_SessionRun() call.

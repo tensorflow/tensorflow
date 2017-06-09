@@ -90,12 +90,11 @@ int64 RequiredSpace(const Shape& shape, bool allocate_space_for_deep_copy,
   // TODO(b/33492279) remove once no devices represent result tuples as
   // contiguous buffers.
   if (allocate_space_for_deep_copy) {
-    TF_CHECK_OK(ShapeUtil::ForEachSubshape(
+    ShapeUtil::ForEachSubshape(
         shape, [&size, transfer_manager](const Shape& subshape,
                                          const ShapeIndex& /*index*/) {
           size += transfer_manager->GetByteSizeRequirement(subshape);
-          return tensorflow::Status::OK();
-        }));
+        });
   }
   return size;
 }

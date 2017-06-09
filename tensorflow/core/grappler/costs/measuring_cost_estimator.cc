@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <limits>
 
+#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/robust_stats.h"
 #include "tensorflow/core/grappler/grappler_item.h"

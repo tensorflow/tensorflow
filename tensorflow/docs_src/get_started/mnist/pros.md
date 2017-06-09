@@ -392,7 +392,7 @@ The differences are that:
 - We will add logging to every 100th iteration in the training process.
 
 We will also use tf.Session rather than tf.InteractiveSession. This better
-separates the process of creating the graph (model sepecification) and the
+separates the process of creating the graph (model specification) and the
 process of evaluating the graph (model fitting). It generally makes for cleaner
 code. The tf.Session is created within a [`with` block](https://docs.python.org/3/whatsnew/2.6.html#pep-343-the-with-statement)
 so that it is automatically destroyed once the block is exited.
