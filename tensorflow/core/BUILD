@@ -62,6 +62,7 @@ licenses(["notice"])  # Apache 2.0
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "full_path",
     "if_android",
     "if_ios",
     "if_x86",
@@ -81,6 +82,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 
 # For platform specific build config
 load(
@@ -411,6 +413,7 @@ tf_cuda_library(
         "util/work_sharder.h",
     ] + select({
         "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "util/memmapped_file_system.h",
             "util/memmapped_file_system_writer.h",
@@ -458,6 +461,7 @@ cc_library(
     deps = [
         ":lib",
         ":op_gen_overrides_proto_cc",
+        ":protos_all_cc",
     ],
 )
 
@@ -808,13 +812,11 @@ cc_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":proto_text",
         ":protos_all_cc",
         ":shape_inference_testutil",
         ":tensor_testutil",
         ":test",
         "//tensorflow/core/kernels:constant_op",
-        "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/platform/default/build_config:gtest",  # + if_sycl([":sycl_runtime"])
     ],
@@ -1207,32 +1209,35 @@ tf_proto_library_cc(
     ],
 )
 
+LIB_INTERNAL_WINDOWS_DEPS = glob(
+    [
+        "lib/**/*.h",
+        "lib/**/*.cc",
+        "platform/*.h",
+        "platform/*.cc",
+        "platform/profile_utils/**/*.h",
+        "platform/profile_utils/**/*.cc",
+    ],
+    exclude = [
+        "**/*test*",
+        "lib/hash/crc32c_accelerate.cc",
+        "lib/gif/**/*",
+        "lib/jpeg/**/*",
+        "platform/gif.h",
+        "platform/jpeg.h",
+        "platform/**/env_time.cc",
+        "platform/**/cuda.h",
+        "platform/**/cuda_libdevice_path.cc",
+        "platform/**/stream_executor.h",
+        "platform/load_library.cc",
+    ],
+)
+
 cc_library(
     name = "lib_internal",
     srcs = select({
-        "//tensorflow:windows": glob(
-            [
-                "lib/**/*.h",
-                "lib/**/*.cc",
-                "platform/*.h",
-                "platform/*.cc",
-                "platform/profile_utils/**/*.h",
-                "platform/profile_utils/**/*.cc",
-            ],
-            exclude = [
-                "**/*test*",
-                "lib/hash/crc32c_accelerate.cc",
-                "lib/gif/**/*",
-                "lib/jpeg/**/*",
-                "platform/gif.h",
-                "platform/jpeg.h",
-                "platform/**/env_time.cc",
-                "platform/**/cuda.h",
-                "platform/**/cuda_libdevice_path.cc",
-                "platform/**/stream_executor.h",
-                "platform/load_library.cc",
-            ],
-        ),
+        "//tensorflow:windows": LIB_INTERNAL_WINDOWS_DEPS,
+        "//tensorflow:windows_msvc": LIB_INTERNAL_WINDOWS_DEPS,
         "//conditions:default": glob(
             [
                 "lib/**/*.h",
@@ -1436,6 +1441,7 @@ tf_cuda_library(
         ],
     ) + select({
         "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "util/memmapped_file_system.h",
             "util/memmapped_file_system.cc",
@@ -1581,6 +1587,7 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
+        "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:required",
         "//third_party/eigen3",
     ],
@@ -1895,7 +1902,6 @@ cc_library(
         ":framework",
         ":lib",
         ":lib_internal",
-        ":test",
     ],
 )
 
@@ -1910,7 +1916,7 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":test",
+        ":test",  # buildcleaner: keep
         "//tensorflow/core/platform/default/build_config:test_main",
     ],
     alwayslink = 1,
@@ -2082,7 +2088,6 @@ cc_test(
     deps = [
         ":lib",
         ":lib_internal",
-        ":lib_test_internal",
         ":test",
         ":test_main",
     ],
@@ -2323,6 +2328,18 @@ tf_cc_test_gpu(
         ":lib",
         ":test",
         ":test_main",
+    ],
+)
+
+tf_cuda_only_cc_test(
+    name = "util_cuda_kernel_helper_test",
+    srcs = [
+        "util/cuda_kernel_helper_test.cu.cc",
+    ],
+    deps = [
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
     ],
 )
 
@@ -2884,6 +2901,20 @@ filegroup(
         "lib/gif/testdata/optimized.gif",
         # BMP data
         "lib/bmp/testdata/lena.bmp",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lmdb_testdata",
+    testonly = 1,
+    srcs = [
+        # A simple key-value store:
+        #   0 : 'a'
+        #   1 : 'b'
+        #    ...
+        #   9 : 'j'
+        "lib/lmdb/testdata/data.mdb",
     ],
     visibility = ["//visibility:public"],
 )

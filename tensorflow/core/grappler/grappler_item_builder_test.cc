@@ -70,6 +70,7 @@ std::unique_ptr<GrapplerItem> CreateGrapplerItem(const GraphDef &def,
                                                  const CollectionDef &fetches) {
   MetaGraphDef meta_def;
   ItemConfig cfg;
+  cfg.inline_functions = true;
   *meta_def.mutable_graph_def() = def;
   (*meta_def.mutable_collection_def())["train_op"] = fetches;
   return GrapplerItemFromMetaGraphDef("0", meta_def, cfg);

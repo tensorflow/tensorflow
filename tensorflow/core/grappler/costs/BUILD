@@ -1,5 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -56,6 +58,7 @@ cc_test(
         "//tensorflow/cc:scope",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
@@ -87,7 +90,6 @@ cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
@@ -109,25 +111,21 @@ cc_test(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "utils",
     srcs = ["utils.cc"],
     hdrs = ["utils.h"],
-    defines = if_cuda(["GOOGLE_CUDA=1"]),
     visibility = ["//visibility:public"],
     deps = [
         ":op_performance_data_cc",
-        "//third_party/eigen3",
-        "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
-    ] + if_cuda([
-        "//tensorflow/core:cuda",
-        "@local_config_cuda//cuda:cuda_headers",
-    ]),
+        "//tensorflow/core/grappler/clusters:utils",
+        "//third_party/eigen3",
+    ],
 )
 
 cc_library(
@@ -178,9 +176,28 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:utils",
         "//tensorflow/core/grappler/costs:cost_estimator",
+    ],
+)
+
+cc_test(
+    name = "virtual_scheduler_test",
+    srcs = ["virtual_scheduler_test.cc"],
+    deps = [
+        ":virtual_placer",
+        ":virtual_scheduler",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:utils",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
     ],
 )
 
@@ -198,7 +215,6 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
-        "//tensorflow/core/grappler:grappler_item_builder",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/costs:cost_estimator",
         "//tensorflow/core/kernels:ops_util",
@@ -247,5 +263,20 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+    ],
+)
+
+cc_test(
+    name = "analytical_cost_estimator_test",
+    srcs = ["analytical_cost_estimator_test.cc"],
+    deps = [
+        ":analytical_cost_estimator",
+        ":virtual_scheduler",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
     ],
 )

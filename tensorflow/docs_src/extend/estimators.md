@@ -303,7 +303,7 @@ The `model_fn` must accept three arguments:
 `model_fn` may also accept a `params` argument containing a dict of
 hyperparameters used for training (as shown in the skeleton above).
 
-The body of the function perfoms the following tasks (described in detail in the
+The body of the function performs the following tasks (described in detail in the
 sections that follow):
 
 *   Configuring the model—here, for the abalone predictor, this will be a neural
@@ -371,7 +371,7 @@ layer.
 
 The input layer is a series of nodes (one for each feature in the model) that
 will accept the feature data that is passed to the `model_fn` in the `features`
-argument. If `features` contains an n-dimenional `Tensor` with all your feature
+argument. If `features` contains an n-dimensional `Tensor` with all your feature
 data (which is the case if `x` and `y` `Dataset`s are passed to `fit()`,
 `evaluate()`, and `predict()` directly), then it can serve as the input layer.
 If `features` contains a dict of @{$linear#feature-columns-and-transformations$feature columns} passed to

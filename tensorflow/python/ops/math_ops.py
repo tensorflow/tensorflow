@@ -45,6 +45,8 @@ See the @{$python/math_ops} guide.
 @@expm1
 @@log
 @@log1p
+@@sinh
+@@cosh
 @@ceil
 @@floor
 @@maximum
@@ -207,11 +209,6 @@ argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace("dimensions",
 # pylint: disable=g-docstring-has-escape
 def abs(x, name=None):
   r"""Computes the absolute value of a tensor.
-
-  Given a tensor of real numbers `x`, this operation returns a tensor
-  containing the absolute value of each element in `x`. For example, if x is
-  an input element and y is an output element, this operation computes
-  \\(y = |x|\\).
 
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
   `float32` or `float64` that is the absolute value of each element in `x`. All
@@ -505,7 +502,7 @@ def scalar_mul(scalar, x):
 def pow(x, y, name=None):
   r"""Computes the power of one value to another.
 
-  Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for
+  Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
   corresponding elements in `x` and `y`. For example:
 
   ```
@@ -1686,8 +1683,9 @@ def matmul(a,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-  The inputs must be matrices (or tensors of rank > 2, representing batches of
-  matrices), with matching inner dimensions, possibly after transposition.
+  The inputs must, following any transpositions, be tensors of rank >= 2 
+  where the inner 2 dimensions specify valid matrix multiplication arguments, 
+  and any further outer dimensions match.
 
   Both matrices must be of the same type. The supported types are:
   `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.

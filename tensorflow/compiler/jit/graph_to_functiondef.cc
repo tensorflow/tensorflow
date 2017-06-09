@@ -160,6 +160,9 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
 
     NodeDef* node_def = fdef->add_node_def();
     *node_def = node->def();
+    if (!node->assigned_device_name().empty()) {
+      node_def->set_device(node->assigned_device_name());
+    }
     node_def->set_name(node_names.Uniquify(node->name()));
 
     // Reset input names based on graph rather than the NodeDef.

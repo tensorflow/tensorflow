@@ -1,10 +1,10 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
+load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-web_library(
+ts_web_library(
     name = "tf_scalar_dashboard",
     srcs = [
         "tf-scalar-dashboard.html",
@@ -16,8 +16,8 @@ web_library(
         "//tensorflow/tensorboard/components/tf_color_scale",
         "//tensorflow/tensorboard/components/tf_dashboard_common",
         "//tensorflow/tensorboard/components/tf_imports:lodash",
+        "//tensorflow/tensorboard/components/tf_imports:polymer",
         "//tensorflow/tensorboard/components/vz_line_chart",
-        "@org_polymer",
         "@org_polymer_iron_collapse",
         "@org_polymer_paper_checkbox",
         "@org_polymer_paper_dropdown_menu",

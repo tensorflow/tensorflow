@@ -218,9 +218,13 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   TF_RETURN_IF_ERROR(
       cluster->Run(item_.graph, item_.feed, item_.fetch, &metadata));
 
+  return InferFromCostGraph(metadata.cost_graph());
+}
+
+Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
   std::unordered_map<string, const CostGraphDef::Node*> name_to_cost;
   std::unordered_map<string, const NodeDef*> name_to_node;  // Empty
-  for (auto& node : metadata.cost_graph().node()) {
+  for (auto& node : cost_graph.node()) {
     name_to_cost[node.name()] = &node;
 
     std::vector<OpInfo::TensorProperties> output_properties;
@@ -253,8 +257,8 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   return Status::OK();
 }
 
-bool GraphProperties::HasInputProperties(const string& name) const {
-  return input_properties_.find(name) != input_properties_.end();
+bool GraphProperties::HasOutputProperties(const string& name) const {
+  return output_properties_.find(name) != output_properties_.end();
 }
 
 std::vector<OpInfo::TensorProperties> GraphProperties::GetInputProperties(

@@ -121,7 +121,7 @@ example = ...ops to create one example...
 # Create a queue, and an op that enqueues examples one at a time in the queue.
 queue = tf.RandomShuffleQueue(...)
 enqueue_op = queue.enqueue(example)
-# Create a training graph that starts by dequeuing a batch of examples.
+# Create a training graph that starts by dequeueing a batch of examples.
 inputs = queue.dequeue_many(batch_size)
 train_op = ...use 'inputs' to build the training part of the graph...
 ```

@@ -4020,6 +4020,29 @@ op {
   }
 }
 op {
+  name: "Cholesky"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "CholeskyGrad"
   input_arg {
     name: "l"
@@ -7793,6 +7816,45 @@ op {
   }
 }
 op {
+  name: "FakeQuantWithMinMaxArgs"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "min"
+    type: "float"
+    default_value {
+      f: -6
+    }
+  }
+  attr {
+    name: "max"
+    type: "float"
+    default_value {
+      f: 6
+    }
+  }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+  }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "FakeQuantWithMinMaxArgsGradient"
   input_arg {
     name: "gradients"
@@ -7858,6 +7920,49 @@ op {
   }
 }
 op {
+  name: "FakeQuantWithMinMaxArgsGradient"
+  input_arg {
+    name: "gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprops"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "min"
+    type: "float"
+    default_value {
+      f: -6
+    }
+  }
+  attr {
+    name: "max"
+    type: "float"
+    default_value {
+      f: 6
+    }
+  }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+  }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "FakeQuantWithMinMaxVars"
   input_arg {
     name: "inputs"
@@ -7899,6 +8004,39 @@ op {
     type: "int"
     default_value {
       i: 8
+    }
+  }
+}
+op {
+  name: "FakeQuantWithMinMaxVars"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+  }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -7972,6 +8110,51 @@ op {
   }
 }
 op {
+  name: "FakeQuantWithMinMaxVarsGradient"
+  input_arg {
+    name: "gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprops_wrt_input"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_min"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_max"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+  }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "FakeQuantWithMinMaxVarsPerChannel"
   input_arg {
     name: "inputs"
@@ -8013,6 +8196,39 @@ op {
     type: "int"
     default_value {
       i: 8
+    }
+  }
+}
+op {
+  name: "FakeQuantWithMinMaxVarsPerChannel"
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "outputs"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+  }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -8082,6 +8298,51 @@ op {
     type: "int"
     default_value {
       i: 8
+    }
+  }
+}
+op {
+  name: "FakeQuantWithMinMaxVarsPerChannelGradient"
+  input_arg {
+    name: "gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "inputs"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprops_wrt_input"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_min"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "backprop_wrt_max"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "num_bits"
+    type: "int"
+    default_value {
+      i: 8
+    }
+  }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
 }
@@ -11507,6 +11768,47 @@ op {
   }
 }
 op {
+  name: "MatrixTriangularSolve"
+  input_arg {
+    name: "matrix"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "rhs"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "lower"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "adjoint"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_DOUBLE
+        type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+}
+op {
   name: "Max"
   input_arg {
     name: "input"
@@ -12728,6 +13030,25 @@ op {
       b: true
     }
   }
+}
+op {
+  name: "MergeV2Checkpoints"
+  input_arg {
+    name: "checkpoint_prefixes"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "destination_prefix"
+    type: DT_STRING
+  }
+  attr {
+    name: "delete_old_dirs"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  is_stateful: true
 }
 op {
   name: "Mfcc"
@@ -19546,6 +19867,33 @@ op {
   }
 }
 op {
+  name: "Restore"
+  input_arg {
+    name: "file_pattern"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_name"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "tensor"
+    type_attr: "dt"
+  }
+  attr {
+    name: "dt"
+    type: "type"
+  }
+  attr {
+    name: "preferred_shard"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "RestoreSlice"
   input_arg {
     name: "file_pattern"
@@ -19576,6 +19924,37 @@ op {
   }
 }
 op {
+  name: "RestoreSlice"
+  input_arg {
+    name: "file_pattern"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_name"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shape_and_slice"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "tensor"
+    type_attr: "dt"
+  }
+  attr {
+    name: "dt"
+    type: "type"
+  }
+  attr {
+    name: "preferred_shard"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "RestoreV2"
   input_arg {
     name: "prefix"
@@ -19599,6 +19978,32 @@ op {
     has_minimum: true
     minimum: 1
   }
+}
+op {
+  name: "RestoreV2"
+  input_arg {
+    name: "prefix"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shape_and_slices"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "tensors"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
 }
 op {
   name: "Reverse"
@@ -20016,6 +20421,28 @@ op {
   }
 }
 op {
+  name: "Save"
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
   name: "SaveSlices"
   input_arg {
     name: "filename"
@@ -20035,6 +20462,57 @@ op {
   }
   attr {
     name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
+  name: "SaveSlices"
+  input_arg {
+    name: "filename"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shapes_and_slices"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "data"
+    type_list_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "SaveV2"
+  input_arg {
+    name: "prefix"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor_names"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "shape_and_slices"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensors"
+    type_list_attr: "dtypes"
+  }
+  attr {
+    name: "dtypes"
     type: "list(type)"
     has_minimum: true
     minimum: 1
@@ -20064,6 +20542,7 @@ op {
     has_minimum: true
     minimum: 1
   }
+  is_stateful: true
 }
 op {
   name: "ScalarSummary"

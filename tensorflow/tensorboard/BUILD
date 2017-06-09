@@ -11,9 +11,11 @@ py_binary(
     data = [":assets"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:platform",
         "//tensorflow/tensorboard/backend:application",
         "//tensorflow/tensorboard/backend/event_processing:event_file_inspector",
+        "//tensorflow/tensorboard/plugins/audio:audio_plugin",
+        "//tensorflow/tensorboard/plugins/distributions:distributions_plugin",
+        "//tensorflow/tensorboard/plugins/graphs:graphs_plugin",
         "//tensorflow/tensorboard/plugins/histograms:histograms_plugin",
         "//tensorflow/tensorboard/plugins/images:images_plugin",
         "//tensorflow/tensorboard/plugins/projector:projector_plugin",
@@ -28,7 +30,19 @@ filegroup(
     srcs = [
         "TAG",
         "//tensorflow/tensorboard/components:index.html",
+        "//tensorflow/tensorboard/components:trace_viewer_index.html",
     ],
+)
+
+filegroup(
+    name = "ts_web_library_default_typings",
+    srcs = [
+        # Ordering probably matters.
+        "@com_microsoft_typescript//:lib.es6.d.ts",
+        "@io_angular_clutz//:src/resources/closure.lib.d.ts",
+        "clutz.d.ts",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 filegroup(

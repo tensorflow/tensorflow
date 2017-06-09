@@ -89,6 +89,8 @@ Status BackwardsConstAnalysis(const Graph& g,
       {"StridedSliceGrad", "end"},
       {"StridedSliceGrad", "strides"},
       {"Sum", "reduction_indices"},
+      {"TensorArrayV3", "size"},
+      {"TensorArraySplitV3", "lengths"},
       {"Tile", "multiples"},
       {"Transpose", "perm"}};
 

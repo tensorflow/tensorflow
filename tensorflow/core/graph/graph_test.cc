@@ -110,6 +110,7 @@ class GraphTest : public ::testing::Test {
   // are readable.
   static std::vector<string> Stringify(const std::vector<Node*>& nodes) {
     std::vector<string> result;
+    result.reserve(nodes.size());
     for (Node* n : nodes) {
       result.push_back(n->DebugString());
     }

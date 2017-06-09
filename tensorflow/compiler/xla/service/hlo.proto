@@ -46,7 +46,7 @@ message HloInstructionProto {
   xla.OpMetadata metadata = 7;
 
   // Literal, only present for kConstant.
-  xla.Literal literal = 8;
+  xla.LiteralProto literal = 8;
 
   // Parameter info, only present for kParameter.
   int64 parameter_number = 9;

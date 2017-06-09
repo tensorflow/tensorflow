@@ -34,6 +34,7 @@ from tensorflow.contrib.slim.python.slim import evaluation
 from tensorflow.contrib.slim.python.slim import learning
 from tensorflow.contrib.slim.python.slim import model_analyzer
 from tensorflow.contrib.slim.python.slim import queues
+from tensorflow.contrib.slim.python.slim import summaries
 from tensorflow.contrib.slim.python.slim.data import data_decoder
 from tensorflow.contrib.slim.python.slim.data import data_provider
 from tensorflow.contrib.slim.python.slim.data import dataset

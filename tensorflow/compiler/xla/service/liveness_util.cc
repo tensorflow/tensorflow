@@ -30,6 +30,17 @@ namespace xla {
 
 bool DoesNotUseOperandBuffer(const HloInstruction* operand,
                              const ShapeIndex& index,
+                             const HloInstruction* user) {
+  CHECK(user->IsUserOf(operand))
+      << "user: " << user->ToString() << " operand: " << operand->ToString();
+
+  // GetTupleElement instructions only access the top-level buffer of their
+  // operand.
+  return (user->opcode() == HloOpcode::kGetTupleElement && !index.empty());
+}
+
+bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                             const ShapeIndex& index,
                              const HloInstruction* user,
                              const TuplePointsToAnalysis& points_to_analysis) {
   CHECK(user->IsUserOf(operand))

@@ -236,10 +236,8 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
   llvm::LoadInst* load = ir_builder->CreateLoad(element_address);
   llvm_ir::SetTbaaForInstruction(load, GetShape(),
                                  /*is_pointer_to=*/false);
-  for (const std::pair<int, llvm::MDNode*>& kind_md_pair : metadata_) {
-    int kind = kind_md_pair.first;
-    llvm::MDNode* md = kind_md_pair.second;
-    load->setMetadata(kind, md);
+  for (const auto& kind_md_pair : metadata_) {
+    load->setMetadata(kind_md_pair.first, kind_md_pair.second);
   }
   return load;
 }
@@ -250,11 +248,9 @@ void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
   llvm::StoreInst* store = ir_builder->CreateStore(value, element_address);
   llvm_ir::SetTbaaForInstruction(store, GetShape(),
                                  /*is_pointer_to=*/false);
-  for (const std::pair<int, llvm::MDNode*>& kind_md_pair : metadata_) {
-    int kind = kind_md_pair.first;
-    CHECK_NE(kind, llvm::LLVMContext::MD_invariant_load);
-    llvm::MDNode* md = kind_md_pair.second;
-    store->setMetadata(kind, md);
+  for (const auto& kind_md_pair : metadata_) {
+    CHECK_NE(kind_md_pair.first, llvm::LLVMContext::MD_invariant_load);
+    store->setMetadata(kind_md_pair.first, kind_md_pair.second);
   }
 }
 
