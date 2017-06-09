@@ -84,6 +84,7 @@ py_library(
 
 tf_py_test(
     name = "tfprof_logger_test",
+    size = "small",
     srcs = ["tfprof_logger_test.py"],
     additional_deps = [
         ":tfprof_logger",
@@ -114,6 +115,7 @@ tf_py_wrap_cc(
 
 py_test(
     name = "print_model_analysis_test",
+    size = "small",
     srcs = ["print_model_analysis_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -140,6 +142,7 @@ py_library(
 
 py_test(
     name = "pprof_profiler_test",
+    size = "small",
     srcs = ["pprof_profiler_test.py"],
     main = "pprof_profiler_test.py",
     srcs_version = "PY2AND3",

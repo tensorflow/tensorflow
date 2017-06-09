@@ -50,6 +50,7 @@ cc_library(
 
 cc_test(
     name = "graph_properties_test",
+    size = "small",
     srcs = ["graph_properties_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
     deps = [
@@ -83,6 +84,7 @@ cc_library(
 
 cc_test(
     name = "graph_memory_test",
+    size = "small",
     srcs = ["graph_memory_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
     deps = [
@@ -103,6 +105,7 @@ cc_library(
 
 cc_test(
     name = "robust_stats_test",
+    size = "small",
     srcs = ["robust_stats_test.cc"],
     deps = [
         ":robust_stats",
@@ -153,6 +156,7 @@ cc_library(
 
 cc_test(
     name = "virtual_placer_test",
+    size = "small",
     srcs = ["virtual_placer_test.cc"],
     deps = [
         ":virtual_placer",
@@ -185,6 +189,7 @@ cc_library(
 
 cc_test(
     name = "virtual_scheduler_test",
+    size = "small",
     srcs = ["virtual_scheduler_test.cc"],
     deps = [
         ":virtual_placer",
@@ -232,6 +237,7 @@ cc_library(
 
 cc_test(
     name = "op_level_cost_estimator_test",
+    size = "small",
     srcs = ["op_level_cost_estimator_test.cc"],
     deps = [
         ":op_level_cost_estimator",
@@ -264,6 +270,7 @@ cc_library(
 
 cc_test(
     name = "analytical_cost_estimator_test",
+    size = "small",
     srcs = ["analytical_cost_estimator_test.cc"],
     deps = [
         ":analytical_cost_estimator",

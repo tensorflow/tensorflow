@@ -20,6 +20,7 @@ cc_library(
 
 cc_test(
     name = "runtime_test",
+    size = "small",
     srcs = ["runtime_test.cc"],
     deps = [
         ":runtime",
@@ -88,6 +89,7 @@ cc_library(
 
 cc_test(
     name = "codegen_test",
+    size = "small",
     srcs = ["codegen_test.cc"],
     data = ["codegen_test_h.golden"],
     deps = [
@@ -101,6 +103,7 @@ cc_test(
 
 cc_test(
     name = "tfcompile_util_test",
+    size = "small",
     srcs = ["tfcompile_util_test.cc"],
     deps = [
         ":tfcompile_lib",

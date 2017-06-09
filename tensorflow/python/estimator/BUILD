@@ -287,6 +287,7 @@ py_library(
 
 py_test(
     name = "parsing_utils_test",
+    size = "small",
     srcs = ["canned/parsing_utils_test.py"],
     srcs_version = "PY2AND3",
     deps = [
