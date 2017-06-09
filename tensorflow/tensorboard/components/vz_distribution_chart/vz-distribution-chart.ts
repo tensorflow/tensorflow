@@ -12,13 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-/* tslint:disable:no-namespace variable-name */
-import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
-import * as _ from 'lodash'
-import * as Plottable from 'Plottable/plottable';  // from //third_party/javascript/plottable
-import {Dataset} from 'Plottable/plottable';
 
-import * as ChartHelpers from '../vz_line_chart/vz-chart-helpers';
+import * as ChartHelpers from '../vz-line-chart/vz-chart-helpers';
 
 export class DistributionChart {
   private run2datasets: {[run: string]: Plottable.Dataset};

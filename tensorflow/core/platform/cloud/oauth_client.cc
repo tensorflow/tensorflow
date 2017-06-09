@@ -100,14 +100,14 @@ Status CreateSignature(RSA* private_key, StringPiece to_sign,
       EVP_PKEY_new(), [](EVP_PKEY* ptr) { EVP_PKEY_free(ptr); });
   EVP_PKEY_set1_RSA(key.get(), private_key);
 
-  if (EVP_DigestSignInit(md_ctx.get(), NULL, md, NULL, key.get()) != 1) {
+  if (EVP_DigestSignInit(md_ctx.get(), nullptr, md, nullptr, key.get()) != 1) {
     return errors::Internal("DigestInit failed.");
   }
   if (EVP_DigestSignUpdate(md_ctx.get(), to_sign.data(), to_sign.size()) != 1) {
     return errors::Internal("DigestUpdate failed.");
   }
   size_t sig_len = 0;
-  if (EVP_DigestSignFinal(md_ctx.get(), NULL, &sig_len) != 1) {
+  if (EVP_DigestSignFinal(md_ctx.get(), nullptr, &sig_len) != 1) {
     return errors::Internal("DigestFinal (get signature length) failed.");
   }
   std::unique_ptr<unsigned char[]> sig(new unsigned char[sig_len]);

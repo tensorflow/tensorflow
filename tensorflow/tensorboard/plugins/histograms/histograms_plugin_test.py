@@ -22,20 +22,14 @@ from __future__ import print_function
 import os.path
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
 
-from tensorflow.python.client import session
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
-from tensorflow.python.summary import summary
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 from tensorflow.tensorboard.plugins.histograms import histograms_plugin
 
 
-class HistogramsPluginTest(test.TestCase):
+class HistogramsPluginTest(tf.test.TestCase):
 
   _STEPS = 99
 
@@ -66,17 +60,17 @@ class HistogramsPluginTest(test.TestCase):
       (use_histogram, use_scalars) = (False, True)
     else:
       assert False, 'Invalid run name: %r' % run_name
-    ops.reset_default_graph()
-    sess = session.Session()
-    placeholder = array_ops.placeholder(dtypes.float32, shape=[3])
+    tf.reset_default_graph()
+    sess = tf.Session()
+    placeholder = tf.placeholder(tf.float32, shape=[3])
     if use_histogram:
-      summary.histogram(self._HISTOGRAM_TAG, placeholder)
+      tf.summary.histogram(self._HISTOGRAM_TAG, placeholder)
     if use_scalars:
-      summary.scalar(self._SCALAR_TAG, math_ops.reduce_mean(placeholder))
-    summ = summary.merge_all()
+      tf.summary.scalar(self._SCALAR_TAG, tf.reduce_mean(placeholder))
+    summ = tf.summary.merge_all()
 
     subdir = os.path.join(self.logdir, run_name)
-    writer = summary.FileWriter(subdir)
+    writer = tf.summary.FileWriter(subdir)
     writer.add_graph(sess.graph)
     for step in xrange(self._STEPS):
       feed_dict = {placeholder: [1 + step, 2 + step, 3 + step]}
@@ -130,4 +124,4 @@ class HistogramsPluginTest(test.TestCase):
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

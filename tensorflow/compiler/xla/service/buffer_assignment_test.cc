@@ -559,15 +559,14 @@ TEST_F(BufferAssignmentTest, ExampleWhile) {
 
   // Check that buffer for each subshape of 'while_op' shares allocation with
   // corresponding buffer from while body computation at same index.
-  TF_CHECK_OK(ShapeUtil::ForEachSubshape(
+  ShapeUtil::ForEachSubshape(
       while_op->shape(),
       [this, &buffers, while_op, body_root](const Shape& /*subshape*/,
                                             const ShapeIndex& index) {
         auto while_op_allocation = GetAllocation(*buffers, while_op, index);
         auto body_root_allocation = GetAllocation(*buffers, body_root, index);
         EXPECT_EQ(while_op_allocation.index(), body_root_allocation.index());
-        return Status::OK();
-      }));
+      });
 
   // Log size information for inspection.
   LOG(INFO) << "LogicalBuffer count " << buffers->Allocations().size()
@@ -895,7 +894,7 @@ TEST_F(BufferAssignmentTest, TupleParameterAsOutput) {
 
   // Verify each buffer allocation is marked as an entry computation parameter
   // and is liveout.
-  TF_CHECK_OK(ShapeUtil::ForEachSubshape(
+  ShapeUtil::ForEachSubshape(
       tuple_param->shape(),
       [this, &assignment, tuple_param](const Shape& /*subshape*/,
                                        const ShapeIndex& index) {
@@ -903,8 +902,7 @@ TEST_F(BufferAssignmentTest, TupleParameterAsOutput) {
         EXPECT_TRUE(allocation.is_entry_computation_parameter());
         EXPECT_EQ(0, allocation.parameter_number());
         EXPECT_TRUE(allocation.maybe_live_out());
-        return Status::OK();
-      }));
+      });
 }
 
 TEST_F(BufferAssignmentTest, ElementOfNestedTupleParameterAsOutput) {

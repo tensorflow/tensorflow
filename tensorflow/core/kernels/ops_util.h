@@ -50,8 +50,12 @@ bool IsInnerDimsSizeAligned(const TensorShape& s) {
   if (s.dims() == 0) return false;
   const int64 dim0_size = s.dim_size(0);
   if (dim0_size == 0) return false;
+#if EIGEN_MAX_ALIGN_BYTES == 0
+  return true;
+#else
   const int64 bytes_per_dim0 = (s.num_elements() / dim0_size) * sizeof(T);
   return bytes_per_dim0 % EIGEN_MAX_ALIGN_BYTES == 0;
+#endif
 }
 
 // Given a shape 's' of a tensor of type T and the `start` and `end` index of a
@@ -61,6 +65,9 @@ bool IsInnerDimsSizeAligned(const TensorShape& s) {
 template <typename T>
 bool IsDim0SliceAligned(const TensorShape& s, int64 start, int64 end_or_size) {
   if (s.dims() == 1) {
+#if EIGEN_MAX_ALIGN_BYTES == 0
+    return true;
+#else
     bool start_aligned = (start * sizeof(T)) % EIGEN_MAX_ALIGN_BYTES == 0;
     // End is aligned if either the explicit end index is passed and is a
     // a multiple of EIGEN_MAX_ALIGN_BYTES, or the start index is aligned and
@@ -68,6 +75,7 @@ bool IsDim0SliceAligned(const TensorShape& s, int64 start, int64 end_or_size) {
     // index, or start and size.
     bool end_aligned = (end_or_size * sizeof(T)) % EIGEN_MAX_ALIGN_BYTES == 0;
     return start_aligned && end_aligned;
+#endif
   } else {
     return IsInnerDimsSizeAligned<T>(s);
   }

@@ -151,7 +151,7 @@ describe('backend', () => {
           });
 
       r.then(
-          (success) => done(new Error('The reqest should have failed')),
+          (success) => done(new Error('The request should have failed')),
           (failure) => done());
     });
 

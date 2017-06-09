@@ -783,6 +783,7 @@ TEST_F(ShapeInferenceTest, MakeShape) {
   std::vector<DimensionHandle> dims;
   auto in0 = c.input(0);
   const int rank = c.Rank(in0);
+  dims.reserve(rank);
   for (int i = 0; i < rank; ++i) {
     dims.push_back(c.Dim(in0, rank - i - 1));
   }

@@ -36,11 +36,20 @@ VirtualPlacer::VirtualPlacer(const Cluster* cluster) : has_gpu_(false) {
 }
 
 const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
+  string device = get_canonical_device_name(node);
+  if (device.empty()) {
+    return unknown_device_;
+  }
+  auto it = devices_.find(device);
+  DCHECK(it != devices_.end());
+  return it->second;
+}
+
+string VirtualPlacer::get_canonical_device_name(const NodeDef& node) const {
   string device;
   if (!node.device().empty()) {
-    auto it = devices_.find(node.device());
-    if (it != devices_.end()) {
-      return it->second;
+    if (devices_.find(node.device()) != devices_.end()) {
+      return node.device();
     }
     DeviceNameUtils::ParsedName parsed_name;
     bool parsed = DeviceNameUtils::ParseFullName(node.device(), &parsed_name);
@@ -57,7 +66,7 @@ const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
       }
     }
     if (!parsed) {
-      return unknown_device_;
+      return "";
     } else {
       device = strings::StrCat(
           "/job:", parsed_name.job, "/replica:", parsed_name.replica,
@@ -71,11 +80,10 @@ const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
       device = "/job:localhost/replica:0/task:0/cpu:0";
     }
   }
-  auto it = devices_.find(device);
-  if (it == devices_.end()) {
-    return unknown_device_;
+  if (devices_.find(device) == devices_.end()) {
+    return "";
   }
-  return it->second;
+  return device;
 }
 
 }  // end namespace grappler

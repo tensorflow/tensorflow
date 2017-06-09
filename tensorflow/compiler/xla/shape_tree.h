@@ -44,6 +44,7 @@ struct ShapeTreeNode {
   // Children of this node.
   std::vector<std::unique_ptr<ShapeTreeNode>> children;
 
+  ShapeTreeNode() = default;
   explicit ShapeTreeNode(const T& data) : data(data) {}
 
   ShapeTreeNode(const ShapeTreeNode& other)
@@ -85,8 +86,9 @@ class ShapeTree {
  public:
   // Default constructor creates a tree with a nil shape (i.e. an empty tuple).
   ShapeTree() : ShapeTree(ShapeUtil::MakeNil()) {}
-  // Create ShapeTree with the given shape, and default T values for all nodes.
-  explicit ShapeTree(const Shape& shape) : ShapeTree(shape, T()) {}
+  // Create ShapeTree with the given shape, and default-constructed T values for
+  // all nodes.
+  explicit ShapeTree(const Shape& shape);
   // Create ShapeTree with the given shape, and init_value for all nodes.
   ShapeTree(const Shape& shape, const T& init_value);
 
@@ -112,20 +114,38 @@ class ShapeTree {
   //
   //   index : the index of the element in the shape. See ShapeUtil::GetSubshape
   //           for definition of index.
-  //   is_leaf : Whether this element is a leaf element in the shape. That is,
-  //             whether this index corresponds to an array and not a (nested)
-  //             tuple element.
   //   data : The data value at this elemnt.
-  //
-  // If any call to the given function returns a non-OK status, then traversal
-  // is aborted and the status value is returned.
-  using VisitorFunction = std::function<Status(
-      const ShapeIndex& /*index*/, bool /*is_leaf*/, const T& /*data*/)>;
-  Status ForEachElement(const VisitorFunction& func) const;
+  using VisitorFunction =
+      std::function<void(const ShapeIndex& /*index*/, const T& /*data*/)>;
+  void ForEachElement(const VisitorFunction& func) const;
 
-  using MutableVisitorFunction = std::function<Status(
-      const ShapeIndex& /*index*/, bool /*is_leaf*/, T* /*data*/)>;
-  Status ForEachMutableElement(const MutableVisitorFunction& func);
+  using MutableVisitorFunction =
+      std::function<void(const ShapeIndex& /*index*/, T* /*data*/)>;
+  void ForEachMutableElement(const MutableVisitorFunction& func);
+
+  // Variants of ForEach(Mutable)Element which propagate a Status value from the
+  // visitor.
+  using StatusVisitorFunction =
+      std::function<Status(const ShapeIndex& /*index*/, const T& /*data*/)>;
+  Status ForEachElementWithStatus(const StatusVisitorFunction& func) const;
+
+  using MutableStatusVisitorFunction =
+      std::function<Status(const ShapeIndex& /*index*/, T* /*data*/)>;
+  Status ForEachMutableElementWithStatus(
+      const MutableStatusVisitorFunction& func);
+
+  // Copy the subtree of values from 'other' rooted at ShapeIndex
+  // 'source_base_index' into the subtree of value in this ShapeTree rooted at
+  // 'target_base_index'.
+  //
+  // Precondition: The subshape of other.shape() at index source_base_index must
+  // be compatible with the subshape of shape() at index target_base_index.
+  void CopySubtreeFrom(const ShapeTree<T>& other,
+                       const ShapeIndex& source_base_index,
+                       const ShapeIndex& target_base_index);
+
+  bool operator==(const ShapeTree<T>& other) const;
+  bool operator!=(const ShapeTree<T>& other) const { return !(*this == other); }
 
  private:
   using Node = internal::ShapeTreeNode<T>;
@@ -134,12 +154,16 @@ class ShapeTree {
   // the given 'init_value'.
   void InitChildren(const Shape& shape, const T& init_value, Node* node);
 
+  // Initialize node->children based on 'shape'. All children have
+  // default-constructed data values.
+  void InitChildren(const Shape& shape, Node* node);
+
   // Helpers for traversing the shape via ForEachElement. The helpers
   // recursively traverse the subtree rooted at "index" (defined as in
   // ShapeUtil::GetSubshape).
-  static Status ForEachHelper(const VisitorFunction& func, const Node& node,
-                              ShapeIndex* index);
-  static Status ForEachMutableHelper(const MutableVisitorFunction& func,
+  static Status ForEachHelper(const StatusVisitorFunction& func,
+                              const Node& node, ShapeIndex* index);
+  static Status ForEachMutableHelper(const MutableStatusVisitorFunction& func,
                                      Node* node, ShapeIndex* index);
 
   // Return the tree node at the given index.
@@ -163,6 +187,24 @@ void ShapeTree<T>::InitChildren(const Shape& shape, const T& init_value,
                    node->children.back().get());
     }
   }
+}
+
+template <typename T>
+void ShapeTree<T>::InitChildren(const Shape& shape, Node* node) {
+  if (ShapeUtil::IsTuple(shape)) {
+    for (int i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+      node->children.emplace_back(new Node());
+      InitChildren(shape.tuple_shapes(i), node->children.back().get());
+    }
+  }
+}
+
+template <typename T>
+ShapeTree<T>::ShapeTree(const Shape& shape) : root_(), shape_(shape) {
+  // The shape_ field is just used to hold the structure of the shape.
+  // It should not be relied upon to store layout information.
+  LayoutUtil::ClearLayout(&shape_);
+  InitChildren(shape_, &root_);
 }
 
 template <typename T>
@@ -203,9 +245,9 @@ const internal::ShapeTreeNode<T>* ShapeTree<T>::Lookup(
 
 /* static */
 template <typename T>
-Status ShapeTree<T>::ForEachHelper(const VisitorFunction& func,
+Status ShapeTree<T>::ForEachHelper(const StatusVisitorFunction& func,
                                    const Node& node, ShapeIndex* index) {
-  TF_RETURN_IF_ERROR(func(*index, node.children.empty(), node.data));
+  TF_RETURN_IF_ERROR(func(*index, node.data));
   for (int64 i = 0; i < node.children.size(); ++i) {
     index->push_back(i);
     TF_RETURN_IF_ERROR(ForEachHelper(func, *node.children[i], index));
@@ -216,9 +258,9 @@ Status ShapeTree<T>::ForEachHelper(const VisitorFunction& func,
 
 /* static */
 template <typename T>
-Status ShapeTree<T>::ForEachMutableHelper(const MutableVisitorFunction& func,
-                                          Node* node, ShapeIndex* index) {
-  TF_RETURN_IF_ERROR(func(*index, node->children.empty(), &node->data));
+Status ShapeTree<T>::ForEachMutableHelper(
+    const MutableStatusVisitorFunction& func, Node* node, ShapeIndex* index) {
+  TF_RETURN_IF_ERROR(func(*index, &node->data));
   for (int64 i = 0; i < node->children.size(); ++i) {
     index->push_back(i);
     TF_RETURN_IF_ERROR(
@@ -229,15 +271,78 @@ Status ShapeTree<T>::ForEachMutableHelper(const MutableVisitorFunction& func,
 }
 
 template <typename T>
-Status ShapeTree<T>::ForEachElement(const VisitorFunction& func) const {
+Status ShapeTree<T>::ForEachElementWithStatus(
+    const StatusVisitorFunction& func) const {
   ShapeIndex index;
   return ForEachHelper(func, root_, &index);
 }
 
 template <typename T>
-Status ShapeTree<T>::ForEachMutableElement(const MutableVisitorFunction& func) {
+Status ShapeTree<T>::ForEachMutableElementWithStatus(
+    const MutableStatusVisitorFunction& func) {
   ShapeIndex index;
   return ForEachMutableHelper(func, &root_, &index);
+}
+
+template <typename T>
+void ShapeTree<T>::ForEachElement(const VisitorFunction& func) const {
+  ShapeIndex index;
+  return ForEachHelper(
+             [&func](const ShapeIndex& index, const T& data) {
+               func(index, data);
+               return Status::OK();
+             },
+             root_, &index)
+      .IgnoreError();
+}
+
+template <typename T>
+void ShapeTree<T>::ForEachMutableElement(const MutableVisitorFunction& func) {
+  ShapeIndex index;
+  return ForEachMutableHelper(
+             [&func](const ShapeIndex& index, T* data) {
+               func(index, data);
+               return Status::OK();
+             },
+             &root_, &index)
+      .IgnoreError();
+}
+
+template <typename T>
+void ShapeTree<T>::CopySubtreeFrom(const ShapeTree<T>& other,
+                                   const ShapeIndex& source_base_index,
+                                   const ShapeIndex& target_base_index) {
+  CHECK(ShapeUtil::Compatible(
+      ShapeUtil::GetSubshape(shape(), target_base_index),
+      ShapeUtil::GetSubshape(other.shape(), source_base_index)));
+  ForEachMutableElement([this, &other, &source_base_index, &target_base_index](
+                            const ShapeIndex& index, T* data) {
+    // Copy the data element only if index is in the
+    // subtree rooted at target_base_index.
+    for (int i = 0; i < target_base_index.size(); ++i) {
+      if (i >= index.size() || index[i] != target_base_index[i]) {
+        return;
+      }
+    }
+    // Construct source element index to copy from.
+    ShapeIndex source_index = source_base_index;
+    for (int i = target_base_index.size(); i < index.size(); ++i) {
+      source_index.push_back(index[i]);
+    }
+    *data = other.element(source_index);
+  });
+}
+
+template <typename T>
+bool ShapeTree<T>::operator==(const ShapeTree<T>& other) const {
+  bool equal = true;
+  ForEachElement(
+      [this, &other, &equal](const ShapeIndex& index, const T& data) {
+        if (data != other.element(index)) {
+          equal = false;
+        }
+      });
+  return equal;
 }
 
 }  // namespace xla

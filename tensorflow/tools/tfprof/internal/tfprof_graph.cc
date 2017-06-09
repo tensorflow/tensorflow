@@ -70,12 +70,18 @@ void TFGraph::Build() {
 }
 
 const ShowNode* TFGraph::ShowInternal(const Options& opts, Timeline* timeline) {
+  root_->ResetTotalStats();
+  root_->show_children.clear();
+  if (timeline && timeline->step() < 0) {
+    // TODO(xpan): Maybe pick a default step for users.
+    fprintf(stderr,
+            "Must specify -step option to generate timeline in graph view.\n");
+    return root_;
+  }
   // 1. Account and aggregate the stats based on the graph structure.
   // Returns a graph consists of accounted nodes.
   std::set<string> visits;
   std::vector<GraphNode*> roots = Account(root_->children, opts, &visits);
-  root_->ResetTotalStats();
-  root_->show_children.clear();
   for (GraphNode* n : roots) {
     root_->AggregateTotalStats(n);
   }
@@ -98,7 +104,7 @@ const ShowNode* TFGraph::ShowInternal(const Options& opts, Timeline* timeline) {
   Format(root->show_children, &root->formatted_str, root->mutable_proto());
 
   if (timeline) {
-    timeline->GenerateGraphTimeline(root, memory_tracker_);
+    timeline->GenerateGraphTimeline(root->show_children);
   }
   return root;
 }
@@ -209,19 +215,13 @@ std::vector<GraphNode*> TFGraph::Account(const std::vector<GraphNode*>& roots,
     // Depth-first.
     std::vector<GraphNode*> act_cnodes = Account(node->children, opts, visits);
 
-    node->account = ShouldAccount(node, opts);
+    node->account = ReAccount(node, opts);
     if (node->account) {
       node->show_children.clear();
       node->ResetTotalStats();
       node->AddSelfToTotalStats();
-      if (node->trackable) {
-        memory_tracker_.TrackNode(node);
-      }
       // Aggregate its accounted children stats.
       for (GraphNode* c : act_cnodes) {
-        if (node->trackable && c->trackable) {
-          memory_tracker_.TrackNodeConnection(node, c);
-        }
         node->AggregateTotalStats(c);
         node->show_children.push_back(c);
       }

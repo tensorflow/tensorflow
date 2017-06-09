@@ -60,7 +60,7 @@ void CostModel::MergeFromLocal(const Graph& g, const CostModel& cm) {
     time_[global_id] += cm.time_[local_id];
     int num_slots = cm.slot_bytes_[local_id].size();
     if (num_slots > 0) {
-      if (slot_bytes_[global_id].size() == 0) {
+      if (slot_bytes_[global_id].empty()) {
         slot_bytes_[global_id].resize(num_slots);
       } else {
         CHECK_EQ(num_slots, slot_bytes_[global_id].size());
@@ -82,7 +82,7 @@ void CostModel::MergeFromGlobal(const CostModel& cm) {
     time_[i] += cm.time_[i];
     int num_slots = cm.slot_bytes_[i].size();
     if (num_slots > 0) {
-      if (slot_bytes_[i].size() == 0) {
+      if (slot_bytes_[i].empty()) {
         slot_bytes_[i].resize(num_slots);
       } else {
         CHECK_EQ(num_slots, slot_bytes_[i].size());
@@ -138,7 +138,7 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
   auto perslot = &slot_bytes_[id];
   auto max_mem_usage = &max_mem_usage_[id];
   auto output_port_alloc_ids = &output_port_alloc_ids_[id];
-  if (perslot->size() > 0) {
+  if (!perslot->empty()) {
     CHECK_EQ(num_outputs, perslot->size()) << "Cannot resize slot_bytes, node="
                                            << node->name();
   } else {
@@ -476,6 +476,14 @@ static void EstimateComputationCosts(const Graph& g, CostModel* cost_model) {
 }  // namespace
 
 void CostModel::InitFromGraph(const Graph& g) {
+  const int num_node_ids = g.num_node_ids();
+  slot_bytes_.reserve(num_node_ids);
+  count_.reserve(num_node_ids);
+  time_.reserve(num_node_ids);
+  max_mem_usage_.reserve(num_node_ids);
+  max_exec_time_.reserve(num_node_ids);
+  output_port_alloc_ids_.reserve(num_node_ids);
+
   AddNodesToCostModel(g, this);
   AssignSizes(g, this);
   EstimateComputationCosts(g, this);

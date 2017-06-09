@@ -22,6 +22,7 @@ import abc
 import numpy as np
 
 from tensorflow.contrib.data.python.framework import function
+from tensorflow.contrib.data.python.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -38,7 +39,6 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
-from tensorflow.python.util import nest
 
 
 class Iterator(object):
@@ -629,6 +629,7 @@ class Dataset(object):
     # structure of elements in the resulting dataset.
     a.enumerate(start=5) == { (5, 1), (6, 2), (7, 3) }
     b.enumerate() == { (0, (7, 8)), (1, (9, 10)), (2, (11, 12)) }
+    ```
 
     Args:
       start: A `tf.int64` scalar `tf.Tensor`, representing the start
@@ -836,7 +837,8 @@ class Dataset(object):
     Returns:
       A `Dataset`.
     """
-    return self.flat_map(map_func=Dataset.from_tensor_slices)
+    return self.flat_map(
+      map_func=lambda *args: Dataset.from_tensor_slices(args))
 
   def filter(self, predicate):
     """Filters this dataset according to `predicate`.
@@ -1869,7 +1871,7 @@ def _parse_example(serialized, features):
       result.extend([val.indices, val.values, val.dense_shape])
     else:
       result.append(val)
-  return result
+  return tuple(result)
 
 
 def _get_file_names(file_pattern, randomize_input):

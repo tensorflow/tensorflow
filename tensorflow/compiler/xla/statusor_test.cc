@@ -489,26 +489,30 @@ class BenchmarkType {
 
 // Calibrate the amount of time spent just calling DoWork, since each of our
 // tests will do this, we can subtract this out of benchmark results.
-static void BM_CalibrateWorkLoop(int iters) {
+void BM_CalibrateWorkLoop(int iters) {
   tensorflow::testing::StopTiming();
   BenchmarkFactory<BenchmarkType> factory;
   BenchmarkType* result = factory.TrivialFactory();
   tensorflow::testing::StartTiming();
   for (int i = 0; i != iters; ++i) {
-    if (result != nullptr) result->DoWork();
+    if (result != nullptr) {
+      result->DoWork();
+    }
   }
 }
 BENCHMARK(BM_CalibrateWorkLoop);
 
 // Measure the time taken to call into the factory, return the value,
 // determine that it is OK, and invoke a trivial function.
-static void BM_TrivialFactory(int iters) {
+void BM_TrivialFactory(int iters) {
   tensorflow::testing::StopTiming();
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
   for (int i = 0; i != iters; ++i) {
     BenchmarkType* result = factory.TrivialFactory();
-    if (result != nullptr) result->DoWork();
+    if (result != nullptr) {
+      result->DoWork();
+    }
   }
 }
 BENCHMARK(BM_TrivialFactory);
@@ -516,7 +520,7 @@ BENCHMARK(BM_TrivialFactory);
 // Measure the time taken to call into the factory, providing an
 // out-param for the result, evaluating the status result and the
 // result pointer, and invoking the trivial function.
-static void BM_ArgumentFactory(int iters) {
+void BM_ArgumentFactory(int iters) {
   tensorflow::testing::StopTiming();
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
@@ -532,7 +536,7 @@ BENCHMARK(BM_ArgumentFactory);
 
 // Measure the time to use the StatusOr<T*> factory, evaluate the result,
 // and invoke the trivial function.
-static void BM_StatusOrFactory(int iters) {
+void BM_StatusOrFactory(int iters) {
   tensorflow::testing::StopTiming();
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
@@ -548,7 +552,7 @@ BENCHMARK(BM_StatusOrFactory);
 // Measure the time taken to call into the factory, providing an
 // out-param for the result, evaluating the status result and the
 // result pointer, and invoking the trivial function.
-static void BM_ArgumentFactoryFail(int iters) {
+void BM_ArgumentFactoryFail(int iters) {
   tensorflow::testing::StopTiming();
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
@@ -564,7 +568,7 @@ BENCHMARK(BM_ArgumentFactoryFail);
 
 // Measure the time to use the StatusOr<T*> factory, evaluate the result,
 // and invoke the trivial function.
-static void BM_StatusOrFactoryFail(int iters) {
+void BM_StatusOrFactoryFail(int iters) {
   tensorflow::testing::StopTiming();
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
@@ -580,7 +584,7 @@ BENCHMARK(BM_StatusOrFactoryFail);
 // Measure the time taken to call into the factory, providing an
 // out-param for the result, evaluating the status result and the
 // result pointer, and invoking the trivial function.
-static void BM_ArgumentFactoryFailShortMsg(int iters) {
+void BM_ArgumentFactoryFailShortMsg(int iters) {
   tensorflow::testing::StopTiming();
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
@@ -596,7 +600,7 @@ BENCHMARK(BM_ArgumentFactoryFailShortMsg);
 
 // Measure the time to use the StatusOr<T*> factory, evaluate the result,
 // and invoke the trivial function.
-static void BM_StatusOrFactoryFailShortMsg(int iters) {
+void BM_StatusOrFactoryFailShortMsg(int iters) {
   tensorflow::testing::StopTiming();
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
@@ -612,7 +616,7 @@ BENCHMARK(BM_StatusOrFactoryFailShortMsg);
 // Measure the time taken to call into the factory, providing an
 // out-param for the result, evaluating the status result and the
 // result pointer, and invoking the trivial function.
-static void BM_ArgumentFactoryFailLongMsg(int iters) {
+void BM_ArgumentFactoryFailLongMsg(int iters) {
   tensorflow::testing::StopTiming();
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();
@@ -628,7 +632,7 @@ BENCHMARK(BM_ArgumentFactoryFailLongMsg);
 
 // Measure the time to use the StatusOr<T*> factory, evaluate the result,
 // and invoke the trivial function.
-static void BM_StatusOrFactoryFailLongMsg(int iters) {
+void BM_StatusOrFactoryFailLongMsg(int iters) {
   tensorflow::testing::StopTiming();
   BenchmarkFactory<BenchmarkType> factory;
   tensorflow::testing::StartTiming();

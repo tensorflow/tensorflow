@@ -1631,6 +1631,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildKernelThunk(
 
   // Compute the input buffer indices.
   std::vector<BufferAllocation::Slice> io_buffers;
+  io_buffers.reserve(io_hlos.size());
   for (const HloInstruction* io_hlo : io_hlos) {
     io_buffers.push_back(GetAllocationSlice(*LatestNonGteAncestor(io_hlo)));
   }
@@ -1796,7 +1797,7 @@ namespace {
 Status CheckWhileBuffersShareAllocation(
     const HloInstruction* xla_while,
     const BufferAssignment& buffer_assignment) {
-  return ShapeUtil::ForEachSubshape(
+  return ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
       [&buffer_assignment, &xla_while](const Shape& /*subshape*/,
                                        const ShapeIndex& index) -> Status {

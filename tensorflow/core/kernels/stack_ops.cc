@@ -147,7 +147,7 @@ class StackOp : public OpKernel {
   explicit StackOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("elem_type", &elem_type_));
     OP_REQUIRES_OK(context, context->GetAttr("stack_name", &stack_name_));
-    if (stack_name_ == "") stack_name_ = name();
+    if (stack_name_.empty()) stack_name_ = name();
   }
 
   void Compute(OpKernelContext* ctx) override {

@@ -196,7 +196,7 @@ std::vector<ScopeNode*> TFScope::Account(const std::vector<ScopeNode*>& roots,
     node->ResetTotalStats();
     std::vector<ScopeNode*> act_cnodes = Account(node->children, opts);
 
-    node->account = ShouldAccount(node, opts);
+    node->account = ReAccount(node, opts);
     if (node->account || !act_cnodes.empty()) {
       node->show_children.clear();
       node->ResetTotalStats();

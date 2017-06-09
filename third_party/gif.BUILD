@@ -24,6 +24,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = select({
         ":windows": [":windows_polyfill"],
+        ":windows_msvc": [":windows_polyfill"],
         "//conditions:default": [],
     }),
 )
@@ -41,6 +42,15 @@ genrule(
 )
 
 config_setting(
+    name = "windows_msvc",
+    values = {
+        "cpu": "x64_windows_msvc",
+    },
+)
+
+config_setting(
     name = "windows",
-    values = {"cpu": "x64_windows_msvc"},
+    values = {
+        "cpu": "x64_windows",
+    },
 )

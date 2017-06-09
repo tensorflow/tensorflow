@@ -897,7 +897,7 @@ class _ClassPageInfo(object):
 
   @property
   def guides(self):
-    """Returns a markdown string containing backlinks to relevent api_guides."""
+    """Returns a markdown string containing backlinks to relevant api_guides."""
     return self._guides
 
   def set_guides(self, guides):

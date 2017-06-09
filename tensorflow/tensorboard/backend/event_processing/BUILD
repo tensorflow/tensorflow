@@ -134,18 +134,6 @@ py_library(
     ],
 )
 
-py_test(
-    name = "plugin_asset_util_test",
-    size = "small",
-    srcs = ["plugin_asset_util_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":event_multiplexer",
-        ":plugin_asset_util",
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
 py_library(
     name = "event_file_inspector",
     srcs = ["event_file_inspector.py"],

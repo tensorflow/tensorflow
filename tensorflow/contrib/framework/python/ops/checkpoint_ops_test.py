@@ -90,7 +90,7 @@ class GenerateVocabRemappingTest(test.TestCase):
 
 
 class LoadAndRemapMatrixTest(test.TestCase):
-  """Tests for the load_and_remap_weight_matrix() op."""
+  """Tests for the load_and_remap_matrix() op."""
 
   def setUp(self):
     ops.reset_default_graph()
@@ -118,7 +118,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
 
     # No column remapping, new weight matrix has second row, then first row.
     row_remapping = [1, 0]
-    remapped_weight_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=row_remapping,
@@ -128,12 +128,12 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_cols=self.old_num_cols)
     with self.test_session():
       self.assertAllClose(self.matrix_value[row_remapping],
-                          remapped_weight_matrix.eval())
+                          remapped_matrix.eval())
 
     # No row remapping, new weight matrix has third col, then first col.
     row_remapping = list(range(self.old_num_rows))
     col_remapping = [2, 0]
-    remapped_weight_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=row_remapping,
@@ -143,12 +143,12 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_cols=len(col_remapping))
     with self.test_session():
       self.assertAllClose(self.matrix_value[row_remapping][:, col_remapping],
-                          remapped_weight_matrix.eval())
+                          remapped_matrix.eval())
 
     # Both row and column remappings.
     row_remapping = [1, 0, 4]
     col_remapping = [1, 15]
-    remapped_weight_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=row_remapping,
@@ -158,12 +158,12 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_cols=len(col_remapping))
     with self.test_session():
       self.assertAllClose(self.matrix_value[row_remapping][:, col_remapping],
-                          remapped_weight_matrix.eval())
+                          remapped_matrix.eval())
 
   def test_load_and_remap_with_init(self):
     """Tests the op's load and remap where there are missing entries."""
     init_val = 42
-    remapped_weight_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=[2, -1, 0],
@@ -172,18 +172,17 @@ class LoadAndRemapMatrixTest(test.TestCase):
         num_rows=3,
         num_cols=2)
 
-    expected_remapped_weight_matrix = np.reshape(
+    expected_remapped_matrix = np.reshape(
         [33, init_val, init_val, init_val, 1, init_val], [3, 2])
 
     with self.test_session():
-      self.assertAllClose(expected_remapped_weight_matrix,
-                          remapped_weight_matrix.eval())
+      self.assertAllClose(expected_remapped_matrix, remapped_matrix.eval())
 
   def test_load_and_remap_all_missing_rows(self):
     """Tests when all the rows are missing and need to be initialized."""
     num_rows = 7
     initializing_values = [42] * num_rows * self.old_num_cols
-    remapped_weight_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=[-1] * num_rows,
@@ -194,14 +193,14 @@ class LoadAndRemapMatrixTest(test.TestCase):
     with self.test_session():
       self.assertAllClose(
           np.reshape(initializing_values, (num_rows, self.old_num_cols)),
-          remapped_weight_matrix.eval())
+          remapped_matrix.eval())
 
   def test_load_and_remap_all_missing_rows_and_cols(self):
     """Tests when all the rows & cols are missing and need to be initialized."""
     num_rows = 7
     num_cols = 4
     initializing_values = [42] * num_rows * num_cols
-    remapped_weight_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=[-1] * num_rows,
@@ -212,42 +211,216 @@ class LoadAndRemapMatrixTest(test.TestCase):
     with self.test_session():
       self.assertAllClose(
           np.reshape(initializing_values, (num_rows, num_cols)),
-          remapped_weight_matrix.eval())
+          remapped_matrix.eval())
 
-  def test_load_and_remap_duplicate_row_remapping(self):
-    """Tests when an old row maps to multiple new rows.
+  def test_load_and_remap_invalid_remapping(self):
+    """Tests that errors are raised when an ID maps to multiple new IDs.
 
     (This should usually not happen when using public APIs).
     """
-    row_remapping = [1, 0, 0, 0, 1, 2]
-    remapped_weight_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+    invalid_remapping = [1, 0, 0, 0, 1, 2]
+
+    # Invalid row remapping.
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
-        row_remapping=row_remapping,
+        row_remapping=invalid_remapping,
         col_remapping=[],
         initializing_values=[],
-        num_rows=len(row_remapping),
+        num_rows=len(invalid_remapping),
         num_cols=self.old_num_cols)
-    with self.test_session():
-      self.assertAllClose(self.matrix_value[row_remapping],
-                          remapped_weight_matrix.eval())
+    with self.test_session(), self.assertRaises(errors.UnimplementedError):
+      remapped_matrix.eval()
 
-  def test_load_and_remap_invalid_col_remapping(self):
-    """Tests that an error is raised when an old col maps to multiple new cols.
-
-    (This should usually not happen when using public APIs).
-    """
-    col_remapping = [1, 0, 0, 0, 1, 2]
-    remapped_weight_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+    # Invalid column remapping.
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
         ckpt_path=[self.bundle_file],
         old_tensor_name=self.old_tensor_name,
         row_remapping=list(range(self.old_num_rows)),
-        col_remapping=col_remapping,
+        col_remapping=invalid_remapping,
         initializing_values=[],
         num_rows=self.old_num_rows,
-        num_cols=len(col_remapping))
+        num_cols=len(invalid_remapping))
     with self.test_session(), self.assertRaises(errors.UnimplementedError):
-      remapped_weight_matrix.eval()
+      remapped_matrix.eval()
+
+  def test_load_and_remap_incorrect_initializing_values(self):
+    """Tests that errors are raised with incorrect number of init values."""
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+        ckpt_path=[self.bundle_file],
+        old_tensor_name=self.old_tensor_name,
+        row_remapping=[2, -1, 0],
+        col_remapping=[1, -1],
+        # Too few initializing values - there should be 4. For some reason,
+        # initializing_values must contain no element (instead of 3 or fewer) to
+        # ensure that a seg fault would reliably occur if the check raising the
+        # InvalidArgumentError were not present.
+        initializing_values=[],
+        num_rows=3,
+        num_cols=2)
+    with self.test_session(), self.assertRaises(errors.InvalidArgumentError):
+      remapped_matrix.eval()
+
+    remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+        ckpt_path=[self.bundle_file],
+        old_tensor_name=self.old_tensor_name,
+        row_remapping=[2, -1, 0],
+        col_remapping=[1, -1],
+        # Too many initializing values - there should be 4.
+        initializing_values=[0] * 5,
+        num_rows=3,
+        num_cols=2)
+    with self.test_session(), self.assertRaises(errors.InvalidArgumentError):
+      remapped_matrix.eval()
+
+
+class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
+  """Tests for the load_and_remap_matrix() op.
+
+  (Specifically focused on the max_rows_in_memory arg and its effects on
+  TensorBundle's BundleReader and TensorSlice logic).
+  """
+
+  def _test_loading_variable_with_max_rows(self, np_value, partitioner,
+                                           max_rows_in_memory):
+    """Helper function for various tests using max_rows_in_memory."""
+    ops.reset_default_graph()
+    old_tensor_name = 'matrix_to_load_and_remap'
+    matrix = variable_scope.get_variable(
+        old_tensor_name,
+        dtype=dtypes.float32,
+        initializer=constant_op.constant(np_value, dtype=dtypes.float32),
+        partitioner=partitioner)
+
+    with self.test_session() as sess:
+      ckpt_path = os.path.join(test.get_temp_dir(), 'temp_ckpt')
+      save = saver.Saver([matrix])
+      variables.global_variables_initializer().run()
+      save.save(sess, ckpt_path)
+      num_rows, num_cols = np_value.shape
+
+      # Tests loading the entire tensor (except reversed).
+      remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+          ckpt_path=ckpt_path,
+          old_tensor_name=old_tensor_name,
+          # Simply reverses the rows of the matrix.
+          row_remapping=list(range(num_rows - 1, -1, -1)),
+          col_remapping=[],
+          initializing_values=[],
+          num_rows=num_rows,
+          num_cols=num_cols,
+          max_rows_in_memory=max_rows_in_memory)
+      self.assertAllClose(np_value[::-1], remapped_matrix.eval())
+
+      # Tests loading the tensor (except for the first and last rows), with
+      # uninitialized values. Requires num_rows to be at least 3 since we're
+      # skipping the first and last rows.
+      self.assertGreater(num_rows, 2)
+      prefix_rows = 2
+      suffix_rows = 3
+      remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+          ckpt_path=ckpt_path,
+          old_tensor_name=old_tensor_name,
+          # Reverses the rows of the matrix, then prepends and appends
+          # uninitialized rows.
+          row_remapping=([-1] * prefix_rows + list(range(1, num_rows - 1)) +
+                         [-1] * suffix_rows),
+          col_remapping=[],
+          initializing_values=[42] * (prefix_rows + suffix_rows) * num_cols,
+          num_rows=num_rows - 2 + prefix_rows + suffix_rows,
+          num_cols=num_cols,
+          max_rows_in_memory=max_rows_in_memory)
+      self.assertAllClose(
+          np.vstack([
+              np.tile(42, [prefix_rows, num_cols]), np_value[1:-1],
+              np.tile(42, [suffix_rows, num_cols])
+          ]), remapped_matrix.eval())
+
+      # Tests when everything is taken from initializing_values.
+      new_rows = 7
+      initializing_values = [42] * new_rows * num_cols
+      remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
+          ckpt_path=ckpt_path,
+          old_tensor_name=old_tensor_name,
+          # Nothing is loaded from the old tensor.
+          row_remapping=[-1] * new_rows,
+          col_remapping=[],
+          initializing_values=initializing_values,
+          num_rows=new_rows,
+          num_cols=num_cols,
+          max_rows_in_memory=max_rows_in_memory)
+      self.assertAllClose(
+          np.reshape(initializing_values, (new_rows, num_cols)),
+          remapped_matrix.eval())
+
+  def test_loading_rows_divisible_by_max_rows(self):
+    """Tests loading normal var when rows are evenly divisible by max_rows."""
+    self._test_loading_variable_with_max_rows(
+        np_value=np.reshape(list(range(0, 36)), (9, 4)),
+        partitioner=None,
+        # 9 is evenly divisible by 3.
+        max_rows_in_memory=3)
+
+  def test_loading_rows_not_divisible_by_max_rows(self):
+    """Tests loading normal var when rows aren't divisible by max_rows."""
+    self._test_loading_variable_with_max_rows(
+        np_value=np.reshape(list(range(0, 36)), (9, 4)),
+        partitioner=None,
+        # 9 is not evenly divisible by 4.
+        max_rows_in_memory=4)
+
+  def test_loading_rows_less_than_max_rows(self):
+    """Tests loading normal var as a single slice.
+
+    (When the specified max_rows_in_memory is larger than the number of rows)
+    """
+    self._test_loading_variable_with_max_rows(
+        np_value=np.reshape(list(range(0, 36)), (9, 4)),
+        partitioner=None,
+        # 10 > 9.
+        max_rows_in_memory=10)
+
+  def test_loading_no_max_rows(self):
+    """Tests loading normal var as a single slice with no valid max_rows."""
+    self._test_loading_variable_with_max_rows(
+        np_value=np.reshape(list(range(0, 18)), (6, 3)),
+        partitioner=None,
+        max_rows_in_memory=-1)
+
+  def test_loading_partitions_equals_max_rows(self):
+    """Tests loading partitioned var sliced on partition boundary."""
+    self._test_loading_variable_with_max_rows(
+        np_value=np.reshape(list(range(0, 36)), (9, 4)),
+        partitioner=partitioned_variables.fixed_size_partitioner(3),
+        # With a tensor of shape [9, 3] and 3 partitions, each partition has
+        # exactly 3 rows.
+        max_rows_in_memory=3)
+
+  def test_loading_partitions_greater_than_max_rows(self):
+    """Tests loading partitioned var with more slices than partitions."""
+    self._test_loading_variable_with_max_rows(
+        np_value=np.reshape(list(range(0, 36)), (9, 4)),
+        partitioner=partitioned_variables.fixed_size_partitioner(3),
+        # Even though each partition has 3 rows, we'll only load the tensor one
+        # row at a time.
+        max_rows_in_memory=1)
+
+  def test_loading_partitions_less_than_max_rows(self):
+    """Tests loading partitioned var as a single slice.
+
+    (When the specified max_rows_in_memory is larger than the number of rows)
+    """
+    self._test_loading_variable_with_max_rows(
+        np_value=np.reshape(list(range(0, 36)), (9, 4)),
+        partitioner=partitioned_variables.fixed_size_partitioner(3),
+        max_rows_in_memory=10)
+
+  def test_loading_partitions_no_max_rows(self):
+    """Tests loading partitioned var as single slice with no valid max_rows."""
+    self._test_loading_variable_with_max_rows(
+        np_value=np.reshape(list(range(0, 36)), (9, 4)),
+        partitioner=partitioned_variables.fixed_size_partitioner(3),
+        max_rows_in_memory=-1)
 
 
 class LoadAndRemapWrappersTest(test.TestCase):
@@ -276,7 +449,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
 
   def test_load_and_remap_matrix(self):
     """Tests the end-to-end loading / remapping of weights."""
-    # load_and_remap_matrix() is the generalized wrapper that takes in row and
+    # _load_and_remap_matrix() is the generalized wrapper that takes in row and
     # column vocabulary files, calls the relevant remappings, and returns the
     # weight matrix.  Take this example to be linear multi-class by providing
     # both row and column vocabularies.
@@ -458,7 +631,7 @@ class LoadAndRemapWrappersTest(test.TestCase):
                           remapped_matrix.as_tensor().eval())
 
   def test_load_embedding_initializer(self):
-    """Tests for the load_embedding initializer wrapper."""
+    """Tests for the load_embedding_initializer wrapper."""
     embedding_loading_initializer = (
         contrib_framework.load_embedding_initializer(
             new_vocab_file=self.new_feature_vocab_file,
@@ -551,6 +724,97 @@ class LoadMulticlassBiasTest(test.TestCase):
       variables.global_variables_initializer().run()
       self.assertAllClose(expected_remapped_bias_vector,
                           remapped_bias_vector.as_tensor().eval())
+
+
+class LoadVariableSlotTest(test.TestCase):
+  """Tests for the load_variable_slot_initializer functionality."""
+
+  def setUp(self):
+    ops.reset_default_graph()
+    dim = 1
+    num = 3
+    with ops.name_scope('some_scope'):
+      # Basically from 0 to dim*num-1.
+      flat_data = math_ops.linspace(0.0, dim * num - 1, dim * num)
+      accum = variables.Variable(
+          array_ops.reshape(flat_data, (num, dim)), name='accum')
+    save = saver.Saver([accum])
+    with self.test_session() as sess:
+      variables.global_variables_initializer().run()
+      self.bundle_file = os.path.join(test.get_temp_dir(), 'accum_checkpoint')
+      save.save(sess, self.bundle_file)
+
+    self.new_class_vocab_file = os.path.join(
+        test.test_src_dir_path(_TESTDATA_PATH), 'keyword_new.txt')
+    self.old_class_vocab_file = os.path.join(
+        test.test_src_dir_path(_TESTDATA_PATH), 'keyword.txt')
+    self.init_val = 42
+
+    def _init_val_initializer(shape, dtype=None, partition_info=None):
+      del dtype, partition_info  # Unused by this unit-testing initializer.
+      return array_ops.tile(
+          constant_op.constant([[self.init_val]], dtype=dtypes.float32), shape)
+
+    self.initializer = _init_val_initializer
+
+  def test_load_variable_slot_initializer(self):
+    """Tests for the slot initializer wrapper."""
+    # We have an initializer for each of two partitioned variables, which will
+    # be [3, 1] and [2, 1].  The partitioning information is passed here in
+    # initializer construction, as opposed to through a variable scope during
+    # variable creation.
+    variable_slot_initializer_part_0 = (
+        contrib_framework.load_variable_slot_initializer(
+            new_row_vocab_file=self.new_class_vocab_file,
+            old_row_vocab_file=self.old_class_vocab_file,
+            new_row_vocab_size=4,
+            new_col_vocab_size=1,
+            primary_partition_info=variable_scope._PartitionInfo(
+                full_shape=[5, 1], var_offset=[0, 0]),
+            old_tensor_name='some_scope/accum',
+            ckpt_path=[self.bundle_file],
+            num_row_oov_buckets=1,
+            initializer=self.initializer))
+    variable_slot_initializer_part_1 = (
+        contrib_framework.load_variable_slot_initializer(
+            new_row_vocab_file=self.new_class_vocab_file,
+            old_row_vocab_file=self.old_class_vocab_file,
+            new_row_vocab_size=4,
+            new_col_vocab_size=1,
+            primary_partition_info=variable_scope._PartitionInfo(
+                full_shape=[5, 1], var_offset=[3, 0]),
+            old_tensor_name='some_scope/accum',
+            ckpt_path=[self.bundle_file],
+            num_row_oov_buckets=1,
+            initializer=self.initializer))
+
+    expected_remapped_accum_vector_part_0 = np.reshape([2, 0, self.init_val],
+                                                       [3, 1])
+
+    expected_remapped_accum_vector_part_1 = np.reshape([1, self.init_val],
+                                                       [2, 1])
+
+    # Since there is no variable scope here, partition_info will be None, so
+    # if variable_slot_initializer_part_0 and variable_slot_initializer_part_1
+    # were instead instances of load_and_remap_matrix_initializer, the part_0
+    # obtained vector would still be [2, 0, self.init_val], but the part_1
+    # obtained vector would be [2, 0], since the partition_info would default to
+    # assuming a single partition.
+    remapped_accum_vector_part_0 = variable_scope.get_variable(
+        name='accum/obtained_accum_vector_part_0',
+        shape=[3, 1],
+        initializer=variable_slot_initializer_part_0)
+    remapped_accum_vector_part_1 = variable_scope.get_variable(
+        name='accum/obtained_accum_vector_part_1',
+        shape=[2, 1],
+        initializer=variable_slot_initializer_part_1)
+
+    with self.test_session():
+      variables.global_variables_initializer().run()
+      self.assertAllClose(expected_remapped_accum_vector_part_0,
+                          remapped_accum_vector_part_0.eval())
+      self.assertAllClose(expected_remapped_accum_vector_part_1,
+                          remapped_accum_vector_part_1.eval())
 
 
 if __name__ == '__main__':

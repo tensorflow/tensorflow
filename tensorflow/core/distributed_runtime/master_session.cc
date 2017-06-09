@@ -1405,7 +1405,7 @@ Status MasterSession::DoPartialRun(CallOptions* opts,
         run_state->rcg->CheckFetches(req, run_state, execution_state_.get()));
   }
 
-  // Determine if this partial run satisfies all the pending inputs and ouputs.
+  // Determine if this partial run satisfies all the pending inputs and outputs.
   for (size_t i = 0; i < req.num_feeds(); ++i) {
     auto it = run_state->pending_inputs.find(req.feed_name(i));
     it->second = true;

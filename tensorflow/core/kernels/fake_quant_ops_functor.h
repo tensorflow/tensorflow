@@ -37,25 +37,27 @@ namespace tensorflow {
 
 // Gymnastics with nudged zero point is to ensure that real zero maps to
 // an integer, which is required for e.g. zero-padding in convolutional layers.
-// Returns (nudged_min, nudged_max, nudged_scale).
+// Outputs nudged_min, nudged_max, nudged_scale.
 EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE void Nudge(
-    const float min, const float max, const int steps, float* nudged_min,
-    float* nudged_max, float* scale) {
-  const float steps_float = static_cast<float>(steps);
-  *scale = (max - min) / (steps_float - 0.0f);
-  const float zero_point_from_min = 0.0f - min / *scale;
-  const uint8 nudged_zero_point = [zero_point_from_min, steps, steps_float] {
-    if (zero_point_from_min < 0.0f) {
-      return static_cast<uint8>(0);
+    const float min, const float max, const int quant_min, const int quant_max,
+    float* nudged_min, float* nudged_max, float* scale) {
+  const float quant_min_float = static_cast<float>(quant_min);
+  const float quant_max_float = static_cast<float>(quant_max);
+  *scale = (max - min) / (quant_max_float - quant_min_float);
+  const float zero_point_from_min = quant_min_float - min / *scale;
+  const uint8 nudged_zero_point = [zero_point_from_min, quant_min,
+                                   quant_min_float, quant_max,
+                                   quant_max_float] {
+    if (zero_point_from_min < quant_min_float) {
+      return static_cast<uint8>(quant_min);
     }
-    if (zero_point_from_min > steps_float) {
-      return static_cast<uint8>(steps);
+    if (zero_point_from_min > quant_max_float) {
+      return static_cast<uint8>(quant_max);
     }
     return static_cast<uint8>(StdRound(zero_point_from_min));
   }();
-
-  *nudged_min = (0.0f - nudged_zero_point) * (*scale);
-  *nudged_max = (steps_float - nudged_zero_point) * (*scale);
+  *nudged_min = (quant_min_float - nudged_zero_point) * (*scale);
+  *nudged_max = (quant_max_float - nudged_zero_point) * (*scale);
 }
 
 template <typename T>
@@ -76,13 +78,15 @@ using Flat = typename tensorflow::TTypes<T>::Flat;
 template <typename Device>
 struct FakeQuantWithMinMaxArgsFunctor {
   void operator()(const Device& d, ConstFlat<float> inputs, const float min,
-                  const float max, const int steps, Flat<float> outputs) {
+                  const float max, const int quant_min, const int quant_max,
+                  Flat<float> outputs) {
     eigen_assert(min <= 0.0f && "min should be <= 0.0");
     eigen_assert(max >= 0.0f && "max should be >= 0.0");
     eigen_assert(min < max && "min should be < max");
 
     float nudged_min, nudged_max, nudged_scale;
-    Nudge(min, max, steps, &nudged_min, &nudged_max, &nudged_scale);
+    Nudge(min, max, quant_min, quant_max, &nudged_min, &nudged_max,
+          &nudged_scale);
     const float inv_nudged_scale = 1.0f / nudged_scale;
 
     auto clamped = inputs.cwiseMin(nudged_max).cwiseMax(nudged_min);
@@ -99,13 +103,15 @@ template <typename Device>
 struct FakeQuantWithMinMaxArgsGradientFunctor {
   void operator()(const Device& d, ConstFlat<float> gradients,
                   ConstFlat<float> inputs, const float min, const float max,
-                  const int steps, Flat<float> backprops) {
+                  const int quant_min, const int quant_max,
+                  Flat<float> backprops) {
     eigen_assert(min <= 0.0f && "min should be <= 0.0");
     eigen_assert(max >= 0.0f && "max should be >= 0.0");
     eigen_assert(min < max && "min should be < max");
 
     float nudged_min, nudged_max, nudged_scale;
-    Nudge(min, max, steps, &nudged_min, &nudged_max, &nudged_scale);
+    Nudge(min, max, quant_min, quant_max, &nudged_min, &nudged_max,
+          &nudged_scale);
 
     auto between_nudged_min_max =
         (inputs >= nudged_min && inputs <= nudged_max)
@@ -120,10 +126,11 @@ template <typename Device>
 struct FakeQuantWithMinMaxVarsFunctor {
   void operator()(const Device& d, ConstFlat<float> inputs,
                   ConstScalar<float> min, ConstScalar<float> max,
-                  const int steps,
+                  const int quant_min, const int quant_max,
                   Flat<float> outputs) {
     float nudged_min, nudged_max, nudged_scale;
-    Nudge(min(), max(), steps, &nudged_min, &nudged_max, &nudged_scale);
+    Nudge(min(), max(), quant_min, quant_max, &nudged_min, &nudged_max,
+          &nudged_scale);
     const auto nudged_scale_repl = inputs.constant(nudged_scale);
 
     const auto clamped = inputs.cwiseMin(nudged_max).cwiseMax(nudged_min);
@@ -140,12 +147,13 @@ template <typename Device>
 struct FakeQuantWithMinMaxVarsGradientFunctor {
   void operator()(const Device& d, ConstFlat<float> gradients,
                   ConstFlat<float> inputs, ConstScalar<float> min,
-                  ConstScalar<float> max, const int steps,
-                  Flat<float> backprops_wrt_input,
+                  ConstScalar<float> max, const int quant_min,
+                  const int quant_max, Flat<float> backprops_wrt_input,
                   Scalar<float> backprop_wrt_min,
                   Scalar<float> backprop_wrt_max) {
     float nudged_min, nudged_max, nudged_scale;
-    Nudge(min(), max(), steps, &nudged_min, &nudged_max, &nudged_scale);
+    Nudge(min(), max(), quant_min, quant_max, &nudged_min, &nudged_max,
+          &nudged_scale);
 
     const auto between_min_max =
         (inputs >= nudged_min && inputs <= nudged_max)
@@ -173,11 +181,12 @@ using Index = typename tensorflow::TTypes<float>::ConstTensor::Index;
 template <typename Device>
 struct FakeQuant1WithMinMaxVarsPerChannelFunctor {
   void operator()(const Device& d, ConstVec<float> inputs, ConstVec<float> min,
-                  ConstVec<float> max, const int steps,
+                  ConstVec<float> max, const int quant_min, const int quant_max,
                   Vec<float> outputs) {
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      Nudge(min(i), max(i), steps, &nudged_min, &nudged_max, &nudged_scale);
+      Nudge(min(i), max(i), quant_min, quant_max, &nudged_min, &nudged_max,
+            &nudged_scale);
       const float clamped =
           std::max(std::min(inputs(i), nudged_max), nudged_min);
       const float clamped_shifted = clamped - nudged_min;
@@ -194,13 +203,14 @@ template <typename Device>
 struct FakeQuant2WithMinMaxVarsPerChannelFunctor {
   void operator()(const Device& d, const Index batch_size, const Index depth,
                   ConstFlat<float> inputs, ConstVec<float> min,
-                  ConstVec<float> max, const int steps,
+                  ConstVec<float> max, const int quant_min, const int quant_max,
                   Flat<float> outputs) {
     Eigen::DSizes<Index, 2> restored(batch_size, depth);
     const auto inputs_restored = inputs.reshape(restored);
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      Nudge(min(i), max(i), steps, &nudged_min, &nudged_max, &nudged_scale);
+      Nudge(min(i), max(i), quant_min, quant_max, &nudged_min, &nudged_max,
+            &nudged_scale);
       const auto clamped =
           inputs_restored.chip<1>(i).cwiseMin(nudged_max).cwiseMax(nudged_min);
       const auto clamped_shifted = clamped - nudged_min;
@@ -218,13 +228,14 @@ template <typename Device>
 struct FakeQuant4WithMinMaxVarsPerChannelFunctor {
   void operator()(const Device& d, const Index batch_size, const Index height,
                   const Index width, const Index depth, ConstFlat<float> inputs,
-                  ConstVec<float> min, ConstVec<float> max, const int steps,
-                  Flat<float> outputs) {
+                  ConstVec<float> min, ConstVec<float> max, const int quant_min,
+                  const int quant_max, Flat<float> outputs) {
     Eigen::DSizes<Index, 4> restored(batch_size, height, width, depth);
     const auto inputs_restored = inputs.reshape(restored);
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      Nudge(min(i), max(i), steps, &nudged_min, &nudged_max, &nudged_scale);
+      Nudge(min(i), max(i), quant_min, quant_max, &nudged_min, &nudged_max,
+            &nudged_scale);
       const auto clamped =
           inputs_restored.chip<3>(i).cwiseMin(nudged_max).cwiseMax(nudged_min);
       const auto clamped_shifted = clamped - nudged_min;
@@ -245,12 +256,13 @@ template <typename Device>
 struct FakeQuant1WithMinMaxVarsPerChannelGradientFunctor {
   void operator()(const Device& d, ConstVec<float> gradients,
                   ConstVec<float> inputs, ConstVec<float> min,
-                  ConstVec<float> max, const int steps,
+                  ConstVec<float> max, const int quant_min, const int quant_max,
                   Vec<float> backprops_wrt_input, Vec<float> backprop_wrt_min,
                   Vec<float> backprop_wrt_max) {
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      Nudge(min(i), max(i), steps, &nudged_min, &nudged_max, &nudged_scale);
+      Nudge(min(i), max(i), quant_min, quant_max, &nudged_min, &nudged_max,
+            &nudged_scale);
 
       const bool between_min_max =
           inputs(i) >= nudged_min && inputs(i) <= nudged_max;
@@ -271,15 +283,16 @@ template <typename Device>
 struct FakeQuant2WithMinMaxVarsPerChannelGradientFunctor {
   void operator()(const Device& d, const Index batch_size, const Index depth,
                   ConstFlat<float> gradients, ConstFlat<float> inputs,
-                  ConstVec<float> min, ConstVec<float> max, const int steps,
-                  Flat<float> backprops_wrt_input, Vec<float> backprop_wrt_min,
-                  Vec<float> backprop_wrt_max) {
+                  ConstVec<float> min, ConstVec<float> max, const int quant_min,
+                  const int quant_max, Flat<float> backprops_wrt_input,
+                  Vec<float> backprop_wrt_min, Vec<float> backprop_wrt_max) {
     Eigen::DSizes<Index, 2> restored(batch_size, depth);
     const auto gradients_restored = gradients.reshape(restored);
     const auto inputs_restored = inputs.reshape(restored);
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      Nudge(min(i), max(i), steps, &nudged_min, &nudged_max, &nudged_scale);
+      Nudge(min(i), max(i), quant_min, quant_max, &nudged_min, &nudged_max,
+            &nudged_scale);
       const auto gradients_chip = gradients_restored.chip<1>(i);
       const auto inputs_chip = inputs_restored.chip<1>(i);
 
@@ -312,15 +325,16 @@ struct FakeQuant4WithMinMaxVarsPerChannelGradientFunctor {
   void operator()(const Device& d, const Index batch_size, const Index height,
                   const Index width, const Index depth,
                   ConstFlat<float> gradients, ConstFlat<float> inputs,
-                  ConstVec<float> min, ConstVec<float> max, const int steps,
-                  Flat<float> backprops_wrt_input, Vec<float> backprop_wrt_min,
-                  Vec<float> backprop_wrt_max) {
+                  ConstVec<float> min, ConstVec<float> max, const int quant_min,
+                  const int quant_max, Flat<float> backprops_wrt_input,
+                  Vec<float> backprop_wrt_min, Vec<float> backprop_wrt_max) {
     Eigen::DSizes<Index, 4> restored(batch_size, height, width, depth);
     const auto gradients_restored = gradients.reshape(restored);
     const auto inputs_restored = inputs.reshape(restored);
     for (Index i = 0; i < min.size(); ++i) {
       float nudged_min, nudged_max, nudged_scale;
-      Nudge(min(i), max(i), steps, &nudged_min, &nudged_max, &nudged_scale);
+      Nudge(min(i), max(i), quant_min, quant_max, &nudged_min, &nudged_max,
+            &nudged_scale);
       const auto gradients_chip = gradients_restored.chip<3>(i);
       const auto inputs_chip = inputs_restored.chip<3>(i);
 

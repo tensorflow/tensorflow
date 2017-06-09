@@ -62,20 +62,20 @@ class TFStats {
   const TFMultiGraphNodeProto& ShowMultiGraphNode(const string& cmd,
                                                   const Options& opts);
 
+  void ParseRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta);
+  void ParseOpLog(std::unique_ptr<OpLog> op_log);
+
  private:
+  bool Validate(const Options& opts);
+
   void ParseGraph();
 
-  void ParseOpLog();
-
-  void ParseRunMeta();
-
+  std::set<int64> steps_;
+  std::unique_ptr<GraphDef> graph_;
   std::unique_ptr<TFScope> scope_view_;
   std::unique_ptr<TFGraph> graph_view_;
   std::unique_ptr<TFCode> code_view_;
   std::unique_ptr<TFOp> op_view_;
-  std::unique_ptr<GraphDef> graph_;
-  std::unique_ptr<RunMetadata> run_meta_;
-  std::unique_ptr<OpLog> op_log_;
   std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader_;
   // Store TFGraphNode instead of TFGraphNode* to avoid large number of
   // dynamic alloc.

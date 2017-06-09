@@ -1137,7 +1137,7 @@ void BufferAssigner::BuildColocatedBufferSets(
       const HloOpcode opcode = instruction->opcode();
       if (opcode == HloOpcode::kWhile) {
         const HloInstruction* while_hlo = instruction;
-        TF_CHECK_OK(ShapeUtil::ForEachSubshape(
+        ShapeUtil::ForEachSubshape(
             while_hlo->shape(),
             [this, while_hlo, &points_to_analysis, &buffer_liveness,
              buffer_size, computation, colocated_buffer_sets](
@@ -1165,13 +1165,12 @@ void BufferAssigner::BuildColocatedBufferSets(
               AddWhileSetToColocatedBufferSets(
                   colocated_set, init_buffer, while_hlo, *computation,
                   buffer_liveness, buffer_size, colocated_buffer_sets);
-              return Status::OK();
-            }));
+            });
       } else if (opcode == HloOpcode::kCall) {
         const HloInstruction* call_hlo = instruction;
         const HloInstruction* root_hlo =
             call_hlo->to_apply()->root_instruction();
-        TF_CHECK_OK(ShapeUtil::ForEachSubshape(
+        ShapeUtil::ForEachSubshape(
             call_hlo->shape(),
             [this, call_hlo, root_hlo, &points_to_analysis,
              colocated_buffer_sets](const Shape& /*subshape*/,
@@ -1184,8 +1183,7 @@ void BufferAssigner::BuildColocatedBufferSets(
               AddBufferToColocatedSet(root_hlo, index, points_to_analysis,
                                       &colocated_set);
               AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
-              return Status::OK();
-            }));
+            });
       }
     }
   }
