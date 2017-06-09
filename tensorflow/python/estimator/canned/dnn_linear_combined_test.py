@@ -361,54 +361,6 @@ class DNNOnlyClassifierTrainTest(
         self, _dnn_classifier_fn)
 
 
-# A function to mimic dnn-regressor init reuse same tests.
-def _dnn_regressor_fn(
-    hidden_units,
-    feature_columns,
-    model_dir=None,
-    label_dimension=1,
-    weight_feature_key=None,
-    optimizer='Adagrad',
-    config=None,
-    input_layer_partitioner=None):
-  return dnn_linear_combined.DNNLinearCombinedRegressor(
-      model_dir=model_dir,
-      dnn_hidden_units=hidden_units,
-      dnn_feature_columns=feature_columns,
-      dnn_optimizer=optimizer,
-      label_dimension=label_dimension,
-      weight_feature_key=weight_feature_key,
-      input_layer_partitioner=input_layer_partitioner,
-      config=config)
-
-
-class DNNOnlyRegressorEvaluateTest(
-    dnn_testing_utils.BaseDNNRegressorEvaluateTest, test.TestCase):
-
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    test.TestCase.__init__(self, methodName)
-    dnn_testing_utils.BaseDNNRegressorEvaluateTest.__init__(
-        self, _dnn_regressor_fn)
-
-
-class DNNOnlyRegressorPredictTest(
-    dnn_testing_utils.BaseDNNRegressorPredictTest, test.TestCase):
-
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    test.TestCase.__init__(self, methodName)
-    dnn_testing_utils.BaseDNNRegressorPredictTest.__init__(
-        self, _dnn_regressor_fn)
-
-
-class DNNOnlyRegressorTrainTest(
-    dnn_testing_utils.BaseDNNRegressorTrainTest, test.TestCase):
-
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    test.TestCase.__init__(self, methodName)
-    dnn_testing_utils.BaseDNNRegressorTrainTest.__init__(
-        self, _dnn_regressor_fn)
-
-
 class DNNLinearCombinedClassifierIntegrationTest(test.TestCase):
 
   def setUp(self):

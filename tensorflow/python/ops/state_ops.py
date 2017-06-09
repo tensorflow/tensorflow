@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Variables. See the @{$python/state_ops} guide.
+"""Variables. See the @{python/state_ops} guide.
 
 @@Variable
 @@global_variables

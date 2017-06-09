@@ -68,7 +68,7 @@ module tf.graph.util {
    * progress
    * of the subtask and the subtask message. The parent task should pass a
    * subtracker to its subtasks. The subtask reports its own progress which
-   * becames relative to the main task.
+   * becomes relative to the main task.
    */
   export function getSubtaskTracker(
       parentTracker: ProgressTracker, impactOnTotalProgress: number,

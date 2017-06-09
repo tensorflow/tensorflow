@@ -19,6 +19,8 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/platform/types.h"
 
+#include <Eigen/Core>
+
 namespace xla {
 
 using ::tensorflow::string;

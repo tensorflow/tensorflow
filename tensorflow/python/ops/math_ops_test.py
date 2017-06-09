@@ -424,9 +424,9 @@ class DivAndModTest(test_util.TensorFlowTestCase):
       tf_divs = array_ops.constant(divs)
       tf2_result = (tf_nums // tf_divs * tf_divs + tf_nums % tf_divs).eval()
       np_result = (nums // divs) * divs + (nums % divs)
-      # consistentcy with numpy
+      # Consistent with numpy
       self.assertAllEqual(tf_result, np_result)
-      # consistentcy with two forms of divide
+      # Consistent with two forms of divide
       self.assertAllEqual(tf_result, tf2_result)
       # consistency for truncation form
       tf3_result = (math_ops.truncatediv(nums, divs) * divs +

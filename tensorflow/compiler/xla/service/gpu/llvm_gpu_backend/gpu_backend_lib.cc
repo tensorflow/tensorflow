@@ -407,9 +407,9 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
   AddOptimizationPasses(flags->opt_level, /*size_level=*/0,
                         target_machine.get(), &module_passes, &function_passes);
-  // Loop unrolling exposes more opportunites for SROA. Therefore, we run SROA
+  // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
   // again after the standard optimization passes [http://b/13329423].
-  // TODO(jingyue): SROA may further expose more optimization opportunites, such
+  // TODO(jingyue): SROA may further expose more optimization opportunities, such
   // as more precise alias analysis and more function inlining (SROA may change
   // the inlining cost of a function). For now, running SROA already emits good
   // enough code for the evaluated benchmarks. We may want to run more

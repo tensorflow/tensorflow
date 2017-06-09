@@ -359,9 +359,9 @@ class LuongAttention(_BaseAttentionMechanism):
 
 
 class BahdanauAttention(_BaseAttentionMechanism):
-  """Implements Bhadanau-style (additive) attention.
+  """Implements Bahdanau-style (additive) attention.
 
-  This attention has two forms.  The first is Bhandanau attention,
+  This attention has two forms.  The first is Bahdanau attention,
   as described in:
 
   Dzmitry Bahdanau, Kyunghyun Cho, Yoshua Bengio.
@@ -502,7 +502,7 @@ class AttentionWrapperState(
 
     Returns:
       A new `AttentionWrapperState` whose properties are the same as
-      this one, except any overriden properties as provided in `kwargs`.
+      this one, except any overridden properties as provided in `kwargs`.
     """
     return super(AttentionWrapperState, self)._replace(**kwargs)
 

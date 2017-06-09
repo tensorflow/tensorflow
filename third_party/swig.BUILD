@@ -70,7 +70,8 @@ cc_binary(
         "Source/Swig/wrapfunc.c",
     ],
     copts = ["$(STACK_FRAME_UNLIMITED)"] + select({
-        ":x64_windows_msvc": [],
+        ":windows": [],
+        ":windows_msvc": [],
         "//conditions:default": [
             "-Wno-parentheses",
             "-Wno-unused-variable",
@@ -331,6 +332,11 @@ genrule(
 )
 
 config_setting(
-    name = "x64_windows_msvc",
+    name = "windows_msvc",
     values = {"cpu": "x64_windows_msvc"},
+)
+
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
 )

@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/test.h"
 
+
 extern "C" void TF_EXPORT R0F32Add2(float* out, float** in) {
   TF_ANNOTATE_MEMORY_IS_INITIALIZED(in, sizeof(float*));
   *out = **in + 2.0f;

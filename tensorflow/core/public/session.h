@@ -206,7 +206,7 @@ Status NewSession(const SessionOptions& options, Session** out_session);
 /// Old sessions may continue to have side-effects on resources not in
 /// containers listed in "containers", and thus may affect future
 /// sessions' results in ways that are hard to predict.  Thus, if well-defined
-/// behaviour is desired, it is recommended that all containers be listed in
+/// behavior is desired, it is recommended that all containers be listed in
 /// "containers".
 ///
 /// `containers` is a vector of string representation of resource container

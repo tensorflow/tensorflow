@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Script Language Operators. See the @{$python/script_ops} guide.
+"""Script Language Operators. See the @{python/script_ops} guide.
 
 @@py_func
 """

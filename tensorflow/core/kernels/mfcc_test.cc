@@ -65,7 +65,7 @@ TEST(MfccTest, AvoidsNansWithZeroInput) {
   int expected_size = 13;
   ASSERT_EQ(expected_size, output.size());
   for (const double value : output) {
-    EXPECT_FALSE(isnan(value));
+    EXPECT_FALSE(std::isnan(value));
   }
 }
 

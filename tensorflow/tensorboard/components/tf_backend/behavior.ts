@@ -87,7 +87,7 @@ export const BackendBehavior = {
    * Backend reload, which gets metadata on available runs, tags, etc from
    *   the backend.
    * Frontend reload, which loads new data for each chart or visual display.
-   * Backend reload logic is provided by this behaivor. The frontend reload
+   * Backend reload logic is provided by this behavior. The frontend reload
    *   logic should be provided elsewhere, since it is component-specific.
    * To keep things simple and consistent, we do the backend reload first,
    *   and the frontend reload afterwards.

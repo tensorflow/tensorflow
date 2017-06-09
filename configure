@@ -13,28 +13,16 @@ popd > /dev/null
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
 
 function is_linux() {
-  if [[ "${PLATFORM}" == "linux" ]]; then
-    true
-  else
-    false
-  fi
+  [[ "${PLATFORM}" == "linux" ]]
 }
 
 function is_macos() {
-  if [[ "${PLATFORM}" == "darwin" ]]; then
-    true
-  else
-    false
-  fi
+  [[ "${PLATFORM}" == "darwin" ]]
 }
 
 function is_windows() {
   # On windows, the shell script is actually running in msys
-  if [[ "${PLATFORM}" =~ msys_nt*|mingw*|cygwin*|uwin* ]]; then
-    true
-  else
-    false
-  fi
+  [[ "${PLATFORM}" =~ msys_nt*|mingw*|cygwin*|uwin* ]]
 }
 
 function sed_in_place() {
@@ -105,9 +93,7 @@ function setup_python {
 
   if [ -z "$PYTHON_LIB_PATH" ]; then
     # Split python_path into an array of paths, this allows path containing spaces
-    IFS=','
-    python_lib_path=($(python_path))
-    unset IFS
+    IFS=',' read -r -a python_lib_path <<< "$(python_path)"
 
     if [ 1 = "$USE_DEFAULT_PYTHON_LIB_PATH" ]; then
       PYTHON_LIB_PATH=${python_lib_path[0]}
@@ -119,7 +105,7 @@ function setup_python {
         echo "  $x"
       done
       set -- "${python_lib_path[@]}"
-      echo "Please input the desired Python library path to use.  Default is ["$1"]"
+      echo "Please input the desired Python library path to use.  Default is [$1]"
       read b || true
       if [ "$b" == "" ]; then
         PYTHON_LIB_PATH=${python_lib_path[0]}
@@ -135,8 +121,9 @@ function setup_python {
     exit 1
   fi
 
-  local python_major_version=$("${PYTHON_BIN_PATH}" -c 'from __future__ import print_function; import sys; print(sys.version_info[0]);')
-  if [ "$python_major_version" == "" ]; then
+  local python_major_version
+  python_major_version=$("${PYTHON_BIN_PATH}" -c 'from __future__ import print_function; import sys; print(sys.version_info[0]);' | head -c1)
+  if [ -z "$python_major_version" ]; then
     echo -e "\n\nERROR: Problem getting python version.  Is $PYTHON_BIN_PATH the correct python binary?"
     exit 1
   fi
@@ -144,6 +131,7 @@ function setup_python {
   # Convert python path to Windows style before writing into bazel.rc
   if is_windows; then
     PYTHON_BIN_PATH="$(cygpath -m "$PYTHON_BIN_PATH")"
+    PYTHON_LIB_PATH="$(cygpath -m "$PYTHON_LIB_PATH")"
   fi
 
   # Set-up env variables used by python_configure.bzl
@@ -184,7 +172,13 @@ fi
 # This file contains customized config settings.
 rm -f .tf_configure.bazelrc
 touch .tf_configure.bazelrc
-touch .bazelrc
+if [[ ! -e .bazelrc ]]; then
+  if [[ -e "${HOME}/.bazelrc" ]]; then
+    echo "import ${HOME}/.bazelrc" >.bazelrc
+  else
+    touch .bazelrc
+  fi
+fi
 sed_in_place "/tf_configure/d" .bazelrc
 echo "import %workspace%/.tf_configure.bazelrc" >> .bazelrc
 
@@ -241,12 +235,14 @@ if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
   else
     default_mkl_path=/opt/intel/mklml
     fromuser=""
-    read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
-    fromuser="1"
+    if [ -z "$MKL_INSTALL_PATH" ]; then
+      read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
+      fromuser="1"
+    fi
     if [ -z "$MKL_INSTALL_PATH" ]; then
       MKL_INSTALL_PATH=$default_mkl_path
     fi
-    # Result returned from "read" will be used unexpanded. That make "~" unuseable.
+    # Result returned from "read" will be used unexpanded. That make "~" unusable.
     # Going through one more level of expansion to handle that.
     MKL_INSTALL_PATH=`${PYTHON_BIN_PATH} -c "import os; print(os.path.realpath(os.path.expanduser('${MKL_INSTALL_PATH}')))"`
   fi
@@ -481,7 +477,7 @@ done
 while true; do
   # Configure the Cuda SDK version to use.
   if [ -z "$TF_CUDA_VERSION" ]; then
-    read -p "Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: " TF_CUDA_VERSION
+    read -p "Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 8.0]: " TF_CUDA_VERSION
   fi
 
   fromuser=""
@@ -524,7 +520,6 @@ while true; do
     export CUDA_TOOLKIT_PATH
     write_action_env_to_bazelrc "CUDA_TOOLKIT_PATH" "$CUDA_TOOLKIT_PATH"
     export TF_CUDA_VERSION
-    write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION"
     break
   fi
   echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH} cannot be found"
@@ -536,6 +531,13 @@ while true; do
   TF_CUDA_VERSION=""
   CUDA_TOOLKIT_PATH=""
 done
+
+# Set default CUDA version if not set
+if [ -z "$TF_CUDA_VERSION" ]; then
+  TF_CUDA_VERSION="8.0"
+  export TF_CUDA_VERSION 
+fi
+write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION" 
 
 # Set up which gcc nvcc should use as the host compiler
 # No need to set this on Windows
@@ -570,7 +572,7 @@ done
 while true; do
   # Configure the cuDNN version to use.
   if [ -z "$TF_CUDNN_VERSION" ]; then
-    read -p "Please specify the cuDNN version you want to use. [Leave empty to use system default]: " TF_CUDNN_VERSION
+    read -p "Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 6.0]: " TF_CUDNN_VERSION
   fi
 
   fromuser=""
@@ -581,7 +583,7 @@ while true; do
     if [ -z "$CUDNN_INSTALL_PATH" ]; then
       CUDNN_INSTALL_PATH=$default_cudnn_path
     fi
-    # Result returned from "read" will be used unexpanded. That make "~" unuseable.
+    # Result returned from "read" will be used unexpanded. That make "~" unusable.
     # Going through one more level of expansion to handle that.
     CUDNN_INSTALL_PATH=`"${PYTHON_BIN_PATH}" -c "import os; print(os.path.realpath(os.path.expanduser('${CUDNN_INSTALL_PATH}')))"`
   fi
@@ -603,7 +605,7 @@ while true; do
     CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
   fi
 
-  if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
+  if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" ] || [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
     export TF_CUDNN_VERSION
     write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
     export CUDNN_INSTALL_PATH
@@ -620,8 +622,8 @@ while true; do
     CUDNN_PATH_FROM_LDCONFIG="$($LDCONFIG_BIN -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
     if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
       export TF_CUDNN_VERSION
-      write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
-      export CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
+      export CUDNN_INSTALL_PATH
+      CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
       write_action_env_to_bazelrc "CUDNN_INSTALL_PATH" "$CUDNN_INSTALL_PATH"
       break
     fi
@@ -640,6 +642,13 @@ while true; do
   TF_CUDNN_VERSION=""
   CUDNN_INSTALL_PATH=""
 done
+
+# Set default CUDNN version if not set
+if [ -z "$TF_CUDNN_VERSION" ]; then
+  TF_CUDNN_VERSION="6"
+  export TF_CUDNN_VERSION
+fi
+write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
 
 # Configure the compute capabilities that TensorFlow builds for.
 # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
@@ -707,7 +716,7 @@ if [ "$TF_NEED_OPENCL" == "1" ]; then
 while true; do
   fromuser=""
   if [ -z "$HOST_CXX_COMPILER" ]; then
-    default_cxx_host_compiler=$(which clang++-3.6 || true)
+    default_cxx_host_compiler=$(which g++ || true)
     read -p "Please specify which C++ compiler should be used as the host C++ compiler. [Default is $default_cxx_host_compiler]: " HOST_CXX_COMPILER
     fromuser="1"
     if [ -z "$HOST_CXX_COMPILER" ]; then
@@ -731,7 +740,7 @@ done
 while true; do
   fromuser=""
   if [ -z "$HOST_C_COMPILER" ]; then
-    default_c_host_compiler=$(which clang-3.6 || true)
+    default_c_host_compiler=$(which gcc || true)
     read -p "Please specify which C compiler should be used as the host C compiler. [Default is $default_c_host_compiler]: " HOST_C_COMPILER
     fromuser="1"
     if [ -z "$HOST_C_COMPILER" ]; then
@@ -787,6 +796,82 @@ done
 # end of if "$TF_NEED_OPENCL" == "1"
 fi
 
-# TODO(gunan): Remove once bazel correctly handles changes in remote repositories.
-bazel clean
+
+while [ "$TF_NEED_MPI" == "" ]; do
+  read -p "Do you wish to build TensorFlow with "\
+"MPI support? [y/N] " INPUT
+  case $INPUT in
+    [Yy]* ) echo "MPI support will be enabled for "\
+"TensorFlow"; TF_NEED_MPI=1;;
+    [Nn]* ) echo "MPI support will not be enabled for "\
+"TensorFlow"; TF_NEED_MPI=0;;
+    "" ) echo "MPI support will not be enabled for "\
+"TensorFlow"; TF_NEED_MPI=0;;
+    * ) echo "Invalid selection: " $INPUT;;
+  esac
+done
+
+# Find out where the MPI toolkit is installed
+while true; do
+    if [ "$TF_NEED_MPI" == "0" ]; then
+        break;
+    fi
+
+    fromuser=""
+    if [ -z "$MPI_HOME" ]; then
+        #Get the base folder by removing the bin path
+        default_mpi_path=$(dirname $(dirname $(which mpirun)) || dirname $(dirname $(which mpiexec))  || true)
+        read -p "Please specify the MPI toolkit folder. [Default is $default_mpi_path]: " MPI_HOME
+        fromuser="1"
+        if [ -z "$MPI_HOME" ]; then
+            MPI_HOME=$default_mpi_path
+        fi
+    fi
+
+    #Check that the include and library folders are where we expect them to be
+    if [ -e "$MPI_HOME/include" ] && [ -e "$MPI_HOME/lib" ]; then
+        break
+    fi
+ 
+    echo "Invalid path to the MPI Toolkit. ${MPI_HOME}/include or ${MPI_HOME}/lib cannot be found."
+    if [ -z "$fromuser" ]; then
+        exit 1
+    fi
+
+    # Retry
+    MPI_HOME="" 
+done
+    
+    
+if [ "$TF_NEED_MPI" == "1" ]; then
+  write_to_bazelrc 'build --define with_mpi_support=true'
+
+  #Link the MPI header files
+  ln -sf "${MPI_HOME}/include/mpi.h" third_party/mpi/mpi.h
+
+
+  #Determine if we use OpenMPI or MVAPICH, these require different header files 
+  #to be included here to make bazel dependency checker happy
+
+  if [ -e "${MPI_HOME}/include/mpi_portable_platform.h" ]; then
+        #OpenMPI 
+        ln -sf "${MPI_HOME}/include/mpi_portable_platform.h" third_party/mpi/
+        sed -i -e "s/MPI_LIB_IS_OPENMPI=False/MPI_LIB_IS_OPENMPI=True/" third_party/mpi/mpi.bzl
+ else
+        #MVAPICH / MPICH
+        ln -sf "${MPI_HOME}/include/mpio.h" third_party/mpi/
+        ln -sf "${MPI_HOME}/include/mpicxx.h" third_party/mpi/
+        sed -i -e "s/MPI_LIB_IS_OPENMPI=True/MPI_LIB_IS_OPENMPI=False/" third_party/mpi/mpi.bzl
+ fi
+
+  
+  if [ -e "${MPI_HOME}/lib/libmpi.so" ]; then
+    ln -sf "${MPI_HOME}/lib/libmpi.so" third_party/mpi/
+  else
+    echo "Cannot find the MPI library file in ${MPI_HOME}/lib "
+    exit 1
+  fi
+fi
+
+
 echo "Configuration finished"

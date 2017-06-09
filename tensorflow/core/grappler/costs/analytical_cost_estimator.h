@@ -45,7 +45,7 @@ class AnalyticalCostEstimator : public CostEstimator {
                           bool use_static_shapes);
   ~AnalyticalCostEstimator() override {}
 
-  // Initalizes the estimator for the specified grappler item.
+  // Initializes the estimator for the specified grappler item.
   // This implementation always returns OK.
   Status Initialize(const GrapplerItem& item) override;
 

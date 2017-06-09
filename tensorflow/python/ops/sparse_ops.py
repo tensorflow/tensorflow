@@ -14,7 +14,7 @@
 # ==============================================================================
 
 # pylint: disable=g-short-docstring-punctuation
-"""Sparse Tensor Representation. See the @{$python/sparse_ops} guide.
+"""Sparse Tensor Representation. See the @{python/sparse_ops} guide.
 
 @@SparseTensor
 @@SparseTensorValue
@@ -1478,7 +1478,7 @@ def sparse_tensor_dense_matmul(sp_a,
   `sp_a.dense_shape` takes on large values.
 
   Below is a rough speed comparison between `sparse_tensor_dense_matmul`,
-  labelled 'sparse', and `matmul`(a_is_sparse=True), labelled 'dense'.  For
+  labeled 'sparse', and `matmul`(a_is_sparse=True), labeled 'dense'.  For
   purposes of the comparison, the time spent converting from a `SparseTensor` to
   a dense `Tensor` is not included, so it is overly conservative with respect to
   the time ratio.

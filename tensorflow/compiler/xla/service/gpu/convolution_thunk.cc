@@ -125,7 +125,7 @@ tensorflow::Status ConvolutionThunk::ExecuteOnStream(
   CHECK_LE(num_dimensions, 3);
   // cuDNN does not support 1D convolutions. We therefore express 1D
   // convolutions as 2D convolutions where the first spatial dimension is 1.
-  // This matches the behaviour of TF (see definition of conv1d in
+  // This matches the behavior of TF (see definition of conv1d in
   // tensorflow/python/ops/nn_ops.py).
   const int effective_num_dimensions = std::max(2, num_dimensions);
 

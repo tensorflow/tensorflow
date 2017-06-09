@@ -129,7 +129,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(
     llvm::Type* type, llvm::Value* element_count, tensorflow::StringPiece name,
     llvm::IRBuilder<>* ir_builder, int alignment = 0);
 
-// Creates a basic block with the same context and funtion as for the
+// Creates a basic block with the same context and function as for the
 // builder. Inserts at the end of the function if insert_before is
 // null.
 llvm::BasicBlock* CreateBasicBlock(llvm::BasicBlock* insert_before,

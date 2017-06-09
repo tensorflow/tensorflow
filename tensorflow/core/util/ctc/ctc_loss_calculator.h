@@ -46,7 +46,7 @@ class CTCLossCalculator {
   // these examples.
   //
   // Reference materials:
-  //  GravesTh: Alex Graves, "Supervised Sequence Labelling with Recurrent
+  //  GravesTh: Alex Graves, "Supervised Sequence Labeling with Recurrent
   //    Neural Networks" (PhD Thesis), Technische Universit¨at M¨unchen.
  public:
   typedef std::vector<std::vector<int>> LabelSequences;

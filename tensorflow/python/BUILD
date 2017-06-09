@@ -28,6 +28,7 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_d
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
+load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_mpi_deps")
 
 py_library(
     name = "python",
@@ -272,6 +273,7 @@ py_test(
     data = [":framework/test_file_system.so"],
     main = "framework/file_system_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":client_testlib",
         ":data_flow_ops",
@@ -695,6 +697,7 @@ py_test(
     srcs = ["framework/contrib_test.py"],
     main = "framework/contrib_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
@@ -972,6 +975,7 @@ py_test(
     srcs = ["framework/tensor_util_test.py"],
     main = "framework/tensor_util_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -989,6 +993,7 @@ py_test(
     srcs = ["framework/test_util_test.py"],
     main = "framework/test_util_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":control_flow_ops",
         ":errors",
@@ -2229,6 +2234,7 @@ cuda_py_test(
     ],
     data = ["//tensorflow/core:image_testdata"],
     shard_count = 5,
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2276,6 +2282,7 @@ cuda_py_test(
         ":nn_ops_gen",
         "//third_party/py/numpy",
     ],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2729,7 +2736,8 @@ tf_py_wrap_cc(
         "//util/python:python_headers",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps() +
-         tf_additional_verbs_deps()),
+         tf_additional_verbs_deps() +
+         tf_additional_mpi_deps()),
 )
 
 py_library(
@@ -2954,6 +2962,7 @@ py_test(
     tags = [
         "no_gpu",
         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
+        "no_windows",
     ],
     deps = [
         ":array_ops",
@@ -3074,6 +3083,7 @@ py_test(
     size = "small",
     srcs = ["lib/io/file_io_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":client_testlib",
         ":errors",
@@ -3231,6 +3241,7 @@ py_test(
     srcs = ["training/saver_large_variable_test.py"],
     srcs_version = "PY2AND3",
     tags = [
+        "manual",
         "noasan",  # http://b/30379628
         "notsan",  # http://b/30379628
     ],
@@ -3286,6 +3297,7 @@ py_test(
     size = "small",
     srcs = ["training/supervisor_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -3308,6 +3320,7 @@ py_test(
     size = "small",
     srcs = ["training/basic_session_run_hooks_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":client",
         ":client_testlib",
@@ -3331,6 +3344,7 @@ py_test(
     size = "small",
     srcs = ["training/monitored_session_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":array_ops",
         ":client",
@@ -3581,6 +3595,7 @@ py_test(
     size = "small",
     srcs = ["ops/dequantize_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -3594,6 +3609,7 @@ py_test(
     size = "small",
     srcs = ["ops/quantized_conv_ops_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],
     deps = [
         ":client_testlib",
         ":framework_for_generated_wrappers",

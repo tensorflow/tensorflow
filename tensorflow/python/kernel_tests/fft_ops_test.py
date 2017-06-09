@@ -212,9 +212,8 @@ class FFTOpsTest(BaseFFTOpsTest):
 class RFFTOpsTest(BaseFFTOpsTest):
 
   def _CompareBackward(self, x, rank, fft_length=None, use_placeholder=False):
-    if test.is_gpu_available(cuda_only=True):
-      super(RFFTOpsTest, self)._CompareBackward(x, rank, fft_length,
-                                                use_placeholder)
+    super(RFFTOpsTest, self)._CompareBackward(x, rank, fft_length,
+                                              use_placeholder)
 
   def _tfFFT(self, x, rank, fft_length=None, use_gpu=False, feed_dict=None):
     with self.test_session(use_gpu=use_gpu):
@@ -270,8 +269,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
         x = np.zeros((0,) * dims).astype(np.float32)
         self.assertEqual(x.shape, self._tfFFT(x, rank).shape)
         x = np.zeros((0,) * dims).astype(np.complex64)
-        if test.is_gpu_available(cuda_only=True):
-          self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
+        self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
 
   def testBasic(self):
     for rank in VALID_FFT_RANKS:
@@ -300,36 +298,37 @@ class RFFTOpsTest(BaseFFTOpsTest):
                                 use_placeholder=True)
 
   def testFftLength(self):
-    for rank in VALID_FFT_RANKS:
-      for dims in xrange(rank, rank + 3):
-        for size in (5, 6):
-          inner_dim = size // 2 + 1
-          r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
-              (size,) * dims)
-          c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
-                       10).reshape((size,) * (dims - 1) + (inner_dim,))
+    if test.is_gpu_available(cuda_only=True):
+      for rank in VALID_FFT_RANKS:
+        for dims in xrange(rank, rank + 3):
+          for size in (5, 6):
+            inner_dim = size // 2 + 1
+            r2c = np.mod(np.arange(np.power(size, dims)), 10).reshape(
+                (size,) * dims)
+            c2r = np.mod(np.arange(np.power(size, dims - 1) * inner_dim),
+                         10).reshape((size,) * (dims - 1) + (inner_dim,))
 
-          # Test truncation (FFT size < dimensions).
-          fft_length = (size - 2,) * rank
-          self._CompareForward(r2c.astype(np.float32), rank, fft_length)
-          self._CompareBackward(c2r.astype(np.complex64), rank, fft_length)
+            # Test truncation (FFT size < dimensions).
+            fft_length = (size - 2,) * rank
+            self._CompareForward(r2c.astype(np.float32), rank, fft_length)
+            self._CompareBackward(c2r.astype(np.complex64), rank, fft_length)
 
-          # Confirm it works with unknown shapes as well.
-          self._CompareForward(r2c.astype(np.float32), rank, fft_length,
-                               use_placeholder=True)
-          self._CompareBackward(c2r.astype(np.complex64), rank, fft_length,
-                                use_placeholder=True)
+            # Confirm it works with unknown shapes as well.
+            self._CompareForward(r2c.astype(np.float32), rank, fft_length,
+                                 use_placeholder=True)
+            self._CompareBackward(c2r.astype(np.complex64), rank, fft_length,
+                                  use_placeholder=True)
 
-          # Test padding (FFT size > dimensions).
-          fft_length = (size + 2,) * rank
-          self._CompareForward(r2c.astype(np.float32), rank, fft_length)
-          self._CompareBackward(c2r.astype(np.complex64), rank, fft_length)
+            # Test padding (FFT size > dimensions).
+            fft_length = (size + 2,) * rank
+            self._CompareForward(r2c.astype(np.float32), rank, fft_length)
+            self._CompareBackward(c2r.astype(np.complex64), rank, fft_length)
 
-          # Confirm it works with unknown shapes as well.
-          self._CompareForward(r2c.astype(np.float32), rank, fft_length,
-                               use_placeholder=True)
-          self._CompareBackward(c2r.astype(np.complex64), rank, fft_length,
-                                use_placeholder=True)
+            # Confirm it works with unknown shapes as well.
+            self._CompareForward(r2c.astype(np.float32), rank, fft_length,
+                                 use_placeholder=True)
+            self._CompareBackward(c2r.astype(np.complex64), rank, fft_length,
+                                  use_placeholder=True)
 
   def testRandom(self):
     np.random.seed(12345)
@@ -428,23 +427,22 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 use_gpu=True)
 
   def testGrad_Random(self):
-    if test.is_gpu_available(cuda_only=True):
-      np.random.seed(54321)
-      for rank in VALID_FFT_RANKS:
-        # rfft3d/irfft3d do not have gradients yet.
-        if rank == 3:
-          continue
-        for dims in xrange(rank, rank + 2):
-          for size in (5, 6):
-            re = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
-            im = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
-            self._checkGradReal(self._tfFFTForRank(rank), re, use_gpu=True)
-            self._checkGradComplex(
-                self._tfIFFTForRank(rank),
-                re,
-                im,
-                result_is_complex=False,
-                use_gpu=True)
+    np.random.seed(54321)
+    for rank in VALID_FFT_RANKS:
+      # rfft3d/irfft3d do not have gradients yet.
+      if rank == 3:
+        continue
+      for dims in xrange(rank, rank + 2):
+        for size in (5, 6):
+          re = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
+          im = np.random.rand(*((size,) * dims)).astype(np.float32) * 2 - 1
+          self._checkGradReal(self._tfFFTForRank(rank), re, use_gpu=True)
+          self._checkGradComplex(
+              self._tfIFFTForRank(rank),
+              re,
+              im,
+              result_is_complex=False,
+              use_gpu=True)
 
 
 if __name__ == "__main__":

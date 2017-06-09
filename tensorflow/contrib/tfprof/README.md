@@ -1,6 +1,6 @@
 # tfprof: A Profiling Tool for TensorFlow Models
 
-# Full Docment in tensorflow/tools/tfprof/README.md
+# Full Document in tensorflow/tools/tfprof/README.md
 
 Author: Xin Pan (xpan@google.com, github: panyx0718), Jon Shlens, Yao Zhang
 

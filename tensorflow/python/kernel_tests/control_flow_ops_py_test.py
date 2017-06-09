@@ -1423,7 +1423,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(45, rx.eval())
 
   def _testWhileGrad_ColocateGradients(self, colocate):
-    gpu_dev_name = test.gpu_device_name() if test.is_gpu_available(
+    gpu_dev_name = test.gpu_device_name().lower() if test.is_gpu_available(
     ) else "/gpu:0"
     gpu_short_name = gpu_dev_name.split("/")[-1]
 

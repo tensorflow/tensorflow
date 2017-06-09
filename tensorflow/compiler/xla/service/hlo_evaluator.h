@@ -138,7 +138,7 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
                            std::hash<int>>
       typed_visitors_;
 
-  // Tracks the HLO instruciton and its evaluated literal result.
+  // Tracks the HLO instruction and its evaluated literal result.
   // TODO(b/35950897): have better memory management here to free instructions
   // that are no longer a parent for any other subsequent instruction in
   // post-orderring.

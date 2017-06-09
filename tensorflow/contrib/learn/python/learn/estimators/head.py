@@ -637,7 +637,7 @@ def _create_model_fn_ops(features,
     weight_tensor = _weight_tensor(features, weight_column_name)
     loss, weighted_average_loss = loss_fn(labels, logits, weight_tensor)
     # Uses the deprecated API to set the tag explicitly.
-    # Without it, trianing and eval losses will show up in different graphs.
+    # Without it, training and eval losses will show up in different graphs.
     logging_ops.scalar_summary(
         _summary_key(head_name, mkey.LOSS), weighted_average_loss)
 
@@ -1158,7 +1158,7 @@ def _to_labels_tensor(labels, label_name):
   """Returns label as a tensor.
 
   Args:
-    labels: Label `Tensor` or `SparseTensor` or a dict containig labels.
+    labels: Label `Tensor` or `SparseTensor` or a dict containing labels.
     label_name: Label name if labels is a dict.
 
   Returns:
@@ -1669,7 +1669,7 @@ class _MultiHead(Head):
     Args:
       all_model_fn_ops: list of ModelFnOps for the individual heads.
       train_op_fn: Function to create train op. See `create_model_fn_ops`
-          documentaion for more details.
+          documentation for more details.
 
     Returns:
       ModelFnOps that merges all heads for TRAIN.

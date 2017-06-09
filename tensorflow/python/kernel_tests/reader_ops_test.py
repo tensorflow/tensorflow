@@ -858,5 +858,49 @@ class AsyncReaderTest(test.TestCase):
     output.append(sess.run(args))
 
 
+# TODO(jhseu): Restore after fixing.
+#class LMDBReaderTest(test.TestCase):
+#
+#  def setUp(self):
+#    super(LMDBReaderTest, self).setUp()
+#
+#  def testReadFromFile(self):
+#    with self.test_session() as sess:
+#      reader = io_ops.LMDBReader(name="test_read_from_file")
+#      path = os.path.join("tensorflow", "core", "lib", "lmdb", "testdata",
+#                          "data.mdb")
+#      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+#      key, value = reader.read(queue)
+#
+#      queue.enqueue([path]).run()
+#      queue.close().run()
+#      for i in range(10):
+#        k, v = sess.run([key, value])
+#        self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
+#        self.assertAllEqual(compat.as_bytes(v), compat.as_bytes(str(chr(ord('a') + i))))
+#
+#      with self.assertRaisesOpError("is closed and has insufficient elements "
+#                                    "\\(requested 1, current size 0\\)"):
+#        k, v = sess.run([key, value])
+#
+#  def testReadFromFolder(self):
+#    with self.test_session() as sess:
+#      reader = io_ops.LMDBReader(name="test_read_from_folder")
+#      path = os.path.join("tensorflow", "core", "lib", "lmdb", "testdata")
+#      queue = data_flow_ops.FIFOQueue(99, [dtypes.string], shapes=())
+#      key, value = reader.read(queue)
+#
+#      queue.enqueue([path]).run()
+#      queue.close().run()
+#      for i in range(10):
+#        k, v = sess.run([key, value])
+#        self.assertAllEqual(compat.as_bytes(k), compat.as_bytes(str(i)))
+#        self.assertAllEqual(compat.as_bytes(v), compat.as_bytes(str(chr(ord('a') + i))))
+#
+#      with self.assertRaisesOpError("is closed and has insufficient elements "
+#                                    "\\(requested 1, current size 0\\)"):
+#        k, v = sess.run([key, value])
+
+
 if __name__ == "__main__":
   test.main()

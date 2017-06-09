@@ -39,7 +39,7 @@ def visualize_embeddings(summary_writer, config):
   """Stores a config file used by the embedding projector.
 
   Args:
-    summary_writer: The summary writer used for writting events.
+    summary_writer: The summary writer used for writing events.
     config: `tf.contrib.tensorboard.plugins.projector.ProjectorConfig`
       proto that holds the configuration for the projector such as paths to
       checkpoint files and metadata files for the embeddings. If

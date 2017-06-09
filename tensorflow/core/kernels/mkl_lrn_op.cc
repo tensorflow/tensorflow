@@ -709,7 +709,7 @@ class MklLRNGradOp : public OpKernel {
       Shard(worker_threads.num_threads, worker_threads.workers, nodes * batch,
             depth * depth, shard);
     }
-
+		
     // release mkl resources
     void Mklcleanup() {
       bool ingrad_in_mkl_format = ingrad_shape.IsMklTensor();

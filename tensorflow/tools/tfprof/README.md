@@ -110,7 +110,7 @@ Sigmoid                        152.57MB (85.28%, 0.21%),        96.66ms (23.46%,
 
 ### Visualize time and memory.
 <left>
-![CodeTimeline](g3doc/graph_timeline.png)
+[CodeTimeline](g3doc/graph_timeline.png)
 </left>
 
 ### Teams

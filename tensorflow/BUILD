@@ -71,6 +71,12 @@ config_setting(
 
 config_setting(
     name = "windows",
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "windows_msvc",
     values = {"cpu": "x64_windows_msvc"},
     visibility = ["//visibility:public"],
 )
@@ -161,6 +167,12 @@ config_setting(
 config_setting(
     name = "with_verbs_support",
     values = {"define": "with_verbs_support=true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_mpi_support",
+    values = {"define": "with_mpi_support=true"},
     visibility = ["//visibility:public"],
 )
 
@@ -447,6 +459,7 @@ cc_binary(
             "//tensorflow/c:exported_symbols.lds",
         ],
         "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
             "-s",

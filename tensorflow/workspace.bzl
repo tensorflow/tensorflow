@@ -506,6 +506,17 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   )
 
   native.new_http_archive(
+    name = "lmdb",
+    urls = [
+      "http://mirror.bazel.build/github.com/LMDB/lmdb/archive/LMDB_0.9.19.tar.gz",
+      "https://github.com/LMDB/lmdb/archive/LMDB_0.9.19.tar.gz",
+    ],
+    sha256 = "108532fb94c6f227558d45be3f3347b52539f0f58290a7bb31ec06c462d05326",
+    strip_prefix = "lmdb-LMDB_0.9.19/libraries/liblmdb",
+    build_file = str(Label("//third_party:lmdb.BUILD")),
+  )
+
+  native.new_http_archive(
       name = "jsoncpp_git",
       urls = [
           "http://mirror.bazel.build/github.com/open-source-parsers/jsoncpp/archive/11086dd6a7eba04289944367ca82cea71299ed70.tar.gz",
@@ -741,7 +752,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
 
   native.new_http_archive(
       name = "io_angular_clutz",
-      build_file = "//third_party:clutz.BUILD",
+      build_file = str(Label("//third_party:clutz.BUILD")),
       sha256 = "2981de41d1ff4774b544423da9a2cd8beb3be649e95aef2ef2fd83957300b3fe",
       strip_prefix = "clutz-b0db5ade9bb535d387f05292316c422790c9848e",
       urls = [

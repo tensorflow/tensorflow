@@ -200,7 +200,7 @@ class Estimator(object):
         error. 'steps' works incrementally. If you call two times
         train(steps=10) then training occurs in total 20 steps. If `OutOfRange`
         or `StopIteration` error occurs in the middle, training stops before 20
-        steps. If you don't want to have incremental behaviour please set
+        steps. If you don't want to have incremental behavior please set
         `max_steps` instead. If set, `max_steps` must be `None`.
       max_steps: Number of total steps for which to train model. If `None`,
         train forever or train until input_fn generates the `OutOfRange` or

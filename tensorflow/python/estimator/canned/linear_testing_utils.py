@@ -50,6 +50,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import optimizer
@@ -154,6 +155,7 @@ class BaseLinearRegressorPartitionerTest(object):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def testPartitioner(self):
@@ -233,6 +235,7 @@ class BaseLinearRegressorEvaluationTest(object):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_evaluation_for_simple_data(self):
@@ -392,6 +395,7 @@ class BaseLinearRegressorPredictTest(object):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def test_1d(self):
@@ -487,6 +491,7 @@ class BaseLinearRegressorIntegrationTest(object):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def _test_complete_flow(self, train_input_fn, eval_input_fn, predict_input_fn,
@@ -654,6 +659,7 @@ class BaseLinearRegressorTrainingTest(object):
 
   def tearDown(self):
     if self._model_dir:
+      writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
   def _mock_optimizer(self, expected_loss=None):

@@ -33,7 +33,7 @@ class AdjustContrastOpTest : public OpsTestBase {
 };
 
 TEST_F(AdjustContrastOpTest, Simple_1113) {
-  TF_EXPECT_OK(NodeDefBuilder("adjust_constrast_op", "AdjustContrastv2")
+  TF_EXPECT_OK(NodeDefBuilder("adjust_contrast_op", "AdjustContrastv2")
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Finalize(node_def()));
@@ -48,7 +48,7 @@ TEST_F(AdjustContrastOpTest, Simple_1113) {
 }
 
 TEST_F(AdjustContrastOpTest, Simple_1223) {
-  TF_EXPECT_OK(NodeDefBuilder("adjust_constrast_op", "AdjustContrastv2")
+  TF_EXPECT_OK(NodeDefBuilder("adjust_contrast_op", "AdjustContrastv2")
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Finalize(node_def()));
@@ -65,7 +65,7 @@ TEST_F(AdjustContrastOpTest, Simple_1223) {
 }
 
 TEST_F(AdjustContrastOpTest, Big_99x99x3) {
-  TF_EXPECT_OK(NodeDefBuilder("adjust_constrast_op", "AdjustContrastv2")
+  TF_EXPECT_OK(NodeDefBuilder("adjust_contrast_op", "AdjustContrastv2")
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Finalize(node_def()));

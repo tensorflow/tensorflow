@@ -25,7 +25,7 @@ limitations under the License.
 // A GrpcMasterService discovers remote devices in the background and
 // keeps track of statistics of those remote devices.
 //
-// Each session analyses the graph, places nodes across available
+// Each session analyzes the graph, places nodes across available
 // devices, and ultimately drives the graph computation by initiating
 // RunGraph on workers.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_master_service.h"

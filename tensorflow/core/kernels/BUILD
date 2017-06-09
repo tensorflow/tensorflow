@@ -33,6 +33,7 @@ load(
     "tf_mkl_kernel_library",
     "cc_header_only_library",
 )
+load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load(
@@ -285,6 +286,15 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "map_stage_op",
+    srcs = ["map_stage_op.cc"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ],
+)
+
 cc_library(
     name = "queue_base",
     srcs = ["queue_base.cc"],
@@ -479,7 +489,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
     "//third_party/eigen3",
-]
+] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
 cc_library(
     name = "array_not_windows",
@@ -1309,6 +1319,7 @@ cc_library(
         ":fifo_queue_op",
         ":lookup_table_init_op",
         ":lookup_table_op",
+        ":map_stage_op",
         ":padding_fifo_queue_op",
         ":priority_queue_op",
         ":queue_ops",
@@ -1893,6 +1904,7 @@ cc_library(
     deps = [
         ":fixed_length_record_reader_op",
         ":identity_reader_op",
+        #":lmdb_reader_op",
         ":matching_files_op",
         ":reader_ops",
         ":restore_op",
@@ -1926,6 +1938,15 @@ tf_kernel_library(
     prefix = "identity_reader_op",
     deps = IO_DEPS,
 )
+
+# TODO(jhseu): Restore after merge.
+#tf_kernel_library(
+#    name = "lmdb_reader_op",
+#    prefix = "lmdb_reader_op",
+#    deps = IO_DEPS + [
+#        "@lmdb",
+#    ],
+#)
 
 tf_kernel_library(
     name = "matching_files_op",
@@ -3430,7 +3451,7 @@ STATE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:state_ops_op_lib",
-]
+] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
 tf_kernel_library(
     name = "count_up_to_op",
@@ -4318,6 +4339,7 @@ filegroup(
             # not used on Android. Those ops also do not compile if included,
             # unless we add the additional deps they need.
             "tf_record_reader_op.*",
+            "lmdb_reader_op.*",
             "string_to_hash_bucket_op.*",
             "sdca_ops.*",
             "sdca_internal.*",
@@ -4356,6 +4378,12 @@ cc_library(
         "//conditions:default": [],
     }),
     copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:android": [
+            "-ldl",
+        ],
+        "//conditions:default": [],
+    }),
     tags = [
         "manual",
         "notap",

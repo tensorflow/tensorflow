@@ -58,6 +58,7 @@ def build_md_page(page_info):
 def _build_function_page(page_info):
   """Given a FunctionPageInfo object Return the page as an md string."""
   parts = [_Metadata(page_info.full_name).build_html()]
+  parts.append('# %s\n\n' % page_info.full_name)
 
   parts.append('# %s\n\n' % page_info.full_name)
 

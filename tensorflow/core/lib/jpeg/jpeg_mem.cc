@@ -45,7 +45,7 @@ enum JPEGErrors {
   JPEGERRORS_BAD_PARAM
 };
 
-// Prevent bad compiler behaviour in ASAN mode by wrapping most of the
+// Prevent bad compiler behavior in ASAN mode by wrapping most of the
 // arguments in a struct struct.
 class FewerArgsForCompiler {
  public:

@@ -52,6 +52,7 @@ ops.NotDifferentiable('SampleDistortedBoundingBox')
 # latent bugs here.
 ops.NotDifferentiable('ExtractGlimpse')
 ops.NotDifferentiable('NonMaxSuppression')
+ops.NotDifferentiable('NonMaxSuppressionV2')
 
 
 def _assert(cond, ex_type, msg):
@@ -281,7 +282,7 @@ def flip_left_right(image):
 
 
 def flip_up_down(image):
-  """Flip an image horizontally (upside down).
+  """Flip an image vertically (upside down).
 
   Outputs the contents of `image` flipped along the first dimension, which is
   `height`.

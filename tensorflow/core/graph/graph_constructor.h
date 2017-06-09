@@ -57,7 +57,7 @@ extern Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
 // On error, returns non-OK and leaves *g unmodified.
 //
 // "shape_refiner" can be null. It should be non-null if the caller
-// intends to add additonal nodes to the graph after the import. This
+// intends to add additional nodes to the graph after the import. This
 // allows the caller to validate shapes of those nodes (since
 // ShapeRefiner::AddNode must be called in topological order).
 //

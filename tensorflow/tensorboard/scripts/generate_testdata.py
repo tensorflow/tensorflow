@@ -31,7 +31,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 
-tf.flags.DEFINE_string("target", None, """The directoy where serialized data
+tf.flags.DEFINE_string("target", None, """The directory where serialized data
 will be written""")
 
 tf.flags.DEFINE_boolean("overwrite", False, """Whether to remove and overwrite

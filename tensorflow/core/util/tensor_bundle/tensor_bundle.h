@@ -31,7 +31,7 @@ limitations under the License.
 // (tensorflow::table::Table).  Each key is a name of a tensor and its value is
 // a serialized BundleEntryProto.  Each BundleEntryProto describes the metadata
 // of a tensor: which of the "data" files contains the content of a tensor, the
-// offset into that file, checksum, some auxilary data, etc.
+// offset into that file, checksum, some auxiliary data, etc.
 //
 // A tensor bundle can be accessed randomly using a BundleReader.  Usage:
 //

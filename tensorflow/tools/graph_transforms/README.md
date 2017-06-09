@@ -586,7 +586,7 @@ equivalent, followed by a float conversion op so that the result is usable by
 subsequent nodes. This is mostly useful for [shrinking file
 sizes](#shrinking-file-size), but also helps with the more advanced
 [quantize_nodes](#quantize_nodes) transform. Even though there are no
-prerequesites, it is advisable to run [fold_batch_norms](#fold_batch_norms) or
+prerequisites, it is advisable to run [fold_batch_norms](#fold_batch_norms) or
 [fold_old_batch_norms](#fold_old_batch_norms), because rounding variances down
 to zero may cause significant loss of precision.
 
@@ -674,7 +674,7 @@ number of steps. The unique values are chosen per buffer by linearly allocating
 between the largest and smallest values present. This is useful when you'll be
 deploying on mobile, and you want a model that will compress effectively. See
 [shrinking file size](#shrinking-file-size) for more details. Even though there
-are no prerequesites, it is advisable to run
+are no prerequisites, it is advisable to run
 [fold_batch_norms](#fold_batch_norms) or
 [fold_old_batch_norms](#fold_old_batch_norms), because rounding variances down
 to zero may cause significant loss of precision.
@@ -998,7 +998,7 @@ There are a few things to know about the `ReplaceMatchingOpTypes` function:
     important nodes are listed in the `output_nodes` argument that's passed into
     each replacement function call. You can disable this checking by setting
     `allow_inconsistencies` to true in the options, but otherwise any
-    replacements that break the graph constraints will be cancelled. If you do
+    replacements that break the graph constraints will be canceled. If you do
     allow inconsistencies, it's your transform's responsibility to fix them up
     before you return your final result. Functions like `RenameNodeInputs` can
     be useful if you are doing wholesale node renaming for example.
@@ -1055,7 +1055,7 @@ in the future.
 
 The Graph Transform Tool associates names of transforms with the code to
 implement them using the `REGISTER_GRAPH_TRANSFORM()` macro. This takes a string
-and a function, and automagically registers the transform with the tool. You
+and a function, and automatically registers the transform with the tool. You
 will need to watch out for a few things though:
 
 *   Because it's using global C++ objects in each file under the hood, the

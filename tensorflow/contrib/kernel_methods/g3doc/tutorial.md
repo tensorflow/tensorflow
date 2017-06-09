@@ -273,7 +273,7 @@ features.
 * The parameters of the kernel mapping are often data-dependent. Model quality
 can be very sensitive to these parameters. Use hyperparameter tuning to find the
 optimal values.
-* If you have multiple numerical features, concatinate them into a single
+* If you have multiple numerical features, concatenate them into a single
 multi-dimensional feature and apply the kernel mapping to the concatenated
 vector.
 

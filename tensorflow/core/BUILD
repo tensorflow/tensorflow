@@ -82,6 +82,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test_mkl")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_only_cc_test")
 
 # For platform specific build config
 load(
@@ -110,6 +111,7 @@ load(
     "tf_additional_cloud_kernel_deps",
     "tf_lib_proto_parsing_deps",
     "tf_additional_verbs_lib_defines",
+    "tf_additional_mpi_lib_defines",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -142,6 +144,7 @@ CORE_PROTO_SRCS = [
     "framework/log_memory.proto",
     "framework/node_def.proto",
     "framework/op_def.proto",
+    "framework/reader_base.proto",
     "framework/remote_fused_graph_execute_info.proto",
     "framework/resource_handle.proto",
     "framework/step_stats.proto",
@@ -181,15 +184,6 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "util/event.proto",
     "util/test_log.proto",
 ]
-
-tf_proto_library(
-    name = "reader_base_proto",
-    srcs = ["framework/reader_base.proto"],
-    cc_api_version = 2,
-    go_api_version = 2,
-    java_api_version = 2,
-    visibility = ["//visibility:public"],
-)
 
 tf_proto_library(
     name = "protos_all",
@@ -411,6 +405,7 @@ tf_cuda_library(
         "util/work_sharder.h",
     ] + select({
         "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "util/memmapped_file_system.h",
             "util/memmapped_file_system_writer.h",
@@ -438,7 +433,6 @@ cc_library(
     deps = [
         ":framework",
         ":lib",
-        ":reader_base_proto_cc",
     ],
 )
 
@@ -884,7 +878,6 @@ filegroup(
             "**/*main.cc",
             "debug/**/*",
             "framework/op_gen_*",
-            "framework/reader_base.*",
             "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
@@ -1206,32 +1199,35 @@ tf_proto_library_cc(
     ],
 )
 
+LIB_INTERNAL_WINDOWS_DEPS = glob(
+    [
+        "lib/**/*.h",
+        "lib/**/*.cc",
+        "platform/*.h",
+        "platform/*.cc",
+        "platform/profile_utils/**/*.h",
+        "platform/profile_utils/**/*.cc",
+    ],
+    exclude = [
+        "**/*test*",
+        "lib/hash/crc32c_accelerate.cc",
+        "lib/gif/**/*",
+        "lib/jpeg/**/*",
+        "platform/gif.h",
+        "platform/jpeg.h",
+        "platform/**/env_time.cc",
+        "platform/**/cuda.h",
+        "platform/**/cuda_libdevice_path.cc",
+        "platform/**/stream_executor.h",
+        "platform/load_library.cc",
+    ],
+)
+
 cc_library(
     name = "lib_internal",
     srcs = select({
-        "//tensorflow:windows": glob(
-            [
-                "lib/**/*.h",
-                "lib/**/*.cc",
-                "platform/*.h",
-                "platform/*.cc",
-                "platform/profile_utils/**/*.h",
-                "platform/profile_utils/**/*.cc",
-            ],
-            exclude = [
-                "**/*test*",
-                "lib/hash/crc32c_accelerate.cc",
-                "lib/gif/**/*",
-                "lib/jpeg/**/*",
-                "platform/gif.h",
-                "platform/jpeg.h",
-                "platform/**/env_time.cc",
-                "platform/**/cuda.h",
-                "platform/**/cuda_libdevice_path.cc",
-                "platform/**/stream_executor.h",
-                "platform/load_library.cc",
-            ],
-        ),
+        "//tensorflow:windows": LIB_INTERNAL_WINDOWS_DEPS,
+        "//tensorflow:windows_msvc": LIB_INTERNAL_WINDOWS_DEPS,
         "//conditions:default": glob(
             [
                 "lib/**/*.h",
@@ -1309,8 +1305,9 @@ cc_library(
     ],
     copts = tf_copts(),
     defines = tf_additional_lib_defines() + [
-        "SNAPPY",
-    ] + tf_additional_verbs_lib_defines(),
+                  "SNAPPY",
+              ] + tf_additional_verbs_lib_defines() +
+              tf_additional_mpi_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
         "//conditions:default": [
@@ -1434,6 +1431,7 @@ tf_cuda_library(
         ],
     ) + select({
         "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "util/memmapped_file_system.h",
             "util/memmapped_file_system.cc",
@@ -1561,8 +1559,6 @@ tf_cuda_library(
         "graph/graph_constructor.cc",
         "graph/graph_def_builder.cc",
         "graph/graph_partition.cc",
-        "graph/mkl_layout_pass.cc",
-        "graph/mkl_tfconversion_pass.cc",
         "graph/node_builder.cc",
         "graph/optimizer_cse.cc",
         "graph/subgraph.cc",
@@ -1625,6 +1621,8 @@ tf_cuda_library(
         "common_runtime/threadpool_device.cc",
         "common_runtime/threadpool_device_factory.cc",
         "graph/gradients.cc",
+        "graph/mkl_layout_pass.cc",
+        "graph/mkl_tfconversion_pass.cc",
         "graph/quantize_training.cc",
         "public/session.h",
         "public/session_options.h",
@@ -1835,6 +1833,7 @@ cc_library(
     hdrs = if_not_windows([
         "common_runtime/sycl/sycl_allocator.h",
         "common_runtime/sycl/sycl_device.h",
+        "common_runtime/sycl/sycl_util.h",
         "common_runtime/sycl/sycl_device_context.h",
     ]),
     copts = tf_copts(),
@@ -2319,6 +2318,18 @@ tf_cc_test_gpu(
         ":lib",
         ":test",
         ":test_main",
+    ],
+)
+
+tf_cuda_only_cc_test(
+    name = "util_cuda_kernel_helper_test",
+    srcs = [
+        "util/cuda_kernel_helper_test.cu.cc",
+    ],
+    deps = [
+        ":test",
+        ":test_main",
+        "//third_party/eigen3",
     ],
 )
 
@@ -2880,6 +2891,20 @@ filegroup(
         "lib/gif/testdata/optimized.gif",
         # BMP data
         "lib/bmp/testdata/lena.bmp",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lmdb_testdata",
+    testonly = 1,
+    srcs = [
+        # A simple key-value store:
+        #   0 : 'a'
+        #   1 : 'b'
+        #    ...
+        #   9 : 'j'
+        "lib/lmdb/testdata/data.mdb",
     ],
     visibility = ["//visibility:public"],
 )

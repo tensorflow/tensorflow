@@ -87,7 +87,7 @@ float QuantizedToFloat(T input, float range_min, float range_max) {
       static_cast<int64>(Eigen::NumTraits<T>::lowest());
   const double offset_input = static_cast<double>(input) - lowest_quantized;
   // For compatibility with DEQUANTIZE_WITH_EIGEN, we should convert
-  // range_scale to a float, otherwise range_min_rounded might be slighly
+  // range_scale to a float, otherwise range_min_rounded might be slightly
   // different.
   const double range_min_rounded =
       round(range_min / static_cast<float>(range_scale)) *

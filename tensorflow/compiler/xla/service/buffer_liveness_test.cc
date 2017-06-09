@@ -628,7 +628,7 @@ class FusedDynamicUpdateSliceLivenessTest : public BufferLivenessTest {
         BufferLiveness::Run(module.get(),
                             MakeUnique<DependencyHloOrdering>(module.get()))
             .ConsumeValueOrDie();
-    // Return whether or not buffers interfernce is detected between
+    // Return whether or not buffers interference is detected between
     // 'tuple_param0' and 'tuple_root' at shape index '{1}'.
     return TupleElementsMayInterfere(*liveness, tuple_param0, tuple_root, {1});
   }
@@ -740,7 +740,7 @@ class DynamicUpdateSliceLivenessTest : public BufferLivenessTest {
         BufferLiveness::Run(module.get(),
                             MakeUnique<DependencyHloOrdering>(module.get()))
             .ConsumeValueOrDie();
-    // Return whether or not buffers interfernce is detected between
+    // Return whether or not buffers interference is detected between
     // 'tuple_param0' and 'tuple_root' at shape index '{1}'.
     return TupleElementsMayInterfere(*liveness, tuple_param0, tuple_root, {1});
   }

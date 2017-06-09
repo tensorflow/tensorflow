@@ -763,7 +763,7 @@ class LiteralUtil {
 
   // Creates a new value that has the equivalent value as literal, but conforms
   // to new_layout; e.g. a literal matrix that was in {0, 1} minor-to-major
-  // dimension layout can be re-layed-out as {1, 0} minor-to-major dimension
+  // dimension layout can be re-laid-out as {1, 0} minor-to-major dimension
   // layout and the value in the cell at any given logical index (i0, i1) will
   // be the same.
   //

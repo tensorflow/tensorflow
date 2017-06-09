@@ -38,7 +38,7 @@ const VERTICES_PER_GLYPH = 2 * 3;  // 2 triangles, 3 verts per triangle
  *            bottom center of the word is positioned at (0, 0);
  *    position: The position of the label in worldspace.
  *    vUv: The (u, v) coordinates that index into the glyphs sheet (range 0, 1.)
- *    color: The color of the label (matches the cooresponding point's color.)
+ *    color: The color of the label (matches the corresponding point's color.)
  *    wordShown: Boolean. Whether or not the label is visible.
  */
 
