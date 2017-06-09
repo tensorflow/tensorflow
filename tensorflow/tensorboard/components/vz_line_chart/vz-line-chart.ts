@@ -14,10 +14,6 @@ limitations under the License.
 ==============================================================================*/
 /* tslint:disable:no-namespace variable-name */
 
-import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
-import * as _ from 'lodash'
-import * as Plottable from 'Plottable/plottable';  // from //third_party/javascript/plottable
-
 import {DragZoomLayer} from './dragZoomInteraction'
 import * as ChartHelpers from './vz-chart-helpers'
 
@@ -142,7 +138,7 @@ Polymer({
    * Sets the series that the chart displays. Series with other names will
    * not be displayed.
    *
-   * @param {String[]} names Array with the names of the series to
+   * @param {Array<String>} names Array with the names of the series to
    * display.
    */
   setVisibleSeries: function(names) {
@@ -157,8 +153,8 @@ Polymer({
    * Sets the data of one of the series. Note that to display this series
    * its name must be in the setVisibleSeries() array.
    *
-   * @param {String} name Name of the series.
-   * @param {VZ.ChartHelpers.ScalarDatum[]} data Data of the series. This is
+   * @param {string} name Name of the series.
+   * @param {Array<ChartHelpers.ScalarDatum>} data Data of the series. This is
    * an array of objects with at least the following properties:
    * - step: (Number) - index of the datum.
    * - wall_time: (Date) - Date object with the datum's time.

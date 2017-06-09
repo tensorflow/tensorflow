@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/master_interface.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_master.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/master.pb.h"
@@ -30,8 +32,7 @@ limitations under the License.
 namespace tensorflow {
 
 GrpcSession::GrpcSession(const SessionOptions& options)
-    : options_(options),
-      current_graph_version_(-1) {}
+    : options_(options), current_graph_version_(-1) {}
 
 GrpcSession::~GrpcSession() {}
 
@@ -321,27 +322,41 @@ Status GrpcSession::Close() {
   return master_->CloseSession(&call_options, &req, &resp);
 }
 
-std::vector<DeviceAttributes> GrpcSession::ListDevices() {
-  std::vector<DeviceAttributes> devices;
-
+Status GrpcSession::ListDevices(std::vector<DeviceAttributes>* response) {
   ListDevicesRequest req;
+  {
+    mutex_lock l(mu_);
+    req.set_session_handle(handle_);
+  }
+  if (req.session_handle().empty()) {
+    LOG(WARNING) << "GrpcSession::ListDevices will initialize the session with "
+                    "an empty graph and other defaults because the session has "
+                    "not yet been created.";
+    GraphDef graph_def;
+    TF_RETURN_IF_ERROR(Create(graph_def));
+    {
+      mutex_lock l(mu_);
+      req.set_session_handle(handle_);
+    }
+  }
   ListDevicesResponse resp;
   CallOptions call_options;
   call_options.SetTimeout(options_.config.operation_timeout_in_ms());
   Status s = master_->ListDevices(&call_options, &req, &resp);
   if (!s.ok()) {
     LOG(ERROR) << "Could not list devices: " << s;
-    return devices;
+    return s;
   }
 
+  response->clear();
+  response->reserve(resp.local_device_size() + resp.remote_device_size());
   for (const auto& device_attr : resp.local_device()) {
-    devices.push_back(device_attr);
+    response->emplace_back(device_attr);
   }
   for (const auto& device_attr : resp.remote_device()) {
-    devices.push_back(device_attr);
+    response->emplace_back(device_attr);
   }
-
-  return devices;
+  return Status::OK();
 }
 
 void GrpcSession::SetRemoteMaster(std::unique_ptr<MasterInterface> master) {

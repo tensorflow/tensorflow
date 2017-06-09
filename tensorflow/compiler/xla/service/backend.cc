@@ -118,6 +118,7 @@ StatusOr<Backend::StreamPtr> Backend::BorrowStream(int device_ordinal) {
 
 StatusOr<Backend::StreamPtr> Backend::BorrowStream(
     se::StreamExecutor* executor) {
+  tensorflow::mutex_lock l(mu_);
   if (0 == stream_pools_.count(executor)) {
     stream_pools_.emplace(std::piecewise_construct,
                           std::forward_as_tuple(executor),
@@ -221,7 +222,9 @@ const Eigen::ThreadPoolDevice* Backend::eigen_intra_op_thread_pool_device()
 }
 
 tensorflow::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
-  if (intra_op_thread_pool_wrapper_ == nullptr) return nullptr;
+  if (intra_op_thread_pool_wrapper_ == nullptr) {
+    return nullptr;
+  }
   return intra_op_thread_pool_wrapper_->pool.get();
 }
 

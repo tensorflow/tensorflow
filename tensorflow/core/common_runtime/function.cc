@@ -49,7 +49,6 @@ static constexpr const char* const kGradientOp =
 static constexpr const char* const kNodeLabel = "Func";
 static constexpr const char* const kFuncAttr =
     FunctionLibraryDefinition::kFuncAttr;
-static constexpr const char* const kNoInlineAttr = "_noinline";
 
 // Represents the index-th output of a node.
 struct Endpoint {
@@ -1232,7 +1231,7 @@ Status FunctionDefToBodyHelper(
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = false;
-  Status s = ConvertGraphDefToGraph(opts, result.gdef, graph);
+  Status s = ConvertNodeDefsToGraph(opts, result.nodes, graph);
   if (!s.ok()) {
     delete graph;
   } else {

@@ -200,7 +200,7 @@ typedef std::function<Status(const string&, const OpDef**)>
 struct InstantiationResult {
   DataTypeVector arg_types;
   DataTypeVector ret_types;
-  GraphDef gdef;
+  std::vector<NodeDef> nodes;
 };
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
@@ -216,6 +216,7 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
 // etc.)
 string DebugString(const FunctionDef& func_def);
 string DebugString(const GraphDef& instantiated_func_def);
+string DebugString(gtl::ArraySlice<NodeDef> instantiated_func_nodes);
 
 // Returns a debug string for a top level graph (the main program and
 // its supporting functions defined in its library).

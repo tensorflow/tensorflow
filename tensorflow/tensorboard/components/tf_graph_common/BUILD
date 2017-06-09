@@ -1,15 +1,31 @@
 package(default_visibility = ["//tensorflow:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
+load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
+load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-web_library(
+ts_web_library(
     name = "tf_graph_common",
     srcs = [
+        "annotation.ts",
+        "colors.ts",
+        "common.ts",
+        "contextmenu.ts",
+        "edge.ts",
+        "externs.ts",
+        "graph.ts",
+        "hierarchy.ts",
+        "layout.ts",
+        "minimap.ts",
+        "node.ts",
+        "parser.ts",
+        "proto.ts",
+        "render.ts",
+        "scene.ts",
+        "template.ts",
         "tf-graph-common.html",
-        ":ts",
+        "util.ts",
     ],
     path = "/tf-graph-common",
     deps = [
@@ -17,39 +33,13 @@ web_library(
         "//tensorflow/tensorboard/components/tf_imports:dagre",
         "//tensorflow/tensorboard/components/tf_imports:graphlib",
         "//tensorflow/tensorboard/components/tf_imports:lodash",
-        "@org_polymer",
+        "//tensorflow/tensorboard/components/tf_imports:polymer",
     ],
 )
-
-tensorboard_typescript_genrule(
-    name = "ts",
-    srcs = glob(["*.ts"]),
-    typings = [
-        "//tensorflow/tensorboard/components/tf_imports:d3.d.ts",
-        "@org_definitelytyped//:lodash.d.ts",
-        "@org_definitelytyped//:polymer.d.ts",
-        "@org_definitelytyped//:webcomponents.js.d.ts",
-    ],
-)
-
-filegroup(
-    name = "all_files",
-    srcs = glob(["**"]),
-    tags = ["notsan"],
-)
-
-################################################################################
-# MARKED FOR DELETION
-
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
 
 tensorboard_webcomponent_library(
     name = "legacy",
-    srcs = [
-        "tf-graph-common.html",
-        ":legacy_ts",
-    ],
+    srcs = [":tf_graph_common"],
     destdir = "tf-graph-common",
     deps = [
         "//tensorflow/tensorboard/components/tf_imports_google:lib",
@@ -57,16 +47,8 @@ tensorboard_webcomponent_library(
     ],
 )
 
-tensorboard_ts_library(
-    name = "legacy_ts",
-    srcs = glob(["*.ts"]),
-    deps_mgmt = "off",
-    runtime = "nodejs",
-    deps = [
-        "//third_party/javascript/node_modules/typescript:es2015.promise",
-        "//third_party/javascript/typings/d3_v4:bundle",
-        "//third_party/javascript/typings/lodash",
-        "//third_party/javascript/typings/polymer:polymer_without_externs",
-        "//third_party/javascript/typings/webcomponents_js",
-    ],
+filegroup(
+    name = "all_files",
+    srcs = glob(["**"]),
+    tags = ["notsan"],
 )

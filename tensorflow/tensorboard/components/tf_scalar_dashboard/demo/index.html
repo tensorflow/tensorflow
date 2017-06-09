@@ -45,14 +45,17 @@ limitations under the License.
         <tf-scalar-dashboard id="demo" backend="[[backend]]"></tf-scalar-dashboard>
       </template>
       <script>
+        import {Backend} from "../tf-backend/backend";
+        import {router} from "../tf-backend/router";
+
         Polymer({
           is: "scalar-dash-demo",
           properties: {
             backend: {
               type: Object,
               value: function() {
-                var router = new TF.Backend.router("/data", true);
-                return new TF.Backend.Backend(router);
+                var router = new router("/data", true);
+                return new Backend(router);
               },
             },
           },

@@ -123,6 +123,7 @@ py_library(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
@@ -422,6 +423,7 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/gru_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # http://b/62136390
     deps = [
         ":keras",
         ":testing_utils",
@@ -434,6 +436,7 @@ py_test(
     size = "medium",
     srcs = ["python/keras/layers/lstm_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # http://b/62189182
     deps = [
         ":keras",
         ":testing_utils",

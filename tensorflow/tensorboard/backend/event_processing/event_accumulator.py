@@ -23,14 +23,8 @@ import re
 import threading
 
 import numpy as np
+import tensorflow as tf
 
-from tensorflow.core.framework import graph_pb2
-from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.core.protobuf.config_pb2 import RunMetadata
-from tensorflow.core.util.event_pb2 import SessionLog
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util import compat
 from tensorflow.tensorboard.backend.event_processing import directory_watcher
 from tensorflow.tensorboard.backend.event_processing import event_file_loader
 from tensorflow.tensorboard.backend.event_processing import plugin_asset_util
@@ -39,9 +33,9 @@ from tensorflow.tensorboard.backend.event_processing import reservoir
 namedtuple = collections.namedtuple
 ScalarEvent = namedtuple('ScalarEvent', ['wall_time', 'step', 'value'])
 
-HealthPillEvent = namedtuple(
-    'HealthPillEvent',
-    ['wall_time', 'step', 'node_name', 'output_slot', 'value'])
+HealthPillEvent = namedtuple('HealthPillEvent', [
+    'wall_time', 'step', 'device_name', 'node_name', 'output_slot', 'dtype',
+    'shape', 'value'])
 
 CompressedHistogramEvent = namedtuple('CompressedHistogramEvent',
                                       ['wall_time', 'step',
@@ -78,7 +72,7 @@ SUMMARY_TYPES = {
 
 ## The tagTypes below are just arbitrary strings chosen to pass the type
 ## information of the tag from the backend to the frontend
-COMPRESSED_HISTOGRAMS = 'compressedHistograms'
+COMPRESSED_HISTOGRAMS = 'distributions'
 HISTOGRAMS = 'histograms'
 IMAGES = 'images'
 AUDIO = 'audio'
@@ -118,7 +112,7 @@ STORE_EVERYTHING_SIZE_GUIDANCE = {
 # The tag that values containing health pills have. Health pill data is stored
 # in tensors. In order to distinguish health pill values from scalar values, we
 # rely on how health pill values have this special tag value.
-HEALTH_PILL_EVENT_TAG = '__health_pill__'
+HEALTH_PILL_EVENT_TAG_PREFIX = '__health_pill__/'
 
 
 def IsTensorFlowEventsFile(path):
@@ -135,7 +129,7 @@ def IsTensorFlowEventsFile(path):
   """
   if not path:
     raise ValueError('Path must be a nonempty string')
-  return 'tfevents' in compat.as_str_any(os.path.basename(path))
+  return 'tfevents' in tf.compat.as_str_any(os.path.basename(path))
 
 
 class EventAccumulator(object):
@@ -301,10 +295,10 @@ class EventAccumulator(object):
       new_file_version = _ParseFileVersion(event.file_version)
       if self.file_version and self.file_version != new_file_version:
         ## This should not happen.
-        logging.warn(('Found new file_version for event.proto. This will '
-                      'affect purging logic for TensorFlow restarts. '
-                      'Old: {0} New: {1}').format(self.file_version,
-                                                  new_file_version))
+        tf.logging.warn(('Found new file_version for event.proto. This will '
+                         'affect purging logic for TensorFlow restarts. '
+                         'Old: {0} New: {1}').format(self.file_version,
+                                                     new_file_version))
       self.file_version = new_file_version
 
     self._MaybePurgeOrphanedData(event)
@@ -317,38 +311,41 @@ class EventAccumulator(object):
     # inside the meta_graph_def.
     if event.HasField('graph_def'):
       if self._graph is not None:
-        logging.warn(('Found more than one graph event per run, or there was '
-                      'a metagraph containing a graph_def, as well as one or '
-                      'more graph events.  Overwriting the graph with the '
-                      'newest event.'))
+        tf.logging.warn(
+            ('Found more than one graph event per run, or there was '
+             'a metagraph containing a graph_def, as well as one or '
+             'more graph events.  Overwriting the graph with the '
+             'newest event.'))
       self._graph = event.graph_def
       self._graph_from_metagraph = False
     elif event.HasField('meta_graph_def'):
       if self._meta_graph is not None:
-        logging.warn(('Found more than one metagraph event per run. '
-                      'Overwriting the metagraph with the newest event.'))
+        tf.logging.warn(('Found more than one metagraph event per run. '
+                         'Overwriting the metagraph with the newest event.'))
       self._meta_graph = event.meta_graph_def
       if self._graph is None or self._graph_from_metagraph:
         # We may have a graph_def in the metagraph.  If so, and no
         # graph_def is directly available, use this one instead.
-        meta_graph = meta_graph_pb2.MetaGraphDef()
+        meta_graph = tf.MetaGraphDef()
         meta_graph.ParseFromString(self._meta_graph)
         if meta_graph.graph_def:
           if self._graph is not None:
-            logging.warn(('Found multiple metagraphs containing graph_defs,'
-                          'but did not find any graph events.  Overwriting the '
-                          'graph with the newest metagraph version.'))
+            tf.logging.warn(
+                ('Found multiple metagraphs containing graph_defs,'
+                 'but did not find any graph events.  Overwriting the '
+                 'graph with the newest metagraph version.'))
           self._graph_from_metagraph = True
           self._graph = meta_graph.graph_def.SerializeToString()
     elif event.HasField('tagged_run_metadata'):
       tag = event.tagged_run_metadata.tag
       if tag in self._tagged_metadata:
-        logging.warn('Found more than one "run metadata" event with tag ' +
-                     tag + '. Overwriting it with the newest event.')
+        tf.logging.warn('Found more than one "run metadata" event with tag ' +
+                        tag + '. Overwriting it with the newest event.')
       self._tagged_metadata[tag] = event.tagged_run_metadata.run_metadata
     elif event.HasField('summary'):
       for value in event.summary.value:
-        if value.HasField('tensor') and value.tag == HEALTH_PILL_EVENT_TAG:
+        if (value.HasField('tensor') and
+            value.tag.startswith(HEALTH_PILL_EVENT_TAG_PREFIX)):
           self._ProcessHealthPillSummary(value, event)
         else:
           for summary_type, summary_func in SUMMARY_TYPES.items():
@@ -368,27 +365,27 @@ class EventAccumulator(object):
     summaries that it cannot process.
 
     Args:
-      value: A summary_pb2.Summary.Value with a Tensor field.
-      event: The event_pb2.Event containing that value.
+      value: A tf.Summary.Value with a Tensor field.
+      event: The tf.Event containing that value.
     """
-    elements = tensor_util.MakeNdarray(value.tensor)
+    elements = tf.make_ndarray(value.tensor)
 
     # The node_name property of the value object is actually a watch key: a
     # combination of node name, output slot, and a suffix. We capture the
     # actual node name and the output slot with a regular expression.
     match = re.match(r'^(.*):(\d+):DebugNumericSummary$', value.node_name)
     if not match:
-      logging.log_first_n(
-          logging.ERROR,
+      tf.logging.log_first_n(
+          tf.logging.ERROR,
           'Unsupported watch key %s for health pills; skipping this sequence.',
-          1,
-          value.node_name)
+          1, value.node_name)
       return
 
     node_name = match.group(1)
     output_slot = int(match.group(2))
-    self._ProcessHealthPill(
-        event.wall_time, event.step, node_name, output_slot, elements)
+    device_name = value.tag[len(HEALTH_PILL_EVENT_TAG_PREFIX):]
+    self._ProcessHealthPill(event.wall_time, event.step, device_name, node_name,
+                            output_slot, elements)
 
   def Tags(self):
     """Return all tags found in the value stream.
@@ -458,7 +455,7 @@ class EventAccumulator(object):
     Returns:
       The `graph_def` proto.
     """
-    graph = graph_pb2.GraphDef()
+    graph = tf.GraphDef()
     if self._graph is not None:
       graph.ParseFromString(self._graph)
       return graph
@@ -475,7 +472,7 @@ class EventAccumulator(object):
     """
     if self._meta_graph is None:
       raise ValueError('There is no metagraph in this EventAccumulator')
-    meta_graph = meta_graph_pb2.MetaGraphDef()
+    meta_graph = tf.MetaGraphDef()
     meta_graph.ParseFromString(self._meta_graph)
     return meta_graph
 
@@ -494,7 +491,7 @@ class EventAccumulator(object):
     if tag not in self._tagged_metadata:
       raise ValueError('There is no run metadata with this tag name')
 
-    run_metadata = RunMetadata()
+    run_metadata = tf.RunMetadata()
     run_metadata.ParseFromString(self._tagged_metadata[tag])
     return run_metadata
 
@@ -610,7 +607,7 @@ class EventAccumulator(object):
         previously seen events with a greater event.step will be purged.
     """
     if event.HasField(
-        'session_log') and event.session_log.status == SessionLog.START:
+        'session_log') and event.session_log.status == tf.SessionLog.START:
       self._Purge(event, by_tags=False)
 
   def _CheckForOutOfOrderStepAndMaybePurge(self, event):
@@ -674,8 +671,8 @@ class EventAccumulator(object):
     tv = TensorEvent(wall_time=wall_time, step=step, tensor_proto=tensor)
     self._tensors.AddItem(tag, tv)
 
-  def _ProcessHealthPill(self, wall_time, step, node_name, output_slot,
-                         elements):
+  def _ProcessHealthPill(self, wall_time, step, device_name, node_name,
+                         output_slot, elements):
     """Processes a health pill value by adding it to accumulated state.
 
     Args:
@@ -683,21 +680,24 @@ class EventAccumulator(object):
         debugger.
       step: The step at which the health pill was created. Provided by the
         debugger.
+      device_name: The name of the node's device.
       node_name: The name of the node for this health pill.
       output_slot: The output slot for this health pill.
-      elements: An ND array of 12 floats. The elements of the health pill.
+      elements: An ND array of 20 floats. The elements of the health pill.
     """
     # Key by the node name for fast retrieval of health pills by node name. The
     # array is cast to a list so that it is JSON-able. The debugger data plugin
     # serves a JSON response.
-    self._health_pills.AddItem(
-        node_name,
-        HealthPillEvent(
-            wall_time=wall_time,
-            step=step,
-            node_name=node_name,
-            output_slot=output_slot,
-            value=list(elements)))
+    self._health_pills.AddItem(node_name,
+                               HealthPillEvent(
+                                   wall_time=wall_time,
+                                   step=step,
+                                   device_name=device_name,
+                                   node_name=node_name,
+                                   output_slot=output_slot,
+                                   dtype=repr(tf.as_dtype(elements[12])),
+                                   shape=list(elements[14:]),
+                                   value=list(elements)))
 
   def _Purge(self, event, by_tags):
     """Purge all events that have occurred after the given event.step.
@@ -741,7 +741,7 @@ class EventAccumulator(object):
       purge_msg = _GetPurgeMessage(self.most_recent_step,
                                    self.most_recent_wall_time, event.step,
                                    event.wall_time, *expired_per_type)
-      logging.warn(purge_msg)
+      tf.logging.warn(purge_msg)
 
 
 def _GetPurgeMessage(most_recent_step, most_recent_wall_time, event_step,
@@ -787,8 +787,9 @@ def _ParseFileVersion(file_version):
   except ValueError:
     ## This should never happen according to the definition of file_version
     ## specified in event.proto.
-    logging.warn(('Invalid event.proto file_version. Defaulting to use of '
-                  'out-of-order event.step logic for purging expired events.'))
+    tf.logging.warn(
+        ('Invalid event.proto file_version. Defaulting to use of '
+         'out-of-order event.step logic for purging expired events.'))
     return -1
 
 

@@ -1221,7 +1221,7 @@ of the forward TensorArray is known when this operation is called.
 
 TensorArray gradient calls use an accumulator TensorArray object.  If
 multiple gradients are calculated and run in the same session, the multiple
-gradient nodes may accidentally flow throuth the same accumulator TensorArray.
+gradient nodes may accidentally flow through the same accumulator TensorArray.
 This double counts and generally breaks the TensorArray gradient flow.
 
 The solution is to identify which gradient call this particular
@@ -2003,7 +2003,7 @@ REGISTER_OP("Unstage")
     .Doc(R"doc(
 Op is similar to a lightweight Dequeue.
 
-The basic funtionality is similar to dequeue with many fewer
+The basic functionality is similar to dequeue with many fewer
 capabilities and options.  This Op is optimized for performance.
 )doc");
 
@@ -2078,6 +2078,7 @@ shared_name: It is necessary to match this name to the matching Unstage Op.
 
 REGISTER_OP("MapPeek")
     .Input("key: int64")
+    .Input("indices: int32")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")
     .Attr("memory_limit: int >= 0 = 0")
@@ -2094,6 +2095,7 @@ this op will block until it does.
 
 REGISTER_OP("MapUnstage")
     .Input("key: int64")
+    .Input("indices: int32")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")
     .Attr("memory_limit: int >= 0 = 0")
@@ -2109,6 +2111,7 @@ does not contain this key, the op will block until it does.
     )doc");
 
 REGISTER_OP("MapUnstageNoKey")
+    .Input("indices: int32")
     .Output("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")
@@ -2193,6 +2196,7 @@ shared_name: It is necessary to match this name to the matching Unstage Op.
 
 REGISTER_OP("OrderedMapPeek")
     .Input("key: int64")
+    .Input("indices: int32")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")
     .Attr("memory_limit: int >= 0 = 0")
@@ -2210,6 +2214,7 @@ performance.
 
 REGISTER_OP("OrderedMapUnstage")
     .Input("key: int64")
+    .Input("indices: int32")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")
     .Attr("memory_limit: int >= 0 = 0")
@@ -2225,6 +2230,7 @@ does not contain this key, the op will block until it does.
     )doc");
 
 REGISTER_OP("OrderedMapUnstageNoKey")
+    .Input("indices: int32")
     .Output("key: int64")
     .Output("values: dtypes")
     .Attr("capacity: int >= 0 = 0")

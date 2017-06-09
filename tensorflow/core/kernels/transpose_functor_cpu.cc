@@ -144,8 +144,42 @@ Status DoTranspose<CPUDevice>(const CPUDevice& d, const Tensor& in,
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 
+template <typename Device, typename T>
+void TransposeSYCL(const Device& d, const Tensor& in,
+               const gtl::ArraySlice<int32> perm, Tensor* out) {
+  switch (in.dims()) {
+    case 1:
+      internal::TransposeUsingEigen<Device, T, 1>(d, in, perm, out);
+      break;
+    case 2:
+      internal::TransposeUsingEigen<Device, T, 2>(d, in, perm, out);
+      break;
+    case 3:
+      internal::TransposeUsingEigen<Device, T, 3>(d, in, perm, out);
+      break;
+    case 4:
+      internal::TransposeUsingEigen<Device, T, 4>(d, in, perm, out);
+      break;
+    case 5:
+      internal::TransposeUsingEigen<Device, T, 5>(d, in, perm, out);
+      break;
+    case 6:
+      internal::TransposeUsingEigen<Device, T, 6>(d, in, perm, out);
+      break;
+    case 7:
+      internal::TransposeUsingEigen<Device, T, 7>(d, in, perm, out);
+      break;
+    case 8:
+      internal::TransposeUsingEigen<Device, T, 8>(d, in, perm, out);
+      break;
+    default:
+      LOG(FATAL) << "Unsupported TransposeUsingEigen for: " << in.dims();
+      break;
+  }
+}
+
 template <typename T>
-struct internal::Transpose<SYCLDevice, T> {
+struct Transpose<SYCLDevice, T> {
   static void run(const SYCLDevice& d, const Tensor& in,
                   const gtl::ArraySlice<int32> perm, Tensor* out) {
     // Should add a specialized implementation for SYCLDevice here.
@@ -160,10 +194,36 @@ Status DoTranspose<SYCLDevice>(const SYCLDevice& d, const Tensor& in,
   CHECK_EQ(in.dims(), perm.size());
   CHECK_EQ(in.dtype(), out->dtype());
   switch (in.dtype()) {
+    case DT_BOOL:
+    case DT_INT8:
+    case DT_QINT8:
+    case DT_QUINT8:
+    case DT_UINT8:
+      TransposeSYCL<SYCLDevice, uint8>(d, in, perm, out);
+      break;
+
+    case DT_BFLOAT16:
+    case DT_HALF:
+    case DT_INT16:
+    case DT_QINT16:
+    case DT_QUINT16:
+    case DT_UINT16:
+      TransposeSYCL<SYCLDevice, uint16>(d, in, perm, out);
+      break;
     case DT_FLOAT:
-    case DT_DOUBLE:
     case DT_INT32:
-      internal::Transpose<SYCLDevice, uint32>::run(d, in, perm, out);
+    case DT_QINT32:
+      TransposeSYCL<SYCLDevice, uint32>(d, in, perm, out);
+      break;
+
+    case DT_COMPLEX64:
+    case DT_DOUBLE:
+    case DT_INT64:
+      TransposeSYCL<SYCLDevice, uint64>(d, in, perm, out);
+      break;
+
+    case DT_COMPLEX128:
+      TransposeSYCL<SYCLDevice, complex128>(d, in, perm, out);
       break;
 
     default:

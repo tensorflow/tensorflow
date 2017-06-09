@@ -162,7 +162,7 @@ def _split_sharded_vars(name_shape_map):
 
   Returns:
     not_sharded: Names of the non-sharded variables.
-    sharded: Names of the sharded varibales.
+    sharded: Names of the sharded variables.
   """
   sharded = []
   not_sharded = []

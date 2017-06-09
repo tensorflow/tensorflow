@@ -27,7 +27,7 @@ namespace tfprof {
 
 const TFGraphNodeProto& TFShow::Show(const Options& opts) {
   if (opts.output_type == kOutput[0]) {
-    Timeline timeline(opts.output_options.at(kTimelineOpts[0]));
+    Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
     return ShowInternal(opts, &timeline)->proto();
   } else if (opts.output_type == kOutput[2]) {
     const ShowNode* root = ShowInternal(opts, nullptr);
@@ -105,7 +105,8 @@ bool TFShow::ShouldTrim(ShowNode* node, const std::vector<string>& regexes) {
   return false;
 }
 
-bool TFShow::ShouldAccount(ShowNode* node, const Options& opts) {
+bool TFShow::ReAccount(ShowNode* node, const Options& opts) {
+  node->ReInit(opts.step);
   if (opts.account_type_regexes.size() == 1 &&
       opts.account_type_regexes[0] == ".*") {
     return true;

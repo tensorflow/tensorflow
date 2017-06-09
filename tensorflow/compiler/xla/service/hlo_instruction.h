@@ -30,9 +30,11 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -501,6 +503,9 @@ class HloInstruction {
   // As ToString, but returns a shorter string.
   string ToShortString() const;
 
+  // Returns a serialized representation of this instruction.
+  HloInstructionProto ToProto() const;
+
   // Returns a category for the HLO. This could be something like "convolution"
   // or "elementwise".
   string ToCategory() const;
@@ -532,7 +537,7 @@ class HloInstruction {
   // Returns a tag to be used in tracing.
   //
   // Precondition: opcode() == HloOpcode::kTrace
-  const string& tracing_tag() const;
+  string TracingTag() const;
 
   // Returns whether the instruction is a constant.
   bool IsConstant() const;
@@ -581,6 +586,13 @@ class HloInstruction {
   //
   // Precondition: opcode() == HloOpcode::kFusion
   const std::vector<HloInstruction*>& fused_parameters() const;
+
+  // Returns true if this instruction is a fusion instruction that generates
+  // multiple outputs.
+  const bool IsMultiOutputFusion() const {
+    return (opcode() == HloOpcode::kFusion &&
+            fused_expression_root()->opcode() == HloOpcode::kTuple);
+  }
 
   FusionKind fusion_kind() const {
     CHECK_EQ(HloOpcode::kFusion, opcode_);
@@ -772,6 +784,9 @@ class HloInstruction {
 
  private:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
+
+  // Helper class for computing OperandElementUse for kFusion.
+  class FusionReusesParamElements;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(

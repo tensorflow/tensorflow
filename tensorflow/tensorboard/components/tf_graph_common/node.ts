@@ -720,12 +720,12 @@ export function traceInputs(renderGraphInfo: tf.graph.render.RenderGraphInfo) {
 
   // Extract currently selected node. Return if input tracing disabled or no
   // node is selected.
-  let selectedNodeSelectorString = 'g.node.selected,g.op.selected';
-  let node = d3.select(selectedNodeSelectorString);
+  const selectedNodeSelectorString = 'g.node.selected,g.op.selected';
+  const nodeSelection = d3.select(selectedNodeSelectorString);
   let currentNode = undefined;
-  if (renderGraphInfo && renderGraphInfo.traceInputs && node && node[0] &&
-      node[0][0]) {
-    currentNode = node[0][0] as Element;
+  if (renderGraphInfo && renderGraphInfo.traceInputs &&
+      nodeSelection.nodes().length) {
+    currentNode = nodeSelection.nodes()[0];
   } else {
     return;
   }
@@ -738,11 +738,11 @@ export function traceInputs(renderGraphInfo: tf.graph.render.RenderGraphInfo) {
   });
 
   d3.selectAll(selectedNodeSelectorString)
-    // Remove the input-highlight from the selected node.
-    .classed('input-highlight', false)
-    // Add input-highlight-selected class to selected node, which allows
-    // treating the selected not as a special case of an input node.
-    .classed('input-highlight-selected', true)
+      // Remove the input-highlight from the selected node.
+      .classed('input-highlight', false)
+      // Add input-highlight-selected class to selected node, which allows
+      // treating the selected not as a special case of an input node.
+      .classed('input-highlight-selected', true);
 
   // Highlight all parent nodes of each OpNode as input parent to allow
   // specific highlighting.
@@ -1016,16 +1016,17 @@ function _markParentsOfNodes(visibleNodes: {[nodeName: string]: Node}) {
     let currentNode = nodeInstance;
 
     while (currentNode.name !== tf.graph.ROOT_NAME) {
-      let renderedElement = d3.select(`.node[data-name="${currentNode.name}"]`);
+      const renderedElementSelection =
+          d3.select(`.node[data-name="${currentNode.name}"]`);
       // Only mark the element as a parent node to an input if it is not
       // marked as input node itself.
-      if (renderedElement[0][0] &&
-          !renderedElement.classed('input-highlight') &&
-          !renderedElement.classed('selected') &&
+      if (renderedElementSelection.nodes().length &&
+          !renderedElementSelection.classed('input-highlight') &&
+          !renderedElementSelection.classed('selected') &&
           // OpNode only parent if start node is embedded node, in which case
           // the OpNode should be faded as well.
-          !renderedElement.classed('op')) {
-        renderedElement.classed('input-parent', true);
+          !renderedElementSelection.classed('op')) {
+        renderedElementSelection.classed('input-parent', true);
       }
       currentNode = currentNode.parentNode;
     }

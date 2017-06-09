@@ -42,6 +42,7 @@ module tf.graph.scene {
       CONTAINER: 'edges',
       GROUP: 'edge',
       LINE: 'edgeline',
+      REFERENCE_EDGE: 'referenceedge',
       REF_LINE: 'refline',
       STRUCTURAL: 'structural'
     },
@@ -80,8 +81,11 @@ module tf.graph.scene {
    * backend.ts.
    */
   export interface HealthPill {
+    device_name: string;
     node_name: string;
     output_slot: number;
+    dtype: string;
+    shape: number[];
     value: number[];
     wall_time: number;
     step: number;
@@ -539,6 +543,13 @@ function _addHealthPill(
     return;
   }
 
+  const deviceName = healthPill.device_name;
+  const dtypeName = healthPill.dtype;
+  let shapeStr = '(';
+  for (const dimSize of healthPill.shape) {
+    shapeStr += dimSize + ',';
+  }
+  shapeStr += ')';
   let lastHealthPillData = healthPill.value;
 
   // For now, we only visualize the 6 values that summarize counts of tensor
@@ -608,10 +619,12 @@ function _addHealthPill(
 
   // Show a title with specific counts on hover.
   let titleSvg = document.createElementNS(svgNamespace, 'title');
-  titleSvg.textContent = '#(elements): ' + totalCount + '\n\n' +
+  titleSvg.textContent = 'Device: ' + deviceName + '\ndtype: ' + dtypeName +
+      '\nshape: ' + shapeStr + '\n\n#(elements): ' + totalCount + '\n' +
       titleOnHoverTextEntries.join(', ') + '\n\nmin: ' + minVal +
       ', max: ' + maxVal + '\nmean: ' + meanVal + ', stddev: ' + stddevVal;
   healthPillGroup.appendChild(titleSvg);
+  // TODO(cais): Make the tooltip content prettier.
 
   // Center this health pill just right above the node for the op.
   let healthPillX = nodeInfo.x - healthPillWidth / 2;

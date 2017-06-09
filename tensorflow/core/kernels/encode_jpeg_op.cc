@@ -119,7 +119,7 @@ class EncodeJpegOp : public OpKernel {
     }
 
     // Encode image to jpeg string
-    Tensor* output = NULL;
+    Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
     OP_REQUIRES(context,

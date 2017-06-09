@@ -41,6 +41,7 @@ __all__ = [
     "Helper",
     "TrainingHelper",
     "GreedyEmbeddingHelper",
+    "SampleEmbeddingHelper",
     "CustomHelper",
     "ScheduledEmbeddingTrainingHelper",
     "ScheduledOutputTrainingHelper",
@@ -512,3 +513,42 @@ class GreedyEmbeddingHelper(Helper):
         lambda: self._start_inputs,
         lambda: self._embedding_fn(sample_ids))
     return (finished, next_inputs, state)
+
+
+class SampleEmbeddingHelper(GreedyEmbeddingHelper):
+  """A helper for use during inference.
+
+  Uses sampling (from a distribution) instead of argmax and passes the
+  result through an embedding layer to get the next input.
+  """
+
+  def __init__(self, embedding, start_tokens, end_token, seed=None):
+    """Initializer.
+
+    Args:
+      embedding: A callable that takes a vector tensor of `ids` (argmax ids),
+        or the `params` argument for `embedding_lookup`. The returned tensor
+        will be passed to the decoder input.
+      start_tokens: `int32` vector shaped `[batch_size]`, the start tokens.
+      end_token: `int32` scalar, the token that marks end of decoding.
+      seed: The sampling seed.
+
+    Raises:
+      ValueError: if `start_tokens` is not a 1D tensor or `end_token` is not a
+        scalar.
+    """
+    super(SampleEmbeddingHelper, self).__init__(
+        embedding, start_tokens, end_token)
+    self._seed = seed
+
+  def sample(self, time, outputs, state, name=None):
+    """sample for SampleEmbeddingHelper."""
+    del time, state  # unused by sample_fn
+    # Outputs are logits, we sample instead of argmax (greedy).
+    if not isinstance(outputs, ops.Tensor):
+      raise TypeError("Expected outputs to be a single Tensor, got: %s" %
+                      type(outputs))
+    sample_id_sampler = categorical.Categorical(logits=outputs)
+    sample_ids = sample_id_sampler.sample(seed=self._seed)
+
+    return sample_ids

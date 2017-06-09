@@ -3889,7 +3889,7 @@ op {
     default_value {
       b: false
     }
-    description: "Scalar. If set to true, during CTC\ncalculation items have longer input sequences than output sequences\nare ignored by returning zero-gradient for those items."
+    description: "Scalar. If set to true, during CTC\ncalculation, items that have longer output sequences than input sequences\nare skipped: they don\'t contribute to the loss term and have zero-gradient."
   }
   summary: "Calculates the CTC Loss (log probability) for each batch entry.  Also calculates"
   description: "the gradient.  This class performs the softmax operation for you, so inputs\nshould be e.g. linear projections of outputs by an LSTM."
@@ -3985,11 +3985,13 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
   summary: "Computes the Cholesky decomposition of one or more square matrices."
-  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices, with the same constraints as the single matrix Cholesky\ndecomposition above. The output is a tensor of the same shape as the input\ncontaining the Cholesky decompositions for all input submatrices `[..., :, :]`."
+  description: "The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions\nform square matrices.\n\nThe input has to be symmetric and positive definite. Only the lower-triangular\npart of the input will be used for this operation. The upper-triangular part\nwill not be read.\n\nThe output is a tensor of the same shape as the input\ncontaining the Cholesky decompositions for all input submatrices `[..., :, :]`.\n\n**Note**: The gradient computation on GPU is faster for large matrices but\nnot for large batch dimensions when the submatrices are small. In this\ncase it might be faster to use the CPU."
 }
 op {
   name: "CholeskyGrad"
@@ -4969,6 +4971,30 @@ op {
   summary: "Computes cos of x element-wise."
 }
 op {
+  name: "Cosh"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes hyperbolic cosine of x element-wise."
+}
+op {
   name: "CountUpTo"
   input_arg {
     name: "ref"
@@ -5277,7 +5303,7 @@ op {
     }
   }
   summary: "Compute the cumulative product of the tensor `x` along `axis`."
-  description: "By default, this op performs an inclusive cumprod, which means that the first\nelement of the input is identical to the first element of the output:\n```prettyprint\ntf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumprod is\nperformed instead:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumprod is performed in the\nopposite direction:\n```prettyprint\ntf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]\n```\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n```prettyprint\ntf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]\n```"
+  description: "By default, this op performs an inclusive cumprod, which means that the first\nelement of the input is identical to the first element of the output:\n\n```python\ntf.cumprod([a, b, c])  # => [a, a * b, a * b * c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumprod is\nperformed instead:\n\n```python\ntf.cumprod([a, b, c], exclusive=True)  # => [1, a, a * b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumprod is performed in the\nopposite direction:\n\n```python\ntf.cumprod([a, b, c], reverse=True)  # => [a * b * c, b * c, c]\n```\n\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n\n```python\ntf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]\n```"
 }
 op {
   name: "Cumsum"
@@ -5343,7 +5369,7 @@ op {
     }
   }
   summary: "Compute the cumulative sum of the tensor `x` along `axis`."
-  description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n```prettyprint\ntf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n```prettyprint\ntf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n```prettyprint\ntf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]\n```\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n```prettyprint\ntf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]\n```"
+  description: "By default, this op performs an inclusive cumsum, which means that the first\nelement of the input is identical to the first element of the output:\n\n```python\ntf.cumsum([a, b, c])  # => [a, a + b, a + b + c]\n```\n\nBy setting the `exclusive` kwarg to `True`, an exclusive cumsum is\nperformed instead:\n\n```python\ntf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]\n```\n\nBy setting the `reverse` kwarg to `True`, the cumsum is performed in the\nopposite direction:\n\n```python\ntf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]\n```\n\nThis is more efficient than using separate `tf.reverse` ops.\n\nThe `reverse` and `exclusive` kwargs can also be combined:\n\n```python\ntf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]\n```"
 }
 op {
   name: "DebugIdentity"
@@ -5360,6 +5386,13 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "device_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   attr {
     name: "tensor_name"
@@ -5407,6 +5440,13 @@ op {
     type: "type"
   }
   attr {
+    name: "device_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
     name: "tensor_name"
     type: "string"
     default_value {
@@ -5444,12 +5484,19 @@ op {
   }
   output_arg {
     name: "output"
-    description: "A double tensor of shape [12], the elements of which are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: NaN element count\n  [3]: generalized -inf count: elements <= lower_bound. lower_bound is -inf by\n    default.\n  [4]: negative element count (excluding -inf), if lower_bound is the default\n    -inf. Otherwise, this is the count of elements > lower_bound and < 0.\n  [5]: zero element count\n  [6]: positive element count (excluding +inf), if upper_bound is the default\n    -inf. Otherwise, this is the count of elements < upper_bound and > 0.\n  [7]: generalized +inf count, elements >= upper_bound. upper_bound is +inf by\n    default.\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN."
+    description: "A double tensor of shape [14 + nDimensions], where nDimensions is the\n  the number of dimensions of the tensor\'s shape. The elements of output are:\n  [0]: is initialized (1.0) or not (0.0).\n  [1]: total number of elements\n  [2]: NaN element count\n  [3]: generalized -inf count: elements <= lower_bound. lower_bound is -inf by\n    default.\n  [4]: negative element count (excluding -inf), if lower_bound is the default\n    -inf. Otherwise, this is the count of elements > lower_bound and < 0.\n  [5]: zero element count\n  [6]: positive element count (excluding +inf), if upper_bound is the default\n    -inf. Otherwise, this is the count of elements < upper_bound and > 0.\n  [7]: generalized +inf count, elements >= upper_bound. upper_bound is +inf by\n    default.\nOutput elements [1:8] are all zero, if the tensor is uninitialized.\n  [8]: minimum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: +inf.\n  [9]: maximum of all non-inf and non-NaN elements.\n       If uninitialized or no such element exists: -inf.\n  [10]: mean of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [11]: variance of all non-inf and non-NaN elements.\n        If uninitialized or no such element exists: NaN.\n  [12]: Data type of the tensor encoded as an enum integer. See the DataType\n        proto for more details.\n  [13]: Number of dimensions of the tensor (ndims).\n  [14+]: Sizes of the dimensions."
     type: DT_DOUBLE
   }
   attr {
     name: "T"
     type: "type"
+  }
+  attr {
+    name: "device_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
   }
   attr {
     name: "tensor_name"
@@ -5578,7 +5625,15 @@ op {
     default_value {
       s: ","
     }
-    description: "delimiter to separate fields in a record."
+    description: "char delimiter to separate fields in a record."
+  }
+  attr {
+    name: "use_quote_delim"
+    type: "bool"
+    default_value {
+      b: true
+    }
+    description: "If false, treats double quotation marks as regular\ncharacters inside of the string fields (ignoring RFC 4180, Section 2,\nBullet 5)."
   }
   summary: "Convert CSV records to tensors. Each column maps to one tensor."
   description: "RFC 4180 format is expected for the CSV records.\n(https://tools.ietf.org/html/rfc4180)\nNote that we allow leading and trailing spaces with int or float field."
@@ -7482,8 +7537,15 @@ op {
       i: 8
     }
   }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   summary: "Fake-quantize the \'inputs\' tensor, type float to \'outputs\' tensor of same type."
-  description: "Attributes [min; max] define the clamping range for the \'inputs\' data.  Op\ndivides this range into 255 steps (total of 256 values), then replaces each\n\'inputs\' value with the closest of the quantized step values.\n\'num_bits\' is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nQuantization is called fake since the output is still in floating point."
+  description: "Attributes `[min; max]` define the clamping range for the `inputs` data.\n`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`\nwhen `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and\nthen de-quantized and output as floats in `[min; max]` interval.\n`num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nQuantization is called fake since the output is still in floating point."
 }
 op {
   name: "FakeQuantWithMinMaxArgsGradient"
@@ -7523,6 +7585,13 @@ op {
       i: 8
     }
   }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   summary: "Compute gradients for a FakeQuantWithMinMaxArgs operation."
 }
 op {
@@ -7550,8 +7619,15 @@ op {
       i: 8
     }
   }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   summary: "Fake-quantize the \'inputs\' tensor of type float via global float scalars `min`"
-  description: "and `max` to \'outputs\' tensor of same shape as `inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data.  Op divides this range\ninto 255 steps (total of 256 values), then replaces each \'inputs\' value with the\nclosest of the quantized step values.\n\'num_bits\' is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
+  description: "and `max` to \'outputs\' tensor of same shape as `inputs`.\n\n`[min; max]` define the clamping range for the `inputs` data.\n`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`\nwhen `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and\nthen de-quantized and output as floats in `[min; max]` interval.\n`num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nThis operation has a gradient and thus allows for training `min` and `max`\nvalues."
 }
 op {
   name: "FakeQuantWithMinMaxVarsGradient"
@@ -7596,6 +7672,14 @@ op {
     }
     description: "The bitwidth of the quantization; between 2 and 8, inclusive."
   }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Whether to quantize into 2^num_bits - 1 distinct values."
+  }
   summary: "Compute gradients for a FakeQuantWithMinMaxVars operation."
 }
 op {
@@ -7623,8 +7707,15 @@ op {
       i: 8
     }
   }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
   summary: "Fake-quantize the \'inputs\' tensor of type float and one of the shapes: `[d]`,"
-  description: "`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`\nto \'outputs\' tensor of same shape as `inputs`.\n\n[min; max] is the clamping range for the \'inputs\' data in the corresponding\ndepth channel.  Op divides this range into 255 steps (total of 256 values), then\nreplaces each \'inputs\' value with the closest of the quantized step values.\n\'num_bits\' is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nThis operation has a gradient and thus allows for training `min` and `max` values."
+  description: "`[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`\nto \'outputs\' tensor of same shape as `inputs`.\n\n`[min; max]` define the clamping range for the `inputs` data.\n`inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`\nwhen `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and\nthen de-quantized and output as floats in `[min; max]` interval.\n`num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.\n\nThis operation has a gradient and thus allows for training `min` and `max`\nvalues."
 }
 op {
   name: "FakeQuantWithMinMaxVarsPerChannelGradient"
@@ -7668,6 +7759,14 @@ op {
       i: 8
     }
     description: "The bitwidth of the quantization; between 2 and 8, inclusive."
+  }
+  attr {
+    name: "narrow_range"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "Whether to quantize into 2^num_bits - 1 distinct values."
   }
   summary: "Compute gradients for a FakeQuantWithMinMaxVarsPerChannel operation."
 }
@@ -9193,7 +9292,7 @@ op {
     type: DT_FLOAT
   }
   summary: "Inverse real-valued fast Fourier transform."
-  description: "Computes the inverse 1-dimensional discrete Fourier transform of a real-valued\nsignal over the inner-most dimension of `input`.\n\nThe inner-most dimension of `input` is assumed to be the result of `RFFT`: the\n`fft_length / 2 + 1` unique components of the DFT of a real-valued signal. If\n`fft_length` is not provided, it is computed from the size of the inner-most\ndimension of `input` (`fft_length = 2 * (inner - 1)`). If the FFT length used to\ncompute `input` is odd, it should be provided since it cannot be inferred\nproperly."
+  description: "Computes the inverse 1-dimensional discrete Fourier transform of a real-valued\nsignal over the inner-most dimension of `input`.\n\nThe inner-most dimension of `input` is assumed to be the result of `RFFT`: the\n`fft_length / 2 + 1` unique components of the DFT of a real-valued signal. If\n`fft_length` is not provided, it is computed from the size of the inner-most\ndimension of `input` (`fft_length = 2 * (inner - 1)`). If the FFT length used to\ncompute `input` is odd, it should be provided since it cannot be inferred\nproperly.\n\nAlong the axis `IRFFT` is computed on, if `fft_length / 2 + 1` is smaller\nthan the corresponding dimension of `input`, the dimension is cropped. If it is\nlarger, the dimension is padded with zeros."
 }
 op {
   name: "IRFFT2D"
@@ -9213,7 +9312,7 @@ op {
     type: DT_FLOAT
   }
   summary: "Inverse 2D real-valued fast Fourier transform."
-  description: "Computes the inverse 2-dimensional discrete Fourier transform of a real-valued\nsignal over the inner-most 2 dimensions of `input`.\n\nThe inner-most 2 dimensions of `input` are assumed to be the result of `RFFT2D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 2 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly."
+  description: "Computes the inverse 2-dimensional discrete Fourier transform of a real-valued\nsignal over the inner-most 2 dimensions of `input`.\n\nThe inner-most 2 dimensions of `input` are assumed to be the result of `RFFT2D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 2 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly.\n\nAlong each axis `IRFFT2D` is computed on, if `fft_length` (or\n`fft_length / 2 + 1` for the inner-most dimension) is smaller than the\ncorresponding dimension of `input`, the dimension is cropped. If it is larger,\nthe dimension is padded with zeros."
 }
 op {
   name: "IRFFT3D"
@@ -9233,7 +9332,7 @@ op {
     type: DT_FLOAT
   }
   summary: "Inverse 3D real-valued fast Fourier transform."
-  description: "Computes the inverse 3-dimensional discrete Fourier transform of a real-valued\nsignal over the inner-most 3 dimensions of `input`.\n\nThe inner-most 3 dimensions of `input` are assumed to be the result of `RFFT3D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 3 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly."
+  description: "Computes the inverse 3-dimensional discrete Fourier transform of a real-valued\nsignal over the inner-most 3 dimensions of `input`.\n\nThe inner-most 3 dimensions of `input` are assumed to be the result of `RFFT3D`:\nThe inner-most dimension contains the `fft_length / 2 + 1` unique components of\nthe DFT of a real-valued signal. If `fft_length` is not provided, it is computed\nfrom the size of the inner-most 3 dimensions of `input`. If the FFT length used\nto compute `input` is odd, it should be provided since it cannot be inferred\nproperly.\n\nAlong each axis `IRFFT3D` is computed on, if `fft_length` (or\n`fft_length / 2 + 1` for the inner-most dimension) is smaller than the\ncorresponding dimension of `input`, the dimension is cropped. If it is larger,\nthe dimension is padded with zeros."
 }
 op {
   name: "Identity"
@@ -11193,6 +11292,8 @@ op {
       list {
         type: DT_DOUBLE
         type: DT_FLOAT
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -12114,6 +12215,7 @@ op {
   }
   summary: "V2 format specific: merges the metadata files of sharded checkpoints.  The"
   description: "result is one logical checkpoint, with one physical metadata file and renamed\ndata files.\n\nIntended for \"grouping\" multiple checkpoints in a sharded checkpoint setup.\n\nIf delete_old_dirs is true, attempts to delete recursively the dirname of each\npath in the input checkpoint_prefixes.  This is useful when those paths are non\nuser-facing temporary locations."
+  is_stateful: true
 }
 op {
   name: "Mfcc"
@@ -14307,7 +14409,7 @@ op {
     }
   }
   summary: "Computes the QR decompositions of one or more matrices."
-  description: "Computes the QR decomposition of each inner matrix in `tensor` such that\n`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`\n\n```prettyprint\n# a is a tensor.\n# q is a tensor of orthonormal matrices.\n# r is a tensor of upper triangular matrices.\nq, r = qr(a)\nq_full, r_full = qr(a, full_matrices=True)\n```"
+  description: "Computes the QR decomposition of each inner matrix in `tensor` such that\n`tensor[..., :, :] = q[..., :, :] * r[..., :,:])`\n\n```python\n# a is a tensor.\n# q is a tensor of orthonormal matrices.\n# r is a tensor of upper triangular matrices.\nq, r = qr(a)\nq_full, r_full = qr(a, full_matrices=True)\n```"
 }
 op {
   name: "QuantizeAndDequantize"
@@ -16102,7 +16204,7 @@ op {
     type: DT_COMPLEX64
   }
   summary: "Real-valued fast Fourier transform."
-  description: "Computes the 1-dimensional discrete Fourier transform of a real-valued signal\nover the inner-most dimension of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the\n`fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,\nfollowed by the `fft_length / 2` positive-frequency terms."
+  description: "Computes the 1-dimensional discrete Fourier transform of a real-valued signal\nover the inner-most dimension of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the\n`fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,\nfollowed by the `fft_length / 2` positive-frequency terms.\n\nAlong the axis `RFFT` is computed on, if `fft_length` is smaller than the\ncorresponding dimension of `input`, the dimension is cropped. If it is larger,\nthe dimension is padded with zeros."
 }
 op {
   name: "RFFT2D"
@@ -16122,7 +16224,7 @@ op {
     type: DT_COMPLEX64
   }
   summary: "2D real-valued fast Fourier transform."
-  description: "Computes the 2-dimensional discrete Fourier transform of a real-valued signal\nover the inner-most 2 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms."
+  description: "Computes the 2-dimensional discrete Fourier transform of a real-valued signal\nover the inner-most 2 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms.\n\nAlong each axis `RFFT2D` is computed on, if `fft_length` is smaller than the\ncorresponding dimension of `input`, the dimension is cropped. If it is larger,\nthe dimension is padded with zeros."
 }
 op {
   name: "RFFT3D"
@@ -16142,7 +16244,7 @@ op {
     type: DT_COMPLEX64
   }
   summary: "3D real-valued fast Fourier transform."
-  description: "Computes the 3-dimensional discrete Fourier transform of a real-valued signal\nover the inner-most 3 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms."
+  description: "Computes the 3-dimensional discrete Fourier transform of a real-valued signal\nover the inner-most 3 dimensions of `input`.\n\nSince the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the\n`fft_length / 2 + 1` unique components of the FFT for the inner-most dimension\nof `output`: the zero-frequency term, followed by the `fft_length / 2`\npositive-frequency terms.\n\nAlong each axis `RFFT3D` is computed on, if `fft_length` is smaller than the\ncorresponding dimension of `input`, the dimension is cropped. If it is larger,\nthe dimension is padded with zeros."
 }
 op {
   name: "RGBToHSV"
@@ -16377,7 +16479,7 @@ op {
     type: "type"
   }
   summary: "Randomly shuffles a tensor along its first dimension."
-  description: "  The tensor is shuffled along dimension 0, such that each `value[j]` is mapped\n  to one and only one `output[i]`. For example, a mapping that might occur for a\n  3x2 tensor is:\n\n```prettyprint\n[[1, 2],       [[5, 6],\n [3, 4],  ==>   [1, 2],\n [5, 6]]        [3, 4]]\n```"
+  description: "  The tensor is shuffled along dimension 0, such that each `value[j]` is mapped\n  to one and only one `output[i]`. For example, a mapping that might occur for a\n  3x2 tensor is:\n\n```\n[[1, 2],       [[5, 6],\n [3, 4],  ==>   [1, 2],\n [5, 6]]        [3, 4]]\n```"
   is_stateful: true
 }
 op {
@@ -19691,6 +19793,7 @@ op {
   }
   summary: "Restores a tensor from checkpoint files."
   description: "Reads a tensor stored in one or several files. If there are several files (for\ninstance because a tensor was saved as slices), `file_pattern` may contain\nwildcard symbols (`*` and `?`) in the filename portion only, not in the\ndirectory portion.\n\nIf a `file_pattern` matches several files, `preferred_shard` can be used to hint\nin which file the requested tensor is likely to be found. This op will first\nopen the file at index `preferred_shard` in the list of matching files and try\nto restore tensors from that file.  Only if some tensors or tensor slices are\nnot found in that first file, then the Op opens all the files. Setting\n`preferred_shard` to match the value passed as the `shard` input\nof a matching `Save` Op may speed up Restore.  This attribute only affects\nperformance, not correctness.  The default value -1 means files are processed in\norder.\n\nSee also `RestoreSlice`."
+  is_stateful: true
 }
 op {
   name: "RestoreSlice"
@@ -19729,6 +19832,7 @@ op {
   }
   summary: "Restores a tensor from checkpoint files."
   description: "This is like `Restore` except that restored tensor can be listed as filling\nonly a slice of a larger tensor.  `shape_and_slice` specifies the shape of the\nlarger tensor and the slice that the restored tensor covers.\n\nThe `shape_and_slice` input has the same format as the\nelements of the `shapes_and_slices` input of the `SaveSlices` op."
+  is_stateful: true
 }
 op {
   name: "RestoreV2"
@@ -19761,6 +19865,7 @@ op {
   }
   summary: "Restores tensors from a V2 checkpoint."
   description: "For backward compatibility with the V1 format, this Op currently allows\nrestoring from a V1 checkpoint as well:\n  - This Op first attempts to find the V2 index file pointed to by \"prefix\", and\n    if found proceed to read it as a V2 checkpoint;\n  - Otherwise the V1 read path is invoked.\nRelying on this behavior is not recommended, as the ability to fall back to read\nV1 might be deprecated and eventually removed.\n\nBy default, restores the named tensors in full.  If the caller wishes to restore\nspecific slices of stored tensors, \"shape_and_slices\" should be non-empty\nstrings and correspondingly well-formed.\n\nCallers must ensure all the named tensors are indeed stored in the checkpoint."
+  is_stateful: true
 }
 op {
   name: "Reverse"
@@ -20141,6 +20246,7 @@ op {
   }
   summary: "Saves the input tensors to disk."
   description: "The size of `tensor_names` must match the number of tensors in `data`. `data[i]`\nis written to `filename` with name `tensor_names[i]`.\n\nSee also `SaveSlices`."
+  is_stateful: true
 }
 op {
   name: "SaveSlices"
@@ -20172,6 +20278,7 @@ op {
   }
   summary: "Saves input tensors slices to disk."
   description: "This is like `Save` except that tensors can be listed in the saved file as being\na slice of a larger tensor.  `shapes_and_slices` specifies the shape of the\nlarger tensor and the slice that this tensor covers. `shapes_and_slices` must\nhave as many elements as `tensor_names`.\n\nElements of the `shapes_and_slices` input must either be:\n\n*  The empty string, in which case the corresponding tensor is\n   saved normally.\n*  A string of the form `dim0 dim1 ... dimN-1 slice-spec` where the\n   `dimI` are the dimensions of the larger tensor and `slice-spec`\n   specifies what part is covered by the tensor to save.\n\n`slice-spec` itself is a `:`-separated list: `slice0:slice1:...:sliceN-1`\nwhere each `sliceI` is either:\n\n*  The string `-` meaning that the slice covers all indices of this dimension\n*  `start,length` where `start` and `length` are integers.  In that\n   case the slice covers `length` indices starting at `start`.\n\nSee also `Save`."
+  is_stateful: true
 }
 op {
   name: "SaveV2"
@@ -20203,6 +20310,7 @@ op {
   }
   summary: "Saves tensors in V2 checkpoint format."
   description: "By default, saves the named tensors in full.  If the caller wishes to save\nspecific slices of full tensors, \"shape_and_slices\" should be non-empty strings\nand correspondingly well-formed."
+  is_stateful: true
 }
 op {
   name: "ScalarSummary"
@@ -21229,7 +21337,7 @@ op {
     type: "type"
   }
   summary: "Selects elements from `t` or `e`, depending on `condition`."
-  description: "The `t`, and `e` tensors must all have the same shape, and the\noutput will also have that shape.\n\nThe `condition` tensor must be a scalar if `t` and `e` are scalars.\nIf `t` and `e` are vectors or higher rank, then `condition` must be either a\nscalar, a vector with size matching the first dimension of `t`, or must have\nthe same shape as `t`.\n\nThe `condition` tensor acts as a mask that chooses, based on the value at each\nelement, whether the corresponding element / row in the output should be\ntaken from `t` (if true) or `e` (if false).\n\nIf `condition` is a vector and `t` and `e` are higher rank matrices, then\nit chooses which row (outer dimension) to copy from `t` and `e`.\nIf `condition` has the same shape as `t` and `e`, then it chooses which\nelement to copy from `t` and `e`.\n\nFor example:\n\n```prettyprint\n# \'condition\' tensor is [[True,  False]\n#                        [False, True]]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 6],\n                             [7, 4]]\n\n\n# \'condition\' tensor is [True, False]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 2],\n                             [7, 8]]\n\n```"
+  description: "The `t`, and `e` tensors must all have the same shape, and the\noutput will also have that shape.\n\nThe `condition` tensor must be a scalar if `t` and `e` are scalars.\nIf `t` and `e` are vectors or higher rank, then `condition` must be either a\nscalar, a vector with size matching the first dimension of `t`, or must have\nthe same shape as `t`.\n\nThe `condition` tensor acts as a mask that chooses, based on the value at each\nelement, whether the corresponding element / row in the output should be\ntaken from `t` (if true) or `e` (if false).\n\nIf `condition` is a vector and `t` and `e` are higher rank matrices, then\nit chooses which row (outer dimension) to copy from `t` and `e`.\nIf `condition` has the same shape as `t` and `e`, then it chooses which\nelement to copy from `t` and `e`.\n\nFor example:\n\n```python\n# \'condition\' tensor is [[True,  False]\n#                        [False, True]]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e)  # => [[1, 6], [7, 4]]\n\n\n# \'condition\' tensor is [True, False]\n# \'t\' is [[1, 2],\n#         [3, 4]]\n# \'e\' is [[5, 6],\n#         [7, 8]]\nselect(condition, t, e) ==> [[1, 2],\n                             [7, 8]]\n\n```"
 }
 op {
   name: "SelfAdjointEig"
@@ -21298,7 +21406,7 @@ op {
     }
   }
   summary: "Computes the eigen decomposition of one or more square self-adjoint matrices."
-  description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```prettyprint\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
+  description: "Computes the eigenvalues and (optionally) eigenvectors of each inner matrix in\n`input` such that `input[..., :, :] = v[..., :, :] * diag(e[..., :])`.\n\n```python\n# a is a tensor.\n# e is a tensor of eigenvalues.\n# v is a tensor of eigenvectors.\ne, v = self_adjoint_eig(a)\ne = self_adjoint_eig(a, compute_v=False)\n```"
 }
 op {
   name: "SerializeManySparse"
@@ -21655,6 +21763,30 @@ op {
     }
   }
   summary: "Computes sin of x element-wise."
+}
+op {
+  name: "Sinh"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
+      }
+    }
+  }
+  summary: "Computes hyperbolic sine of x element-wise."
 }
 op {
   name: "Size"
@@ -23750,7 +23882,7 @@ op {
     }
   }
   summary: "Multiply matrix \"a\" by matrix \"b\"."
-  description: "The inputs must be two-dimensional matrices and the inner dimension of \"a\" must\nmatch the outer dimension of \"b\". This op is optimized for the case where at\nleast one of \"a\" or \"b\" is sparse. The breakeven for using this versus a dense\nmatrix multiply on one platform was 30% zero values in the sparse matrix."
+  description: "The inputs must be two-dimensional matrices and the inner dimension of \"a\" must\nmatch the outer dimension of \"b\". This op is optimized for the case where at\nleast one of \"a\" or \"b\" is sparse. The breakeven for using this versus a dense\nmatrix multiply on one platform was 30% zero values in the sparse matrix.\n\nThe gradient computation of this operation will only take advantage of sparsity\nin the input gradient when that gradient comes from a Relu."
 }
 op {
   name: "SparseReduceSum"
@@ -24193,7 +24325,7 @@ op {
     }
   }
   summary: "Computes the sum along sparse segments of a tensor."
-  description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```prettyprint\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n  ==> [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n  ==> [[ 1  2  3  4]\n       [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n  ==> [[0 0 0 0]\n       [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
+  description: "Read @{$math_ops#segmentation$the section on segmentation} for an explanation of\nsegments.\n\nLike `SegmentSum`, but `segment_ids` can have rank less than `data`\'s first\ndimension, selecting a subset of dimension 0, specified by `indices`.\n\nFor example:\n\n```python\nc = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])\n\n# Select two rows, one segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))\n# => [[0 0 0 0]]\n\n# Select two rows, two segment.\ntf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))\n# => [[ 1  2  3  4]\n#     [-1 -2 -3 -4]]\n\n# Select all rows, two segments.\ntf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))\n# => [[0 0 0 0]\n#     [5 6 7 8]]\n\n# Which is equivalent to:\ntf.segment_sum(c, tf.constant([0, 0, 1]))\n```"
 }
 op {
   name: "SparseSoftmax"
@@ -24659,7 +24791,7 @@ op {
     }
   }
   summary: "Converts a sparse representation into a dense tensor."
-  description: "Builds an array `dense` with shape `output_shape` such that\n\n```prettyprint\n# If sparse_indices is scalar\ndense[i] = (i == sparse_indices ? sparse_values : default_value)\n\n# If sparse_indices is a vector, then for each i\ndense[sparse_indices[i]] = sparse_values[i]\n\n# If sparse_indices is an n by d matrix, then for each i in [0, n)\ndense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]\n```\n\nAll other values in `dense` are set to `default_value`.  If `sparse_values` is a\nscalar, all sparse indices are set to this single value.\n\nIndices should be sorted in lexicographic order, and indices must not\ncontain any repeats. If `validate_indices` is true, these properties\nare checked during execution."
+  description: "Builds an array `dense` with shape `output_shape` such that\n\n```\n# If sparse_indices is scalar\ndense[i] = (i == sparse_indices ? sparse_values : default_value)\n\n# If sparse_indices is a vector, then for each i\ndense[sparse_indices[i]] = sparse_values[i]\n\n# If sparse_indices is an n by d matrix, then for each i in [0, n)\ndense[sparse_indices[i][0], ..., sparse_indices[i][d-1]] = sparse_values[i]\n```\n\nAll other values in `dense` are set to `default_value`.  If `sparse_values` is a\nscalar, all sparse indices are set to this single value.\n\nIndices should be sorted in lexicographic order, and indices must not\ncontain any repeats. If `validate_indices` is true, these properties\nare checked during execution."
 }
 op {
   name: "SparseToSparseSetOperation"
@@ -24741,7 +24873,7 @@ op {
   name: "Split"
   input_arg {
     name: "split_dim"
-    description: "0-D.  The dimension along which to split.  Must be in the range\n`[0, rank(value))`."
+    description: "0-D.  The dimension along which to split.  Must be in the range\n`[-rank(value), rank(value))`."
     type: DT_INT32
   }
   input_arg {
@@ -24782,7 +24914,7 @@ op {
   }
   input_arg {
     name: "split_dim"
-    description: "0-D.  The dimension along which to split.  Must be in the range\n`[0, rank(value))`."
+    description: "0-D.  The dimension along which to split.  Must be in the range\n`[-rank(value), rank(value))`."
     type: DT_INT32
   }
   output_arg {
@@ -25822,7 +25954,7 @@ op {
     }
   }
   summary: "Computes the singular value decompositions of one or more matrices."
-  description: "Computes the SVD of each inner matrix in `input` such that\n`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`\n\n```prettyprint\n# a is a tensor containing a batch of matrices.\n# s is a tensor of singular values for each matrix.\n# u is the tensor containing of left singular vectors for each matrix.\n# v is the tensor containing of right singular vectors for each matrix.\ns, u, v = svd(a)\ns, _, _ = svd(a, compute_uv=False)\n```"
+  description: "Computes the SVD of each inner matrix in `input` such that\n`input[..., :, :] = u[..., :, :] * diag(s[..., :, :]) * transpose(v[..., :, :])`\n\n```python\n# a is a tensor containing a batch of matrices.\n# s is a tensor of singular values for each matrix.\n# u is the tensor containing of left singular vectors for each matrix.\n# v is the tensor containing of right singular vectors for each matrix.\ns, u, v = svd(a)\ns, _, _ = svd(a, compute_uv=False)\n```"
 }
 op {
   name: "Switch"
@@ -25970,6 +26102,33 @@ op {
     }
   }
   summary: "A Reader that outputs the records from a TensorFlow Records file."
+  is_stateful: true
+}
+op {
+  name: "LMDBReader"
+  output_arg {
+    name: "reader_handle"
+    description: "The handle to reference the Reader."
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is placed in the given container.\nOtherwise, a default container is used."
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+    description: "If non-empty, this reader is named in the given bucket\nwith this shared_name. Otherwise, the node name is used instead."
+  }
+  summary: "A Reader that outputs the records from a LMDB database."
   is_stateful: true
 }
 op {
@@ -26537,7 +26696,7 @@ op {
     description: "The gradient source string, used to decide which gradient TensorArray\nto return."
   }
   summary: "Creates a TensorArray for storing the gradients of values in the given handle."
-  description: "If the given TensorArray gradient already exists, returns a reference to it.\n\nLocks the size of the original TensorArray by disabling its dynamic size flag.\n\n**A note about the input flow_in:**\n\nThe handle flow_in forces the execution of the gradient lookup to occur\nonly after certain other operations have occurred.  For example, when\nthe forward TensorArray is dynamically sized, writes to this TensorArray\nmay resize the object.  The gradient TensorArray is statically sized based\non the size of the forward TensorArray when this operation executes.\nFurthermore, the size of the forward TensorArray is frozen by this call.\nAs a result, the flow is used to ensure that the call to generate the gradient\nTensorArray only happens after all writes are executed.\n\nIn the case of dynamically sized TensorArrays, gradient computation should\nonly be performed on read operations that have themselves been chained via\nflow to occur only after all writes have executed. That way the final size\nof the forward TensorArray is known when this operation is called.\n\n**A note about the source attribute:**\n\nTensorArray gradient calls use an accumulator TensorArray object.  If\nmultiple gradients are calculated and run in the same session, the multiple\ngradient nodes may accidentally flow throuth the same accumulator TensorArray.\nThis double counts and generally breaks the TensorArray gradient flow.\n\nThe solution is to identify which gradient call this particular\nTensorArray gradient is being called in.  This is performed by identifying\na unique string (e.g. \"gradients\", \"gradients_1\", ...) from the input\ngradient Tensor\'s name.  This string is used as a suffix when creating\nthe TensorArray gradient object here (the attribute `source`).\n\nThe attribute `source` is added as a suffix to the forward TensorArray\'s\nname when performing the creation / lookup, so that each separate gradient\ncalculation gets its own TensorArray accumulator."
+  description: "If the given TensorArray gradient already exists, returns a reference to it.\n\nLocks the size of the original TensorArray by disabling its dynamic size flag.\n\n**A note about the input flow_in:**\n\nThe handle flow_in forces the execution of the gradient lookup to occur\nonly after certain other operations have occurred.  For example, when\nthe forward TensorArray is dynamically sized, writes to this TensorArray\nmay resize the object.  The gradient TensorArray is statically sized based\non the size of the forward TensorArray when this operation executes.\nFurthermore, the size of the forward TensorArray is frozen by this call.\nAs a result, the flow is used to ensure that the call to generate the gradient\nTensorArray only happens after all writes are executed.\n\nIn the case of dynamically sized TensorArrays, gradient computation should\nonly be performed on read operations that have themselves been chained via\nflow to occur only after all writes have executed. That way the final size\nof the forward TensorArray is known when this operation is called.\n\n**A note about the source attribute:**\n\nTensorArray gradient calls use an accumulator TensorArray object.  If\nmultiple gradients are calculated and run in the same session, the multiple\ngradient nodes may accidentally flow through the same accumulator TensorArray.\nThis double counts and generally breaks the TensorArray gradient flow.\n\nThe solution is to identify which gradient call this particular\nTensorArray gradient is being called in.  This is performed by identifying\na unique string (e.g. \"gradients\", \"gradients_1\", ...) from the input\ngradient Tensor\'s name.  This string is used as a suffix when creating\nthe TensorArray gradient object here (the attribute `source`).\n\nThe attribute `source` is added as a suffix to the forward TensorArray\'s\nname when performing the creation / lookup, so that each separate gradient\ncalculation gets its own TensorArray accumulator."
   is_stateful: true
 }
 op {
@@ -28003,7 +28162,7 @@ op {
     }
   }
   summary: "Op is similar to a lightweight Dequeue."
-  description: "The basic funtionality is similar to dequeue with many fewer\ncapabilities and options.  This Op is optimized for performance."
+  description: "The basic functionality is similar to dequeue with many fewer\ncapabilities and options.  This Op is optimized for performance."
   is_stateful: true
 }
 op {

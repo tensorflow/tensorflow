@@ -240,7 +240,7 @@ class MatcherBase {
 //
 class WhileConditionComputationMatcher : public MatcherBase {
  public:
-  WhileConditionComputationMatcher(const HloComputation* computation)
+  explicit WhileConditionComputationMatcher(const HloComputation* computation)
       : computation_(computation) {
     expr_trees_.emplace_back(BuildCondExprTree());
   }

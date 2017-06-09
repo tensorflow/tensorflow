@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-import {USE_HASH, setFakeHash, getFakeHash, TABS} from '../tf_globals/globals';
-import * as _ from 'lodash';
+
+import {getFakeHash, setFakeHash, TABS, useHash} from '../tf-globals/globals';
 
 
 /* tslint:disable:no-namespace variable-name */
@@ -38,7 +38,7 @@ export let TAB = '__tab__';
 /**
  * The name of the property for users to set on a Polymer component
  * in order for its stored properties to be stored in the URI unambiguously.
- * (No need to set this if you want mutliple instances of the component to
+ * (No need to set this if you want multiple instances of the component to
  * share URI state)
  *
  * Example:
@@ -240,14 +240,14 @@ export function getObjectObserver(
  * Read component from URI (e.g. returns "events&runPrefix=train*").
  */
 function _readComponent(): string {
-  return USE_HASH ? window.location.hash.slice(1) : getFakeHash();
+  return useHash() ? window.location.hash.slice(1) : getFakeHash();
 }
 
 /**
  * Write component to URI.
  */
 function _writeComponent(component: string) {
-  if (USE_HASH) {
+  if (useHash()) {
     window.location.hash = component;
   } else {
     setFakeHash(component);
@@ -258,7 +258,7 @@ function _writeComponent(component: string) {
  * Convert dictionary of strings into a URI Component.
  * All key value entries get added as key value pairs in the component,
  * with the exception of a key with the TAB value, which if present
- * gets prepended to the URI Component string for backwards comptability
+ * gets prepended to the URI Component string for backwards compatibility
  * reasons.
  */
 function _dictToComponent(items: StringDict): string {

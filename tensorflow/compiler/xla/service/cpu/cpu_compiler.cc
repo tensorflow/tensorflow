@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -67,6 +68,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_ordering.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/inliner.h"
@@ -343,6 +345,12 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
                             MakeUnique<DependencyHloOrdering>(module.get()),
                             BufferSizeBytesFunction(), kMemoryAlignment));
 
+    if (!flags->xla_cpu_dump_debug_json_to.empty()) {
+      HloProto proto = MakeHloProto(*module, *assignment);
+      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
+          proto, flags->xla_cpu_dump_debug_json_to, module->name()));
+    }
+
     // If we are using the parallel CPU backend, we need to create map from
     // HloInstruction to the corresponding generated function name.
     std::map<HloComputation*, HloInstruction*> parallel_computations;
@@ -389,7 +397,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
           llvm::Function * ir_function,
           ir_emitter.EmitComputation(
               embedded_computation, embedded_computation->name(),
-              /*is_entry_computation=*/computation_is_parallel));
+              /*is_entry_computation=*/computation_is_parallel,
+              /*instruction_order=*/nullptr));
       // If this computation is parallel, remember it in the function name map.
       // This way we know what function to execute when we try to run code for
       // the Call instruction.
@@ -432,6 +441,12 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
             module.get(),
             MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
             BufferSizeBytesFunction(), kMemoryAlignment));
+
+    if (!flags->xla_cpu_dump_debug_json_to.empty()) {
+      HloProto proto = MakeHloProto(*module, *assignment);
+      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
+          proto, flags->xla_cpu_dump_debug_json_to, module->name()));
+    }
 
     // Each computation is a single function.  Emit all embedded computations
     // before the entry computation. The order of computations returned from
@@ -587,6 +602,13 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
             module, MakeUnique<SequentialHloOrdering>(module, module_sequence),
             BufferSizeBytesFunction(), kMemoryAlignment));
 
+    legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
+    if (!flags->xla_cpu_dump_debug_json_to.empty()) {
+      HloProto proto = MakeHloProto(*module, *assignment);
+      TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
+          proto, flags->xla_cpu_dump_debug_json_to, module->name()));
+    }
+
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
                          /*hlo_to_profile_idx=*/nullptr);
     HloComputation* computation = module->entry_computation();
@@ -604,7 +626,8 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     TF_ASSIGN_OR_RETURN(
         llvm::Function * entry_function,
         ir_emitter.EmitComputation(computation, entry_point_name,
-                                   /*is_entry_computation=*/true));
+                                   /*is_entry_computation=*/true,
+                                   &module_sequence.at(computation)));
 
     entry_function->setName(llvm_ir::AsStringRef(entry_point_name));
 

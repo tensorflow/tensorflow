@@ -94,6 +94,12 @@ class HloModuleConfig {
   // executable.
   string compilation_cache_key() const;
 
+  const DebugOptions& debug_options() const { return debug_options_; }
+
+  void set_debug_options(const DebugOptions& debug_options) {
+    debug_options_ = debug_options;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -119,6 +125,8 @@ class HloModuleConfig {
   int64 replica_count_ = 1;
 
   bool fast_math_disabled_ = false;
+
+  DebugOptions debug_options_;
 };
 
 }  // namespace xla
