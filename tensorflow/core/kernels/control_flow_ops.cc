@@ -453,9 +453,11 @@ REGISTER_GPU_KERNEL(bool);
 #undef REGISTER_GPU_REF_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNEL(type)  \
-  REGISTER_KERNEL_BUILDER(          \
-      Name("Exit").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ExitOp);
+#define REGISTER_SYCL_KERNEL(type)                                           \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("Exit").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ExitOp);   \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("RefExit").Device(DEVICE_SYCL).TypeConstraint<type>("T"), ExitOp);
 REGISTER_SYCL_KERNEL(bool);
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_SYCL_KERNEL);
 
