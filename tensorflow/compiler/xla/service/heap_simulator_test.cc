@@ -507,10 +507,11 @@ class HeapAlgorithmTestBase : public ::testing::Test {
  private:
   // Create a dummy LogicalBuffer to pass to the heap algorithm.  Since the
   // algorithms only use the buffer as a handle, we don't need to fill in much
-  // other than the id.
+  // other than the id and color.
   const LogicalBuffer* DummyLogicalBuffer() {
     const LogicalBuffer::Id id = buffers_.size();
-    buffers_.emplace_back(MakeUnique<LogicalBuffer>(nullptr, ShapeIndex{}, id));
+    buffers_.emplace_back(MakeUnique<LogicalBuffer>(nullptr, ShapeIndex{}, id,
+                                                    LogicalBuffer::Color(0)));
     return buffers_.back().get();
   }
 

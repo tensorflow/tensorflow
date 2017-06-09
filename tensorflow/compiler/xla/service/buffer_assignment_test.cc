@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -85,6 +86,16 @@ class BufferAssignmentTest : public HloTestBase {
     return BufferAssigner::Run(
                module, MakeUnique<DependencyHloOrdering>(module),
                backend_->compiler()->BufferSizeBytesFunction(), alignment)
+        .ConsumeValueOrDie();
+  }
+
+  std::unique_ptr<BufferAssignment> RunColoredBufferAssignment(
+      HloModule* module, TuplePointsToAnalysis::Colorer colorer,
+      int64 alignment = 1) {
+    return BufferAssigner::Run(module,
+                               MakeUnique<DependencyHloOrdering>(module),
+                               backend_->compiler()->BufferSizeBytesFunction(),
+                               alignment, false, std::move(colorer))
         .ConsumeValueOrDie();
   }
 
@@ -337,7 +348,113 @@ TEST_F(BufferAssignmentTest, Basic) {
 
   // The add node can reuse the mul node's buffer.
   const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
-  EXPECT_EQ(add_buffer.index(), add_buffer.index());
+  EXPECT_EQ(add_buffer.index(), mul_buffer.index());
+
+  // The sub node has a valid output buffer assigned.
+  GetAssignedOutputAllocation(*buffers, sub);
+}
+
+TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
+  // paramscalar ------- (mul) -- (add) -- (sub)
+  //                     /        /        /
+  // param0[100] -------/        /        /
+  //                            /        /
+  // param1[100] --------------/--------/
+  // The output of each op is colored with a different color, so we can not
+  // share anything.
+  auto builder = HloComputation::Builder(TestName());
+  auto paramscalar =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, ""));
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, ""));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, f32vec100_, ""));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kMultiply, paramscalar, param0));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kSubtract, add, param1));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunColoredBufferAssignment(
+      module.get(),
+      [](const HloInstruction* instruction, const ShapeIndex& index) {
+        static int64 serial = 0;
+        return LogicalBuffer::Color(serial++);
+      });
+
+  // Distinct input buffers were assigned for parameters.
+  BufferAllocation paramscalar_buffer =
+      GetAssignedInputAllocation(*buffers, paramscalar);
+  BufferAllocation param0_buffer = GetAssignedInputAllocation(*buffers, param0);
+  BufferAllocation param1_buffer = GetAssignedInputAllocation(*buffers, param1);
+  EXPECT_NE(paramscalar_buffer.index(), param0_buffer.index());
+  EXPECT_NE(paramscalar_buffer.index(), param1_buffer.index());
+  EXPECT_NE(param0_buffer.index(), param1_buffer.index());
+
+  // The mul node has a valid buffer assigned, doesn't share with input.
+  const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
+  EXPECT_NE(mul_buffer.index(), param0_buffer.index());
+
+  // The add node can not reuse the mul node's buffer due to coloring.
+  const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
+  EXPECT_NE(add_buffer.index(), mul_buffer.index());
+
+  // The sub node has a valid output buffer assigned.
+  GetAssignedOutputAllocation(*buffers, sub);
+}
+
+TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
+  // paramscalar ------- (mul) -- (add) -- (sub)
+  //                     /        /        /
+  // param0[100] -------/        /        /
+  //                            /        /
+  // param1[100] --------------/--------/
+  // The output of the mul and the add have the color 1, and the other buffers
+  // have the color 0, which allows the mul and add to share buffers.
+  auto builder = HloComputation::Builder(TestName());
+  auto paramscalar =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, ""));
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, ""));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, f32vec100_, ""));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kMultiply, paramscalar, param0));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kSubtract, add, param1));
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunColoredBufferAssignment(
+      module.get(),
+      [](const HloInstruction* instruction, const ShapeIndex& index) {
+        return (instruction->opcode() == HloOpcode::kAdd ||
+                instruction->opcode() == HloOpcode::kMultiply)
+                   ? LogicalBuffer::Color(1)
+                   : LogicalBuffer::Color(0);
+      });
+
+  // Distinct input buffers were assigned for parameters.
+  BufferAllocation paramscalar_buffer =
+      GetAssignedInputAllocation(*buffers, paramscalar);
+  BufferAllocation param0_buffer = GetAssignedInputAllocation(*buffers, param0);
+  BufferAllocation param1_buffer = GetAssignedInputAllocation(*buffers, param1);
+  EXPECT_NE(paramscalar_buffer.index(), param0_buffer.index());
+  EXPECT_NE(paramscalar_buffer.index(), param1_buffer.index());
+  EXPECT_NE(param0_buffer.index(), param1_buffer.index());
+
+  // The mul node has a valid buffer assigned, doesn't share with input.
+  const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
+  EXPECT_NE(mul_buffer.index(), param0_buffer.index());
+
+  // The add node can reuse the mul node's buffer.
+  const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
+  EXPECT_EQ(add_buffer.index(), mul_buffer.index());
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);
