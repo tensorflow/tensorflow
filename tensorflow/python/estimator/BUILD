@@ -147,7 +147,6 @@ py_test(
         ":dnn",
         ":dnn_testing_utils",
         ":export_export",
-        ":metric_keys",
         ":numpy_io",
         ":pandas_io",
         ":prediction_keys",
