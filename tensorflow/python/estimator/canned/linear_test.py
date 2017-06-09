@@ -136,5 +136,23 @@ class LinearClassifierWithMultiClassesPredictTest(
         self, n_classes=4, linear_classifier_fn=_linear_classifier_fn)
 
 
+class LinearClassifierWithBinaryClassesIntegrationTest(
+    linear_testing_utils.BaseLinearClassifierIntegrationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierIntegrationTest.__init__(
+        self, n_classes=2, linear_classifier_fn=_linear_classifier_fn)
+
+
+class LinearClassifierWithMultiClassesIntegrationTest(
+    linear_testing_utils.BaseLinearClassifierIntegrationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierIntegrationTest.__init__(
+        self, n_classes=4, linear_classifier_fn=_linear_classifier_fn)
+
+
 if __name__ == '__main__':
   test.main()
