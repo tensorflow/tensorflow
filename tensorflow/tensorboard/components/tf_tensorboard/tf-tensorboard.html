@@ -88,7 +88,6 @@ allows the user to toggle between various dashboards.
           <tf-scalar-dashboard
             id="scalars"
             backend="[[_backend]]"
-            router="[[router]]"
           ></tf-scalar-dashboard>
         </template>
 
@@ -214,21 +213,19 @@ allows the user to toggle between various dashboards.
     import {Backend} from "../tf-backend/backend";
     import {TABS, setUseHash} from "../tf-globals/globals";
     import {getString, setString, TAB} from "../tf-storage/storage";
-    import * as backend_router from "../tf-backend/router";
+    import {setRouter, createRouter} from "../tf-backend/router";
 
     Polymer({
       is: "tf-tensorboard",
       behaviors: [AutoReloadBehavior],
       properties: {
         router: {
-          type: Object,
-          value: function() {
-            return backend_router.router();
-          },
+          type: Object,  // only to trigger an observer
+          observer: '_updateRouter',
         },
         _backend: {
           type: Object,
-          computed: "_makeBackend(router, demoDir)",
+          computed: "_makeBackend(demoDir)",
         },
         _debuggerDataEnabled: {
           type: Boolean,
@@ -277,12 +274,15 @@ allows the user to toggle between various dashboards.
         setString(TAB, mode);
         return mode;
       },
-      _makeBackend: function(router, demoDir) {
-        // use the demoDir if it is set, otherwise use the provided router
-        if (demoDir != null) {
-          router = backend_router.router(demoDir, true);
+      _makeBackend: function(demoDir) {
+        // If the user has provided a router, we'll always use that.
+        // Otherwise, if the user has provided a demoDir, we'll use that
+        // to create a router.
+        if (demoDir != null && this.router == null) {
+          var router = createRouter(demoDir, true);
+          setRouter(router);
         }
-        return new Backend(router);
+        return new Backend();
       },
       _isReloadDisabled: function(mode) {
         return !this._debuggerDataEnabled && this._modeIsGraphs(mode);
@@ -336,6 +336,9 @@ allows the user to toggle between various dashboards.
         if (modeIndex != -1 && modeIndex != this.modeIndex) {
           this.set('modeIndex', modeIndex);
         }
+      },
+      _updateRouter: function(router) {
+        setRouter(router);
       },
       reload: function() {
         if (this._modeIsEmbeddings(this.mode)) {

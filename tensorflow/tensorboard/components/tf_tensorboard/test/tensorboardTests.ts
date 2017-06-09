@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-import * as backend_router from '../../tf-backend/router';
 import {TABS} from '../../tf-globals/globals';
 
 describe('tf-tensorboard tests', () => {
@@ -35,13 +34,6 @@ describe('tf-tensorboard tests', () => {
         chai.assert.deepEqual(tabText, TABS, 'text is correct');
         done();
       });
-    });
-
-    it('respects router manually provided', function() {
-      const router = backend_router.router('data', true);
-      tensorboard.router = router;
-      tensorboard.demoDir = null;
-      chai.assert.equal(tensorboard._backend.router, router);
     });
 
     it('renders injected content', function() {
