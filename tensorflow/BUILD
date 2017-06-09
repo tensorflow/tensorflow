@@ -285,6 +285,7 @@ filegroup(
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/text:all_files",
         "//tensorflow/contrib/tfprof/python/tools/tfprof:all_files",
+        "//tensorflow/contrib/tpu:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
         "//tensorflow/contrib/verbs:all_files",
