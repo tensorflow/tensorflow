@@ -26,6 +26,7 @@ from __future__ import print_function
 import threading
 
 import numpy as np
+import six
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import function
@@ -81,6 +82,10 @@ class FuncRegistry(object):
     if func is None:
       raise ValueError("callback %s is not found" % token)
     ret = func(*args)
+    # Strings seem to lead to a memory leak here if they're not wrapped in a
+    # list.
+    if isinstance(ret, six.binary_type):
+      ret = [ret]
     # Ensures that we return either a single numpy array or a list of numpy
     # arrays.
     if isinstance(ret, (tuple, list)):

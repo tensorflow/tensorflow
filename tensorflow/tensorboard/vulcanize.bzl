@@ -12,25 +12,36 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@io_bazel_rules_closure//closure/private:defs.bzl", "unfurl", "long_path")
+load("//tensorflow/tensorboard:defs.bzl", "legacy_js")
+load("@io_bazel_rules_closure//closure/private:defs.bzl", "collect_js", "unfurl", "long_path")
+load("//tensorflow/tensorboard:web.bzl", "web_aspect")
 
 def _tensorboard_html_binary(ctx):
   deps = unfurl(ctx.attr.deps, provider="webfiles")
-  manifests = set(order="link")
+  manifests = set(order="topological")
   files = set()
+  webpaths = set()
   for dep in deps:
     manifests += dep.webfiles.manifests
+    webpaths += dep.webfiles.webpaths
     files += dep.data_runfiles.files
+  webpaths += [ctx.attr.output_path]
+  closure_js_library=collect_js(
+      ctx, unfurl(ctx.attr.deps, provider="closure_js_library"))
 
   # vulcanize
+  jslibs = depset(ctx.files._jslibs) + closure_js_library.srcs
   ctx.action(
-      inputs=list(manifests + files),
+      inputs=list(manifests | files | jslibs),
       outputs=[ctx.outputs.html],
       executable=ctx.executable._Vulcanize,
-      arguments=([ctx.attr.input_path,
+      arguments=([ctx.attr.compilation_level,
+                  "true" if ctx.attr.testonly else "false",
+                  ctx.attr.input_path,
                   ctx.attr.output_path,
                   ctx.outputs.html.path] +
-                 [m.path for m in manifests]),
+                 [f.path for f in jslibs] +
+                 [f.path for f in manifests]),
       progress_message="Vulcanizing %s" % ctx.attr.input_path)
 
   # webfiles manifest
@@ -63,12 +74,17 @@ def _tensorboard_html_binary(ctx):
           ctx.executable._WebfilesServer.short_path,
           long_path(ctx, params_file)))
 
-  transitive_runfiles = set()
+  transitive_runfiles = depset()
   transitive_runfiles += ctx.attr._WebfilesServer.data_runfiles.files
   for dep in deps:
     transitive_runfiles += dep.data_runfiles.files
   return struct(
-      files=set([ctx.outputs.html]),
+      files=depset([ctx.outputs.html]),
+      webfiles=struct(
+          manifest=manifest,
+          manifests=manifests,
+          webpaths=webpaths,
+          dummy=ctx.outputs.html),
       runfiles=ctx.runfiles(
           files=ctx.files.data + [manifest,
                                   params_file,
@@ -80,11 +96,20 @@ tensorboard_html_binary = rule(
     implementation=_tensorboard_html_binary,
     executable=True,
     attrs={
+        "compilation_level": attr.string(default="ADVANCED"),
         "input_path": attr.string(mandatory=True),
         "output_path": attr.string(mandatory=True),
         "data": attr.label_list(cfg="data", allow_files=True),
-        "deps": attr.label_list(providers=["webfiles"], mandatory=True),
+        "deps": attr.label_list(
+            aspects=[
+                web_aspect,
+                legacy_js,
+            ],
+            mandatory=True),
         "external_assets": attr.string_dict(default={"/_/runfiles": "."}),
+        "_jslibs": attr.label(
+            default=Label("//tensorflow/tensorboard/java/org/tensorflow/tensorboard/vulcanize:jslibs"),
+            allow_files=True),
         "_Vulcanize": attr.label(
             default=Label("//tensorflow/tensorboard/java/org/tensorflow/tensorboard/vulcanize:Vulcanize"),
             executable=True,

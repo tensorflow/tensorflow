@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 class StageTest(test.TestCase):
 
   def testSimple(self):
-    with self.test_session(use_gpu=True) as sess:
+    with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.float32)
         v = 2. * (array_ops.zeros([128, 128]) + x)
@@ -36,13 +36,17 @@ class StageTest(test.TestCase):
         stage = stager.put([v])
         y = stager.get()
         y = math_ops.reduce_max(math_ops.matmul(y, y))
+
+    G.finalize()
+
+    with self.test_session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i})
         self.assertAllClose(4 * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
   def testMultiple(self):
-    with self.test_session(use_gpu=True) as sess:
+    with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.float32)
         v = 2. * (array_ops.zeros([128, 128]) + x)
@@ -51,6 +55,10 @@ class StageTest(test.TestCase):
         stage = stager.put([x, v])
         z, y = stager.get()
         y = math_ops.reduce_max(z * math_ops.matmul(y, y))
+
+    G.finalize()
+
+    with self.test_session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i})
@@ -58,7 +66,7 @@ class StageTest(test.TestCase):
             4 * (i - 1) * (i - 1) * (i - 1) * 128, yval, rtol=1e-4)
 
   def testDictionary(self):
-    with self.test_session(use_gpu=True) as sess:
+    with ops.Graph().as_default() as G:
       with ops.device('/cpu:0'):
         x = array_ops.placeholder(dtypes.float32)
         v = 2. * (array_ops.zeros([128, 128]) + x)
@@ -72,6 +80,10 @@ class StageTest(test.TestCase):
         z = ret['x']
         y = ret['v']
         y = math_ops.reduce_max(z * math_ops.matmul(y, y))
+
+    G.finalize()
+
+    with self.test_session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       for i in range(10):
         _, yval = sess.run([stage, y], feed_dict={x: i})
@@ -81,29 +93,35 @@ class StageTest(test.TestCase):
   def testColocation(self):
     gpu_dev = test.gpu_device_name()
 
-    with ops.device('/cpu:0'):
-      x = array_ops.placeholder(dtypes.float32)
-      v = 2. * (array_ops.zeros([128, 128]) + x)
-    with ops.device(gpu_dev):
-      stager = data_flow_ops.StagingArea([dtypes.float32])
-      y = stager.put([v])
-      self.assertEqual(y.device, '/device:GPU:0' if gpu_dev
-                                                 else gpu_dev)
-    with ops.device('/cpu:0'):
-      x = stager.get()
-      self.assertEqual(x.device, '/device:CPU:0')
+    with ops.Graph().as_default() as G:
+      with ops.device('/cpu:0'):
+        x = array_ops.placeholder(dtypes.float32)
+        v = 2. * (array_ops.zeros([128, 128]) + x)
+      with ops.device(gpu_dev):
+        stager = data_flow_ops.StagingArea([dtypes.float32])
+        y = stager.put([v])
+        self.assertEqual(y.device, '/device:GPU:0' if gpu_dev
+                                                   else gpu_dev)
+      with ops.device('/cpu:0'):
+        x = stager.get()
+        self.assertEqual(x.device, '/device:CPU:0')
+
+    G.finalize()
 
   def testPeek(self):
-    with ops.device('/cpu:0'):
-      x = array_ops.placeholder(dtypes.int32, name='x')
-      p = array_ops.placeholder(dtypes.int32, name='p')
-    with ops.device(test.gpu_device_name()):
-      stager = data_flow_ops.StagingArea([dtypes.int32, ], shapes=[[]])
-      stage = stager.put([x])
-      peek = stager.peek(p)
-      ret = stager.get()
+    with ops.Graph().as_default() as G:
+      with ops.device('/cpu:0'):
+        x = array_ops.placeholder(dtypes.int32, name='x')
+        p = array_ops.placeholder(dtypes.int32, name='p')
+      with ops.device(test.gpu_device_name()):
+        stager = data_flow_ops.StagingArea([dtypes.int32, ], shapes=[[]])
+        stage = stager.put([x])
+        peek = stager.peek(p)
+        ret = stager.get()
 
-    with self.test_session(use_gpu=True) as sess:
+    G.finalize()
+
+    with self.test_session(use_gpu=True, graph=G) as sess:
       for i in range(10):
         sess.run(stage, feed_dict={x:i})
 
@@ -111,20 +129,23 @@ class StageTest(test.TestCase):
         self.assertTrue(sess.run(peek, feed_dict={p:i}) == i)
 
   def testSizeAndClear(self):
-    with ops.device('/cpu:0'):
-      x = array_ops.placeholder(dtypes.float32, name='x')
-      v = 2. * (array_ops.zeros([128, 128]) + x)
-    with ops.device(test.gpu_device_name()):
-      stager = data_flow_ops.StagingArea(
-          [dtypes.float32, dtypes.float32],
-          shapes=[[], [128, 128]],
-          names=['x', 'v'])
-      stage = stager.put({'x': x, 'v': v})
-      ret = stager.get()
-      size = stager.size()
-      clear = stager.clear()
+    with ops.Graph().as_default() as G:
+      with ops.device('/cpu:0'):
+        x = array_ops.placeholder(dtypes.float32, name='x')
+        v = 2. * (array_ops.zeros([128, 128]) + x)
+      with ops.device(test.gpu_device_name()):
+        stager = data_flow_ops.StagingArea(
+            [dtypes.float32, dtypes.float32],
+            shapes=[[], [128, 128]],
+            names=['x', 'v'])
+        stage = stager.put({'x': x, 'v': v})
+        ret = stager.get()
+        size = stager.size()
+        clear = stager.clear()
 
-    with self.test_session(use_gpu=True) as sess:
+    G.finalize()
+
+    with self.test_session(use_gpu=True, graph=G) as sess:
       sess.run(stage, feed_dict={x: -1})
       self.assertEqual(sess.run(size), 1)
       sess.run(stage, feed_dict={x: -1})
@@ -135,14 +156,17 @@ class StageTest(test.TestCase):
   def testCapacity(self):
     capacity = 3
 
-    with ops.device('/cpu:0'):
-      x = array_ops.placeholder(dtypes.int32, name='x')
-    with ops.device(test.gpu_device_name()):
-      stager = data_flow_ops.StagingArea([dtypes.int32, ],
-        capacity=capacity, shapes=[[]])
-      stage = stager.put([x])
-      ret = stager.get()
-      size = stager.size()
+    with ops.Graph().as_default() as G:
+      with ops.device('/cpu:0'):
+        x = array_ops.placeholder(dtypes.int32, name='x')
+      with ops.device(test.gpu_device_name()):
+        stager = data_flow_ops.StagingArea([dtypes.int32, ],
+          capacity=capacity, shapes=[[]])
+        stage = stager.put([x])
+        ret = stager.get()
+        size = stager.size()
+
+    G.finalize()
 
     from six.moves import queue as Queue
     import threading
@@ -151,7 +175,7 @@ class StageTest(test.TestCase):
     n = 5
     missed = 0
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session(use_gpu=True, graph=G) as sess:
       # Stage data in a separate thread which will block
       # when it hits the staging area's capacity and thus
       # not fill the queue with n tokens
@@ -193,14 +217,17 @@ class StageTest(test.TestCase):
     chunk = 200*1024 # 256K
     capacity = memory_limit // chunk
 
-    with ops.device('/cpu:0'):
-      x = array_ops.placeholder(dtypes.uint8, name='x')
-    with ops.device(test.gpu_device_name()):
-      stager = data_flow_ops.StagingArea([dtypes.uint8, ],
-        memory_limit=memory_limit, shapes=[[]])
-      stage = stager.put([x])
-      ret = stager.get()
-      size = stager.size()
+    with ops.Graph().as_default() as G:
+      with ops.device('/cpu:0'):
+        x = array_ops.placeholder(dtypes.uint8, name='x')
+      with ops.device(test.gpu_device_name()):
+        stager = data_flow_ops.StagingArea([dtypes.uint8, ],
+          memory_limit=memory_limit, shapes=[[]])
+        stage = stager.put([x])
+        ret = stager.get()
+        size = stager.size()
+
+    G.finalize()
 
     from six.moves import queue as Queue
     import threading
@@ -210,7 +237,7 @@ class StageTest(test.TestCase):
     n = 5
     missed = 0
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.test_session(use_gpu=True, graph=G) as sess:
       # Stage data in a separate thread which will block
       # when it hits the staging area's capacity and thus
       # not fill the queue with n tokens

@@ -22,7 +22,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-
 /** Unit tests for {@link org.tensorflow.Operation}. */
 @RunWith(JUnit4.class)
 public class OperationTest {
@@ -53,7 +52,7 @@ public class OperationTest {
     assertEquals(3, split(new int[] {0, 1, 2}, 3));
   }
 
-  private int split(int[] values, int num_split) {
+  private static int split(int[] values, int num_split) {
     try (Graph g = new Graph()) {
       return g.opBuilder("Split", "Split")
           .addInput(TestUtil.constant(g, "split_dim", 0))

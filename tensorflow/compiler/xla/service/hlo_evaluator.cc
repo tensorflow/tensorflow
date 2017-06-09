@@ -579,7 +579,7 @@ std::unique_ptr<Literal> HloEvaluator::TryEvaluate(
     HloInstruction* instruction) {
   auto result_or = Evaluate(instruction);
   if (!result_or.ok()) {
-    LOG(ERROR) << "TryEvaluate failed:" << result_or.status();
+    VLOG(1) << "TryEvaluate failed:" << result_or.status();
     return nullptr;
   }
 

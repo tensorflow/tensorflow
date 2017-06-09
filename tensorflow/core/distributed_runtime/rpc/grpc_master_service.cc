@@ -55,9 +55,7 @@ class GrpcMasterService : public AsyncServiceInterface {
     cq_ = builder->AddCompletionQueue();
   }
 
-  ~GrpcMasterService() {
-    delete shutdown_alarm_;
-  }
+  ~GrpcMasterService() override { delete shutdown_alarm_; }
 
   void Shutdown() override {
     bool did_shutdown = false;

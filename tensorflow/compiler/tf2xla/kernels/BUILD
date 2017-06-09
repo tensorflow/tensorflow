@@ -55,6 +55,7 @@ tf_kernel_library(
         "spacetobatch_op.cc",
         "split_op.cc",
         "strided_slice_op.cc",
+        "tensor_array_ops.cc",
         "tile_ops.cc",
         "training_ops.cc",
         "transpose_op.cc",

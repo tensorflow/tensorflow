@@ -231,6 +231,19 @@ class VariablesTestCase(test.TestCase):
       sess.run(v0.initializer)
       sess.run(add)
 
+  def testControlFlowInitialization(self):
+    """Expects an error if an initializer is in a control-flow scope."""
+    def cond(i, _):
+      return i < 10
+
+    def body(i, _):
+      zero = array_ops.zeros([], dtype=dtypes.int32)
+      v = variables.Variable(initial_value=zero)
+      return (i + 1, v.read_value())
+
+    with self.assertRaisesRegexp(ValueError, "inside a control-flow"):
+      control_flow_ops.while_loop(cond, body, [0, 0])
+
   def testUseVariableAsTensor(self):
     with self.test_session():
       var_x = variables.Variable(2.0)

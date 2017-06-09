@@ -45,7 +45,7 @@ Status RenameOp(const GraphDef& input_graph_def,
   output_graph_def->Clear();
   for (const NodeDef& node : input_graph_def.node()) {
     NodeDef* new_node = output_graph_def->mutable_node()->Add();
-    new_node->CopyFrom(node);
+    *new_node = node;
     if (node.op() == old_op_name) {
       new_node->set_op(new_op_name);
     }

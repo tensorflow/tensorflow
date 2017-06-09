@@ -293,6 +293,14 @@ Computes natural logarithm of (1 + x) element-wise.
 I.e., \\(y = \log_e (1 + x)\\).
 )doc");
 
+REGISTER_OP("Sinh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic sine of x element-wise.
+)doc");
+
+REGISTER_OP("Cosh").UNARY_COMPLEX().Doc(R"doc(
+Computes hyperbolic cosine of x element-wise.
+)doc");
+
 REGISTER_OP("Tanh").UNARY_COMPLEX().Doc(R"doc(
 Computes hyperbolic tangent of `x` element-wise.
 )doc");
@@ -1030,15 +1038,14 @@ element to copy from `t` and `e`.
 
 For example:
 
-```prettyprint
+```python
 # 'condition' tensor is [[True,  False]
 #                        [False, True]]
 # 't' is [[1, 2],
 #         [3, 4]]
 # 'e' is [[5, 6],
 #         [7, 8]]
-select(condition, t, e) ==> [[1, 6],
-                             [7, 4]]
+select(condition, t, e)  # => [[1, 6], [7, 4]]
 
 
 # 'condition' tensor is [True, False]
@@ -1101,6 +1108,9 @@ The inputs must be two-dimensional matrices and the inner dimension of "a" must
 match the outer dimension of "b". This op is optimized for the case where at
 least one of "a" or "b" is sparse. The breakeven for using this versus a dense
 matrix multiply on one platform was 30% zero values in the sparse matrix.
+
+The gradient computation of this operation will only take advantage of sparsity
+in the input gradient when that gradient comes from a Relu.
 )doc");
 
 // --------------------------------------------------------------------------
@@ -1661,22 +1671,22 @@ dimension, selecting a subset of dimension 0, specified by `indices`.
 
 For example:
 
-```prettyprint
+```python
 c = tf.constant([[1,2,3,4], [-1,-2,-3,-4], [5,6,7,8]])
 
 # Select two rows, one segment.
 tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 0]))
-  ==> [[0 0 0 0]]
+# => [[0 0 0 0]]
 
 # Select two rows, two segment.
 tf.sparse_segment_sum(c, tf.constant([0, 1]), tf.constant([0, 1]))
-  ==> [[ 1  2  3  4]
-       [-1 -2 -3 -4]]
+# => [[ 1  2  3  4]
+#     [-1 -2 -3 -4]]
 
 # Select all rows, two segments.
 tf.sparse_segment_sum(c, tf.constant([0, 1, 2]), tf.constant([0, 0, 1]))
-  ==> [[0 0 0 0]
-       [5 6 7 8]]
+# => [[0 0 0 0]
+#     [5 6 7 8]]
 
 # Which is equivalent to:
 tf.segment_sum(c, tf.constant([0, 0, 1]))
@@ -2126,26 +2136,31 @@ Compute the cumulative sum of the tensor `x` along `axis`.
 
 By default, this op performs an inclusive cumsum, which means that the first
 element of the input is identical to the first element of the output:
-```prettyprint
-tf.cumsum([a, b, c]) ==> [a, a + b, a + b + c]
+
+```python
+tf.cumsum([a, b, c])  # => [a, a + b, a + b + c]
 ```
 
 By setting the `exclusive` kwarg to `True`, an exclusive cumsum is
 performed instead:
-```prettyprint
-tf.cumsum([a, b, c], exclusive=True) ==> [0, a, a + b]
+
+```python
+tf.cumsum([a, b, c], exclusive=True)  # => [0, a, a + b]
 ```
 
 By setting the `reverse` kwarg to `True`, the cumsum is performed in the
 opposite direction:
-```prettyprint
-tf.cumsum([a, b, c], reverse=True) ==> [a + b + c, b + c, c]
+
+```python
+tf.cumsum([a, b, c], reverse=True)  # => [a + b + c, b + c, c]
 ```
+
 This is more efficient than using separate `tf.reverse` ops.
 
 The `reverse` and `exclusive` kwargs can also be combined:
-```prettyprint
-tf.cumsum([a, b, c], exclusive=True, reverse=True) ==> [b + c, c, 0]
+
+```python
+tf.cumsum([a, b, c], exclusive=True, reverse=True)  # => [b + c, c, 0]
 ```
 )doc");
 
@@ -2163,26 +2178,31 @@ Compute the cumulative product of the tensor `x` along `axis`.
 
 By default, this op performs an inclusive cumprod, which means that the first
 element of the input is identical to the first element of the output:
-```prettyprint
-tf.cumprod([a, b, c]) ==> [a, a * b, a * b * c]
+
+```python
+tf.cumprod([a, b, c])  # => [a, a * b, a * b * c]
 ```
 
 By setting the `exclusive` kwarg to `True`, an exclusive cumprod is
 performed instead:
-```prettyprint
-tf.cumprod([a, b, c], exclusive=True) ==> [1, a, a * b]
+
+```python
+tf.cumprod([a, b, c], exclusive=True)  # => [1, a, a * b]
 ```
 
 By setting the `reverse` kwarg to `True`, the cumprod is performed in the
 opposite direction:
-```prettyprint
-tf.cumprod([a, b, c], reverse=True) ==> [a * b * c, b * c, c]
+
+```python
+tf.cumprod([a, b, c], reverse=True)  # => [a * b * c, b * c, c]
 ```
+
 This is more efficient than using separate `tf.reverse` ops.
 
 The `reverse` and `exclusive` kwargs can also be combined:
-```prettyprint
-tf.cumprod([a, b, c], exclusive=True, reverse=True) ==> [b * c, c, 1]
+
+```python
+tf.cumprod([a, b, c], exclusive=True, reverse=True)  # => [b * c, c, 1]
 ```
 )doc");
 

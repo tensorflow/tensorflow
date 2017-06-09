@@ -33,6 +33,7 @@ load(
     "tf_mkl_kernel_library",
     "cc_header_only_library",
 )
+load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
 load(
@@ -146,8 +147,6 @@ cc_library(
         "concat_lib_cpu.h",
     ],
     deps = [
-        ":eigen_helpers",
-        ":ops_util_hdrs",
         "//third_party/eigen3",
     ],
 )
@@ -246,7 +245,6 @@ cc_library(
     name = "ops_util_hdrs",
     hdrs = ["ops_util.h"],
     deps = [
-        ":eigen_helpers",
         "//third_party/eigen3",
     ],
 )
@@ -323,7 +321,6 @@ cc_library(
     hdrs = ["priority_queue.h"],
     deps = [
         ":queue_base",
-        ":queue_op",
         ":typed_queue",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -378,8 +375,6 @@ cc_library(
         "split_lib.h",
     ],
     deps = [
-        ":eigen_helpers",
-        ":ops_util_hdrs",
         "//third_party/eigen3",
     ],
 )
@@ -494,7 +489,7 @@ ARRAY_DEPS = [
     "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
     "//third_party/eigen3",
-]
+] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
 cc_library(
     name = "array_not_windows",
@@ -1909,6 +1904,7 @@ cc_library(
     deps = [
         ":fixed_length_record_reader_op",
         ":identity_reader_op",
+        ":lmdb_reader_op",
         ":matching_files_op",
         ":reader_ops",
         ":restore_op",
@@ -1941,6 +1937,14 @@ tf_kernel_library(
     name = "identity_reader_op",
     prefix = "identity_reader_op",
     deps = IO_DEPS,
+)
+
+tf_kernel_library(
+    name = "lmdb_reader_op",
+    prefix = "lmdb_reader_op",
+    deps = IO_DEPS + [
+        "@lmdb",
+    ],
 )
 
 tf_kernel_library(
@@ -3175,6 +3179,21 @@ tf_kernel_library(
     deps = REQUIRED_DEPS,
 )
 
+tf_cc_test(
+    name = "sendrecv_ops_test",
+    srcs = ["sendrecv_ops_test.cc"],
+    linkstatic = tf_kernel_tests_linkstatic(),  # Required for benchmarking
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":sendrecv_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 cc_library(
     name = "sparse",
     deps = [
@@ -3431,7 +3450,7 @@ STATE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:state_ops_op_lib",
-]
+] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
 tf_kernel_library(
     name = "count_up_to_op",
@@ -3598,10 +3617,12 @@ tf_kernel_library(
     name = "multinomial_op",
     prefix = "multinomial_op",
     deps = [
+        ":random_op",
         ":random_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//third_party/eigen3",
     ],
 )
 
@@ -4317,6 +4338,7 @@ filegroup(
             # not used on Android. Those ops also do not compile if included,
             # unless we add the additional deps they need.
             "tf_record_reader_op.*",
+            "lmdb_reader_op.*",
             "string_to_hash_bucket_op.*",
             "sdca_ops.*",
             "sdca_internal.*",
@@ -4473,6 +4495,7 @@ tf_cc_test(
 tf_cc_test(
     name = "quantization_utils_test",
     srcs = ["quantization_utils_test.cc"],
+    tags = ["noasan"],  # http://b/62136754
     deps = [
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
@@ -5009,7 +5032,6 @@ cc_library(
         ":remote_fused_graph_execute_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:remote_fused_graph_ops",
-        "//tensorflow/core",
         "//tensorflow/tools/graph_transforms:transform_utils",
     ],
     alwayslink = 1,
@@ -5408,6 +5430,7 @@ tf_kernel_library(
     srcs = ["iterator_ops.cc"],
     deps = [
         ":dataset",
+        ":ops_util",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

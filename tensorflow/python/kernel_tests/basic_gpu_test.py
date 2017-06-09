@@ -18,15 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
+import itertools
+import threading
 
 import numpy as np
+from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.gen_array_ops import _broadcast_gradient_args
 from tensorflow.python.platform import test
 
@@ -107,6 +113,7 @@ class MathBuiltinUnaryTest(test.TestCase):
     self._compare(data, np.arctan, math_ops.atan, use_gpu)
     self._compare(data, np.ceil, math_ops.ceil, use_gpu)
     self._compare(data, np.cos, math_ops.cos, use_gpu)
+    self._compare(data, np.cosh, math_ops.cosh, use_gpu)
     self._compare(data, np.exp, math_ops.exp, use_gpu)
     self._compare(data, np.floor, math_ops.floor, use_gpu)
     self._compare(data, np.log, math_ops.log, use_gpu)
@@ -114,6 +121,7 @@ class MathBuiltinUnaryTest(test.TestCase):
     self._compare(data, np.negative, math_ops.negative, use_gpu)
     self._compare(data, self._rsqrt, math_ops.rsqrt, use_gpu)
     self._compare(data, np.sin, math_ops.sin, use_gpu)
+    self._compare(data, np.sinh, math_ops.sinh, use_gpu)
     self._compare(data, np.sqrt, math_ops.sqrt, use_gpu)
     self._compare(data, np.square, math_ops.square, use_gpu)
     self._compare(data, np.tan, math_ops.tan, use_gpu)
@@ -123,7 +131,7 @@ class MathBuiltinUnaryTest(test.TestCase):
     for dtype in [np.float32]:
       self._testDtype(dtype, use_gpu=True)
 
-  def testFloorDevide(self):
+  def testFloorDivide(self):
     x = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
         [1, 3, 2])
     y = (1 + np.linspace(0, 5, np.prod([1, 3, 2]))).astype(np.float32).reshape(
@@ -219,5 +227,50 @@ class BroadcastSimpleTest(test.TestCase):
     self._compareGpu(x, y + 0.1, np.floor_divide, math_ops.floordiv)
 
 
-if __name__ == "__main__":
+class GpuMultiSessionMemoryTest(test_util.TensorFlowTestCase):
+  """Tests concurrent sessions executing on the same GPU."""
+
+  def _run_session(self, session, results):
+    n_iterations = 500
+    with session as s:
+      data = variables.Variable(1.0)
+      with ops.device('/gpu:0'):
+        random_seed.set_random_seed(1)
+        matrix1 = variables.Variable(
+            random_ops.truncated_normal([1024, 1]), name='matrix1')
+        matrix2 = variables.Variable(
+            random_ops.truncated_normal([1, 1024]), name='matrix2')
+        x1 = math_ops.multiply(data, matrix1, name='x1')
+        x3 = math_ops.matmul(x1, math_ops.matmul(matrix2, matrix1))
+        x4 = math_ops.matmul(array_ops.transpose(x3), x3, name='x4')
+        s.run(variables.global_variables_initializer())
+
+        for _ in xrange(n_iterations):
+          value = s.run(x4)
+          results.add(value.flat[0])
+          if len(results) != 1:
+            break
+
+  def testConcurrentSessions(self):
+    n_threads = 4
+    threads = []
+    results = []
+    for _ in xrange(n_threads):
+      session = self.test_session(graph=ops.Graph(), use_gpu=True)
+      results.append(set())
+      args = (session, results[-1])
+      threads.append(threading.Thread(target=self._run_session, args=args))
+
+    for thread in threads:
+      thread.start()
+    for thread in threads:
+      thread.join()
+
+    flat_results = set([x for x in itertools.chain(*results)])
+    self.assertEqual(1,
+                     len(flat_results),
+                     'Expected single value, got %r' % flat_results)
+
+
+if __name__ == '__main__':
   test.main()

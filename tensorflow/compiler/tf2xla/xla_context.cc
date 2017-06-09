@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -51,6 +52,10 @@ const char XlaContext::kXlaContextResourceName[] = "_xla_context";
   // outlive the JIT compilation.
   context->Unref();
   return *context;
+}
+
+/* static */ XlaContext& XlaContext::Get(const XlaOpKernelContext* ctx) {
+  return Get(ctx->op_kernel_context());
 }
 
 void XlaContext::set_args(std::vector<Argument> args) {
@@ -124,26 +129,16 @@ void XlaContext::AddSideEffects() {
 
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
 
-Status XlaContext::CreateVariable(int variable_id, string name, DataType type,
-                                  const xla::ComputationDataHandle& handle) {
-  auto result = variables_.emplace(variable_id, Variable());
-  if (!result.second) {
-    return errors::InvalidArgument("Duplicate ID ", variable_id,
-                                   " for variable ", name);
-  }
-  Variable& var = result.first->second;
+Status XlaContext::CreateVariable(int arg_num, string name, DataType type,
+                                  const xla::ComputationDataHandle& handle,
+                                  XlaVariable** variable) {
+  variables_.emplace_back(new XlaVariable);
+  *variable = variables_.back().get();
+  XlaVariable& var = **variable;
+  var.arg_num = arg_num;
   var.name = std::move(name);
   var.type = type;
   var.initial_value = var.value = handle;
-  return Status::OK();
-}
-
-Status XlaContext::GetVariable(int variable_id, Variable** variable) {
-  auto it = variables_.find(variable_id);
-  if (it == variables_.end()) {
-    return errors::InvalidArgument("Unknown variable ID ", variable_id);
-  }
-  *variable = &it->second;
   return Status::OK();
 }
 

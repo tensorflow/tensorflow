@@ -76,7 +76,7 @@ export class RequestManager {
             .then(
                 (response) => {
                   // Success - Let's free space for another active
-                  // reqest, and launch it
+                  // request, and launch it
                   this._nActiveRequests--;
                   this.launchRequests();
                   return response;

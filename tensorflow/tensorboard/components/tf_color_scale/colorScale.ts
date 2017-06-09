@@ -19,9 +19,8 @@ limitations under the License.
 // ccs.domain(runs);
 // ccs.getColor("train");
 // ccs.getColor("test1");
-import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
-import {palettes} from './palettes'
 
+import {palettes} from './palettes'
 
 export class ColorScale {
   private palette: string[];
@@ -29,8 +28,8 @@ export class ColorScale {
 
   /**
    * Creates a color scale with optional custom palette.
-   *  @param {string[]} [palette=palettes.googleColorBlind] - The color
-   *                 palette you want as an Array of hex strings.
+   * @param {Array<string>} [palette=palettes.googleColorBlind] - The color
+   *     palette you want as an Array of hex strings.
    */
   constructor(palette: string[] = palettes.googleColorBlindAssist) {
     this.palette = palette;
@@ -38,8 +37,8 @@ export class ColorScale {
 
   /**
    * Set the domain of strings.
-   * @param {string[]} strings - An array of possible strings to use as the
-   *                             domain for your scale.
+   * @param {Array<string>} strings - An array of possible strings to use as the
+   *     domain for your scale.
    */
   public domain(strings: string[]): this {
     this.identifiers = d3.map();

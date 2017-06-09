@@ -18,7 +18,7 @@ py_library(
         "//tensorflow:internal",
     ],
     deps = [
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard/backend:http_util",
         "//tensorflow/tensorboard/backend/event_processing:event_accumulator",
         "//tensorflow/tensorboard/plugins:base_plugin",
@@ -35,14 +35,20 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":scalars_plugin",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard/backend:application",
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
         "@org_pocoo_werkzeug//:werkzeug",
+        "@six_archive//:six",
+    ],
+)
+
+py_binary(
+    name = "scalars_demo",
+    srcs = ["scalars_demo.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
         "@six_archive//:six",
     ],
 )
