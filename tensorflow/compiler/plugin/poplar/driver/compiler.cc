@@ -136,7 +136,7 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
                                           HloDumper dump_hlo) {
   HloPassPipeline pipeline("IPU", dump_hlo);
   pipeline.AddPass<Inliner>();
-  pipeline.AddPass<Outliner>(2);
+  pipeline.AddPass<Outliner>(1);
   pipeline.AddPass<FuseOps>();
   pipeline.AddPass<HloSubcomputationUnification>();
   pipeline.AddPass<HloCSE>(false);
