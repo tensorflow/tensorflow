@@ -1,6 +1,6 @@
 # tfprof: TensorFlow Profiling Tool
 
-###Features
+### Features
 
 * Profile model architectures
   * parameters, tensor shapes, float operations, device placement, etc.
@@ -8,7 +8,7 @@
   * execution time, memory consumption
   * Profile multiple steps.
 
-###Interfaces
+### Interfaces
 
 * Python API
 * Command Line
@@ -46,7 +46,7 @@ See [Options](g3doc/options.md) for detail instructions.
 -output                     stdout:
 ```
 
-###Tutorials
+### Tutorials
 
 *  [Python API](g3doc/python_api.md)
 *  [Command Line Interface](g3doc/command_line.md)
@@ -109,9 +109,7 @@ Sigmoid                        152.57MB (85.28%, 0.21%),        96.66ms (23.46%,
 ```
 
 ### Visualize time and memory.
-<left>
-[CodeTimeline](g3doc/graph_timeline.png)
-</left>
+![CodeTimeline](g3doc/graph_timeline.png)
 
 ### Teams
 
