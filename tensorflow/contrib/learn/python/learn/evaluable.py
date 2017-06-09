@@ -60,19 +60,19 @@ class Evaluable(object):
 
     Args:
       x: Matrix of shape [n_samples, n_features...] or dictionary of many matrices
-         containing the input samples for fitting the model. Can be iterator that returns
-         arrays of features or dictionary of array of features. If set, `input_fn` must
-         be `None`.
+        containing the input samples for fitting the model. Can be iterator that returns
+        arrays of features or dictionary of array of features. If set, `input_fn` must
+        be `None`.
       y: Vector or matrix [n_samples] or [n_samples, n_outputs] containing the
-         label values (class labels in classification, real numbers in
-         regression) or dictionary of multiple vectors/matrices. Can be iterator
-         that returns array of targets or dictionary of array of targets. If set,
-         `input_fn` must be `None`. Note: For classification, label values must
-         be integers representing the class index (i.e. values from 0 to
-         n_classes-1).
+        label values (class labels in classification, real numbers in
+        regression) or dictionary of multiple vectors/matrices. Can be iterator
+        that returns array of targets or dictionary of array of targets. If set,
+        `input_fn` must be `None`. Note: For classification, label values must
+        be integers representing the class index (i.e. values from 0 to
+        n_classes-1).
       input_fn: Input function returning a tuple of:
-          features - Dictionary of string feature name to `Tensor` or `Tensor`.
-          labels - `Tensor` or dictionary of `Tensor` with labels.
+        features - Dictionary of string feature name to `Tensor` or `Tensor`.
+        labels - `Tensor` or dictionary of `Tensor` with labels.
         If input_fn is set, `x`, `y`, and `batch_size` must be `None`. If
         `steps` is not provided, this should raise `OutOfRangeError` or
         `StopIteration` after the desired amount of data (e.g., one epoch) has
@@ -90,7 +90,6 @@ class Evaluable(object):
         friendly names for the metric to a `MetricSpec` object defining which
         model outputs to evaluate against which labels with which metric
         function.
-
         Metric ops should support streaming, e.g., returning `update_op` and
         `value` tensors. For example, see the options defined in
         `../../../metrics/python/ops/metrics_ops.py`.

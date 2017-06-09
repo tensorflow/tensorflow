@@ -41,6 +41,17 @@ class TransposeCpuOp : public TransposeOp {
                      gtl::ArraySlice<int32> perm, Tensor* out) override;
 };
 
+#ifdef INTEL_MKL
+class MklTransposeCpuOp : public TransposeOp {
+ public:
+  explicit MklTransposeCpuOp(OpKernelConstruction* ctx) : TransposeOp(ctx) {}
+
+ protected:
+  Status DoTranspose(OpKernelContext* ctx, const Tensor& in,
+                     gtl::ArraySlice<int32> perm, Tensor* out) override;
+};
+#endif  // INTEL_MKL
+
 class TransposeGpuOp : public TransposeOp {
  public:
   explicit TransposeGpuOp(OpKernelConstruction* ctx) : TransposeOp(ctx) {}

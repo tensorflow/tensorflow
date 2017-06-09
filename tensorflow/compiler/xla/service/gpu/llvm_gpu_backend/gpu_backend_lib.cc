@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 
 #include "external/llvm/include/llvm/ADT/STLExtras.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "external/llvm/include/llvm/Transforms/IPO/AlwaysInliner.h"
 #include "external/llvm/include/llvm/Transforms/IPO/PassManagerBuilder.h"
 
+#include "external/llvm/include/llvm/Transforms/IPO/Internalize.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -170,8 +172,9 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
-  // Set options from hlo_module_config (specifically, fast-math flags).
-  llvm_ir::SetTargetOptions(hlo_module_config, &target_options);
+  llvm_ir::SetTargetOptions(
+      /*fast_math_enabled=*/!hlo_module_config.fast_math_disabled(),
+      &target_options);
 
   // Enable FMA synthesis if desired.
   legacy_flags::GpuBackendLibFlags* flags =
@@ -319,9 +322,13 @@ tensorflow::Status LinkLibdeviceIfNecessary(
   VLOG(1) << "Linking with libdevice from: " << libdevice_path;
   std::unique_ptr<llvm::Module> libdevice_module =
       LoadIRModule(libdevice_path, &module->getContext());
-  if (linker.linkInModule(std::move(libdevice_module),
-                          llvm::Linker::Flags::InternalizeLinkedSymbols |
-                              llvm::Linker::Flags::LinkOnlyNeeded)) {
+  if (linker.linkInModule(
+          std::move(libdevice_module), llvm::Linker::Flags::LinkOnlyNeeded,
+          [](Module& M, const StringSet<>& GVS) {
+            internalizeModule(M, [&M, &GVS](const GlobalValue& GV) {
+              return !GV.hasName() || (GVS.count(GV.getName()) == 0);
+            });
+          })) {
     return tensorflow::errors::Internal(tensorflow::strings::StrCat(
         "Error linking libdevice from ", libdevice_path));
   }
@@ -391,7 +398,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
   // The LLVM IR verifier performs sanity checking on the IR. This helps
   // discover problems and report them in a meaningful manner, rather than let
-  // later passes report obscure assertions becasue of unfulfilled invariants.
+  // later passes report obscure assertions because of unfulfilled invariants.
   module_passes.add(llvm::createVerifierPass());
 
   // Create the function-level pass manager. It needs data layout information
@@ -400,9 +407,9 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
   AddOptimizationPasses(flags->opt_level, /*size_level=*/0,
                         target_machine.get(), &module_passes, &function_passes);
-  // Loop unrolling exposes more opportunites for SROA. Therefore, we run SROA
+  // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
   // again after the standard optimization passes [http://b/13329423].
-  // TODO(jingyue): SROA may further expose more optimization opportunites, such
+  // TODO(jingyue): SROA may further expose more optimization opportunities, such
   // as more precise alias analysis and more function inlining (SROA may change
   // the inlining cost of a function). For now, running SROA already emits good
   // enough code for the evaluated benchmarks. We may want to run more

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/constant_folding.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
 
@@ -56,7 +57,10 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
 
     if (opts_.do_constant_folding()) {
       ConstantFoldingOptions cf_opts;
-      if (DoConstantFolding(cf_opts, runtime, env, device, g)) {
+      bool was_mutated;
+      ConstantFold(cf_opts, runtime, env, device, g, &was_mutated)
+          .IgnoreError();
+      if (was_mutated) {
         RemoveDeadNodes(g);
         DumpGraph("ConstFolding", g);
         changed = true;
@@ -79,7 +83,9 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
     if (!changed) break;
   }
 
-  std::unique_ptr<Graph> copy(new Graph(g->op_registry()));
+  // Note that we use the Graph constructor that copies the input
+  // FunctionLibraryDefinition, since the original lib def will go out of scope.
+  std::unique_ptr<Graph> copy(new Graph(g->flib_def()));
   CopyGraph(*g, copy.get());
   graph->swap(copy);
 

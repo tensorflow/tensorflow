@@ -79,10 +79,27 @@ class CUDABlas : public blas::BlasSupport {
   // stream:             Stream to enqueue the BLAS operation onto.
   // pointer_mode_host:  Indicate if the pointer to a scalar value is from host
   //                     (true) or device (false).
+  // err_on_failure:     Whether to print an error if the cublas function fails.
   // args:               Arguments of cuBLAS function.
   template <typename FuncT, typename... Args>
+  bool DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
+                          bool pointer_mode_host, bool err_on_failure,
+                          Args... args);
+
+  // Convenience functions that call DoBlasInternalImpl with different values
+  // for err_on_failure.
+  template <typename FuncT, typename... Args>
   bool DoBlasInternal(FuncT cublas_func, Stream *stream, bool pointer_mode_host,
-                      Args... args);
+                      Args... args) {
+    return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
+                              /*err_on_failure=*/true, args...);
+  }
+  template <typename FuncT, typename... Args>
+  bool DoBlasInternalFailureOK(FuncT cublas_func, Stream *stream,
+                               bool pointer_mode_host, Args... args) {
+    return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
+                              /*err_on_failure=*/false, args...);
+  }
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic
   // types.
@@ -94,6 +111,23 @@ class CUDABlas : public blas::BlasSupport {
       const port::ArraySlice<DeviceMemory<T> *> &b_array, int ldb, T beta,
       const port::ArraySlice<DeviceMemory<T> *> &c_array, int ldc,
       int batch_count, ScratchAllocator *scratch_allocator);
+
+  // Helper function for implementing DoBlasGemmWithAlgorithm.
+  //
+  // We take alpha and beta by const reference because T might be Eigen::half,
+  // and we want to avoid pulling in a dependency on Eigen.  When we pass the
+  // references to cublas, we essentially reinterpret_cast to __half, which is
+  // safe because Eigen::half inherits from __half.
+  template <typename T>
+  bool DoBlasGemmWithAlgorithmImpl(Stream *stream, blas::Transpose transa,
+                                   blas::Transpose transb, uint64 m, uint64 n,
+                                   uint64 k, const T &alpha,
+                                   const DeviceMemory<T> &a, int lda,
+                                   const DeviceMemory<T> &b, int ldb,
+                                   const T &beta, DeviceMemory<T> *c, int ldc,
+                                   blas::ComputationType computation_type,
+                                   blas::AlgorithmType algorithm,
+                                   blas::ProfileResult *output_profile_result);
 
   // mutex that guards the cuBLAS handle for this device.
   mutex mu_;

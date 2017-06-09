@@ -35,6 +35,10 @@ message DebugTensorWatch {
   // among the invocations.
   // TODO(cais): More visible documentation of this in g3docs.
   repeated string debug_urls = 4;
+
+  // Do not error out if debug op creation fails (e.g., due to dtype
+  // incompatibility). Instead, just log the failure.
+  bool tolerate_debug_op_creation_failures = 5;
 }
 
 // EXPERIMENTAL. Options for initializing DebuggerState.

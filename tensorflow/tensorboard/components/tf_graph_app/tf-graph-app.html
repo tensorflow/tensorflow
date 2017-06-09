@@ -18,7 +18,7 @@ limitations under the License.
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../tf-graph-board/tf-graph-board.html">
 <link rel="import" href="../tf-graph-loader/tf-graph-loader.html">
-<link rel="import" href="../tf-graph/tf-graph-controls.html">
+<link rel="import" href="../tf-graph-controls/tf-graph-controls.html">
 
 <!--
 Stand alone element of tf-graph for embedding.
@@ -111,17 +111,42 @@ Polymer({
   is: 'tf-graph-app',
   properties: {
     stats: Object,
+
+    // To use tf-graph-app, specify one of these 2 properties. Provide either
+    // 1. The path to a pbtxt file to load (pbtxtFileLocation). This option nicely makes the
+    //    progress bar include the time it takes to load the file across the network. The path could
+    //    be either a relative path or an absolute URL (of a resource that supports CORS).
+    // 2. The raw contents of a pbtxt file (pbtxt).
+    // Do not set both of these 2 properties.
+    pbtxtFileLocation: {
+      type: String,
+      observer: '_updateGraph',
+    },
     pbtxt: {
       type: String,
       observer: '_updateGraph',
     },
+
     _renderHierarchy: Object,
-    _progress: Object
+    _progress: Object,
   },
   _updateGraph: function() {
-    var blob = new Blob([this.pbtxt]);
-    this.$.loader._parseAndConstructHierarchicalGraph(null, blob);
-  }
+    if (this.pbtxtFileLocation) {
+      // Fetch a pbtxt file. The fetching will be part of the loading sequence.
+      this.$.loader.datasets = [{
+        // Just name the dataset based on the file location.
+        "name": this.pbtxtFileLocation,
+        "path": this.pbtxtFileLocation,
+      }];
+      this.$.loader.set('selectedDataset', 0);
+    } else if (this.pbtxt) {
+      // Render the provided pbtxt.
+      var blob = new Blob([this.pbtxt]);
+
+      // TODO(chizeng): Find out why we call a private method here and do away with the call.
+      this.$.loader._parseAndConstructHierarchicalGraph(null, blob);
+    }
+  },
 });
 })();
 </script>

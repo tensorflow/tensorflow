@@ -681,7 +681,7 @@ class ProfileResult {
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
 };
 
-// Describe the configuration for the algorithms that will used.
+// Describes the configuration for the algorithms that will used.
 //
 // Arguments:
 //  algorithm: the primary algorithm that should be used.
@@ -702,6 +702,14 @@ class AlgorithmConfig {
   void set_algorithm_no_scratch(AlgorithmType val) {
     algorithm_no_scratch_ = val;
   }
+  bool operator==(const AlgorithmConfig& other) const {
+    return this->algorithm_ == other.algorithm_ &&
+           this->algorithm_no_scratch_ == other.algorithm_no_scratch_;
+  }
+  bool operator!=(const AlgorithmConfig& other) const {
+    return !(*this == other);
+  }
+  string ToString() const;
 
  private:
   AlgorithmType algorithm_;
@@ -788,6 +796,7 @@ class NormalizeDescriptor {
 
 // Describes a kind of non-linearity (threshold-like mathematical function).
 enum class ActivationMode {
+  kNone,
   kSigmoid,
   // Rectified linear activation: f(x) = x < 0 ? 0 : x
   kRelu,
@@ -902,9 +911,11 @@ class DnnSupport {
   //  input_data: un-owned device memory region which contains the
   //    convolution input.
   //  filter_descriptor: dimensions of the convolution filter.
-  //  weights: coefficients for the convolution filter, these are multiplied
-  //    against values in the input that the filter convolves over.
   //  convolution_descriptor: stride of the convolution filter.
+  //  biases: un-owned device memory region containing biases to add to the
+  //  input. This can be DeviceMemory pointing to NULL only when activation_mode
+  //  is kNone.
+  //  activation_mode: Type of activation to perform.
   //  output_descriptor: dimensions of the output layer.
   //  output_data: un-owned device memory region in which to place the
   //    convolution result.
@@ -937,16 +948,62 @@ class DnnSupport {
       const dnn::FilterDescriptor& filter_descriptor,
       const DeviceMemory<float>& filter_data,
       const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<float>& biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  // Enqueues a double-precision fused convolution, bias add, and activation
+  // operation onto the stream. See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<double>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<double>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<double>& biases, dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<double>* output_data) {
+    return false;
+  }
+
+  // Enqueues a half-precision fused convolution, bias add, and activation
+  // operation onto the stream. See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
+      const DeviceMemory<Eigen::half>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<Eigen::half>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const DeviceMemory<Eigen::half>& biases,
+      dnn::ActivationMode activation_mode,
+      const dnn::BatchDescriptor& output_descriptor,
+      DeviceMemory<Eigen::half>* output_data,
+      ScratchAllocator* scratch_allocator,
+      const dnn::AlgorithmConfig& algorithm_config,
+      ProfileResult* output_profile_result) {
+    return false;
+  }
+
+  // Enqueues a single-precision convolution operation (without bias add
+  // or activation) onto the stream.
+  // See DoConvolve above for argument details.
+  virtual bool DoConvolve(
+      Stream* stream, const dnn::BatchDescriptor& input_descriptor,
+      const DeviceMemory<float>& input_data,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const DeviceMemory<float>& filter_data,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<float>* output_data, ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
 
-  // Return a list of algorithms supported by the forward convolution pass.
-  virtual bool GetConvolveAlgorithms(
-      std::vector<AlgorithmType>* out_algorithms);
-
-  // Enqueues a double-precision convolution operation onto the stream.
+  // Enqueues a double-precision convolution operation (without bias add
+  // or activation) onto the stream.
   // See DoConvolve above for argument details.
   virtual bool DoConvolve(
       Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
@@ -957,7 +1014,8 @@ class DnnSupport {
       const dnn::BatchDescriptor& output_descriptor,
       DeviceMemory<double>* output_data) = 0;
 
-  // Enqueues a half-precision convolution operation onto the stream.
+  // Enqueues a half-precision convolution operation (without bias add
+  // or activation) onto the stream.
   // See DoConvolve above for argument details.
   virtual bool DoConvolve(
       Stream* stream, const dnn::BatchDescriptor& batch_descriptor,
@@ -970,6 +1028,10 @@ class DnnSupport {
       ScratchAllocator* scratch_allocator,
       const dnn::AlgorithmConfig& algorithm_config,
       ProfileResult* output_profile_result) = 0;
+
+  // Return a list of algorithms supported by the forward convolution pass.
+  virtual bool GetConvolveAlgorithms(
+      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
 
   // Version of DoConvolve that uses pre-quantized 8 bit coefficients.
   // coefficient_scales specifies the scaling of each column of coefficients:
@@ -1048,7 +1110,7 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      std::vector<AlgorithmType>* out_algorithms);
+      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
 
   virtual bool DoConvolveBackwardData(
       Stream* stream, const FilterDescriptor& filter_descriptor,
@@ -1096,7 +1158,7 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      std::vector<AlgorithmType>* out_algorithms);
+      bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms);
 
   virtual bool DoConvolveBackwardFilter(
       Stream* stream, const BatchDescriptor& input_descriptor,
@@ -1275,11 +1337,36 @@ class DnnSupport {
   virtual bool DoPoolForward(Stream* stream,
                              const dnn::PoolingDescriptor& pooling_dimensions,
                              const dnn::BatchDescriptor& input_dimensions,
+                             const DeviceMemory<double>& input_data,
+                             const dnn::BatchDescriptor& output_dimensions,
+                             DeviceMemory<double>* output_data) {
+    LOG(FATAL) << "DoPoolForward not implemented for double.";
+    return false;
+  }
+
+  virtual bool DoPoolForward(Stream* stream,
+                             const dnn::PoolingDescriptor& pooling_dimensions,
+                             const dnn::BatchDescriptor& input_dimensions,
                              const DeviceMemory<Eigen::half>& input_data,
                              const dnn::BatchDescriptor& output_dimensions,
-                             DeviceMemory<Eigen::half>* output_data) = 0;
+                             DeviceMemory<Eigen::half>* output_data) {
+    LOG(FATAL) << "DoPoolForward not implemented for float16.";
+    return false;
+  }
 
   // Performs differentiation of the pooling operation.
+  virtual bool DoPoolBackward(Stream* stream,
+                              const dnn::PoolingDescriptor& pooling_dimensions,
+                              const dnn::BatchDescriptor& input_dimensions,
+                              const DeviceMemory<double>& input_data,
+                              const dnn::BatchDescriptor& output_dimensions,
+                              const DeviceMemory<double>& output_data,
+                              const DeviceMemory<double>& input_diff_data,
+                              DeviceMemory<double>* output_diff_data) {
+    LOG(FATAL) << "DoPoolBackward not implemented.";
+    return false;
+  }
+
   virtual bool DoPoolBackward(Stream* stream,
                               const dnn::PoolingDescriptor& pooling_dimensions,
                               const dnn::BatchDescriptor& input_dimensions,
@@ -1287,7 +1374,10 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<float>& output_data,
                               const DeviceMemory<float>& input_diff_data,
-                              DeviceMemory<float>* output_diff_data) = 0;
+                              DeviceMemory<float>* output_diff_data) {
+    LOG(FATAL) << "DoPoolBackward not implemented.";
+    return false;
+  }
 
   virtual bool DoPoolBackward(Stream* stream,
                               const dnn::PoolingDescriptor& pooling_dimensions,
@@ -1296,7 +1386,10 @@ class DnnSupport {
                               const dnn::BatchDescriptor& output_dimensions,
                               const DeviceMemory<Eigen::half>& output_data,
                               const DeviceMemory<Eigen::half>& input_diff_data,
-                              DeviceMemory<Eigen::half>* output_diff_data) = 0;
+                              DeviceMemory<Eigen::half>* output_diff_data) {
+    LOG(FATAL) << "DoPoolBackward not implemented.";
+    return false;
+  }
 
   // Applies local response normalization to the values from
   // input_data and writes the result to output_data. See comments on
@@ -1867,6 +1960,23 @@ class DnnSupport {
     return false;
   }
 
+  // Transforms a tensor into another tensor with a different layout and/or data
+  // type.
+  //
+  // Arguments:
+  //  stream: pointer to the stream where this operation should be enqueued to.
+  //  input_desc: descriptor for the input tensor.
+  //  input_data: the device memory region that contains the input tensor.
+  //  output_desc: descriptor for the output tensor.
+  //  output_data: the device memory region that contains the output tensor.
+  virtual bool DoTransformTensor(Stream* stream,
+                                 const dnn::BatchDescriptor& input_desc,
+                                 const DeviceMemory<float>& input_data,
+                                 const dnn::BatchDescriptor& output_desc,
+                                 DeviceMemory<float>* output_data) {
+    return false;
+  }
+
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(DnnSupport);
 };
@@ -1876,4 +1986,3 @@ class DnnSupport {
 }  // namespace perftools
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_DNN_H_
-

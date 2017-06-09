@@ -66,6 +66,24 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_numOutputs(JNIEnv* env,
   return TF_OperationNumOutputs(op);
 }
 
+JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_outputListLength(JNIEnv* env,
+                                                                      jclass clazz,
+                                                                      jlong handle,
+                                                                      jstring name) {
+  TF_Operation* op = requireHandle(env, handle);
+  if (op == nullptr) return 0;
+
+  TF_Status* status = TF_NewStatus();
+
+  const char* cname = env->GetStringUTFChars(name, nullptr);
+  int result = TF_OperationOutputListLength(op, cname, status);
+  env->ReleaseStringUTFChars(name, cname);
+
+  throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
+  return result;
+}
+
 JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Operation_shape(
     JNIEnv* env, jclass clazz, jlong graph_handle, jlong op_handle,
     jint output_index) {
@@ -115,4 +133,26 @@ JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Operation_shape(
   }
   env->ReleaseLongArrayElements(ret, dims, 0);
   return ret;
+}
+
+JNIEXPORT jint JNICALL Java_org_tensorflow_Operation_dtype(JNIEnv* env,
+                                                           jclass clazz,
+                                                           jlong graph_handle,
+                                                           jlong op_handle,
+                                                           jint output_index) {
+  TF_Graph* graph = requireGraphHandle(env, graph_handle);
+  if (graph == nullptr) return 0;
+  TF_Operation* op = requireHandle(env, op_handle);
+  if (op == nullptr) return 0;
+
+  int num_outputs = TF_OperationNumOutputs(op);
+  if (output_index < 0 || output_index >= num_outputs) {
+    throwException(
+        env, kIndexOutOfBoundsException,
+        "invalid output index (%d) for an operation that has %d outputs",
+        output_index, num_outputs);
+    return 0;
+  }
+
+  return static_cast<jint>(TF_OperationOutputType(TF_Output{op, output_index}));
 }

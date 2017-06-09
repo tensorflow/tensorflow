@@ -5,10 +5,13 @@ package(default_visibility = ["//visibility:private"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("build_defs", "JAVACOPTS")
+
 java_library(
     name = "tensorflow",
     srcs = [":java_sources"],
     data = [":libtensorflow_jni"],
+    javacopts = JAVACOPTS,
     visibility = ["//visibility:public"],
 )
 
@@ -27,6 +30,7 @@ java_library(
     name = "testutil",
     testonly = 1,
     srcs = ["src/test/java/org/tensorflow/TestUtil.java"],
+    javacopts = JAVACOPTS,
     deps = [":tensorflow"],
 )
 
@@ -34,11 +38,12 @@ java_test(
     name = "GraphTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/GraphTest.java"],
+    javacopts = JAVACOPTS,
     test_class = "org.tensorflow.GraphTest",
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -46,11 +51,39 @@ java_test(
     name = "OperationBuilderTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/OperationBuilderTest.java"],
+    javacopts = JAVACOPTS,
     test_class = "org.tensorflow.OperationBuilderTest",
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "OperationTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/OperationTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.OperationTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "SavedModelBundleTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/SavedModelBundleTest.java"],
+    data = ["//tensorflow/cc/saved_model:saved_model_half_plus_two"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.SavedModelBundleTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
     ],
 )
 
@@ -58,11 +91,12 @@ java_test(
     name = "SessionTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/SessionTest.java"],
+    javacopts = JAVACOPTS,
     test_class = "org.tensorflow.SessionTest",
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -70,11 +104,12 @@ java_test(
     name = "ShapeTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/ShapeTest.java"],
+    javacopts = JAVACOPTS,
     test_class = "org.tensorflow.ShapeTest",
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -82,10 +117,11 @@ java_test(
     name = "TensorFlowTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorFlowTest.java"],
+    javacopts = JAVACOPTS,
     test_class = "org.tensorflow.TensorFlowTest",
     deps = [
         ":tensorflow",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -93,11 +129,12 @@ java_test(
     name = "TensorTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/TensorTest.java"],
+    javacopts = JAVACOPTS,
     test_class = "org.tensorflow.TensorTest",
     deps = [
         ":tensorflow",
         ":testutil",
-        "//external:junit",
+        "@junit",
     ],
 )
 
@@ -126,6 +163,7 @@ cc_binary(
             LINKER_EXPORTED_SYMBOLS,
         ],
         "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
             "-s",

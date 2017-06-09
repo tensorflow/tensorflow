@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
@@ -89,7 +90,9 @@ xla::ComputationDataHandle XlaHelpers::IntegerLiteral(
     case xla::U16:
       LOG(FATAL) << "u16/s16 literals not yet implemented";
     case xla::F16:
-      LOG(FATAL) << "f16 literals not yet implemented";
+      literal =
+          *xla::LiteralUtil::CreateR0<xla::half>(static_cast<xla::half>(value));
+      break;
     case xla::TUPLE:
       LOG(FATAL) << "tuple element type is not integral";
     case xla::OPAQUE:
@@ -107,6 +110,9 @@ xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(data_type, &type));
   switch (type) {
+    case xla::F16:
+      return b->ConstantR0<xla::half>(static_cast<xla::half>(value));
+      break;
     case xla::F32:
       return b->ConstantR0<float>(static_cast<float>(value));
       break;
@@ -136,6 +142,66 @@ xla::ComputationDataHandle XlaHelpers::FloatLiteral(xla::ComputationBuilder* b,
 
   *output = input;
   output->mutable_shape()->Swap(&shape);
+  return Status::OK();
+}
+
+template <typename T>
+static Tensor MakeLinspaceTensor(const TensorShape& shape, int64 depth) {
+  Tensor linspace(DataTypeToEnum<T>::v(), shape);
+  auto linspace_flat = linspace.flat<T>();
+  for (int64 i = 0; i < depth; ++i) {
+    linspace_flat(i) = i;
+  }
+  return linspace;
+}
+
+Status XlaHelpers::OneHot(xla::ComputationBuilder* builder, int64 depth,
+                          int axis, DataType index_type,
+                          const TensorShape& indices_shape,
+                          const xla::ComputationDataHandle& indices,
+                          const xla::ComputationDataHandle& on_value,
+                          const xla::ComputationDataHandle& off_value,
+                          xla::ComputationDataHandle* one_hot) {
+  const int indices_dims = indices_shape.dims();
+  const int output_dims = indices_dims + 1;
+
+  TensorShape output_shape = indices_shape;
+  output_shape.InsertDim(axis, depth);
+
+  // Build a Tensor populated with values 0, 1, 2, ... depth.
+  std::vector<int64> linspace_dims(output_dims, 1);
+  linspace_dims[axis] = depth;
+  TensorShape linspace_shape(linspace_dims);
+  Tensor linspace;
+  switch (index_type) {
+    case DT_UINT8:
+      linspace = MakeLinspaceTensor<uint8>(linspace_shape, depth);
+      break;
+    case DT_INT32:
+      linspace = MakeLinspaceTensor<int32>(linspace_shape, depth);
+      break;
+    case DT_INT64:
+      linspace = MakeLinspaceTensor<int64>(linspace_shape, depth);
+      break;
+    default:
+      return errors::InvalidArgument("Invalid argument type ",
+                                     DataTypeString(index_type));
+  }
+  xla::Literal linspace_literal;
+  TF_RETURN_IF_ERROR(HostTensorToLiteral(linspace, &linspace_literal));
+
+  // Broadcast the linspace constant across the indices along the new axis,
+  // and test equality at each position.
+  std::vector<int64> broadcast_dims(indices_shape.dims());
+  std::iota(broadcast_dims.begin(), broadcast_dims.begin() + axis, 0);
+  std::iota(broadcast_dims.begin() + axis, broadcast_dims.end(), axis + 1);
+  xla::ComputationDataHandle one_hot_bool = builder->Eq(
+      indices, builder->ConstantLiteral(linspace_literal), broadcast_dims);
+
+  // Selects the user-provided off_value and on_value values.
+  *one_hot = builder->Select(
+      one_hot_bool, builder->Broadcast(on_value, output_shape.dim_sizes()),
+      builder->Broadcast(off_value, output_shape.dim_sizes()));
   return Status::OK();
 }
 

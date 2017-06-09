@@ -40,6 +40,7 @@ static void AllocateFlags() {
   flags->xla_cpu_llvm_cl_opts = "";
   flags->xla_cpu_embed_ir = false;
   flags->xla_cpu_parallel = false;
+  flags->xla_cpu_dump_debug_json_to = "";
   flag_list = new std::vector<tensorflow::Flag>({
       tensorflow::Flag(
           "xla_cpu_llvm_opt_level", &flags->xla_cpu_llvm_opt_level,
@@ -53,6 +54,9 @@ static void AllocateFlags() {
           "Embed the LLVM IR module string in the resultant CpuExecutable."),
       tensorflow::Flag("xla_cpu_parallel", &flags->xla_cpu_parallel,
                        "Use the multi-threaded CPU backend."),
+      tensorflow::Flag("xla_cpu_dump_debug_json_to",
+                       &flags->xla_cpu_dump_debug_json_to,
+                       "Dump debug JSON to this directory."),
   });
   ParseFlagsFromEnv(*flag_list);
 }

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -182,14 +183,10 @@ void CopyOpTest::TestCopyConstantLayout021(size_t n1, size_t n2, size_t n3) {
   std::unique_ptr<HloComputation> computation = builder.Build();
 
   auto hlo_module = MakeUnique<HloModule>("test_module");
-  auto config = MakeUnique<HloModuleConfig>(computation->ComputeProgramShape());
-  *config->mutable_entry_computation_layout()->mutable_result_layout() =
-      ShapeLayout(ShapeUtil::MakeShapeWithLayout(
-          constant->shape().element_type(),
-          AsInt64Slice(constant->shape().dimensions()), {1, 2, 0}));
   hlo_module->AddEntryComputation(std::move(computation));
+  ForceResultLayout(hlo_module.get(), LayoutUtil::MakeLayout({1, 2, 0}));
   std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), std::move(config), {});
+      ExecuteAndTransfer(std::move(hlo_module), {});
 
   LiteralTestUtil::ExpectR3EqualArray3D(a, *result);
 }
@@ -221,17 +218,10 @@ void CopyOpTest::TestCopyConstantLayoutR4(
   std::unique_ptr<HloComputation> computation = builder.Build();
 
   auto hlo_module = MakeUnique<HloModule>("test_module");
-  auto config = MakeUnique<HloModuleConfig>(computation->ComputeProgramShape());
-  *config->mutable_entry_computation_layout()->mutable_result_layout() =
-      ShapeLayout(ShapeUtil::MakeShapeWithLayout(
-          constant->shape().element_type(),
-          AsInt64Slice(constant->shape().dimensions()), ({
-            std::vector<int64> p(permutation.rbegin(), permutation.rend());
-            p;
-          })));
   hlo_module->AddEntryComputation(std::move(computation));
+  ForceResultLayout(hlo_module.get(), LayoutUtil::MakeLayout(permutation));
   std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), std::move(config), {});
+      ExecuteAndTransfer(std::move(hlo_module), {});
 
   LiteralTestUtil::ExpectR4EqualArray4D(a, *result);
 }
@@ -254,6 +244,22 @@ XLA_TEST_F(CopyOpTest, CopyConstantR4Layout0231_MultipleTilesPerLayer) {
 
 XLA_TEST_F(CopyOpTest, CopyConstantR4Layout0312_MultipleTilesPerLayer) {
   TestCopyConstantLayoutR4(2, 14, 5, 35, {0, 3, 1, 2});
+}
+
+using CopyOpClientTest = ClientLibraryTestBase;
+
+XLA_TEST_F(CopyOpClientTest, Copy0x0) {
+  Shape in_shape = ShapeUtil::MakeShapeWithLayout(F32, {0, 0}, {0, 1});
+  Shape out_shape = ShapeUtil::MakeShapeWithLayout(F32, {0, 0}, {1, 0});
+  auto empty = LiteralUtil::CreateFromShape(in_shape);
+
+  ComputationBuilder builder(client_, TestName());
+  auto param0 = builder.Parameter(0, in_shape, "input");
+  auto input_data = client_->TransferToServer(*empty).ConsumeValueOrDie();
+
+  auto actual = ExecuteAndTransfer(&builder, {input_data.get()}, &out_shape)
+                    .ConsumeValueOrDie();
+  LiteralTestUtil::ExpectEqual(*empty, *actual);
 }
 
 }  // namespace

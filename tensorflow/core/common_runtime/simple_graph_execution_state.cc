@@ -37,6 +37,13 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/util.h"
 
+#ifndef IS_MOBILE_PLATFORM
+#include "tensorflow/core/grappler/clusters/utils.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#endif  // IS_MOBILE_PLATFORM
+
 namespace tensorflow {
 
 SimpleGraphExecutionState::SimpleGraphExecutionState(
@@ -67,8 +74,8 @@ SimpleGraphExecutionState::~SimpleGraphExecutionState() {
   std::unique_ptr<SimpleGraphExecutionState> ret(
       new SimpleGraphExecutionState(graph_def, options));
 
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&ret->original_graph_def_,
-                                               *ret->flib_def_.get(), 0));
+  TF_RETURN_IF_ERROR(
+      AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
   // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
   // pass an empty BuildGraphOptions (that isn't going to be used when
   // place_pruned_graph is false).
@@ -96,8 +103,8 @@ SimpleGraphExecutionState::~SimpleGraphExecutionState() {
   GraphDef temp(graph_def);
   std::unique_ptr<SimpleGraphExecutionState> ret(
       new SimpleGraphExecutionState(&temp, options));
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&ret->original_graph_def_,
-                                               *ret->flib_def_.get(), 0));
+  TF_RETURN_IF_ERROR(
+      AddDefaultAttrsToGraphDef(&ret->original_graph_def_, *ret->flib_def_, 0));
   TF_RETURN_IF_ERROR(ret->InitBaseGraph(subgraph_options));
   TF_RETURN_IF_ERROR(ret->BuildGraph(subgraph_options, out_client_graph));
   *out_state = std::move(ret);
@@ -132,7 +139,7 @@ Status SimpleGraphExecutionState::Extend(
   int old_node_size = gdef.node_size();
   gdef.mutable_node()->MergeFrom(extension_def.node());
   TF_RETURN_IF_ERROR(
-      AddDefaultAttrsToGraphDef(&gdef, *flib_def_.get(), old_node_size));
+      AddDefaultAttrsToGraphDef(&gdef, *flib_def_, old_node_size));
   // Merge versions
   if (gdef.has_versions()) {
     if (gdef.versions().producer() != extension_def.versions().producer()) {
@@ -174,7 +181,7 @@ Status SimpleGraphExecutionState::Extend(
   if (gdef.versions().producer() >= 5) {
     // Validate the graph: we assume that merging two valid graphs
     // should maintain graph validity.
-    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(gdef, *flib_def_.get()));
+    TF_RETURN_IF_ERROR(graph::ValidateGraphDef(gdef, *flib_def_));
   }
 
   // 6. Add the extension.
@@ -189,7 +196,7 @@ Status SimpleGraphExecutionState::Extend(
       new SimpleGraphExecutionState(&gdef, combined_options));
 
   TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(
-      &new_execution_state->original_graph_def_, *flib_def_.get(), 0));
+      &new_execution_state->original_graph_def_, *flib_def_, 0));
   if (!session_options_->config.graph_options().place_pruned_graph()) {
     // TODO(mrry): Refactor InitBaseGraph() so that we don't have to
     // pass an empty BuildGraphOptions (that isn't going to be used
@@ -227,10 +234,65 @@ void SimpleGraphExecutionState::RestoreStatefulNodes(Graph* graph) {
 
 Status SimpleGraphExecutionState::InitBaseGraph(
     const BuildGraphOptions& options) {
-  std::unique_ptr<Graph> new_graph(new Graph(flib_def_.get()));
+  const GraphDef* graph_def = &original_graph_def_;
+
+#ifndef IS_MOBILE_PLATFORM
+  GraphDef optimized_graph;
+
+  const RewriterConfig& rewrite_options =
+      session_options_->config.graph_options().rewrite_options();
+
+  if (grappler::MetaOptimizerEnabled(rewrite_options)) {
+    // Adding this functionality in steps. The first step is to make sure
+    // we don't break dependencies. The second step will be to turn the
+    // functionality on by default.
+    grappler::GrapplerItem item;
+    item.id = "tf_graph";
+    item.graph = original_graph_def_;
+
+    item.fetch = options.fetch_endpoints;
+    item.fetch.insert(item.fetch.end(), options.target_nodes.begin(),
+                      options.target_nodes.end());
+
+    Status s;
+    if (!options.feed_endpoints.empty()) {
+      std::unordered_set<string> feeds(options.feed_endpoints.begin(),
+                                       options.feed_endpoints.end());
+      for (const NodeDef& node : original_graph_def_.node()) {
+        if (feeds.find(node.name()) == feeds.end()) {
+          continue;
+        }
+        if (node.attr().count("dtype") == 0 ||
+            node.attr().count("shape") == 0) {
+          s = errors::InvalidArgument("Missing node shape or type");
+          break;
+        }
+        TensorShape shape(node.attr().at("shape").shape());
+        DataType type = node.attr().at("dtype").type();
+        Tensor fake_input(type, shape);
+        item.feed.emplace_back(node.name(), fake_input);
+      }
+    }
+
+    if (s.ok()) {
+      std::unordered_map<string, DeviceProperties> device_map;
+      for (const auto& device : device_set_->devices()) {
+        device_map[device->name()] =
+            grappler::GetDeviceInfo(device->parsed_name());
+      }
+      grappler::VirtualCluster cluster(device_map);
+      s = grappler::RunMetaOptimizer(item, rewrite_options, &cluster,
+                                     &optimized_graph);
+    }
+    if (s.ok()) {
+      graph_def = &optimized_graph;
+    }
+  }
+#endif  // IS_MOBILE_PLATFORM
+
+  std::unique_ptr<Graph> new_graph(new Graph(OpRegistry::Global()));
   GraphConstructorOptions opts;
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToGraph(opts, original_graph_def_, new_graph.get()));
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(opts, *graph_def, new_graph.get()));
   for (const Node* n : new_graph->nodes()) {
     VLOG(2) << "Mapping " << n->name() << " to " << n->cost_id();
     node_name_to_cost_id_map_[n->name()] = n->cost_id();
@@ -238,9 +300,11 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   if (session_options_ &&
       session_options_->config.graph_options().place_pruned_graph()) {
     // Rewrite the graph before placement.
+    rewrite_metadata_.reset(new subgraph::RewriteGraphMetadata);
     TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
         new_graph.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes()));
+        options.target_nodes, device_set_->client_device()->attributes(),
+        options.use_function_convention, rewrite_metadata_.get()));
   }
 
   // Save stateful placements before placing.
@@ -249,7 +313,7 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   CostModel costs(true /*is_global*/);
   {
     mutex_lock l(mu_);
-    costs_.InitFromGraph(*new_graph.get());
+    costs_.InitFromGraph(*new_graph);
     costs.MergeFromGlobal(costs_);
   }
 
@@ -257,6 +321,7 @@ Status SimpleGraphExecutionState::InitBaseGraph(
   optimization_options.session_options = session_options_;
   optimization_options.graph = &new_graph;
   optimization_options.flib_def = flib_def_.get();
+  optimization_options.device_set = device_set_;
   optimization_options.cost_model = &costs;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -286,14 +351,25 @@ Status SimpleGraphExecutionState::BuildGraph(
   std::unique_ptr<Graph> ng(new Graph(flib_def_.get()));
   CopyGraph(*graph_, ng.get());
 
+  subgraph::RewriteGraphMetadata rewrite_metadata;
   if (session_options_ == nullptr ||
       !session_options_->config.graph_options().place_pruned_graph()) {
     // Extract the subset of the graph that needs to be run, adding feed/fetch
     // ops as needed.
     TF_RETURN_IF_ERROR(subgraph::RewriteGraphForExecution(
         ng.get(), options.feed_endpoints, options.fetch_endpoints,
-        options.target_nodes, device_set_->client_device()->attributes()));
+        options.target_nodes, device_set_->client_device()->attributes(),
+        options.use_function_convention, &rewrite_metadata));
+  } else {
+    // This SimpleGraphExecutionState represents a graph that was
+    // pruned when this was constructed, so we copy the metadata from
+    // a member variable.
+    CHECK(rewrite_metadata_);
+    rewrite_metadata = *rewrite_metadata_;
   }
+
+  CHECK_EQ(options.feed_endpoints.size(), rewrite_metadata.feed_types.size());
+  CHECK_EQ(options.fetch_endpoints.size(), rewrite_metadata.fetch_types.size());
 
   // Make a fresh copy of the function library for the client graph.
   std::unique_ptr<FunctionLibraryDefinition> flib(
@@ -306,6 +382,7 @@ Status SimpleGraphExecutionState::BuildGraph(
   optimization_options.session_options = session_options_;
   optimization_options.graph = &ng;
   optimization_options.flib_def = flib.get();
+  optimization_options.device_set = device_set_;
   optimization_options.cost_model = &costs;
 
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
@@ -315,7 +392,8 @@ Status SimpleGraphExecutionState::BuildGraph(
   // since the local CostModel used to record its stats is sized by
   // the largest node id.
   std::unique_ptr<SimpleClientGraph> dense_copy(
-      new SimpleClientGraph(std::move(flib)));
+      new SimpleClientGraph(std::move(flib), rewrite_metadata.feed_types,
+                            rewrite_metadata.fetch_types));
   CopyGraph(*ng, &dense_copy->graph);
 
   // TODO(vrv): We should check invariants of the graph here.

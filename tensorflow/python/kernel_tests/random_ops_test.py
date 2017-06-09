@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -65,7 +66,8 @@ class RandomNormalTest(test.TestCase):
     for dt in dtypes.float16, dtypes.float32, dtypes.float64:
       results = {}
       for use_gpu in [False, True]:
-        sampler = self._Sampler(1000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=12345)
+        sampler = self._Sampler(
+            1000000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=12345)
         results[use_gpu] = sampler()
       if dt == dtypes.float16:
         self.assertAllClose(results[False], results[True], rtol=1e-3, atol=1e-3)
@@ -134,7 +136,7 @@ class TruncatedNormalTest(test.TestCase):
         # We need a particular larger number of samples to test multiple rounds
         # on GPU
         sampler = self._Sampler(
-            200000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=12345)
+            1000000, 0.0, 1.0, dt, use_gpu=use_gpu, seed=12345)
         results[use_gpu] = sampler()
       if dt == dtypes.float16:
         self.assertAllClose(results[False], results[True], rtol=1e-3, atol=1e-3)
@@ -156,6 +158,13 @@ class TruncatedNormalTest(test.TestCase):
       x = sampler()
       print("std(x)", np.std(x), abs(np.std(x) / stddev - 0.85))
       self.assertTrue(abs(np.std(x) / stddev - 0.85) < 0.04)
+
+  def testLargeShape(self):
+    with self.test_session(use_gpu=True):
+      v = variables.Variable(
+          array_ops.zeros(dtype=dtypes.float32, shape=[2**33, 1]))
+      n = random_ops.truncated_normal(v.shape)
+      self.assertEqual([8589934592, 1], n.shape.as_list())
 
   def testNoCSE(self):
     with self.test_session(use_gpu=True):
@@ -235,7 +244,7 @@ class RandomUniformTest(test.TestCase):
       results = {}
       for use_gpu in False, True:
         sampler = self._Sampler(
-            1000, minv=0, maxv=maxv, dtype=dt, use_gpu=use_gpu, seed=12345)
+            1000000, minv=0, maxv=maxv, dtype=dt, use_gpu=use_gpu, seed=12345)
         results[use_gpu] = sampler()
       self.assertAllEqual(results[False], results[True])
 

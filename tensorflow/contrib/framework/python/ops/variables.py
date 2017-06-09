@@ -32,7 +32,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
@@ -119,6 +118,8 @@ def get_global_step(graph=None):
 def create_global_step(graph=None):
   """Create global step tensor in graph.
 
+  This API is deprecated. Use core framework training version instead.
+
   Args:
     graph: The graph in which to create the global step tensor. If missing,
       use default graph.
@@ -155,7 +156,7 @@ def local_variable(initial_value, validate_shape=True, name=None):
   Returns:
     New variable.
   """
-  return variables.Variable(
+  return variable_scope.variable(
       initial_value, trainable=False,
       collections=[ops.GraphKeys.LOCAL_VARIABLES],
       validate_shape=validate_shape, name=name)
@@ -165,7 +166,7 @@ def local_variable(initial_value, validate_shape=True, name=None):
 def variable(name, shape=None, dtype=None, initializer=None,
              regularizer=None, trainable=True, collections=None,
              caching_device=None, device=None,
-             partitioner=None, custom_getter=None):
+             partitioner=None, custom_getter=None, use_resource=None):
   """Gets an existing variable with these parameters or creates a new one.
 
   Args:
@@ -190,11 +191,13 @@ def variable(name, shape=None, dtype=None, initializer=None,
       partitions for each axis (currently only one axis can be partitioned).
     custom_getter: Callable that allows overwriting the internal
       get_variable method and has to have the same signature.
+    use_resource: If `True` use a ResourceVariable instead of a Variable.
 
   Returns:
     The created or existing variable.
   """
-  collections = list(collections or [ops.GraphKeys.GLOBAL_VARIABLES])
+  collections = list(collections if collections is not None
+                     else [ops.GraphKeys.GLOBAL_VARIABLES])
 
   # Remove duplicates
   collections = set(collections)
@@ -209,14 +212,15 @@ def variable(name, shape=None, dtype=None, initializer=None,
                   trainable=trainable,
                   collections=collections,
                   caching_device=caching_device,
-                  partitioner=partitioner)
+                  partitioner=partitioner,
+                  use_resource=use_resource)
 
 
 @contrib_add_arg_scope
 def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                    regularizer=None, trainable=True, collections=None,
                    caching_device=None, device=None, partitioner=None,
-                   custom_getter=None):
+                   custom_getter=None, use_resource=None):
   """Gets an existing model variable with these parameters or creates a new one.
 
   Args:
@@ -242,6 +246,7 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
       partitions for each axis (currently only one axis can be partitioned).
     custom_getter: Callable that allows overwriting the internal
       get_variable method and has to have the same signature.
+    use_resource: If `True` use a ResourceVariable instead of a Variable.
 
   Returns:
     The created or existing variable.
@@ -252,7 +257,8 @@ def model_variable(name, shape=None, dtype=dtypes.float32, initializer=None,
                  initializer=initializer, regularizer=regularizer,
                  trainable=trainable, collections=collections,
                  caching_device=caching_device, device=device,
-                 partitioner=partitioner, custom_getter=custom_getter)
+                 partitioner=partitioner, custom_getter=custom_getter,
+                 use_resource=use_resource)
   return var
 
 
@@ -610,8 +616,8 @@ def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
     model_path: The full path to the model checkpoint. To get latest checkpoint
         use `model_path = tf.train.latest_checkpoint(checkpoint_dir)`
     var_list: A list of `Variable` objects or a dictionary mapping names in the
-        checkpoint to the correspoing variables to initialize. If empty or None,
-        it would return  no_op(), None.
+        checkpoint to the corresponding variables to initialize. If empty or
+        `None`, it would return `no_op(), None`.
     ignore_missing_vars: Boolean, if True it would ignore variables missing in
         the checkpoint with a warning instead of failing.
     reshape_variables: Boolean, if True it would automatically reshape variables

@@ -21,10 +21,11 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import variables
 
 
 __all__ = [
@@ -39,95 +40,13 @@ __all__ = [
     'with_same_shape']
 
 
+# Temporary for backwards compatibility
+is_tensor = tensor_util.is_tensor
+assert_same_float_dtype = check_ops.assert_same_float_dtype
+assert_scalar = check_ops.assert_scalar
+
 convert_to_tensor_or_sparse_tensor = (
     sparse_tensor.convert_to_tensor_or_sparse_tensor)
-
-
-def _assert_same_base_type(items, expected_type=None):
-  r"""Asserts all items are of the same base type.
-
-  Args:
-    items: List of graph items (e.g., `Variable`, `Tensor`, `SparseTensor`,
-        `Operation`, or `IndexedSlices`). Can include `None` elements, which
-        will be ignored.
-    expected_type: Expected type. If not specified, assert all items are
-        of the same base type.
-
-  Returns:
-    Validated type, or none if neither expected_type nor items provided.
-
-  Raises:
-    ValueError: If any types do not match.
-  """
-  original_item_str = None
-  for item in items:
-    if item is not None:
-      item_type = item.dtype.base_dtype
-      if not expected_type:
-        expected_type = item_type
-        original_item_str = item.name if hasattr(item, 'name') else str(item)
-      elif expected_type != item_type:
-        raise ValueError('%s, type=%s, must be of the same type (%s)%s.' % (
-            item.name if hasattr(item, 'name') else str(item),
-            item_type, expected_type,
-            (' as %s' % original_item_str) if original_item_str else ''))
-  return expected_type
-
-
-def assert_same_float_dtype(tensors=None, dtype=None):
-  """Validate and return float type based on `tensors` and `dtype`.
-
-  For ops such as matrix multiplication, inputs and weights must be of the
-  same float type. This function validates that all `tensors` are the same type,
-  validates that type is `dtype` (if supplied), and returns the type. Type must
-  be `dtypes.float32` or `dtypes.float64`. If neither `tensors` nor
-  `dtype` is supplied, default to `dtypes.float32`.
-
-  Args:
-    tensors: Tensors of input values. Can include `None` elements, which will be
-        ignored.
-    dtype: Expected type.
-  Returns:
-    Validated type.
-  Raises:
-    ValueError: if neither `tensors` nor `dtype` is supplied, or result is not
-        float.
-  """
-  if tensors:
-    dtype = _assert_same_base_type(tensors, dtype)
-  if not dtype:
-    dtype = dtypes.float32
-  elif not dtype.is_floating:
-    raise ValueError('Expected float, got %s.' % dtype)
-  return dtype
-
-
-def assert_scalar_int(tensor, name=None):
-  """Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
-
-  Args:
-    tensor: `Tensor` to test.
-    name: Name of the op and of the new `Tensor` if one is created.
-  Returns:
-    `tensor`, for chaining.
-  Raises:
-    ValueError: if `tensor` is not 0-D, of type `tf.int32` or `tf.int64`.
-  """
-  with ops.name_scope(name, 'assert_scalar_int', [tensor]) as name_scope:
-    tensor = ops.convert_to_tensor(tensor)
-    data_type = tensor.dtype
-    if data_type.base_dtype not in [dtypes.int32, dtypes.int64]:
-      raise ValueError('Unexpected type %s for %s.' % (data_type, tensor.name))
-    return assert_scalar(tensor, name=name_scope)
-
-
-def assert_scalar(tensor, name=None):
-  with ops.name_scope(name, 'assert_scalar', [tensor]) as name_scope:
-    tensor = ops.convert_to_tensor(tensor, name=name_scope)
-    shape = tensor.get_shape()
-    if shape.ndims != 0:
-      raise ValueError('Unexpected shape %s for %s.' % (shape, tensor.name))
-    return tensor
 
 
 def reduce_sum_n(tensors, name=None):
@@ -283,22 +202,6 @@ def with_same_shape(expected_tensor, tensor):
     return with_shape(expected_shape, tensor)
 
 
-def is_tensor(x):
-  """Check for tensor types.
-
-  Check whether an object is a tensor. Equivalent to
-  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
-
-  Args:
-    x: An python object to check.
-
-  Returns:
-    `True` if `x` is a tensor, `False` if not.
-  """
-  tensor_types = (ops.Tensor, sparse_tensor.SparseTensor, variables.Variable)
-  return isinstance(x, tensor_types)
-
-
 def with_shape(expected_shape, tensor):
   """Asserts tensor has expected shape.
 
@@ -319,7 +222,7 @@ def with_shape(expected_shape, tensor):
     raise ValueError('SparseTensor not supported.')
 
   # Shape type must be 1D int32.
-  if is_tensor(expected_shape):
+  if tensor_util.is_tensor(expected_shape):
     if expected_shape.dtype.base_dtype != dtypes.int32:
       raise ValueError(
           'Invalid dtype %s for shape %s expected of tensor %s.' % (
@@ -344,18 +247,20 @@ def with_shape(expected_shape, tensor):
 
   actual_shape = tensor.get_shape()
 
-  if not actual_shape.is_fully_defined() or is_tensor(expected_shape):
+  if (not actual_shape.is_fully_defined()
+      or tensor_util.is_tensor(expected_shape)):
     with ops.name_scope('%s/' % tensor.op.name, values=[tensor]):
-      if not is_tensor(expected_shape) and (len(expected_shape) < 1):
+      if (not tensor_util.is_tensor(expected_shape)
+          and (len(expected_shape) < 1)):
         # TODO(irving): Remove scalar special case
         return array_ops.reshape(tensor, [])
       with ops.control_dependencies([_assert_shape_op(expected_shape, tensor)]):
         result = array_ops.identity(tensor)
-      if not is_tensor(expected_shape):
+      if not tensor_util.is_tensor(expected_shape):
         result.set_shape(expected_shape)
       return result
 
-  if (not is_tensor(expected_shape) and
+  if (not tensor_util.is_tensor(expected_shape) and
       not actual_shape.is_compatible_with(expected_shape)):
     if (len(expected_shape) < 1) and actual_shape.is_compatible_with([1]):
       # TODO(irving): Remove scalar special case.
@@ -365,3 +270,23 @@ def with_shape(expected_shape, tensor):
         tensor.name, expected_shape, actual_shape))
 
   return tensor
+
+
+def assert_scalar_int(tensor, name=None):
+  """Assert `tensor` is 0-D, of type `tf.int32` or `tf.int64`.
+
+  Args:
+    tensor: `Tensor` to test.
+    name: Name of the op and of the new `Tensor` if one is created.
+  Returns:
+    `tensor`, for chaining.
+  Raises:
+    ValueError: if `tensor` is not 0-D, of integer type.
+  """
+  with ops.name_scope(name, 'assert_scalar_int', [tensor]) as name_scope:
+    tensor = ops.convert_to_tensor(tensor)
+    data_type = tensor.dtype
+    if not data_type.base_dtype.is_integer:
+      raise ValueError('Expected integer type for %s, received type: %s.'
+                       % (tensor.name, data_type))
+    return check_ops.assert_scalar(tensor, name=name_scope)

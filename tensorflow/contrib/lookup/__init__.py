@@ -12,11 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# TODO(ptucker): deprecate string_to_index_table_from_file and
+# string_to_index_table_from_tensor 2017-04-10.
 """Ops for lookup operations.
 
 @@string_to_index
 @@string_to_index_table_from_file
 @@string_to_index_table_from_tensor
+@@index_table_from_file
+@@index_table_from_tensor
 @@index_to_string
 @@index_to_string_table_from_file
 @@index_to_string_table_from_tensor

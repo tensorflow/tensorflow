@@ -144,6 +144,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddReshapeInstruction(
       const ReshapeRequest& reshape_request);
 
+  // Enqueues a transpose instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddTransposeInstruction(
+      const TransposeRequest& transpose_request);
+
   // Enqueues a slice instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddSliceInstruction(
       const SliceRequest& slice_request);
@@ -235,6 +239,10 @@ class UserComputation {
 
   // Returns the output shape of the operation indicated by the given handle.
   StatusOr<Shape> GetShape(const ComputationDataHandle& handle);
+
+  // Sets metadata on the Hlo instruction referenced by the given handle.
+  Status SetOpMetadata(const ComputationDataHandle& handle,
+                       const OpMetadata& metadata);
 
   // Builds a HLO computation from the UserComputation. The parameter "resolver"
   // is a function which returns a pointer to the HloComputation corresponding

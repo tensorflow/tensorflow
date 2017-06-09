@@ -31,6 +31,8 @@ namespace {
 
 constexpr char kTestDataPbTxt[] =
     "cc/saved_model/testdata/half_plus_two_pbtxt/00000123";
+constexpr char kTestDataMainOp[] =
+    "cc/saved_model/testdata/half_plus_two_main_op/00000123";
 constexpr char kTestDataSharded[] =
     "cc/saved_model/testdata/half_plus_two/00000123";
 
@@ -160,6 +162,18 @@ TEST_F(LoaderTest, PbtxtFormat) {
 
   const string export_dir =
       io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPbTxt);
+  TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                              {kSavedModelTagServe}, &bundle));
+  CheckSavedModelBundle(export_dir, bundle);
+}
+
+TEST_F(LoaderTest, MainOpFormat) {
+  SavedModelBundle bundle;
+  SessionOptions session_options;
+  RunOptions run_options;
+
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataMainOp);
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
   CheckSavedModelBundle(export_dir, bundle);

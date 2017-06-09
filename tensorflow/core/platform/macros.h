@@ -53,6 +53,17 @@ limitations under the License.
 #define TF_SCANF_ATTRIBUTE(string_index, first_to_check)
 #endif
 
+// Control visiblity outside .so
+#if defined(COMPILER_MSVC)
+#ifdef TF_COMPILE_LIBRARY
+#define TF_EXPORT __declspec(dllexport)
+#else
+#define TF_EXPORT __declspec(dllimport)
+#endif  // TF_COMPILE_LIBRARY
+#else
+#define TF_EXPORT __attribute__((visibility("default")))
+#endif  // COMPILER_MSVC
+
 // GCC can be told that a certain branch is not likely to be taken (for
 // instance, a CHECK failure), and use that information in static analysis.
 // Giving it this information can help it optimize for the common case in

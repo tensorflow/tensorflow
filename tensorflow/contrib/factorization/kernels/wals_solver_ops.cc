@@ -144,33 +144,27 @@ class WALSComputePartialLhsAndRhsOp : public OpKernel {
     typedef std::pair<int64, int64> Shard;
     std::vector<Shard> shards;
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
-    const int num_threads = worker_threads.num_threads;
     int64 shard_total = 0;
-    if (num_threads == 1) {
-      shards.emplace_back(0, num_nonzero_elements);
-      shard_total += num_nonzero_elements;
-    } else {
-      // Compute a permutation such that get_input_index(perm[i]) is sorted, use
-      // stable_sort to preserve spatial locality.
-      std::stable_sort(perm.begin(), perm.end(),
-                       [&get_input_index](int64 i, int64 j) {
-                         return get_input_index(i) < get_input_index(j);
-                       });
+    // Compute a permutation such that get_input_index(perm[i]) is sorted, use
+    // stable_sort to preserve spatial locality.
+    std::stable_sort(perm.begin(), perm.end(),
+                     [&get_input_index](int64 i, int64 j) {
+                       return get_input_index(i) < get_input_index(j);
+                     });
 
-      // Compute the start and end of runs with identical input_index.
-      // These are the shards of work that can be processed in parallel
-      // without locking.
-      int64 start = 0;
-      int64 end = 0;
-      while (end < num_nonzero_elements) {
-        start = end;
-        while (end < num_nonzero_elements &&
-               get_input_index(perm[start]) == get_input_index(perm[end])) {
-          ++end;
-        }
-        shards.emplace_back(start, end);
-        shard_total += end - start;
+    // Compute the start and end of runs with identical input_index.
+    // These are the shards of work that can be processed in parallel
+    // without locking.
+    int64 start = 0;
+    int64 end = 0;
+    while (end < num_nonzero_elements) {
+      start = end;
+      while (end < num_nonzero_elements &&
+             get_input_index(perm[start]) == get_input_index(perm[end])) {
+        ++end;
       }
+      shards.emplace_back(start, end);
+      shard_total += end - start;
     }
     CHECK_EQ(shard_total, num_nonzero_elements);
     CHECK_LE(shards.size(), num_nonzero_elements);

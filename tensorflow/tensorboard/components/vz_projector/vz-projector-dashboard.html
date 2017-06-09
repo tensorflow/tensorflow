@@ -16,6 +16,7 @@ limitations under the License.
 -->
 
 <link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-dashboard-common/tf-no-data-warning.html">
 <link rel="import" href="vz-projector.html">
 
@@ -36,20 +37,43 @@ limitations under the License.
   </template>
 </template>
 <script>
-(function() {
+import {DashboardBehavior} from "../tf-dashboard-common/dashboard-behavior";
+
 Polymer({
   is: 'vz-projector-dashboard',
+  factoryImpl: function(routePrefix) {
+    this.routePrefix = routePrefix;
+  },
   properties: {
     dataNotFound: Boolean,
-    routePrefix: String
+    routePrefix: String,
+    // Whether this dashboard is initialized. This dashboard should only be initialized once.
+    _initialized: Boolean,
   },
-  ready() {
-    var self = this;
-    d3.json(this.routePrefix + '/runs', function(err, runs) {
-      self.dataNotFound = (runs.length === 0);
-    });
-  }
+  behaviors: [
+    DashboardBehavior("embeddings"),
+  ],
+  reload: function() {
+    // Do not reload the embedding projector. Reloading could take a long time.
+  },
+  attached: function() {
+    if (this._initialized) {
+      return;
+    }
+    let xhr = new XMLHttpRequest();
+    xhr.open('GET', this.routePrefix + '/runs');
+    xhr.onload = () => {
+      // Set this to true so we only initialize once.
+      this._initialized = true;
+
+      let runs = JSON.parse(xhr.responseText);
+      this.set('dataNotFound', runs.length === 0);
+    };
+    xhr.onerror = () => {
+      this.set('dataNotFound', false);
+    };
+    xhr.send();
+  },
 });
-})();
 </script>
 </dom-module>

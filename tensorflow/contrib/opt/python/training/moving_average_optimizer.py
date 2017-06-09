@@ -122,7 +122,7 @@ class MovingAverageOptimizer(optimizer.Optimizer):
       **kwargs: Keyword arguments of `Saver()`.
 
     Returns:
-      A `tf.Saver` object.
+      A `tf.train.Saver` object.
 
     Raises:
       RuntimeError: If apply_gradients or minimize has not been called before.

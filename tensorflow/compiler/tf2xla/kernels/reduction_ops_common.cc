@@ -39,11 +39,11 @@ xla::ComputationDataHandle XlaReductionOp::InitialValue(
 
 // Unless BuildFinalizer is overridden the reduction has no
 // finalizer.
-bool XlaReductionOp::BuildFinalizer(
+xla::ComputationDataHandle XlaReductionOp::BuildFinalizer(
     xla::ComputationBuilder* builder,
-    const xla::ComputationDataHandle& scalar_argument,
+    const xla::ComputationDataHandle& reduce_output,
     int64 num_elements_reduced) {
-  return false;
+  return reduce_output;
 }
 
 void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
@@ -121,28 +121,14 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   xla::ComputationDataHandle reduce =
       ctx->builder()->Reduce(data, initial, reduction_computation, xla_axes);
 
-  // Construct the builder for the finalizer lambda.
-  xla::ComputationBuilder f(ctx->builder()->client(),
-                            strings::StrCat(desc, "-finalizer"));
-  // Make the scalar parameter of the desired type for the lambda.
-  xla::ComputationDataHandle fx =
-      f.Parameter(0, xla::ShapeUtil::MakeShape(type, {}), "x");
-  // Call virtual method to build the finalizer lambda.
-  bool has_finalizer = BuildFinalizer(&f, fx, num_elements_reduced);
-  xla::Computation finalizer_computation = f.Build().ConsumeValueOrDie();
-  xla::ComputationDataHandle pre_reshaped_data;
-  if (has_finalizer) {
-    // This reduction Op includes a finalizer so run it as a Map.
-    pre_reshaped_data = ctx->builder()->Map({reduce}, finalizer_computation);
-  } else {
-    pre_reshaped_data = reduce;
-  }
+  xla::ComputationDataHandle finalized =
+      BuildFinalizer(ctx->builder(), reduce, num_elements_reduced);
 
   xla::ComputationDataHandle result;
   if (keep_dims_) {
-    result = ctx->builder()->Reshape(pre_reshaped_data, final_shape);
+    result = ctx->builder()->Reshape(finalized, final_shape);
   } else {
-    result = pre_reshaped_data;
+    result = finalized;
   }
   ctx->SetOutput(0, result);
 }

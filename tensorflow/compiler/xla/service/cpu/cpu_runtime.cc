@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 
-#include <sched.h>
 #include <functional>
 
 #include "tensorflow/core/platform/logging.h"

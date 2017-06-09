@@ -167,6 +167,7 @@ bool hexagon_controller_ConstructGraph(uint32_t nn_id) {
   int err;
   if ((err = hexagon_nn_prepare(nn_id)) != 0) {
     TFMLOGE("Prepare failed! returned 0x%x\n", err);
+    hexagon_controller_PrintLog(nn_id);
     return false;
   } else {
     TFMLOGD("Prepare success!\n");

@@ -48,10 +48,6 @@ using tensorforest::TensorForestDataSpec;
 using tensorforest::Initialize;
 using tensorforest::IsAllInitialized;
 
-using shape_inference::DimensionHandle;
-using shape_inference::InferenceContext;
-using shape_inference::ShapeHandle;
-
 // A data structure to store the results of parallel tree traversal.
 struct InputDataResult {
   // A list of each node that was visited.
@@ -547,9 +543,9 @@ class CountExtremelyRandomStats : public OpKernel {
           const float output = labels(i * num_outputs + j);
           out_node_sums(node, j + 1) += w * output;
           out_node_squares(node, j + 1) += w * output * output;
-          out_node_sums(node, 0) += w;
-          out_node_squares(node, 0) += w;
         }
+        out_node_sums(node, 0) += w;
+        out_node_squares(node, 0) += w;
       }
       out_leaves(i) = results[i].node_indices.back();
       if (epoch > start_epochs(out_leaves(i)) + 1) {

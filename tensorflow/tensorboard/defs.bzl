@@ -12,51 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-_DEFAULT_TYPINGS = [
-    "@com_microsoft_typescript//:lib.es6.d.ts",
-]
-
-def tensorboard_typescript_genrule(name, srcs, typings=[], **kwargs):
-  """Filegroup of compiled TypeScript sources.
-
-  This is a very unsophisticated TypeScript rule where the user is responsible
-  for passing all typings and sources via srcs. It's meant as a stopgap because
-  TypeScript rules currently don't exist for Bazel. The definition of this rule
-  will need to evolve as more ts_library rules are migrated.
-  """
-  for src in srcs:
-    if (src.startswith("/") or
-        src.endswith(".d.ts") or
-        not src.endswith(".ts")):
-      fail("srcs must be typescript sources in same package")
-  typings_out = [src[:-3] + ".d.ts" for src in srcs]
-  native.genrule(
-      name = name,
-      srcs = _DEFAULT_TYPINGS + typings + srcs,
-      outs = [src[:-3] + ".js" for src in srcs] + typings_out,
-      cmd = "$(location @com_microsoft_typescript//:tsc)" +
-            " --inlineSourceMap" +
-            " --inlineSources" +
-            " --declaration" +
-            " --outDir $(@D)" +
-            " $(SRCS)",
-      tools = ["@com_microsoft_typescript//:tsc"],
-      **kwargs
-  )
-  native.filegroup(
-      name = name + "_typings",
-      srcs = typings_out,
-      **kwargs
-  )
-
-def tensorboard_ts_library(**kwargs):
-  """Rules referencing this will be deleted from the codebase soon."""
-  pass
-
 def tensorboard_webcomponent_library(**kwargs):
   """Rules referencing this will be deleted from the codebase soon."""
   pass
 
-def tensorboard_wct_test_suite(**kwargs):
-  """Rules referencing this will be deleted from the codebase soon."""
-  pass
+def _legacy_js_impl(target, ctx):
+  return struct()
+
+legacy_js = aspect(
+    implementation=_legacy_js_impl,
+    attr_aspects=["exports"])

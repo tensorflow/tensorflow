@@ -20,13 +20,13 @@ from __future__ import print_function
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib.framework.python.ops import variables
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variable_scope
 
 
@@ -52,7 +52,7 @@ def ndlstm_base_unrolled(inputs, noutput, scope=None, reverse=False):
   """
   with variable_scope.variable_scope(scope, "SeqLstmUnrolled", [inputs]):
     length, batch_size, _ = _shape(inputs)
-    lstm_cell = core_rnn_cell_impl.BasicLSTMCell(noutput, state_is_tuple=False)
+    lstm_cell = rnn_cell.BasicLSTMCell(noutput, state_is_tuple=False)
     state = array_ops.zeros([batch_size, lstm_cell.state_size])
     output_u = []
     inputs_u = array_ops.unstack(inputs)
@@ -88,7 +88,7 @@ def ndlstm_base_dynamic(inputs, noutput, scope=None, reverse=False):
     # TODO(tmb) make batch size, sequence_length dynamic
     # example: sequence_length = tf.shape(inputs)[0]
     _, batch_size, _ = _shape(inputs)
-    lstm_cell = core_rnn_cell_impl.BasicLSTMCell(noutput, state_is_tuple=False)
+    lstm_cell = rnn_cell.BasicLSTMCell(noutput, state_is_tuple=False)
     state = array_ops.zeros([batch_size, lstm_cell.state_size])
     sequence_length = int(inputs.get_shape()[0])
     sequence_lengths = math_ops.to_int64(
@@ -145,7 +145,7 @@ def sequence_to_final(inputs, noutput, scope=None, name=None, reverse=False):
   """
   with variable_scope.variable_scope(scope, "SequenceToFinal", [inputs]):
     length, batch_size, _ = _shape(inputs)
-    lstm = core_rnn_cell_impl.BasicLSTMCell(noutput, state_is_tuple=False)
+    lstm = rnn_cell.BasicLSTMCell(noutput, state_is_tuple=False)
     state = array_ops.zeros([batch_size, lstm.state_size])
     inputs_u = array_ops.unstack(inputs)
     if reverse:

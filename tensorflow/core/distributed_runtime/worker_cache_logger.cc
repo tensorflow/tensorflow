@@ -16,6 +16,8 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache_logger.h"
 
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
+#include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -35,7 +37,7 @@ void WorkerCacheLogger::SetLogging(bool v) {
     ++want_logging_count_;
   } else {
     --want_logging_count_;
-    // If RPCs get cancelled, it may be possible for the count
+    // If RPCs get canceled, it may be possible for the count
     // to go negative.  This should not be a fatal error, since
     // logging is non-critical.
     if (want_logging_count_ < 0) want_logging_count_ = 0;
@@ -96,7 +98,9 @@ void WorkerCacheLogger::RecordRecvTensor(int64 step_id, int64 start_usecs,
                                          src_device, " to ", dst_device));
   ns->set_all_start_micros(start_usecs);
   ns->set_op_start_rel_micros(0);
-  ns->set_op_end_rel_micros(end_usecs - start_usecs);
+  int64 elapsed = end_usecs - start_usecs;
+  ns->set_op_end_rel_micros(elapsed);
+  ns->set_all_end_rel_micros(elapsed);
   NodeOutput* no = ns->add_output();
   no->set_slot(0);
   // TODO(tucker): Maybe set the dimensions too, but then they'll

@@ -72,6 +72,17 @@ class RandomOpsTest(XLATestCase):
         self.assertTrue((y >= -2).sum() == 1000)
         self.assertTrue((y < 33).sum() == 1000)
 
+  def testTruncatedNormalIsInRange(self):
+    count = 10000
+    # TODO(b/34339814): implement inverse erf support for non-F32 types.
+    for dtype in [dtypes.float32]:
+      with self.test_session() as sess:
+        with self.test_scope():
+          x = random_ops.truncated_normal(shape=[count], dtype=dtype, seed=42)
+        y = sess.run(x)
+        self.assertTrue((y >= -2).sum() == count)
+        self.assertTrue((y <= 2).sum() == count)
+
 
 if __name__ == '__main__':
   googletest.main()

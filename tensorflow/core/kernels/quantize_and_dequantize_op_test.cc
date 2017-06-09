@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -57,6 +56,10 @@ TEST_F(QuantizeAndDequantizeTest, Convert_scalar_tensor) {
   Tensor expected(allocator(), DT_FLOAT, TensorShape({1}));
   test::FillValues<float>(&expected, {-3.5});
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+
+  // Ensure that the inputs haven't been changed.
+  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
+  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
 }
 
 // Convert a 1D tensor with signed 8 bits.
@@ -83,6 +86,10 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int8) {
   test::FillValues<float>(
       &expected, {-1, -63.0 / 127, 0, 38.0 / 127, 102.0 / 127, 70.0 / 127});
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+
+  // Ensure that the inputs haven't been changed.
+  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
+  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
 }
 
 // Convert a 1D tensor with signed 4 bits.
@@ -108,6 +115,10 @@ TEST_F(QuantizeAndDequantizeTest, Convert_1D_tensor_with_int4) {
   test::FillValues<float>(&expected,
                           {-1, -3.0 / 7, 0, 2.0 / 7, 6.0 / 7, 4.0 / 7});
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 1e-5);
+
+  // Ensure that the inputs haven't been changed.
+  EXPECT_EQ(inputs_[1]->scalar<float>()(), 0.0);
+  EXPECT_EQ(inputs_[2]->scalar<float>()(), 0.0);
 }
 
 // Convert a 2D tensor with signed 8 bits with given range.

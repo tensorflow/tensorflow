@@ -134,9 +134,9 @@ class ArgMaxOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(ArgMaxOp);
 };
 
-REGISTER_XLA_OP("ArgMax", ArgMaxOp);
-REGISTER_XLA_KERNEL(DEVICE_CPU_XLA_JIT,
-                    Name("ArgMax").TypeConstraint("T", DT_FLOAT));
+REGISTER_XLA_OP(
+    Name("ArgMax").TypeConstraint("T", DT_FLOAT).Device(DEVICE_CPU_XLA_JIT),
+    ArgMaxOp);
 
 }  // namespace
 }  // namespace tensorflow

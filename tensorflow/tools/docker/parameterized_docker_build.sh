@@ -64,7 +64,7 @@
 #
 #   TF_DOCKER_BUILD_OPTIONS
 #     (Optional)
-#     Specifices the desired build options. Defaults to OPT.
+#     Specifies the desired build options. Defaults to OPT.
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -266,7 +266,7 @@ fi
 IMG="${USER}/tensorflow:${FINAL_TAG}"
 echo "Building docker image with image name and tag: ${IMG}"
 
-"${DOCKER_BINARY}" build --no-cache -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
+"${DOCKER_BINARY}" build --no-cache --pull -t "${IMG}" -f "${DOCKERFILE}" "${TMP_DIR}"
 if [[ $? == "0" ]]; then
   echo "${DOCKER_BINARY} build of ${IMG} succeeded"
 else

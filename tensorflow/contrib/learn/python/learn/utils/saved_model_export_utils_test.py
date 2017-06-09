@@ -18,16 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
 import tempfile
 import time
-
-# pylint: disable=g-import-not-at-top
-
-# TODO(jart): #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.layers.python.layers import feature_column as fc
 from tensorflow.contrib.learn.python.learn import export_strategy as export_strategy_lib
@@ -117,7 +109,7 @@ class SavedModelExportUtilsTest(test.TestCase):
     self.assertEqual(actual_signature_def, expected_signature_def)
 
   def test_build_standardized_signature_def_classification2(self):
-    """Tests multiple output tensors that include classes and probabilites."""
+    """Tests multiple output tensors that include classes and probabilities."""
     input_tensors = {
         "input-1":
             array_ops.placeholder(

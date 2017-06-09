@@ -22,18 +22,18 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
-#include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -42,8 +42,10 @@ namespace {
 class MapTest : public ClientLibraryTestBase {
  public:
   explicit MapTest(perftools::gputools::Platform* platform = nullptr)
-      : ClientLibraryTestBase(platform,
-                              /*disabled_pass_names=*/{"algsimp", "inline"}) {}
+      : ClientLibraryTestBase(platform) {
+    mutable_debug_options()->add_xla_disable_hlo_passes("algsimp");
+    mutable_debug_options()->add_xla_disable_hlo_passes("inline");
+  }
 
   // Creates a function that adds its scalar argument with the constant 1.0.
   //
@@ -100,8 +102,8 @@ class MapTest : public ClientLibraryTestBase {
   // Creates a function that adds its scalar argument with the constant 1.0 and
   // then multiplies by the original element.
   //
-  //           /---------------\
-  //          /                 \
+  //           /------------------|
+  //          /                   |
   // x {R0F32} ----> (add) ----> (mul)
   //                /
   // 1.0f ---------/
@@ -147,8 +149,8 @@ class MapTest : public ClientLibraryTestBase {
 
   // Creates a function that adds three scalar arguments
   //
-  // x {R0F32} ----\
-  //                \
+  // x {R0F32} -------|
+  //                  |
   // y {R0F32} ----> (add) ---> (add)
   //                           /
   // z {R0F32} ---------------/
@@ -529,9 +531,9 @@ TEST_F(MapTest, MapOperantionWithBuildError) {
 
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_TRUE(!computation_status.ok());
-  EXPECT_MATCH(computation_status.status().ToString(),
-               testing::HasSubstr("error from: ErrorAdd: binary op with "
-                                  "different element types: f32[] and u16[]"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              ::testing::HasSubstr("error from: ErrorAdd: binary op with "
+                                   "different element types: f32[] and u16[]"));
 }
 
 // MapTest disables inline and algsimp. MapTestWithFullOpt runs all
@@ -568,12 +570,60 @@ TEST_F(MapTestWithFullOpt, MapScalarPower) {
                              ErrorSpec(0.01f));
 }
 
+// Regression test for b/35786417, where the inliner would not notice the change
+// of parameter order inside the map.
+TEST_F(MapTestWithFullOpt, MapSubtractOppositeOrder) {
+  ComputationBuilder builder(client_, TestName());
+
+  auto sub_builder = builder.CreateSubBuilder("power");
+  auto x = sub_builder->Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
+  auto y = sub_builder->Parameter(1, ShapeUtil::MakeShape(F32, {}), "y");
+  sub_builder->Sub(y, x);  // note that this is y - x, not x - y
+  auto sub_opposite = sub_builder->BuildAndNoteError();
+
+  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR0<float>(2.0f);
+  std::unique_ptr<Literal> param1_literal = LiteralUtil::CreateR0<float>(5.0f);
+  std::unique_ptr<GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> param1_data =
+      client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
+
+  auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
+  auto param1 = builder.Parameter(1, param1_literal->shape(), "param1");
+  builder.Map({param0, param1}, sub_opposite);
+
+  ComputeAndCompareR0<float>(
+      &builder, 3.0f, {param0_data.get(), param1_data.get()}, ErrorSpec(0.01f));
+}
+
+// Regression test for b/35786417, where the inliner would CHECK-fail due to the
+// mul inside the map having more parameters than the map does.
+TEST_F(MapTestWithFullOpt, MapSquare) {
+  ComputationBuilder builder(client_, TestName());
+
+  auto sub_builder = builder.CreateSubBuilder("power");
+  auto x = sub_builder->Parameter(0, ShapeUtil::MakeShape(F32, {}), "x");
+  sub_builder->Mul(x, x);
+  auto square = sub_builder->BuildAndNoteError();
+
+  std::unique_ptr<Literal> param0_literal = LiteralUtil::CreateR0<float>(10.0f);
+  std::unique_ptr<GlobalData> param0_data =
+      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+
+  auto param0 = builder.Parameter(0, param0_literal->shape(), "param0");
+  builder.Map({param0}, square);
+
+  ComputeAndCompareR0<float>(&builder, 100.0f, {param0_data.get()},
+                             ErrorSpec(0.01f));
+}
+
 }  // namespace
 }  // namespace xla
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

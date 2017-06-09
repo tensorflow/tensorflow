@@ -37,9 +37,10 @@ int main(int argc, char **argv) {
                 << " <path-to-serialized-literal-proto>";
   }
 
-  xla::Literal literal;
+  xla::LiteralProto literal_proto;
   TF_CHECK_OK(tensorflow::ReadBinaryProto(tensorflow::Env::Default(), argv[1],
-                                          &literal));
-  LOG(INFO) << "literal: " << literal.ShortDebugString();
+                                          &literal_proto));
+  xla::Literal literal(literal_proto);
+  LOG(INFO) << "literal: " << literal_proto.ShortDebugString();
   fprintf(stderr, "%s\n", xla::LiteralUtil::ToString(literal).c_str());
 }

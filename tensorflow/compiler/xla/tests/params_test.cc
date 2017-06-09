@@ -246,6 +246,7 @@ XLA_TEST_F(ParamsTest, HundredLargeR1Parameters) {
   }
 
   std::vector<GlobalData*> param_data;
+  param_data.reserve(param_data_owner.size());
   for (const std::unique_ptr<GlobalData>& data : param_data_owner) {
     param_data.push_back(data.get());
   }

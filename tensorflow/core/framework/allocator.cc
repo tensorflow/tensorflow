@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -119,11 +120,13 @@ Allocator* MakeCpuAllocator() {
 }  // namespace
 
 Allocator* cpu_allocator() {
-  static Allocator* cpu_alloc = MakeCpuAllocator();
+  static Allocator* cpu_alloc = AllocatorRegistry::Global()->GetAllocator();
   if (cpu_allocator_collect_full_stats && !cpu_alloc->TracksAllocationSizes()) {
     cpu_alloc = new TrackingAllocator(cpu_alloc, true);
   }
   return cpu_alloc;
 }
+
+REGISTER_MEM_ALLOCATOR("DefaultCPUAllocator", 100, CPUAllocator);
 
 }  // namespace tensorflow

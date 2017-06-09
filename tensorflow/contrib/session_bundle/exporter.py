@@ -38,8 +38,10 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
+from tensorflow.python.util.deprecation import deprecated
 
 
+@deprecated("2017-06-30", "Please use SavedModel instead.")
 def gfile_copy_callback(files_to_copy, export_dir_path):
   """Callback to copy files using `gfile.Copy` to an export directory.
 
@@ -69,6 +71,7 @@ def gfile_copy_callback(files_to_copy, export_dir_path):
     gfile.Copy(source_filepath, new_path)
 
 
+@deprecated("2017-06-30", "Please use SavedModel instead.")
 def regression_signature(input_tensor, output_tensor):
   """Creates a regression signature.
 
@@ -85,6 +88,7 @@ def regression_signature(input_tensor, output_tensor):
   return signature
 
 
+@deprecated("2017-06-30", "Please use SavedModel instead.")
 def classification_signature(input_tensor,
                              classes_tensor=None,
                              scores_tensor=None):
@@ -107,6 +111,7 @@ def classification_signature(input_tensor,
   return signature
 
 
+@deprecated("2017-06-30", "Please use SavedModel instead.")
 def generic_signature(name_tensor_map):
   """Creates a generic signature of name to Tensor name.
 
@@ -140,6 +145,7 @@ class Exporter(object):
     self._has_init = False
     self._assets_to_copy = {}
 
+  @deprecated("2017-06-30", "Please use SavedModel instead.")
   def init(self,
            graph_def=None,
            init_op=None,
@@ -221,6 +227,7 @@ class Exporter(object):
 
     self._assets_callback = assets_callback
 
+  @deprecated("2017-06-30", "Please use SavedModel instead.")
   def export(self,
              export_dir_base,
              global_step_tensor,

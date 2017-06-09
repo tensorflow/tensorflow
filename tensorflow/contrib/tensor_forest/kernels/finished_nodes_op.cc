@@ -27,15 +27,10 @@
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
-using shape_inference::InferenceContext;
-using shape_inference::Shape;
-
 using std::placeholders::_1;
 using std::placeholders::_2;
 
 using tensorforest::CheckTensorBounds;
-using tensorforest::Sum;
 using tensorforest::BestSplitDominatesClassificationBootstrap;
 using tensorforest::BestSplitDominatesClassificationChebyshev;
 using tensorforest::BestSplitDominatesClassificationHoeffding;

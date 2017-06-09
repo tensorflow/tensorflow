@@ -113,7 +113,7 @@ downloadLinkUrlFunction property to an appropriate value.
         display: flex;
         flex-direction: column;
         margin: 5px;
-        padding: 0 30px 35px 0;
+        padding: var(--card-padding, 0 30px 35px 0);
         -webkit-user-select: none;
         -moz-user-select: none;
         position: relative;
@@ -166,6 +166,7 @@ downloadLinkUrlFunction property to an appropriate value.
         padding: 4px;
         border-radius: 100%;
         pointer-events: auto;
+        display: var(--show-expand-button, block);
       }
 
       .card-expanded .expand-button {

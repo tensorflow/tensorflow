@@ -29,7 +29,8 @@ limitations under the License.
 
 namespace xla {
 
-bool IsExpensive(const HloInstruction& instruction) {
+/*static*/ bool InstructionFusion::IsExpensive(
+    const HloInstruction& instruction) {
   switch (instruction.opcode()) {
     // Cheap instructions.
     case HloOpcode::kAbs:
@@ -50,7 +51,7 @@ bool IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kGt:
     case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
+    case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
     case HloOpcode::kLogicalAnd:
     case HloOpcode::kLogicalNot:
@@ -61,6 +62,7 @@ bool IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
+    case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
@@ -100,12 +102,18 @@ bool IsExpensive(const HloInstruction& instruction) {
     case HloOpcode::kRecv:
       return true;
   }
+
+  return false;
 }
 
-bool FusionWouldDuplicate(HloInstruction* producer, HloInstruction* consumer) {
-  return !(producer->users().size() == 1 &&
-           producer->users().count(consumer) == 1);
+namespace {
+// Returns true if fusing producer into consumer would cause producer to be
+// duplicated. This is the case if producer has uses other than consumer.
+bool FusionWouldDuplicate(const HloInstruction& producer,
+                          const HloInstruction& consumer) {
+  return !(producer.users().size() == 1 && consumer.IsUserOf(&producer));
 }
+}  // namespace
 
 StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   bool changed = false;
@@ -122,8 +130,54 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         computation_->MakeInstructionPostOrder();
     std::vector<HloInstruction*> post_order(post_order_list.begin(),
                                             post_order_list.end());
+
+    std::set<HloInstruction*> all_consumers_fusable;
+    // Find which ops can be fused into all of their operands. We would rather
+    // not fuse an op into only some of its users, as that offers no benefit in
+    // terms of memory bandwidth, but forces us to keep more live values around.
+    for (auto* hlo : post_order) {
+      auto user_fusable_into_hlo = [this, &hlo](HloInstruction* consumer) {
+        if (!consumer->IsFusable()) {
+          return false;
+        }
+        for (int operand_number = 0;
+             operand_number < consumer->operands().size(); ++operand_number) {
+          if (consumer->operand(operand_number) == hlo) {
+            if (!ShouldFuse(consumer, operand_number)) {
+              return false;
+            }
+          }
+        }
+        return true;
+      };
+
+      // An "effectively unary" operation is one that has one "large"
+      // input with the others being negligible in terms of memory usage.
+      // We use "has a smaller true rank than the output" as a heuristic
+      // for "negligible" memory usage.
+      auto effectively_unary = [](HloInstruction* hlo) {
+        if (hlo->operands().size() == 1) {
+          return true;
+        }
+        auto output_rank = ShapeUtil::TrueRank(hlo->shape());
+        return std::count_if(
+                   hlo->operands().begin(), hlo->operands().end(),
+                   [output_rank](HloInstruction* operand) {
+                     return ((operand->opcode() != HloOpcode::kBroadcast) &&
+                             ShapeUtil::TrueRank(operand->shape()) >=
+                                 output_rank);
+                   }) <= 1;
+      };
+
+      if (effectively_unary(hlo) ||
+          std::all_of(hlo->users().begin(), hlo->users().end(),
+                      user_fusable_into_hlo)) {
+        all_consumers_fusable.insert(hlo);
+      }
+    }
+
     tensorflow::gtl::FlatMap<HloInstruction*, int> post_order_index;
-    for (int i = 0; i < post_order.size(); ++i) {
+    for (size_t i = 0; i < post_order.size(); ++i) {
       InsertOrDie(&post_order_index, post_order[i], i);
     }
 
@@ -208,6 +262,12 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
 
       for (int64 i : sorted_operand_numbers) {
         HloInstruction* operand = instruction->mutable_operand(i);
+
+        if (FusionWouldDuplicate(*operand, *instruction) &&
+            (all_consumers_fusable.count(operand) == 0)) {
+          continue;
+        }
+
         if (operand->IsFusable() && ShouldFuse(instruction, i)) {
           HloInstruction* fusion_instruction = Fuse(operand, instruction);
 
@@ -260,8 +320,8 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
                                    int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
   // Cost condition: don't duplicate expensive instructions.
-  if (FusionWouldDuplicate(producer, consumer) &&
-      (IsExpensive(*producer) || !may_duplicate_)) {
+  if (FusionWouldDuplicate(*producer, *consumer) &&
+      (is_expensive_(*producer) || !may_duplicate_)) {
     return false;
   }
 
@@ -274,7 +334,7 @@ bool InstructionFusion::ShouldFuse(HloInstruction* consumer,
   // Cost condition: not fuse (expensive producers) and (consumers who reuse
   // operand elements).
   if (consumer->ReusesOperandElements(operand_index) &&
-      IsExpensive(*producer)) {
+      is_expensive_(*producer)) {
     return false;
   }
 

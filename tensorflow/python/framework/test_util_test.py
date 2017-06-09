@@ -22,11 +22,11 @@ import random
 import threading
 
 import numpy as np
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -87,6 +87,34 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
     # test original comparison
     self.assertProtoEquals(graph_def, graph_def)
+
+  def testAssertProtoEqualsAny(self):
+    # Test assertProtoEquals with a protobuf.Any field.
+    meta_graph_def_str = """
+    meta_info_def {
+      meta_graph_version: "outer"
+      any_info {
+        [type.googleapis.com/tensorflow.MetaGraphDef] {
+          meta_info_def {
+            meta_graph_version: "inner"
+          }
+        }
+      }
+    }
+    """
+    meta_graph_def_outer = meta_graph_pb2.MetaGraphDef()
+    meta_graph_def_outer.meta_info_def.meta_graph_version = "outer"
+    meta_graph_def_inner = meta_graph_pb2.MetaGraphDef()
+    meta_graph_def_inner.meta_info_def.meta_graph_version = "inner"
+    meta_graph_def_outer.meta_info_def.any_info.Pack(meta_graph_def_inner)
+    self.assertProtoEquals(meta_graph_def_str, meta_graph_def_outer)
+    self.assertProtoEquals(meta_graph_def_outer, meta_graph_def_outer)
+
+    # Check if the assertion failure message contains the content of
+    # the inner proto.
+    with self.assertRaisesRegexp(AssertionError,
+                                 r'meta_graph_version: "inner"'):
+      self.assertProtoEquals("", meta_graph_def_outer)
 
   def testNDArrayNear(self):
     a1 = np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
@@ -168,7 +196,47 @@ class TestUtilTest(test_util.TensorFlowTestCase):
   def testAllCloseScalars(self):
     self.assertAllClose(7, 7 + 1e-8)
     with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
-      self.assertAllClose(7, 8)
+      self.assertAllClose(7, 7 + 1e-5)
+
+  def testAllCloseDictToNonDict(self):
+    with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
+      self.assertAllClose(1, {"a": 1})
+    with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
+      self.assertAllClose({"a": 1}, 1)
+
+  def testAllCloseDicts(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    expected = {"a": a, "b": b, "c": c}
+
+    # Identity.
+    self.assertAllClose(expected, expected)
+    self.assertAllClose(expected, dict(expected))
+
+    # With each item removed.
+    for k in expected:
+      actual = dict(expected)
+      del actual[k]
+      with self.assertRaisesRegexp(AssertionError, r"mismatched keys"):
+        self.assertAllClose(expected, actual)
+
+    # With each item changed.
+    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+      self.assertAllClose(expected, {"a": a + 1e-5, "b": b, "c": c})
+    with self.assertRaisesRegexp(AssertionError, r"Shape mismatch"):
+      self.assertAllClose(expected, {"a": a, "b": b + (4.,), "c": c})
+    c_copy = np.array(c)
+    c_copy[1, 1, 1] += 1e-5
+    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+      self.assertAllClose(expected, {"a": a, "b": b, "c": c_copy})
+
+  def testAllCloseNestedDicts(self):
+    a = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
+    with self.assertRaisesRegexp(
+        TypeError,
+        r"inputs could not be safely coerced to any supported types"):
+      self.assertAllClose(a, a)
 
   def testArrayNear(self):
     a = [1, 2]
@@ -184,8 +252,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertArrayNear(a, b, 0.001)
 
   def testForceGPU(self):
-    with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                 "Cannot assign a device to node"):
+    with self.assertRaises(errors.InvalidArgumentError):
       with self.test_session(force_gpu=True):
         # this relies on us not having a GPU implementation for assert, which
         # seems sensible
@@ -196,50 +263,50 @@ class TestUtilTest(test_util.TensorFlowTestCase):
   def testAssertAllCloseAccordingToType(self):
     # test float64
     self.assertAllCloseAccordingToType(
-      np.asarray([1e-8], dtype=np.float64),
-      np.asarray([2e-8], dtype=np.float64),
-      rtol=1e-8, atol=1e-8
+        np.asarray([1e-8], dtype=np.float64),
+        np.asarray([2e-8], dtype=np.float64),
+        rtol=1e-8, atol=1e-8
     )
 
     with (self.assertRaises(AssertionError)):
       self.assertAllCloseAccordingToType(
-        np.asarray([1e-7], dtype=np.float64),
-        np.asarray([2e-7], dtype=np.float64),
-        rtol=1e-8, atol=1e-8
+          np.asarray([1e-7], dtype=np.float64),
+          np.asarray([2e-7], dtype=np.float64),
+          rtol=1e-8, atol=1e-8
       )
 
     # test float32
     self.assertAllCloseAccordingToType(
-      np.asarray([1e-7], dtype=np.float32),
-      np.asarray([2e-7], dtype=np.float32),
-      rtol=1e-8, atol=1e-8,
-      float_rtol=1e-7, float_atol=1e-7
+        np.asarray([1e-7], dtype=np.float32),
+        np.asarray([2e-7], dtype=np.float32),
+        rtol=1e-8, atol=1e-8,
+        float_rtol=1e-7, float_atol=1e-7
     )
 
     with (self.assertRaises(AssertionError)):
       self.assertAllCloseAccordingToType(
-        np.asarray([1e-6], dtype=np.float32),
-        np.asarray([2e-6], dtype=np.float32),
-        rtol=1e-8, atol=1e-8,
-        float_rtol=1e-7, float_atol=1e-7
+          np.asarray([1e-6], dtype=np.float32),
+          np.asarray([2e-6], dtype=np.float32),
+          rtol=1e-8, atol=1e-8,
+          float_rtol=1e-7, float_atol=1e-7
       )
 
     # test float16
     self.assertAllCloseAccordingToType(
-      np.asarray([1e-4], dtype=np.float16),
-      np.asarray([2e-4], dtype=np.float16),
-      rtol=1e-8, atol=1e-8,
-      float_rtol=1e-7, float_atol=1e-7,
-      half_rtol=1e-4, half_atol=1e-4
+        np.asarray([1e-4], dtype=np.float16),
+        np.asarray([2e-4], dtype=np.float16),
+        rtol=1e-8, atol=1e-8,
+        float_rtol=1e-7, float_atol=1e-7,
+        half_rtol=1e-4, half_atol=1e-4
     )
 
     with (self.assertRaises(AssertionError)):
       self.assertAllCloseAccordingToType(
-        np.asarray([1e-3], dtype=np.float16),
-        np.asarray([2e-3], dtype=np.float16),
-        rtol=1e-8, atol=1e-8,
-        float_rtol=1e-7, float_atol=1e-7,
-        half_rtol=1e-4, half_atol=1e-4
+          np.asarray([1e-3], dtype=np.float16),
+          np.asarray([2e-3], dtype=np.float16),
+          rtol=1e-8, atol=1e-8,
+          float_rtol=1e-7, float_atol=1e-7,
+          half_rtol=1e-4, half_atol=1e-4
       )
 
   def testRandomSeed(self):

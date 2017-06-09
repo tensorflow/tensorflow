@@ -486,6 +486,12 @@ class RandomForestGraphs(object):
         tree_stats.append(self.trees[i].get_stats(session))
     return ForestStats(tree_stats, self.params)
 
+  def feature_importances(self):
+    tree_counts = [self.trees[i].feature_usage_counts()
+                   for i in range(self.params.num_trees)]
+    total_counts = math_ops.reduce_sum(array_ops.stack(tree_counts, 0), 0)
+    return total_counts / math_ops.reduce_sum(total_counts)
+
 
 def one_hot_wrapper(num_classes, loss_fn):
   """Some loss functions take one-hot labels."""
@@ -982,3 +988,10 @@ class RandomTreeGraphs(object):
             self.variables.tree, [0, 0], [-1, 1])), constants.LEAF_NODE)
         ).eval(session=session).shape[0]
     return TreeStats(num_nodes, num_leaves)
+
+  def feature_usage_counts(self):
+    features = array_ops.slice(self.variables.tree, [0, 1], [-1, 1])
+    # One hot ignores negative values, which is the default for unused nodes.
+    one_hots = array_ops.one_hot(
+        array_ops.squeeze(features), self.params.num_features)
+    return math_ops.reduce_sum(one_hots, 0)

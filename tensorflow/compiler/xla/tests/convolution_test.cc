@@ -48,7 +48,7 @@ class ConvolutionTest : public ClientLibraryTestBase {
 #if XLA_TEST_BACKEND_GPU
   // XLA:GPU sometimes uses FFT convolution which isn't as precise as spatial
   // convolution. So relax the absolute error threshold.
-  ErrorSpec error_spec_ = ErrorSpec(1e-3);
+  ErrorSpec error_spec_ = ErrorSpec(1e-2);
 #else
   ErrorSpec error_spec_ = ErrorSpec(1e-4);
 #endif

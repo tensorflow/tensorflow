@@ -157,6 +157,8 @@ def extract_sub_graph(graph_def, dest_nodes):
   out = graph_pb2.GraphDef()
   for n in nodes_to_keep_list:
     out.node.extend([copy.deepcopy(name_to_node_map[n])])
+  out.library.CopyFrom(graph_def.library)
+  out.versions.CopyFrom(graph_def.versions)
 
   return out
 
@@ -239,6 +241,8 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
     else:
       output_node.CopyFrom(input_node)
     output_graph_def.node.extend([output_node])
+
+  output_graph_def.library.CopyFrom(inference_graph.library)
   print("Converted %d variables to const ops." % how_many_converted)
   return output_graph_def
 
@@ -307,10 +311,10 @@ def remove_training_nodes(input_graph):
     del new_node.input[:]
     for full_input_name in input_before_removal:
       input_name = re.sub(r"^\^", "", full_input_name)
-      if input_name in names_to_splice:
-        new_node.input.append(names_to_splice[input_name])
-      else:
-        new_node.input.append(full_input_name)
+      while input_name in names_to_splice:
+        full_input_name = names_to_splice[input_name]
+        input_name = re.sub(r"^\^", "", full_input_name)
+      new_node.input.append(full_input_name)
     nodes_after_splicing.append(new_node)
 
   output_graph = graph_pb2.GraphDef()

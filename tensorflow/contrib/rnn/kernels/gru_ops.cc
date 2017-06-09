@@ -122,9 +122,9 @@ class GRUCellBlockOp : public OpKernel {
                                   &c_tensor));
 
     Tensor* h_tensor = nullptr;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_output("h", TensorShape({batch_size, cell_size}),
-                                  &h_tensor));
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            {"h_prev"}, "h",
+                            TensorShape({batch_size, cell_size}), &h_tensor));
 
     // Allocate temp tensors.
     Tensor x_h_prev_tensor;
@@ -304,14 +304,15 @@ class GRUBlockCellGradOp : public OpKernel {
 
     // Create output tensors.
     Tensor* d_x_tensor = nullptr;
-    OP_REQUIRES_OK(
-        ctx, ctx->allocate_output("d_x", TensorShape({batch_size, input_size}),
-                                  &d_x_tensor));
+    OP_REQUIRES_OK(ctx, ctx->forward_input_or_allocate_output(
+                            {"x"}, "d_x", TensorShape({batch_size, input_size}),
+                            &d_x_tensor));
 
     Tensor* d_h_prev_tensor = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(
-                            "d_h_prev", TensorShape({batch_size, cell_size}),
-                            &d_h_prev_tensor));
+    OP_REQUIRES_OK(
+        ctx, ctx->forward_input_or_allocate_output(
+                 {"h_prev"}, "d_h_prev", TensorShape({batch_size, cell_size}),
+                 &d_h_prev_tensor));
 
     Tensor* d_c_bar_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(

@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import six
 
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_inspect
 
 
 def _assert_named_args(sentinel):
@@ -43,11 +43,11 @@ def _args(fn):
   if hasattr(fn, 'func') and hasattr(fn, 'keywords'):
     # Handle functools.partial and similar objects.
     return tuple([
-        arg for arg in inspect.getargspec(fn.func).args
+        arg for arg in tf_inspect.getargspec(fn.func).args
         if arg not in set(fn.keywords.keys())
     ])
   # Handle function.
-  return tuple(inspect.getargspec(fn).args)
+  return tuple(tf_inspect.getargspec(fn).args)
 
 
 _CANONICAL_LABELS_ARG = 'labels'
@@ -426,6 +426,6 @@ class MetricSpec(object):
           labels=label,
           predictions=prediction,
           weights=inputs[self.weight_key] if self.weight_key else None)
-    except:  # pylint: disable=bare-except
-      logging.error('Could not create metric ops for %s.' % self)
+    except Exception as ex:
+      logging.error('Could not create metric ops for %s, %s.' % (self, ex))
       raise

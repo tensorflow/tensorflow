@@ -29,6 +29,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.PriorityQueue;
 import java.util.StringTokenizer;
+import org.tensorflow.Graph;
+import org.tensorflow.Operation;
 import org.tensorflow.contrib.android.TensorFlowInferenceInterface;
 import org.tensorflow.demo.env.Logger;
 
@@ -38,10 +40,6 @@ import org.tensorflow.demo.env.Logger;
  */
 public class TensorFlowMultiBoxDetector implements Classifier {
   private static final Logger LOGGER = new Logger();
-
-  static {
-    System.loadLibrary("tensorflow_demo");
-  }
 
   // Only return this many results with at least this confidence.
   private static final int MAX_RESULTS = Integer.MAX_VALUE;
@@ -59,6 +57,8 @@ public class TensorFlowMultiBoxDetector implements Classifier {
   private float[] outputScores;
   private String[] outputNames;
   private int numLocations;
+
+  private boolean logStats = false;
 
   private TensorFlowInferenceInterface inferenceInterface;
 
@@ -87,23 +87,29 @@ public class TensorFlowMultiBoxDetector implements Classifier {
       final String outputScoresName) {
     final TensorFlowMultiBoxDetector d = new TensorFlowMultiBoxDetector();
 
-    d.inferenceInterface = new TensorFlowInferenceInterface();
-    if (d.inferenceInterface.initializeTensorFlow(assetManager, modelFilename) != 0) {
-      throw new RuntimeException("TF initialization failed");
-    }
+    d.inferenceInterface = new TensorFlowInferenceInterface(assetManager, modelFilename);
+
+    final Graph g = d.inferenceInterface.graph();
 
     d.inputName = inputName;
     // The inputName node has a shape of [N, H, W, C], where
     // N is the batch size
     // H = W are the height and width
     // C is the number of channels (3 for our purposes - RGB)
-    d.inputSize = (int) d.inferenceInterface.graph().operation(inputName).output(0).shape().size(1);
+    final Operation inputOp = g.operation(inputName);
+    if (inputOp == null) {
+      throw new RuntimeException("Failed to find input Node '" + inputName + "'");
+    }
+    d.inputSize = (int) inputOp.output(0).shape().size(1);
     d.imageMean = imageMean;
     d.imageStd = imageStd;
     // The outputScoresName node has a shape of [N, NumLocations], where N
     // is the batch size.
-    d.numLocations =
-        (int) d.inferenceInterface.graph().operation(outputScoresName).output(0).shape().size(1);
+    final Operation outputOp = g.operation(outputScoresName);
+    if (outputOp == null) {
+      throw new RuntimeException("Failed to find output Node '" + outputScoresName + "'");
+    }
+    d.numLocations = (int) outputOp.output(0).shape().size(1);
 
     d.boxPriors = new float[d.numLocations * 8];
 
@@ -211,22 +217,21 @@ public class TensorFlowMultiBoxDetector implements Classifier {
     Trace.endSection(); // preprocessBitmap
 
     // Copy the input data into TensorFlow.
-    Trace.beginSection("fillNodeFloat");
-    inferenceInterface.fillNodeFloat(
-        inputName, new int[] {1, inputSize, inputSize, 3}, floatValues);
+    Trace.beginSection("feed");
+    inferenceInterface.feed(inputName, floatValues, 1, inputSize, inputSize, 3);
     Trace.endSection();
 
     // Run the inference call.
-    Trace.beginSection("runInference");
-    inferenceInterface.runInference(outputNames);
+    Trace.beginSection("run");
+    inferenceInterface.run(outputNames, logStats);
     Trace.endSection();
 
     // Copy the output Tensor back into the output array.
-    Trace.beginSection("readNodeFloat");
+    Trace.beginSection("fetch");
     final float[] outputScoresEncoding = new float[numLocations];
     final float[] outputLocationsEncoding = new float[numLocations * 4];
-    inferenceInterface.readNodeFloat(outputNames[0], outputLocationsEncoding);
-    inferenceInterface.readNodeFloat(outputNames[1], outputScoresEncoding);
+    inferenceInterface.fetch(outputNames[0], outputLocationsEncoding);
+    inferenceInterface.fetch(outputNames[1], outputScoresEncoding);
     Trace.endSection();
 
     outputLocations = decodeLocationsEncoding(outputLocationsEncoding);
@@ -264,8 +269,8 @@ public class TensorFlowMultiBoxDetector implements Classifier {
   }
 
   @Override
-  public void enableStatLogging(final boolean debug) {
-    inferenceInterface.enableStatLogging(debug);
+  public void enableStatLogging(final boolean logStats) {
+    this.logStats = logStats;
   }
 
   @Override

@@ -186,7 +186,7 @@ void StepStatsCollector::BuildCostModel(
                                               .allocation_description()
                                               .allocation_id());
         }
-        cm->RecordAllocatorMemory(node, stats.memory());
+        cm->RecordMemoryStats(node, stats.memory_stats());
         // Use hardware stats to record the execution time if they're available,
         // otherwise use the regular (less accurate) stats
         string node_name = dev_stats.regular_stats->node_stats(i).node_name();

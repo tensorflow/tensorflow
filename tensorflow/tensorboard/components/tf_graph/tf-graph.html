@@ -61,7 +61,7 @@ paper-button {
     <tf-graph-scene id="scene" class="auto"
           render-hierarchy="[[renderHierarchy]]"
           highlighted-node="[[_getVisible(highlightedNode)]]"
-          selected-node="[[selectedNode]]"
+          selected-node="{{selectedNode}}"
           color-by="[[colorBy]]"
           progress="[[progress]]"
           node-names-to-health-pills="[[nodeNamesToHealthPills]]"
@@ -172,7 +172,14 @@ Polymer({
             device: deviceName,
             color: renderGraph.deviceColorMap(deviceName)
           };
-        })
+        }),
+        xla_cluster: _.map(renderGraph.xlaClusterColorMap.domain(),
+            function(xlaClusterName) {
+          return {
+            xla_cluster: xlaClusterName,
+            color: renderGraph.xlaClusterColorMap(xlaClusterName)
+          };
+        }),
       });
       this._setRenderHierarchy(renderGraph);
       this.async(function() {

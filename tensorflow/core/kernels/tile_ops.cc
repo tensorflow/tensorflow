@@ -124,6 +124,10 @@ class TileOp : public OpKernel {
                                   multiples_array[i]));
       output_shape.AddDim(input.dim_size(i) * multiples_array[i]);
     }
+    if (output_shape == input.shape()) {
+      context->set_output(0, input);
+      return;
+    }
     Tensor* result = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &result));
 
@@ -261,7 +265,9 @@ TF_CALL_complex128(HANDLE_TYPE_NAME_GPU);
 #ifdef TENSORFLOW_USE_SYCL
 TF_CALL_float(HANDLE_TYPE_NAME_SYCL);
 TF_CALL_double(HANDLE_TYPE_NAME_SYCL);
+TF_CALL_int16(HANDLE_TYPE_NAME_SYCL);
 TF_CALL_int32(HANDLE_TYPE_NAME_SYCL);
+TF_CALL_int64(HANDLE_TYPE_NAME_SYCL);
 #endif // TENSORFLOW_USE_SYCL
 
 #undef HANDLE_TYPE_NAME_CPU
@@ -314,6 +320,10 @@ class TileGradientOp : public OpKernel {
                                           multiples_array[i], " != 0"));
       output_shape.AddDim(input.dim_size(i) / multiples_array[i]);
       input_dim_size_vec.push_back(input.dim_size(i));
+    }
+    if (output_shape == input.shape()) {
+      context->set_output(0, input);
+      return;
     }
     Tensor* result = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &result));
@@ -514,7 +524,9 @@ TF_CALL_complex128(HANDLE_TYPE_NAME_GPU);
 
 TF_CALL_float(HANDLE_TYPE_NAME_SYCL);
 TF_CALL_double(HANDLE_TYPE_NAME_SYCL);
+TF_CALL_int16(HANDLE_TYPE_NAME_SYCL);
 TF_CALL_int32(HANDLE_TYPE_NAME_SYCL);
+TF_CALL_int64(HANDLE_TYPE_NAME_SYCL);
 #undef HANDLE_TYPE_NAME_SYCL
 #endif // TENSORFLOW_USE_SYCL
 

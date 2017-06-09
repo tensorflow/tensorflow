@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
+namespace {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
@@ -89,6 +90,59 @@ static inline float ComputeIOU(typename TTypes<float, 2>::ConstTensor boxes,
   return intersection_area / (area_i + area_j - intersection_area);
 }
 
+void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& boxes,
+                           const Tensor& scores, const Tensor& max_output_size,
+                           const float iou_threshold) {
+  OP_REQUIRES(context, iou_threshold >= 0 && iou_threshold <= 1,
+              errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+
+  int num_boxes = 0;
+  ParseAndCheckBoxSizes(context, boxes, scores, &num_boxes);
+  if (!context->status().ok()) {
+    return;
+  }
+
+  const int output_size = std::min(max_output_size.scalar<int>()(), num_boxes);
+  typename TTypes<float, 2>::ConstTensor boxes_data = boxes.tensor<float, 2>();
+
+  std::vector<float> scores_data(num_boxes);
+  std::copy_n(scores.flat<float>().data(), num_boxes, scores_data.begin());
+  std::vector<int> sorted_indices;
+  DecreasingArgSort(scores_data, &sorted_indices);
+
+  std::vector<bool> active(num_boxes, true);
+  std::vector<int> selected;
+  int num_active = active.size();
+  for (int i = 0; i < num_boxes; ++i) {
+    if (num_active == 0 || selected.size() >= output_size) break;
+    if (active[i]) {
+      selected.push_back(sorted_indices[i]);
+    } else {
+      continue;
+    }
+    for (int j = i + 1; j < num_boxes; ++j) {
+      if (active[j]) {
+        float iou =
+            ComputeIOU(boxes_data, sorted_indices[i], sorted_indices[j]);
+        if (iou > iou_threshold) {
+          active[j] = false;
+          num_active--;
+        }
+      }
+    }
+  }
+
+  // Allocate output tensor
+  Tensor* output = nullptr;
+  TensorShape output_shape({static_cast<int>(selected.size())});
+  OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
+  typename TTypes<int, 1>::Tensor selected_indices_data =
+      output->tensor<int, 1>();
+  std::copy_n(selected.begin(), selected.size(), selected_indices_data.data());
+}
+
+}  // namespace
+
 template <typename Device>
 class NonMaxSuppressionOp : public OpKernel {
  public:
@@ -98,9 +152,6 @@ class NonMaxSuppressionOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override {
-    OP_REQUIRES(context, iou_threshold_ >= 0 && iou_threshold_ <= 1,
-                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
-
     // boxes: [num_boxes, 4]
     const Tensor& boxes = context->input(0);
     // scores: [num_boxes]
@@ -112,59 +163,48 @@ class NonMaxSuppressionOp : public OpKernel {
         errors::InvalidArgument("max_output_size must be 0-D, got shape ",
                                 max_output_size.shape().DebugString()));
 
-    int num_boxes = 0;
-    ParseAndCheckBoxSizes(context, boxes, scores, &num_boxes);
-    if (!context->status().ok()) {
-      return;
-    }
-
-    const int output_size =
-        std::min(max_output_size.scalar<int>()(), num_boxes);
-    typename TTypes<float, 2>::ConstTensor boxes_data =
-        boxes.tensor<float, 2>();
-
-    std::vector<float> scores_data(num_boxes);
-    std::copy_n(scores.flat<float>().data(), num_boxes, scores_data.begin());
-    std::vector<int> sorted_indices;
-    DecreasingArgSort(scores_data, &sorted_indices);
-
-    std::vector<bool> active(num_boxes, true);
-    std::vector<int> selected;
-    int num_active = active.size();
-    for (int i = 0; i < num_boxes; ++i) {
-      if (num_active == 0 || selected.size() >= output_size) break;
-      if (active[i]) {
-        selected.push_back(sorted_indices[i]);
-      } else {
-        continue;
-      }
-      for (int j = i + 1; j < num_boxes; ++j) {
-        if (active[j]) {
-          float iou =
-              ComputeIOU(boxes_data, sorted_indices[i], sorted_indices[j]);
-          if (iou > iou_threshold_) {
-            active[j] = false;
-            num_active--;
-          }
-        }
-      }
-    }
-
-    // Allocate output tensor
-    Tensor* output = nullptr;
-    TensorShape output_shape({static_cast<int>(selected.size())});
-    OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
-    typename TTypes<int, 1>::Tensor selected_indices_data =
-        output->tensor<int, 1>();
-    std::copy_n(selected.begin(), selected.size(),
-                selected_indices_data.data());
+    DoNonMaxSuppressionOp(context, boxes, scores, max_output_size,
+                          iou_threshold_);
   }
 
  private:
   float iou_threshold_;
 };
 
+template <typename Device>
+class NonMaxSuppressionV2Op : public OpKernel {
+ public:
+  explicit NonMaxSuppressionV2Op(OpKernelConstruction* context)
+      : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    // boxes: [num_boxes, 4]
+    const Tensor& boxes = context->input(0);
+    // scores: [num_boxes]
+    const Tensor& scores = context->input(1);
+    // max_output_size: scalar
+    const Tensor& max_output_size = context->input(2);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
+                                max_output_size.shape().DebugString()));
+    // iou_threshold: scalar
+    const Tensor& iou_threshold = context->input(3);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
+                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
+                                        iou_threshold.shape().DebugString()));
+
+    const float iou_threshold_val = iou_threshold.scalar<float>()();
+
+    DoNonMaxSuppressionOp(context, boxes, scores, max_output_size,
+                          iou_threshold_val);
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppression").Device(DEVICE_CPU),
                         NonMaxSuppressionOp<CPUDevice>);
+
+REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2").Device(DEVICE_CPU),
+                        NonMaxSuppressionV2Op<CPUDevice>);
 
 }  // namespace tensorflow

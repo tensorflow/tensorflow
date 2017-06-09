@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <unordered_map>
 #include <utility>
 
 #include "tensorflow/core/framework/op_kernel.h"
@@ -21,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace tensorflow {
 
@@ -46,13 +46,11 @@ class UniqueOp : public OpKernel {
     const int64 N = static_cast<int64>(Tin.size());
 
     Tensor* idx = nullptr;
-    if (!context->forward_input_to_output(0, 1, &idx)) {
-      OP_REQUIRES_OK(context, context->allocate_output(1, input.shape(), &idx));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 1, input.shape(), &idx));
     auto idx_vec = idx->template vec<int32>();
 
-    std::unordered_map<T, int32> uniq;
-    uniq.reserve(2 * N);
+    gtl::FlatMap<T, int32> uniq(N);
     for (int64 i = 0, j = 0; i < N; ++i) {
       auto it = uniq.insert(std::make_pair(Tin(i), j));
       idx_vec(i) = it.first->second;
@@ -117,4 +115,23 @@ REGISTER_KERNEL_BUILDER(Name("Unique")
                             .HostMemory("y")
                             .HostMemory("idx"),
                         UniqueOp<int64>);
+
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(Name("Unique")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("out_idx")
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("idx"),
+                        UniqueOp<int32>);
+REGISTER_KERNEL_BUILDER(Name("Unique")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int64>("T")
+                            .TypeConstraint<int32>("out_idx")
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("idx"),
+                        UniqueOp<int64>);
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -368,7 +368,8 @@ def create_train_op(total_loss,
                     summarize_gradients=False,
                     gate_gradients=tf_optimizer.Optimizer.GATE_OP,
                     aggregation_method=None,
-                    colocate_gradients_with_ops=False):
+                    colocate_gradients_with_ops=False,
+                    check_numerics=True):
   """Creates an `Operation` that evaluates the gradients and returns the loss.
 
   Args:
@@ -393,6 +394,7 @@ def create_train_op(total_loss,
       Valid values are defined in the class `AggregationMethod`.
     colocate_gradients_with_ops: Whether or not to try colocating the gradients
       with the ops that generated them.
+    check_numerics: Whether or not we apply check_numerics.
 
   Returns:
     A `Tensor` that when evaluated, computes the gradients and returns the total
@@ -449,8 +451,9 @@ def create_train_op(total_loss,
 
   with ops.name_scope('train_op'):
     # Make sure total_loss is valid.
-    total_loss = array_ops.check_numerics(total_loss,
-                                          'LossTensor is inf or nan')
+    if check_numerics:
+      total_loss = array_ops.check_numerics(total_loss,
+                                            'LossTensor is inf or nan')
 
     # Ensure the train_tensor computes grad_updates.
     train_op = control_flow_ops.with_dependencies([grad_updates], total_loss)

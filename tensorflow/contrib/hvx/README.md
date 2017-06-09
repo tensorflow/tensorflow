@@ -134,3 +134,6 @@ adb push ${QUALCOMM_SDK}/tools/elfsigner/output/testsig-$(SERIAL_NUMBER_HEX_VALU
 ```
 
 After rebooting your device, you should be able to run the sample application.
+
+Maintainers:
+- Satoshi Kataoka (satok@google.com, github.com/satok16)

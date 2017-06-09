@@ -18,31 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.bijectors import bijector
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn_ops
+# go/tf-wildcard-import
+# pylint: disable=wildcard-import
+from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid_impl import *
+# pylint: enable=wildcard-import
+from tensorflow.python.util.all_util import remove_undocumented
 
+_allowed_symbols = ["Sigmoid"]
 
-__all__ = [
-    "Sigmoid",
-]
-
-
-class Sigmoid(bijector.Bijector):
-  """Bijector which computes `Y = g(X) = 1 / (1 + exp(-X))`."""
-
-  def __init__(self, validate_args=False, name="sigmoid"):
-    super(Sigmoid, self).__init__(
-        event_ndims=0, validate_args=validate_args, name=name)
-
-  def _forward(self, x):
-    return math_ops.sigmoid(x)
-
-  def _inverse(self, y):
-    return math_ops.log(y) - math_ops.log1p(-y)
-
-  def _inverse_log_det_jacobian(self, y):
-    return -math_ops.log(y) - math_ops.log1p(-y)
-
-  def _forward_log_det_jacobian(self, x):
-    return -nn_ops.softplus(-x) - nn_ops.softplus(x)
+remove_undocumented(__name__, _allowed_symbols)

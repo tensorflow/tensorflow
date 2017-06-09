@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import distributions as distributions_lib
-from tensorflow.contrib.bayesflow.python.ops import stochastic_graph
+from tensorflow.contrib.bayesflow.python.ops import stochastic_graph_impl
 from tensorflow.contrib.bayesflow.python.ops import stochastic_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -30,7 +30,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 st = stochastic_tensor
-sg = stochastic_graph
+sg = stochastic_graph_impl
 distributions = distributions_lib
 
 

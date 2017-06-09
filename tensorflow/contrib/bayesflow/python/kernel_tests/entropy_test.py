@@ -18,13 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
-
 import numpy as np
 
 from tensorflow.contrib import distributions as distributions_lib
@@ -102,7 +95,7 @@ class ElboRatioTest(test.TestCase):
           n=n_samples,
           form=entropy.ELBOForms.sample,
           seed=42)
-      actual_kl = distributions.kl(q, p)
+      actual_kl = distributions.kl_divergence(q, p)
 
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.
@@ -130,7 +123,7 @@ class ElboRatioTest(test.TestCase):
           n=n_samples,
           form=entropy.ELBOForms.analytic_entropy,
           seed=42)
-      actual_kl = distributions.kl(q, p)
+      actual_kl = distributions.kl_divergence(q, p)
 
       # Relative tolerance (rtol) chosen 2 times as large as minimim needed to
       # pass.

@@ -69,12 +69,15 @@ class DequantizeOp : public OpKernel {
           (static_cast<float>(std::numeric_limits<T>::max()) -
            std::numeric_limits<T>::min());
 
-      // Multiply by scale factor and add min_range.
-      output->flat<float>() =
-          ((input.flat<T>().template cast<int>().template cast<float>() +
-            half_range_) *
-           scale_factor) +
-          min_range;
+      float* out_ptr = output->flat<float>().data();
+      const T* in_ptr = input.flat<T>().data();
+
+      const int64 num_elements = input.NumElements();
+      for (int i = 0; i < num_elements; ++i) {
+        out_ptr[i] =
+            ((static_cast<int>(in_ptr[i]) + half_range_) * scale_factor) +
+            min_range;
+      }
     } else if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
       if (meta::IsSupportedAndEnabled() && std::is_same<T, quint8>()) {
         auto input_ui8_array = input.flat<quint8>();

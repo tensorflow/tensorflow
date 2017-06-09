@@ -132,6 +132,50 @@ TEST_F(QuantizedOpTest, QuantizeV2EqualRange) {
   EXPECT_LT(0.0f, output_max);
 }
 
+TEST_F(QuantizedOpTest, QuantizeV2MovesMinToIncludeZero) {
+  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("mode", "MIN_FIRST")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({3}), {0.1, 0.2, 0.3});
+  AddInputFromArray<float>(TensorShape({1}), {0.1});
+  AddInputFromArray<float>(TensorShape({1}), {0.3});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QUINT8, TensorShape({3}));
+  test::FillValues<quint8>(&expected, {85, 170, 255});
+  test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  EXPECT_NEAR(0.0f, output_min, 1e-5f);
+  EXPECT_NEAR(0.3f, output_max, 1e-5f);
+}
+
+TEST_F(QuantizedOpTest, QuantizeV2MovesMaxToIncludeZero) {
+  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("mode", "MIN_FIRST")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({3}), {-0.1, -0.2, -0.3});
+  AddInputFromArray<float>(TensorShape({1}), {-0.3});
+  AddInputFromArray<float>(TensorShape({1}), {-0.1});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QUINT8, TensorShape({3}));
+  test::FillValues<quint8>(&expected, {170, 85, 0});
+  test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  EXPECT_NEAR(-0.3f, output_min, 1e-5f);
+  EXPECT_NEAR(0.0f, output_max, 1e-5f);
+}
+
 TEST_F(QuantizedOpTest, Dequantize) {
   TF_ASSERT_OK(NodeDefBuilder("dequantize_op", "Dequantize")
                    .Input(FakeInput(DT_QUINT8))

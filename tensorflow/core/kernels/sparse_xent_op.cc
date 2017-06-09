@@ -78,15 +78,11 @@ class SparseSoftmaxXentWithLogitsOp : public OpKernel {
                                                    labels.shape(), &scratch));
 
     Tensor* loss_out = nullptr;
-    if (!context->forward_input_to_output(1, 0, &loss_out)) {
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, labels.shape(), &loss_out));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {1}, 0, labels.shape(), &loss_out));
     Tensor* back_out = nullptr;
-    if (!context->forward_input_to_output(0, 1, &back_out)) {
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(1, logits.shape(), &back_out));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 1, logits.shape(), &back_out));
 
     if (logits.dim_size(0) > 0) {
       if (std::is_same<Device, CPUDevice>::value) {

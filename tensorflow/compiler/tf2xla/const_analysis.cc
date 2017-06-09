@@ -35,6 +35,9 @@ Status BackwardsConstAnalysis(const Graph& g,
       {"Any", "reduction_indices"},
       {"ArgMax", "dimension"},
       {"AvgPoolGrad", "orig_input_shape"},
+      {"BatchToSpace", "crops"},
+      {"BatchToSpaceND", "block_shape"},
+      {"BatchToSpaceND", "crops"},
       {"BroadcastGradientArgs", "s0"},
       {"BroadcastGradientArgs", "s1"},
       {"Concat", "concat_dim"},
@@ -43,6 +46,8 @@ Status BackwardsConstAnalysis(const Graph& g,
       {"ConcatOffset", "shape"},
       {"Conv2DBackpropFilter", "filter_sizes"},
       {"Conv2DBackpropInput", "input_sizes"},
+      {"Conv3DBackpropFilterV2", "filter_sizes"},
+      {"Conv3DBackpropInputV2", "input_sizes"},
       {"DynamicStitch", "indices"},
       {"ExpandDims", "dim"},
       {"Fill", "dims"},
@@ -53,6 +58,7 @@ Status BackwardsConstAnalysis(const Graph& g,
       {"Max", "reduction_indices"},
       {"Mean", "reduction_indices"},
       {"Min", "reduction_indices"},
+      {"OneHot", "depth"},
       {"Pad", "paddings"},
       {"Prod", "reduction_indices"},
       {"RandomStandardNormal", "shape"},
@@ -62,8 +68,16 @@ Status BackwardsConstAnalysis(const Graph& g,
       {"Range", "limit"},
       {"Range", "delta"},
       {"Reshape", "shape"},
+      {"ResourceStridedSliceAssign", "begin"},
+      {"ResourceStridedSliceAssign", "end"},
+      {"ResourceStridedSliceAssign", "strides"},
+      {"Reverse", "dims"},
+      {"ReverseV2", "axis"},
       {"Slice", "begin"},
       {"Slice", "size"},
+      {"SpaceToBatch", "paddings"},
+      {"SpaceToBatchND", "block_shape"},
+      {"SpaceToBatchND", "paddings"},
       {"Split", "split_dim"},
       {"SplitV", "split_dim"},
       {"SplitV", "size_splits"},
@@ -75,6 +89,8 @@ Status BackwardsConstAnalysis(const Graph& g,
       {"StridedSliceGrad", "end"},
       {"StridedSliceGrad", "strides"},
       {"Sum", "reduction_indices"},
+      {"TensorArrayV3", "size"},
+      {"TensorArraySplitV3", "lengths"},
       {"Tile", "multiples"},
       {"Transpose", "perm"}};
 
@@ -97,7 +113,7 @@ Status BackwardsConstAnalysis(const Graph& g,
     if (must_be_const.find(node) != must_be_const.end()) {
       if (node->type_string() == "_Arg") {
         int index;
-        status = GetNodeAttr(node->def(), "index", &index);
+        status = GetNodeAttr(node->attrs(), "index", &index);
         if (!status.ok()) return;
         compile_time_const_args->at(index) = true;
         return;
@@ -113,8 +129,8 @@ Status BackwardsConstAnalysis(const Graph& g,
     if (range.first == range.second) return;
 
     NameRangeMap input_name_ranges;
-    status = NameRangesForNode(node->def(), node->op_def(), &input_name_ranges,
-                               nullptr);
+    status =
+        NameRangesForNode(*node, node->op_def(), &input_name_ranges, nullptr);
     if (!status.ok()) return;
 
     for (auto it = range.first; it != range.second; ++it) {

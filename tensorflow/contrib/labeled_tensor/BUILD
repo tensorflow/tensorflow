@@ -22,6 +22,15 @@ py_library(
     ],
 )
 
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "labeled_tensor_pip",
+    deps = [
+        ":labeled_tensor",
+        ":test_util",
+    ],
+)
+
 py_library(
     name = "_typecheck",
     srcs = ["python/ops/_typecheck.py"],

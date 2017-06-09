@@ -57,10 +57,8 @@ class UnaryElementWiseOp : public UnaryOp<T> {
     // Output shape is the same as input shape.
     const Tensor& input = context->input(0);
     Tensor* output = nullptr;
-    if (!context->forward_input_to_output(0, 0, &output)) {
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, input.shape(), &output));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, input.shape(), &output));
     static_cast<CHILD*>(this)->Operate(context, input, output);
   }
 };
@@ -80,10 +78,8 @@ class BinaryElementWiseOp : public BinaryOp<T> {
     }
 
     Tensor* output = nullptr;
-    if (!context->forward_input_to_output(0, 0, &output) &&
-        !context->forward_input_to_output(1, 0, &output)) {
-      OP_REQUIRES_OK(context, context->allocate_output(0, a.shape(), &output));
-    }
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0, 1}, 0, a.shape(), &output));
 
     // Dispatch to the descendant's Operate() function.
     switch (a.dims()) {

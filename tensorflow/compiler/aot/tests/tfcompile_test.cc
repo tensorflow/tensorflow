@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tffunction.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfgather.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmul.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd.h"
@@ -374,6 +375,21 @@ TEST(TFCompileTest, MatMulAndAdd1) {
     EXPECT_EQ(muladd_const.result_x_y_prod_data(), muladd.results()[0]);
     EXPECT_EQ(muladd_const.result_x_y_sum_data(), muladd.results()[1]);
   }
+}
+
+TEST(TFCompileTest, Function) {
+  // The function is equivalent to an addition
+  FunctionComp add_fn;
+  EXPECT_EQ(add_fn.arg0_data(), add_fn.args()[0]);
+  EXPECT_EQ(add_fn.arg1_data(), add_fn.args()[1]);
+
+  add_fn.arg0() = 1;
+  add_fn.arg1() = 2;
+  EXPECT_TRUE(add_fn.Run());
+  EXPECT_EQ(add_fn.error_msg(), "");
+  EXPECT_EQ(add_fn.result0(), 3);
+  EXPECT_EQ(add_fn.result0_data()[0], 3);
+  EXPECT_EQ(add_fn.result0_data(), add_fn.results()[0]);
 }
 
 }  // namespace

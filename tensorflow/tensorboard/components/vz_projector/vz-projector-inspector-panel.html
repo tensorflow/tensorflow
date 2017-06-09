@@ -17,9 +17,9 @@ limitations under the License.
 
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-slider/paper-slider.html">
-
-<link rel="import" href="styles.html">
 <link rel="import" href="vz-projector-input.html">
+<link rel="import" href="styles.html">
+<link rel="import" href="bundle.html">
 
 <dom-module id="vz-projector-inspector-panel">
 <style include="vz-projector-styles"></style>
@@ -163,7 +163,7 @@ limitations under the License.
   margin: 0 -12px 0 10px;
 }
 
-.euclidian {
+.euclidean {
   margin-right: 10px;
 }
 
@@ -223,7 +223,7 @@ limitations under the License.
         <span class="option-label">distance</span>
         <div class="options">
           <a class="selected cosine" href="javascript:void(0);">COSINE</a>
-          <a class="euclidean" href="javascript:void(0);">EUCLIDIAN</a>
+          <a class="euclidean" href="javascript:void(0);">EUCLIDEAN</a>
         </div>
       </div>
     </div>
@@ -237,4 +237,5 @@ limitations under the License.
 </div>
 <!-- Closing global template -->
 </template>
+<script src="vz-projector-inspector-panel.js"></script>
 </dom-module>

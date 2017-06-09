@@ -23,17 +23,17 @@ namespace gputools {
 namespace dnn {
 
 bool DnnSupport::GetConvolveAlgorithms(
-    std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    std::vector<AlgorithmType>* out_algorithms) {
+    bool with_winograd_nonfused, std::vector<AlgorithmType>* out_algorithms) {
   return false;
 }
 
@@ -123,6 +123,7 @@ string PadAlignmentString(PadAlignment alignment) {
     case PadAlignment::kTensorFlowPadding:
       return "TensorFlow padding";
   }
+  return "unknown pad alignment";
 }
 
 string ShortPoolingModeString(PoolingMode mode) {
@@ -191,6 +192,12 @@ std::vector<int64> ReorderDims(const std::vector<int64>& input,
   }
 
   return reordered;
+}
+
+// -- AlgorithmConfig
+
+string AlgorithmConfig::ToString() const {
+  return port::StrCat(algorithm_, ", ", algorithm_no_scratch_);
 }
 
 // -- BatchDescriptor

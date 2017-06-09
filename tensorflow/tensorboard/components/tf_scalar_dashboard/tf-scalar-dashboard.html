@@ -67,10 +67,18 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           selected-runs="{{_selectedRuns}}"
           >
           <div class="extend-first-section">
-            <paper-checkbox
+            <div class="line-item">
+              <paper-checkbox
               id="download-option"
               checked="{{_showDownloadLinks}}"
-              >Data download links</paper-checkbox>
+              >Show data download links</paper-checkbox>
+            </div>
+              <div class="line-item">
+                <paper-checkbox
+                id="outliersCheckbox"
+                checked="{{_ignoreYOutliers}}"
+                >Ignore outliers in chart scaling</paper-checkbox>
+              </div>
             <div id="tooltip-sorting">
               <div id="tooltip-sorting-label">Tooltip sorting method:</div>
               <paper-dropdown-menu
@@ -113,6 +121,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           color-scale="[[_colorScale]]"
           data-type="[[dataType]]"
           data-provider="[[dataProvider]]"
+          data-not-found="[[dataNotFound]]"
           run2tag="[[run2tag]]"
           selected-runs="[[_selectedRuns]]"
           show-download-links="[[_showDownloadLinks]]"
@@ -125,6 +134,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
               smoothing-enabled="[[_smoothingEnabled]]"
               smoothing-weight="[[_smoothingWeight]]"
               tooltip-sorting-method="[[_tooltipSortingMethod]]"
+              ignore-y-outliers="[[_ignoreYOutliers]]"
               ></vz-line-chart>
             <paper-icon-button
               class="log-button"
@@ -171,16 +181,30 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         --paper-input-container-focus-color: var(--tb-orange-strong);
         width: 105px;
       }
+      .line-item {
+        display: block;
+        padding-top: 5px;
+      }
     </style>
 
   </template>
 
   <script>
+    import {DashboardBehavior} from "../tf-dashboard-common/dashboard-behavior";
+    import {ReloadBehavior} from "../tf-dashboard-common/reload-behavior";
+    import {BackendBehavior} from "../tf-backend/behavior";
+    import * as storage from "../tf-storage/storage";
+
     Polymer({
       is: "tf-scalar-dashboard",
+      factoryImpl: function(backend, router) {
+        this.backend = backend;
+        this.router = router;
+      },
       behaviors: [
-        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
-        TF.Backend.Behavior,
+        DashboardBehavior("scalars"),
+        ReloadBehavior("tf-chart-scaffold"),
+        BackendBehavior,
       ],
       properties: {
         backend: Object,
@@ -196,19 +220,23 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         _showDownloadLinks: {
           type: Boolean,
           notify: true,
-          value: TF.URIStorage.getBooleanInitializer('_showDownloadLinks',
-              false),
+          value: storage.getBooleanInitializer('_showDownloadLinks', false, true),
           observer: '_showDownloadLinksObserver'
         },
         _smoothingWeight: {
           type: Number,
           notify: true,
-          value: TF.URIStorage.getNumberInitializer('_smoothingWeight', 0.6),
+          value: storage.getNumberInitializer('_smoothingWeight', 0.6),
           observer: '_smoothingWeightObserver'
         },
         _smoothingEnabled: {
           type: Boolean,
           computed: '_computeSmoothingEnabled(_smoothingWeight)'
+        },
+        _ignoreYOutliers: {
+          type: Boolean,
+          value: storage.getBooleanInitializer('_ignoreYOutliers', true, true),
+          observer: '_ignoreYOutliersObserver',
         },
         _xType: {
           type: String,
@@ -221,12 +249,14 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         });
       },
       _getScalarUrl: function() {
-        return this.router.scalars;
+        return this.router.pluginRunTagRoute('scalars', '/scalars');
       },
-      _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
-          '_showDownloadLinks', false),
-      _smoothingWeightObserver: TF.URIStorage.getNumberObserver(
+      _showDownloadLinksObserver: storage.getBooleanObserver(
+          '_showDownloadLinks', /*default=*/ false, /*useLocalStorage=*/ true),
+      _smoothingWeightObserver: storage.getNumberObserver(
           '_smoothingWeight', 0.6),
+      _ignoreYOutliersObserver: storage.getBooleanObserver(
+          '_ignoreYOutliers', /*default=*/ true, /*useLocalStorage=*/true),
       _computeSmoothingEnabled: function(_smoothingWeight) {
         return _smoothingWeight > 0;
       },
