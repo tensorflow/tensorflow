@@ -657,12 +657,13 @@ class Dataset(object):
     """
     return ShuffleDataset(self, buffer_size, seed)
 
-  def cache(self, filename):
+  def cache(self, filename=""):
     """Caches the elements in this dataset.
 
     Args:
       filename: A `tf.string` scalar `tf.Tensor`, representing the name of a
         directory on the filesystem to use for caching tensors in this Dataset.
+        If a filename is not provided, the dataset will be cached in memory.
 
     Returns:
       A `Dataset`.

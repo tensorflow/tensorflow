@@ -28,10 +28,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-class CacheDatasetTest(test.TestCase):
+class FilesystemCacheDatasetTest(test.TestCase):
 
   def setUp(self):
     self.tmp_dir = tempfile.mkdtemp()
@@ -195,6 +196,103 @@ class CacheDatasetTest(test.TestCase):
 
       self.assertAllEqual(elements, elements_itr1)
       self.assertAllEqual(elements, elements_itr2)
+
+
+class MemoryCacheDatasetTest(test.TestCase):
+
+  def testCacheDatasetPassthrough(self):
+    repeat_count = variables.Variable(constant_op.constant(10, dtypes.int64))
+    dataset = dataset_ops.Dataset.range(3).flat_map(
+        lambda x: dataset_ops.Dataset.from_tensors(x).repeat(repeat_count))
+
+    cached_dataset = dataset.cache().repeat(2)
+    uncached_dataset = dataset.repeat(2)
+
+    # Needs to be initializable to capture the variable.
+    cached_iterator = cached_dataset.make_initializable_iterator()
+    cached_next = cached_iterator.get_next()
+    uncached_iterator = uncached_dataset.make_initializable_iterator()
+    uncached_next = uncached_iterator.get_next()
+
+    with self.test_session() as sess:
+
+      sess.run(repeat_count.initializer)
+      sess.run(cached_iterator.initializer)
+      sess.run(uncached_iterator.initializer)
+
+      for i in range(3):
+        for _ in range(10):
+          self.assertEqual(sess.run(cached_next), i)
+          self.assertEqual(sess.run(uncached_next), i)
+
+      sess.run(repeat_count.assign(0))
+
+      # The uncached iterator should now be empty.
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(uncached_next)
+
+      # The cached iterator replays from cache.
+      for i in range(3):
+        for _ in range(10):
+          self.assertEqual(sess.run(cached_next), i)
+
+      # The cached iterator should now be empty.
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(cached_next)
+
+  def testEmptyCacheReading(self):
+    components = (np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
+                  np.array([9.0, 10.0, 11.0, 12.0]))
+    count_placeholder = array_ops.placeholder_with_default(
+        constant_op.constant(5, dtypes.int64), shape=[])
+
+    repeat_dataset = (dataset_ops.Dataset.from_tensor_slices(components)
+                      .repeat(count_placeholder))
+
+    cache_dataset = repeat_dataset.cache()
+
+    # Create initialization ops for iterators without and with
+    # caching, respectively.
+    iterator = cache_dataset.make_initializable_iterator()
+    init_cache_op = iterator.initializer
+
+    get_next = iterator.get_next()
+
+    with self.test_session() as sess:
+      # Initialize with an empty upstream and a missing cache file (should
+      # throw errors.OutOfRangeError immediately).
+      sess.run(init_cache_op, feed_dict={count_placeholder: 0})
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
+
+  def testConcurrentReaders(self):
+    count_placeholder = array_ops.placeholder_with_default(
+        constant_op.constant(5, dtypes.int64), shape=[])
+    dataset = dataset_ops.Dataset.range(count_placeholder).cache()
+    d1 = dataset.map(lambda x: x + 1)
+    d2 = dataset.map(lambda x: x + 6)
+
+    i1 = d1.make_initializable_iterator()
+    i2 = d2.make_initializable_iterator()
+
+    with self.test_session() as sess:
+      sess.run(i1.initializer)
+
+      self.assertEqual(1, sess.run(i1.get_next()))
+      self.assertEqual(2, sess.run(i1.get_next()))
+      self.assertEqual(3, sess.run(i1.get_next()))
+
+      sess.run(i2.initializer, feed_dict={count_placeholder: 3})
+
+      self.assertEqual(6, sess.run(i2.get_next()))
+      self.assertEqual(7, sess.run(i2.get_next()))
+      self.assertEqual(4, sess.run(i1.get_next()))  # interleave execution
+      self.assertEqual([8, 5], sess.run([i2.get_next(), i1.get_next()]))
+
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(i1.get_next())
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(i2.get_next())
 
 
 if __name__ == "__main__":
