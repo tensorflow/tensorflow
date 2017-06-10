@@ -206,10 +206,12 @@ class FFTCPU : public FFTBase {
           reversedAxis[i] = i == FFTRank;
         }
 
-        full_fft.slice(negTargetIndices, negSizes) =
-            full_fft.slice(negStartIndices, negSizes)
-                .reverse(reversedAxis)
-                .conjugate();
+        if (negSizes[FFTRank] != 0) {
+          full_fft.slice(negTargetIndices, negSizes) =
+              full_fft.slice(negStartIndices, negSizes)
+                  .reverse(reversedAxis)
+                  .conjugate();
+        }
 
         auto innerAxis = Eigen::array<int, 1>{FFTRank};
         output.device(device) =
