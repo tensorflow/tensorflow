@@ -762,7 +762,7 @@ def parallel_stack(values, name="parallel_stack"):
   `parallel_stack` will copy pieces of the input into the output as they become
   available, in some situations this can provide a performance benefit.
 
-  Note that `stack` does but `parallel_stack` does NOT support backpropagation!
+  Unlike `stack`, `parallel_stack` does NOT support backpropagation.
 
   This is the opposite of unstack.  The numpy equivalent is
 
