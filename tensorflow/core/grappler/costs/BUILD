@@ -232,6 +232,7 @@ cc_library(
         ":op_performance_data_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core/grappler/clusters:utils",
+        "//third_party/eigen3",
     ],
 )
 
