@@ -1170,6 +1170,7 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
   if (num_gpus_ < 1) {
     // LayoutOptimizer is currently only tuned for GPU.
+    *output = item.graph;
     return Status::OK();
   }
 
