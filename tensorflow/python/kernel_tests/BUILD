@@ -2383,7 +2383,11 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
-    tags = ["manual"],  # http://b/62429636
+    tags = [
+        "manual",  # http://b/62429636
+        "noguitar",
+        "notap",
+    ],
 )
 
 cuda_py_test(
@@ -2398,7 +2402,11 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
-    tags = ["manual"],  # http://b/62429636
+    tags = [
+        "manual",  # http://b/62429636
+        "noguitar",
+        "notap",
+    ],
 )
 
 cuda_py_test(
