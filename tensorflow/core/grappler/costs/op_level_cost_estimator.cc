@@ -349,9 +349,7 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpInfo& op_features) const {
     op_cost = it->second;
   }
   Costs costs = PredictOpCountBasedCost(op_count * op_cost, op_features);
-  if (found_unknown_shapes) {
-    costs.inaccurate = true;
-  }
+  costs.inaccurate = found_unknown_shapes;
   return costs;
 }
 
