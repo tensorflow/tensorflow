@@ -126,7 +126,7 @@ tfprof>
 -show_name_regexes          .*
 -hide_name_regexes          IsVariableInitialized_[0-9]+,save\/.*,^zeros[0-9_]*
 -account_displayed_op_only  false
-# supported select fileds. Availability depends on --[run_meta|checkpoint|op_log]_path.
+# supported select fields. Availability depends on --[run_meta|checkpoint|op_log]_path.
 # [bytes|micros|params|float_ops|occurrence|tensor_value|device|op_types]
 -select                     params
 # format: output_type:key=value,key=value...
