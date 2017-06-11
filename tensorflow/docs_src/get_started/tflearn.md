@@ -96,7 +96,7 @@ def main():
 
   # Classify two new flower samples.
   def new_samples():
-    return np.array(
+    return tf.constant(
       [[6.4, 3.2, 4.5, 1.5],
        [5.8, 3.1, 5.0, 1.7]], dtype=np.float32)
 
