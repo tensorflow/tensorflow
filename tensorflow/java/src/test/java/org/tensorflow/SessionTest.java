@@ -109,7 +109,7 @@ public class SessionTest {
         assertEquals(1, outputs.size());
         final int[][] expected = {{31}};
         assertArrayEquals(expected, outputs.get(0).copyTo(new int[1][1]));
-        // Sanity check on metadatar
+        // Sanity check on metadata
         // See comments in fullTraceRunOptions() for an explanation about
         // why this check is really silly. Ideally, this would be:
         /*
@@ -187,7 +187,7 @@ public class SessionTest {
     // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251515362
     // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251692558
     //
-    // For this test, for now, the use of specific bytes sufficies.
+    // For this test, for now, the use of specific bytes suffices.
     return new byte[] {0x08, 0x03};
     /*
     return org.tensorflow.framework.RunOptions.newBuilder()
@@ -207,7 +207,7 @@ public class SessionTest {
     // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251515362
     // https://github.com/bazelbuild/rules_go/pull/121#issuecomment-251692558
     //
-    // For this test, for now, the use of specific bytes sufficies.
+    // For this test, for now, the use of specific bytes suffices.
     return new byte[] {0x10, 0x01, 0x28, 0x01};
     /*
     return org.tensorflow.framework.ConfigProto.newBuilder()
