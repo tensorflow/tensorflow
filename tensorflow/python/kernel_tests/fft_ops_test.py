@@ -351,20 +351,13 @@ class RFFTOpsTest(BaseFFTOpsTest):
             # Test truncation (FFT size < dimensions).
             fft_length = (size - 2,) * rank
             self._CompareForward(r2c.astype(np.float32), rank, fft_length)
-            if test.is_gpu_available():
-              # TODO(rjryan): figure out why eigen kernel gives wrong answer.
-              self._CompareBackward(c2r.astype(np.complex64), rank, fft_length)
+            self._CompareBackward(c2r.astype(np.complex64), rank, fft_length)
 
             # Confirm it works with unknown shapes as well.
             self._CompareForward(r2c.astype(np.float32), rank, fft_length,
                                  use_placeholder=True)
-            if test.is_gpu_available():
-              # TODO(rjryan): figure out why eigen kernel gives wrong answer.
-              self._CompareBackward(
-                  c2r.astype(np.complex64),
-                  rank,
-                  fft_length,
-                  use_placeholder=True)
+            self._CompareBackward(c2r.astype(np.complex64), rank, fft_length,
+                                  use_placeholder=True)
 
             # Test padding (FFT size > dimensions).
             fft_length = (size + 2,) * rank

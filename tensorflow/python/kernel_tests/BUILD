@@ -2185,7 +2185,6 @@ cuda_py_test(
         "//tensorflow/python:spectral_ops",
     ],
     shard_count = 3,
-    tags = ["nomsan"],  # b/62067589
 )
 
 cuda_py_test(
