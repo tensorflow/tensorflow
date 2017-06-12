@@ -322,7 +322,7 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
 }
 
 Costs OpLevelCostEstimator::PredictCwiseOp(const OpInfo& op_features) const {
-  bool found_unknown_shapes;
+  bool found_unknown_shapes = false;
   // For unary or binary element-wise operations, op count is the element count
   // of any input. We use the count for the largest input here to be more robust
   // in case that the shape is unknown or partially known for other input.
