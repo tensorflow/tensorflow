@@ -470,17 +470,6 @@ class DNNClassifier(estimator.Estimator):
       return (pred[key] for pred in preds)
     return preds[key]
 
-  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
-  def export(self,
-             export_dir,
-             input_fn=None,
-             input_feature_key=None,
-             use_deprecated_input_fn=True,
-             signature_fn=None,
-             default_batch_size=1,
-             exports_to_keep=None):
-    """See BaseEstimator.export."""
-
     def default_input_fn(unused_estimator, examples):
       return layers.parse_feature_columns_from_examples(examples,
                                                         self._feature_columns)
@@ -745,30 +734,6 @@ class DNNRegressor(estimator.Estimator):
     if as_iterable:
       return (pred[key] for pred in preds)
     return preds[key]
-
-  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
-  def export(self,
-             export_dir,
-             input_fn=None,
-             input_feature_key=None,
-             use_deprecated_input_fn=True,
-             signature_fn=None,
-             default_batch_size=1,
-             exports_to_keep=None):
-    """See BaseEstimator.export."""
-    def default_input_fn(unused_estimator, examples):
-      return layers.parse_feature_columns_from_examples(examples,
-                                                        self._feature_columns)
-
-    return super(DNNRegressor, self).export(
-        export_dir=export_dir,
-        input_fn=input_fn or default_input_fn,
-        input_feature_key=input_feature_key,
-        use_deprecated_input_fn=use_deprecated_input_fn,
-        signature_fn=signature_fn or export.regression_signature_fn,
-        prediction_key=prediction_key.PredictionKey.SCORES,
-        default_batch_size=default_batch_size,
-        exports_to_keep=exports_to_keep)
 
 
 class DNNEstimator(estimator.Estimator):

@@ -111,47 +111,6 @@ def _safe_mean(losses, num_present):
   return _safe_div(total_loss, num_present)
 
 
-@deprecated("2016-12-30", "Use tf.losses.compute_weighted_loss instead.")
-def compute_weighted_loss(losses, weights=1.0, scope=None):
-  """Computes the weighted loss.
-
-  Args:
-    losses: A tensor of size [batch_size, d1, ... dN].
-    weights: A tensor of size [1] or [batch_size, d1, ... dK] where K < N.
-    scope: the scope for the operations performed in computing the loss.
-
-  Returns:
-    A scalar `Tensor` that returns the weighted loss.
-
-  Raises:
-    ValueError: If `weights` is `None` or the shape is not compatible with
-      `losses`, or if the number of dimensions (rank) of either `losses` or
-      `weights` is missing.
-  """
-  with ops.name_scope(scope, "weighted_loss", [losses, weights]):
-    losses = ops.convert_to_tensor(losses)
-    input_dtype = losses.dtype
-    losses = math_ops.to_float(losses)
-    weights = math_ops.to_float(ops.convert_to_tensor(weights))
-
-    if losses.get_shape().ndims is None:
-      raise ValueError("losses.get_shape().ndims cannot be None")
-    weights_shape = weights.get_shape()
-    if weights_shape.ndims is None:
-      raise ValueError("weights.get_shape().ndims cannot be None")
-
-    if weights_shape.ndims > 1 and weights_shape.dims[-1].is_compatible_with(1):
-      weights = array_ops.squeeze(weights, [-1])
-
-    total_loss = _scale_losses(losses, weights)
-    num_present = _num_present(losses, weights)
-    mean_loss = _safe_mean(total_loss, num_present)
-    # convert the result back to the input type
-    mean_loss = math_ops.cast(mean_loss, input_dtype)
-    add_loss(mean_loss)
-    return mean_loss
-
-
 def _num_present(losses, weights, per_batch=False):
   """Computes the number of elements in the loss function induced by `weights`.
 

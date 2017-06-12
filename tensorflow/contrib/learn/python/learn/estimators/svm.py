@@ -183,33 +183,3 @@ class SVM(estimator.Estimator):
       return _as_iterable(preds, output=key)
     return preds[key]
   # pylint: enable=protected-access
-
-  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
-  def export(self, export_dir, signature_fn=None,
-             input_fn=None, default_batch_size=1,
-             exports_to_keep=None):
-    """See BaseEstimator.export."""
-    return self.export_with_defaults(
-        export_dir=export_dir,
-        signature_fn=signature_fn,
-        input_fn=input_fn,
-        default_batch_size=default_batch_size,
-        exports_to_keep=exports_to_keep)
-
-  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
-  def export_with_defaults(
-      self,
-      export_dir,
-      signature_fn=None,
-      input_fn=None,
-      default_batch_size=1,
-      exports_to_keep=None):
-    """Same as BaseEstimator.export, but uses some defaults."""
-    def default_input_fn(unused_estimator, examples):
-      return layers.parse_feature_columns_from_examples(
-          examples, self._feature_columns)
-    return super(SVM, self).export(export_dir=export_dir,
-                                   signature_fn=signature_fn,
-                                   input_fn=input_fn or default_input_fn,
-                                   default_batch_size=default_batch_size,
-                                   exports_to_keep=exports_to_keep)

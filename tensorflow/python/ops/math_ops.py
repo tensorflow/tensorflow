@@ -297,14 +297,6 @@ def multiply(x, y, name=None):
 multiply.__doc__ = gen_math_ops._mul.__doc__.replace("Mul", "`tf.multiply`")
 
 
-# TODO(aselle): put deprecation in after another round of global code changes
-@deprecated(
-    "2016-12-30",
-    "`tf.mul(x, y)` is deprecated, please use `tf.multiply(x, y)` or `x * y`")
-def _mul(x, y, name=None):
-  return gen_math_ops._mul(x, y, name)
-
-
 _mul.__doc__ = (gen_math_ops._mul.__doc__ +
                 ("" if _mul.__doc__ is None else _mul.__doc__))
 
@@ -314,14 +306,6 @@ def subtract(x, y, name=None):
 
 
 subtract.__doc__ = gen_math_ops._sub.__doc__.replace("`Sub`", "`tf.subtract`")
-
-
-# TODO(aselle): put deprecation in after another round of global code changes
-@deprecated(
-    "2016-12-30",
-    "`tf.sub(x, y)` is deprecated, please use `tf.subtract(x, y)` or `x - y`")
-def _sub(x, y, name=None):
-  return gen_math_ops._sub(x, y, name)
 
 
 _sub.__doc__ = (gen_math_ops._sub.__doc__ +
@@ -349,28 +333,6 @@ def negative(x, name=None):
           indices=x.indices, values=x_neg, dense_shape=x.dense_shape)
     else:
       return gen_math_ops._neg(x, name=name)
-
-
-# pylint: enable=g-docstring-has-escape
-
-
-# pylint: disable=g-docstring-has-escape
-@deprecated("2016-12-30",
-            "`tf.neg(x)` is deprecated, please use `tf.negative(x)` or `-x`")
-def _neg(x, name=None):
-  """Computes numerical negative value element-wise.
-
-  I.e., \\(y = -x\\).
-
-  Args:
-    x: A `Tensor` or `SparseTensor`. Must be one of the following types: `half`,
-      `float32`, `float64`, `int32`, `int64`, `complex64`, `complex128`.
-    name: A name for the operation (optional).
-
-  Returns:
-    A `Tensor` or `SparseTensor`, respectively. Has the same type as `x`.
-  """
-  return negative(x, name)
 
 
 # pylint: enable=g-docstring-has-escape

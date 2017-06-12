@@ -1087,12 +1087,6 @@ def global_variables():
   return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
 
 
-@deprecated("2017-03-02", "Please use tf.global_variables instead.")
-def all_variables():
-  """See `tf.global_variables`."""
-  return global_variables()
-
-
 def _all_saveable_objects():
   """Returns all variables and `SaveableObject`s that must be checkpointed.
 
@@ -1186,13 +1180,6 @@ def variables_initializer(var_list, name="init"):
   return control_flow_ops.no_op(name=name)
 
 
-@tf_should_use.should_use_result
-@deprecated("2017-03-02", "Use `tf.variables_initializer` instead.")
-def initialize_variables(var_list, name="init"):
-  """See `tf.variables_initializer`."""
-  return variables_initializer(var_list, name=name)
-
-
 def global_variables_initializer():
   """Returns an Op that initializes global variables.
 
@@ -1204,13 +1191,6 @@ def global_variables_initializer():
   return variables_initializer(global_variables())
 
 
-@tf_should_use.should_use_result
-@deprecated("2017-03-02", "Use `tf.global_variables_initializer` instead.")
-def initialize_all_variables():
-  """See `tf.global_variables_initializer`."""
-  return global_variables_initializer()
-
-
 def local_variables_initializer():
   """Returns an Op that initializes all local variables.
 
@@ -1220,13 +1200,6 @@ def local_variables_initializer():
     An Op that initializes all local variables in the graph.
   """
   return variables_initializer(local_variables())
-
-
-@tf_should_use.should_use_result
-@deprecated("2017-03-02", "Use `tf.local_variables_initializer` instead.")
-def initialize_local_variables():
-  """See `tf.local_variables_initializer`."""
-  return local_variables_initializer()
 
 
 @tf_should_use.should_use_result
