@@ -457,10 +457,10 @@ TEST_F(CWiseUnaryGradTest, Acosh) {
 
 TEST_F(CWiseUnaryGradTest, Acosh_Complex) {
   auto x_fn = [this](const int i) {
-    return CRV({{1, 0}, {0, 1}, {2, -1}, {1, 2}, {3, 4}});
+    return CRV({{1, 1}, {2, 1}, {1, 4}, {1, 2}, {3, 4}});
   };
   auto dy_fn = [this](const complex64& x) {
-    return x + CRV({{-2, 2}, {-3, 3}, {1, -4}});
+    return x + CRV({{2, 2}, {3, 3}, {1, 4}});
   };
   auto dx_fn = [this](const complex64& x, const complex64& dy) {
     auto y = std::acosh(x);

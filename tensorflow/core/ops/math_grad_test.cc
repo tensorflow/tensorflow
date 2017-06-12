@@ -533,7 +533,7 @@ TEST_F(MathGradTest, Asinh) {
                                  TensorShape({2, 3}));
   auto g = [](float x) {
     auto y = std::asinh(x);
-    return 1 / std::cosh(y);
+    return std::cosh(y);
   };
   auto dx = test::AsTensor<float>(
       {g(-3.f), g(-2.f), g(-1.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
@@ -546,7 +546,7 @@ TEST_F(MathGradTest, Acosh) {
                                  TensorShape({2, 3}));
   auto g = [](float x) {
     auto y = std::acosh(x);
-    return 1 / std::sinh(y);
+    return std::sinh(y);
   };
   auto dx = test::AsTensor<float>(
       {g(6.f), g(5.f), g(4.f), g(1.f), g(2.f), g(3.f)}, TensorShape({2, 3}));
