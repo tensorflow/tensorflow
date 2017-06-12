@@ -300,7 +300,7 @@ class _VariableStore(object):
                      initializer=None, regularizer=None, reuse=None,
                      trainable=True, collections=None, caching_device=None,
                      partitioner=None, validate_shape=True, use_resource=None):
-      is_scalar = shape is not None and not isinstance(shape, tuple)
+      is_scalar = shape is not None and not isinstance(shape, collections_lib.Sequence)
       # Partitioned variable case
       if partitioner is not None and not is_scalar:
         if not callable(partitioner):
