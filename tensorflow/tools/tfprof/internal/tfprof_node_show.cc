@@ -22,18 +22,20 @@ namespace tfprof {
 namespace {}
 
 ShowNode::ShowNode(const TFGraphNode* node) : node(node), account(false) {
-  ReInit();
+  ReInit(-1);
 }
 
-void ShowNode::ReInit() {
+void ShowNode::ReInit(int64 step) {
   mutable_proto()->set_name(name());
+  mutable_proto()->clear_devices();
   if (!node->canonical_device().empty()) {
     mutable_proto()->add_devices(node->canonical_device());
   }
-  mutable_proto()->set_exec_micros(node->kernel_exec_micros());
-  mutable_proto()->set_requested_bytes(node->requested_bytes());
+  mutable_proto()->set_exec_micros(node->kernel_exec_micros(step));
+  mutable_proto()->set_requested_bytes(node->requested_bytes(step));
   mutable_proto()->set_float_ops(node->float_ops());
 
+  proto_.clear_parameters();
   if (!node->shape().empty()) {
     int64 params = 1;
     bool complete_shape = true;
@@ -90,17 +92,19 @@ void ShowNode::ResetTotalStats() {
 
 ShowMultiNode::ShowMultiNode(TFMultiGraphNode* node)
     : node(node), account(false), show(false) {
-  ReInit({".*"});
+  ReInit(-1, {".*"});
 }
 
-bool ShowMultiNode::ReInit(const std::vector<string>& type_regexes) {
-  bool has_matched_type = node->SnapshotNodes(type_regexes);
+bool ShowMultiNode::ReInit(int64 step,
+                           const std::vector<string>& type_regexes) {
+  bool has_matched_type = node->SnapshotNodes(step, type_regexes);
 
   std::vector<ShowNode> snodes;
   mutable_proto()->mutable_graph_nodes()->Clear();
   for (auto it : node->graph_nodes()) {
     ShowNode snode(it.second);
     snodes.push_back(snode);
+    snodes.back().ReInit(step);
     snodes.back().AddSelfToTotalStats();
     mutable_proto()->add_graph_nodes()->MergeFrom(snodes.back().proto());
   }
@@ -110,7 +114,7 @@ bool ShowMultiNode::ReInit(const std::vector<string>& type_regexes) {
   mutable_proto()->set_requested_bytes(node->requested_bytes());
   mutable_proto()->set_float_ops(node->float_ops());
 
-  mutable_proto()->set_parameters(0);
+  mutable_proto()->clear_parameters();
   if (!node->shapes().empty()) {
     for (const std::vector<int64>& shape : node->shapes()) {
       int64 params = 1;

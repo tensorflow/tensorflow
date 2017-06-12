@@ -65,6 +65,11 @@ class GSYCLInterface
       if(!found_device) {
         // Currently Intel GPU is not supported
         LOG(FATAL) << "No OpenCL GPU nor CPU found that is supported by ComputeCpp";
+      } else {
+        LOG(INFO) << "Found following OpenCL devices:";
+        for (int i = 0; i < device_list.size(); i++) {
+          LOG(INFO) << GetShortDeviceDescription(i);
+        }
       }
     }
 
@@ -153,7 +158,30 @@ class GSYCLInterface
     }
 
     string GetShortDeviceDescription(int device_id = 0) {
-      return strings::StrCat("device: ", device_id, " ,name: SYCL");
+      auto _device = GetSYCLAllocator(device_id)
+                         ->getSyclDevice()
+                         ->sycl_queue()
+                         .get_device();
+      auto _name = _device.get_info<cl::sycl::info::device::name>();
+      auto _vendor = _device.get_info<cl::sycl::info::device::vendor>();
+      auto _profile = _device.get_info<cl::sycl::info::device::profile>();
+
+      std::string _type;
+      if (_device.is_host()) {
+        _type = "Host";
+      } else if (_device.is_cpu()) {
+        _type = "CPU";
+      } else if (_device.is_gpu()) {
+        _type = "GPU";
+      } else if (_device.is_accelerator()) {
+        _type = "Accelerator";
+      } else {
+        _type = "Unknown";
+      }
+
+      return strings::StrCat("id: ", device_id, " ,type: ", _type, " ,name: ",
+                             _name.c_str(), " ,vendor: ", _vendor.c_str(),
+                             " ,profile: ", _profile.c_str());
     }
 };
 

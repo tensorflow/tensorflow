@@ -63,7 +63,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":http_util",
-        ":process_graph",
         "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard/backend/event_processing:event_accumulator",
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",

@@ -57,7 +57,6 @@ cc_library(
     deps = [
         ":cc_ops",
         ":client_session",
-        ":grad_op_registry",
         ":gradients",
         ":ops",
         ":scope",
@@ -455,7 +454,6 @@ cc_library(
         ":client_session",
         ":ops",
         ":scope",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:tensorflow",
@@ -480,7 +478,7 @@ cc_binary(
     ],
     deps = [
         ":cc_ops",
-        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:all_kernels",  # buildcleaner: keep
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -512,7 +510,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core/kernels:ops_util",
     ],
 )

@@ -131,7 +131,8 @@ patched_http_archive = repository_rule(
 
 
 # If TensorFlow is linked as a submodule.
-# path_prefix and tf_repo_name are no longer used.
+# path_prefix is no longer used.
+# tf_repo_name is thought to be under consideration.
 def tf_workspace(path_prefix="", tf_repo_name=""):
   # We must check the bazel version before trying to parse any other BUILD
   # files, in case the parsing of those build files depends on the bazel
@@ -142,9 +143,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   python_configure(name="local_config_python")
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used " +
-          "and will be removed in the future.")
-  if tf_repo_name:
-    print("tf_repo_name was specified to tf_workspace but is no longer used " +
           "and will be removed in the future.")
 
   native.new_http_archive(
@@ -498,13 +496,24 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   temp_workaround_http_archive(
       name = "llvm",
       urls = [
-          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/c978c0ff91f7c4ea58cfbd8f378e51c6af2c2b4b.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/c978c0ff91f7c4ea58cfbd8f378e51c6af2c2b4b.tar.gz",
+          "http://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/e156d99231a7735d06a97b5b83de70bf4ce4f034.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/e156d99231a7735d06a97b5b83de70bf4ce4f034.tar.gz",
       ],
-      sha256 = "42c57d798a037d9dea692ce1da8ff4d24966ab5a40494015b374341e43411a37",
-      strip_prefix = "llvm-c978c0ff91f7c4ea58cfbd8f378e51c6af2c2b4b",
+      sha256 = "72e34e2411a06d4200a2688ee83832805fbef23a12ea481f31c2b8866fde007a",
+      strip_prefix = "llvm-e156d99231a7735d06a97b5b83de70bf4ce4f034",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
       repository = tf_repo_name,
+  )
+
+  native.new_http_archive(
+    name = "lmdb",
+    urls = [
+      "http://mirror.bazel.build/github.com/LMDB/lmdb/archive/LMDB_0.9.19.tar.gz",
+      "https://github.com/LMDB/lmdb/archive/LMDB_0.9.19.tar.gz",
+    ],
+    sha256 = "108532fb94c6f227558d45be3f3347b52539f0f58290a7bb31ec06c462d05326",
+    strip_prefix = "lmdb-LMDB_0.9.19/libraries/liblmdb",
+    build_file = str(Label("//third_party:lmdb.BUILD")),
   )
 
   native.new_http_archive(
@@ -703,16 +712,16 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       licenses = ["notice"],  # Apache 2.0
       sha256_urls = {
           "a7d00bfd54525bc694b6e32f64c7ebcf5e6b7ae3657be5cc12767bce74654a47": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/LICENSE.txt",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/LICENSE.txt",
+              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/LICENSE.txt",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/LICENSE.txt",
           ],
-          "8465342c318f9c4cf0a29b109fa63ee3742dd4dc7080d05d9fd8f604814d04cf": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/tsc.js",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/tsc.js",
+          "b8d68724e111d3fd9516255733d1e9469de72e1cc4733c33702f260a011ab117": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/lib/tsc.js",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/lib/tsc.js",
           ],
           "a67e36da3029d232e4e938e61a0a3302f516d71e7100d54dbf5362ad8618e994": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/lib.es6.d.ts",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/lib.es6.d.ts",
+              "http://mirror.bazel.build/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/lib/lib.es6.d.ts",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.4/lib/lib.es6.d.ts",
           ],
       },
       extra_build_file_content = "\n".join([
@@ -741,6 +750,40 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ]),
   )
 
+  native.new_http_archive(
+      name = "io_angular_clutz",
+      build_file = str(Label("//third_party:clutz.BUILD")),
+      sha256 = "2981de41d1ff4774b544423da9a2cd8beb3be649e95aef2ef2fd83957300b3fe",
+      strip_prefix = "clutz-b0db5ade9bb535d387f05292316c422790c9848e",
+      urls = [
+          "http://mirror.bazel.build/github.com/angular/clutz/archive/b0db5ade9bb535d387f05292316c422790c9848e.tar.gz",  # 2017-05-22
+          "https://github.com/angular/clutz/archive/b0db5ade9bb535d387f05292316c422790c9848e.tar.gz",
+      ],
+  )
+
+  filegroup_external(
+      name = "com_google_javascript_closure_compiler_externs",
+      licenses = ["notice"],  # Apache 2.0
+      sha256_urls_extract = {
+          "0f515a6ebfa138490b3c5ea9f3591ea1a7e4a930d3074f18b3eca86084ad9b66": [
+              "http://mirror.bazel.build/github.com/google/closure-compiler/archive/b37e6000001b0a6bf4c0be49024ebda14a8711d9.tar.gz",  # 2017-06-02
+              "https://github.com/google/closure-compiler/archive/b37e6000001b0a6bf4c0be49024ebda14a8711d9.tar.gz",
+          ],
+      },
+      strip_prefix = {"b37e6000001b0a6bf4c0be49024ebda14a8711d9.tar.gz": "closure-compiler-b37e6000001b0a6bf4c0be49024ebda14a8711d9/externs"},
+  )
+
+  filegroup_external(
+      name = "com_google_javascript_closure_compiler_externs_polymer",
+      licenses = ["notice"],  # Apache 2.0
+      sha256_urls = {
+          "23baad9a200a717a821c6df504c84d3a893d7ea9102b14876eb80097e3b94292": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/google/closure-compiler/0e8dc5597a295ee259e3fecd98d6535dc621232f/contrib/externs/polymer-1.0.js",  # 2017-05-27
+              "https://raw.githubusercontent.com/google/closure-compiler/0e8dc5597a295ee259e3fecd98d6535dc621232f/contrib/externs/polymer-1.0.js",
+          ],
+      },
+  )
+
   ##############################################################################
   # TensorBoard JavaScript Production Dependencies
 
@@ -754,7 +797,10 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       strip_prefix = "lodash-3.10.1",
       path = "/lodash",
-      srcs = ["lodash.js"],
+      srcs = [
+          "lodash.js",
+          "lodash.min.js",
+      ],
   )
 
   filegroup_external(
@@ -797,9 +843,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
               "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/dagre/v0.7.4/LICENSE",
               "https://raw.githubusercontent.com/cpettitt/dagre/v0.7.4/LICENSE",
           ],
-          "7323829ddd77924a69e2b1235ded3eac30acd990da0f037e0fbd3c8e9035b50d": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.js",
-              "https://raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.js",
+          "6132f5c009a3a72ebced7263ae5d4da48dc513f314a645876293bb658d3631d2": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.min.js",
+              "https://raw.githubusercontent.com/cpettitt/dagre/v0.7.4/dist/dagre.core.min.js",
           ],
       },
   )
@@ -812,9 +858,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
               "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/LICENSE",
               "https://raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/LICENSE",
           ],
-          "772045d412b1513b549be991c2e1846c38019429d43974efcae943fbe83489bf": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.js",
-              "https://raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.js",
+          "af1db00d36f9a68a6a1981d65997448baa0463a1f5d8bf1f54ff67bcc2e76498": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.min.js",
+              "https://raw.githubusercontent.com/cpettitt/graphlib/v1.0.7/dist/graphlib.core.min.js",
           ],
       },
   )
@@ -825,7 +871,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       licenses = ["notice"],  # MIT
       sha256_urls = {
           "633f2861a9a862b9cd7967e841e14dd3527912f209d6563595774fa31e3d84cb": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/LICENSES",
+              "http://mirror.bazel.build/raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/LICENSE",
               "https://raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/LICENSE",
           ],
           "f138fce57f673ca8a633f4aee5ae5b6fcb6ad0de59069a42a74e996fd04d8fcc": [
@@ -845,14 +891,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
               "https://github.com/d3/d3/releases/download/v4.8.0/d3.zip",
           ],
       },
-      # TODO(jart): Use srcs=["d3.js"] instead of this once supported.
-      generated_rule_name = "all_files",
-      extra_build_file_content = "\n".join([
-          "filegroup(",
-          "    name = \"org_d3js\",",
-          "    srcs = [\"d3.js\"],",
-          ")",
-      ]),
   )
 
   filegroup_external(
@@ -1795,12 +1833,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   web_library_external(
       name = "org_polymer_neon_animation",
       licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "8800c314a76b2da190a2b203259c1091f6d38e0057ed37c2a3d0b734980fa9a5",
+      sha256 = "a104bb02db956e0e34d3eefcd07f3f6919d137af27d8139879a227ecfdc7d8a4",
       urls = [
-          "http://mirror.bazel.build/github.com/PolymerElements/neon-animation/archive/v1.2.2.tar.gz",
-          "https://github.com/PolymerElements/neon-animation/archive/v1.2.2.tar.gz",
+          "http://mirror.bazel.build/github.com/PolymerElements/neon-animation/archive/v1.2.5.tar.gz",
+          "https://github.com/PolymerElements/neon-animation/archive/v1.2.5.tar.gz",
       ],
-      strip_prefix = "neon-animation-1.2.2",
+      strip_prefix = "neon-animation-1.2.5",
       path = "/neon-animation",
       srcs = [
           "animations/cascaded-animation.html",
@@ -2502,12 +2540,12 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   web_library_external(
       name = "org_polymer_web_animations_js",
       licenses = ["notice"],  # BSD-3-Clause
-      sha256 = "f8bd760cbdeba131f6790bd5abe170bcbf7b1755ff58ed16d0b82fa8a7f34a7f",
+      sha256 = "84273610f15d5061a320b1dd0f4c3233d0bdf874798a60837b7de7110e086d7e",
       urls = [
-          "http://mirror.bazel.build/github.com/web-animations/web-animations-js/archive/2.2.1.tar.gz",
-          "https://github.com/web-animations/web-animations-js/archive/2.2.1.tar.gz",
+          "http://mirror.bazel.build/github.com/web-animations/web-animations-js/archive/2.2.5.tar.gz",
+          "https://github.com/web-animations/web-animations-js/archive/2.2.5.tar.gz",
       ],
-      strip_prefix = "web-animations-js-2.2.1",
+      strip_prefix = "web-animations-js-2.2.5",
       path = "/web-animations-js",
       srcs = ["web-animations-next-lite.min.js"],
   )
@@ -2665,4 +2703,19 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       path = "/test-fixture",
       exclude = ["test/**"],
+  )
+
+  filegroup_external(
+      name = "org_chromium_catapult_vulcanized_trace_viewer",
+      licenses = ["notice"],  # BSD-3-Clause
+      sha256_urls = {
+          "f0df289ba9d03d857ad1c2f5918861376b1510b71588ffc60eff5c7a7bfedb09": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/catapult-project/catapult/2f7ee994984f3ebd3dd3dc3e05777bf180ec2ee8/LICENSE",
+              "https://raw.githubusercontent.com/catapult-project/catapult/2f7ee994984f3ebd3dd3dc3e05777bf180ec2ee8/LICENSE",
+          ],
+          "9e99e79439ea5a1471bd4dd325bd6733e133bcb3da4df4b878ed6d2aec7c8d86": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/catapult-project/catapult/2f7ee994984f3ebd3dd3dc3e05777bf180ec2ee8/trace_viewer_full.html",
+              "https://raw.githubusercontent.com/catapult-project/catapult/2f7ee994984f3ebd3dd3dc3e05777bf180ec2ee8/trace_viewer_full.html"
+          ],
+      },
   )

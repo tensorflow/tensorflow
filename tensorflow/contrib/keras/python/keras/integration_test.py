@@ -80,7 +80,7 @@ class KerasIntegrationTest(test.TestCase):
 
   def test_temporal_classification_declarative(self):
     with self.test_session():
-      np.random.seed(1337)
+      np.random.seed(1336)
       (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
           train_samples=200,
           test_samples=100,

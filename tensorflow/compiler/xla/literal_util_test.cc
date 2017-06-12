@@ -31,7 +31,6 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
-using ::testing::ElementsAreArray;
 
 class LiteralUtilTest : public ::testing::Test {
  protected:
@@ -772,7 +771,7 @@ TEST_F(LiteralUtilTest, F16) {
   // TODO - modify if we make the data format machine endianess dependent
   auto m1 = LiteralUtil::CreateFromShape(ShapeUtil::MakeShape(F16, {2, 2}));
   Literal* l1 = m1.get();
-  const char* d1 = (const char*)LiteralUtil::InternalData(*l1);
+  const char* d1 = static_cast<const char*>(LiteralUtil::InternalData(*l1));
   EXPECT_EQ(d1[0], 0);
   EXPECT_EQ(d1[1], 0);
   EXPECT_EQ(d1[2], 0);
@@ -788,7 +787,7 @@ TEST_F(LiteralUtilTest, F16) {
   half h2(2.0f);
   auto m2 = LiteralUtil::CreateR2<half>({{h1, h2}, {h2, h1}});
   Literal* l2 = m2.get();
-  const char* d2 = (const char*)LiteralUtil::InternalData(*l2);
+  const char* d2 = static_cast<const char*>(LiteralUtil::InternalData(*l2));
   EXPECT_EQ(d2[0], 0);
   EXPECT_EQ(d2[1], 0x3C);
   EXPECT_EQ(d2[2], 0);
@@ -807,7 +806,9 @@ TEST_F(LiteralUtilTest, Populate) {
     std::vector<int64> layout;
   } populate_data[] = {
       {{}, {}},
+      {{0}, {0}},
       {{16}, {0}},
+      {{2, 0}, {1, 0}},
       {{4, 16}, {1, 0}},
       {{21, 12}, {0, 1}},
       {{6, 11, 17}, {2, 0, 1}},
@@ -855,6 +856,27 @@ TEST_F(LiteralUtilTest, ConvertR4) {
   auto converted = LiteralUtil::Convert<int8, uint32>(*original);
 
   EXPECT_TRUE(LiteralUtil::Equal(*expected, *converted));
+}
+
+TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
+  LiteralProto p;
+  p.mutable_shape()->set_element_type(PRED);
+  for (int len = 0; len < 25; ++len) {
+    p.mutable_shape()->clear_dimensions();
+    p.mutable_shape()->add_dimensions(len);
+    p.clear_preds();
+    for (int i = 0; i < len; ++i) {
+      p.add_preds((i % 2) == (len % 2));
+    }
+
+    Literal literal(p);
+    ASSERT_EQ(len, literal.preds_size());
+    int i = 0;
+    for (auto it = literal.preds().begin(); it < literal.preds().end(); ++it) {
+      EXPECT_EQ((i % 2) == (len % 2), *it);
+      ++i;
+    }
+  }
 }
 
 }  // namespace

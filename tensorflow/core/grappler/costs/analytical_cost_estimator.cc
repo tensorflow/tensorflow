@@ -18,7 +18,6 @@ limitations under the License.
 #include <limits>
 #include <unordered_map>
 
-#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
@@ -97,7 +96,7 @@ Status AnalyticalCostEstimator::PredictCosts(const GraphDef& optimized_graph,
           node_costs.compute_time.asMicroSeconds().count());
       cost_node->set_memory_time(
           node_costs.memory_time.asMicroSeconds().count());
-      for (const auto& output : node_info.outputs) {
+      for (const auto& output : node_info.op_info.outputs()) {
         auto output_info = cost_node->add_output_info();
         output_info->set_dtype(output.dtype());
         auto shape = output_info->mutable_shape();

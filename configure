@@ -3,6 +3,8 @@
 set -e
 set -o pipefail
 
+MIN_BAZEL_VERSION=0.4.5
+
 # Find out the absolute path to where ./configure resides
 pushd `dirname $0` > /dev/null
 SOURCE_BASE_DIR=`pwd -P`
@@ -11,19 +13,11 @@ popd > /dev/null
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
 
 function is_linux() {
-  if [[ "${PLATFORM}" == "linux" ]]; then
-    true
-  else
-    false
-  fi
+  [[ "${PLATFORM}" == "linux" ]]
 }
 
 function is_macos() {
-  if [[ "${PLATFORM}" == "darwin" ]]; then
-    true
-  else
-    false
-  fi
+  [[ "${PLATFORM}" == "darwin" ]]
 }
 
 function is_windows() {
@@ -99,9 +93,7 @@ function setup_python {
 
   if [ -z "$PYTHON_LIB_PATH" ]; then
     # Split python_path into an array of paths, this allows path containing spaces
-    IFS=','
-    python_lib_path=($(python_path))
-    unset IFS
+    IFS=',' read -r -a python_lib_path <<< "$(python_path)"
 
     if [ 1 = "$USE_DEFAULT_PYTHON_LIB_PATH" ]; then
       PYTHON_LIB_PATH=${python_lib_path[0]}
@@ -113,7 +105,7 @@ function setup_python {
         echo "  $x"
       done
       set -- "${python_lib_path[@]}"
-      echo "Please input the desired Python library path to use.  Default is ["$1"]"
+      echo "Please input the desired Python library path to use.  Default is [$1]"
       read b || true
       if [ "$b" == "" ]; then
         PYTHON_LIB_PATH=${python_lib_path[0]}
@@ -129,7 +121,8 @@ function setup_python {
     exit 1
   fi
 
-  local python_major_version=$("${PYTHON_BIN_PATH}" -c 'from __future__ import print_function; import sys; print(sys.version_info[0]);' | head -c1)
+  local python_major_version
+  python_major_version=$("${PYTHON_BIN_PATH}" -c 'from __future__ import print_function; import sys; print(sys.version_info[0]);' | head -c1)
   if [ -z "$python_major_version" ]; then
     echo -e "\n\nERROR: Problem getting python version.  Is $PYTHON_BIN_PATH the correct python binary?"
     exit 1
@@ -159,6 +152,26 @@ function setup_python {
   # Write tools/python_bin_path.sh
   echo "export PYTHON_BIN_PATH=\"$PYTHON_BIN_PATH\"" > tools/python_bin_path.sh
 }
+
+function version {
+  echo "$@" | awk -F. '{ printf("%03d%03d%03d\n", $1,$2,$3); }';
+}
+
+
+bazel version > bazel.version
+curr_bazel_version=$(head -n 1 bazel.version | cut -d ' ' -f3)
+rm -f bazel.version
+
+
+echo "You have bazel $curr_bazel_version installed."
+if [ -z "$curr_bazel_version" ]; then
+  echo "WARNING: current bazel installation is not a release version."
+  echo "Make sure you are running at least bazel $MIN_BAZEL_VERSION."
+elif [ "$(version "$MIN_BAZEL_VERSION")" -gt "$(version "$curr_bazel_version")" ]; then
+  echo "Please upgrade your bazel installation to version $MIN_BAZEL_VERSION or higher to build TensorFlow!"
+  echo "Exiting..."
+  exit 1
+fi
 
 # This file contains customized config settings.
 rm -f .tf_configure.bazelrc
@@ -226,8 +239,10 @@ if [ "$TF_NEED_MKL" == "1" ]; then # TF_NEED_MKL
   else
     default_mkl_path=/opt/intel/mklml
     fromuser=""
-    read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
-    fromuser="1"
+    if [ -z "$MKL_INSTALL_PATH" ]; then
+      read -p "Please specify the location where MKL is installed. [Default is $default_mkl_path]: " MKL_INSTALL_PATH
+      fromuser="1"
+    fi
     if [ -z "$MKL_INSTALL_PATH" ]; then
       MKL_INSTALL_PATH=$default_mkl_path
     fi
@@ -466,7 +481,7 @@ done
 while true; do
   # Configure the Cuda SDK version to use.
   if [ -z "$TF_CUDA_VERSION" ]; then
-    read -p "Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: " TF_CUDA_VERSION
+    read -p "Please specify the CUDA SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 8.0]: " TF_CUDA_VERSION
   fi
 
   fromuser=""
@@ -509,7 +524,6 @@ while true; do
     export CUDA_TOOLKIT_PATH
     write_action_env_to_bazelrc "CUDA_TOOLKIT_PATH" "$CUDA_TOOLKIT_PATH"
     export TF_CUDA_VERSION
-    write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION"
     break
   fi
   echo "Invalid path to CUDA $TF_CUDA_VERSION toolkit. ${CUDA_TOOLKIT_PATH}/${CUDA_RT_LIB_PATH} cannot be found"
@@ -521,6 +535,13 @@ while true; do
   TF_CUDA_VERSION=""
   CUDA_TOOLKIT_PATH=""
 done
+
+# Set default CUDA version if not set
+if [ -z "$TF_CUDA_VERSION" ]; then
+  TF_CUDA_VERSION="8.0"
+  export TF_CUDA_VERSION 
+fi
+write_action_env_to_bazelrc "TF_CUDA_VERSION" "$TF_CUDA_VERSION" 
 
 # Set up which gcc nvcc should use as the host compiler
 # No need to set this on Windows
@@ -555,7 +576,7 @@ done
 while true; do
   # Configure the cuDNN version to use.
   if [ -z "$TF_CUDNN_VERSION" ]; then
-    read -p "Please specify the cuDNN version you want to use. [Leave empty to use system default]: " TF_CUDNN_VERSION
+    read -p "Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 6.0]: " TF_CUDNN_VERSION
   fi
 
   fromuser=""
@@ -588,7 +609,7 @@ while true; do
     CUDA_DNN_LIB_ALT_PATH="libcudnn${TF_CUDNN_EXT}.dylib"
   fi
 
-  if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" -o -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
+  if [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_ALT_PATH}" ] || [ -e "$CUDNN_INSTALL_PATH/${CUDA_DNN_LIB_PATH}" ]; then
     export TF_CUDNN_VERSION
     write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
     export CUDNN_INSTALL_PATH
@@ -605,8 +626,8 @@ while true; do
     CUDNN_PATH_FROM_LDCONFIG="$($LDCONFIG_BIN -p | sed -n 's/.*libcudnn.so .* => \(.*\)/\1/p')"
     if [ -e "${CUDNN_PATH_FROM_LDCONFIG}${TF_CUDNN_EXT}" ]; then
       export TF_CUDNN_VERSION
-      write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
-      export CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
+      export CUDNN_INSTALL_PATH
+      CUDNN_INSTALL_PATH="$(dirname ${CUDNN_PATH_FROM_LDCONFIG})"
       write_action_env_to_bazelrc "CUDNN_INSTALL_PATH" "$CUDNN_INSTALL_PATH"
       break
     fi
@@ -625,6 +646,13 @@ while true; do
   TF_CUDNN_VERSION=""
   CUDNN_INSTALL_PATH=""
 done
+
+# Set default CUDNN version if not set
+if [ -z "$TF_CUDNN_VERSION" ]; then
+  TF_CUDNN_VERSION="6"
+  export TF_CUDNN_VERSION
+fi
+write_action_env_to_bazelrc "TF_CUDNN_VERSION" "$TF_CUDNN_VERSION"
 
 # Configure the compute capabilities that TensorFlow builds for.
 # Since Cuda toolkit is not backward-compatible, this is not guaranteed to work.
@@ -673,6 +701,12 @@ if is_windows; then
   write_action_env_to_bazelrc "CUDA_PATH" "$CUDA_PATH"
   write_action_env_to_bazelrc "CUDA_COMPUTE_CAPABILITIES" "$CUDA_COMPUTE_CAPABILITIES"
   write_action_env_to_bazelrc "NO_WHOLE_ARCHIVE_OPTION" "1"
+  write_to_bazelrc "build --config=win-cuda"
+  write_to_bazelrc "test --config=win-cuda"
+else
+  # If CUDA is enabled, always use GPU during build and test.
+  write_to_bazelrc "build --config=cuda"
+  write_to_bazelrc "test --config=cuda"
 fi
 
 # end of if "$TF_NEED_CUDA" == "1"
@@ -790,16 +824,16 @@ while true; do
     fromuser=""
     if [ -z "$MPI_HOME" ]; then
         #Get the base folder by removing the bin path
-        default_path=$(dirname $(dirname $(which mpirun)) || dirname $(dirname $(which mpiexec))  || true)
+        default_mpi_path=$(dirname $(dirname $(which mpirun)) || dirname $(dirname $(which mpiexec))  || true)
         read -p "Please specify the MPI toolkit folder. [Default is $default_mpi_path]: " MPI_HOME
         fromuser="1"
         if [ -z "$MPI_HOME" ]; then
-            MPI_HOME=$default_path
+            MPI_HOME=$default_mpi_path
         fi
     fi
 
     #Check that the include and library folders are where we expect them to be
-    if [ -e "$MPI_HOME/include" -a -e "$MPI_HOME/lib" ]; then
+    if [ -e "$MPI_HOME/include" ] && [ -e "$MPI_HOME/lib" ]; then
         break
     fi
  
@@ -844,6 +878,4 @@ if [ "$TF_NEED_MPI" == "1" ]; then
 fi
 
 
-# TODO(gunan): Remove once bazel correctly handles changes in remote repositories.
-bazel clean
 echo "Configuration finished"

@@ -71,6 +71,12 @@ config_setting(
 
 config_setting(
     name = "windows",
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "windows_msvc",
     values = {"cpu": "x64_windows_msvc"},
     visibility = ["//visibility:public"],
 )
@@ -237,6 +243,7 @@ filegroup(
         "//tensorflow/contrib/boosted_trees/resources:all_files",
         "//tensorflow/contrib/cloud:all_files",
         "//tensorflow/contrib/cloud/kernels:all_files",
+        "//tensorflow/contrib/cluster_resolver:all_files",
         "//tensorflow/contrib/compiler:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
         "//tensorflow/contrib/crf:all_files",
@@ -245,6 +252,7 @@ filegroup(
         "//tensorflow/contrib/data/python/framework:all_files",
         "//tensorflow/contrib/data/python/kernel_tests:all_files",
         "//tensorflow/contrib/data/python/ops:all_files",
+        "//tensorflow/contrib/data/python/util:all_files",
         "//tensorflow/contrib/distributions:all_files",
         "//tensorflow/contrib/factorization:all_files",
         "//tensorflow/contrib/factorization/kernels:all_files",
@@ -295,6 +303,7 @@ filegroup(
         "//tensorflow/contrib/tensor_forest/hybrid:all_files",
         "//tensorflow/contrib/tensorboard:all_files",
         "//tensorflow/contrib/testing:all_files",
+        "//tensorflow/contrib/text:all_files",
         "//tensorflow/contrib/tfprof/python/tools/tfprof:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
@@ -368,6 +377,8 @@ filegroup(
         "//tensorflow/tensorboard/components/tf_graph_controls/demo:all_files",
         "//tensorflow/tensorboard/components/tf_graph_dashboard:all_files",
         "//tensorflow/tensorboard/components/tf_graph_dashboard/demo:all_files",
+        "//tensorflow/tensorboard/components/tf_graph_debugger_data_card:all_files",
+        "//tensorflow/tensorboard/components/tf_graph_debugger_data_card/demo:all_files",
         "//tensorflow/tensorboard/components/tf_graph_info:all_files",
         "//tensorflow/tensorboard/components/tf_graph_info/demo:all_files",
         "//tensorflow/tensorboard/components/tf_graph_loader:all_files",
@@ -382,6 +393,7 @@ filegroup(
         "//tensorflow/tensorboard/components/tf_storage/test:all_files",
         "//tensorflow/tensorboard/components/tf_tensorboard:all_files",
         "//tensorflow/tensorboard/components/tf_text_dashboard:all_files",
+        "//tensorflow/tensorboard/components/tf_trace_viewer:all_files",
         "//tensorflow/tensorboard/components/vz_distribution_chart:all_files",
         "//tensorflow/tensorboard/components/vz_histogram_timeseries:all_files",
         "//tensorflow/tensorboard/components/vz_line_chart:all_files",
@@ -392,6 +404,9 @@ filegroup(
         "//tensorflow/tensorboard/demo:all_files",
         "//tensorflow/tensorboard/java/org/tensorflow/tensorboard/vulcanize:all_files",
         "//tensorflow/tensorboard/plugins:all_files",
+        "//tensorflow/tensorboard/plugins/audio:all_files",
+        "//tensorflow/tensorboard/plugins/distributions:all_files",
+        "//tensorflow/tensorboard/plugins/graphs:all_files",
         "//tensorflow/tensorboard/plugins/histograms:all_files",
         "//tensorflow/tensorboard/plugins/images:all_files",
         "//tensorflow/tensorboard/plugins/projector:all_files",
@@ -451,6 +466,7 @@ cc_binary(
             "//tensorflow/c:exported_symbols.lds",
         ],
         "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "-z defs",
             "-s",

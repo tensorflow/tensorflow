@@ -1630,4 +1630,44 @@ function extractHighDegrees(renderNode: RenderGroupNodeInfo) {
     }
   });
 }
+
+/**
+ * Expands nodes in the graph until the desired node is visible.
+ *
+ * @param scene The scene polymer component.
+ * @param renderHierarchy The render hierarchy.
+ * @param tensorName The name of a tensor.
+ * @return A string that is the name of the node representing the given tensor.
+ *     Note that the original tensor name might differ from this returned node
+ *     name. Specifically, for instance, the tensor name usually ends with an
+ *     output slot index (such as :0), while the node name lacks that suffix.
+ */
+export function expandUntilNodeIsShown(
+    scene, renderHierarchy, tensorName: string) {
+  const splitTensorName = tensorName.split('/');
+
+  // Graph names do not take into account the output slot. Strip it.
+  const lastNodeNameMatch =
+      splitTensorName[splitTensorName.length - 1].match(/(.*):\d+/);
+  if (lastNodeNameMatch.length === 2) {
+    splitTensorName[splitTensorName.length - 1] = lastNodeNameMatch[1];
+  }
+
+  let nodeName = splitTensorName[0];
+  let renderNode = renderHierarchy.getRenderNodeByName(nodeName);
+  for (let i = 1; i < splitTensorName.length; i++) {
+    // Op nodes are not expandable.
+    if (renderNode.node.type === tf.graph.NodeType.OP) {
+      break;
+    }
+    renderHierarchy.buildSubhierarchy(nodeName);
+    renderNode.expanded = true;
+    scene.setNodeExpanded(renderNode);
+    nodeName += '/' + splitTensorName[i];
+    renderNode = renderHierarchy.getRenderNodeByName(nodeName);
+  }
+
+  return renderNode.node.name;
+}
+
 } // close module tf.graph.render

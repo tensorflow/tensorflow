@@ -122,9 +122,9 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "cholesky_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["cholesky_op_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -135,6 +135,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
     ],
+    shard_count = 5,
 )
 
 tf_py_test(
@@ -798,7 +799,6 @@ tf_py_test(
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:summary",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -946,7 +946,7 @@ cuda_py_test(
     tags = ["notsan"],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "diag_op_test",
     size = "medium",
     srcs = ["diag_op_test.py"],
@@ -978,6 +978,8 @@ tf_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
     ],
+    data = ["//tensorflow/core:lmdb_testdata"],
+    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -1461,6 +1463,25 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "multinomial_op_big_test",
+    size = "medium",
+    srcs = ["multinomial_op_big_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+    ],
+    shard_count = 3,
+)
+
+cuda_py_test(
     name = "numerics_test",
     size = "small",
     srcs = ["numerics_test.py"],
@@ -1934,7 +1955,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     flaky = 1,  # create_local_cluster sometimes times out.
-    tags = ["nomsan"],  # b/38390993
 )
 
 cuda_py_test(
@@ -2088,7 +2108,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "conv_ops_test",
-    size = "medium",
+    size = "large",
     srcs = ["conv_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2106,6 +2126,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
+    shard_count = 4,
     tags = ["no_windows"],
 )
 
@@ -2122,7 +2143,6 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -2366,12 +2386,12 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
-    shard_count = 2,
+    tags = ["manual"],  # http://b/62429636
 )
 
 cuda_py_test(
     name = "map_stage_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["map_stage_op_test.py"],
     additional_deps = [
         "//tensorflow/python:array_ops",
@@ -2381,6 +2401,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
+    tags = ["manual"],  # http://b/62429636
 )
 
 cuda_py_test(
@@ -2609,7 +2630,6 @@ tf_py_test(
         "//tensorflow/python:sets",
         "//tensorflow/python:sparse_ops",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(

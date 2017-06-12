@@ -113,6 +113,11 @@ class LRDecayTest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         learning_rate_decay.piecewise_constant(x, boundaries, values)
 
+      # Test that ref types are valid.
+      x_ref = x.op.outputs[0]   # float32_ref tensor should be accepted
+      boundaries, values = [1.0, 2.0], [1, 2, 3]
+      learning_rate_decay.piecewise_constant(x_ref, boundaries, values)
+
 
 class LinearDecayTest(test_util.TensorFlowTestCase):
 

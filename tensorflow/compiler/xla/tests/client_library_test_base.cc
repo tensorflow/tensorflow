@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/hlo_pass_pipeline_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -44,14 +44,19 @@ Client* GetOrCreateLocalClientOrDie(se::Platform* platform) {
 }
 }  // namespace
 
-ClientLibraryTestBase::ClientLibraryTestBase(
-    se::Platform* platform,
-    tensorflow::gtl::ArraySlice<string> disabled_pass_names)
+ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
     : client_(GetOrCreateLocalClientOrDie(platform)) {
-  legacy_flags::HloPassPipelineFlags* flags =
-      legacy_flags::GetHloPassPipelineFlags();
-  flags->xla_disable_hlo_passes =
-      tensorflow::str_util::Join(disabled_pass_names, ",");
+  *(execution_options_.mutable_debug_options()) =
+      legacy_flags::GetDebugOptionsFromFlags();
+
+  // Disabling constant_folding so that tests (usually written using Constants)
+  // will exercise the intended code paths, instead of being constant folded.
+  //
+  // TODO(b/38354253): Constant folding is currently disabled. Change tests to
+  // use Parameters instead of Constants, and re-enable constant folding by
+  // default.
+  execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
+      "constant_folding");
 }
 
 string ClientLibraryTestBase::TestName() const {
@@ -179,7 +184,7 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   VLOG(1) << "expected: " << LiteralUtil::ToString(*expected_literal);
   VLOG(1) << "actual:   " << LiteralUtil::ToString(*actual);
 
-  EXPECT_EQ(expected, actual->u8s());
+  EXPECT_EQ(expected, actual->u8s_string());
 }
 
 void ClientLibraryTestBase::ComputeAndCompareTuple(

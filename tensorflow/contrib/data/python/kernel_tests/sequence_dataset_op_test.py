@@ -30,7 +30,7 @@ class SequenceDatasetTest(test.TestCase):
 
   def testRepeatTensorDataset(self):
     """Test a dataset that repeats its input multiple times."""
-    components = [np.array(1), np.array([1, 2, 3]), np.array(37.0)]
+    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
     # This placeholder can be fed when dataset-definition subgraph
     # runs (i.e. `init_op` below) to configure the number of
     # repetitions used in a particular iterator.
@@ -79,7 +79,7 @@ class SequenceDatasetTest(test.TestCase):
           self.assertAllEqual(component, result_component)
 
   def testTakeTensorDataset(self):
-    components = [np.arange(10)]
+    components = (np.arange(10),)
     count_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
 
     iterator = (dataset_ops.Dataset.from_tensor_slices(components)
@@ -125,7 +125,7 @@ class SequenceDatasetTest(test.TestCase):
         sess.run(get_next)
 
   def testSkipTensorDataset(self):
-    components = [np.arange(10)]
+    components = (np.arange(10),)
     count_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
 
     iterator = (dataset_ops.Dataset.from_tensor_slices(components)
@@ -171,7 +171,7 @@ class SequenceDatasetTest(test.TestCase):
 
   def testRepeatRepeatTensorDataset(self):
     """Test the composition of repeat datasets."""
-    components = [np.array(1), np.array([1, 2, 3]), np.array(37.0)]
+    components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
     inner_count = array_ops.placeholder(dtypes.int64, shape=[])
     outer_count = array_ops.placeholder(dtypes.int64, shape=[])
 

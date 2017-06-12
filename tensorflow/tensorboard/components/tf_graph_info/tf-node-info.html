@@ -548,7 +548,7 @@ limitations under the License.
            */
           var unpackMetaedge = function(metaedge) {
             return _.map(metaedge.baseEdgeList, function(baseEdge) {
-              name = isPredecessor ? baseEdge.v : baseEdge.w;
+              var name = isPredecessor ? baseEdge.v : baseEdge.w;
               return {
                 name: name,
                 node: this._getNode(name, this.graphHierarchy),

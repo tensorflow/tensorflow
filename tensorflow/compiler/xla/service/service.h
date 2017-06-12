@@ -346,24 +346,6 @@ class Service : public ServiceInterface {
   tensorflow::Status ValidateResultShapeWithLayout(
       const Shape& shape_with_layout, const Shape& result_shape) const;
 
-  // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
-  // timer for the execution, sets up HLO profiling if enabled, and fills in the
-  // given ExecutionProfile if non-null. The given execute_func should be a
-  // function which calls the desired ExecuteOnStream overload with the supplied
-  // arguments. The ExecuteOnStream overloads return different types so this
-  // method is templated on return-type of the execute function.
-  template <typename ReturnT>
-  static ReturnT ExecuteOnStreamWrapper(
-      Executable* executable, const ServiceExecutableRunOptions* run_options,
-      ExecutionProfile* profile, Backend* backend,
-      std::function<ReturnT(Executable* executable,
-                            const ServiceExecutableRunOptions* run_options,
-                            HloExecutionProfile* hlo_execution_profile)>
-          execute_func) {
-    return executable->ExecuteOnStreamWrapper(run_options, profile,
-                                              execute_func);
-  }
-
   // Tracks computations built via the API.
   ComputationTracker computation_tracker_;
 

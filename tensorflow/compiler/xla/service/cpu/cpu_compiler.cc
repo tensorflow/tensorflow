@@ -397,7 +397,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
           llvm::Function * ir_function,
           ir_emitter.EmitComputation(
               embedded_computation, embedded_computation->name(),
-              /*is_entry_computation=*/computation_is_parallel));
+              /*is_entry_computation=*/computation_is_parallel,
+              /*instruction_order=*/nullptr));
       // If this computation is parallel, remember it in the function name map.
       // This way we know what function to execute when we try to run code for
       // the Call instruction.
@@ -625,7 +626,8 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     TF_ASSIGN_OR_RETURN(
         llvm::Function * entry_function,
         ir_emitter.EmitComputation(computation, entry_point_name,
-                                   /*is_entry_computation=*/true));
+                                   /*is_entry_computation=*/true,
+                                   &module_sequence.at(computation)));
 
     entry_function->setName(llvm_ir::AsStringRef(entry_point_name));
 
