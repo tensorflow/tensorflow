@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -289,6 +290,7 @@ TEST_F(ComputeConstantTest, DISABLED_ON_CPU(ReuseComputedConstant)) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
