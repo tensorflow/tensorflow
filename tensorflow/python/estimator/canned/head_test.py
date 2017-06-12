@@ -83,6 +83,24 @@ def _sigmoid(logits):
   return 1 / (1 + np.exp(-logits))
 
 
+# TODO(roumposg): Reuse the code from dnn_testing_utils.
+def _assert_close(expected, actual, rtol=1e-04, message='',
+                  name='assert_close'):
+  with ops.name_scope(name, 'assert_close', (expected, actual, rtol)) as scope:
+    expected = ops.convert_to_tensor(expected, name='expected')
+    actual = ops.convert_to_tensor(actual, name='actual')
+    rdiff = math_ops.abs((expected - actual) / expected, 'diff')
+    rtol = ops.convert_to_tensor(rtol, name='rtol')
+    return check_ops.assert_less(
+        rdiff,
+        rtol,
+        data=(message, 'Condition expected =~ actual did not hold element-wise:'
+              'expected = ', expected, 'actual = ', actual, 'rdiff = ', rdiff,
+              'rtol = ', rtol,),
+        summarize=expected.get_shape().num_elements(),
+        name=scope)
+
+
 class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
 
   def test_n_classes_is_none(self):
@@ -982,6 +1000,64 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
           # loss_mean = loss/2 = 41/2 = 20.5
           metric_keys.MetricKeys.LOSS_MEAN: 20.5,
       }, summary_str)
+
+  def test_float_labels_train(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
+
+    # Create estimator spec.
+    logits = np.array([[0.5], [-0.3]], dtype=np.float32)
+    expected_train_result = b'my_train_op'
+    # loss = sum(cross_entropy(labels, logits))
+    #      = sum(-label[i]*sigmoid(logit[i]) -(1-label[i])*sigmoid(-logit[i]))
+    #      = -0.8 * log(sigmoid(0.5)) -0.2 * log(sigmoid(-0.5))
+    #        -0.4 * log(sigmoid(-0.3)) -0.6 * log(sigmoid(0.3))
+    #      = 1.2484322
+    expected_loss = 1.2484322
+    def _train_op_fn(loss):
+      with ops.control_dependencies((_assert_close(
+          math_ops.to_float(expected_loss), math_ops.to_float(loss)),)):
+        return constant_op.constant(expected_train_result)
+    spec = head.create_estimator_spec(
+        features={'x': np.array([[42]], dtype=np.float32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=np.array([[0.8], [0.4]], dtype=np.float32),
+        train_op_fn=_train_op_fn)
+
+    # Assert predictions, loss, train_op, and summaries.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAlmostEqual(expected_loss, loss, delta=1.e-5)
+      self.assertEqual(expected_train_result, train_result)
+
+  def test_float_labels_eval(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
+
+    # Create estimator spec.
+    logits = np.array([[0.5], [-0.3]], dtype=np.float32)
+    spec = head.create_estimator_spec(
+        features={'x': np.array([[42]], dtype=np.float32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=np.array([[0.8], [0.4]], dtype=np.float32))
+
+    # loss = sum(cross_entropy(labels, logits))
+    #      = sum(-label[i]*sigmoid(logit[i]) -(1-label[i])*sigmoid(-logit[i]))
+    #      = -0.8 * log(sigmoid(0.5)) -0.2 * log(sigmoid(-0.5))
+    #        -0.4 * log(sigmoid(-0.3)) -0.6 * log(sigmoid(0.3))
+    #      = 1.2484322
+    expected_loss = 1.2484322
+
+    # Assert loss.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNone(spec.scaffold.summary_op)
+      update_ops = {k: spec.eval_metric_ops[k][1] for k in spec.eval_metric_ops}
+      loss, metrics = sess.run((spec.loss, update_ops))
+      self.assertAlmostEqual(expected_loss, loss, delta=1.e-5)
+      self.assertAlmostEqual(
+          expected_loss / 2., metrics[metric_keys.MetricKeys.LOSS_MEAN])
 
   def test_weighted_multi_example_predict(self):
     """3 examples, 1 batch."""

@@ -518,6 +518,29 @@ class BaseDNNClassifierEvaluateTest(object):
         ops.GraphKeys.GLOBAL_STEP: global_step
     }, dnn_classifier.evaluate(input_fn=_input_fn, steps=1))
 
+  def test_float_labels(self):
+    """Asserts evaluation metrics for float labels in binary classification."""
+    global_step = 100
+    create_checkpoint(
+        (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
+         ([[-1.], [1.]], [.3]),), global_step, self._model_dir)
+
+    dnn_classifier = self._dnn_classifier_fn(
+        hidden_units=(2, 2),
+        feature_columns=[feature_column.numeric_column('age')],
+        model_dir=self._model_dir)
+    def _input_fn():
+      # batch_size = 2, one false label, and one true.
+      return {'age': [[10.], [10.]]}, [[0.8], [0.4]]
+    # Uses identical numbers as DNNModelTest.test_one_dim_logits.
+    # See that test for calculation of logits.
+    # logits = [[-2.08], [-2.08]] =>
+    # logistic = 1/(1 + exp(-logits)) = [[0.11105597], [0.11105597]]
+    # loss = -0.8 * log(0.111) -0.2 * log(0.889)
+    #        -0.4 * log(0.111) -0.6 * log(0.889) = 2.7314420
+    metrics = dnn_classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertAlmostEqual(2.7314420, metrics[metric_keys.MetricKeys.LOSS])
+
 
 class BaseDNNRegressorEvaluateTest(object):
 
@@ -938,6 +961,34 @@ class BaseDNNClassifierTrainTest(object):
     _assert_checkpoint(
         self, base_global_step + num_steps, input_units=1,
         hidden_units=hidden_units, output_units=1, model_dir=self._model_dir)
+
+  def test_binary_classification_float_labels(self):
+    base_global_step = 100
+    hidden_units = (2, 2)
+    create_checkpoint(
+        (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
+         ([[-1.], [1.]], [.3]),), base_global_step, self._model_dir)
+
+    # Uses identical numbers as DNNModelFnTest.test_one_dim_logits.
+    # See that test for calculation of logits.
+    # logits = [-2.08] => probabilities = [0.889, 0.111]
+    # loss = -0.8 * log(0.111) -0.2 * log(0.889) = 1.7817210
+    expected_loss = 1.7817210
+    opt = mock_optimizer(
+        self, hidden_units=hidden_units, expected_loss=expected_loss)
+    dnn_classifier = self._dnn_classifier_fn(
+        hidden_units=hidden_units,
+        feature_columns=(feature_column.numeric_column('age'),),
+        optimizer=opt,
+        model_dir=self._model_dir)
+    self.assertEqual(0, opt.minimize.call_count)
+
+    # Train for a few steps, then validate optimizer, summaries, and
+    # checkpoint.
+    num_steps = 5
+    dnn_classifier.train(
+        input_fn=lambda: ({'age': [[10.]]}, [[0.8]]), steps=num_steps)
+    self.assertEqual(1, opt.minimize.call_count)
 
   def test_multi_class(self):
     n_classes = 3

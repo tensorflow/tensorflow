@@ -1137,6 +1137,43 @@ class BaseLinearClassifierTrainingTest(object):
         expected_age_weight=age_weight,
         expected_bias=bias)
 
+  def testFromCheckpointFloatLabels(self):
+    """Tests float labels for binary classification."""
+    # Create initial checkpoint.
+    n_classes = self._n_classes
+    if n_classes > 2:
+      return
+    label = 0.8
+    age = 17
+    age_weight = [[2.0]]
+    bias = [-35.0]
+    initial_global_step = 100
+    with ops.Graph().as_default():
+      variables.Variable(age_weight, name=AGE_WEIGHT_NAME)
+      variables.Variable(bias, name=BIAS_NAME)
+      variables.Variable(
+          initial_global_step, name=ops.GraphKeys.GLOBAL_STEP,
+          dtype=dtypes.int64)
+      save_variables_to_ckpt(self._model_dir)
+
+    # logits = age * age_weight + bias = 17 * 2. - 35. = -1.
+    # loss = sigmoid_cross_entropy(logits, label)
+    # => loss = -0.8 * log(sigmoid(-1)) -0.2 * log(sigmoid(+1)) = 1.1132617
+    mock_optimizer = self._mock_optimizer(expected_loss=1.1132617)
+
+    est = linear.LinearClassifier(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        n_classes=n_classes,
+        optimizer=mock_optimizer,
+        model_dir=self._model_dir)
+    self.assertEqual(0, mock_optimizer.minimize.call_count)
+
+    # Train for a few steps, and validate optimizer and final checkpoint.
+    num_steps = 10
+    est.train(
+        input_fn=lambda: ({'age': ((age,),)}, ((label,),)), steps=num_steps)
+    self.assertEqual(1, mock_optimizer.minimize.call_count)
+
   def testFromCheckpointMultiBatch(self):
     # Create initial checkpoint.
     n_classes = self._n_classes
