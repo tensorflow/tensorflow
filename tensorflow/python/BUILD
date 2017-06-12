@@ -803,10 +803,18 @@ py_test(
     ],
 )
 
+filegroup(
+    name = "meta_graph_testdata",
+    srcs = [
+        "framework/testdata/metrics_export_meta_graph.pb",
+    ],
+)
+
 py_test(
     name = "framework_meta_graph_test",
     size = "small",
     srcs = ["framework/meta_graph_test.py"],
+    data = ["//tensorflow/python:meta_graph_testdata"],
     main = "framework/meta_graph_test.py",
     srcs_version = "PY2AND3",
     deps = [
@@ -817,6 +825,7 @@ py_test(
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        ":metrics",
         ":nn_ops",
         ":platform",
         ":random_ops",
