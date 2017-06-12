@@ -123,6 +123,14 @@ CreateConv2D(poplar::Graph &graph,
   poplar::Tensor out = popconv::convolution(graph, conv_in, conv_kernel, params,
                                             false, prog, "", opts);
 
+  std::vector<unsigned int> out_shuffle(4);
+  out_shuffle[dims.batch_dimension()] = 0;
+  out_shuffle[dims.spatial_dimensions(0)] = 1;
+  out_shuffle[dims.spatial_dimensions(1)] = 2;
+  out_shuffle[dims.feature_dimension()] = 3;
+
+  out = out.dimShuffle(out_shuffle);
+
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 
   return prog;
