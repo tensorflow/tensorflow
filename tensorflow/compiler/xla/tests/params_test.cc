@@ -163,7 +163,7 @@ XLA_TEST_F(ParamsTest, MissingParameter) {
   auto computation = builder.Build().ConsumeValueOrDie();
 
   auto execute_status = client_->Execute(computation, {data.get(), data.get()},
-                                         /*output_layout=*/nullptr,
+                                         /*execution_options=*/nullptr,
                                          /*execution_profile=*/nullptr);
   ASSERT_EQ(execute_status.status().code(),
             tensorflow::error::FAILED_PRECONDITION);

@@ -487,7 +487,6 @@ cc_binary(
     ],
     deps = [
         ":cc_ops",
-        "//tensorflow/core:all_kernels",  # buildcleaner: keep
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

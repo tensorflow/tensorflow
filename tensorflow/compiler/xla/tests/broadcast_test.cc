@@ -190,7 +190,7 @@ TEST_F(BroadcastTest, Broadcast_R1_1025_To_R4_3x3x3x1025) {
   auto result = ExecuteAndTransfer(std::move(hlo_module), {});
 
   Array4D<float> expected(3, 3, 3, 1025);
-  Array2D<float> yx(/*height=*/3, /*width=*/r1_size);
+  Array2D<float> yx(3, r1_size);
   for (int64 y = 0; y < 3; ++y) {
     for (int64 x = 0; x < r1_size; ++x) {
       yx(y, x) = input_data[x];

@@ -180,7 +180,6 @@ cc_library(
     deps = [
         ":eigen_helpers",
         "//tensorflow/core:framework",
-        "//third_party/eigen3",
     ],
 )
 
@@ -225,7 +224,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
-        "//third_party/eigen3",
     ],
 )
 
@@ -396,7 +394,6 @@ cc_library(
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/eigen3",
     ],
 )
 
