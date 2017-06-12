@@ -72,9 +72,9 @@ EOF
 python /tmp/check_tf.py 2>&1  >> ${OUTPUT_FILE}
 
 DEBUG_LD=libs python -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
-grep libcudnn.so /tmp/loadedlibs
 
 {
+  grep libcudnn.so /tmp/loadedlibs
   echo
   echo '== env =========================================================='
   if [ -z ${LD_LIBRARY_PATH+x} ]; then
