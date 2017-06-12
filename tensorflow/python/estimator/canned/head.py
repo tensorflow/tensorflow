@@ -42,6 +42,9 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import signature_constants
+
+_DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
 
 class _Head(object):
@@ -603,13 +606,25 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
           pred_keys.CLASSES: classes,
       }
       if mode == model_fn.ModeKeys.PREDICT:
+        batch_size = array_ops.shape(logistic)[0]
+        export_class_list = self._label_vocabulary
+        if not export_class_list:
+          export_class_list = string_ops.as_string([0, 1])
+        export_output_classes = array_ops.tile(
+            input=array_ops.expand_dims(input=export_class_list, axis=0),
+            multiples=[batch_size, 1])
+        classifier_output = export_output.ClassificationOutput(
+            scores=scores,
+            # `ClassificationOutput` requires string classes.
+            classes=export_output_classes)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
-                '':
-                    export_output.ClassificationOutput(
-                        scores=scores, classes=classes)
+                '': classifier_output,  # to be same as other heads.
+                'classification': classifier_output,  # to be called by name.
+                _DEFAULT_SERVING_KEY: classifier_output,  # default
+                'regression': export_output.RegressionOutput(value=logistic)
             })
 
       # Eval.

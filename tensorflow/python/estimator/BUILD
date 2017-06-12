@@ -385,6 +385,7 @@ py_library(
         "//tensorflow/python:weights_broadcast_ops",
         "//tensorflow/python/feature_column",
         "//tensorflow/python/ops/losses",
+        "//tensorflow/python/saved_model:signature_constants",
     ],
 )
 

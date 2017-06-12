@@ -807,7 +807,12 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     self.assertEqual(1, head.logits_dimension)
 
     # Create estimator spec.
-    logits = [[45.], [-41.]]
+    logits = [[0.3], [-0.4]]
+    expected_logistics = [[0.574443], [0.401312]]
+    expected_probabilities = [[0.425557, 0.574443], [0.598688, 0.401312]]
+    expected_class_ids = [[1], [0]]
+    expected_classes = [[b'1'], [b'0']]
+    expected_export_classes = [[b'0', b'1']] * 2
     spec = head.create_estimator_spec(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.PREDICT,
@@ -817,8 +822,8 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     self.assertIsNone(spec.loss)
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNone(spec.train_op)
-    self.assertItemsEqual(
-        ('', _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
+    self.assertItemsEqual(('', 'classification', 'regression',
+                           _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
     _assert_no_hooks(self, spec)
 
     # Assert predictions.
@@ -828,16 +833,23 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       predictions = sess.run(spec.predictions)
       self.assertAllClose(logits,
                           predictions[prediction_keys.PredictionKeys.LOGITS])
+      self.assertAllClose(expected_logistics,
+                          predictions[prediction_keys.PredictionKeys.LOGISTIC])
       self.assertAllClose(
-          _sigmoid(np.array(logits)),
-          predictions[prediction_keys.PredictionKeys.LOGISTIC])
-      self.assertAllClose(
-          [[0., 1.],
-           [1., 0.]], predictions[prediction_keys.PredictionKeys.PROBABILITIES])
-      self.assertAllClose([[1], [0]],
+          expected_probabilities,
+          predictions[prediction_keys.PredictionKeys.PROBABILITIES])
+      self.assertAllClose(expected_class_ids,
                           predictions[prediction_keys.PredictionKeys.CLASS_IDS])
-      self.assertAllEqual([[b'1'], [b'0']],
+      self.assertAllEqual(expected_classes,
                           predictions[prediction_keys.PredictionKeys.CLASSES])
+      self.assertAllClose(
+          expected_probabilities,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].scores))
+      self.assertAllEqual(
+          expected_export_classes,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].classes))
+      self.assertAllClose(expected_logistics,
+                          sess.run(spec.export_outputs['regression'].value))
 
   def test_predict_with_vocabulary_list(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
