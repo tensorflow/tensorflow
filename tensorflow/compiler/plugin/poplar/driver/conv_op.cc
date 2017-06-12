@@ -54,12 +54,10 @@ CreateConv2D(poplar::Graph &graph,
   }
 
   if (window.dimensions(0).window_dilation() != 1 ||
-      window.dimensions(1).window_dilation() != 1 ||
-      window.dimensions(0).base_dilation() != 1 ||
-      window.dimensions(1).base_dilation() != 1) {
+      window.dimensions(1).window_dilation() != 1) {
     return port::Status(
             port::error::FAILED_PRECONDITION,
-            port::StrCat("Dilated convolution not supported on ", inst->name()));
+            port::StrCat("Window dilation not supported on ", inst->name()));
   }
 
   const std::string& dtype(in.elementType());
@@ -79,11 +77,14 @@ CreateConv2D(poplar::Graph &graph,
   unsigned int s_y = window.dimensions(0).stride();
   unsigned int s_x = window.dimensions(1).stride();
 
-  unsigned int pl_y = window.dimensions(0).padding_low();
-  unsigned int pl_x = window.dimensions(1).padding_low();
+  int pl_y = window.dimensions(0).padding_low();
+  int pl_x = window.dimensions(1).padding_low();
 
-  unsigned int pu_y = window.dimensions(0).padding_high();
-  unsigned int pu_x = window.dimensions(1).padding_high();
+  int pu_y = window.dimensions(0).padding_high();
+  int pu_x = window.dimensions(1).padding_high();
+
+  unsigned int di_y = window.dimensions(0).base_dilation();
+  unsigned int di_x = window.dimensions(1).base_dilation();
 
   popconv::ConvParams params(dtype,
                              {n_b, n_y, n_x, n_i},
@@ -91,58 +92,21 @@ CreateConv2D(poplar::Graph &graph,
                              {s_y, s_x},
                              {pl_y, pl_x},
                              {pu_y, pu_x},
-                             false);
-
-  poplar::Tensor conv_in = popconv::createInput(graph, params, "", opts);
-
-  poplar::Tensor conv_kernel = popconv::createWeights(graph, params, "", opts);
-  
-  popconv::mapWeights(graph, conv_kernel, params, opts);
+                             {di_y, di_x});
 
   poplar::program::Sequence prog;
 
-  in = in.dimShuffle({(unsigned int)dims.batch_dimension(),
-                      (unsigned int)dims.feature_dimension(),
-                      (unsigned int)dims.spatial_dimensions(0),
-                      (unsigned int)dims.spatial_dimensions(1)});
-  in = in.reshape({conv_in.dim(0),
-                   conv_in.dim(1),
-                   conv_in.dim(4),
-                   conv_in.dim(2),
-                   conv_in.dim(3)});
-  in = in.dimShuffle({0, 1, 3, 4, 2});
+  // TODO : create these at original tensor creation time
+  poplar::Tensor conv_in = popconv::createInput(graph, params, "", opts);
   prog.add(poplar::program::Copy(in, conv_in));
 
-  kernel = kernel.dimShuffle({(unsigned int)dims.kernel_spatial_dimensions(0),
-                              (unsigned int)dims.kernel_spatial_dimensions(1),
-                              (unsigned int)dims.kernel_input_feature_dimension(),
-                              (unsigned int)dims.kernel_output_feature_dimension()});
-  kernel = kernel.reshape({conv_kernel.dim(2),
-                           conv_kernel.dim(3),
-                           conv_kernel.dim(1),
-                           conv_kernel.dim(5),
-                           conv_kernel.dim(0),
-                           conv_kernel.dim(4)});
-  kernel = kernel.dimShuffle({4, 2, 0, 1, 5, 3});
+  in = in.dimShuffle({0, 1, 3, 2});
+  poplar::Tensor conv_kernel = popconv::createWeights(graph, params, "", opts);
   prog.add(poplar::program::Copy(kernel, conv_kernel));
 
   // Add the convolution
-  poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
+  poplar::Tensor out = popconv::convolution(graph, conv_in, conv_kernel, params,
                                             false, prog, "", opts);
-
-  const std::vector<size_t> &output_dims = out.shape();
-  unsigned int o_y = output_dims[2];
-  unsigned int o_x = output_dims[3];
-
-  out = out.dimShuffle({0, 1, 4, 2, 3});
-  out = out.reshape({n_b, n_o, o_y, o_x});
-
-  std::vector<unsigned int> shuffle(4);
-  shuffle[dims.batch_dimension()] = 0;
-  shuffle[dims.feature_dimension()] = 1;
-  shuffle[dims.spatial_dimensions(0)] = 2;
-  shuffle[dims.spatial_dimensions(1)] = 3;
-  out = out.dimShuffle(shuffle);
 
   TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, out));
 

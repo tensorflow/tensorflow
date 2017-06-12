@@ -240,14 +240,14 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   if (vertex_graph != NULL) {
     std::ofstream stream;
     stream.open(vertex_graph);
-    engine->outputVertexGraph(stream, *graph);
+    graph->outputVertexGraph(stream);
   }
 
   const char *compute_graph = getenv("TF_POPLAR_COMPUTE_GRAPH_FILENAME");
   if (compute_graph != NULL) {
     std::ofstream stream;
     stream.open(compute_graph);
-    engine->outputComputeGraph(stream, *graph);
+    graph->outputComputeGraph(stream);
   }
 
   std::unique_ptr<Executable> executable;
