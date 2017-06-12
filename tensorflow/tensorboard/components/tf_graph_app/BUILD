@@ -1,7 +1,7 @@
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
-load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
+load("//tensorflow/tensorboard/defs:defs.bzl", "tensorboard_webcomponent_library")
+load("//tensorflow/tensorboard/defs:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -25,6 +25,10 @@ ts_web_library(
 tensorboard_webcomponent_library(
     name = "legacy",
     srcs = [":tf_graph_app"],
+    visibility = [
+        "//learning/brain/python/client/colab:__pkg__",
+        "//learning/vis/vz_elements/catalog:__pkg__",
+    ],
     destdir = "tf-graph-app",
     deps = [
         "//tensorflow/tensorboard/components/tf_graph_board:legacy",

@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//tensorflow/tensorboard:defs.bzl", "legacy_js")
+load("//tensorflow/tensorboard/defs:defs.bzl", "legacy_js")
 load("@io_bazel_rules_closure//closure/private:defs.bzl", "collect_js", "unfurl", "long_path")
-load("//tensorflow/tensorboard:web.bzl", "web_aspect")
+load("//tensorflow/tensorboard/defs:web.bzl", "web_aspect")
 
 def _tensorboard_html_binary(ctx):
   deps = unfurl(ctx.attr.deps, provider="webfiles")

@@ -1,4 +1,4 @@
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
 load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
 
