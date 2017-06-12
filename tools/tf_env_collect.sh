@@ -31,7 +31,6 @@ OUTPUT_FILE=tf_env.txt
     cat /etc/*release | grep VERSION
   fi
   
-  
   echo
   echo '== are we in docker ============================================='
   num=`cat /proc/1/cgroup | grep docker | wc -l`;
