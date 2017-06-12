@@ -97,12 +97,27 @@ CreateConv2D(poplar::Graph &graph,
   poplar::program::Sequence prog;
 
   // TODO : create these at original tensor creation time
+  in = in.dimShuffle({
+    (unsigned int)dims.batch_dimension(),
+    (unsigned int)dims.spatial_dimensions(0),
+    (unsigned int)dims.spatial_dimensions(1),
+    (unsigned int)dims.feature_dimension()
+  });
   poplar::Tensor conv_in = popconv::createInput(graph, params, "", opts);
   prog.add(poplar::program::Copy(in, conv_in));
 
-  in = in.dimShuffle({0, 1, 3, 2});
+  kernel = kernel.dimShuffle({
+    (unsigned int)dims.kernel_spatial_dimensions(0),
+    (unsigned int)dims.kernel_spatial_dimensions(1),
+    (unsigned int)dims.kernel_output_feature_dimension(),
+    (unsigned int)dims.kernel_input_feature_dimension()
+  });
   poplar::Tensor conv_kernel = popconv::createWeights(graph, params, "", opts);
   prog.add(poplar::program::Copy(kernel, conv_kernel));
+
+  // TODO If the weight input and output channels are reversed, then we can use
+  // TODO the poplar feature the reorder them internally. - this would require
+  // TODO the reverse op to be fused with the conv op in the backward pass.
 
   // Add the convolution
   poplar::Tensor out = popconv::convolution(graph, conv_in, conv_kernel, params,
