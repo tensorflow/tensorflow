@@ -1354,27 +1354,27 @@ class DebugDumpDir(object):
     """Get a list of all nodes from the partition graphs.
 
     Args:
-      device_name: (`str`) name of device. If there is only one device, this
-        argumnet is optional.
+      device_name: (`str`) name of device. If None, all nodes from all available
+        devices will be included.
 
     Returns:
       All nodes' names, as a list of str.
 
     Raises:
       LookupError: If no partition graphs have been loaded.
-      ValueError: If there are multiple devices, but device_name is not
-        specified.
+      ValueError: If specified node name does not exist.
     """
     if self._partition_graphs is None:
       raise LookupError("No partition graphs have been loaded.")
     if device_name is None:
-      if len(self.devices()) == 1:
-        device_name = self.devices()[0]
-      else:
-        raise ValueError(
-            "There are multiple (%d) devices, but "
-            "device_name is not specified." % len(self.devices()))
-    return [node_name for node_name in self._node_inputs[device_name]]
+      nodes = []
+      for device_name in self._node_inputs:
+        nodes.extend(self._node_inputs[device_name].keys())
+      return nodes
+    else:
+      if device_name not in self._node_inputs:
+        raise ValueError("Invalid device name: %s" % device_name)
+      return self._node_inputs[device_name].keys()
 
   def node_attributes(self, node_name, device_name=None):
     """Get the attributes of a node.
