@@ -188,7 +188,7 @@ class SplitVOp : public XlaOpKernel {
     std::vector<int64> begin(input_shape.dims(), 0);
     auto dim_sizes = input_shape.dim_sizes();
     std::vector<int64> limits(dim_sizes.begin(), dim_sizes.end());
-    std::vector<int64> strides(input_shape.dims(), 0);
+    std::vector<int64> strides(input_shape.dims(), 1);
     for (int i = 0; i < num_split; ++i) {
       TensorShape output_shape(input_shape);
       int slice_size = split_sizes_vec[i];
