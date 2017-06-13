@@ -2224,6 +2224,7 @@ tf_cc_tests(
         "summary_audio_op_test.cc",
         "summary_image_op_test.cc",
         "summary_op_test.cc",
+        "summary_tensor_op_test.cc",
     ],
     deps = [
         ":logging",

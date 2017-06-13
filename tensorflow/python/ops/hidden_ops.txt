@@ -219,6 +219,7 @@ MergeSummary
 Print
 ScalarSummary
 TensorSummary
+TensorSummaryV2
 
 # math_ops
 Abs
