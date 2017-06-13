@@ -538,16 +538,16 @@ class QueueBase(object):
           name=name)
 
   def is_closed(self, name=None):
-    """ Returns true if Queue is closed.
+    """ Returns true if queue is closed.
 
-    This operation returns true if the ueue is closed and false if the queue
+    This operation returns true if the queue is closed and false if the queue
     is open.
 
     Args:
       name: A name for the operation (optional).
 	
     Returns:
-      True if the Queue is closed and false if the Queue is open.
+      True if the queue is closed and false if the queue is open.
     """
     if name is None:
       name = "%s_Is_Closed" % self._name

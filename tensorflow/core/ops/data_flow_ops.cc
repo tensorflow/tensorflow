@@ -853,9 +853,9 @@ REGISTER_OP("QueueIsClosed")
     .Output("is_closed: bool")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
-Returns true if Queue is closed.
+Returns true if queue is closed.
 
-This operation returns true if the Queue is closed and false if the queue
+This operation returns true if the queue is closed and false if the queue
 is open.
 
 handle: The handle to a queue.
@@ -866,9 +866,9 @@ REGISTER_OP("QueueIsClosedV2")
     .Output("is_closed: bool")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
-Returns true if Queue is closed.
+Returns true if queue is closed.
 
-This operation returns true if the Queue is closed and false if the queue
+This operation returns true if the queue is closed and false if the queue
 is open.
 
 handle: The handle to a queue.
