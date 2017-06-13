@@ -28272,6 +28272,34 @@ op {
     description: "An unused string."
   }
   summary: "Outputs a `Summary` protocol buffer with a tensor."
+  description: "This op is being phased out in favor of TensorSummaryV2, which lets callers pass\na tag as well as a serialized SummaryMetadata proto string that contains\nplugin-specific data. We will keep this op to maintain backwards compatibility."
+}
+op {
+  name: "TensorSummaryV2"
+  input_arg {
+    name: "tag"
+    description: "A string attached to this summary. Used for organization in TensorBoard."
+    type: DT_STRING
+  }
+  input_arg {
+    name: "tensor"
+    description: "A tensor to serialize."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "serialized_summary_metadata"
+    description: "A serialized SummaryMetadata proto. Contains plugin\ndata."
+    type: DT_STRING
+  }
+  output_arg {
+    name: "summary"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  summary: "Outputs a `Summary` protocol buffer with a tensor and per-plugin data."
 }
 op {
   name: "TextLineDataset"
