@@ -16587,6 +16587,61 @@ op {
   description: "```"
 }
 op {
+  name: "QuantizedResizeBilinear"
+  input_arg {
+    name: "images"
+    description: "4-D with shape `[batch, height, width, channels]`."
+    type_attr: "T"
+  }
+  input_arg {
+    name: "size"
+    description: "= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The\nnew size for the images."
+    type: DT_INT32
+  }
+  input_arg {
+    name: "min"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "max"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "resized_images"
+    description: "4-D with shape\n`[batch, new_height, new_width, channels]`."
+    type_attr: "T"
+  }
+  output_arg {
+    name: "out_min"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "out_max"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_FLOAT
+      }
+    }
+  }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+    description: "If true, rescale input by (new_height - 1) / (height - 1), which\nexactly aligns the 4 corners of images and resized images. If false, rescale\nby new_height / height. Treat similarly the width dimension."
+  }
+  summary: "Resize quantized `images` to `size` using quantized bilinear interpolation."
+  description: "Input images and output images must be quantized types."
+}
+op {
   name: "QueueClose"
   input_arg {
     name: "handle"
