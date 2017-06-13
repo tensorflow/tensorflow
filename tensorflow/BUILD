@@ -379,6 +379,8 @@ filegroup(
         "//tensorflow/tensorboard/components/tf_image_dashboard:all_files",
         "//tensorflow/tensorboard/components/tf_imports:all_files",
         "//tensorflow/tensorboard/components/tf_option_selector:all_files",
+        "//tensorflow/tensorboard/components/tf_profile_dashboard:all_files",
+        "//tensorflow/tensorboard/components/tf_profile_dashboard/demo:all_files",
         "//tensorflow/tensorboard/components/tf_scalar_dashboard:all_files",
         "//tensorflow/tensorboard/components/tf_scalar_dashboard/demo:all_files",
         "//tensorflow/tensorboard/components/tf_storage:all_files",
