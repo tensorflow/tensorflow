@@ -63,6 +63,12 @@ int64 FloatToQuantizedUnclamped(float input, float range_min, float range_max) {
 // any over or underflows.
 template <class T>
 T FloatToQuantized(float input, float range_min, float range_max) {
+  if (std::is_same<T, float>::value) {
+    // Specialization for float. This is used in reference implementation
+    // for float which is useful to compare performance between float
+    // and quantized type.
+    return input;
+  }
   int64 quantized = FloatToQuantizedUnclamped<T>(input, range_min, range_max);
   const int64 lowest_quantized =
       static_cast<int64>(Eigen::NumTraits<T>::lowest());
@@ -75,6 +81,12 @@ T FloatToQuantized(float input, float range_min, float range_max) {
 
 template <class T>
 float QuantizedToFloat(T input, float range_min, float range_max) {
+  if (std::is_same<T, float>::value) {
+    // Specialization for float. This is used in reference implementation
+    // for float which is useful to compare performance between float
+    // and quantized type.
+    return input;
+  }
   if (range_min == range_max) {
     return range_min;
   }
