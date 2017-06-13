@@ -174,8 +174,6 @@ inline int32x2_t ComputeLerpx2(
     const qint32* top_left1, const qint32* top_right1,
     const qint32* bottom_left1, const qint32* bottom_right1,
     const int32* x_lerp, const int32x2_t y_lerpsx) {
-  static const int32x2_t ZERO_32x2 = vmov_n_s32(0);
-
   const int32x2_t x_lerpsx =
       X_LERP_SAME ? vld1_dup_s32(reinterpret_cast<const int32*>(x_lerp))
                   : vld1_s32(reinterpret_cast<const int32*>(x_lerp));
@@ -339,13 +337,11 @@ inline void OutputLerp32x4x1(const InterpolationCache<int32>& xs,
   const int32* const xs_ilerp0 = &xs.ilerp[x_start];
   const int64 xs_lower1 = xs.lower[x_start + 1];
   const int64 xs_upper1 = xs.upper[x_start + 1];
-  const int32* const xs_ilerp1 = &xs.ilerp[x_start + 1];
   const int64 xs_lower2 = xs.lower[x_start + 2];
   const int64 xs_upper2 = xs.upper[x_start + 2];
   const int32* const xs_ilerp2 = &xs.ilerp[x_start + 2];
   const int64 xs_lower3 = xs.lower[x_start + 3];
   const int64 xs_upper3 = xs.upper[x_start + 3];
-  const int32* const xs_ilerp3 = &xs.ilerp[x_start + 3];
 
   const int32x2_t y_lerpsx = vmov_n_s32(ys_ilerp);
 
