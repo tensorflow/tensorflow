@@ -4661,6 +4661,51 @@ tf_cc_test(
     ],
 )
 
+# Android-only test for quantized resize bilinear.
+cc_binary(
+    name = "quantized_resize_bilinear_op_test_android_only",
+    testonly = 1,
+    srcs = ["quantized_resize_bilinear_op_test.cc"],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:android": [
+            "-lm",
+            "-llog",
+            "-pie",
+            "-std=c++11",
+        ],
+        "//conditions:default": [],
+    }),
+    linkstatic = 1,
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+    ] + select({
+        "//tensorflow:android": [
+            ":android_tensorflow_kernels",
+            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_test_lib",
+        ],
+        "//conditions:default": [
+            ":ops_testutil",
+            ":ops_util",
+            ":quantized_ops",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:direct_session",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:image_ops_op_lib",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:test",
+            "//tensorflow/core:test_main",
+            "//tensorflow/core:testlib",
+        ],
+    }),
+)
+
 tf_cc_test(
     name = "quantized_bias_add_op_test",
     size = "small",

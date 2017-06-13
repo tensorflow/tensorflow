@@ -332,6 +332,12 @@ void TestResizeBilinearTwoDimsType(const float tolerance, const bool relative) {
                                   relative);
   RunTestResizeBilinearTwoDims<T>(1, 256, 256, 128, 128, 1, tolerance,
                                   relative);
+  RunTestResizeBilinearTwoDims<T>(1, 1, 128, 1, 256, 2, tolerance, relative);
+  RunTestResizeBilinearTwoDims<T>(1, 128, 1, 256, 1, 2, tolerance, relative);
+  RunTestResizeBilinearTwoDims<T>(1, 128, 128, 256, 256, 2, tolerance,
+                                  relative);
+  RunTestResizeBilinearTwoDims<T>(1, 256, 256, 128, 128, 2, tolerance,
+                                  relative);
   RunTestResizeBilinearTwoDims<T>(1, 1, 16, 1, 32, 3, tolerance, relative);
   RunTestResizeBilinearTwoDims<T>(1, 1, 128, 1, 256, 3, tolerance, relative);
   RunTestResizeBilinearTwoDims<T>(1, 128, 128, 256, 256, 3, tolerance,
@@ -352,8 +358,8 @@ void RunBenchmarkResizeBilinearTwoDimsType() {
   RunBenchmarkResizeBilinearTwoDims<T>(1, 1, 1, 2, 2, 1, ITER);
   RunBenchmarkResizeBilinearTwoDims<T>(1, 128, 128, 256, 256, 1, ITER);
   RunBenchmarkResizeBilinearTwoDims<T>(1, 128, 128, 256, 256, 3, ITER);
-  RunBenchmarkResizeBilinearTwoDims<T>(1, 128 * 2, 128 * 2, 256 * 2, 256 * 2, 3,
-                                       ITER);
+  RunBenchmarkResizeBilinearTwoDims<T>(1, 64, 64, 128, 128, 2, ITER);
+  RunBenchmarkResizeBilinearTwoDims<T>(1, 32, 32, 64, 64, 16, ITER);
 }
 
 void RunBenchmarkResizeBilinearTwoDims() {
