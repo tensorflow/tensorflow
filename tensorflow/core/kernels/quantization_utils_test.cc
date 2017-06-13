@@ -86,20 +86,20 @@ void TestRequantizeMany8To32Bit(float input_min, float input_max,
         output_min, output_max));
   }
 
-  Tensor i_tensor =
+  const Tensor i_tensor =
       tensorflow::test::AsTensor(gtl::ArraySlice<quint8>(values_quantized));
   Tensor o_tensor(DT_QINT32, TensorShape{values_count});
   auto output_values = o_tensor.flat<qint32>();
 
-  auto input_array = i_tensor.flat<quint8>();
+  const auto input_array = i_tensor.flat<quint8>();
   RequantizeManyInNewRange(input_array.data(), input_array.size(), input_min,
                            input_max, output_min, output_max,
                            output_values.data());
 
   const string tolerance_str = strings::StrCat("+-", tolerance);
-  for (size_t value_index = 0; value_index < values_count; ++value_index) {
-    int e = expected_values[value_index];
-    int v = output_values(value_index);
+  for (int value_index = 0; value_index < values_count; ++value_index) {
+    const qint32 e = expected_values[value_index];
+    const qint32 v = output_values(value_index);
     ASSERT_TRUE(std::abs(e - v) <= tolerance)
         << "actual=" << v << ", expected=" << e << tolerance_str
         << ", values_quantized[" << value_index

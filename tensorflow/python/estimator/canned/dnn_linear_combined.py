@@ -307,6 +307,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                n_classes=2,
+               weight_feature_key=None,
                input_layer_partitioner=None,
                config=None):
     """Initializes a DNNLinearCombinedClassifier instance.
@@ -333,6 +334,9 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         a given coordinate.
       n_classes: Number of label classes. Defaults to 2, namely binary
         classification. Must be > 1.
+      weight_feature_key: A string defining feature column name representing
+        weights. It is used to down weight or boost examples during training. It
+        will be multiplied by the loss of the example.
       input_layer_partitioner: Partitioner for input layer. Defaults to
         `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: RunConfig object to configure the runtime settings.
@@ -343,16 +347,18 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     """
     linear_feature_columns = linear_feature_columns or []
     dnn_feature_columns = dnn_feature_columns or []
-    self._feature_columns = linear_feature_columns + dnn_feature_columns
+    self._feature_columns = (
+        list(linear_feature_columns) + list(dnn_feature_columns))
     if not self._feature_columns:
       raise ValueError('Either linear_feature_columns or dnn_feature_columns '
                        'must be defined.')
     if n_classes == 2:
-      head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()  # pylint: disable=protected-access
+      head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
+          weight_column=weight_feature_key)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
-          n_classes)
-
+          n_classes,
+          weight_column=weight_feature_key)
     def _model_fn(features, labels, mode, config):
       return _dnn_linear_combined_model_fn(
           features=features,
@@ -500,7 +506,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           head=head_lib.  # pylint: disable=protected-access
           _regression_head_with_mean_squared_error_loss(
               label_dimension=label_dimension,
-              weight_feature_key=weight_feature_key),
+              weight_column=weight_feature_key),
           linear_feature_columns=linear_feature_columns,
           linear_optimizer=linear_optimizer,
           dnn_feature_columns=dnn_feature_columns,

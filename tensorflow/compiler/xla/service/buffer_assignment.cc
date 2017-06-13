@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -74,6 +73,9 @@ void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
                           << " offset out of range";
   CHECK_LE(offset + size, size_)
       << "LogicalBuffer " << buffer << " size out of range";
+  CHECK_EQ(buffer.color(), color())
+      << "Buffer color " << buffer.color()
+      << " does not match allocation color " << color() << ".";
   OffsetSize offset_size;
   offset_size.offset = offset;
   offset_size.size = size;
@@ -86,6 +88,7 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   proto.set_size(size_);
   proto.set_is_thread_local(is_thread_local_);
   proto.set_is_reusable(is_reusable_);
+  proto.set_color(color_.value());
   if (is_entry_computation_parameter_) {
     proto.set_is_entry_computation_parameter(true);
     proto.set_parameter_number(parameter_number_);
@@ -105,6 +108,9 @@ string BufferAllocation::ToString() const {
   tensorflow::strings::StrAppend(
       &output, tensorflow::strings::Printf("allocation %lld: %p, size %lld",
                                            index_, this, size()));
+  if (color().value() != 0) {
+    tensorflow::strings::StrAppend(&output, ", color ", color().value());
+  }
   if (is_entry_computation_parameter()) {
     tensorflow::strings::StrAppend(&output, ", parameter ", parameter_number());
   }
@@ -248,11 +254,11 @@ BufferAssignment::GetUniqueTopLevelOutputSlice() const {
       module_->entry_computation()->root_instruction());
 }
 
-BufferAllocation* BufferAssignment::NewEmptyAllocation(int64 size,
-                                                       bool is_thread_local,
-                                                       bool is_reusable) {
+BufferAllocation* BufferAssignment::NewEmptyAllocation(
+    int64 size, bool is_thread_local, bool is_reusable,
+    LogicalBuffer::Color color) {
   BufferAllocation::Index index = allocations_.size();
-  allocations_.emplace_back(index, size, is_thread_local, is_reusable);
+  allocations_.emplace_back(index, size, is_thread_local, is_reusable, color);
   BufferAllocation* allocation = &allocations_.back();
   return allocation;
 }
@@ -262,7 +268,7 @@ BufferAllocation* BufferAssignment::NewAllocation(const LogicalBuffer& buffer,
                                                   bool is_thread_local,
                                                   bool is_reusable) {
   BufferAllocation* allocation =
-      NewEmptyAllocation(size, is_thread_local, is_reusable);
+      NewEmptyAllocation(size, is_thread_local, is_reusable, buffer.color());
   AddAssignment(allocation, buffer, /*offset=*/0, size);
   return allocation;
 }
@@ -282,33 +288,55 @@ void BufferAssignment::AddAssignment(BufferAllocation* allocation,
   allocation_index_for_buffer_[&buffer] = allocation->index();
 }
 
-// Combines allocations of temporary buffers into one big BufferAllocation.
+// Combines allocations of temporary buffers of the same color into one big
+// BufferAllocation.
 void BufferAssignment::CombineTempAllocations() {
+  FlatMap<LogicalBuffer::Color, BufferAllocation, LogicalBuffer::Color::Hasher>
+      combined_allocation_map;
+
   // Move all temp allocations into a single run at the end of the allocations
-  // vector, and combine them into the first allocation of the run.
+  // vector.
   const auto first_temp_it =
       std::partition(allocations_.begin(), allocations_.end(),
                      [](const BufferAllocation& allocation) {
                        return !allocation.IsPreallocatedTempBuffer();
                      });
+
+  // Walk over the run of temp allocations, collecting the allocations belonging
+  // to the same color.
   if (first_temp_it != allocations_.end()) {
-    BufferAllocation* combined = &*first_temp_it;
-    const auto second_temp_it = std::next(first_temp_it);
-    for (auto it = second_temp_it; it != allocations_.end(); ++it) {
+    for (auto it = first_temp_it; it != allocations_.end(); ++it) {
+      const BufferAllocation& temp_allocation = *it;
+      LogicalBuffer::Color color = temp_allocation.color();
+      auto combined_it = combined_allocation_map.find(color);
+      if (combined_it == combined_allocation_map.end()) {
+        // We have found the first temp allocation of this color. Collect
+        // the other temp allocations of the same color into it.
+        combined_allocation_map.emplace(color, temp_allocation);
+        continue;
+      }
+
+      auto* combined_allocation = &combined_it->second;
       // Each temp allocation is placed end-to-end, accounting for alignment.
       // The offset of each buffer in the combined allocation is computed from
       // the base offset of the allocation.
-      const int64 base = RoundUpToNearest(combined->size(), alignment_);
-      combined->set_size(base + it->size());
-      for (const auto& buffer_offset_size : it->assigned_buffers_) {
+      const int64 base =
+          RoundUpToNearest(combined_allocation->size(), alignment_);
+      combined_allocation->set_size(base + temp_allocation.size());
+      for (const auto& buffer_offset_size : temp_allocation.assigned_buffers_) {
         const LogicalBuffer* buffer = buffer_offset_size.first;
         const int64 offset = buffer_offset_size.second.offset;
         const int64 size = buffer_offset_size.second.size;
-        combined->AddAssignment(*buffer, base + offset, size);
+        combined_allocation->AddAssignment(*buffer, base + offset, size);
       }
     }
-    allocations_.erase(second_temp_it, allocations_.end());
-    temp_allocation_ = combined;
+    // Replace all existing temporary allocations with the new combined
+    // allocations.
+    allocations_.erase(first_temp_it, allocations_.end());
+    for (auto& combined : combined_allocation_map) {
+      allocations_.push_back(combined.second);
+      temp_allocation_total_size_ += combined.second.size();
+    }
   }
 
   // Update allocation indices to their new positions.
@@ -548,8 +576,9 @@ Status GatherComputationsByAllocationType(
 StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::Run(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     LogicalBuffer::SizeFunction buffer_size, int64 alignment,
-    bool allow_input_output_aliasing) {
-  BufferAssigner assigner(alignment, allow_input_output_aliasing);
+    bool allow_input_output_aliasing, TuplePointsToAnalysis::Colorer colorer) {
+  BufferAssigner assigner(alignment, allow_input_output_aliasing,
+                          std::move(colorer));
   return assigner.CreateAssignment(module, std::move(hlo_ordering),
                                    std::move(buffer_size));
 }
@@ -563,6 +592,12 @@ bool BufferAssigner::MaybeAssignBuffer(BufferAllocation* allocation,
       << "buffer " << buffer << " already has an allocation assigned.";
 
   VLOG(4) << "Trying to assign " << buffer << " to allocation: " << *allocation;
+
+  if (buffer.color() != allocation->color()) {
+    VLOG(4) << "Can't assign: buffer has color" << buffer.color()
+            << " and allocation has color " << allocation->color() << ".";
+    return false;
+  }
 
   if (buffer_size(buffer) > allocation->size()) {
     VLOG(4) << "Can't assign: buffer is larger than allocation ("
@@ -863,6 +898,19 @@ Status BufferAssigner::AssignBuffersForComputation(
   return Status::OK();
 }
 
+FlatMap<LogicalBuffer::Color, FlatSet<const LogicalBuffer*>,
+        LogicalBuffer::Color::Hasher>
+BufferAssigner::SplitBuffersByColor(
+    const FlatSet<const LogicalBuffer*>& buffers) {
+  FlatMap<LogicalBuffer::Color, FlatSet<const LogicalBuffer*>,
+          LogicalBuffer::Color::Hasher>
+      color_map;
+  for (auto buffer : buffers) {
+    color_map[buffer->color()].insert(buffer);
+  }
+  return color_map;
+}
+
 Status BufferAssigner::AssignBuffersWithSequentialOrdering(
     const FlatMap<const HloComputation*, FlatSet<const LogicalBuffer*>>&
         buffers_to_assign_sequentially,
@@ -888,14 +936,20 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       all_buffers_to_assign.insert(buffers_to_assign.begin(),
                                    buffers_to_assign.end());
     }
-    TF_ASSIGN_OR_RETURN(
-        const HeapSimulator::Result result,
-        HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                               MakeUnique<LazyBestFitHeap>(alignment_)),
-                           assignment->module(), module_sequence,
-                           assignment->points_to_analysis(),
-                           assignment->buffer_size_, &all_buffers_to_assign));
-    AssignBuffersFromHeapSimulator(result, assignment);
+    auto color_map = SplitBuffersByColor(all_buffers_to_assign);
+    for (auto& single_colored_set : color_map) {
+      VLOG(2) << "Simulating heap for color " << single_colored_set.first;
+      TF_ASSIGN_OR_RETURN(
+          const HeapSimulator::Result result,
+          HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
+                                 MakeUnique<LazyBestFitHeap>(alignment_)),
+                             assignment->module(), module_sequence,
+                             assignment->points_to_analysis(),
+                             assignment->buffer_size_,
+                             &single_colored_set.second));
+      AssignBuffersFromHeapSimulator(result, assignment,
+                                     single_colored_set.first);
+    }
   } else {
     // Run the heap-simulation on a per-computation basis. Buffers for
     // sub-computations are assigned disjoint BufferAllocations, assuming the
@@ -907,21 +961,28 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       const std::vector<const HloInstruction*>* instruction_sequence =
           hlo_ordering.SequentialOrder(*computation);
       CHECK(instruction_sequence != nullptr) << computation->name();
-      TF_ASSIGN_OR_RETURN(
-          const HeapSimulator::Result result,
-          HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
-                                 MakeUnique<LazyBestFitHeap>(alignment_)),
-                             *computation, *instruction_sequence,
-                             assignment->points_to_analysis(),
-                             assignment->buffer_size_, &buffers_to_assign));
-      AssignBuffersFromHeapSimulator(result, assignment);
+      auto color_map = SplitBuffersByColor(buffers_to_assign);
+      for (auto& single_colored_set : color_map) {
+        VLOG(2) << "Simulating heap for color " << single_colored_set.first;
+        TF_ASSIGN_OR_RETURN(
+            const HeapSimulator::Result result,
+            HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
+                                   MakeUnique<LazyBestFitHeap>(alignment_)),
+                               *computation, *instruction_sequence,
+                               assignment->points_to_analysis(),
+                               assignment->buffer_size_,
+                               &single_colored_set.second));
+        AssignBuffersFromHeapSimulator(result, assignment,
+                                       single_colored_set.first);
+      }
     }
   }
   return Status::OK();
 }
 
 void BufferAssigner::AssignBuffersFromHeapSimulator(
-    const HeapSimulator::Result& result, BufferAssignment* assignment) {
+    const HeapSimulator::Result& result, BufferAssignment* assignment,
+    LogicalBuffer::Color color) {
   if (assignment->stats_.preallocated_temp_fragmentation_bytes == -1) {
     assignment->stats_.preallocated_temp_fragmentation_bytes =
         result.fragmentation_size;
@@ -931,7 +992,7 @@ void BufferAssigner::AssignBuffersFromHeapSimulator(
   }
 
   BufferAllocation* allocation = assignment->NewEmptyAllocation(
-      result.heap_size, /*is_thread_local=*/false, /*is_reusable=*/true);
+      result.heap_size, /*is_thread_local=*/false, /*is_reusable=*/true, color);
   for (const auto& buffer_chunk : result.chunk_map) {
     const LogicalBuffer& buffer = *buffer_chunk.first;
     const HeapSimulator::Chunk& chunk = buffer_chunk.second;
@@ -1234,7 +1295,8 @@ StatusOr<std::unique_ptr<BufferAssignment>> BufferAssigner::CreateAssignment(
     const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
     LogicalBuffer::SizeFunction buffer_size) {
   TF_ASSIGN_OR_RETURN(std::unique_ptr<BufferLiveness> liveness,
-                      BufferLiveness::Run(module, std::move(hlo_ordering)));
+                      BufferLiveness::Run(module, std::move(hlo_ordering),
+                                          std::move(colorer_)));
 
   VLOG(1) << "Assigning buffers to module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());

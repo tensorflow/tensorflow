@@ -97,7 +97,7 @@ genrule(
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
-        "@lmdb//:LICENSE",
+        #"@lmdb//:LICENSE",  # TODO(jhseu): re-enable after fixing
         "@local_config_sycl//sycl:LICENSE.text",
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
@@ -127,7 +127,7 @@ genrule(
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
-        "@lmdb//:LICENSE",
+        #"@lmdb//:LICENSE",  # TODO(jhseu): re-enable after fixing
         "@local_config_sycl//sycl:LICENSE.text",
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",

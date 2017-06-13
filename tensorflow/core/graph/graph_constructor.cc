@@ -509,7 +509,9 @@ Status GraphConstructor::ModifyNodeDefForImport(NodeDef* node_def) {
   return Status::OK();
 }
 
-void RemoveInputs(NodeDef* node_def, const std::vector<int>& inputs_to_remove) {
+void RemoveInputs(const std::vector<int>& inputs_to_remove, NodeDef* node_def,
+                  std::vector<bool>* input_already_exists) {
+  // Remove 'inputs_to_remove' from 'node_def'
   // TODO(skyewm): is there a better way to do this?
   std::vector<string> inputs;
   inputs.reserve(node_def->input_size());
@@ -524,6 +526,11 @@ void RemoveInputs(NodeDef* node_def, const std::vector<int>& inputs_to_remove) {
       node_def->add_input(inputs[i]);
     }
   }
+  // Remove 'inputs_to_remove' from 'input_already_exists'
+  for (int idx : inputs_to_remove) {
+    input_already_exists->erase(input_already_exists->begin() + idx);
+  }
+  DCHECK_EQ(input_already_exists->size(), node_def->input_size());
 }
 
 void GraphConstructor::RemapNodeDefInputs(
@@ -549,7 +556,9 @@ void GraphConstructor::RemapNodeDefInputs(
     node_def->set_input(i, new_input.ToString());
     (*input_already_exists)[i] = true;
   }
-  if (!inputs_to_remove.empty()) RemoveInputs(node_def, inputs_to_remove);
+  if (!inputs_to_remove.empty()) {
+    RemoveInputs(inputs_to_remove, node_def, input_already_exists);
+  }
 }
 
 void GraphConstructor::AddControlDependencies(
@@ -662,6 +671,7 @@ Status GraphConstructor::Convert() {
       // GraphDef* and avoid the copying.
       imported_node_def = original_node_def;
       if (!opts_.input_map.empty()) {
+        // Note that input_already_exists can shrink here
         RemapNodeDefInputs(&imported_node_def, &input_already_exists);
       }
       if (!opts_.control_dependencies.empty()) {
@@ -673,6 +683,7 @@ Status GraphConstructor::Convert() {
       node_def = &original_node_def;
     }
 
+    DCHECK_EQ(node_def->input_size(), input_already_exists.size());
     TF_RETURN_IF_ERROR(ValidateColocationConstraints(*node_def));
     for (int i = 0; i < node_def->input_size(); ++i) {
       TensorId id(ParseTensorName(node_def->input(i)));

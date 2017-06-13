@@ -27,7 +27,7 @@ from tensorflow.python.platform import test
 
 # pylint: disable=g-bad-import-order
 from tensorflow.contrib.tfprof.python.tools.tfprof import model_analyzer
-from tensorflow.contrib.tfprof.python.tools.tfprof import model_analyzer_testlib as lib
+from tensorflow.contrib.tfprof.python.tools.tfprof.internal import model_analyzer_testlib as lib
 
 
 class ProfilerTest(test.TestCase):
@@ -178,6 +178,9 @@ class ProfilerTest(test.TestCase):
       self.assertGreater(lib.SearchTFProfNode(pb2, 'Conv2D_1').exec_micros, 0)
       self.assertEqual(lib.SearchTFProfNode(pb2, 'add'), None)
       self.assertGreater(lib.SearchTFProfNode(pb3, 'add').exec_micros, 0)
+
+      # TODO(xpan): Better test of advisor.
+      profiler.advise()
 
 
 if __name__ == '__main__':

@@ -20,8 +20,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.tfprof.python.tools.tfprof import pywrap_tensorflow_print_model_analysis_lib as print_mdl
 from tensorflow.contrib.tfprof.python.tools.tfprof import tfprof_logger
+from tensorflow.contrib.tfprof.python.tools.tfprof.internal import pywrap_tensorflow_print_model_analysis_lib as print_mdl
 from tensorflow.python.framework import errors
 from tensorflow.tools.tfprof import tfprof_options_pb2
 from tensorflow.tools.tfprof import tfprof_output_pb2
@@ -189,6 +189,8 @@ class Profiler(object):
         profiler.profile_graph(options=opts)
       else:
         _ = sess.run(...)
+    # Auto detect problems and generate advice.
+    profiler.advise()
   """
 
   def __init__(self, graph, op_log=None):
@@ -206,7 +208,7 @@ class Profiler(object):
     # pylint: enable=protected-access
 
     print_mdl.NewProfiler(
-        self._graph.as_graph_def().SerializeToString(),
+        self._graph.as_graph_def(add_shapes=True).SerializeToString(),
         op_log.SerializeToString())
 
   def __del__(self):
@@ -286,6 +288,10 @@ class Profiler(object):
         print_mdl.Profile('graph'.encode('utf-8'), opts.SerializeToString()))
     return tfprof_node
 
+  def advise(self):
+    """Automatically detect problems and generate reports."""
+    print_mdl.Advise()
+
 
 def print_model_analysis(graph,
                          run_meta=None,
@@ -329,7 +335,7 @@ def print_model_analysis(graph,
     tfprof_node = tfprof_output_pb2.TFMultiGraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.PrintModelAnalysis(
-            graph.as_graph_def().SerializeToString(),
+            graph.as_graph_def(add_shapes=True).SerializeToString(),
             run_meta_str,
             op_log.SerializeToString(),
             tfprof_cmd.encode('utf-8'),
@@ -338,7 +344,7 @@ def print_model_analysis(graph,
     tfprof_node = tfprof_output_pb2.TFGraphNodeProto()
     tfprof_node.ParseFromString(
         print_mdl.PrintModelAnalysis(
-            graph.as_graph_def().SerializeToString(),
+            graph.as_graph_def(add_shapes=True).SerializeToString(),
             run_meta_str,
             op_log.SerializeToString(),
             tfprof_cmd.encode('utf-8'),

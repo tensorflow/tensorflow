@@ -15,7 +15,7 @@ limitations under the License.
 
 import {compareTagNames} from '../vz-sorting/sorting';
 import {RequestManager} from './requestManager';
-import {Router} from './router';
+import {getRouter} from './router';
 import {demoify, queryEncoder} from './urlPathHelpers';
 
 export interface RunEnumeration {
@@ -126,17 +126,14 @@ export const TYPES = [
  * be accessed in a more convenient and clearly-documented fashion.
  */
 export class Backend {
-  public router: Router;
   public requestManager: RequestManager;
 
   /**
    * Construct a Backend instance.
-   * @param router the Router with info on what urls to get data from
    * @param requestManager The RequestManager, overwritable so you may
    * manually clear request queue, etc. Defaults to a new RequestManager.
    */
-  constructor(router: Router, requestManager?: RequestManager) {
-    this.router = router;
+  constructor(requestManager?: RequestManager) {
     this.requestManager = requestManager || new RequestManager();
   }
 
@@ -144,14 +141,14 @@ export class Backend {
    * Returns a promise for requesting the logdir string.
    */
   public logdir(): Promise<LogdirResponse> {
-    return this.requestManager.request(this.router.logdir());
+    return this.requestManager.request(getRouter().logdir());
   }
 
   /**
    * Returns a listing of all the available data in the TensorBoard backend.
    */
   public runs(): Promise<RunsResponse> {
-    return this.requestManager.request(this.router.runs());
+    return this.requestManager.request(getRouter().runs());
   }
 
   /**
@@ -159,7 +156,7 @@ export class Backend {
    */
   public scalarTags(): Promise<RunToTag> {
     return this.requestManager.request(
-        this.router.pluginRoute('scalars', '/tags'));
+        getRouter().pluginRoute('scalars', '/tags'));
   }
 
   /**
@@ -167,7 +164,7 @@ export class Backend {
    */
   public histogramTags(): Promise<RunToTag> {
     return this.requestManager.request(
-        this.router.pluginRoute('histograms', '/tags'));
+        getRouter().pluginRoute('histograms', '/tags'));
   }
 
   /**
@@ -175,7 +172,7 @@ export class Backend {
    */
   public imageTags(): Promise<RunToTag> {
     return this.requestManager.request(
-        this.router.pluginRoute('images', '/tags'));
+        getRouter().pluginRoute('images', '/tags'));
   }
 
   /**
@@ -183,7 +180,7 @@ export class Backend {
    */
   public audioTags(): Promise<RunToTag> {
     return this.requestManager.request(
-        this.router.pluginRoute('audio', '/tags'));
+        getRouter().pluginRoute('audio', '/tags'));
   }
 
   /**
@@ -192,7 +189,7 @@ export class Backend {
    */
   public compressedHistogramTags(): Promise<RunToTag> {
     return this.requestManager.request(
-        this.router.pluginRoute('distributions', '/tags'));
+        getRouter().pluginRoute('distributions', '/tags'));
   }
 
   /**
@@ -200,7 +197,7 @@ export class Backend {
    */
   public graphRuns(): Promise<string[]> {
     return this.requestManager.request(
-        this.router.pluginRoute('graphs', '/runs'));
+        getRouter().pluginRoute('graphs', '/runs'));
   }
 
   /**
@@ -208,7 +205,7 @@ export class Backend {
    */
   public runMetadataTags(): Promise<RunToTag> {
     return this.requestManager.request(
-        this.router.pluginRoute('graphs', '/run_metadata_tags'));
+        getRouter().pluginRoute('graphs', '/run_metadata_tags'));
   }
 
 
@@ -216,7 +213,7 @@ export class Backend {
    * Returns a promise showing the Run-to-Tag mapping for text data.
    */
   public textRuns(): Promise<RunToTag> {
-    return this.requestManager.request(this.router.textRuns());
+    return this.requestManager.request(getRouter().textRuns());
   }
 
 
@@ -224,7 +221,7 @@ export class Backend {
    * Returns a promise containing TextDatums for given run and tag.
    */
   public text(tag: string, run: string): Promise<TextDatum[]> {
-    const url = this.router.text(tag, run);
+    const url = getRouter().text(tag, run);
     // tslint:disable-next-line:no-any it's convenient and harmless here
     return this.requestManager.request(url).then(map((x: any) => {
       x.wall_time = timeToDate(x.wall_time);
@@ -237,8 +234,8 @@ export class Backend {
    */
   public graphUrl(run: string, limitAttrSize?: number, largeAttrsKey?: string):
       string {
-    const demoMode = this.router.isDemoMode();
-    const base = this.router.pluginRoute('graphs', '/graph');
+    const demoMode = getRouter().isDemoMode();
+    const base = getRouter().pluginRoute('graphs', '/graph');
     const optional = (p) => (p != null && !demoMode || undefined) && p;
     const parameters = {
       'run': run,
@@ -260,7 +257,7 @@ export class Backend {
    */
   public scalar(tag: string, run: string): Promise<Array<ScalarDatum>> {
     let p: Promise<TupleData<number>[]>;
-    const url = this.router.pluginRunTagRoute('scalars', '/scalars')(tag, run);
+    const url = getRouter().pluginRunTagRoute('scalars', '/scalars')(tag, run);
     p = this.requestManager.request(url);
     return p.then(map(detupler(createScalar)));
   }
@@ -282,7 +279,7 @@ export class Backend {
       // might be slow since the backend reads events sequentially from disk.
       postData['step'] = step;
     }
-    return this.requestManager.request(this.router.healthPills(), postData);
+    return this.requestManager.request(getRouter().healthPills(), postData);
   }
 
   /**
@@ -292,7 +289,7 @@ export class Backend {
   public debuggerNumericsAlerts():
       Promise<DebuggerNumericsAlertReportResponse> {
     return this.requestManager.request(
-        this.router.pluginRoute('debugger', '/numerics_alert_report'));
+        getRouter().pluginRoute('debugger', '/numerics_alert_report'));
   }
 
   /**
@@ -302,7 +299,7 @@ export class Backend {
       Promise<Array<HistogramSeriesDatum>> {
     let p: Promise<TupleData<HistogramTuple>[]>;
     const url =
-        this.router.pluginRunTagRoute('histograms', '/histograms')(tag, run);
+        getRouter().pluginRunTagRoute('histograms', '/histograms')(tag, run);
     p = this.requestManager.request(url);
     return p.then(map(detupler(createHistogram))).then(function(histos) {
       // Get the minimum and maximum values across all histograms so that the
@@ -324,7 +321,7 @@ export class Backend {
    * Return a promise containing ImageDatums for given run and tag.
    */
   public image(tag: string, run: string): Promise<Array<ImageDatum>> {
-    const url = (this.router.pluginRunTagRoute('images', '/images')(tag, run));
+    const url = (getRouter().pluginRunTagRoute('images', '/images')(tag, run));
     let p: Promise<ImageMetadata[]>;
     p = this.requestManager.request(url);
     return p.then(map(this.createImage.bind(this)));
@@ -334,7 +331,7 @@ export class Backend {
    * Return a promise containing AudioDatums for given run and tag.
    */
   public audio(tag: string, run: string): Promise<Array<AudioDatum>> {
-    const url = (this.router.pluginRunTagRoute('audio', '/audio')(tag, run));
+    const url = (getRouter().pluginRunTagRoute('audio', '/audio')(tag, run));
     let p: Promise<AudioMetadata[]>;
     p = this.requestManager.request(url);
     return p.then(map(this.createAudio.bind(this)));
@@ -344,7 +341,7 @@ export class Backend {
    * Returns the url for the RunMetadata for the given run/tag.
    */
   public runMetadataUrl(tag: string, run: string): string {
-    return this.router.pluginRunTagRoute('graphs', '/run_metadata')(tag, run);
+    return getRouter().pluginRunTagRoute('graphs', '/run_metadata')(tag, run);
   }
 
   /**
@@ -362,7 +359,7 @@ export class Backend {
    */
   private compressedHistogram(tag: string, run: string):
       Promise<Array<Datum&CompressedHistogramTuple>> {
-    const url = (this.router.pluginRunTagRoute(
+    const url = (getRouter().pluginRunTagRoute(
         'distributions', '/distributions')(tag, run));
     let p: Promise<TupleData<CompressedHistogramTuple>[]>;
     p = this.requestManager.request(url);
@@ -370,7 +367,7 @@ export class Backend {
   }
 
   private createImage(x: ImageMetadata): Image&Datum {
-    const pluginRoute = this.router.pluginRoute('images', '/individualImage');
+    const pluginRoute = getRouter().pluginRoute('images', '/individualImage');
 
     let query = x.query;
     if (pluginRoute.indexOf('?') > -1) {
@@ -381,7 +378,7 @@ export class Backend {
       query = '?' + query;
     }
 
-    if (this.router.isDemoMode()) {
+    if (getRouter().isDemoMode()) {
       query = demoify(query);
     }
 
@@ -390,7 +387,7 @@ export class Backend {
     // to reload the image when the URL changes. The backend doesn't care
     // about the value.
     individualImageUrl +=
-        this.router.isDemoMode() ? '.png' : '&ts=' + x.wall_time;
+        getRouter().isDemoMode() ? '.png' : '&ts=' + x.wall_time;
 
     return {
       width: x.width,
@@ -402,7 +399,7 @@ export class Backend {
   }
 
   private createAudio(x: AudioMetadata): Audio&Datum {
-    const pluginRoute = this.router.pluginRoute('audio', '/individualAudio');
+    const pluginRoute = getRouter().pluginRoute('audio', '/individualAudio');
 
     let query = x.query;
     if (pluginRoute.indexOf('?') > -1) {
@@ -413,7 +410,7 @@ export class Backend {
       query = '?' + query;
     }
 
-    if (this.router.isDemoMode()) {
+    if (getRouter().isDemoMode()) {
       query = demoify(query);
     }
 
@@ -422,7 +419,7 @@ export class Backend {
     // to reload the audio when the URL changes. The backend doesn't care
     // about the value.
     individualAudioUrl +=
-        this.router.isDemoMode() ? '.wav' : '&ts=' + x.wall_time;
+        getRouter().isDemoMode() ? '.wav' : '&ts=' + x.wall_time;
 
     return {
       content_type: x.content_type,

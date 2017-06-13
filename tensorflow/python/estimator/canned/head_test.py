@@ -27,6 +27,7 @@ from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.inputs import numpy_io
+from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -80,6 +81,24 @@ def _assert_no_hooks(test_case, spec):
 
 def _sigmoid(logits):
   return 1 / (1 + np.exp(-logits))
+
+
+# TODO(roumposg): Reuse the code from dnn_testing_utils.
+def _assert_close(expected, actual, rtol=1e-04, message='',
+                  name='assert_close'):
+  with ops.name_scope(name, 'assert_close', (expected, actual, rtol)) as scope:
+    expected = ops.convert_to_tensor(expected, name='expected')
+    actual = ops.convert_to_tensor(actual, name='actual')
+    rdiff = math_ops.abs((expected - actual) / expected, 'diff')
+    rtol = ops.convert_to_tensor(rtol, name='rtol')
+    return check_ops.assert_less(
+        rdiff,
+        rtol,
+        data=(message, 'Condition expected =~ actual did not hold element-wise:'
+              'expected = ', expected, 'actual = ', actual, 'rdiff = ', rdiff,
+              'rtol = ', rtol,),
+        summarize=expected.get_shape().num_elements(),
+        name=scope)
 
 
 class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
@@ -338,7 +357,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
     expected_probabilities = [[0.576117, 0.2119416, 0.2119416],
                               [0.2119416, 0.2119416, 0.576117]]
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, weight_feature_key='label_weights')
+        n_classes, weight_column='label_weights')
 
     weights_2x1 = [[1.], [2.]]
     spec = head.create_estimator_spec(
@@ -440,7 +459,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_weighted_multi_example_eval(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, weight_feature_key='label_weights')
+        n_classes, weight_column='label_weights')
 
     # Create estimator spec.
     logits = np.array(((10, 0, 0), (0, 10, 0), (0, 0, 10),), dtype=np.float32)
@@ -534,7 +553,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_train_with_one_dim_label_and_weights(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, weight_feature_key='label_weights')
+        n_classes, weight_column='label_weights')
 
     logits = np.array(((10, 0, 0), (0, 10, 0), (0, 0, 10),), dtype=np.float32)
     labels_rank_1 = np.array((1, 2, 2,), dtype=np.int64)
@@ -616,7 +635,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_weighted_multi_example_train(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, weight_feature_key='label_weights')
+        n_classes, weight_column='label_weights')
 
     # Create estimator spec.
     logits = np.array(((10, 0, 0), (0, 10, 0), (0, 0, 10),), dtype=np.float32)
@@ -788,7 +807,12 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     self.assertEqual(1, head.logits_dimension)
 
     # Create estimator spec.
-    logits = [[45.], [-41.]]
+    logits = [[0.3], [-0.4]]
+    expected_logistics = [[0.574443], [0.401312]]
+    expected_probabilities = [[0.425557, 0.574443], [0.598688, 0.401312]]
+    expected_class_ids = [[1], [0]]
+    expected_classes = [[b'1'], [b'0']]
+    expected_export_classes = [[b'0', b'1']] * 2
     spec = head.create_estimator_spec(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.PREDICT,
@@ -798,8 +822,8 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     self.assertIsNone(spec.loss)
     self.assertEqual({}, spec.eval_metric_ops)
     self.assertIsNone(spec.train_op)
-    self.assertItemsEqual(
-        ('', _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
+    self.assertItemsEqual(('', 'classification', 'regression',
+                           _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
     _assert_no_hooks(self, spec)
 
     # Assert predictions.
@@ -809,16 +833,23 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       predictions = sess.run(spec.predictions)
       self.assertAllClose(logits,
                           predictions[prediction_keys.PredictionKeys.LOGITS])
+      self.assertAllClose(expected_logistics,
+                          predictions[prediction_keys.PredictionKeys.LOGISTIC])
       self.assertAllClose(
-          _sigmoid(np.array(logits)),
-          predictions[prediction_keys.PredictionKeys.LOGISTIC])
-      self.assertAllClose(
-          [[0., 1.],
-           [1., 0.]], predictions[prediction_keys.PredictionKeys.PROBABILITIES])
-      self.assertAllClose([[1], [0]],
+          expected_probabilities,
+          predictions[prediction_keys.PredictionKeys.PROBABILITIES])
+      self.assertAllClose(expected_class_ids,
                           predictions[prediction_keys.PredictionKeys.CLASS_IDS])
-      self.assertAllEqual([[b'1'], [b'0']],
+      self.assertAllEqual(expected_classes,
                           predictions[prediction_keys.PredictionKeys.CLASSES])
+      self.assertAllClose(
+          expected_probabilities,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].scores))
+      self.assertAllEqual(
+          expected_export_classes,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].classes))
+      self.assertAllClose(expected_logistics,
+                          sess.run(spec.export_outputs['regression'].value))
 
   def test_predict_with_vocabulary_list(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
@@ -982,10 +1013,68 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
           metric_keys.MetricKeys.LOSS_MEAN: 20.5,
       }, summary_str)
 
+  def test_float_labels_train(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
+
+    # Create estimator spec.
+    logits = np.array([[0.5], [-0.3]], dtype=np.float32)
+    expected_train_result = b'my_train_op'
+    # loss = sum(cross_entropy(labels, logits))
+    #      = sum(-label[i]*sigmoid(logit[i]) -(1-label[i])*sigmoid(-logit[i]))
+    #      = -0.8 * log(sigmoid(0.5)) -0.2 * log(sigmoid(-0.5))
+    #        -0.4 * log(sigmoid(-0.3)) -0.6 * log(sigmoid(0.3))
+    #      = 1.2484322
+    expected_loss = 1.2484322
+    def _train_op_fn(loss):
+      with ops.control_dependencies((_assert_close(
+          math_ops.to_float(expected_loss), math_ops.to_float(loss)),)):
+        return constant_op.constant(expected_train_result)
+    spec = head.create_estimator_spec(
+        features={'x': np.array([[42]], dtype=np.float32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=np.array([[0.8], [0.4]], dtype=np.float32),
+        train_op_fn=_train_op_fn)
+
+    # Assert predictions, loss, train_op, and summaries.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAlmostEqual(expected_loss, loss, delta=1.e-5)
+      self.assertEqual(expected_train_result, train_result)
+
+  def test_float_labels_eval(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
+
+    # Create estimator spec.
+    logits = np.array([[0.5], [-0.3]], dtype=np.float32)
+    spec = head.create_estimator_spec(
+        features={'x': np.array([[42]], dtype=np.float32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=np.array([[0.8], [0.4]], dtype=np.float32))
+
+    # loss = sum(cross_entropy(labels, logits))
+    #      = sum(-label[i]*sigmoid(logit[i]) -(1-label[i])*sigmoid(-logit[i]))
+    #      = -0.8 * log(sigmoid(0.5)) -0.2 * log(sigmoid(-0.5))
+    #        -0.4 * log(sigmoid(-0.3)) -0.6 * log(sigmoid(0.3))
+    #      = 1.2484322
+    expected_loss = 1.2484322
+
+    # Assert loss.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNone(spec.scaffold.summary_op)
+      update_ops = {k: spec.eval_metric_ops[k][1] for k in spec.eval_metric_ops}
+      loss, metrics = sess.run((spec.loss, update_ops))
+      self.assertAlmostEqual(expected_loss, loss, delta=1.e-5)
+      self.assertAlmostEqual(
+          expected_loss / 2., metrics[metric_keys.MetricKeys.LOSS_MEAN])
+
   def test_weighted_multi_example_predict(self):
     """3 examples, 1 batch."""
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
-        weight_feature_key='label_weights')
+        weight_column='label_weights')
 
     # Create estimator spec.
     logits = np.array(((45,), (-41,), (44,)), dtype=np.int32)
@@ -1018,7 +1107,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
   def test_weighted_multi_example_eval(self):
     """3 examples, 1 batch."""
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
-        weight_feature_key='label_weights')
+        weight_column='label_weights')
 
     # Create estimator spec.
     logits = np.array(((45,), (-41,), (44,)), dtype=np.int32)
@@ -1072,7 +1161,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
   def test_train_with_one_dim_labels_and_weights(self):
     """3 examples, 1 batch."""
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
-        weight_feature_key='label_weights')
+        weight_column='label_weights')
 
     # Create estimator spec.
     logits = np.array(((45,), (-41,), (44,)), dtype=np.float32)
@@ -1123,7 +1212,7 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
   def test_weighted_multi_example_train(self):
     """3 examples, 1 batch."""
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
-        weight_feature_key='label_weights')
+        weight_column='label_weights')
 
     # Create estimator spec.
     logits = np.array(((45,), (-41,), (44,)), dtype=np.float32)
@@ -1403,7 +1492,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
   def test_weighted_multi_example_eval(self):
     """1d label, 3 examples, 1 batch."""
     head = head_lib._regression_head_with_mean_squared_error_loss(
-        weight_feature_key='label_weights')
+        weight_column='label_weights')
     self.assertEqual(1, head.logits_dimension)
 
     # Create estimator spec.
@@ -1445,10 +1534,36 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
       self.assertAllClose(expected_loss_mean, loss_mean)
       self.assertAllClose(expected_loss_mean, loss_mean_value_op.eval())
 
+  def test_weight_with_numeric_column(self):
+    """1d label, 3 examples, 1 batch."""
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        weight_column=feature_column_lib.numeric_column(
+            'label_weights', normalizer_fn=lambda x: x + 1.))
+
+    # Create estimator spec.
+    logits = np.array(((45,), (41,), (44,)), dtype=np.int32)
+    spec = head.create_estimator_spec(
+        features={
+            'x':
+                np.array(((42,), (43,), (44,)), dtype=np.int32),
+            'label_weights':
+                np.array(((0.,), (-0.9,), (0.5,)), dtype=np.float32),
+        },
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=np.array(((35,), (42,), (45,)), dtype=np.int32))
+
+    # Assert loss.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      loss = sess.run(spec.loss)
+      # loss = 1*(35-45)^2 + .1*(42-41)^2 + 1.5*(45-44)^2 = 100+.1+1.5 = 101.6
+      self.assertAllClose(101.6, loss)
+
   def test_weighted_multi_example_train(self):
     """1d label, 3 examples, 1 batch."""
     head = head_lib._regression_head_with_mean_squared_error_loss(
-        weight_feature_key='label_weights')
+        weight_column='label_weights')
     self.assertEqual(1, head.logits_dimension)
 
     # Create estimator spec.
@@ -1500,7 +1615,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
   def test_with_one_dim_label_and_weight(self):
     """1d label, 3 examples, 1 batch."""
     head = head_lib._regression_head_with_mean_squared_error_loss(
-        weight_feature_key='label_weights')
+        weight_column='label_weights')
     self.assertEqual(1, head.logits_dimension)
 
     # Create estimator spec.
@@ -1560,7 +1675,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
   def test_weighted_multi_value_eval(self):
     """3d label, 1 example, 1 batch."""
     head = head_lib._regression_head_with_mean_squared_error_loss(
-        weight_feature_key='label_weights', label_dimension=3)
+        weight_column='label_weights', label_dimension=3)
     self.assertEqual(3, head.logits_dimension)
 
     # Create estimator spec.
@@ -1605,7 +1720,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
   def test_weighted_multi_value_train(self):
     """3d label, 1 example, 1 batch."""
     head = head_lib._regression_head_with_mean_squared_error_loss(
-        weight_feature_key='label_weights', label_dimension=3)
+        weight_column='label_weights', label_dimension=3)
     self.assertEqual(3, head.logits_dimension)
 
     # Create estimator spec.
@@ -1657,7 +1772,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
   def test_weighted_multi_batch_eval(self):
     """1d label, 1 example, 3 batches."""
     head = head_lib._regression_head_with_mean_squared_error_loss(
-        weight_feature_key='label_weights')
+        weight_column='label_weights')
     self.assertEqual(1, head.logits_dimension)
 
     # Create estimator spec.
@@ -1723,7 +1838,7 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
   def test_weighted_multi_batch_train(self):
     """1d label, 1 example, 3 batches."""
     head = head_lib._regression_head_with_mean_squared_error_loss(
-        weight_feature_key='label_weights')
+        weight_column='label_weights')
     self.assertEqual(1, head.logits_dimension)
 
     # Create estimator spec.

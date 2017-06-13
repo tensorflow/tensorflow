@@ -56,14 +56,24 @@ class TFStats {
           std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader);
   ~TFStats() {}
 
+  const std::map<string, std::unique_ptr<TFGraphNode>>& nodes() const {
+    return nodes_map_;
+  }
+
   // Organize the TensorFlow model as different types of views, and generate
   // outputs for profiling.
   const TFGraphNodeProto& ShowGraphNode(const string& cmd, const Options& opts);
   const TFMultiGraphNodeProto& ShowMultiGraphNode(const string& cmd,
                                                   const Options& opts);
 
+  // Add a step of run time meta data.
   void ParseRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta);
+  // Add tfprof operation meta data, such as customized op type, float_ops,
+  // and code traces.
   void ParseOpLog(std::unique_ptr<OpLog> op_log);
+
+  // For test purpose only.
+  void AddNodeForTest(const string& name, std::unique_ptr<TFGraphNode> node);
 
  private:
   bool Validate(const Options& opts);

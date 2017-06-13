@@ -19,7 +19,7 @@ For all tfprof views, the statistics are processed with the following procedures
    It's no limited operation name. In code view,
    it's the code trace. In op view, it's the operation type name. Different
    from `-account_type_regexes`, Statistics are used even if a name is not displayed.
-   For example, in code view, a callee might be hidden by its statistics is
+   For example, in code view, a callee might be hidden, but its statistics is
    still aggregated by it's caller. `-account_displayed_op_only`, however,
    breaks the rule and only use statistics of displayed names.
 
@@ -72,7 +72,8 @@ as long as they match the `-account_xxx` options.
 
 `-account_displayed_op_only`: If True, only account the statistics of ops eventually displayed. If False, account all op statistics matching -account_type_regexes recursively.
 
-`-select`: Comma-separated list of metrics to show: [bytes|micros|params|float_ops|occurrence|tensor_value|device|op_types].
+`-select`: Comma-separated list of metrics to show:
+[bytes|micros|params|float_ops|occurrence|tensor_value|device|op_types|input_shapes].
 
 `-output`: Output results as stdout, file or timeline.
 The format is ```output_type:key=value,key=value```.

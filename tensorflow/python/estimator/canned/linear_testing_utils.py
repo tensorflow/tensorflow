@@ -874,7 +874,7 @@ class BaseLinearRegressorTrainingTest(object):
         expected_bias=bias)
 
 
-class BaseLinearClassiferTrainingTest(object):
+class BaseLinearClassifierTrainingTest(object):
 
   def __init__(self, n_classes):
     self._n_classes = n_classes
@@ -1137,6 +1137,43 @@ class BaseLinearClassiferTrainingTest(object):
         expected_age_weight=age_weight,
         expected_bias=bias)
 
+  def testFromCheckpointFloatLabels(self):
+    """Tests float labels for binary classification."""
+    # Create initial checkpoint.
+    n_classes = self._n_classes
+    if n_classes > 2:
+      return
+    label = 0.8
+    age = 17
+    age_weight = [[2.0]]
+    bias = [-35.0]
+    initial_global_step = 100
+    with ops.Graph().as_default():
+      variables.Variable(age_weight, name=AGE_WEIGHT_NAME)
+      variables.Variable(bias, name=BIAS_NAME)
+      variables.Variable(
+          initial_global_step, name=ops.GraphKeys.GLOBAL_STEP,
+          dtype=dtypes.int64)
+      save_variables_to_ckpt(self._model_dir)
+
+    # logits = age * age_weight + bias = 17 * 2. - 35. = -1.
+    # loss = sigmoid_cross_entropy(logits, label)
+    # => loss = -0.8 * log(sigmoid(-1)) -0.2 * log(sigmoid(+1)) = 1.1132617
+    mock_optimizer = self._mock_optimizer(expected_loss=1.1132617)
+
+    est = linear.LinearClassifier(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        n_classes=n_classes,
+        optimizer=mock_optimizer,
+        model_dir=self._model_dir)
+    self.assertEqual(0, mock_optimizer.minimize.call_count)
+
+    # Train for a few steps, and validate optimizer and final checkpoint.
+    num_steps = 10
+    est.train(
+        input_fn=lambda: ({'age': ((age,),)}, ((label,),)), steps=num_steps)
+    self.assertEqual(1, mock_optimizer.minimize.call_count)
+
   def testFromCheckpointMultiBatch(self):
     # Create initial checkpoint.
     n_classes = self._n_classes
@@ -1201,10 +1238,10 @@ class BaseLinearClassiferTrainingTest(object):
         expected_bias=bias)
 
 
-class BaseLinearClassiferEvaluationTest(object):
+class BaseLinearClassifierEvaluationTest(object):
 
-  def __init__(self, n_classes, linear_classifer_fn):
-    self._linear_classifer_fn = linear_classifer_fn
+  def __init__(self, n_classes, linear_classifier_fn):
+    self._linear_classifier_fn = linear_classifier_fn
     self._n_classes = n_classes
 
   def setUp(self):
@@ -1234,7 +1271,7 @@ class BaseLinearClassiferEvaluationTest(object):
           100, name=ops.GraphKeys.GLOBAL_STEP, dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
-    est = self._linear_classifer_fn(
+    est = self._linear_classifier_fn(
         feature_columns=(feature_column_lib.numeric_column('age'),),
         n_classes=n_classes,
         model_dir=self._model_dir)
@@ -1292,7 +1329,7 @@ class BaseLinearClassiferEvaluationTest(object):
           dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
-    est = self._linear_classifer_fn(
+    est = self._linear_classifier_fn(
         feature_columns=(feature_column_lib.numeric_column('age'),),
         n_classes=n_classes,
         model_dir=self._model_dir)
@@ -1360,7 +1397,7 @@ class BaseLinearClassiferEvaluationTest(object):
           dtype=dtypes.int64)
       save_variables_to_ckpt(self._model_dir)
 
-    est = self._linear_classifer_fn(
+    est = self._linear_classifier_fn(
         feature_columns=(feature_column_lib.numeric_column('age'),),
         n_classes=n_classes,
         weight_feature_key='w',
@@ -1414,3 +1451,259 @@ class BaseLinearClassiferEvaluationTest(object):
 
     self.assertAllClose(sorted_key_dict(expected_metrics),
                         sorted_key_dict(eval_metrics), rtol=1e-3)
+
+
+class BaseLinearClassifierPredictTest(object):
+
+  def __init__(self, n_classes, linear_classifier_fn):
+    self._n_classes = n_classes
+    self._linear_classifier_fn = linear_classifier_fn
+
+  def setUp(self):
+    self._model_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    if self._model_dir:
+      shutil.rmtree(self._model_dir)
+
+  def _testPredications(self, label_vocabulary, label_output_fn):
+    """Tests predict when all variables are one-dimensional."""
+    n_classes = self._n_classes
+    age = 1.
+
+    # For binary case, the expected weight has shape (1,1). For multi class
+    # case, the shape is (1, n_classes). In order to test the weights, set
+    # weights as 2.0 * range(n_classes).
+    age_weight = [[-11.0]] if n_classes == 2 else (
+        np.reshape(-11.0 * np.array(list(range(n_classes)), dtype=np.float32),
+                   (1, n_classes)))
+    bias = [10.0] if n_classes == 2 else [10.0] * n_classes
+
+    with ops.Graph().as_default():
+      variables.Variable(age_weight, name=AGE_WEIGHT_NAME)
+      variables.Variable(bias, name=BIAS_NAME)
+      variables.Variable(100, name='global_step', dtype=dtypes.int64)
+      save_variables_to_ckpt(self._model_dir)
+
+    est = self._linear_classifier_fn(
+        feature_columns=(feature_column_lib.numeric_column('age'),),
+        label_vocabulary=label_vocabulary,
+        n_classes=self._n_classes,
+        model_dir=self._model_dir)
+
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x={'age': np.array([[age]])},
+        y=None,
+        batch_size=1,
+        num_epochs=1,
+        shuffle=False)
+    predictions = list(est.predict(input_fn=predict_input_fn))
+
+    if n_classes == 2:
+      scalar_logits = np.asscalar(
+          np.reshape(np.array(age_weight) * age + bias, (1,)))
+      two_classes_logits = [0, scalar_logits]
+      two_classes_logits_exp = np.exp(two_classes_logits)
+      softmax = two_classes_logits_exp / two_classes_logits_exp.sum()
+
+      expected_predictions = {
+          'class_ids': [0],
+          'classes': [label_output_fn(0)],
+          'logistic': [sigmoid(np.array(scalar_logits))],
+          'logits': [scalar_logits],
+          'probabilities': softmax,
+      }
+    else:
+      onedim_logits = np.reshape(np.array(age_weight) * age + bias, (-1,))
+      class_ids = onedim_logits.argmax()
+      logits_exp = np.exp(onedim_logits)
+      softmax = logits_exp / logits_exp.sum()
+      expected_predictions = {
+          'class_ids': [class_ids],
+          'classes': [label_output_fn(class_ids)],
+          'logits': onedim_logits,
+          'probabilities': softmax,
+      }
+
+    self.assertEqual(1, len(predictions))
+    # assertAllClose cannot handle byte type.
+    self.assertEqual(expected_predictions['classes'], predictions[0]['classes'])
+    expected_predictions.pop('classes')
+    predictions[0].pop('classes')
+    self.assertAllClose(sorted_key_dict(expected_predictions),
+                        sorted_key_dict(predictions[0]))
+
+  def testWithoutLabelVocabulary(self):
+    self._testPredications(label_vocabulary=None,
+                           label_output_fn=lambda x: ('%s' % x).encode())
+
+  def testWithLabelVocabulary(self):
+    self._testPredications(
+        label_vocabulary=['class_vocab_{}'.format(i)
+                          for i in range(self._n_classes)],
+        label_output_fn=lambda x: ('class_vocab_%s' % x).encode())
+
+
+class BaseLinearClassifierIntegrationTest(object):
+
+  def __init__(self, n_classes, linear_classifier_fn):
+    self._n_classes = n_classes
+    self._linear_classifier_fn = linear_classifier_fn
+
+  def setUp(self):
+    self._model_dir = tempfile.mkdtemp()
+
+  def tearDown(self):
+    if self._model_dir:
+      shutil.rmtree(self._model_dir)
+
+  def _test_complete_flow(self, train_input_fn, eval_input_fn, predict_input_fn,
+                          input_dimension, prediction_length):
+    feature_columns = [
+        feature_column_lib.numeric_column('x', shape=(input_dimension,))
+    ]
+    est = self._linear_classifier_fn(
+        feature_columns=feature_columns,
+        n_classes=self._n_classes,
+        model_dir=self._model_dir)
+
+    # TRAIN
+    # learn y = x
+    est.train(train_input_fn, steps=200)
+
+    # EVALUTE
+    scores = est.evaluate(eval_input_fn)
+    self.assertEqual(200, scores[ops.GraphKeys.GLOBAL_STEP])
+    self.assertIn(metric_keys.MetricKeys.LOSS, six.iterkeys(scores))
+
+    # PREDICT
+    predictions = np.array(
+        [x['classes'] for x in est.predict(predict_input_fn)])
+    self.assertAllEqual((prediction_length, 1), predictions.shape)
+
+    # EXPORT
+    feature_spec = feature_column_lib.make_parse_example_spec(feature_columns)
+    serving_input_receiver_fn = export.build_parsing_serving_input_receiver_fn(
+        feature_spec)
+    export_dir = est.export_savedmodel(tempfile.mkdtemp(),
+                                       serving_input_receiver_fn)
+    self.assertTrue(gfile.Exists(export_dir))
+
+  def test_numpy_input_fn(self):
+    """Tests complete flow with numpy_input_fn."""
+    input_dimension = 4
+    batch_size = 10
+    prediction_length = batch_size
+    data = np.linspace(0., 2., batch_size * input_dimension, dtype=np.float32)
+    data = data.reshape(batch_size, input_dimension)
+    target = np.array([1] * batch_size)
+
+    train_input_fn = numpy_io.numpy_input_fn(
+        x={'x': data},
+        y=target,
+        batch_size=batch_size,
+        num_epochs=None,
+        shuffle=True)
+    eval_input_fn = numpy_io.numpy_input_fn(
+        x={'x': data},
+        y=target,
+        batch_size=batch_size,
+        num_epochs=1,
+        shuffle=False)
+    predict_input_fn = numpy_io.numpy_input_fn(
+        x={'x': data},
+        y=None,
+        batch_size=batch_size,
+        num_epochs=1,
+        shuffle=False)
+
+    self._test_complete_flow(
+        train_input_fn=train_input_fn,
+        eval_input_fn=eval_input_fn,
+        predict_input_fn=predict_input_fn,
+        input_dimension=input_dimension,
+        prediction_length=prediction_length)
+
+  def test_pandas_input_fn(self):
+    """Tests complete flow with pandas_input_fn."""
+    if not HAS_PANDAS:
+      return
+
+    # Pandas DataFrame natually supports 1 dim data only.
+    input_dimension = 1
+    batch_size = 10
+    data = np.array([1., 2., 3., 4.], dtype=np.float32)
+    target = np.array([1, 0, 1, 0], dtype=np.int32)
+    x = pd.DataFrame({'x': data})
+    y = pd.Series(target)
+    prediction_length = 4
+
+    train_input_fn = pandas_io.pandas_input_fn(
+        x=x, y=y, batch_size=batch_size, num_epochs=None, shuffle=True)
+    eval_input_fn = pandas_io.pandas_input_fn(
+        x=x, y=y, batch_size=batch_size, shuffle=False)
+    predict_input_fn = pandas_io.pandas_input_fn(
+        x=x, batch_size=batch_size, shuffle=False)
+
+    self._test_complete_flow(
+        train_input_fn=train_input_fn,
+        eval_input_fn=eval_input_fn,
+        predict_input_fn=predict_input_fn,
+        input_dimension=input_dimension,
+        prediction_length=prediction_length)
+
+  def test_input_fn_from_parse_example(self):
+    """Tests complete flow with input_fn constructed from parse_example."""
+    input_dimension = 2
+    batch_size = 10
+    prediction_length = batch_size
+    data = np.linspace(0., 2., batch_size * input_dimension, dtype=np.float32)
+    data = data.reshape(batch_size, input_dimension)
+    target = np.array([1] * batch_size, dtype=np.int64)
+
+    serialized_examples = []
+    for x, y in zip(data, target):
+      example = example_pb2.Example(features=feature_pb2.Features(
+          feature={
+              'x':
+                  feature_pb2.Feature(float_list=feature_pb2.FloatList(
+                      value=x)),
+              'y':
+                  feature_pb2.Feature(int64_list=feature_pb2.Int64List(
+                      value=[y])),
+          }))
+      serialized_examples.append(example.SerializeToString())
+
+    feature_spec = {
+        'x': parsing_ops.FixedLenFeature([input_dimension], dtypes.float32),
+        'y': parsing_ops.FixedLenFeature([1], dtypes.int64),
+    }
+
+    def _train_input_fn():
+      feature_map = parsing_ops.parse_example(serialized_examples, feature_spec)
+      features = queue_parsed_features(feature_map)
+      labels = features.pop('y')
+      return features, labels
+
+    def _eval_input_fn():
+      feature_map = parsing_ops.parse_example(
+          input_lib.limit_epochs(serialized_examples, num_epochs=1),
+          feature_spec)
+      features = queue_parsed_features(feature_map)
+      labels = features.pop('y')
+      return features, labels
+
+    def _predict_input_fn():
+      feature_map = parsing_ops.parse_example(
+          input_lib.limit_epochs(serialized_examples, num_epochs=1),
+          feature_spec)
+      features = queue_parsed_features(feature_map)
+      features.pop('y')
+      return features, None
+
+    self._test_complete_flow(
+        train_input_fn=_train_input_fn,
+        eval_input_fn=_eval_input_fn,
+        predict_input_fn=_predict_input_fn,
+        input_dimension=input_dimension,
+        prediction_length=prediction_length)
