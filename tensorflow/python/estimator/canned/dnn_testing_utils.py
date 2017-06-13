@@ -624,7 +624,7 @@ class BaseDNNClassifierPredictTest(object):
       writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
-  def test_one_dim(self):
+  def _test_one_dim(self, label_vocabulary, label_output_fn):
     """Asserts predictions for one-dimensional input and logits."""
     create_checkpoint(
         (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
@@ -634,6 +634,7 @@ class BaseDNNClassifierPredictTest(object):
 
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=(2, 2),
+        label_vocabulary=label_vocabulary,
         feature_columns=(feature_column.numeric_column('x'),),
         model_dir=self._model_dir)
     input_fn = numpy_io.numpy_input_fn(
@@ -654,10 +655,20 @@ class BaseDNNClassifierPredictTest(object):
          0.11105597], predictions[prediction_keys.PredictionKeys.PROBABILITIES])
     self.assertAllClose([0],
                         predictions[prediction_keys.PredictionKeys.CLASS_IDS])
-    self.assertAllEqual([b'0'],
+    self.assertAllEqual([label_output_fn(0)],
                         predictions[prediction_keys.PredictionKeys.CLASSES])
 
-  def test_multi_dim(self):
+  def test_one_dim_without_label_vocabulary(self):
+    self._test_one_dim(label_vocabulary=None,
+                       label_output_fn=lambda x: ('%s' % x).encode())
+
+  def test_one_dim_with_label_vocabulary(self):
+    n_classes = 2
+    self._test_one_dim(
+        label_vocabulary=['class_vocab_{}'.format(i) for i in range(n_classes)],
+        label_output_fn=lambda x: ('class_vocab_%s' % x).encode())
+
+  def _test_multi_dim_with_3_classes(self, label_vocabulary, label_output_fn):
     """Asserts predictions for multi-dimensional input and logits."""
     create_checkpoint(
         (([[.6, .5], [-.6, -.5]], [.1, -.1]),
@@ -669,6 +680,7 @@ class BaseDNNClassifierPredictTest(object):
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=(2, 2),
         feature_columns=(feature_column.numeric_column('x', shape=(2,)),),
+        label_vocabulary=label_vocabulary,
         n_classes=3,
         model_dir=self._model_dir)
     input_fn = numpy_io.numpy_input_fn(
@@ -698,7 +710,19 @@ class BaseDNNClassifierPredictTest(object):
     self.assertAllEqual(
         [1], predictions[prediction_keys.PredictionKeys.CLASS_IDS])
     self.assertAllEqual(
-        [b'1'], predictions[prediction_keys.PredictionKeys.CLASSES])
+        [label_output_fn(1)],
+        predictions[prediction_keys.PredictionKeys.CLASSES])
+
+  def test_multi_dim_with_3_classes_but_no_label_vocab(self):
+    self._test_multi_dim_with_3_classes(
+        label_vocabulary=None,
+        label_output_fn=lambda x: ('%s' % x).encode())
+
+  def test_multi_dim_with_3_classes_and_label_vocab(self):
+    n_classes = 3
+    self._test_multi_dim_with_3_classes(
+        label_vocabulary=['class_vocab_{}'.format(i) for i in range(n_classes)],
+        label_output_fn=lambda x: ('class_vocab_%s' % x).encode())
 
 
 class BaseDNNRegressorPredictTest(object):

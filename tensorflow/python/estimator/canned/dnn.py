@@ -196,6 +196,7 @@ class DNNClassifier(estimator.Estimator):
                model_dir=None,
                n_classes=2,
                weight_feature_key=None,
+               label_vocabulary=None,
                optimizer='Adagrad',
                activation_fn=nn.relu,
                dropout=None,
@@ -218,6 +219,13 @@ class DNNClassifier(estimator.Estimator):
       weight_feature_key: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
+      label_vocabulary: A list of strings represents possible label values. If
+        given, labels must be string type and have any value in
+        `label_vocabulary`. If it is not given, that means labels are
+        already encoded as integer or float within [0, 1] for `n_classes=2` and
+        encoded as integer values in {0, 1,..., n_classes-1} for `n_classes`>2 .
+        Also there will be errors if vocabulary is not provided and labels are
+        string.
       optimizer: An instance of `tf.Optimizer` used to train the model. If
         `None`, will use an Adagrad optimizer.
       activation_fn: Activation function applied to each layer. If `None`, will
@@ -230,10 +238,12 @@ class DNNClassifier(estimator.Estimator):
     """
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
-          weight_column=weight_feature_key)
+          weight_column=weight_feature_key,
+          label_vocabulary=label_vocabulary)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
-          n_classes, weight_column=weight_feature_key)
+          n_classes, weight_column=weight_feature_key,
+          label_vocabulary=label_vocabulary)
     def _model_fn(features, labels, mode, config):
       return _dnn_model_fn(
           features=features,

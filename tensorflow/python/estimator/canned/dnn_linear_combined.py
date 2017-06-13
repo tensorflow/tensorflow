@@ -308,6 +308,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                dnn_dropout=None,
                n_classes=2,
                weight_feature_key=None,
+               label_vocabulary=None,
                input_layer_partitioner=None,
                config=None):
     """Initializes a DNNLinearCombinedClassifier instance.
@@ -337,6 +338,13 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       weight_feature_key: A string defining feature column name representing
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
+      label_vocabulary: A list of strings represents possible label values. If
+        given, labels must be string type and have any value in
+        `label_vocabulary`. If it is not given, that means labels are
+        already encoded as integer or float within [0, 1] for `n_classes=2` and
+        encoded as integer values in {0, 1,..., n_classes-1} for `n_classes`>2 .
+        Also there will be errors if vocabulary is not provided and labels are
+        string.
       input_layer_partitioner: Partitioner for input layer. Defaults to
         `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: RunConfig object to configure the runtime settings.
@@ -354,11 +362,13 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                        'must be defined.')
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
-          weight_column=weight_feature_key)
+          weight_column=weight_feature_key,
+          label_vocabulary=label_vocabulary)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
           n_classes,
-          weight_column=weight_feature_key)
+          weight_column=weight_feature_key,
+          label_vocabulary=label_vocabulary)
     def _model_fn(features, labels, mode, config):
       return _dnn_linear_combined_model_fn(
           features=features,

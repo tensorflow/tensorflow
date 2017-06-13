@@ -179,10 +179,12 @@ class LinearClassifier(estimator.Estimator):
         weights. It is used to down weight or boost examples during training. It
         will be multiplied by the loss of the example.
       label_vocabulary: A list of strings represents possible label values. If
-        it is not given, that means labels are already encoded within [0, 1]. If
         given, labels must be string type and have any value in
-        `label_vocabulary`. Also there will be errors if vocabulary is not
-        provided and labels are string.
+        `label_vocabulary`. If it is not given, that means labels are
+        already encoded as integer or float within [0, 1] for `n_classes=2` and
+        encoded as integer values in {0, 1,..., n_classes-1} for `n_classes`>2 .
+        Also there will be errors if vocabulary is not provided and labels are
+        string.
       optimizer: The optimizer used to train the model. If specified, it should
         be either an instance of `tf.Optimizer` or the SDCAOptimizer. If `None`,
         the Ftrl optimizer will be used.

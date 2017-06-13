@@ -325,6 +325,7 @@ def _dnn_classifier_fn(
     model_dir=None,
     n_classes=2,
     weight_feature_key=None,
+    label_vocabulary=None,
     optimizer='Adagrad',
     config=None,
     input_layer_partitioner=None):
@@ -335,6 +336,7 @@ def _dnn_classifier_fn(
       dnn_optimizer=optimizer,
       n_classes=n_classes,
       weight_feature_key=weight_feature_key,
+      label_vocabulary=label_vocabulary,
       input_layer_partitioner=input_layer_partitioner,
       config=config)
 
