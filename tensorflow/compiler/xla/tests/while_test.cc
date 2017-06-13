@@ -556,7 +556,8 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   auto build_condition = [this, v6s32](int count) {
     ComputationBuilder builder(client_, TestName());
     auto prev = builder.Reshape(
-        builder.Slice(builder.Parameter(0, v6s32, "prev"), {0}, {1}), {0}, {});
+        builder.Slice(builder.Parameter(0, v6s32, "prev"), {0}, {1}, {1}), {0},
+          {});
     builder.Gt(builder.ConstantR0<int32>(count), prev);
     return builder.Build().ConsumeValueOrDie();
   };
