@@ -9938,6 +9938,53 @@ func SegmentMin(scope *Scope, data tf.Output, segment_ids tf.Output) (output tf.
 	return op.Output(0)
 }
 
+// QuantizedResizeBilinearAttr is an optional argument to QuantizedResizeBilinear.
+type QuantizedResizeBilinearAttr func(optionalAttr)
+
+// QuantizedResizeBilinearAlignCorners sets the optional align_corners attribute to value.
+//
+// value: If true, rescale input by (new_height - 1) / (height - 1), which
+// exactly aligns the 4 corners of images and resized images. If false, rescale
+// by new_height / height. Treat similarly the width dimension.
+// If not specified, defaults to false
+func QuantizedResizeBilinearAlignCorners(value bool) QuantizedResizeBilinearAttr {
+	return func(m optionalAttr) {
+		m["align_corners"] = value
+	}
+}
+
+// Resize quantized `images` to `size` using quantized bilinear interpolation.
+//
+// Input images and output images must be quantized types.
+//
+// Arguments:
+//	images: 4-D with shape `[batch, height, width, channels]`.
+//	size: = A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+// new size for the images.
+//
+//
+//
+// Returns 4-D with shape
+// `[batch, new_height, new_width, channels]`.
+func QuantizedResizeBilinear(scope *Scope, images tf.Output, size tf.Output, min tf.Output, max tf.Output, optional ...QuantizedResizeBilinearAttr) (resized_images tf.Output, out_min tf.Output, out_max tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizedResizeBilinear",
+		Input: []tf.Input{
+			images, size, min, max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // RestoreAttr is an optional argument to Restore.
 type RestoreAttr func(optionalAttr)
 
