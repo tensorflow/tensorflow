@@ -153,8 +153,8 @@ class ActivationFunctionTest(test.TestCase):
     _ = self._getModelForActivation('relu')
 
   def testRaisesOnBadActivationName(self):
-    with self.assertRaisesWithRegexpMatch(ValueError,
-                                          'Activation name should be one of'):
+    with self.assertRaisesRegexp(ValueError,
+                                 'Activation name should be one of'):
       self._getModelForActivation('max_pool')
 
 
