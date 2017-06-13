@@ -10,11 +10,11 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data/python/framework:function",
+        "//tensorflow/contrib/data/python/util:nest",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:framework",
         "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:util",
     ],
 )
 

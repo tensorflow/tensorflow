@@ -17,9 +17,11 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -38,6 +40,22 @@ class GraphPropertiesTest : public ::testing::Test {
   void TearDown() override { cluster_.reset(); }
 
  protected:
+  // Returns a string form of <p>, suitable for comparing type and shape.
+  // Example output for 4-d float tensor: "float: [10,2,30,4]"
+  string PropToString(const OpInfo::TensorProperties& p) {
+    string s = strings::StrCat(DataTypeString(p.dtype()), ": ");
+    if (p.shape().unknown_rank()) {
+      strings::StrAppend(&s, "?");
+    } else {
+      strings::StrAppend(&s, "[");
+      for (int i = 0; i < p.shape().dim_size(); ++i) {
+        strings::StrAppend(&s, i == 0 ? "" : ",", p.shape().dim(i).size());
+      }
+      strings::StrAppend(&s, "]");
+    }
+    return s;
+  }
+
   std::unique_ptr<SingleMachine> cluster_;
 };
 
@@ -132,6 +150,55 @@ TEST_F(GraphPropertiesTest, DynamicProperties) {
   }
 }
 
+TEST_F(GraphPropertiesTest, Variables) {
+  GrapplerItem item;
+  TF_CHECK_OK(NodeDefBuilder("Var", "Variable")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("shape", TensorShape({3, 7}))
+                  .Finalize(item.graph.add_node()));
+  item.fetch.push_back("Var");
+
+  Tensor initial_val(DT_FLOAT, TensorShape({3, 7}));
+  test::FillIota<float>(&initial_val, 0);
+  TF_CHECK_OK(NodeDefBuilder("InitialVal", "Const")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("value", initial_val)
+                  .Finalize(item.graph.add_node()));
+  TF_CHECK_OK(NodeDefBuilder("InitVar", "Assign")
+                  .Input("Var", 0, DT_FLOAT_REF)
+                  .Input("InitialVal", 0, DT_FLOAT)
+                  .Finalize(item.graph.add_node()));
+  item.init_ops.push_back("InitVar");
+
+  {
+    GraphProperties static_properties(item);
+    TF_CHECK_OK(static_properties.InferStatically());
+
+    const auto props = static_properties.GetOutputProperties("Var");
+    EXPECT_EQ(1, props.size());
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT_REF, prop.dtype());
+    EXPECT_FALSE(prop.shape().unknown_rank());
+    EXPECT_EQ(2, prop.shape().dim_size());
+    EXPECT_EQ(3, prop.shape().dim(0).size());
+    EXPECT_EQ(7, prop.shape().dim(1).size());
+  }
+  {
+    TF_CHECK_OK(cluster_->Initialize(item));
+    GraphProperties dynamic_properties(item);
+    TF_CHECK_OK(dynamic_properties.InferDynamically(cluster_.get()));
+
+    const auto props = dynamic_properties.GetOutputProperties("Var");
+    EXPECT_EQ(1, props.size());
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT_REF, prop.dtype());
+    EXPECT_FALSE(prop.shape().unknown_rank());
+    EXPECT_EQ(2, prop.shape().dim_size());
+    EXPECT_EQ(3, prop.shape().dim(0).size());
+    EXPECT_EQ(7, prop.shape().dim(1).size());
+  }
+}
+
 TEST_F(GraphPropertiesTest, VarHandles) {
   GrapplerItem item;
   TF_CHECK_OK(NodeDefBuilder("Var", "VarHandleOp")
@@ -194,6 +261,20 @@ TEST_F(GraphPropertiesTest, Queues) {
   auto dequeue4 =
       ops::QueueDequeue(root.WithOpName("Dequeue4"), q4, {DataType::DT_FLOAT});
 
+  // Create a queue that takes in three tensors.
+  auto q5 = ops::RandomShuffleQueue(
+      root.WithOpName("Queue5"),
+      {DataType::DT_FLOAT, DataType::DT_DOUBLE, DataType::DT_FLOAT});
+  Output rnd2 =
+      ops::RandomNormal(root.WithOpName("rnd"), {10}, DataType::DT_DOUBLE);
+  Output rnd3 =
+      ops::RandomNormal(root.WithOpName("rnd"), {1, 2, 3}, DataType::DT_FLOAT);
+  auto enqueue5 =
+      ops::QueueEnqueue(root.WithOpName("Enqueue5"), q5, {rnd, rnd2, rnd3});
+  auto dequeue5 = ops::QueueDequeue(
+      root.WithOpName("Dequeue5"), q5,
+      {DataType::DT_FLOAT, DataType::DT_DOUBLE, DataType::DT_FLOAT});
+
   GrapplerItem item;
   TF_CHECK_OK(root.ToGraphDef(&item.graph));
 
@@ -201,34 +282,31 @@ TEST_F(GraphPropertiesTest, Queues) {
   TF_CHECK_OK(properties.InferStatically());
 
   const auto props1 = properties.GetOutputProperties("Dequeue1");
-  EXPECT_EQ(1, props1.size());
-  const OpInfo::TensorProperties& prop1 = props1[0];
-  EXPECT_EQ(DT_FLOAT, prop1.dtype());
-  EXPECT_FALSE(prop1.shape().unknown_rank());
-  EXPECT_EQ(2, prop1.shape().dim_size());
-  EXPECT_EQ(3, prop1.shape().dim(0).size());
-  EXPECT_EQ(7, prop1.shape().dim(1).size());
+  ASSERT_EQ(1, props1.size());
+  EXPECT_EQ("float: [3,7]", PropToString(props1[0]));
 
   const auto props2 = properties.GetOutputProperties("Dequeue2");
-  EXPECT_EQ(1, props2.size());
-  const OpInfo::TensorProperties& prop2 = props2[0];
-  EXPECT_EQ(DT_FLOAT, prop2.dtype());
-  EXPECT_FALSE(prop2.shape().unknown_rank());
-  EXPECT_EQ(2, prop2.shape().dim_size());
-  EXPECT_EQ(3, prop2.shape().dim(0).size());
-  EXPECT_EQ(7, prop2.shape().dim(1).size());
+  ASSERT_EQ(1, props2.size());
+  EXPECT_EQ("float: [3,7]", PropToString(props2[0]));
+
+  // The dequeue3 op shape is unknown.
+  const auto props3 = properties.GetOutputProperties("Dequeue3");
+  ASSERT_EQ(1, props3.size());
+  EXPECT_EQ("float: ?", PropToString(props3[0]));
 
   // The dequeue3 op shape is unknown. The square2 op shape is known. Verify
   // that we merge the 2 properly to determine the shape of the data coming out
   // of the queue.
   const auto props4 = properties.GetOutputProperties("Dequeue4");
-  EXPECT_EQ(1, props4.size());
-  const OpInfo::TensorProperties& prop4 = props4[0];
-  EXPECT_EQ(DT_FLOAT, prop4.dtype());
-  EXPECT_FALSE(prop4.shape().unknown_rank());
-  EXPECT_EQ(2, prop4.shape().dim_size());
-  EXPECT_EQ(3, prop4.shape().dim(0).size());
-  EXPECT_EQ(7, prop4.shape().dim(1).size());
+  ASSERT_EQ(1, props4.size());
+  EXPECT_EQ("float: [3,7]", PropToString(props4[0]));
+
+  // The dequeue5 op shape is known.
+  const auto props5 = properties.GetOutputProperties("Dequeue5");
+  ASSERT_EQ(3, props5.size());
+  EXPECT_EQ("float: [3,7]", PropToString(props5[0]));
+  EXPECT_EQ("double: [10]", PropToString(props5[1]));
+  EXPECT_EQ("float: [1,2,3]", PropToString(props5[2]));
 }
 
 TEST_F(GraphPropertiesTest, Loops) {

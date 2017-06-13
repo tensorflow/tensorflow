@@ -52,6 +52,10 @@ py_test(
     size = "small",
     srcs = ["dataset_constructor_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "nomac",  # b/62040583
+    ],
     deps = [
         "//tensorflow/contrib/data",
         "//tensorflow/python:array_ops",
@@ -180,6 +184,21 @@ py_test(
     name = "shuffle_dataset_op_test",
     size = "small",
     srcs = ["shuffle_dataset_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib/data",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_test(
+    name = "cache_dataset_op_test",
+    size = "small",
+    srcs = ["cache_dataset_op_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/contrib/data",

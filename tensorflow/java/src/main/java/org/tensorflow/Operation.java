@@ -79,7 +79,7 @@ public final class Operation {
    *
    * @param name identifier of the list of tensors (of which there may
    *        be many) produced by this operation.
-   * @returns the size of the list of Tensors produced by this named output.
+   * @return the size of the list of Tensors produced by this named output.
    * @throws IllegalArgumentException if this operation has no output
    *         with the provided name.
    */

@@ -65,7 +65,7 @@ class RefCounted {
 
   ~RefCounted() {
     Unref();
-    count_ = NULL;
+    count_ = nullptr;
   }
 
   friend void swap(RefCounted& a, RefCounted& b) {
@@ -81,7 +81,7 @@ class RefCounted {
   }
 
   void Ref() const {
-    CHECK(count_ != NULL);
+    CHECK(count_ != nullptr);
     ++(*count_);
     VLOG(5) << "[Ref: refcount " << *count_ << " on count @" << count_ << "]";
   }
@@ -778,6 +778,7 @@ BENCHMARK(BM_InlinedVectorFillRange)->Range(0, 1024);
 static void BM_StdVectorFill(int iters, int len) {
   for (int i = 0; i < iters; i++) {
     std::vector<int> v;
+    v.reserve(len);
     for (int j = 0; j < len; j++) {
       v.push_back(j);
     }
@@ -810,6 +811,7 @@ static void BM_StdVectorFillString(int iters, int len) {
                        "012345678901234567", "to cause allocation"};
   for (int i = 0; i < iters; i++) {
     std::vector<string> v;
+    v.reserve(len);
     for (int j = 0; j < len; j++) {
       v.push_back(strings[j & 3]);
     }

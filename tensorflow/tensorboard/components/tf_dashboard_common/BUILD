@@ -1,24 +1,43 @@
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_typescript_genrule")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
+load("//tensorflow/tensorboard/defs:defs.bzl", "tensorboard_webcomponent_library")
+load("//tensorflow/tensorboard/defs:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-web_library(
+ts_web_library(
     name = "tf_dashboard_common",
-    srcs = glob(["*.html"]) + [
-        ":ts",
+    srcs = [
+        "dashboard-behavior.ts",
+        "dashboard-style.html",
+        "reload-behavior.ts",
+        "run-color-style.html",
+        "scrollbar-style.html",
+        "tensorboard-color.html",
+        "tf-categorizer.html",
+        "tf-categorizer.ts",
+        "tf-chart-scaffold.html",
+        "tf-collapsable-pane.html",
+        "tf-dashboard.html",
+        "tf-dashboard-layout.html",
+        "tf-downloader.html",
+        "tf-multi-checkbox.html",
+        "tf-multi-checkbox.ts",
+        "tf-no-data-warning.html",
+        "tf-option-selector.html",
+        "tf-panes-helper.html",
+        "tf-regex-group.html",
+        "tf-regex-group.ts",
+        "tf-run-selector.html",
+        "tf-sidebar-helper.html",
     ],
     path = "/tf-dashboard-common",
     deps = [
+        "//tensorflow/tensorboard/components/tf_imports:d3",
         "//tensorflow/tensorboard/components/tf_imports:lodash",
-        "//tensorflow/tensorboard/components/tf_imports:plottable",
+        "//tensorflow/tensorboard/components/tf_imports:polymer",
         "//tensorflow/tensorboard/components/tf_storage",
         "//tensorflow/tensorboard/components/vz_sorting",
-        "@org_polymer",
         "@org_polymer_iron_ajax",
         "@org_polymer_iron_collapse",
         "@org_polymer_iron_icons",
@@ -37,32 +56,26 @@ web_library(
     ],
 )
 
-tensorboard_typescript_genrule(
-    name = "ts",
+ts_web_library(
+    name = "demo",
     srcs = [
-        "categorizer.ts",
-        "dashboard-behavior.ts",
-        "reload-behavior.ts",
+        "tf-categorizer-demo.html",
+        "tf-collapsable-pane-demo.html",
+        "tf-multi-checkbox-demo.html",
+        "tf-regex-group-demo.html",
     ],
-    typings = [
-        "@org_definitelytyped//:d3.d.ts",
-        "@org_definitelytyped//:lodash.d.ts",
-        "//tensorflow/tensorboard/components/vz_sorting:ts_typings",
+    path = "/tf-dashboard-common",
+    deps = [
+        ":tf_dashboard_common",
+        "//tensorflow/tensorboard/components/tf_color_scale",
+        "@org_polymer_iron_demo_helpers",
+        "@org_polymer_paper_styles",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(["**"]),
-    tags = ["notsan"],
-)
-
-################################################################################
-# MARKED FOR DELETION
 
 tensorboard_webcomponent_library(
     name = "legacy",
-    srcs = glob(["*.html"]) + [":legacy_ts"],
+    srcs = [":tf_dashboard_common"],
     destdir = "tf-dashboard-common",
     deps = [
         "//tensorflow/tensorboard/components/tf_imports_google:lib",
@@ -87,25 +100,8 @@ tensorboard_webcomponent_library(
     ],
 )
 
-tensorboard_ts_library(
-    name = "legacy_ts",
-    srcs = [
-        "categorizer.ts",
-        "dashboard-behavior.ts",
-        "reload-behavior.ts",
-    ],
-    deps_mgmt = "off",
-    runtime = "nodejs",
-    deps = [
-        "//tensorflow/tensorboard/components/vz_sorting:legacy_ts",
-        "//third_party/javascript/node_modules/typescript:es2015.promise",
-        "//third_party/javascript/plottable/v1:typings",
-        "//third_party/javascript/typings/chai",
-        "//third_party/javascript/typings/d3",
-        "//third_party/javascript/typings/lodash",
-        "//third_party/javascript/typings/mocha",
-        "//third_party/javascript/typings/polymer:polymer_without_externs",
-        "//third_party/javascript/typings/sinon",
-        "//third_party/javascript/typings/webcomponents_js",
-    ],
+filegroup(
+    name = "all_files",
+    srcs = glob(["**"]),
+    tags = ["notsan"],
 )

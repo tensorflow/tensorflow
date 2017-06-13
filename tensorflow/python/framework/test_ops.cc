@@ -107,8 +107,8 @@ REGISTER_KERNEL_BUILDER(Name("KernelLabel")
 
 class GraphDefVersionOp : public OpKernel {
  public:
-  GraphDefVersionOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {}
+  explicit GraphDefVersionOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {}
 
   void Compute(OpKernelContext* ctx) override {
     Tensor* output = nullptr;
@@ -125,7 +125,7 @@ REGISTER_KERNEL_BUILDER(Name("GraphDefVersion").Device(DEVICE_CPU),
 
 class OldOp : public OpKernel {
  public:
-  OldOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit OldOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) override {}
 };
@@ -145,7 +145,7 @@ REGISTER_KERNEL_BUILDER(Name("ResourceInitializedOp").Device(DEVICE_CPU),
 
 class ResourceCreateOp : public OpKernel {
  public:
-  ResourceCreateOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit ResourceCreateOp(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
     OP_REQUIRES_OK(c,
@@ -161,7 +161,7 @@ class ResourceUsingOp : public OpKernel {
  public:
   explicit ResourceUsingOp(OpKernelConstruction* context) : OpKernel(context) {}
 
-  void Compute(OpKernelContext* ctx) {
+  void Compute(OpKernelContext* ctx) override {
     StubResource* unused;
     OP_REQUIRES_OK(ctx, LookupResource<StubResource>(
                             ctx, HandleFromInput(ctx, 0), &unused));

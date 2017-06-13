@@ -223,7 +223,7 @@ creating the pip package and installing TensorFlow.
 If you wish to build TensorFlow with GPU, `configure` will ask
 you to specify the version numbers of Cuda and cuDNN. If several
 versions of Cuda or cuDNN are installed on your system, explicitly select
-the desired version instead of relying on the system default.
+the desired version instead of relying on the default.
 
 Here is an example execution of the `configure` script.  Note that your
 own input will likely differ from our sample input:
@@ -233,6 +233,14 @@ own input will likely differ from our sample input:
 $ <b>cd tensorflow</b>  # cd to the top-level directory created
 $ <b>./configure</b>
 Please specify the location of python. [Default is /usr/bin/python]: <b>/usr/bin/python2.7</b>
+Found possible Python library paths:
+  /usr/local/lib/python2.7/dist-packages
+  /usr/lib/python2.7/dist-packages
+Please input the desired Python library path to use.  Default is [/usr/lib/python2.7/dist-packages]
+
+Using python library path: /usr/local/lib/python2.7/dist-packages
+Do you wish to build TensorFlow with MKL support? [y/N]
+No MKL support will be enabled for TensorFlow
 Please specify optimization flags to use during compilation when bazel option "--config=opt" is specified [Default is -march=native]:
 Do you wish to use jemalloc as the malloc implementation? [Y/n]
 jemalloc enabled
@@ -241,31 +249,26 @@ No Google Cloud Platform support will be enabled for TensorFlow
 Do you wish to build TensorFlow with Hadoop File System support? [y/N]
 No Hadoop File System support will be enabled for TensorFlow
 Do you wish to build TensorFlow with the XLA just-in-time compiler (experimental)? [y/N]
-No XLA JIT support will be enabled for TensorFlow
-Found possible Python library paths:
-  /usr/local/lib/python2.7/dist-packages
-  /usr/lib/python2.7/dist-packages
-Please input the desired Python library path to use.  Default is [/usr/local/lib/python2.7/dist-packages]
-Using python library path: /usr/local/lib/python2.7/dist-packages
-Do you wish to build TensorFlow with OpenCL support? [y/N] N
+No XLA support will be enabled for TensorFlow
+Do you wish to build TensorFlow with VERBS support? [y/N]
+No VERBS support will be enabled for TensorFlow
+Do you wish to build TensorFlow with OpenCL support? [y/N]
 No OpenCL support will be enabled for TensorFlow
-Do you wish to build TensorFlow with CUDA support? [y/N] Y
+Do you wish to build TensorFlow with CUDA support? [y/N] <b>Y</b>
 CUDA support will be enabled for TensorFlow
-Please specify which gcc should be used by nvcc as the host compiler. [Default is /usr/bin/gcc]:
-Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to use system default]: <b>8.0</b>
+Do you want to use clang as CUDA compiler? [y/N]
+nvcc will be used as CUDA compiler
+Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 8.0]: <b>8.0</b>
 Please specify the location where CUDA 8.0 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
-Please specify the cuDNN version you want to use. [Leave empty to use system default]: <b>5</b>
-Please specify the location where cuDNN 5 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
+Please specify which gcc should be used by nvcc as the host compiler. [Default is /usr/bin/gcc]:
+Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 6.0]: <b>6</b>
+Please specify the location where cuDNN 6 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
 Please specify a list of comma-separated Cuda compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
 Please note that each additional compute capability significantly increases your build time and binary size.
 [Default is: "3.5,5.2"]: <b>3.0</b>
-Setting up Cuda include
-Setting up Cuda lib
-Setting up Cuda bin
-Setting up Cuda nvvm
-Setting up CUPTI include
-Setting up CUPTI lib64
+Do you wish to build TensorFlow with MPI support? [y/N] 
+MPI support will not be enabled for TensorFlow
 Configuration finished
 </pre>
 
@@ -320,10 +323,10 @@ Invoke `pip install` to install that pip package.
 The filename of the `.whl` file depends on your platform.
 For example, the following command will install the pip package
 
-for TensorFlow 1.1.0 on Linux:
+for TensorFlow 1.2.0rc2 on Linux:
 
 <pre>
-$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.1.0-py2-none-any.whl</b>
+$ <b>sudo pip install /tmp/tensorflow_pkg/tensorflow-1.2.0rc2-py2-none-any.whl</b>
 </pre>
 
 ## Validate your installation

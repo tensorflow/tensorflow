@@ -117,27 +117,21 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
 // value.
 class BufferAlias {
  public:
-  BufferAlias(const LogicalBuffer& buffer, HloInstruction* instruction,
-              const ShapeIndex& index)
-      : buffer_(&buffer), instruction_(instruction), index_(index) {}
-
-  // Return the logical buffer aliased at the instruction and index.
-  const LogicalBuffer& buffer() const { return *buffer_; }
+  BufferAlias(HloInstruction* instruction, const ShapeIndex& index)
+      : instruction_(instruction), index_(index) {}
 
   // Return the instruction/index of the subshape.
   HloInstruction* instruction() const { return instruction_; }
   const ShapeIndex& index() const { return index_; }
 
   bool operator==(const BufferAlias& other) const {
-    return buffer_ == other.buffer_ && instruction_ == other.instruction_ &&
-           index_ == other.index_;
+    return instruction_ == other.instruction_ && index_ == other.index_;
   }
   bool operator!=(const BufferAlias& other) const { return !(*this == other); }
 
   string ToString() const;
 
  private:
-  const LogicalBuffer* buffer_;
   HloInstruction* instruction_;
   const ShapeIndex index_;
 };
@@ -148,7 +142,15 @@ std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias);
 // the potential sources of each buffer in each instruction's output.
 class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
  public:
-  // Runs points-to analysis on 'module'.
+  using Colorer = std::function<LogicalBuffer::Color(
+      const HloInstruction* instruction, const ShapeIndex& index)>;
+
+  // Runs points-to analysis on 'module' with the provided buffer color
+  // assigner.
+  static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
+      const HloModule* module, Colorer colorer);
+
+  // Runs points-to analysis on 'module' with the default color assigner.
   static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
       const HloModule* module);
 
@@ -207,15 +209,22 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
                                HloInstruction* operand) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
-  Status HandleFusion(HloInstruction* fusion) override;
   Status HandleSelect(HloInstruction* select, HloInstruction* pred,
                       HloInstruction* on_true,
                       HloInstruction* on_false) override;
 
   string ToString() const;
 
+  static Colorer DefaultColorer() {
+    return [](const HloInstruction* instruction, const ShapeIndex& index) {
+      return LogicalBuffer::Color(0);
+    };
+  }
+
  private:
-  explicit TuplePointsToAnalysis(const HloModule* module) : module_(module) {}
+  explicit TuplePointsToAnalysis(const HloModule* module,
+                                 Colorer colorer = DefaultColorer())
+      : module_(module), colorer_(colorer) {}
 
   // Perform the analysis. Should be called immediately after constructing the
   // object and before calling GetPointsToSet.
@@ -273,6 +282,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // The ID of the next logical buffer created.
   LogicalBuffer::Id next_buffer_id_ = 0;
+
+  // Used to color the created logical buffers.
+  Colorer colorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TuplePointsToAnalysis);
 };

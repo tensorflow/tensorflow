@@ -26,8 +26,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
-
 from tensorflow.contrib.keras.python.keras import backend as K
 from tensorflow.contrib.keras.python.keras import layers
 from tensorflow.contrib.keras.python.keras.applications.imagenet_utils import _obtain_input_shape
@@ -46,7 +44,6 @@ from tensorflow.contrib.keras.python.keras.layers import Input
 from tensorflow.contrib.keras.python.keras.layers import MaxPooling2D
 from tensorflow.contrib.keras.python.keras.layers import ZeroPadding2D
 from tensorflow.contrib.keras.python.keras.models import Model
-from tensorflow.contrib.keras.python.keras.utils import layer_utils
 from tensorflow.contrib.keras.python.keras.utils.data_utils import get_file
 
 
@@ -59,7 +56,7 @@ def identity_block(input_tensor, kernel_size, filters, stage, block):
 
   Arguments:
       input_tensor: input tensor
-      kernel_size: defualt 3, the kernel size of middle conv layer at main path
+      kernel_size: default 3, the kernel size of middle conv layer at main path
       filters: list of integers, the filterss of 3 conv layer at main path
       stage: integer, current stage label, used for generating layer names
       block: 'a','b'..., current block label, used for generating layer names
@@ -98,7 +95,7 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2,
 
   Arguments:
       input_tensor: input tensor
-      kernel_size: defualt 3, the kernel size of middle conv layer at main path
+      kernel_size: default 3, the kernel size of middle conv layer at main path
       filters: list of integers, the filterss of 3 conv layer at main path
       stage: integer, current stage label, used for generating layer names
       block: 'a','b'..., current block label, used for generating layer names
@@ -172,7 +169,7 @@ def ResNet50(include_top=True,
       input_shape: optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` (with `channels_last` data format)
-          or `(3, 224, 244)` (with `channels_first` data format).
+          or `(3, 224, 224)` (with `channels_first` data format).
           It should have exactly 3 inputs channels,
           and width and height should be no smaller than 197.
           E.g. `(200, 200, 3)` would be one valid value.
@@ -286,24 +283,4 @@ def ResNet50(include_top=True,
           cache_subdir='models',
           md5_hash='a268eb855778b3df3c7506639542a6af')
     model.load_weights(weights_path)
-    if K.backend() == 'theano':
-      layer_utils.convert_all_kernels_in_model(model)
-
-    if K.image_data_format() == 'channels_first':
-      if include_top:
-        maxpool = model.get_layer(name='avg_pool')
-        shape = maxpool.output_shape[1:]
-        dense = model.get_layer(name='fc1000')
-        layer_utils.convert_dense_weights_data_format(dense, shape,
-                                                      'channels_first')
-
-      if K.backend() == 'tensorflow':
-        warnings.warn('You are using the TensorFlow backend, yet you '
-                      'are using the Theano '
-                      'image data format convention '
-                      '(`image_data_format="channels_first"`). '
-                      'For best performance, set '
-                      '`image_data_format="channels_last"` in '
-                      'your Keras config '
-                      'at ~/.keras/keras.json.')
   return model

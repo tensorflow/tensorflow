@@ -607,8 +607,8 @@ inline void GEPP(
   }
   for (const auto* left_slice : left_slices) {
     const auto& left = *left_slice;
-    const auto* data3 = (left.data3.size() > 0) ? &left.data3[0] : nullptr;
-    const auto* data = (left.data.size() > 0) ? &left.data[0] : nullptr;
+    const auto* data3 = (!left.data3.empty()) ? &left.data3[0] : nullptr;
+    const auto* data = (!left.data.empty()) ? &left.data[0] : nullptr;
     const int num_blocks = left.index3_offset.size();
     int begin3 = 0;
     int begin = 0;

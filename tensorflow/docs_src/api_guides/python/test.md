@@ -23,7 +23,7 @@ which adds methods relevant to TensorFlow tests.  Here is an example:
 ```
 
 `tf.test.TestCase` inherits from `unittest.TestCase` but adds a few additional
-methods.  We will document these methods soon.
+methods.  See @{tf.test.TestCase} for details.
 
 *   @{tf.test.main}
 *   @{tf.test.TestCase}

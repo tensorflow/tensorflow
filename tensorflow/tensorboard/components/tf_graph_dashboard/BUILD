@@ -1,16 +1,13 @@
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_ts_library")
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
+load("//tensorflow/tensorboard/defs:defs.bzl", "tensorboard_webcomponent_library")
+load("//tensorflow/tensorboard/defs:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
-web_library(
+ts_web_library(
     name = "tf_graph_dashboard",
-    srcs = [
-        "tf-graph-dashboard.html",
-    ],
+    srcs = ["tf-graph-dashboard.html"],
     path = "/tf-graph-dashboard",
     deps = [
         "//tensorflow/tensorboard/components/tf_backend",
@@ -19,7 +16,24 @@ web_library(
         "//tensorflow/tensorboard/components/tf_graph_board",
         "//tensorflow/tensorboard/components/tf_graph_controls",
         "//tensorflow/tensorboard/components/tf_graph_loader",
-        "@org_polymer",
+        "//tensorflow/tensorboard/components/tf_imports:polymer",
+        "//tensorflow/tensorboard/components/vz_sorting",
+    ],
+)
+
+tensorboard_webcomponent_library(
+    name = "legacy",
+    srcs = [":tf_graph_dashboard"],
+    destdir = "tf-graph-dashboard",
+    deps = [
+        "//tensorflow/tensorboard/components/tf_backend:legacy",
+        "//tensorflow/tensorboard/components/tf_dashboard_common:legacy",
+        "//tensorflow/tensorboard/components/tf_graph:legacy",
+        "//tensorflow/tensorboard/components/tf_graph_board:legacy",
+        "//tensorflow/tensorboard/components/tf_graph_controls:legacy",
+        "//tensorflow/tensorboard/components/tf_graph_loader:legacy",
+        "//tensorflow/tensorboard/components/vz_sorting:legacy",
+        "//third_party/javascript/polymer/v1/polymer:lib",
     ],
 )
 
@@ -27,31 +41,4 @@ filegroup(
     name = "all_files",
     srcs = glob(["**"]),
     tags = ["notsan"],
-)
-
-################################################################################
-# MARKED FOR DELETION
-
-tensorboard_webcomponent_library(
-    name = "legacy",
-    srcs = [
-        "tf-graph-dashboard.html",
-    ],
-    destdir = "tf-graph-dashboard",
-    deps = [
-        "//tensorflow/tensorboard/components/tf_dashboard_common:legacy",
-        "//tensorflow/tensorboard/components/tf_graph:legacy",
-        "//tensorflow/tensorboard/components/tf_graph_board:legacy",
-        "//tensorflow/tensorboard/components/tf_graph_controls:legacy",
-        "//tensorflow/tensorboard/components/tf_graph_loader:legacy",
-    ],
-)
-
-# This is needed despite how this component lacks TypeScript files because
-# components/BUILD seeks a legacy_ts rule in this package.
-tensorboard_ts_library(
-    name = "legacy_ts",
-    srcs = [],
-    deps_mgmt = "off",
-    runtime = "nodejs",
 )

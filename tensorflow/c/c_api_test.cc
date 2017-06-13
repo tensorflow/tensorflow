@@ -887,7 +887,7 @@ class CSession {
     TF_DeleteSessionOptions(opts);
   }
 
-  CSession(TF_Session* session) { session_ = session; }
+  explicit CSession(TF_Session* session) : session_(session) {}
 
   ~CSession() {
     TF_Status* s = TF_NewStatus();
@@ -1345,7 +1345,7 @@ class CApiWhileLoopTest : public ::testing::Test {
     EXPECT_EQ(expected_value, *data);
   }
 
-  // Create a valid conditonal graph. Useful for testing unrelated errors.
+  // Create a valid conditional graph. Useful for testing unrelated errors.
   void CreateCondGraph() {
     TF_Operation* one = ScalarConst(1, params_->cond_graph, s_);
     TF_Operation* less_than =

@@ -180,14 +180,3 @@ int64 GenericTransferManager::GetByteSizeRequirement(const Shape& shape) {
 }
 
 }  // namespace xla
-
-static xla::TransferManager* CreateGenericTransferManager() {
-  return new xla::GenericTransferManager(se::cuda::kCudaPlatformId);
-}
-
-static bool InitModule() {
-  xla::TransferManager::RegisterTransferManager(se::cuda::kCudaPlatformId,
-                                                CreateGenericTransferManager);
-  return true;
-}
-static bool module_initialized = InitModule();

@@ -1,0 +1,69 @@
+<!doctype html>
+<!--
+@license
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<script src="../webcomponentsjs/webcomponents-lite.min.js"></script>
+<link rel="import" href="../iron-demo-helpers/demo-snippet.html">
+<link rel="import" href="../paper-styles/typography.html">
+<link rel="import" href="tf-distribution-dashboard.html">
+
+<title>Distribution Dashboard Demo</title>
+<style>
+  #container {
+    height: 800px;
+    width: 100%;
+    display: block;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: "RobotoDraft","Roboto",sans-serif;
+  }
+
+</style>
+<demo-snippet>
+  <template>
+    <dom-module id="distribution-dash-demo">
+      <template>
+        <tf-distribution-dashboard id="demo" backend="[[backend]]"></tf-distribution-dashboard>
+      </template>
+      <script>
+        import {Backend} from "../../tf-backend/backend";
+        import {createRouter, setRouter} from "../../tf-backend/router";
+
+        Polymer({
+          is: "distribution-dash-demo",
+          properties: {
+            backend: {
+              type: Object,
+              value: function() {
+                return new Backend();
+              },
+            },
+          },
+          created: function() {
+            var path = "data";
+            var router = createRouter(path, true);
+            setRouter(router);
+          },
+        });
+      </script>
+    </dom-module>
+    <distribution-dash-demo id="container"></distribution-dash-demo>
+  </template>
+</demo-snippet>

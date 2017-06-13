@@ -62,6 +62,7 @@ REGISTER_OP("SaveV2")
     .Input("shape_and_slices: string")
     .Input("tensors: dtypes")
     .Attr("dtypes: list(type)")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       ShapeHandle s;
@@ -101,6 +102,7 @@ REGISTER_OP("RestoreV2")
     .Input("shape_and_slices: string")
     .Output("tensors: dtypes")
     .Attr("dtypes: list(type)")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle shape0, shape1, shape2;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &shape0));
@@ -141,6 +143,7 @@ REGISTER_OP("MergeV2Checkpoints")
     .Input("checkpoint_prefixes: string")
     .Input("destination_prefix: string")
     .Attr("delete_old_dirs: bool = true")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 1, &unused));
@@ -169,6 +172,7 @@ REGISTER_OP("Save")
     .Input("tensor_names: string")
     .Input("data: T")
     .Attr("T: list(type)")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       ShapeHandle s;
@@ -204,6 +208,7 @@ REGISTER_OP("SaveSlices")
     .Input("shapes_and_slices: string")
     .Input("data: T")
     .Attr("T: list(type)")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       ShapeHandle s;
@@ -261,6 +266,7 @@ REGISTER_OP("Restore")
     .Output("tensor: dt")
     .Attr("dt: type")
     .Attr("preferred_shard: int = -1")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
@@ -305,6 +311,7 @@ REGISTER_OP("RestoreSlice")
     .Output("tensor: dt")
     .Attr("dt: type")
     .Attr("preferred_shard: int = -1")
+    .SetIsStateful()
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
@@ -513,6 +520,21 @@ REGISTER_OP("TFRecordReaderV2")
     .Doc(R"doc(
 A Reader that outputs the records from a TensorFlow Records file.
 
+reader_handle: The handle to reference the Reader.
+container: If non-empty, this reader is placed in the given container.
+        Otherwise, a default container is used.
+shared_name: If non-empty, this reader is named in the given bucket
+             with this shared_name. Otherwise, the node name is used instead.
+)doc");
+
+REGISTER_OP("LMDBReader")
+    .Output("reader_handle: Ref(string)")
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''")
+    .SetIsStateful()
+    .SetShapeFn(TwoElementOutput)
+    .Doc(R"doc(
+A Reader that outputs the records from a LMDB file.
 reader_handle: The handle to reference the Reader.
 container: If non-empty, this reader is placed in the given container.
         Otherwise, a default container is used.

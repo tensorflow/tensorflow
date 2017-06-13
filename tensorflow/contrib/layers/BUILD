@@ -182,6 +182,7 @@ py_test(
 
 py_test(
     name = "optimizers_test",
+    size = "small",
     srcs = ["python/layers/optimizers_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -237,6 +238,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
     ],
 )

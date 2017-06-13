@@ -190,16 +190,18 @@ contains vz-line-charts embedded inside tf-panes-helper's.
   </template>
 
   <script>
-    TF.Dashboard.TfScalarDashboard = Polymer({
+    import {DashboardBehavior} from "../tf-dashboard-common/dashboard-behavior";
+    import {ReloadBehavior} from "../tf-dashboard-common/reload-behavior";
+    import {BackendBehavior} from "../tf-backend/behavior";
+    import {getRouter} from "../tf-backend/router";
+    import * as storage from "../tf-storage/storage";
+
+    Polymer({
       is: "tf-scalar-dashboard",
-      factoryImpl: function(backend, router) {
-        this.backend = backend;
-        this.router = router;
-      },
       behaviors: [
-        TF.Dashboard.DashboardBehavior("scalars"),
-        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
-        TF.Backend.Behavior,
+        DashboardBehavior("scalars"),
+        ReloadBehavior("tf-chart-scaffold"),
+        BackendBehavior,
       ],
       properties: {
         backend: Object,
@@ -207,22 +209,22 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           type: String,
           value: "scalar"
         },
-        router: Object,
         scalarUrl: {
           type: Function,
-          computed: "_getScalarUrl(router)"
+          value: function() {
+            return getRouter().pluginRunTagRoute('scalars', '/scalars');
+          },
         },
         _showDownloadLinks: {
           type: Boolean,
           notify: true,
-          value: TF.URIStorage.getBooleanInitializer('_showDownloadLinks',
-              false, true),
+          value: storage.getBooleanInitializer('_showDownloadLinks', false, true),
           observer: '_showDownloadLinksObserver'
         },
         _smoothingWeight: {
           type: Number,
           notify: true,
-          value: TF.URIStorage.getNumberInitializer('_smoothingWeight', 0.6),
+          value: storage.getNumberInitializer('_smoothingWeight', 0.6),
           observer: '_smoothingWeightObserver'
         },
         _smoothingEnabled: {
@@ -231,7 +233,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         },
         _ignoreYOutliers: {
           type: Boolean,
-          value: TF.URIStorage.getBooleanInitializer('_ignoreYOutliers', true, true),
+          value: storage.getBooleanInitializer('_ignoreYOutliers', true, true),
           observer: '_ignoreYOutliersObserver',
         },
         _xType: {
@@ -244,14 +246,11 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           this.fire("rendered");
         });
       },
-      _getScalarUrl: function() {
-        return this.router.scalars;
-      },
-      _showDownloadLinksObserver: TF.URIStorage.getBooleanObserver(
+      _showDownloadLinksObserver: storage.getBooleanObserver(
           '_showDownloadLinks', /*default=*/ false, /*useLocalStorage=*/ true),
-      _smoothingWeightObserver: TF.URIStorage.getNumberObserver(
+      _smoothingWeightObserver: storage.getNumberObserver(
           '_smoothingWeight', 0.6),
-      _ignoreYOutliersObserver: TF.URIStorage.getBooleanObserver(
+      _ignoreYOutliersObserver: storage.getBooleanObserver(
           '_ignoreYOutliers', /*default=*/ true, /*useLocalStorage=*/true),
       _computeSmoothingEnabled: function(_smoothingWeight) {
         return _smoothingWeight > 0;

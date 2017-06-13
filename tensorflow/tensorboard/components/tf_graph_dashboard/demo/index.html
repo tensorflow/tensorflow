@@ -37,16 +37,22 @@ limitations under the License.
         <tf-graph-dashboard backend="[[backend]]"></tf-graph-dashboard>
       </template>
       <script>
+        import {Backend} from "../../tf-backend/backend";
+        import {createRouter, setRouter} from "../../tf-backend/router";
+
         Polymer({
           is: "graph-dashboard-demo",
           properties: {
             backend: {
               type: Object,
               value: function() {
-                var router = new TF.Backend.router("data", true);
-                return new TF.Backend.Backend(router);
+                return new Backend();
               },
             },
+          },
+          created: function() {
+            var router = createRouter("data", true);
+            setRouter(router);
           },
         });
       </script>

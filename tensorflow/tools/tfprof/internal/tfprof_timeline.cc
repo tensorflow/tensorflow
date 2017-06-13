@@ -19,11 +19,22 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
 
 namespace tensorflow {
 namespace tfprof {
+namespace {
+string GetTimeDevName(const string& dev) {
+  if (dev.find("stream") != dev.npos) {
+    return strings::StrCat("Op execution threads: ", dev);
+  } else {
+    return strings::StrCat("Op scheduling threads: ", dev);
+  }
+}
+string GetMemoryLaneName(const string& dev) {
+  return strings::StrCat("mem usage on:", dev);
+}
+}  // namespace
 
 Json::Value ChromeTraceFormatter::CreateEvent(const string& ph,
                                               const string& category,
@@ -73,6 +84,16 @@ void ChromeTraceFormatter::EmitFlowEnd(const string& name, int64 ts, int64 pid,
   events_.push_back(event);
 }
 
+void ChromeTraceFormatter::EmitCounter(const string& category,
+                                       const string& name, int64 pid, int64 ts,
+                                       const string& device, int64 bytes) {
+  Json::Value event = CreateEvent("C", category, name, pid, 0, ts);
+  Json::Value args(Json::objectValue);
+  args[device] = Json::Value(bytes);
+  event["args"] = args;
+  events_.push_back(event);
+}
+
 string ChromeTraceFormatter::Format() {
   Json::Value trace;
   trace["traceEvents"] = Json::Value(Json::arrayValue);
@@ -82,12 +103,153 @@ string ChromeTraceFormatter::Format() {
   for (const Json::Value& v : events_) {
     trace["traceEvents"].append(v);
   }
-  return trace.toStyledString();
+  Json::FastWriter writer;
+  string trace_str = writer.write(trace);
+  if (trace_str.length() > 200 * 1024 * 1024) {
+    fprintf(stderr,
+            "Trace file is over 200MB. Chrome might not be able to "
+            "display it. Consider to use filters (e.g. -min_micros "
+            "> 1000 or -op_type .*gpu:0.* to reduce the size.\n");
+  }
+  return trace_str;
 }
 
-void Timeline::GenerateGraphTimeline(const GraphNode* gnode) {
-  fprintf(stdout, "adding graph nodes.\n");
-  AddGraphNode(gnode);
+void MemoryTracker::TrackNode(int64 step, const GraphNode* node) {
+  if (!node->Trackable(step)) {
+    return;
+  }
+  Device& dev = devices_[node->node->canonical_device()];
+  int64 end_micros = node->node->latest_end_micros(step);
+  if (node->node->accelerator_persistent_bytes(step) != 0) {
+    string tensor_name = strings::StrCat(node->name(), ":", -1);
+    dev.earliest_ref[tensor_name] = node->node->all_start_micros(step);
+    dev.tensor_size[tensor_name] =
+        node->node->accelerator_persistent_bytes(step);
+    // TODO(xpan): Need latest_ref?
+  }
+  if (node->node->accelerator_temp_bytes(step)) {
+    string tensor_name = strings::StrCat(node->name(), ":", -2);
+    dev.earliest_ref[tensor_name] = node->node->all_start_micros(step);
+    dev.latest_ref[tensor_name] = end_micros;
+    dev.tensor_size[tensor_name] = node->node->accelerator_temp_bytes(step);
+  }
+  if (node->node->allocator_bytes_in_use(step) > 0) {
+    dev.allocator_stats[end_micros] = node->node->allocator_bytes_in_use(step);
+  }
+}
+
+void MemoryTracker::TrackNodeConnection(int64 step, const GraphNode* node,
+                                        const GraphNode* src) {
+  if (!node->Trackable(step) || !src->Trackable(step)) {
+    return;
+  }
+  const auto& output_idx = node->node->src_output_idx().find(src->name());
+  if (output_idx == node->node->src_output_idx().end()) {
+    return;
+  }
+  const auto& output = src->node->output_bytes(step).find(output_idx->second);
+  if (output == src->node->output_bytes(step).end()) {
+    return;
+  }
+  int64 output_bytes = output->second.first;
+  uint64 output_ptr = output->second.second;
+
+  Device& src_dev = devices_[src->node->canonical_device()];
+  string tensor_name = strings::StrCat(output_ptr);
+  if (output_ptr == 0) {
+    fprintf(stderr, "output no ptr\n");
+    tensor_name = strings::StrCat(src->node->name(), ":", output_idx->second);
+  }
+
+  src_dev.tensor_size[tensor_name] = output_bytes;
+  src_dev.earliest_ref[tensor_name] = src->node->all_start_micros(step);
+
+  int64 src_end_micros = src->node->latest_end_micros(step);
+
+  if (src->node->canonical_device() != node->node->canonical_device()) {
+    int64 transfer_micros =
+        (src_end_micros + node->node->all_start_micros(step)) / 2;
+    src_dev.latest_ref[tensor_name] =
+        std::max(src_dev.latest_ref[tensor_name], transfer_micros);
+
+    Device& dest_dev = devices_[node->node->canonical_device()];
+    string dest_tensor_name =
+        strings::StrCat(tensor_name, node->node->canonical_device());
+    dest_dev.tensor_size[dest_tensor_name] = output_bytes;
+    dest_dev.earliest_ref[dest_tensor_name] = transfer_micros;
+    dest_dev.latest_ref[dest_tensor_name] =
+        std::max(dest_dev.latest_ref[dest_tensor_name],
+                 node->node->latest_end_micros(step));
+  } else {
+    src_dev.latest_ref[tensor_name] = std::max(
+        src_dev.latest_ref[tensor_name], node->node->latest_end_micros(step));
+  }
+}
+
+void Timeline::AllocateTimeNodes(GraphNode* gnode) {
+  if (gnode->Trackable(step_)) {
+    TrackNode(gnode);
+    const TFGraphNode* node = gnode->node;
+    for (const auto& kernel_execs : node->op_execs(step_)) {
+      const string& device = kernel_execs.first;
+      if (!IsCombinedGPUStream(device) && !IsCPUDevice(device)) {
+        continue;
+      }
+
+      if (process_.find(device) == process_.end()) {
+        int64 pid = AllocatePID();
+        process_[device].reset(new Process(device, pid));
+        chrome_formatter_.EmitPID(GetTimeDevName(device), pid);
+      }
+      Process* p = process_[device].get();
+
+      for (const auto& exec : kernel_execs.second) {
+        int64 start_micros = exec.first;
+        int64 exec_micros = exec.second;
+        // TODO(xpan): There might be start time duplication here.
+        if (tnodes_[device].find(start_micros) == tnodes_[device].end()) {
+          // TODO(xpan): Give each kernel call a unique_name.
+          tnodes_[device][start_micros].reset(
+              new TimeNode(p, gnode, start_micros, exec_micros));
+        }
+      }
+    }
+  }
+  for (GraphNode* n : gnode->show_children) {
+    AllocateTimeNodes(n);
+  }
+}
+
+void Timeline::GenerateGraphTimeline(const std::vector<GraphNode*>& gnodes) {
+  for (GraphNode* gnode : gnodes) {
+    AllocateTimeNodes(gnode);
+  }
+  for (auto& process : tnodes_) {
+    for (auto& tn : process.second) {
+      TimeNode* tnode = tn.second.get();
+      for (GraphNode* inp : tnode->node->children) {
+        if (!inp->account || !inp->Trackable(step_)) {
+          continue;
+        }
+        TrackNodeConnection(tnode->node, inp);
+        for (const auto& kernel_execs : inp->node->op_execs(step_)) {
+          if (process.first == kernel_execs.first) {
+            // Not interested in flow withthin the same device.
+            continue;
+          }
+          for (const auto& exec : kernel_execs.second) {
+            int64 start_micros = exec.first;
+            auto cprocess = tnodes_.find(kernel_execs.first);
+            if (cprocess == tnodes_.end()) continue;
+            auto ctn = cprocess->second.find(start_micros);
+            if (ctn == cprocess->second.end()) continue;
+            ctn->second->next_tnodes.push_back(tnode);
+          }
+        }
+      }
+    }
+  }
+
   AllocateLanes();
   fprintf(stdout, "generating trace file.\n");
   int64 flow_id = 1;
@@ -97,22 +259,35 @@ void Timeline::GenerateGraphTimeline(const GraphNode* gnode) {
         TimeNode* tnode = node.second;
 
         Json::Value args(Json::objectValue);
-        args["name"] = Json::Value(tnode->name);
-        args["op"] = Json::Value(tnode->name);
+        args["name"] = Json::Value(tnode->name());
+        args["op"] = Json::Value(tnode->name());
         chrome_formatter_.EmitRegion(node.first, tnode->exec_micros,
                                      process.first, lane.first, "Op",
-                                     tnode->name, args);
-
+                                     tnode->name(), args);
+        // Flow is a directed arrow pointing from src to dst.
+        // TODO(xpan): Disable flow to reduce json file size for now. Need
+        // to think of a better way to make flow interpretable.
         for (TimeNode* next_tnode : node.second->next_tnodes) {
           chrome_formatter_.EmitFlowStart(
-              tnode->name + "_flow", tnode->start_micros + tnode->exec_micros,
+              tnode->name() + "_flow", tnode->start_micros + tnode->exec_micros,
               process.first, lane.first, flow_id);
           chrome_formatter_.EmitFlowEnd(
-              tnode->name + "_flow", next_tnode->start_micros,
+              tnode->name() + "_flow", next_tnode->start_micros,
               next_tnode->process->pid, next_tnode->tid, flow_id);
           flow_id += 1;
         }
       }
+    }
+  }
+  for (const auto& dev : mem_tracker_.devices()) {
+    int64 pid = AllocatePID();
+    chrome_formatter_.EmitPID(GetMemoryLaneName(dev.first), pid);
+    const MemoryTracker::Device& device = dev.second;
+
+    for (const auto& alloc_stats : device.allocator_stats) {
+      chrome_formatter_.EmitCounter("Memory", "Memory Series", pid,
+                                    alloc_stats.first, dev.first,
+                                    alloc_stats.second);
     }
   }
   OutputTimeline();
@@ -148,72 +323,22 @@ void Timeline::OutputTimeline() {
   fflush(stdout);
 }
 
-std::vector<TimeNode*> Timeline::AddGraphNode(const GraphNode* gnode) {
-  std::vector<TimeNode*> tnodes;
-  if (!gnode) return tnodes;
-
-  std::vector<TimeNode*> shown_cinputs;
-  for (GraphNode* schild : gnode->show_children) {
-    std::vector<TimeNode*> inputs = AddGraphNode(schild);
-    shown_cinputs.insert(shown_cinputs.end(), inputs.begin(), inputs.end());
-  }
-  if (!gnode->node->step_stats()) {
-    return shown_cinputs;
-  }
-
-  const TFGraphNode* node = gnode->node;
-  for (const auto& kernel_execs : node->op_kernel_execs()) {
-    const string& device = kernel_execs.first;
-    const std::vector<std::pair<int64, int64>>& execs = kernel_execs.second;
-
-    if (process_.find(device) == process_.end()) {
-      int64 pid = AllocatePID();
-      process_[device].reset(new Process(pid));
-      chrome_formatter_.EmitPID(device, pid);
-    }
-    Process* p = process_[device].get();
-
-    for (const auto& exec : execs) {
-      int64 start_micros = exec.first;
-      int64 exec_micros = exec.second;
-      // TODO(xpan): There might be start time duplication here.
-      if (tnodes_[device].find(start_micros) == tnodes_[device].end()) {
-        // TODO(xpan): Give each kernel call a unique_name.
-        tnodes_[device][start_micros].reset(
-            new TimeNode(p, node->name(), start_micros, exec_micros));
-      }
-      TimeNode* tnode_ptr = tnodes_[device][start_micros].get();
-
-      for (int i = 0; i < shown_cinputs.size(); i++) {
-        shown_cinputs[i]->next_tnodes.push_back(tnode_ptr);
-      }
-      tnodes.push_back(tnode_ptr);
-    }
-  }
-  return tnodes;
-}
-
 void Timeline::AllocateLanes() {
   for (auto& process : tnodes_) {
     Process* p = process_[process.first].get();
     for (auto& tnode : process.second) {
       int64 start_time = tnode.second->start_micros;
-      int64 end_time = tnode.second->exec_micros - 1;
-
+      int64 end_time = tnode.second->start_micros + tnode.second->exec_micros;
       int64 l = -1;
       for (int i = 0; i < p->lanes.size(); ++i) {
         const auto& lane = p->lanes[i];
-        auto cur_it = lane.lower_bound(start_time);
-        if (cur_it == lane.end()) {
-          --cur_it;
-        }
         l = i;
-        for (; cur_it != lane.begin(); --cur_it) {
-          if (cur_it->second < start_time) {
+        for (auto cur_it = lane.rbegin(); cur_it != lane.rend(); ++cur_it) {
+          if (cur_it->second > start_time) {
+            l = -1;
             break;
           }
-          if (cur_it->first <= end_time) {
-            l = -1;
+          if (start_time > cur_it->second) {
             break;
           }
         }

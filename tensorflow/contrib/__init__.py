@@ -55,6 +55,7 @@ from tensorflow.contrib import quantization
 from tensorflow.contrib import rnn
 from tensorflow.contrib import saved_model
 from tensorflow.contrib import seq2seq
+from tensorflow.contrib import signal
 from tensorflow.contrib import slim
 from tensorflow.contrib import solvers
 from tensorflow.contrib import sparsemax

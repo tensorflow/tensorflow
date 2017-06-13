@@ -211,7 +211,7 @@ class TensorReshapeTest : public ::testing::Test {
       : t(DT_FLOAT, TensorShape({2, 3, 4, 5})),
         zero_t(DT_FLOAT, TensorShape({3, 0, 2, 0, 5})) {}
 
-  virtual void SetUp() {
+  void SetUp() override {
     EXPECT_TRUE(t.shape().IsSameSize(TensorShape({2, 3, 4, 5})));
     EXPECT_TRUE(zero_t.shape().IsSameSize(TensorShape({3, 0, 2, 0, 5})));
 
@@ -820,15 +820,13 @@ namespace {
 // failures to allocate.
 class DummyCPUAllocator : public Allocator {
  public:
-  DummyCPUAllocator() {}
+  DummyCPUAllocator() = default;
   string Name() override { return "cpu"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     return nullptr;
   }
-  void DeallocateRaw(void* ptr) override { return; }
+  void DeallocateRaw(void* ptr) override {}
 };
-
-}  // namespace
 
 TEST(Tensor, FailureToAllocate) {
   TensorShape shape({1});
@@ -1080,4 +1078,5 @@ static void BM_CreateAndMoveCtrWithBuf(int iters) {
 }
 BENCHMARK(BM_CreateAndMoveCtrWithBuf);
 
+}  // namespace
 }  // namespace tensorflow

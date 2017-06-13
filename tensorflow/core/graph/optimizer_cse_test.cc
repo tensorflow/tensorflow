@@ -86,7 +86,7 @@ class OptimizerCSETest : public ::testing::Test {
                            str_util::Join(edges, ";"));
   }
 
-  string DoCSE(std::function<bool(const Node*)> consider_fn = nullptr) {
+  string DoCSE(const std::function<bool(const Node*)>& consider_fn = nullptr) {
     string before = CanonicalGraphString(&graph_);
     LOG(ERROR) << "Before rewrites: " << before;
 

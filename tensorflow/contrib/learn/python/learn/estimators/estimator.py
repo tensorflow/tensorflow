@@ -89,7 +89,7 @@ SCIKIT_DECOUPLE_INSTRUCTIONS = (
 
 
 def _verify_input_args(x, y, input_fn, feed_fn, batch_size):
-  """Verifies validity of co-existance of input arguments."""
+  """Verifies validity of co-existence of input arguments."""
   if input_fn is None:
     if x is None:
       raise ValueError('Either x or input_fn must be provided.')
@@ -209,7 +209,9 @@ def _get_replica_device_setter(config):
   """
   ps_ops = [
       'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
-      'MutableHashTableOfTensors', 'MutableDenseHashTable'
+      'MutableHashTableV2', 'MutableHashTableOfTensors',
+      'MutableHashTableOfTensorsV2', 'MutableDenseHashTable',
+      'MutableDenseHashTableV2'
   ]
 
   if config.task_type:
@@ -331,11 +333,11 @@ def _write_dict_to_summary(output_dir,
   for key in dictionary:
     if dictionary[key] is None:
       continue
-    if key  == "global_step":
+    if key == 'global_step':
       continue
     value = summary_proto.value.add()
     value.tag = key
-    if (isinstance(dictionary[key], np.float32) or 
+    if (isinstance(dictionary[key], np.float32) or
         isinstance(dictionary[key], float)):
       value.simple_value = float(dictionary[key])
     elif (isinstance(dictionary[key], np.int64) or
@@ -343,8 +345,9 @@ def _write_dict_to_summary(output_dir,
           isinstance(dictionary[key], int)):
       value.simple_value = int(dictionary[key])
     else:
-      logging.warn('Skipping summary for %s, must be a float, np.float32, np.int64, np.int32 or int.',
-                   key)
+      logging.warn(
+          'Skipping summary for %s, must be a float, np.float32, np.int64, np.int32 or int.',
+          key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
 
@@ -357,7 +360,7 @@ class BaseEstimator(
   """
   __metaclass__ = abc.ABCMeta
 
-  # Note that for Google users, this is overriden with
+  # Note that for Google users, this is overridden with
   # learn_runner.EstimatorConfig.
   # TODO(wicke): Remove this once launcher takes over config functionality
   _Config = run_config.RunConfig  # pylint: disable=invalid-name
@@ -702,7 +705,7 @@ class BaseEstimator(
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
 
     Args:
       features: `Tensor` or `dict` of `Tensor` objects.
@@ -954,6 +957,7 @@ class BaseEstimator(
       self._check_inputs(features, labels)
       model_fn_ops = self._get_train_ops(features, labels)
       ops.add_to_collection(ops.GraphKeys.LOSSES, model_fn_ops.loss)
+      all_hooks.extend(hooks)
       all_hooks.extend([
           basic_session_run_hooks.NanTensorHook(model_fn_ops.loss),
           basic_session_run_hooks.LoggingTensorHook(
@@ -963,7 +967,6 @@ class BaseEstimator(
               },
               every_n_iter=100)
       ])
-      all_hooks.extend(hooks)
 
       scaffold = model_fn_ops.scaffold or monitored_session.Scaffold()
       if not (scaffold.saver or ops.get_collection(ops.GraphKeys.SAVERS)):
@@ -1148,7 +1151,7 @@ class Estimator(BaseEstimator):
   def _get_train_ops(self, features, labels):
     """Method that builds model graph and returns trainer ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1164,7 +1167,7 @@ class Estimator(BaseEstimator):
   def _get_eval_ops(self, features, labels, metrics):
     """Method that builds model graph and returns evaluation ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 
@@ -1203,7 +1206,7 @@ class Estimator(BaseEstimator):
   def _get_predict_ops(self, features):
     """Method that builds model graph and returns prediction ops.
 
-    Expected to be overriden by sub-classes that require custom support.
+    Expected to be overridden by sub-classes that require custom support.
     This implementation uses `model_fn` passed as parameter to constructor to
     build model.
 

@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {TABS} from '../../tf-globals/globals';
+
 describe('end-to-end test', () => {
   window.HTMLImports.whenReady(() => {
     let tb = d3.select('tf-tensorboard');
     var tabs = (<any>tb.node()).$.tabs;
 
     function testTab(tabIndex: number) {
-      it(`selecting ${TF.Globals.TABS[tabIndex]} tab`, done => {
+      it(`selecting ${TABS[tabIndex]} tab`, done => {
         // Every dashboard emits a rendered event when it is done rendering.
         tb.on('rendered', () => done());
         tabs.set('selected', tabIndex);
@@ -32,7 +34,7 @@ describe('end-to-end test', () => {
       // have failed. Re-selecting the default tab and listening for
       // "rendered" event won't work since the content is not re-stamped.
       let selected = +tabs.get('selected');
-      for (let i = 0; i < TF.Globals.TABS.length; i++) {
+      for (let i = 0; i < TABS.length; i++) {
         if (i !== selected) {
           testTab(i);
         }

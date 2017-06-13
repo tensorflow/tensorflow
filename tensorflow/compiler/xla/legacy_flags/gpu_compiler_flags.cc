@@ -38,6 +38,7 @@ static void AllocateFlags() {
   flags = new GpuCompilerFlags;
   flags->xla_gpu_embed_ir = false;
   flags->xla_cuda_data_dir = "./cuda_sdk_lib";
+  flags->xla_gpu_dump_debug_json_to = "";
   flag_list = new std::vector<tensorflow::Flag>({
       tensorflow::Flag(
           "xla_gpu_embed_ir", &flags->xla_gpu_embed_ir,
@@ -49,6 +50,9 @@ static void AllocateFlags() {
           "runfile directories."),
       tensorflow::Flag("xla_ptxas_path", &flags->xla_ptxas_path,
                        "The path to ptxas. Required to log stats of the ptx."),
+      tensorflow::Flag("xla_gpu_dump_debug_json_to",
+                       &flags->xla_gpu_dump_debug_json_to,
+                       "Dump debug JSON to this directory."),
   });
   ParseFlagsFromEnv(*flag_list);
 }

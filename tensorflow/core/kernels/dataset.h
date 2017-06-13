@@ -162,6 +162,43 @@ class DatasetIterator : public IteratorBase {
                                       // shared dataset resource.
 };
 
+// Encapsulates the work required to plug a DatasetBase into the core TensorFlow
+// graph execution engine.
+class DatasetOpKernel : public OpKernel {
+ public:
+  DatasetOpKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  void Compute(OpKernelContext* ctx) final;
+
+ protected:
+  // Subclasses should implement this method. It will be called during Compute
+  // execution.
+  virtual void MakeDataset(OpKernelContext* ctx, DatasetBase** output) = 0;
+
+  template <typename T>
+  Status ParseScalarArgument(OpKernelContext* ctx,
+                             const StringPiece& argument_name, T* output) {
+    const Tensor* argument_t;
+    TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
+    if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
+      return errors::InvalidArgument(argument_name, " must be a scalar");
+    }
+    *output = argument_t->scalar<T>()();
+    return Status::OK();
+  }
+};
+
+// Encapsulates the work required to plug unary Datasets into the core
+// TensorFlow graph execution engine.
+class UnaryDatasetOpKernel : public DatasetOpKernel {
+ public:
+  UnaryDatasetOpKernel(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
+
+ protected:
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) final;
+  virtual void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                           DatasetBase** output) = 0;
+};
+
 }  // namespace tensorflow
 
 #endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATASET_H_

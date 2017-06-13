@@ -69,8 +69,8 @@ TEST_F(LayoutAssignmentTest, ComputationLayout) {
         HloInstruction::CreateParameter(1, ashape, "param1"));
     auto add = builder.AddInstruction(
         HloInstruction::CreateBinary(ashape, HloOpcode::kAdd, param0, param1));
-    HloModule module(TestName());
-    HloComputation* computation = module.AddEntryComputation(builder.Build());
+    auto module = CreateNewModule();
+    HloComputation* computation = module->AddEntryComputation(builder.Build());
 
     Layout layout = LayoutUtil::MakeLayout(minor_to_major);
     Shape shape(ashape);
@@ -81,7 +81,7 @@ TEST_F(LayoutAssignmentTest, ComputationLayout) {
     *computation_layout.mutable_parameter_layout(0) = shape_layout;
     *computation_layout.mutable_parameter_layout(1) = shape_layout;
     *computation_layout.mutable_result_layout() = shape_layout;
-    AssignLayouts(&module, &computation_layout);
+    AssignLayouts(module.get(), &computation_layout);
     EXPECT_TRUE(LayoutUtil::Equal(layout, param0->shape().layout()));
     EXPECT_TRUE(LayoutUtil::Equal(layout, param1->shape().layout()));
     EXPECT_TRUE(LayoutUtil::Equal(layout, add->shape().layout()));
@@ -99,8 +99,8 @@ TEST_F(LayoutAssignmentTest, ComputationLayoutMixedLayout) {
       HloInstruction::CreateParameter(1, ashape, "param1"));
   builder.AddInstruction(
       HloInstruction::CreateBinary(ashape, HloOpcode::kAdd, param0, param1));
-  HloModule module(TestName());
-  HloComputation* computation = module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
 
   Layout col_major_layout = LayoutUtil::MakeLayout({1, 0});
   Shape col_major_shape(ashape);
@@ -117,7 +117,7 @@ TEST_F(LayoutAssignmentTest, ComputationLayoutMixedLayout) {
   *computation_layout.mutable_parameter_layout(1) = row_major;
   *computation_layout.mutable_result_layout() = col_major;
 
-  AssignLayouts(&module, &computation_layout);
+  AssignLayouts(module.get(), &computation_layout);
   EXPECT_TRUE(LayoutUtil::Equal(col_major_layout, param0->shape().layout()));
   EXPECT_TRUE(LayoutUtil::Equal(row_major_layout, param1->shape().layout()));
   EXPECT_TRUE(LayoutUtil::Equal(
@@ -148,8 +148,8 @@ TEST_F(LayoutAssignmentTest, FusionInstruction) {
     auto negate2 = builder.AddInstruction(
         HloInstruction::CreateUnary(ashape, HloOpcode::kNegate, negate1));
 
-    HloModule module(TestName());
-    HloComputation* computation = module.AddEntryComputation(builder.Build());
+    auto module = CreateNewModule();
+    HloComputation* computation = module->AddEntryComputation(builder.Build());
 
     auto fusion = computation->CreateFusionInstruction(
         {negate2, negate1, add}, HloInstruction::FusionKind::kLoop);
@@ -162,7 +162,7 @@ TEST_F(LayoutAssignmentTest, FusionInstruction) {
     ComputationLayout computation_layout(computation->ComputeProgramShape());
     *computation_layout.mutable_result_layout() = shape_layout;
 
-    AssignLayouts(&module, &computation_layout);
+    AssignLayouts(module.get(), &computation_layout);
 
     EXPECT_TRUE(LayoutUtil::Equal(
         layout, fusion->fused_parameter(0)->shape().layout()));
@@ -197,13 +197,13 @@ TEST_F(LayoutAssignmentTest, TupleLayout) {
   auto negate = builder.AddInstruction(HloInstruction::CreateUnary(
       constant0->shape(), HloOpcode::kNegate, get_element0));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
   ComputationLayout computation_layout(
-      module.entry_computation()->ComputeProgramShape());
+      module->entry_computation()->ComputeProgramShape());
 
-  AssignLayouts(&module, &computation_layout);
+  AssignLayouts(module.get(), &computation_layout);
 
   EXPECT_FALSE(
       LayoutUtil::LayoutsInShapesEqual(constant0->shape(), constant1->shape()));
@@ -235,17 +235,17 @@ TEST_F(LayoutAssignmentTest, TupleSelect) {
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
       tuple0->shape(), HloOpcode::kSelect, pred, tuple0, tuple1));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
   ComputationLayout computation_layout(
-      module.entry_computation()->ComputeProgramShape());
+      module->entry_computation()->ComputeProgramShape());
   Shape result_shape =
       ShapeUtil::MakeTupleShape({constant0->shape(), constant1->shape()});
   TF_CHECK_OK(computation_layout.mutable_result_layout()->CopyLayoutFromShape(
       result_shape));
 
-  AssignLayouts(&module, &computation_layout);
+  AssignLayouts(module.get(), &computation_layout);
 
   EXPECT_TRUE(LayoutUtil::LayoutsInShapesEqual(result_shape, select->shape()));
 }
@@ -270,11 +270,11 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   auto nested_tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({inner_tuple, inner_tuple}));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
   ComputationLayout computation_layout(
-      module.entry_computation()->ComputeProgramShape());
+      module->entry_computation()->ComputeProgramShape());
   Shape result_shape = nested_tuple->shape();
   *ShapeUtil::GetMutableSubshape(&result_shape, /*index=*/{0, 0}) =
       ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
@@ -284,7 +284,7 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
       result_shape));
 
   LayoutAssignment layout_assignment(&computation_layout);
-  AssignLayouts(&module, &computation_layout);
+  AssignLayouts(module.get(), &computation_layout);
 
   // Layout assignment should have deep copied the result of the computation to
   // address the layout conflict. This results in several Tuple() and
@@ -300,9 +300,9 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   EXPECT_TRUE(
       AlgebraicSimplifier(/*is_layout_sensitive=*/true,
                           [](const Shape&, const Shape&) { return false; })
-          .Run(&module)
+          .Run(module.get())
           .ValueOrDie());
-  HloInstruction* root = module.entry_computation()->root_instruction();
+  HloInstruction* root = module->entry_computation()->root_instruction();
   // Verify layout of the root and the root's operands.
   EXPECT_TRUE(ShapeUtil::Equal(result_shape, root->shape()));
   EXPECT_TRUE(ShapeUtil::Equal(ShapeUtil::GetSubshape(result_shape, {0}),
@@ -329,8 +329,9 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {
   auto tanh = builder.AddInstruction(
       HloInstruction::CreateUnary(bshape, HloOpcode::kTanh, reshape));
 
-  HloModule module(TestName());
-  HloComputation* computation = module.AddEntryComputation(builder.Build(tanh));
+  auto module = CreateNewModule();
+  HloComputation* computation =
+      module->AddEntryComputation(builder.Build(tanh));
 
   Shape ashape_with_layout(ashape);
   Shape bshape_with_layout(bshape);
@@ -341,7 +342,7 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndReshape) {
   *computation_layout.mutable_parameter_layout(0) =
       ShapeLayout(ashape_with_layout);
   *computation_layout.mutable_result_layout() = ShapeLayout(bshape_with_layout);
-  AssignLayouts(&module, &computation_layout);
+  AssignLayouts(module.get(), &computation_layout);
 
   auto log_minor_to_major =
       AsInt64Slice(log->shape().layout().minor_to_major());
@@ -370,8 +371,8 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndTranspose) {
       HloInstruction::CreateTranspose(bshape, log, {1, 0}));
   auto tanh = builder.AddInstruction(
       HloInstruction::CreateUnary(bshape, HloOpcode::kTanh, transpose));
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(builder.Build(tanh));
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build(tanh));
 
   Shape ashape_with_layout(ashape);
   Shape bshape_with_layout(bshape);
@@ -382,7 +383,7 @@ TEST_F(LayoutAssignmentTest, ElementwiseAndTranspose) {
   *computation_layout.mutable_parameter_layout(0) =
       ShapeLayout(ashape_with_layout);
   *computation_layout.mutable_result_layout() = ShapeLayout(bshape_with_layout);
-  AssignLayouts(&module, &computation_layout);
+  AssignLayouts(module.get(), &computation_layout);
 
   EXPECT_TRUE(
       LayoutUtil::Equal(ashape_with_layout.layout(), log->shape().layout()));
@@ -406,9 +407,9 @@ TEST_F(LayoutAssignmentTest, BroadcastAndTranspose) {
       HloInstruction::CreateBroadcast(bshape, param, {1, 2}));
   auto transpose = builder.AddInstruction(
       HloInstruction::CreateTranspose(cshape, broadcast, {2, 1, 0}));
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* computation =
-      module.AddEntryComputation(builder.Build(transpose));
+      module->AddEntryComputation(builder.Build(transpose));
 
   Shape input_shape_with_layout(ashape);
   Shape output_shape_with_layout(cshape);
@@ -421,7 +422,7 @@ TEST_F(LayoutAssignmentTest, BroadcastAndTranspose) {
       ShapeLayout(input_shape_with_layout);
   *computation_layout.mutable_result_layout() =
       ShapeLayout(output_shape_with_layout);
-  AssignLayouts(&module, &computation_layout);
+  AssignLayouts(module.get(), &computation_layout);
 
   EXPECT_THAT(broadcast->shape().layout().minor_to_major(),
               ElementsAre(0, 1, 2));
@@ -455,9 +456,9 @@ TEST_F(LayoutAssignmentTest, ReshapeOperandHasMultipleUsers) {
       HloInstruction::CreateBroadcast(f32_234, tanh, {2}));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({transpose, broadcast2}));
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* computation =
-      module.AddEntryComputation(builder.Build(tuple));
+      module->AddEntryComputation(builder.Build(tuple));
 
   ComputationLayout computation_layout(computation->ComputeProgramShape());
   Shape param_shape_with_layout(f32_4);
@@ -474,7 +475,7 @@ TEST_F(LayoutAssignmentTest, ReshapeOperandHasMultipleUsers) {
   *computation_layout.mutable_result_layout() =
       ShapeLayout(ShapeUtil::MakeTupleShape(
           {transpose_shape_with_layout, broadcast2_shape_with_layout}));
-  AssignLayouts(&module, &computation_layout);
+  AssignLayouts(module.get(), &computation_layout);
 
   EXPECT_THAT(broadcast->shape().layout().minor_to_major(), ElementsAre(0, 1));
   EXPECT_THAT(transpose->shape().layout().minor_to_major(), ElementsAre(1, 0));
@@ -525,9 +526,9 @@ TEST_F(LayoutAssignmentTest, MakeOperandsTheSame) {
       HloInstruction::CreateConcatenate(bshape, {param0, param1}, 1));
   auto reshape = builder.AddInstruction(
       HloInstruction::CreateReshape(cshape, concatenate));
-  HloModule module(TestName());
+  auto module = CreateNewModule();
   HloComputation* computation =
-      module.AddEntryComputation(builder.Build(reshape));
+      module->AddEntryComputation(builder.Build(reshape));
 
   Shape param0_shape_with_layout(ashape);
   Shape param1_shape_with_layout(ashape);
@@ -540,7 +541,7 @@ TEST_F(LayoutAssignmentTest, MakeOperandsTheSame) {
   *computation_layout.mutable_parameter_layout(1) =
       ShapeLayout(param1_shape_with_layout);
   OperandsMustBeTheSameLayoutAssignment layout_assignment(&computation_layout);
-  EXPECT_IS_OK(layout_assignment.Run(&module).status());
+  EXPECT_IS_OK(layout_assignment.Run(module.get()).status());
 
   EXPECT_EQ(HloOpcode::kCopy, concatenate->operand(0)->opcode());
   EXPECT_THAT(concatenate->operand(0)->shape().layout().minor_to_major(),
@@ -553,3 +554,7 @@ TEST_F(LayoutAssignmentTest, MakeOperandsTheSame) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

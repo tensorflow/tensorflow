@@ -39,7 +39,9 @@ class BufferLiveness {
   // Constructs a buffer liveness object for the given module assuming the given
   // HLO instruction ordering.
   static StatusOr<std::unique_ptr<BufferLiveness>> Run(
-      const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering);
+      const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
+      TuplePointsToAnalysis::Colorer colorer =
+          TuplePointsToAnalysis::DefaultColorer());
 
   // Returns true if the live range of the buffer containing the output of 'a'
   // may overlap with the live range of the buffer of 'b'. If instruction 'a'
@@ -69,8 +71,11 @@ class BufferLiveness {
 
  private:
   explicit BufferLiveness(const HloModule* module,
-                          std::unique_ptr<HloOrdering> hlo_ordering)
-      : module_(module), hlo_ordering_(std::move(hlo_ordering)) {}
+                          std::unique_ptr<HloOrdering> hlo_ordering,
+                          TuplePointsToAnalysis::Colorer colorer)
+      : module_(module),
+        hlo_ordering_(std::move(hlo_ordering)),
+        colorer_(colorer) {}
 
   // Perform buffer liveness analysis. This method must be called prior to
   // MayInterfere or MaybeLiveOut.
@@ -93,6 +98,8 @@ class BufferLiveness {
   tensorflow::gtl::FlatSet<const LogicalBuffer*> maybe_live_out_buffers_;
 
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
+
+  TuplePointsToAnalysis::Colorer colorer_;
 };
 
 }  // namespace xla

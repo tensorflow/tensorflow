@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -37,6 +38,7 @@ class SliceTest : public ClientLibraryTestBase {
   template <typename NativeT>
   void RunSliceTenToTwo() {
     std::vector<NativeT> constant;
+    constant.reserve(10);
     for (int i = 0; i < 10; ++i) {
       constant.push_back(static_cast<NativeT>(i));
     }
@@ -261,6 +263,7 @@ INSTANTIATE_TEST_CASE_P(
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -163,7 +164,7 @@ XLA_TEST_F(ParamsTest, MissingParameter) {
   auto computation = builder.Build().ConsumeValueOrDie();
 
   auto execute_status = client_->Execute(computation, {data.get(), data.get()},
-                                         /*output_layout=*/nullptr,
+                                         /*execution_options=*/nullptr,
                                          /*execution_profile=*/nullptr);
   ASSERT_EQ(execute_status.status().code(),
             tensorflow::error::FAILED_PRECONDITION);
@@ -246,6 +247,7 @@ XLA_TEST_F(ParamsTest, HundredLargeR1Parameters) {
   }
 
   std::vector<GlobalData*> param_data;
+  param_data.reserve(param_data_owner.size());
   for (const std::unique_ptr<GlobalData>& data : param_data_owner) {
     param_data.push_back(data.get());
   }
@@ -341,6 +343,7 @@ XLA_TEST_F(ParamsTest, R2_2x2_TryToPassReverseLayoutToParameter) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

@@ -369,6 +369,24 @@ def _Log1pGrad(op, grad):
     return grad * math_ops.reciprocal(1 + x)
 
 
+@ops.RegisterGradient("Sinh")
+def _SinhGrad(op, grad):
+  """Returns grad * cosh(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
+    return grad * math_ops.cosh(x)
+
+
+@ops.RegisterGradient("Cosh")
+def _CoshGrad(op, grad):
+  """Returns grad * sinh(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
+    return grad * math_ops.sinh(x)
+
+
 @ops.RegisterGradient("Tanh")
 def _TanhGrad(op, grad):
   """Returns grad * (1 - tanh(x) * tanh(x))."""

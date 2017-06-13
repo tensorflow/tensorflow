@@ -162,6 +162,9 @@ void SetMemory(NodeExecStats* nt, OpKernelContext* ctx) {
       memory->set_peak_bytes(std::get<1>(sizes));
       memory->set_live_bytes(std::get<2>(sizes));
     }
+    AllocatorStats stats;
+    allocator_pair.first->GetStats(&stats);
+    memory->set_allocator_bytes_in_use(stats.bytes_in_use);
   }
   auto* ms = nt->mutable_memory_stats();
   ms->set_host_temp_memory_size(ctx->host_temp_memory_size());
@@ -511,7 +514,7 @@ char* GraphView::InitializeNode(char* ptr, const Node* n) {
   item->num_output_edges = num_output_edges;
 
   // Fill output edges.
-  // Keep track of the last EdgeInfo in the EdngeInfo array that references
+  // Keep track of the last EdgeInfo in the EdgeInfo array that references
   // a given output slot.  For all but the last, we need to do a copy of the
   // Tensor when propagating results downstream in the graph, but for the
   // last one, we can just do a move of the Tensor object to propagate it.

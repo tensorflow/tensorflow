@@ -1,7 +1,7 @@
 # Description:
 # A plugin system for TensorBoard
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
 licenses(["notice"])  # Apache 2.0
 

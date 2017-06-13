@@ -48,7 +48,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   }
 
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_.reset(new HloModule(TestName()));
+    module_ = CreateNewModule();
     module_->AddEntryComputation(std::move(computation));
   }
 
@@ -111,7 +111,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
             .ValueOrDie();
     std::vector<BufferAlias> expected_aliases;
     for (auto& pair : expected) {
-      expected_aliases.push_back(BufferAlias(*buffer, pair.first, pair.second));
+      expected_aliases.push_back(BufferAlias(pair.first, pair.second));
     }
     EXPECT_THAT(points_to_analysis_->GetBufferAliases(*buffer),
                 UnorderedElementsAreArray(expected_aliases));
@@ -764,3 +764,7 @@ TEST_F(FusionPointsToAnalysisTest, FusionParam0TwoUsers) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

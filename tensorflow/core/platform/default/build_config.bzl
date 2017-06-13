@@ -98,12 +98,14 @@ def tf_proto_library(name, srcs = [], has_services = None,
   )
 
 def tf_additional_lib_hdrs(exclude = []):
+  windows_hdrs = native.glob([
+      "platform/default/*.h",
+      "platform/windows/*.h",
+      "platform/posix/error.h",
+  ], exclude = exclude)
   return select({
-    "//tensorflow:windows" : native.glob([
-        "platform/default/*.h",
-        "platform/windows/*.h",
-        "platform/posix/error.h",
-      ], exclude = exclude),
+    "//tensorflow:windows" : windows_hdrs,
+    "//tensorflow:windows_msvc" : windows_hdrs,
     "//conditions:default" : native.glob([
         "platform/default/*.h",
         "platform/posix/*.h",
@@ -111,12 +113,14 @@ def tf_additional_lib_hdrs(exclude = []):
   })
 
 def tf_additional_lib_srcs(exclude = []):
+  windows_srcs = native.glob([
+      "platform/default/*.cc",
+      "platform/windows/*.cc",
+      "platform/posix/error.cc",
+  ], exclude = exclude)
   return select({
-    "//tensorflow:windows" : native.glob([
-        "platform/default/*.cc",
-        "platform/windows/*.cc",
-        "platform/posix/error.cc",
-      ], exclude = exclude),
+    "//tensorflow:windows" : windows_srcs,
+    "//tensorflow:windows_msvc" : windows_srcs,
     "//conditions:default" : native.glob([
         "platform/default/*.cc",
         "platform/posix/*.cc",
@@ -148,11 +152,13 @@ def tf_env_time_hdrs():
   ]
 
 def tf_env_time_srcs():
+  win_env_time = native.glob([
+    "platform/windows/env_time.cc",
+    "platform/env_time.cc",
+  ], exclude = [])
   return select({
-    "//tensorflow:windows" : native.glob([
-        "platform/windows/env_time.cc",
-        "platform/env_time.cc",
-      ], exclude = []),
+    "//tensorflow:windows" : win_env_time,
+    "//tensorflow:windows_msvc" : win_env_time,
     "//conditions:default" : native.glob([
         "platform/posix/env_time.cc",
         "platform/env_time.cc",
@@ -252,5 +258,11 @@ def tf_lib_proto_parsing_deps():
 def tf_additional_verbs_lib_defines():
   return select({
       "//tensorflow:with_verbs_support": ["TENSORFLOW_USE_VERBS"],
+      "//conditions:default": [],
+  })
+
+def tf_additional_mpi_lib_defines():
+  return select({
+      "//tensorflow:with_mpi_support": ["TENSORFLOW_USE_MPI"],
       "//conditions:default": [],
   })

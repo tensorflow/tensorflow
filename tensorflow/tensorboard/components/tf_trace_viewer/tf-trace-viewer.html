@@ -1,0 +1,127 @@
+<!--
+@license
+Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="trace_viewer_full.html">
+
+<!--
+tf-trace-viewer is the frontend entry point for Trace Viewer on TensorBoard.
+
+The server serves the trace viewer app at a separate endpoint. TensorBoard
+dashboard would integrate trace viewer app using iframe.
+-->
+<script>
+  "use strict";
+
+  Polymer({
+    is: "tf-trace-viewer",
+    properties: {
+      // The URL of trace data. Provided by caller via URL parameter.
+      traceDataUrl: {
+        type: String,
+        value: null,
+      },
+      _traceData: {
+        type: Object,
+        observer: "_traceDataChanged"
+      },
+      _traceViewer: Object,
+      _traceContainer: Object,
+      _traceModel: Object,
+    },
+    ready: function() {
+      // Initiate the trace viewer app.
+      this._traceContainer = document.createElement("track-view-container");
+      this._traceContainer.id = "track_view_container";
+
+      this._traceViewer = document.createElement("tr-ui-timeline-view");
+      this._traceViewer.track_view_container = this._traceContainer;
+      this._traceViewer.appendChild(this._traceContainer);
+
+      this._traceViewer.id = 'trace-viewer';
+      this._traceViewer.globalMode = true;
+
+      Polymer.dom(this.root).appendChild(this._traceViewer);
+
+      // Retrieve the URL of trace data.
+      var queryString = window.location.href.split("?")[1];
+      if (queryString) {
+        var parts = queryString.split('&')
+        for (var i=0; i<parts.length; i++) {
+          var components = parts[i].split('=');
+          if (components[0] == "trace_data_url") {
+            this.traceDataUrl = decodeURIComponent(components[1]);
+            break;
+          }
+        }
+      }
+
+      this._loadTrace();
+    },
+    _loadTrace : function() {
+      if (!this.traceDataUrl) {
+        this._displayOverlay("Trace data URL is not provided.", "Trace Viewer");
+        return null;
+      }
+      // Send HTTP request to get the trace data.
+      var req = new XMLHttpRequest();
+      var is_binary = / [.] gz$ /.test(this.traceDataUrl) ||
+                      / [.] zip$ /.test(this.traceDataUrl);
+      req.overrideMimeType('text/plain; charset=x-user-defined');
+      req.open('GET', this.traceDataUrl, true);
+      if (is_binary) {
+        req.responseType = 'arraybuffer';
+      }
+
+      req.onreadystatechange = function(event) {
+        if (req.readyState !== 4) {
+          return;
+        }
+        window.setTimeout(function() {
+          if (req.status === 200) {
+            this.set("_traceData", is_binary ? req.response : req.responseText);
+          } else {
+            this._displayOverlay(req.status, "Failed to fetch data");
+          }
+        }.bind(this), 0);
+      }.bind(this);
+      req.send(null);
+    },
+    _traceDataChanged: function(data) {
+      if (!data) {
+        this._displayOverlay("Trace Viewer", "No trace to display...");
+        return;
+      }
+      // Feed the trace data into the trace viewer app.
+      this._traceModel = new tr.Model();
+      var i = new tr.importer.Import(this._traceModel);
+      var p = i.importTracesWithProgressDialog([data]);
+      p.then(() => {
+        this._traceViewer.model = this._traceModel;
+        this._traceViewer.viewTitle = "Trace View";
+      }).catch((err) => {
+        this._displayOverlay(
+            'Import error', tr.b.normalizeException(err).message);
+      });
+    },
+    _displayOverlay: function(title, content) {
+      var overlay = new tr.ui.b.Overlay();
+      overlay.textContent = content;
+      overlay.title = title;
+      overlay.visible = true;
+    },
+  });
+</script>

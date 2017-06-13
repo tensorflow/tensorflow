@@ -28,14 +28,14 @@ def _python_configure_warning(msg):
   """Output warning message during auto configuration."""
   yellow = "\033[1;33m"
   no_color = "\033[0m"
-  print("\n%sPython Configuration Warning:%s %s\n" % (yellow, no_color, msg))
+  print("%sPython Configuration Warning:%s %s" % (yellow, no_color, msg))
 
 
 def _python_configure_fail(msg):
   """Output failure message when auto configuration fails."""
   red = "\033[0;31m"
   no_color = "\033[0m"
-  fail("\n%sPython Configuration Error:%s %s\n" % (red, no_color, msg))
+  fail("%sPython Configuration Error:%s %s\n" % (red, no_color, msg))
 
 
 def _get_env_var(repository_ctx, name, default = None, enable_warning = True):
@@ -82,51 +82,27 @@ def _execute(repository_ctx, cmdline, error_msg=None, error_details=None,
   return result
 
 
-def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name):
-  """returns a genrule to symlink all files in a directory."""
-  # Get the list of files under this directory
-  find_result = None
+def _read_dir(repository_ctx, src_dir):
+  """Returns a string with all files in a directory.
+
+  Finds all files inside a directory, traversing subfolders and following
+  symlinks. The returned string contains the full path of all files
+  separated by line breaks.
+  """
   if _is_windows(repository_ctx):
+    src_dir = src_dir.replace("/", "\\")
     find_result = _execute(
-        repository_ctx,
-        ["cmd.exe", "/c", "dir", src_dir.replace("/", "\\"), "/b", "/s",
-         "/a-d"],
+        repository_ctx, ["cmd.exe", "/c", "dir", src_dir, "/b", "/s", "/a-d"],
         empty_stdout_fine=True)
-    # src_files will be used to compute BUILD rules, where path must use
-    # forward slashes.
-    src_files = find_result.stdout.replace("\\", "/").splitlines()
-    # Create a list with the src_dir stripped to use for outputs.
-    fwdslashes_src_dir = src_dir.replace("\\", "/")
-    dest_files = [e.replace(fwdslashes_src_dir, "") for e in src_files]
+    # src_files will be used in genrule.outs where the paths must
+    # use forward slashes.
+    result = find_result.stdout.replace("\\", "/")
   else:
     find_result = _execute(
         repository_ctx, ["find", src_dir, "-follow", "-type", "f"],
         empty_stdout_fine=True)
-    # Create a list with the src_dir stripped to use for outputs.
-    dest_files = find_result.stdout.replace(src_dir, '').splitlines()
-    src_files = find_result.stdout.splitlines()
-  command = []
-  command_windows = []
-  outs = []
-  outs_windows = []
-  for i in range(len(dest_files)):
-    if dest_files[i] != "":
-      command.append('ln -s ' + src_files[i] + ' $(@D)/' +
-                     dest_dir + dest_files[i])
-      # ln -sf is actually implemented as copying in msys since creating
-      # symbolic links is privileged on Windows. But copying is too slow, so
-      # invoke mklink to create junctions on Windows.
-      command_windows.append('mklink /J ' + src_files[i] + ' $(@D)/' +
-                             dest_dir + dest_files[i])
-      outs.append('      "' + dest_dir + dest_files[i] + '",')
-      outs_windows.append('      "' + dest_dir + '_windows' +
-                          dest_files[i] + '",')
-  genrule = _genrule(src_dir, genrule_name, ' && '.join(command),
-                     '\n'.join(outs))
-  genrule_windows = _genrule(src_dir, genrule_name + '_windows',
-                             "cmd /c \"" + ' && '.join(command_windows) + "\"",
-                             '\n'.join(outs_windows))
-  return genrule + '\n' + genrule_windows
+    result = find_result.stdout
+  return result
 
 
 def _genrule(src_dir, genrule_name, command, outs):
@@ -144,9 +120,41 @@ def _genrule(src_dir, genrule_name, command, outs):
       '    cmd = """\n' +
       command +
       '    """,\n' +
-      '    visibility = ["//visibility:private"],' +
-      ')\n'
+      ')\n\n'
   )
+
+
+def _norm_path(path):
+  """Returns a path with '/' and remove the trailing slash."""
+  path = path.replace("\\", "/")
+  if path[-1] == "/":
+    path = path[:-1]
+  return path
+
+
+def _symlink_genrule_for_dir(repository_ctx, src_dir, dest_dir, genrule_name):
+  """Returns a genrule to symlink(or copy if on Windows) a set of files.
+  """
+  src_dir = _norm_path(src_dir)
+  dest_dir = _norm_path(dest_dir)
+  files = _read_dir(repository_ctx, src_dir)
+  # Create a list with the src_dir stripped to use for outputs.
+  dest_files = files.replace(src_dir, '').splitlines()
+  src_files = files.splitlines()
+  command = []
+  outs = []
+  for i in range(len(dest_files)):
+    if dest_files[i] != "":
+      # If we have only one file to link we do not want to use the dest_dir, as
+      # $(@D) will include the full path to the file.
+      dest = '$(@D)/' + dest_dir + dest_files[i] if len(dest_files) != 1 else '$(@D)/' + dest_files[i]
+      # On Windows, symlink is not supported, so we just copy all the files.
+      cmd = 'cp -f' if _is_windows(repository_ctx) else 'ln -s'
+      command.append(cmd + ' "%s" "%s"' % (src_files[i] , dest))
+      outs.append('      "' + dest_dir + dest_files[i] + '",')
+  genrule = _genrule(src_dir, genrule_name, " && ".join(command),
+                     "\n".join(outs))
+  return genrule
 
 
 def _get_python_lib(repository_ctx, python_bin):
@@ -232,9 +240,13 @@ def _create_local_python_repository(repository_ctx):
   # If local checks were requested, the python and numpy include will be auto
   # detected on the host config (using _PYTHON_BIN_PATH).
   if repository_ctx.attr.local_checks:
-    python_bin = _get_env_var(repository_ctx, _PYTHON_BIN_PATH)
+    # TODO(nlopezgi): The default argument here is a workaround until
+    #                 bazelbuild/bazel#3057 is resolved.
+    python_bin = _get_env_var(repository_ctx, _PYTHON_BIN_PATH,
+                              "/usr/bin/python")
     _check_python_bin(repository_ctx, python_bin)
-    python_lib = _get_env_var(repository_ctx, _PYTHON_LIB_PATH, _get_python_lib(repository_ctx, python_bin))
+    python_lib = _get_env_var(repository_ctx, _PYTHON_LIB_PATH,
+                              _get_python_lib(repository_ctx, python_bin))
     _check_python_lib(repository_ctx, python_lib)
     python_include = _get_python_include(repository_ctx, python_bin)
     numpy_include = _get_numpy_include(repository_ctx, python_bin) + '/numpy'

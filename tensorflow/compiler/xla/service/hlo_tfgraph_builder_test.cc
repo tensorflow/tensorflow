@@ -182,3 +182,7 @@ TEST_F(HloTfGraphBuilderTest, EmbeddedComputationsDiamond) {
 }  // namespace
 }  // namespace hlo_graph_dumper
 }  // namespace xla
+
+int main(int argc, char **argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

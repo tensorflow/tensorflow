@@ -69,7 +69,7 @@ class ClassificationOutput(ExportOutput):
   """
 
   def __init__(self, scores=None, classes=None):
-    """Constructor for `ClassifyOutput`.
+    """Constructor for `ClassificationOutput`.
 
     Args:
       scores: A float `Tensor` giving scores (sometimes but not always

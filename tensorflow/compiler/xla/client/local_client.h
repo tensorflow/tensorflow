@@ -56,7 +56,7 @@ class ExecutableBuildOptions {
 
   // If set, this specifies the layout of the result of the computation. If not
   // set, the service will chose the layout of the result. A Shape is used to
-  // store the layout to accomodate tuple result shapes. A value of nullptr
+  // store the layout to accommodate tuple result shapes. A value of nullptr
   // indicates the option has not been set.
   ExecutableBuildOptions& set_result_layout(const Shape& shape_with_layout);
   const Shape* result_layout() const;

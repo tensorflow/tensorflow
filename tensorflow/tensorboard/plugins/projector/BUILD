@@ -1,26 +1,24 @@
 # Embedding Projector plugin.
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/tensorboard/defs:protos.bzl", "tb_proto_library")
 
 py_library(
     name = "projector_plugin",
     srcs = ["projector_plugin.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//learning/vis/projector:__subpackages__",
+        "//tensorflow/tensorboard:internal",
+    ],
     deps = [
         ":protos_all_py",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:image_ops",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:training",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard/backend:http_util",
         "//tensorflow/tensorboard/plugins:base_plugin",
         "//third_party/py/numpy",
@@ -36,15 +34,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":projector_plugin",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:summary",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
+        "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard/backend:application",
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
         "//third_party/py/numpy",
@@ -52,14 +42,17 @@ py_test(
     ],
 )
 
-tf_proto_library(
-    name = "protos_all",
-    srcs = glob(["*.proto"]),
-    visibility = ["//visibility:public"],
-)
-
 filegroup(
     name = "all_files",
     srcs = glob(["**"]),
     visibility = ["//tensorflow:__pkg__"],
+)
+
+tb_proto_library(
+    name = "protos_all",
+    srcs = glob(["*.proto"]),
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/tensorboard:internal",
+    ],
 )

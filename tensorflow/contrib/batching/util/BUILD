@@ -43,11 +43,11 @@ cc_library(
 
 cc_test(
     name = "periodic_function_test",
+    size = "small",
     srcs = ["periodic_function_test.cc"],
     deps = [
         ":periodic_function",
         "//tensorflow/contrib/batching/test_util:fake_clock_env",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core:test_main",
     ],
 )

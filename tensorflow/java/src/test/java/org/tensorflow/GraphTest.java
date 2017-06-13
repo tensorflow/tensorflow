@@ -47,7 +47,7 @@ public class GraphTest {
 
   // Helper function whose implementation is based on knowledge of how
   // TestUtil.transpose_A_times_X is implemented.
-  private void validateImportedGraph(Graph g, String prefix) {
+  private static void validateImportedGraph(Graph g, String prefix) {
     Operation op = g.operation(prefix + "A");
     assertNotNull(op);
     assertEquals(prefix + "A", op.name());

@@ -68,7 +68,7 @@ module tf.graph.util {
    * progress
    * of the subtask and the subtask message. The parent task should pass a
    * subtracker to its subtasks. The subtask reports its own progress which
-   * becames relative to the main task.
+   * becomes relative to the main task.
    */
   export function getSubtaskTracker(
       parentTracker: ProgressTracker, impactOnTotalProgress: number,
@@ -287,5 +287,30 @@ module tf.graph.util {
                           .value();
 
     return _.object(queryParams);
+  }
+
+  /**
+   * Given a timestamp in microseconds, return a human-friendly string denoting
+   * how long ago the timestamp was.
+   */
+  export function computeHumanFriendlyTime(timeInMicroseconds: number) {
+    var timeDifferenceInMs =
+        +(new Date()) - +(new Date(timeInMicroseconds / 1e3));
+    if (timeDifferenceInMs < 30000) {
+      return 'just now';
+    } else if (timeDifferenceInMs < 60000) {
+      return Math.floor(timeDifferenceInMs / 1000) + ' seconds ago';
+    } else if (timeDifferenceInMs < 120000) {
+      return 'a minute ago';
+    } else if (timeDifferenceInMs < 3600000) {
+      return Math.floor(timeDifferenceInMs / 60000) + ' minutes ago';
+    } else if (Math.floor(timeDifferenceInMs / 3600000) == 1) {
+      return 'an hour ago';
+    } else if (timeDifferenceInMs < 86400000) {
+      return Math.floor(timeDifferenceInMs / 3600000) + ' hours ago';
+    } else if (timeDifferenceInMs < 172800000) {
+      return 'yesterday';
+    }
+    return Math.floor(timeDifferenceInMs / 86400000) + ' days ago';
   }
 }

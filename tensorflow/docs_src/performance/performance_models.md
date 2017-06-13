@@ -133,7 +133,7 @@ Benefits of using this scheme:
 ## Best Practices in Building High-Performance Models
 
 Collected below are a couple of additional best practices that can improve
-performance and increase the flexiblity of models.
+performance and increase the flexibility of models.
 
 ### Build the model with both NHWC and NCHW
 
@@ -345,7 +345,7 @@ executing the main script
 *   **`num_gpus`**: Number of GPUs to use.
 *   **`data_dir`**: Path to data to process. If not set, synthetic data is used.
     To use Imagenet data use these
-    [instructions(https://github.com/tensorflow/models/tree/master/inception#getting-started)
+    [instructions](https://github.com/tensorflow/models/tree/master/inception#getting-started)
     as a starting point.
 *   **`batch_size`**: Batch size for each GPU.
 *   **`variable_update`**: The method for managing variables: `parameter_server`
