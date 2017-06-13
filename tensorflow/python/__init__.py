@@ -54,6 +54,7 @@ from tensorflow.core.framework.node_def_pb2 import *
 from tensorflow.core.framework.summary_pb2 import *
 from tensorflow.core.framework.attr_value_pb2 import *
 from tensorflow.core.protobuf.meta_graph_pb2 import TensorInfo
+from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.protobuf.tensorflow_server_pb2 import *
 from tensorflow.core.util.event_pb2 import *
@@ -143,6 +144,7 @@ _allowed_symbols = [
     'GraphOptions',
     'HistogramProto',
     'LogMessage',
+    'MetaGraphDef',
     'NameAttrList',
     'NodeDef',
     'OptimizerOptions',
