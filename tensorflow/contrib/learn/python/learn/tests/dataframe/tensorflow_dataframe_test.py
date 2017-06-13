@@ -92,8 +92,8 @@ class TensorFlowDataFrameTestCase(test.TestCase):
       intvalue = np.random.randint(-10, 10) if np.random.rand() > 0.5 else ""
       floatvalue = np.random.rand() if np.random.rand() > 0.5 else ""
       boolvalue = int(np.random.rand() > 0.3) if np.random.rand() > 0.5 else ""
-      stringvalue = (("S: %.4f" % np.random.rand()) if np.random.rand() > 0.5 else
-                     "")
+      stringvalue = (
+          ("S: %.4f" % np.random.rand()) if np.random.rand() > 0.5 else "")
 
       row = [intvalue, floatvalue, boolvalue, stringvalue]
       w.writerow(row)

@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -76,11 +76,11 @@ string Hostname() {
 // between the left-hand-side and right-hand-side, by bit-casting to UnsignedT
 // -- on miscompare, a nice error message is given in the AssertionFailure.
 template <typename FloatT, typename UnsignedT>
-testing::AssertionResult CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs) {
+::testing::AssertionResult CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs) {
   auto ulhs = tensorflow::bit_cast<UnsignedT>(lhs);
   auto urhs = tensorflow::bit_cast<UnsignedT>(rhs);
   if (ulhs != urhs) {
-    return testing::AssertionFailure() << tensorflow::strings::Printf(
+    return ::testing::AssertionFailure() << tensorflow::strings::Printf(
                "floating values are not bitwise-equal; and equality testing "
                "was requested: %s=%g=%a vs %s=%g=%a",
                tensorflow::strings::StrCat(tensorflow::strings::Hex(ulhs))
@@ -90,33 +90,33 @@ testing::AssertionResult CompareFloatsBitwiseEqual(FloatT lhs, FloatT rhs) {
                    .c_str(),
                rhs, rhs);
   }
-  return testing::AssertionSuccess();
+  return ::testing::AssertionSuccess();
 }
 
 // Templated comparator that specializes for float equality comparison with the
 // bitwise helper above (this is the un-specialized fallback, to just use the
 // default gunit implementation).
 template <typename NativeT>
-testing::AssertionResult CompareEqual(NativeT lhs, NativeT rhs) {
+::testing::AssertionResult CompareEqual(NativeT lhs, NativeT rhs) {
   if (lhs == rhs) {
-    return testing::AssertionSuccess();
+    return ::testing::AssertionSuccess();
   }
   ::testing::Message msg;
   msg << "Expected equality of these values:";
   msg << "\n  " << lhs;
   msg << "\n  " << rhs;
 
-  return testing::AssertionFailure() << msg;
+  return ::testing::AssertionFailure() << msg;
 }
 
 // Specializations for floating types that do bitwise comparisons when equality
 // comparison is requested.
 template <>
-testing::AssertionResult CompareEqual<float>(float lhs, float rhs) {
+::testing::AssertionResult CompareEqual<float>(float lhs, float rhs) {
   return CompareFloatsBitwiseEqual<float, uint32>(lhs, rhs);
 }
 template <>
-testing::AssertionResult CompareEqual<double>(double lhs, double rhs) {
+::testing::AssertionResult CompareEqual<double>(double lhs, double rhs) {
   return CompareFloatsBitwiseEqual<double, uint64>(lhs, rhs);
 }
 
@@ -130,7 +130,7 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
   if (dimension == expected.shape().dimensions_size()) {
     NativeT expected_value = LiteralUtil::Get<NativeT>(expected, multi_index);
     NativeT actual_value = LiteralUtil::Get<NativeT>(actual, multi_index);
-    testing::AssertionResult result =
+    ::testing::AssertionResult result =
         CompareEqual<NativeT>(expected_value, actual_value);
     return result;  // Defines implicit coersion to bool.
   }
@@ -159,7 +159,7 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
   EXPECT_FALSE(Equal(expected, actual));
 }
 
-/* static */ testing::AssertionResult LiteralTestUtil::Equal(
+/* static */ ::testing::AssertionResult LiteralTestUtil::Equal(
     const Literal& expected, const Literal& actual) {
   VLOG(1) << "expected: " << LiteralUtil::ToString(expected);
   VLOG(1) << "actual:   " << LiteralUtil::ToString(actual);
@@ -207,9 +207,9 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
           << "Unsupported primitive type in LiteralTestUtil::ExpectEqual: "
           << PrimitiveType_Name(expected.shape().element_type());
   }
-  testing::AssertionResult result = testing::AssertionSuccess();
+  ::testing::AssertionResult result = ::testing::AssertionSuccess();
   if (!match) {
-    result = testing::AssertionFailure()
+    result = ::testing::AssertionFailure()
              << "expected: " << LiteralUtil::ToString(expected)
              << "\nactual:   " << LiteralUtil::ToString(actual);
     VLOG(1) << result.message();
@@ -262,7 +262,7 @@ class NearComparator {
     max_abs_err_ = 0.0;
     *miscompares_.mutable_shape() =
         ShapeUtil::ChangeElementType(actual.shape(), PRED);
-    miscompares_.mutable_preds()->Resize(
+    miscompares_.mutable_preds()->resize(
         ShapeUtil::ElementsIn(miscompares_.shape()), false);
     multi_index_.resize(expected.shape().dimensions_size(), 0);
 
@@ -314,7 +314,7 @@ class NearComparator {
 
  private:
   // EXPECTs that the two given scalar values are within the error bound. Keeps
-  // track of how many mismatches have occured to keep the size of the output
+  // track of how many mismatches have occurred to keep the size of the output
   // manageable.
   template <typename NativeT>
   bool ExpectValuesNear(NativeT expected, NativeT actual) {
@@ -389,7 +389,7 @@ class NearComparator {
         tensorflow::strings::Printf("tempfile-%s-%llx-%s", Hostname().c_str(),
                                     now_usec, name.c_str()));
     TF_CHECK_OK(tensorflow::WriteBinaryProto(tensorflow::Env::Default(),
-                                             filename, literal));
+                                             filename, literal.ToProto()));
     LOG(ERROR) << "wrote to " << name << " file: " << filename;
   }
 
@@ -421,12 +421,12 @@ class NearComparator {
 
 }  // namespace
 
-/* static */ testing::AssertionResult LiteralTestUtil::Near(
+/* static */ ::testing::AssertionResult LiteralTestUtil::Near(
     const Literal& expected, const Literal& actual, const ErrorSpec& error) {
   NearComparator comparator(error);
   return comparator.ExpectNear(expected, actual)
-             ? testing::AssertionSuccess()
-             : testing::AssertionFailure() << "values were not near";
+             ? ::testing::AssertionSuccess()
+             : ::testing::AssertionFailure() << "values were not near";
 }
 
 /* static */ void LiteralTestUtil::ExpectNear(const Literal& expected,
@@ -435,14 +435,14 @@ class NearComparator {
   EXPECT_TRUE(Near(expected, actual, error));
 }
 
-/* static */ testing::AssertionResult LiteralTestUtil::NearTuple(
+/* static */ ::testing::AssertionResult LiteralTestUtil::NearTuple(
     const Literal& expected, const Literal& actual, const ErrorSpec& error) {
   VLOG(1) << "expected: " << LiteralUtil::ToString(expected);
   VLOG(1) << "actual:   " << LiteralUtil::ToString(actual);
 
   if (!ShapeUtil::IsTuple(expected.shape()) ||
       !ShapeUtil::IsTuple(actual.shape())) {
-    return testing::AssertionFailure()
+    return ::testing::AssertionFailure()
            << "tuples expected expected shape = "
            << expected.shape().ShortDebugString()
            << " actual shape = " << actual.shape().ShortDebugString();
@@ -469,7 +469,7 @@ class NearComparator {
     }
   }
 
-  return testing::AssertionSuccess();
+  return ::testing::AssertionSuccess();
 }
 
 /* static */ void LiteralTestUtil::ExpectNearTuple(const Literal& expected,

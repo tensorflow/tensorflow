@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -47,7 +48,7 @@ OpRegistry::~OpRegistry() {
   for (const auto& e : registry_) delete e.second;
 }
 
-void OpRegistry::Register(OpRegistrationDataFactory op_data_factory) {
+void OpRegistry::Register(const OpRegistrationDataFactory& op_data_factory) {
   mutex_lock lock(mu_);
   if (initialized_) {
     TF_QCHECK_OK(RegisterAlreadyLocked(op_data_factory));
@@ -83,7 +84,10 @@ Status OpRegistry::LookUp(const string& op_type_name,
       first_unregistered = false;
     }
     Status status =
-        errors::NotFound("Op type not registered '", op_type_name, "'");
+        errors::NotFound("Op type not registered '", op_type_name,
+                         "' in binary running on ", port::Hostname(), ". ",
+                         "Make sure the Op and Kernel are registered in the "
+                         "binary running in this process.");
     VLOG(1) << status.ToString();
     return status;
   }
@@ -177,7 +181,7 @@ Status OpRegistry::CallDeferred() const {
 }
 
 Status OpRegistry::RegisterAlreadyLocked(
-    OpRegistrationDataFactory op_data_factory) const {
+    const OpRegistrationDataFactory& op_data_factory) const {
   std::unique_ptr<OpRegistrationData> op_reg_data(new OpRegistrationData);
   Status s = op_data_factory(op_reg_data.get());
   if (s.ok()) {
@@ -225,7 +229,10 @@ Status OpListOpRegistry::LookUp(const string& op_type_name,
   auto iter = index_.find(op_type_name);
   if (iter == index_.end()) {
     *op_reg_data = nullptr;
-    return errors::NotFound("Op type not registered '", op_type_name, "'");
+    return errors::NotFound("Op type not registered '", op_type_name,
+                            "' in binary running on ", port::Hostname(), ". ",
+                            "Make sure the Op and Kernel are registered in the "
+                            "binary running in this process.");
   }
   *op_reg_data = iter->second;
   return Status::OK();

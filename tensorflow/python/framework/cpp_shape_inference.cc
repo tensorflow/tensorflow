@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/python/framework/cpp_shape_inference.h"
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -24,6 +23,7 @@ limitations under the License.
 #include "tensorflow/python/lib/core/py_func.h"
 
 namespace tensorflow {
+
 namespace swig {
 namespace {
 
@@ -71,11 +71,11 @@ Status RunCppShapeInferenceImpl(
 
   // Convert input shapes.
   std::vector<TensorShapeProto> input_shapes;
-  std::vector<TensorShapeProto> input_handle_shapes;
-  std::vector<DataType> input_handle_dtypes;
+  std::vector<
+      std::unique_ptr<std::vector<std::pair<TensorShapeProto, DataType>>>>
+      input_handle_shapes_and_types;
   input_shapes.resize(input_serialized_shapes.size());
-  input_handle_shapes.resize(input_serialized_shapes.size());
-  input_handle_dtypes.resize(input_serialized_shapes.size());
+  input_handle_shapes_and_types.resize(input_serialized_shapes.size());
   CppShapeInferenceResult tmp;
   for (int i = 0; i < input_serialized_shapes.size(); ++i) {
     tmp.Clear();
@@ -83,9 +83,17 @@ Status RunCppShapeInferenceImpl(
       return errors::InvalidArgument(
           "Error parsing shape proto during cpp shape inference");
     }
+
     input_shapes[i].Swap(tmp.mutable_shape());
-    input_handle_dtypes[i] = tmp.handle_dtype();
-    input_handle_shapes[i].Swap(tmp.mutable_handle_shape());
+
+    if (tmp.handle_data().is_set()) {
+      input_handle_shapes_and_types[i].reset(
+          new std::vector<std::pair<TensorShapeProto, DataType>>);
+      auto& v = *input_handle_shapes_and_types[i];
+      for (const auto& x : tmp.handle_data().shape_and_type()) {
+        v.emplace_back(x.shape(), x.dtype());
+      }
+    }
   }
 
   // Convert input tensor values;
@@ -116,8 +124,8 @@ Status RunCppShapeInferenceImpl(
   // Run shape inference.
   tensorflow::shape_inference::InferenceContext c(
       graph_def_version, &node, op_reg_data->op_def, input_shapes,
-      input_tensors, input_tensor_as_shapes_protos, input_handle_shapes,
-      input_handle_dtypes);
+      input_tensors, input_tensor_as_shapes_protos,
+      input_handle_shapes_and_types);
   TF_RETURN_IF_ERROR(c.construction_status());
 
   TF_RETURN_IF_ERROR(c.Run(op_reg_data->shape_inference_fn));
@@ -128,9 +136,18 @@ Status RunCppShapeInferenceImpl(
   for (int i = 0; i < c.num_outputs(); ++i) {
     out.Clear();
     ProtoFromShapeHandle(c.output(i), &c, out.mutable_shape());
-    ProtoFromShapeHandle(c.output_handle_shape(i), &c,
-                         out.mutable_handle_shape());
-    out.set_handle_dtype(c.output_handle_dtype(i));
+
+    const auto* shapes_and_types = c.output_handle_shapes_and_types(i);
+    if (shapes_and_types != nullptr) {
+      auto* out_handle_data = out.mutable_handle_data();
+      out_handle_data->set_is_set(true);
+      for (const auto& p : *shapes_and_types) {
+        auto* out_shape_and_type = out_handle_data->add_shape_and_type();
+        ProtoFromShapeHandle(p.shape, &c, out_shape_and_type->mutable_shape());
+        out_shape_and_type->set_dtype(p.dtype);
+      }
+    }
+
     CHECK(out.AppendToString(&(*output_tensor_shape_protos)[i]));
   }
 
@@ -164,6 +181,7 @@ std::vector<string> RunCppShapeInference(
 
   std::vector<PyObject*> input_constant_tensor_values_v;
   int cnt = PyList_Size(input_constant_tensor_values);
+  input_constant_tensor_values_v.reserve(cnt);
   for (int i = 0; i < cnt; ++i) {
     input_constant_tensor_values_v.push_back(
         PyList_GetItem(input_constant_tensor_values, i));

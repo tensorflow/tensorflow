@@ -10,7 +10,9 @@ message OptionsProto {
   optional int64 min_micros = 3;
   optional int64 min_params = 4;
   optional int64 min_float_ops = 5;
-  repeated string device_regexes = 6;
+  optional int64 min_occurrence = 17;
+  optional int64 step = 18 [default = -1];
+
   optional string order_by = 7;
   repeated string account_type_regexes = 8;
   repeated string start_name_regexes = 9;
@@ -19,6 +21,6 @@ message OptionsProto {
   repeated string hide_name_regexes = 12;
   optional bool account_displayed_op_only = 13;
   repeated string select = 14;
-  optional bool viz = 15;
+  optional string output = 15;
   optional string dump_to_file = 16;
 }

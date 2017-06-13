@@ -17,7 +17,8 @@
 
 This version is like fully_connected_feed.py but uses data converted
 to a TFRecords file containing tf.train.Example protocol buffers.
-See tensorflow/g3doc/how_tos/reading_data.md#reading-from-files
+See:
+https://www.tensorflow.org/programmers_guide/reading_data#reading_from_files
 for context.
 
 YOU MUST run convert_to_records before running this (but you only need to

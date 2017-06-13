@@ -116,12 +116,14 @@ class NAryOpsTest(XLATestCase):
                     np.array([1, 1], dtype=np.int32)],
                    expected=np.array([[], []], dtype=np.float32))
 
-    self._testNAry(lambda x: array_ops.strided_slice(*x),
-                   [np.array([[], [], []], dtype=np.float32),
-                    np.array([1, 0], dtype=np.int64),
-                    np.array([3, 0], dtype=np.int64),
-                    np.array([1, 1], dtype=np.int64)],
-                   expected=np.array([[], []], dtype=np.float32))
+    if np.int64 in self.int_types:
+      self._testNAry(
+          lambda x: array_ops.strided_slice(*x), [
+              np.array([[], [], []], dtype=np.float32), np.array(
+                  [1, 0], dtype=np.int64), np.array([3, 0], dtype=np.int64),
+              np.array([1, 1], dtype=np.int64)
+          ],
+          expected=np.array([[], []], dtype=np.float32))
 
     self._testNAry(lambda x: array_ops.strided_slice(*x),
                    [np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]],

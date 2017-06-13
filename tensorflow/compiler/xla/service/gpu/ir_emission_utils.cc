@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -59,6 +60,11 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
 }  // namespace
 
 bool ImplementedAsGemm(const HloInstruction& hlo) {
+  // We can only do this if the HLO is unnested.
+  if (hlo.parent() != hlo.GetModule()->entry_computation()) {
+    return false;
+  }
+
   // For certain types of Dot, we can call pre-canned BLAS gemm.
   if (hlo.opcode() == HloOpcode::kDot) {
     const Shape& lhs_shape = hlo.operand(0)->shape();
@@ -85,6 +91,11 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
 }
 
 bool ImplementedAsDnnConvolution(const HloInstruction& hlo) {
+  // We can only do this if the HLO is unnested.
+  if (hlo.parent() != hlo.GetModule()->entry_computation()) {
+    return false;
+  }
+
   // Forward convolution.
   if (hlo.opcode() == HloOpcode::kConvolution) {
     const ConvolutionDimensionNumbers& dnums =

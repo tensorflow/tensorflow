@@ -24,15 +24,6 @@ limitations under the License.
 namespace tensorflow {
 class ShapeRefiner;
 
-// Options specific to constant folding optimizations.
-//
-// TODO(ashankar,vrv): This should move to where constant folding is done.
-struct ConstantFoldingOptions {
-  // If "consider" is not a nullptr, then only constant fold a node "n" if
-  // consider(n) returns true.
-  std::function<bool(const Node*)> consider = nullptr;
-};
-
 // Construct a Graph *g out of a GraphDef gdef. Returns non-OK on
 // error, in which case *g is left in an incomplete state.
 //
@@ -55,12 +46,18 @@ struct GraphConstructorOptions {
 extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                      const GraphDef& gdef, Graph* g);
 
+// Same as ConvertGraphDefToGraph, but takes just nodes.  Used by function
+// instantiation.
+// TODO(irving): This will turn into std::vector<NodeInfoPtr> soon.
+extern Status ConvertNodeDefsToGraph(const GraphConstructorOptions& opts,
+                                     gtl::ArraySlice<NodeDef> nodes, Graph* g);
+
 // Add the graph in GraphDef gdef into an existing Graph *g.
 //
 // On error, returns non-OK and leaves *g unmodified.
 //
 // "shape_refiner" can be null. It should be non-null if the caller
-// intends to add additonal nodes to the graph after the import. This
+// intends to add additional nodes to the graph after the import. This
 // allows the caller to validate shapes of those nodes (since
 // ShapeRefiner::AddNode must be called in topological order).
 //
@@ -113,8 +110,6 @@ struct ImportGraphDefOptions {
   // with ops that are not defined in the binary calling ImportGraphDef.
   // Similar to the producer_op_list argument to import_graph_def in the
   // python API.
-
-  // TODO(skyewm): Enable importing functions
 };
 
 // Each `return_tensors` entry is the requested node and output index. The index

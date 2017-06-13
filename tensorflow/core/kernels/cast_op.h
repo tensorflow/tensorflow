@@ -50,7 +50,7 @@ template <typename From, typename To>
 struct scalar_cast_op<std::complex<From>, To> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE To
   operator()(const std::complex<From>& a) const {
-    // Replicate numpy behaviour of returning just the real part
+    // Replicate numpy behavior of returning just the real part
     return static_cast<To>(a.real());
   }
 };
@@ -59,7 +59,7 @@ template <typename From, typename To>
 struct scalar_cast_op<From, std::complex<To>> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE std::complex<To> operator()(
       const From& a) const {
-    // Replicate numpy behaviour of setting the imaginary part to 0
+    // Replicate numpy behavior of setting the imaginary part to 0
     return std::complex<To>(static_cast<To>(a), To(0));
   }
 };

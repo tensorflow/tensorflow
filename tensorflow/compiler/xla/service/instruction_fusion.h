@@ -24,15 +24,6 @@ limitations under the License.
 
 namespace xla {
 
-// Returns true if the computation of the given instruction is significantly
-// more expensive than just writing all the values of the instructions' result
-// array. Expensive operations should not be duplicated.
-bool IsExpensive(const HloInstruction& instruction);
-
-// Returns true if fusing producer into consumer would cause producer to be
-// duplicated. This is the case if producer has uses other than consumer.
-bool FusionWouldDuplicate(HloInstruction* producer, HloInstruction* consumer);
-
 // HLO pass which performs instruction fusion. Instructions are fused
 // "vertically", meaning producing instructions are fused into their consumers
 // with the intent that the loops which compute their values will be fused in
@@ -40,14 +31,21 @@ bool FusionWouldDuplicate(HloInstruction* producer, HloInstruction* consumer);
 // instructions to fuse.
 class InstructionFusion : public HloPassInterface {
  public:
-  explicit InstructionFusion(bool may_duplicate = true)
-      : may_duplicate_(may_duplicate) {}
-  ~InstructionFusion() override {}
+  explicit InstructionFusion(
+      std::function<bool(const HloInstruction& instruction)> is_expensive,
+      bool may_duplicate = true)
+      : is_expensive_(is_expensive), may_duplicate_(may_duplicate) {}
+  ~InstructionFusion() override = default;
   tensorflow::StringPiece name() const override { return "fusion"; }
 
   // Run instruction fusion on the given computation. Returns whether the
   // computation was changed (instructions were fused).
   StatusOr<bool> Run(HloModule* module) override;
+
+  // Returns true if the computation of the given instruction is significantly
+  // more expensive than just writing all the values of the instructions' result
+  // array. Expensive operations will not be duplicated.
+  static bool IsExpensive(const HloInstruction& instruction);
 
  protected:
   // Returns whether the given producer instruction should be fused into the
@@ -73,6 +71,10 @@ class InstructionFusion : public HloPassInterface {
 
  private:
   HloInstruction* Fuse(HloInstruction* producer, HloInstruction* consumer);
+
+  // Used to determine if an HLO is expensive. Expensive operations will not be
+  // duplicated.
+  std::function<bool(const HloInstruction& instruction)> is_expensive_;
 
   // Returns whether we may duplicate an instruction if we want to fuse it.
   bool may_duplicate_;

@@ -18,9 +18,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LIVENESS_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LIVENESS_UTIL_H_
 
-#include <utility>
-#include <vector>
-
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -32,9 +29,16 @@ namespace xla {
 // 'operand'. Returns false otherwise.
 //
 // REQUIRES: 'operand' is an operand of 'user'.
-bool DoesNotUseOperandBuffer(HloInstruction* operand, const ShapeIndex& index,
-                             HloInstruction* user,
+bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                             const ShapeIndex& index,
+                             const HloInstruction* user,
                              const TuplePointsToAnalysis& points_to_analysis);
+
+// Overload which does not require points-to analysis. The result is more
+// conservative (returns false more often).
+bool DoesNotUseOperandBuffer(const HloInstruction* operand,
+                             const ShapeIndex& index,
+                             const HloInstruction* user);
 
 // Returns true if 'user' (at 'user_index') can share a buffer with its operand
 // 'operand' (at 'operand_index').

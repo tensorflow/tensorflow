@@ -18,8 +18,8 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
-#include "tensorflow/compiler/xla/service/instruction_fusion.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -221,7 +221,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
                    fusion->fused_instructions().end(),
                    [](const std::unique_ptr<HloInstruction>& instruction) {
                      if (instruction->opcode() != HloOpcode::kParameter &&
-                         IsExpensive(*instruction)) {
+                         GpuInstructionFusion::IsExpensive(*instruction)) {
                        return false;
                      }
                      return true;

@@ -15,16 +15,20 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/platform/cpu_info.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 namespace grappler {
 
 int GetNumAvailableGPUs() {
   int num_eligible_gpus = 0;
+#if GOOGLE_CUDA
   if (ValidateGPUMachineManager().ok()) {
     perftools::gputools::Platform* gpu_manager = GPUMachineManager();
     if (gpu_manager != nullptr) {
@@ -43,9 +47,26 @@ int GetNumAvailableGPUs() {
       }
     }
   }
+#endif  // GOOGLE_CUDA
   LOG(INFO) << "Number of eligible GPUs (core count >= 8): "
             << num_eligible_gpus;
   return num_eligible_gpus;
+}
+
+int64 AvailableGPUMemory(int gpu_id) {
+#if GOOGLE_CUDA
+  // Look up the device, to see its attributes.
+  perftools::gputools::Platform* gpu_platform = GPUMachineManager();
+  CHECK_LT(gpu_id, gpu_platform->VisibleDeviceCount());
+  perftools::gputools::StreamExecutor* se =
+      gpu_platform->ExecutorForDevice(gpu_id).ValueOrDie();
+  int64 total_memory, available_memory;
+  CHECK(se->DeviceMemoryUsage(&available_memory, &total_memory));
+
+  return available_memory;
+#else
+  return 0;
+#endif
 }
 
 int GetNumAvailableLogicalCPUCores() { return port::NumSchedulableCPUs(); }

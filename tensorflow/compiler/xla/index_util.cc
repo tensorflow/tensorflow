@@ -32,8 +32,7 @@ namespace xla {
   // Padding and nested layouts not supported yet.
   DCHECK_EQ(0, shape.layout().padded_dimensions_size());
 
-  for (tensorflow::gtl::ArraySlice<int64>::size_type i = 0;
-       i < multi_index.size(); ++i) {
+  for (size_t i = 0; i < multi_index.size(); ++i) {
     DCHECK_GE(multi_index[i], 0);
     DCHECK_LT(multi_index[i], shape.dimensions(i))
         << "indexing beyond extent in dimension " << i << ":"
@@ -119,17 +118,36 @@ namespace xla {
   return multi_index;
 }
 
-/* static */ bool IndexUtil::BumpIndices(const Shape& shape,
-                                         std::vector<int64>* indices) {
-  for (int64 dimno = indices->size() - 1; dimno >= 0; --dimno) {
+/* static */ bool IndexUtil::BumpIndices(
+    const Shape& shape, tensorflow::gtl::MutableArraySlice<int64> indices) {
+  for (int64 dimno = indices.size() - 1; dimno >= 0; --dimno) {
     int64 limit = shape.dimensions(dimno);
-    if ((*indices)[dimno] + 1 < limit) {
-      (*indices)[dimno]++;
-      std::fill(indices->begin() + dimno + 1, indices->end(), 0);
+    if (indices[dimno] + 1 < limit) {
+      indices[dimno]++;
+      std::fill(indices.begin() + dimno + 1, indices.end(), 0);
       return true;
     }
   }
   return false;
+}
+
+/* static */ int64 IndexUtil::GetDimensionStride(const Shape& shape,
+                                                 int64 dimension) {
+  const Layout& layout = shape.layout();
+  int64 pdim_size = layout.padded_dimensions_size();
+  int64 stride = 1;
+  DCHECK(pdim_size == 0 || pdim_size == shape.dimensions_size());
+  for (auto dim : layout.minor_to_major()) {
+    if (dim == dimension) {
+      break;
+    }
+    if (pdim_size == 0) {
+      stride *= shape.dimensions(dim);
+    } else {
+      stride *= layout.padded_dimensions(dim);
+    }
+  }
+  return stride;
 }
 
 }  // namespace xla

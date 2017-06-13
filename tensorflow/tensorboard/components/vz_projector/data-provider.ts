@@ -203,7 +203,7 @@ export function parseTensors(
   logging.setModalMessage('Parsing tensors...', TENSORS_MSG_ID);
 
   return new Promise<DataPoint[]>((resolve, reject) => {
-    let data: DataPoint[] = [];
+    const data: DataPoint[] = [];
     let numDim: number;
 
     streamParse(content, (line: string) => {
@@ -211,8 +211,8 @@ export function parseTensors(
       if (line === '') {
         return;
       }
-      let row = line.split(valueDelim);
-      let dataPoint: DataPoint = {
+      const row = line.split(valueDelim);
+      const dataPoint: DataPoint = {
         metadata: {},
         vector: null,
         index: data.length,
@@ -250,8 +250,8 @@ export function parseTensors(
 export function parseTensorsFromFloat32Array(data: Float32Array,
     dim: number): Promise<DataPoint[]> {
   return runAsyncTask('Parsing tensors...', () => {
-    let N = data.length / dim;
-    let dataPoints: DataPoint[] = [];
+    const N = data.length / dim;
+    const dataPoints: DataPoint[] = [];
     let offset = 0;
     for (let i = 0; i < N; ++i) {
       dataPoints.push({
@@ -271,7 +271,7 @@ export function parseTensorsFromFloat32Array(data: Float32Array,
 
 export function analyzeMetadata(
     columnNames, pointsMetadata: PointMetadata[]): ColumnStats[] {
-  let columnStats: ColumnStats[] = columnNames.map(name => {
+  const columnStats: ColumnStats[] = columnNames.map(name => {
     return {
       name: name,
       isNumeric: true,
@@ -280,12 +280,15 @@ export function analyzeMetadata(
       max: Number.NEGATIVE_INFINITY
     };
   });
-  let mapOfValues = columnNames.map(() => d3.map<number>());
+
+  const mapOfValues: [{[value: string]: number}] =
+      columnNames.map(() => new Object());
+
   pointsMetadata.forEach(metadata => {
     columnNames.forEach((name: string, colIndex: number) => {
-      let stats = columnStats[colIndex];
-      let map = mapOfValues[colIndex];
-      let value = metadata[name];
+      const stats = columnStats[colIndex];
+      const map = mapOfValues[colIndex];
+      const value = metadata[name];
 
       // Skip missing values.
       if (value == null) {
@@ -293,12 +296,12 @@ export function analyzeMetadata(
       }
 
       if (!stats.tooManyUniqueValues) {
-        if (map.has(value)) {
-          map.set(value, map.get(value) + 1);
+        if (value in map) {
+          map[value]++;
         } else {
-          map.set(value, 1);
+          map[value] = 1;
         }
-        if (map.size() > NUM_COLORS_COLOR_MAP) {
+        if (Object.keys(map).length > NUM_COLORS_COLOR_MAP) {
           stats.tooManyUniqueValues = true;
         }
       }
@@ -312,8 +315,8 @@ export function analyzeMetadata(
     });
   });
   columnStats.forEach((stats, colIndex) => {
-    stats.uniqueEntries = mapOfValues[colIndex].entries().map(e => {
-      return {label: e.key, count: e.value};
+    stats.uniqueEntries = Object.keys(mapOfValues[colIndex]).map(label => {
+      return {label, count: mapOfValues[colIndex][label]};
     });
   });
   return columnStats;
@@ -409,7 +412,7 @@ export function retrieveSpriteAndMetadataInfo(metadataPath: string,
     if (spriteMsgId) {
       logging.setModalMessage(null, spriteMsgId);
     }
-    let [metadata, spriteImage] = values;
+    const [metadata, spriteImage] = values;
 
     if (spriteImage && (spriteImage.height > MAX_SPRITE_IMAGE_SIZE_PX ||
                         spriteImage.width > MAX_SPRITE_IMAGE_SIZE_PX)) {

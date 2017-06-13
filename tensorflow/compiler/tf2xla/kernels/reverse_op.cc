@@ -66,7 +66,7 @@ class ReverseOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Reverse", ReverseOp);
+REGISTER_XLA_OP(Name("Reverse"), ReverseOp);
 
 class ReverseV2Op : public XlaOpKernel {
  public:
@@ -104,7 +104,7 @@ class ReverseV2Op : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("ReverseV2", ReverseV2Op);
+REGISTER_XLA_OP(Name("ReverseV2"), ReverseV2Op);
 
 }  // namespace
 }  // namespace tensorflow

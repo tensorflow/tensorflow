@@ -31,12 +31,14 @@ REGISTER_OP("FFT")
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
     })
     .Doc(R"doc(
-Compute the 1-dimensional discrete Fourier Transform over the inner-most
+Fast Fourier transform.
+
+Computes the 1-dimensional discrete Fourier transform over the inner-most
 dimension of `input`.
 
 input: A complex64 tensor.
 output: A complex64 tensor of the same shape as `input`. The inner-most
-  dimension of `input` is replaced with its 1D Fourier Transform.
+  dimension of `input` is replaced with its 1D Fourier transform.
 
 @compatibility(numpy)
 Equivalent to np.fft.fft
@@ -50,12 +52,14 @@ REGISTER_OP("IFFT")
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 1);
     })
     .Doc(R"doc(
-Compute the inverse 1-dimensional discrete Fourier Transform over the inner-most
-dimension of `input`.
+Inverse fast Fourier transform.
+
+Computes the inverse 1-dimensional discrete Fourier transform over the
+inner-most dimension of `input`.
 
 input: A complex64 tensor.
 output: A complex64 tensor of the same shape as `input`. The inner-most
-  dimension of `input` is replaced with its inverse 1D Fourier Transform.
+  dimension of `input` is replaced with its inverse 1D Fourier transform.
 
 @compatibility(numpy)
 Equivalent to np.fft.ifft
@@ -69,12 +73,14 @@ REGISTER_OP("FFT2D")
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 2);
     })
     .Doc(R"doc(
-Compute the 2-dimensional discrete Fourier Transform over the inner-most
+2D fast Fourier transform.
+
+Computes the 2-dimensional discrete Fourier transform over the inner-most
 2 dimensions of `input`.
 
 input: A complex64 tensor.
 output: A complex64 tensor of the same shape as `input`. The inner-most 2
-  dimensions of `input` are replaced with their 2D Fourier Transform.
+  dimensions of `input` are replaced with their 2D Fourier transform.
 
 @compatibility(numpy)
 Equivalent to np.fft.fft2
@@ -88,12 +94,14 @@ REGISTER_OP("IFFT2D")
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 2);
     })
     .Doc(R"doc(
-Compute the inverse 2-dimensional discrete Fourier Transform over the inner-most
-2 dimensions of `input`.
+Inverse 2D fast Fourier transform.
+
+Computes the inverse 2-dimensional discrete Fourier transform over the
+inner-most 2 dimensions of `input`.
 
 input: A complex64 tensor.
 output: A complex64 tensor of the same shape as `input`. The inner-most 2
-  dimensions of `input` are replaced with their inverse 2D Fourier Transform.
+  dimensions of `input` are replaced with their inverse 2D Fourier transform.
 
 @compatibility(numpy)
 Equivalent to np.fft.ifft2
@@ -107,12 +115,14 @@ REGISTER_OP("FFT3D")
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     })
     .Doc(R"doc(
-Compute the 3-dimensional discrete Fourier Transform over the inner-most 3
+3D fast Fourier transform.
+
+Computes the 3-dimensional discrete Fourier transform over the inner-most 3
 dimensions of `input`.
 
 input: A complex64 tensor.
 output: A complex64 tensor of the same shape as `input`. The inner-most 3
-  dimensions of `input` are replaced with their 3D Fourier Transform.
+  dimensions of `input` are replaced with their 3D Fourier transform.
 
 @compatibility(numpy)
 Equivalent to np.fft.fftn with 3 dimensions.
@@ -126,12 +136,14 @@ REGISTER_OP("IFFT3D")
       return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
     })
     .Doc(R"doc(
-Compute the inverse 3-dimensional discrete Fourier Transform over the inner-most
-3 dimensions of `input`.
+Inverse 3D fast Fourier transform.
+
+Computes the inverse 3-dimensional discrete Fourier transform over the
+inner-most 3 dimensions of `input`.
 
 input: A complex64 tensor.
 output: A complex64 tensor of the same shape as `input`. The inner-most 3
-  dimensions of `input` are replaced with their inverse 3D Fourier Transform.
+  dimensions of `input` are replaced with their inverse 3D Fourier transform.
 
 @compatibility(numpy)
 Equivalent to np.fft.ifftn with 3 dimensions.
@@ -180,18 +192,24 @@ REGISTER_OP("RFFT")
     .Output("output: complex64")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, true, 1); })
     .Doc(R"doc(
-Compute the 1-dimensional discrete Fourier Transform of a real-valued signal
+Real-valued fast Fourier transform.
+
+Computes the 1-dimensional discrete Fourier transform of a real-valued signal
 over the inner-most dimension of `input`.
 
 Since the DFT of a real signal is Hermitian-symmetric, `RFFT` only returns the
 `fft_length / 2 + 1` unique components of the FFT: the zero-frequency term,
 followed by the `fft_length / 2` positive-frequency terms.
 
+Along the axis `RFFT` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+
 input: A float32 tensor.
 fft_length: An int32 tensor of shape [1]. The FFT length.
 output: A complex64 tensor of the same rank as `input`. The inner-most
   dimension of `input` is replaced with the `fft_length / 2 + 1` unique
-  frequency components of its 1D Fourier Transform.
+  frequency components of its 1D Fourier transform.
 
 @compatibility(numpy)
 Equivalent to np.fft.rfft
@@ -204,7 +222,9 @@ REGISTER_OP("IRFFT")
     .Output("output: float")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, false, 1); })
     .Doc(R"doc(
-Compute the inverse 1-dimensional discrete Fourier Transform of a real-valued
+Inverse real-valued fast Fourier transform.
+
+Computes the inverse 1-dimensional discrete Fourier transform of a real-valued
 signal over the inner-most dimension of `input`.
 
 The inner-most dimension of `input` is assumed to be the result of `RFFT`: the
@@ -214,11 +234,15 @@ dimension of `input` (`fft_length = 2 * (inner - 1)`). If the FFT length used to
 compute `input` is odd, it should be provided since it cannot be inferred
 properly.
 
+Along the axis `IRFFT` is computed on, if `fft_length / 2 + 1` is smaller
+than the corresponding dimension of `input`, the dimension is cropped. If it is
+larger, the dimension is padded with zeros.
+
 input: A complex64 tensor.
 fft_length: An int32 tensor of shape [1]. The FFT length.
 output: A float32 tensor of the same rank as `input`. The inner-most
   dimension of `input` is replaced with the `fft_length` samples of its inverse
-  1D Fourier Transform.
+  1D Fourier transform.
 
 @compatibility(numpy)
 Equivalent to np.fft.irfft
@@ -231,7 +255,9 @@ REGISTER_OP("RFFT2D")
     .Output("output: complex64")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, true, 2); })
     .Doc(R"doc(
-Compute the 2-dimensional discrete Fourier Transform of a real-valued signal
+2D real-valued fast Fourier transform.
+
+Computes the 2-dimensional discrete Fourier transform of a real-valued signal
 over the inner-most 2 dimensions of `input`.
 
 Since the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the
@@ -239,10 +265,14 @@ Since the DFT of a real signal is Hermitian-symmetric, `RFFT2D` only returns the
 of `output`: the zero-frequency term, followed by the `fft_length / 2`
 positive-frequency terms.
 
+Along each axis `RFFT2D` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+
 input: A float32 tensor.
 fft_length: An int32 tensor of shape [2]. The FFT length for each dimension.
 output: A complex64 tensor of the same rank as `input`. The inner-most 2
-  dimensions of `input` are replaced with their 2D Fourier Transform. The
+  dimensions of `input` are replaced with their 2D Fourier transform. The
   inner-most dimension contains `fft_length / 2 + 1` unique frequency
   components.
 
@@ -257,7 +287,9 @@ REGISTER_OP("IRFFT2D")
     .Output("output: float")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, false, 2); })
     .Doc(R"doc(
-Compute the inverse 2-dimensional discrete Fourier Transform of a real-valued
+Inverse 2D real-valued fast Fourier transform.
+
+Computes the inverse 2-dimensional discrete Fourier transform of a real-valued
 signal over the inner-most 2 dimensions of `input`.
 
 The inner-most 2 dimensions of `input` are assumed to be the result of `RFFT2D`:
@@ -267,11 +299,16 @@ from the size of the inner-most 2 dimensions of `input`. If the FFT length used
 to compute `input` is odd, it should be provided since it cannot be inferred
 properly.
 
+Along each axis `IRFFT2D` is computed on, if `fft_length` (or
+`fft_length / 2 + 1` for the inner-most dimension) is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+
 input: A complex64 tensor.
 fft_length: An int32 tensor of shape [2]. The FFT length for each dimension.
 output: A float32 tensor of the same rank as `input`. The inner-most 2
   dimensions of `input` are replaced with the `fft_length` samples of their
-  inverse 2D Fourier Transform.
+  inverse 2D Fourier transform.
 
 @compatibility(numpy)
 Equivalent to np.fft.irfft2
@@ -284,7 +321,9 @@ REGISTER_OP("RFFT3D")
     .Output("output: complex64")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, true, 3); })
     .Doc(R"doc(
-Compute the 3-dimensional discrete Fourier Transform of a real-valued signal
+3D real-valued fast Fourier transform.
+
+Computes the 3-dimensional discrete Fourier transform of a real-valued signal
 over the inner-most 3 dimensions of `input`.
 
 Since the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the
@@ -292,10 +331,14 @@ Since the DFT of a real signal is Hermitian-symmetric, `RFFT3D` only returns the
 of `output`: the zero-frequency term, followed by the `fft_length / 2`
 positive-frequency terms.
 
+Along each axis `RFFT3D` is computed on, if `fft_length` is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+
 input: A float32 tensor.
 fft_length: An int32 tensor of shape [3]. The FFT length for each dimension.
 output: A complex64 tensor of the same rank as `input`. The inner-most 3
-  dimensions of `input` are replaced with the their 3D Fourier Transform. The
+  dimensions of `input` are replaced with the their 3D Fourier transform. The
   inner-most dimension contains `fft_length / 2 + 1` unique frequency
   components.
 
@@ -310,7 +353,9 @@ REGISTER_OP("IRFFT3D")
     .Output("output: float")
     .SetShapeFn([](InferenceContext* c) { return RFFTShape(c, false, 3); })
     .Doc(R"doc(
-Compute the inverse 3-dimensional discrete Fourier Transform of a real-valued
+Inverse 3D real-valued fast Fourier transform.
+
+Computes the inverse 3-dimensional discrete Fourier transform of a real-valued
 signal over the inner-most 3 dimensions of `input`.
 
 The inner-most 3 dimensions of `input` are assumed to be the result of `RFFT3D`:
@@ -320,11 +365,16 @@ from the size of the inner-most 3 dimensions of `input`. If the FFT length used
 to compute `input` is odd, it should be provided since it cannot be inferred
 properly.
 
+Along each axis `IRFFT3D` is computed on, if `fft_length` (or
+`fft_length / 2 + 1` for the inner-most dimension) is smaller than the
+corresponding dimension of `input`, the dimension is cropped. If it is larger,
+the dimension is padded with zeros.
+
 input: A complex64 tensor.
 fft_length: An int32 tensor of shape [3]. The FFT length for each dimension.
 output: A float32 tensor of the same rank as `input`. The inner-most 3
   dimensions of `input` are replaced with the `fft_length` samples of their
-  inverse 3D real Fourier Transform.
+  inverse 3D real Fourier transform.
 
 @compatibility(numpy)
 Equivalent to np.irfftn with 3 dimensions.

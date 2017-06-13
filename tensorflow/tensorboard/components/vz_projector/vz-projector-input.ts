@@ -26,7 +26,6 @@ export interface InputChangedListener {
 
 /** Input control with custom capabilities (e.g. regex). */
 export class ProjectorInput extends PolymerClass {
-  private dom: d3.Selection<HTMLElement>;
   private textChangedListeners: InputChangedListener[];
   private paperInput: HTMLInputElement;
   private inRegexModeButton: HTMLButtonElement;
@@ -43,7 +42,6 @@ export class ProjectorInput extends PolymerClass {
   ready() {
     this.inRegexMode = false;
     this.textChangedListeners = [];
-    this.dom = d3.select(this);
     this.paperInput = this.querySelector('paper-input') as HTMLInputElement;
     this.inRegexModeButton =
         this.querySelector('paper-button') as HTMLButtonElement;
@@ -89,9 +87,12 @@ export class ProjectorInput extends PolymerClass {
   }
 
   private updateRegexModeDisplaySlashes() {
-    d3.select(this.paperInput)
-        .selectAll('.slash')
-        .style('display', this.inRegexMode ? null : 'none');
+    const slashes = this.paperInput.querySelectorAll('.slash');
+    const display = this.inRegexMode ? '' : 'none';
+
+    for (let i = 0; i < slashes.length; i++) {
+      (slashes[i] as HTMLDivElement).style.display = display;
+    }
   }
 
   getValue(): string {

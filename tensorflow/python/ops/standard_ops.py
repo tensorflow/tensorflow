@@ -57,6 +57,8 @@ from tensorflow.python.ops.io_ops import *
 from tensorflow.python.ops.linalg_ops import *
 from tensorflow.python.ops.logging_ops import Print
 from tensorflow.python.ops.logging_ops import get_summary_op
+from tensorflow.python.ops.lookup_ops import initialize_all_tables
+from tensorflow.python.ops.lookup_ops import tables_initializer
 from tensorflow.python.ops.math_ops import *
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
@@ -145,6 +147,7 @@ _allowed_symbols_math_ops = [
     # These are documented in nn.
     # We are are not importing nn because it would create a circular dependency.
     "sigmoid",
+    "log_sigmoid",
     "tanh",
 ]
 

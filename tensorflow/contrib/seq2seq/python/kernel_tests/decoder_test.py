@@ -21,12 +21,12 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.rnn import core_rnn_cell
 from tensorflow.contrib.seq2seq.python.ops import decoder
 from tensorflow.contrib.seq2seq.python.ops import helper as helper_py
 from tensorflow.contrib.seq2seq.python.ops import basic_decoder
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import test
@@ -44,14 +44,14 @@ class DynamicDecodeRNNTest(test.TestCase):
     cell_depth = 10
     max_out = max(sequence_length)
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       if time_major:
         inputs = np.random.randn(max_time, batch_size,
                                  input_depth).astype(np.float32)
       else:
         inputs = np.random.randn(batch_size, max_time,
                                  input_depth).astype(np.float32)
-      cell = core_rnn_cell.LSTMCell(cell_depth)
+      cell = rnn_cell.LSTMCell(cell_depth)
       helper = helper_py.TrainingHelper(
           inputs, sequence_length, time_major=time_major)
       my_decoder = basic_decoder.BasicDecoder(
@@ -60,9 +60,9 @@ class DynamicDecodeRNNTest(test.TestCase):
           initial_state=cell.zero_state(
               dtype=dtypes.float32, batch_size=batch_size))
 
-      final_outputs, final_state = decoder.dynamic_decode(
-          my_decoder, output_time_major=time_major,
-          maximum_iterations=maximum_iterations)
+      final_outputs, final_state, final_sequence_length = (
+          decoder.dynamic_decode(my_decoder, output_time_major=time_major,
+                                 maximum_iterations=maximum_iterations))
 
       def _t(shape):
         if time_major:
@@ -71,8 +71,11 @@ class DynamicDecodeRNNTest(test.TestCase):
 
       self.assertTrue(
           isinstance(final_outputs, basic_decoder.BasicDecoderOutput))
-      self.assertTrue(isinstance(final_state, core_rnn_cell.LSTMStateTuple))
+      self.assertTrue(isinstance(final_state, rnn_cell.LSTMStateTuple))
 
+      self.assertEqual(
+          (batch_size,),
+          tuple(final_sequence_length.get_shape().as_list()))
       self.assertEqual(
           _t((batch_size, None, cell_depth)),
           tuple(final_outputs.rnn_output.get_shape().as_list()))
@@ -83,7 +86,8 @@ class DynamicDecodeRNNTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       sess_results = sess.run({
           "final_outputs": final_outputs,
-          "final_state": final_state
+          "final_state": final_state,
+          "final_sequence_length": final_sequence_length,
       })
 
       # Mostly a smoke test
@@ -118,11 +122,11 @@ class DynamicDecodeRNNTest(test.TestCase):
     cell_depth = 10
     max_out = max(sequence_length)
 
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       inputs = np.random.randn(batch_size, max_time,
                                input_depth).astype(np.float32)
 
-      cell = core_rnn_cell.LSTMCell(cell_depth)
+      cell = rnn_cell.LSTMCell(cell_depth)
       zero_state = cell.zero_state(dtype=dtypes.float32, batch_size=batch_size)
       helper = helper_py.TrainingHelper(inputs, sequence_length)
       my_decoder = basic_decoder.BasicDecoder(
@@ -131,7 +135,7 @@ class DynamicDecodeRNNTest(test.TestCase):
       # Match the variable scope of dynamic_rnn below so we end up
       # using the same variables
       with vs.variable_scope("root") as scope:
-        final_decoder_outputs, final_decoder_state = decoder.dynamic_decode(
+        final_decoder_outputs, final_decoder_state, _ = decoder.dynamic_decode(
             my_decoder,
             # impute_finished=True ensures outputs and final state
             # match those of dynamic_rnn called with sequence_length not None

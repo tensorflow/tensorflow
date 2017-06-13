@@ -103,11 +103,6 @@ class EnqueueOp : public QueueAccessOpKernel {
     }
 
     OP_REQUIRES_OK_ASYNC(ctx, queue->ValidateTuple(tuple), callback);
-    if (ctx->track_allocations()) {
-      // We can get persistent memory size of the queue when it is kept full, no
-      // matter whether it is before or after the enqueue.
-      ctx->record_host_persistent_memory_allocation(queue->MemoryUsed());
-    }
     queue->TryEnqueue(tuple, ctx, callback);
   }
 
@@ -160,9 +155,6 @@ class EnqueueManyOp : public QueueAccessOpKernel {
     }
 
     OP_REQUIRES_OK_ASYNC(ctx, queue->ValidateManyTuple(tuple), callback);
-    if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(queue->MemoryUsed());
-    }
     queue->TryEnqueueMany(tuple, ctx, callback);
   }
 
@@ -441,7 +433,7 @@ class FakeQueueOp : public OpKernel {
                                                 &handle_, nullptr));
   }
 
-  void Compute(OpKernelContext* context) {
+  void Compute(OpKernelContext* context) override {
     ResourceHandle ref = context->input(0).flat<ResourceHandle>()(0);
     handle_.AccessTensor(context)->flat<string>()(0) = ref.container();
     handle_.AccessTensor(context)->flat<string>()(1) = ref.name();

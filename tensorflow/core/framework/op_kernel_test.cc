@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value_util.h"
@@ -133,8 +134,8 @@ class OpKernelTest : public ::testing::Test {
                      const DataTypeVector& outputs) {
     Status status;
     std::unique_ptr<OpKernel> op(CreateOpKernel(
-        device_type, &device_, cpu_allocator(), CreateNodeDef(op_type, inputs),
-        TF_GRAPH_DEF_VERSION, &status));
+        std::move(device_type), &device_, cpu_allocator(),
+        CreateNodeDef(op_type, inputs), TF_GRAPH_DEF_VERSION, &status));
     EXPECT_TRUE(status.ok()) << status;
     EXPECT_TRUE(op != nullptr);
     if (op != nullptr) {
@@ -148,9 +149,9 @@ class OpKernelTest : public ::testing::Test {
     NodeDef node_def;
     protobuf::TextFormat::ParseFromString(ascii_node_def, &node_def);
     Status status;
-    std::unique_ptr<OpKernel> op(CreateOpKernel(device_type, &device_,
-                                                cpu_allocator(), node_def,
-                                                TF_GRAPH_DEF_VERSION, &status));
+    std::unique_ptr<OpKernel> op(
+        CreateOpKernel(std::move(device_type), &device_, cpu_allocator(),
+                       node_def, TF_GRAPH_DEF_VERSION, &status));
     EXPECT_TRUE(op == nullptr);
     EXPECT_FALSE(status.ok());
     if (!status.ok()) {
@@ -384,7 +385,7 @@ class OpKernelBuilderTest : public ::testing::Test {
   }
 
   std::unique_ptr<OpKernel> ExpectSuccess(const string& op_type,
-                                          DeviceType device_type,
+                                          const DeviceType& device_type,
                                           const std::vector<string>& attrs,
                                           DataTypeSlice input_types = {}) {
     Status status;
@@ -423,7 +424,7 @@ class OpKernelBuilderTest : public ::testing::Test {
     return op;
   }
 
-  void ExpectFailure(const string& op_type, DeviceType device_type,
+  void ExpectFailure(const string& op_type, const DeviceType& device_type,
                      const std::vector<string>& attrs, error::Code code) {
     Status status;
     const NodeDef def = CreateNodeDef(op_type, attrs);
@@ -455,7 +456,8 @@ class OpKernelBuilderTest : public ::testing::Test {
     }
   }
 
-  string GetKernelClassName(const string& op_type, DeviceType device_type,
+  string GetKernelClassName(const string& op_type,
+                            const DeviceType& device_type,
                             const std::vector<string>& attrs,
                             DataTypeSlice input_types = {}) {
     NodeDef def = CreateNodeDef(op_type, attrs);
@@ -611,6 +613,36 @@ TEST_F(OpKernelBuilderTest, BadConstraint) {
 
   ExpectFailure("BadConstraint", DEVICE_CPU, {"dtype|type|DT_FLOAT"},
                 error::INVALID_ARGUMENT);
+}
+
+REGISTER_OP("ListOut").Output("a: int32").Output("b: T").Attr("T: list(type)");
+REGISTER_KERNEL_BUILDER(Name("ListOut").Device(tensorflow::DEVICE_CPU),
+                        DummyKernel);
+
+TEST_F(OpKernelBuilderTest, OpOutputList) {
+  Env* env = Env::Default();
+  OpKernelContext::Params params;
+  params.record_tensor_accesses = false;
+  std::unique_ptr<DummyDevice> device(
+      new DummyDevice(env, params.record_tensor_accesses));
+  params.device = device.get();
+  Status status;
+  std::unique_ptr<OpKernel> op(CreateOpKernel(
+      DEVICE_CPU, params.device, cpu_allocator(),
+      CreateNodeDef("ListOut", {"T|list(type)|[DT_FLOAT, DT_INT32]"}),
+      TF_GRAPH_DEF_VERSION, &status));
+  EXPECT_TRUE(status.ok()) << status.ToString();
+  params.op_kernel = op.get();
+  gtl::InlinedVector<TensorValue, 4> inputs{};
+  params.inputs = &inputs;
+  std::unique_ptr<OpKernelContext> ctx(new OpKernelContext(&params));
+
+  EXPECT_EQ(DT_INT32, ctx->expected_output_dtype(0));
+  OpOutputList out_list;
+  EXPECT_FALSE(ctx->output_list("non_existent_output", &out_list).ok());
+  ASSERT_TRUE(ctx->output_list("b", &out_list).ok());
+  EXPECT_EQ(DT_FLOAT, out_list.expected_output_dtype(0));
+  EXPECT_EQ(DT_INT32, out_list.expected_output_dtype(1));
 }
 
 class GetAttrKernel : public ::tensorflow::OpKernel {

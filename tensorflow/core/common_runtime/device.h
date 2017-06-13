@@ -34,8 +34,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/control_flow.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_attributes.pb_text.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -53,15 +53,16 @@ namespace tensorflow {
 
 class Device : public DeviceBase {
  public:
-  Device(Env* env, const DeviceAttributes& device_attributes,
-         Allocator* device_allocator);
+  Device(Env* env, const DeviceAttributes& device_attributes);
   ~Device() override;
 
   // Full name of this device (see top comment).
   const string& name() const { return device_attributes_.name(); }
 
   // Parsed name of this device
-  const DeviceNameUtils::ParsedName parsed_name() const { return parsed_name_; }
+  const DeviceNameUtils::ParsedName& parsed_name() const {
+    return parsed_name_;
+  }
 
   // Describes what kind of device this is.  This is intended to be
   // human-readable and not computer-parsed, except that two devices
@@ -148,6 +149,12 @@ class Device : public DeviceBase {
       const DeviceLocality& locality) {
     // Pass in an empty string as physical device name.
     return BuildDeviceAttributes(name, device, memory_limit, locality, "");
+  }
+
+ protected:
+  void DeleteResourceMgr() {
+    delete rmgr_;
+    rmgr_ = nullptr;
   }
 
  private:

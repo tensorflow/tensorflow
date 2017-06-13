@@ -436,6 +436,35 @@ class KerasCallbacksTest(test.TestCase):
 
       os.remove(filepath)
 
+  def test_TerminateOnNaN(self):
+    np.random.seed(1337)
+    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+        train_samples=TRAIN_SAMPLES,
+        test_samples=TEST_SAMPLES,
+        input_shape=(INPUT_DIM,),
+        num_classes=NUM_CLASSES)
+
+    y_test = keras.utils.to_categorical(y_test)
+    y_train = keras.utils.to_categorical(y_train)
+    cbks = [keras.callbacks.TerminateOnNaN()]
+    model = keras.models.Sequential()
+    initializer = keras.initializers.Constant(value=1e5)
+    for _ in range(5):
+      model.add(keras.layers.Dense(2,
+                                   input_dim=INPUT_DIM,
+                                   activation='relu',
+                                   kernel_initializer=initializer))
+    model.add(keras.layers.Dense(NUM_CLASSES))
+    model.compile(loss='mean_squared_error',
+                  optimizer='rmsprop')
+
+    history = model.fit(x_train, y_train, batch_size=BATCH_SIZE,
+                        validation_data=(x_test, y_test),
+                        callbacks=cbks, epochs=20)
+    loss = history.history['loss']
+    assert len(loss) == 1
+    assert loss[0] == np.inf
+
   def test_TensorBoard(self):
     np.random.seed(1337)
 
@@ -479,7 +508,9 @@ class KerasCallbacksTest(test.TestCase):
           metrics=['accuracy'])
 
       tsb = keras.callbacks.TensorBoard(
-          log_dir=temp_dir, histogram_freq=1, write_images=True)
+          log_dir=temp_dir, histogram_freq=1, write_images=True,
+          write_grads=True, embeddings_freq=1,
+          embeddings_layer_names=['dense_1'], batch_size=5)
       cbks = [tsb]
 
       # fit with validation data

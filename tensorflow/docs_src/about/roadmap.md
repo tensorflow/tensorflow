@@ -12,9 +12,8 @@ we do not have timelines for these features.
 
 ### Improve non-Python language support
 
-* Improve C++ API for graph construction and gradients
-* Java language support
-* Go language support
+* Support for adding gradient computation for graphs constructed in other
+  languages (C++, Java, Go etc.)
 
 ### Making TensorFlow easier to use
 * High-level APIs

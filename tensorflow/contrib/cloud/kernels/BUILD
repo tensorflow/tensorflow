@@ -37,7 +37,7 @@ tf_kernel_library(
     srcs = [
         "bigquery_reader_ops.cc",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":bigquery_table_accessor",
         ":bigquery_table_partition_proto_cc",

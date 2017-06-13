@@ -18,10 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import os
 import tempfile
 
 import numpy as np
+import six
+
+from google.protobuf import text_format
 
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator
@@ -34,10 +38,12 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import layers
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
@@ -48,11 +54,17 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import checkpoint_state_pb2
 from tensorflow.python.training import saver
 from tensorflow.python.training import saver_test_utils
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 from tensorflow.python.util import compat
+
+_TMP_DIR = '/tmp'
+_ANOTHER_TMP_DIR = '/another_tmp'
 
 
 def dummy_model_fn(features, labels, params):
@@ -102,6 +114,17 @@ class EstimatorInheritanceConstraintTest(test.TestCase):
 
     _Estimator()
 
+  def test_override_allowed_method(self):
+    class _Estimator(estimator.Estimator):
+
+      def __init__(self):
+        super(_Estimator, self).__init__(model_fn=dummy_model_fn)
+
+      def _create_global_step(self, graph):
+        pass
+
+    _Estimator()
+
 
 class EstimatorConstructorTest(test.TestCase):
 
@@ -118,7 +141,7 @@ class EstimatorConstructorTest(test.TestCase):
     def model_fn(features, labels, params):
       _, _, _ = features, labels, params
 
-    class FakeConfig(run_config.RunConfig):  # pylint: disable=g-wrong-blank-lines
+    class FakeConfig(run_config.RunConfig):
       pass
 
     params = {'hidden_layers': [3, 4]}
@@ -141,8 +164,68 @@ class EstimatorConstructorTest(test.TestCase):
     def model_fn(features, labels):
       _, _ = features, labels
 
-    est = estimator.Estimator(model_fn=model_fn)
-    self.assertTrue(est.model_dir is not None)
+    with test.mock.patch.object(tempfile, 'mkdtemp', return_value=_TMP_DIR):
+      est = estimator.Estimator(model_fn=model_fn)
+      self.assertEqual(_TMP_DIR, est.config.model_dir)
+      self.assertEqual(_TMP_DIR, est.model_dir)
+
+  def test_model_dir_in_constructor(self):
+
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    est = estimator.Estimator(model_fn=model_fn, model_dir=_TMP_DIR)
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
+    self.assertEqual(_TMP_DIR, est.model_dir)
+
+  def test_model_dir_in_run_config(self):
+
+    class FakeConfig(run_config.RunConfig):
+
+      @property
+      def model_dir(self):
+        return _TMP_DIR
+
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    est = estimator.Estimator(model_fn=model_fn, config=FakeConfig())
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
+    self.assertEqual(_TMP_DIR, est.model_dir)
+
+  def test_same_model_dir_in_constructor_and_run_config(self):
+
+    class FakeConfig(run_config.RunConfig):
+
+      @property
+      def model_dir(self):
+        return _TMP_DIR
+
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    est = estimator.Estimator(
+        model_fn=model_fn, config=FakeConfig(), model_dir=_TMP_DIR)
+    self.assertEqual(_TMP_DIR, est.config.model_dir)
+    self.assertEqual(_TMP_DIR, est.model_dir)
+
+  def test_different_model_dir_in_constructor_and_run_config(self):
+
+    class FakeConfig(run_config.RunConfig):
+
+      @property
+      def model_dir(self):
+        return _TMP_DIR
+
+    def model_fn(features, labels):
+      _, _ = features, labels
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'model_dir are set both in constructor and RunConfig, but '
+        'with different values'):
+      estimator.Estimator(
+          model_fn=model_fn, config=FakeConfig(), model_dir=_ANOTHER_TMP_DIR)
 
   def test_model_fn_args_must_include_features(self):
 
@@ -185,6 +268,18 @@ class EstimatorConstructorTest(test.TestCase):
         features, labels, 'something')
     estimator.Estimator(model_fn=new_model_fn)
 
+  def test_if_model_fn_is_a_member_function_of_a_class(self):
+
+    class ModelFnClass(object):
+
+      def __init__(self):
+        estimator.Estimator(model_fn=self.model_fn)
+
+      def model_fn(self, features, labels, mode):
+        _, _, _ = features, labels, mode
+
+    ModelFnClass()
+
 
 def dummy_input_fn():
   return ({'x': constant_op.constant([[1], [1]])},
@@ -200,7 +295,120 @@ def model_fn_global_step_incrementer(features, labels, mode):
       train_op=state_ops.assign_add(global_step, 1))
 
 
+def _estimator_spec(
+    expected_features, expected_labels, actual_features, actual_labels, mode):
+  assert_ops = tuple([
+      check_ops.assert_equal(
+          expected_features[k], actual_features[k], name='assert_%s' % k)
+      for k in expected_features
+  ] + [
+      check_ops.assert_equal(
+          expected_labels, actual_labels, name='assert_labels')
+  ])
+  global_step = training.get_global_step()
+  with ops.control_dependencies(assert_ops):
+    return model_fn_lib.EstimatorSpec(
+        mode=mode,
+        predictions=constant_op.constant(0.),
+        loss=constant_op.constant(0.),
+        train_op=state_ops.assign_add(global_step, 1))
+
+
+def _make_input_fn(features, labels):
+  def _input_fn():
+    return {
+        k: constant_op.constant(v)
+        for k, v in six.iteritems(features)
+    }, constant_op.constant(labels)
+  return _input_fn
+
+
 class EstimatorTrainTest(test.TestCase):
+
+  def test_minimal_model_fn_args(self):
+    expected_features = {'x': 42., 'y': 43.}
+    expected_labels = 44.
+
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    def _model_fn(features, labels):
+      model_fn_call_count[0] += 1
+      self.assertItemsEqual(expected_features.keys(), features.keys())
+      return _estimator_spec(
+          expected_features, expected_labels, features, labels,
+          model_fn_lib.ModeKeys.TRAIN)
+
+    with self.assertRaisesRegexp(ValueError, 'does not include params'):
+      estimator.Estimator(model_fn=_model_fn, params={'a': 'b'})
+    est = estimator.Estimator(model_fn=_model_fn, config=run_config.RunConfig())
+    self.assertEqual(0, model_fn_call_count[0])
+    est.train(
+        input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
+
+  def test_all_model_fn_args(self):
+    expected_features = {'x': 42., 'y': 43.}
+    expected_labels = 44.
+    expected_params = {'some_param': 'some_value'}
+    expected_config = run_config.RunConfig()
+    expected_config.i_am_test = True
+
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    # Note that args are all passed by keyword, so can be in any order.
+    def _model_fn(mode, params, features, labels, config):
+      model_fn_call_count[0] += 1
+      self.assertItemsEqual(expected_features.keys(), features.keys())
+      self.assertEqual(model_fn_lib.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_params, params)
+      self.assertTrue(config.i_am_test)
+      return _estimator_spec(
+          expected_features, expected_labels, features, labels, mode)
+
+    est = estimator.Estimator(
+        model_fn=_model_fn, params=expected_params, config=expected_config)
+    self.assertEqual(0, model_fn_call_count[0])
+    est.train(
+        input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
+
+  def test_partial_model_fn_args(self):
+    expected_features = {'x': 42., 'y': 43.}
+    expected_labels = 44.
+    expected_params = {'some_param': 'some_value'}
+    expected_config = run_config.RunConfig()
+    expected_config.i_am_test = True
+    expected_foo = 45.
+    expected_bar = 46.
+
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    def _model_fn(features, labels, foo, mode, params, config, bar):
+      model_fn_call_count[0] += 1
+      self.assertEqual(expected_foo, foo)
+      self.assertEqual(expected_bar, bar)
+      self.assertItemsEqual(expected_features.keys(), features.keys())
+      self.assertEqual(model_fn_lib.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_params, params)
+      self.assertTrue(config.i_am_test)
+      return _estimator_spec(
+          expected_features, expected_labels, features, labels, mode)
+    partial_model_fn = functools.partial(
+        _model_fn, foo=expected_foo, bar=expected_bar)
+
+    est = estimator.Estimator(
+        model_fn=partial_model_fn, params=expected_params,
+        config=expected_config)
+    self.assertEqual(0, model_fn_call_count[0])
+    est.train(
+        input_fn=_make_input_fn(expected_features, expected_labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
 
   def test_model_fn_must_return_estimator_spec(self):
 
@@ -236,28 +444,66 @@ class EstimatorTrainTest(test.TestCase):
     self.assertEqual(
         5, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
 
+  def test_checkpoint_contains_relative_paths(self):
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(
+        model_dir=tmpdir,
+        model_fn=model_fn_global_step_incrementer)
+    est.train(dummy_input_fn, steps=5)
+
+    checkpoint_file_content = file_io.read_file_to_string(
+        os.path.join(tmpdir, 'checkpoint'))
+    ckpt = checkpoint_state_pb2.CheckpointState()
+    text_format.Merge(checkpoint_file_content, ckpt)
+    self.assertEqual(ckpt.model_checkpoint_path, 'model.ckpt-5')
+    self.assertAllEqual(
+        ['model.ckpt-1', 'model.ckpt-5'], ckpt.all_model_checkpoint_paths)
+
+  def test_train_save_copy_reload(self):
+    tmpdir = tempfile.mkdtemp()
+    model_dir1 = os.path.join(tmpdir, 'model_dir1')
+    est1 = estimator.Estimator(
+        model_dir=model_dir1,
+        model_fn=model_fn_global_step_incrementer)
+    est1.train(dummy_input_fn, steps=5)
+
+    # We have to clear the cache before we can rename the directory,
+    # otherwise open file handles will prevent the delete on Windows.
+    writer_cache.FileWriterCache.clear()
+    model_dir2 = os.path.join(tmpdir, 'model_dir2')
+    os.renames(model_dir1, model_dir2)
+
+    est2 = estimator.Estimator(
+        model_dir=model_dir2,
+        model_fn=model_fn_global_step_incrementer)
+    self.assertEqual(
+        5, estimator._load_global_step_from_checkpoint_dir(est2.model_dir))
+    est2.train(dummy_input_fn, steps=5)
+    self.assertEqual(
+        10, estimator._load_global_step_from_checkpoint_dir(est2.model_dir))
+
   def test_steps0_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
-    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps > 0'):
       est.train(dummy_input_fn, steps=0)
 
   def test_steps_negative_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
-    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps > 0'):
       est.train(dummy_input_fn, steps=-1)
 
   def test_max_steps0_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
-    with self.assertRaisesRegexp(ValueError, 'Must specify max_steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify max_steps > 0'):
       est.train(dummy_input_fn, max_steps=0)
 
   def test_max_steps_negative_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
-    with self.assertRaisesRegexp(ValueError, 'Must specify max_steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify max_steps > 0'):
       est.train(dummy_input_fn, max_steps=-1)
 
   def test_scaffold_is_used(self):
@@ -272,7 +518,7 @@ class EstimatorTrainTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           scaffold=training.Scaffold(init_fn=_init_fn))
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
@@ -295,7 +541,7 @@ class EstimatorTrainTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           training_chief_hooks=[chief_hook],
           training_hooks=[hook])
 
@@ -317,11 +563,11 @@ class EstimatorTrainTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           training_chief_hooks=[chief_hook],
           training_hooks=[hook])
 
-    class NonChiefRunConfig(run_config.RunConfig):  # pylint: disable=g-wrong-blank-lines
+    class NonChiefRunConfig(run_config.RunConfig):
       @property
       def is_chief(self):  # pylint: disable=g-wrong-blank-lines
         return False
@@ -329,6 +575,8 @@ class EstimatorTrainTest(test.TestCase):
     # Mocking the SessionManager.wait_for_session, so that worker doesn't wait
     # for chief.
     def get_initialized_session(*args, **kwargs):
+      # Session doesn't take 'max_wait_secs' argument.
+      kwargs.pop('max_wait_secs', None)
       scaffold = training.Scaffold().finalize()
       sess = session.Session(*args, **kwargs)
       sess.run(scaffold.init_op)
@@ -358,7 +606,7 @@ class EstimatorTrainTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[0.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -376,7 +624,7 @@ class EstimatorTrainTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[0.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -425,7 +673,7 @@ class EstimatorEvaluateTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(1.),
-          train_op=control_flow_ops.no_op())
+          train_op=state_ops.assign_add(training.get_global_step(), 1))
 
     est = estimator.Estimator(model_fn=_model_fn)
     est.train(dummy_input_fn, steps=1)
@@ -450,18 +698,39 @@ class EstimatorEvaluateTest(test.TestCase):
     self.assertIn('metric', scores)
     self.assertAlmostEqual(2., scores['metric'])
 
+  def test_tuple_metrics(self):
+    def _model_fn(features, labels, mode):
+      del features  # unused
+      del labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          loss=constant_op.constant(1.),
+          eval_metric_ops={
+              'nested_metric': (
+                  ((constant_op.constant(2.), constant_op.constant(1)),
+                   constant_op.constant(3., dtype=dtypes.float64)),
+                  control_flow_ops.no_op())})
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+    evaluation = est.evaluate(dummy_input_fn, steps=1)
+    ((two_float, one_integer), three_double) = evaluation['nested_metric']
+    self.assertAlmostEqual(2., two_float)
+    self.assertEqual(1, one_integer)
+    self.assertAlmostEqual(3., three_double)
+
   def test_steps0_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
     est.train(dummy_input_fn, steps=5)
-    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps > 0'):
       est.evaluate(dummy_input_fn, steps=0)
 
   def test_steps_negative_raises_error(self):
     est = estimator.Estimator(
         model_fn=_model_fn_with_eval_metric_ops)
     est.train(dummy_input_fn, steps=5)
-    with self.assertRaisesRegexp(ValueError, 'Must specify steps >= 0'):
+    with self.assertRaisesRegexp(ValueError, 'Must specify steps > 0'):
       est.evaluate(dummy_input_fn, steps=-1)
 
   def test_global_step_metric_raises_error(self):
@@ -548,7 +817,7 @@ class EstimatorEvaluateTest(test.TestCase):
           mode=mode,
           predictions=constant_op.constant([[1.]]),
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           scaffold=training.Scaffold(saver=self.mock_saver))
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
@@ -568,7 +837,7 @@ class EstimatorEvaluateTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[0.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -587,7 +856,7 @@ class EstimatorEvaluateTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[0.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -597,11 +866,19 @@ class EstimatorEvaluateTest(test.TestCase):
 
 class EstimatorPredictTest(test.TestCase):
 
-  def test_no_trained_model(self):
+  def test_no_trained_model_in_model_dir(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
     with self.assertRaisesRegexp(ValueError,
                                  'Could not find trained model in model_dir'):
       next(est.predict(dummy_input_fn))
+
+  def test_no_trained_model_invalid_checkpoint_path(self):
+    est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
+    with self.assertRaises(ValueError):
+      next(
+          est.predict(
+              dummy_input_fn,
+              checkpoint_path=saver.latest_checkpoint('fakedir')))
 
   def test_tensor_predictions(self):
 
@@ -610,7 +887,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[10.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -624,7 +901,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[10.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -642,7 +919,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[10.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -660,7 +937,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions={
               'y1': constant_op.constant([[10.]]),
               'y2': constant_op.constant([[12.], [13]])
@@ -679,7 +956,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[10.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -696,7 +973,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions={
               'y1': constant_op.constant([[10.]]),
               'y2': constant_op.constant([[12.]])
@@ -715,7 +992,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions={
               'y1': constant_op.constant([[10.]]),
               'y2': constant_op.constant([[12.]])
@@ -734,7 +1011,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[10.], [12.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -750,7 +1027,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions={
               'y1': constant_op.constant([[10.], [12]]),
               'y2': constant_op.constant([[0.], [2.]])
@@ -775,7 +1052,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[10.], [12.]]))
 
     step_counter_hook = _StepCounterHook()
@@ -799,13 +1076,35 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=prediction)
 
     est1 = estimator.Estimator(model_fn=_model_fn)
     est1.train(dummy_input_fn, steps=1)
     est2 = estimator.Estimator(model_fn=_model_fn, model_dir=est1.model_dir)
     self.assertEqual([32.], next(est2.predict(dummy_input_fn)))
+
+  def test_predict_from_checkpoint_path(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      v = variables.Variable([[16.]], name='weight')
+      prediction = v * 2
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=prediction)
+
+    est1 = estimator.Estimator(model_fn=_model_fn)
+    est1.train(dummy_input_fn, steps=1)
+    est2 = estimator.Estimator(model_fn=_model_fn, model_dir=est1.model_dir)
+    self.assertEqual(
+        [32.],
+        next(
+            est2.predict(
+                dummy_input_fn,
+                checkpoint_path=saver.latest_checkpoint(est1.model_dir))))
 
   def test_scaffold_is_used(self):
 
@@ -819,7 +1118,7 @@ class EstimatorPredictTest(test.TestCase):
           mode=mode,
           predictions=constant_op.constant([[1.]]),
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           scaffold=training.Scaffold(saver=self.mock_saver))
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
@@ -839,7 +1138,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[0.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -858,7 +1157,7 @@ class EstimatorPredictTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[0.]]))
 
     est = estimator.Estimator(model_fn=_model_fn)
@@ -871,11 +1170,14 @@ def _model_fn_for_export_tests(features, labels, mode):
   variables.Variable(1., name='weight')
   scores = constant_op.constant([3.])
   classes = constant_op.constant(['wumpus'])
+  update_global_step = state_ops.assign_add(training.get_global_step(), 1)
+  with ops.control_dependencies([update_global_step]):
+    train_op = constant_op.constant(2.)
   return model_fn_lib.EstimatorSpec(
       mode,
       predictions=constant_op.constant(10.),
       loss=constant_op.constant(1.),
-      train_op=constant_op.constant(2.),
+      train_op=train_op,
       export_outputs={
           'test': export_output.ClassificationOutput(scores, classes)})
 
@@ -883,7 +1185,9 @@ def _model_fn_for_export_tests(features, labels, mode):
 def _model_fn_with_saveables_for_export_tests(features, labels, mode):
   _, _ = features, labels
   table = saver_test_utils.CheckpointedOp(name='v2')
-  train_op = table.insert('k1', 30.0)
+  update_global_step = state_ops.assign_add(training.get_global_step(), 1)
+  with ops.control_dependencies([update_global_step]):
+    train_op = table.insert('k1', 30.0)
   prediction = table.lookup('k1', 0.0)
   return model_fn_lib.EstimatorSpec(
       mode,
@@ -982,7 +1286,8 @@ class EstimatorExportTest(test.TestCase):
         graph_ops = [x.name for x in graph.get_operations()]
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
-        self.assertTrue('save/LookupTableImport' in graph_ops)
+        # Note that the SavedModel builder replaced the Saver with a new one
+        self.assertTrue('save_1/LookupTableImportV2' in graph_ops)
 
     # Clean up.
     gfile.DeleteRecursively(tmpdir)
@@ -1101,7 +1406,7 @@ class EstimatorExportTest(test.TestCase):
           mode=mode,
           predictions=constant_op.constant([[1.]]),
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           scaffold=training.Scaffold(saver=self.mock_saver),
           export_outputs={'test': export_output.ClassificationOutput(scores)})
 
@@ -1127,9 +1432,10 @@ class EstimatorExportTest(test.TestCase):
       my_int = variables.Variable(1, name='my_int',
                                   collections=[ops.GraphKeys.LOCAL_VARIABLES])
       scores = constant_op.constant([3.])
-      with ops.control_dependencies(
-          [variables.local_variables_initializer(),
-           data_flow_ops.tables_initializer()]):
+      with ops.control_dependencies([
+          variables.local_variables_initializer(),
+          lookup_ops.tables_initializer()
+      ]):
         assign_op = state_ops.assign(my_int, 12345)
 
       # local_initSop must be an Operation, not a Tensor.
@@ -1138,7 +1444,7 @@ class EstimatorExportTest(test.TestCase):
           mode=mode,
           predictions=constant_op.constant([[1.]]),
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           scaffold=training.Scaffold(local_init_op=custom_local_init_op),
           export_outputs={'test': export_output.ClassificationOutput(scores)})
 
@@ -1175,7 +1481,7 @@ class EstimatorExportTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[0.]]),
           export_outputs={
               'test': export_output.ClassificationOutput(
@@ -1198,7 +1504,7 @@ class EstimatorExportTest(test.TestCase):
       return model_fn_lib.EstimatorSpec(
           mode=mode,
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
           predictions=constant_op.constant([[0.]]),
           export_outputs={
               'test': export_output.ClassificationOutput(
@@ -1213,6 +1519,47 @@ class EstimatorExportTest(test.TestCase):
     est = estimator.Estimator(model_fn=_model_fn)
     est.train(dummy_input_fn, steps=1)
     est.export_savedmodel(tempfile.mkdtemp(), serving_input_receiver_fn)
+
+
+class EstimatorHookOrderingTest(test.TestCase):
+
+  def testCustomHooksAreCalledBeforeNanTensorHook(self):
+
+    def nan_making_model_fn(mode, features, labels):
+      """A graph that generates NaN's for testing."""
+      del features, labels
+
+      global_step = variables.Variable(
+          0, dtype=dtypes.int64, name='global_step')
+      inc_global_step = state_ops.assign_add(global_step, 1)
+      nan_const = constant_op.constant(np.nan, dtype=dtypes.float32)
+      loss = control_flow_ops.cond(
+          inc_global_step > 1, lambda: nan_const, lambda: 1.0)
+
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          predictions=global_step.read_value(),
+          loss=loss,
+          train_op=inc_global_step)
+
+    def empty_input_fn():
+      return dict(), None
+
+    class AfterRunCountingHook(session_run_hook.SessionRunHook):
+      """Hooks that counts the number of times after_run() is called."""
+
+      def __init__(self):
+        self.after_run_count = 0
+
+      def after_run(self, run_context, run_values):
+        del run_context, run_values
+        self.after_run_count += 1
+
+    test_hook = AfterRunCountingHook()
+    est = estimator.Estimator(model_fn=nan_making_model_fn)
+    with self.assertRaises(basic_session_run_hooks.NanLossDuringTrainingError):
+      est.train(input_fn=empty_input_fn, steps=2, hooks=[test_hook])
+    self.assertEqual(2, test_hook.after_run_count)
 
 
 class EstimatorIntegrationTest(test.TestCase):

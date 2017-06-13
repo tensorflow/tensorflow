@@ -1,0 +1,4606 @@
+node {
+  name: "GradientDescent/learning_rate"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_3"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.1
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_grad/Shape_1"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 100
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_grad/Shape"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 2
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        tensor_content: "\310\000\000\000d\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_grad/BroadcastGradientArgs"
+  op: "BroadcastGradientArgs"
+  input: "gradients/add_grad/Shape"
+  input: "gradients/add_grad/Shape_1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+        }
+        shape {
+          dim {
+            size: -1
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_1_grad/Shape_1"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 10
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_1_grad/Shape"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 2
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        tensor_content: "\310\000\000\000\n\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_1_grad/BroadcastGradientArgs"
+  op: "BroadcastGradientArgs"
+  input: "gradients/add_1_grad/Shape"
+  input: "gradients/add_1_grad/Shape_1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+        }
+        shape {
+          dim {
+            size: -1
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Reshape_1_grad/Shape"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 2
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        tensor_content: "\310\000\000\000\n\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SoftmaxCrossEntropyWithLogits_grad/ExpandDims/dim"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: -1
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Reshape_3_grad/Shape"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 200
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Maximum/y"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Const_1"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Const"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Shape_1"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Prod_1"
+  op: "Prod"
+  input: "gradients/Mean_grad/Shape_1"
+  input: "gradients/Mean_grad/Const_1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Maximum"
+  op: "Maximum"
+  input: "gradients/Mean_grad/Prod_1"
+  input: "gradients/Mean_grad/Maximum/y"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Shape"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 200
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Prod"
+  op: "Prod"
+  input: "gradients/Mean_grad/Shape"
+  input: "gradients/Mean_grad/Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/floordiv"
+  op: "FloorDiv"
+  input: "gradients/Mean_grad/Prod"
+  input: "gradients/Mean_grad/Maximum"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Cast"
+  op: "Cast"
+  input: "gradients/Mean_grad/floordiv"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "DstT"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "SrcT"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Tile/multiples"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 200
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Reshape/shape"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Const"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Shape"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Fill"
+  op: "Fill"
+  input: "gradients/Shape"
+  input: "gradients/Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Reshape"
+  op: "Reshape"
+  input: "gradients/Fill"
+  input: "gradients/Mean_grad/Reshape/shape"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/Tile"
+  op: "Tile"
+  input: "gradients/Mean_grad/Reshape"
+  input: "gradients/Mean_grad/Tile/multiples"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tmultiples"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Mean_grad/truediv"
+  op: "RealDiv"
+  input: "gradients/Mean_grad/Tile"
+  input: "gradients/Mean_grad/Cast"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Reshape_3_grad/Reshape"
+  op: "Reshape"
+  input: "gradients/Mean_grad/truediv"
+  input: "gradients/Reshape_3_grad/Shape"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SoftmaxCrossEntropyWithLogits_grad/ExpandDims"
+  op: "ExpandDims"
+  input: "gradients/Reshape_3_grad/Reshape"
+  input: "gradients/SoftmaxCrossEntropyWithLogits_grad/ExpandDims/dim"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tdim"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Const"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "Slice_2/begin"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "Sub_2/y"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "concat_1/axis"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "concat_1/values_0"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: -1
+      }
+    }
+  }
+}
+node {
+  name: "Slice_1/size"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "Sub_1/y"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "Shape_2"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 2
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        tensor_content: "\310\000\000\000\n\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "Rank_2"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 2
+      }
+    }
+  }
+}
+node {
+  name: "Sub_1"
+  op: "Sub"
+  input: "Rank_2"
+  input: "Sub_1/y"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Slice_1/begin"
+  op: "Pack"
+  input: "Sub_1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "N"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "axis"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "Slice_1"
+  op: "Slice"
+  input: "Shape_2"
+  input: "Slice_1/begin"
+  input: "Slice_1/size"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "Index"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "concat_1"
+  op: "ConcatV2"
+  input: "concat_1/values_0"
+  input: "Slice_1"
+  input: "concat_1/axis"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 2
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "concat/axis"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "concat/values_0"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: -1
+      }
+    }
+  }
+}
+node {
+  name: "Slice/size"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "Sub/y"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "Shape_1"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 2
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        tensor_content: "\310\000\000\000\n\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "Rank_1"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 2
+      }
+    }
+  }
+}
+node {
+  name: "Sub"
+  op: "Sub"
+  input: "Rank_1"
+  input: "Sub/y"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Slice/begin"
+  op: "Pack"
+  input: "Sub"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "N"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "axis"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "Slice"
+  op: "Slice"
+  input: "Shape_1"
+  input: "Slice/begin"
+  input: "Slice/size"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "Index"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "concat"
+  op: "ConcatV2"
+  input: "concat/values_0"
+  input: "Slice"
+  input: "concat/axis"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "N"
+    value {
+      i: 2
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 2
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Shape"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 2
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        tensor_content: "\310\000\000\000\n\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "Rank"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 2
+      }
+    }
+  }
+}
+node {
+  name: "Sub_2"
+  op: "Sub"
+  input: "Rank"
+  input: "Sub_2/y"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Slice_2/size"
+  op: "Pack"
+  input: "Sub_2"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "N"
+    value {
+      i: 1
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "axis"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "Slice_2"
+  op: "Slice"
+  input: "Shape"
+  input: "Slice_2/begin"
+  input: "Slice_2/size"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "Index"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 1
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "logits_biases"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@logits_biases"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 10
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "logits_biases/read"
+  op: "Identity"
+  input: "logits_biases"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@logits_biases"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "logits_weights"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@logits_weights"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 100
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 100
+        }
+        dim {
+          size: 10
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "logits_weights/read"
+  op: "Identity"
+  input: "logits_weights"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@logits_weights"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 100
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "hidden_biases"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@hidden_biases"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 100
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "hidden_biases/read"
+  op: "Identity"
+  input: "hidden_biases"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@hidden_biases"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "hidden_weights"
+  op: "VariableV2"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@hidden_weights"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 784
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 784
+        }
+        dim {
+          size: 100
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "hidden_weights/read"
+  op: "Identity"
+  input: "hidden_weights"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@hidden_weights"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 784
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Reshape/shape"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 2
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        tensor_content: "\310\000\000\000\377\377\377\377"
+      }
+    }
+  }
+}
+node {
+  name: "mnist_dataset_train_2/one_hot/depth"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 10
+      }
+    }
+  }
+}
+node {
+  name: "mnist_dataset_train_2/one_hot/off_value"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0
+      }
+    }
+  }
+}
+node {
+  name: "mnist_dataset_train_2/one_hot/on_value"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 1
+      }
+    }
+  }
+}
+node {
+  name: "mnist_dataset_train_2/random_shuffle_queue_DequeueMany/n"
+  op: "Const"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+        }
+        int_val: 200
+      }
+    }
+  }
+}
+node {
+  name: "mnist_dataset_train_1/random_shuffle_queue"
+  op: "RandomShuffleQueueV2"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "capacity"
+    value {
+      i: 20000
+    }
+  }
+  attr {
+    key: "component_types"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "min_after_dequeue"
+    value {
+      i: 4000
+    }
+  }
+  attr {
+    key: "seed"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "seed2"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 28
+          }
+          dim {
+            size: 28
+          }
+          dim {
+            size: 1
+          }
+        }
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "mnist_dataset_train_2/random_shuffle_queue_DequeueMany"
+  op: "QueueDequeueManyV2"
+  input: "mnist_dataset_train_1/random_shuffle_queue"
+  input: "mnist_dataset_train_2/random_shuffle_queue_DequeueMany/n"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          unknown_rank: true
+        }
+        shape {
+          unknown_rank: true
+        }
+      }
+    }
+  }
+  attr {
+    key: "component_types"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    key: "timeout_ms"
+    value {
+      i: -1
+    }
+  }
+}
+node {
+  name: "Reshape"
+  op: "Reshape"
+  input: "mnist_dataset_train_2/random_shuffle_queue_DequeueMany"
+  input: "Reshape/shape"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: -1
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "MatMul"
+  op: "MatMul"
+  input: "Reshape"
+  input: "hidden_weights/read"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "add"
+  op: "Add"
+  input: "MatMul"
+  input: "hidden_biases/read"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Relu"
+  op: "Relu"
+  input: "add"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "MatMul_1"
+  op: "MatMul"
+  input: "Relu"
+  input: "logits_weights/read"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "add_1"
+  op: "Add"
+  input: "MatMul_1"
+  input: "logits_biases/read"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Reshape_1"
+  op: "Reshape"
+  input: "add_1"
+  input: "concat"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "mnist_dataset_train_2/one_hot"
+  op: "OneHot"
+  input: "mnist_dataset_train_2/random_shuffle_queue_DequeueMany:1"
+  input: "mnist_dataset_train_2/one_hot/depth"
+  input: "mnist_dataset_train_2/one_hot/on_value"
+  input: "mnist_dataset_train_2/one_hot/off_value"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "TI"
+    value {
+      type: DT_INT64
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          unknown_rank: true
+        }
+      }
+    }
+  }
+  attr {
+    key: "axis"
+    value {
+      i: -1
+    }
+  }
+}
+node {
+  name: "Reshape_2"
+  op: "Reshape"
+  input: "mnist_dataset_train_2/one_hot"
+  input: "concat_1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "SoftmaxCrossEntropyWithLogits"
+  op: "SoftmaxCrossEntropyWithLogits"
+  input: "Reshape_1"
+  input: "Reshape_2"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+        }
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/SoftmaxCrossEntropyWithLogits_grad/PreventGradient"
+  op: "PreventGradient"
+  input: "SoftmaxCrossEntropyWithLogits:1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "message"
+    value {
+      s: "Currently there is no way to take the second derivative of softmax_cross_entropy_with_logits due to the fused  implementation\'s interaction with tf.gradients()"
+    }
+  }
+}
+node {
+  name: "gradients/SoftmaxCrossEntropyWithLogits_grad/mul"
+  op: "Mul"
+  input: "gradients/SoftmaxCrossEntropyWithLogits_grad/ExpandDims"
+  input: "gradients/SoftmaxCrossEntropyWithLogits_grad/PreventGradient"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Reshape_1_grad/Reshape"
+  op: "Reshape"
+  input: "gradients/SoftmaxCrossEntropyWithLogits_grad/mul"
+  input: "gradients/Reshape_1_grad/Shape"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_1_grad/Sum_1"
+  op: "Sum"
+  input: "gradients/Reshape_1_grad/Reshape"
+  input: "gradients/add_1_grad/BroadcastGradientArgs:1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/add_1_grad/Reshape_1"
+  op: "Reshape"
+  input: "gradients/add_1_grad/Sum_1"
+  input: "gradients/add_1_grad/Shape_1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_1_grad/Sum"
+  op: "Sum"
+  input: "gradients/Reshape_1_grad/Reshape"
+  input: "gradients/add_1_grad/BroadcastGradientArgs"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/add_1_grad/Reshape"
+  op: "Reshape"
+  input: "gradients/add_1_grad/Sum"
+  input: "gradients/add_1_grad/Shape"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_1_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/add_1_grad/Reshape"
+  input: "^gradients/add_1_grad/Reshape_1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_1_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/add_1_grad/Reshape_1"
+  input: "^gradients/add_1_grad/tuple/group_deps"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/add_1_grad/Reshape_1"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "GradientDescent/update_logits_biases/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "logits_biases"
+  input: "GradientDescent/learning_rate"
+  input: "gradients/add_1_grad/tuple/control_dependency_1"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@logits_biases"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/add_1_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/add_1_grad/Reshape"
+  input: "^gradients/add_1_grad/tuple/group_deps"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/add_1_grad/Reshape"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/MatMul_1_grad/MatMul_1"
+  op: "MatMul"
+  input: "Relu"
+  input: "gradients/add_1_grad/tuple/control_dependency"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 100
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/MatMul_1_grad/MatMul"
+  op: "MatMul"
+  input: "gradients/add_1_grad/tuple/control_dependency"
+  input: "logits_weights/read"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "gradients/MatMul_1_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/MatMul_1_grad/MatMul"
+  input: "^gradients/MatMul_1_grad/MatMul_1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+      }
+    }
+  }
+}
+node {
+  name: "gradients/MatMul_1_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/MatMul_1_grad/MatMul_1"
+  input: "^gradients/MatMul_1_grad/tuple/group_deps"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/MatMul_1_grad/MatMul_1"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 100
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "GradientDescent/update_logits_weights/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "logits_weights"
+  input: "GradientDescent/learning_rate"
+  input: "gradients/MatMul_1_grad/tuple/control_dependency_1"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@logits_weights"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 100
+          }
+          dim {
+            size: 10
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/MatMul_1_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/MatMul_1_grad/MatMul"
+  input: "^gradients/MatMul_1_grad/tuple/group_deps"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/MatMul_1_grad/MatMul"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/Relu_grad/ReluGrad"
+  op: "ReluGrad"
+  input: "gradients/MatMul_1_grad/tuple/control_dependency"
+  input: "Relu"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_grad/Sum_1"
+  op: "Sum"
+  input: "gradients/Relu_grad/ReluGrad"
+  input: "gradients/add_grad/BroadcastGradientArgs:1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/add_grad/Reshape_1"
+  op: "Reshape"
+  input: "gradients/add_grad/Sum_1"
+  input: "gradients/add_grad/Shape_1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_grad/Sum"
+  op: "Sum"
+  input: "gradients/Relu_grad/ReluGrad"
+  input: "gradients/add_grad/BroadcastGradientArgs"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/add_grad/Reshape"
+  op: "Reshape"
+  input: "gradients/add_grad/Sum"
+  input: "gradients/add_grad/Shape"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/add_grad/Reshape"
+  input: "^gradients/add_grad/Reshape_1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+      }
+    }
+  }
+}
+node {
+  name: "gradients/add_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/add_grad/Reshape_1"
+  input: "^gradients/add_grad/tuple/group_deps"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/add_grad/Reshape_1"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "GradientDescent/update_hidden_biases/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "hidden_biases"
+  input: "GradientDescent/learning_rate"
+  input: "gradients/add_grad/tuple/control_dependency_1"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@hidden_biases"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/add_grad/tuple/control_dependency"
+  op: "Identity"
+  input: "gradients/add_grad/Reshape"
+  input: "^gradients/add_grad/tuple/group_deps"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/add_grad/Reshape"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "gradients/MatMul_grad/MatMul_1"
+  op: "MatMul"
+  input: "Reshape"
+  input: "gradients/add_grad/tuple/control_dependency"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "gradients/MatMul_grad/MatMul"
+  op: "MatMul"
+  input: "gradients/add_grad/tuple/control_dependency"
+  input: "hidden_weights/read"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+          dim {
+            size: 784
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "transpose_a"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "transpose_b"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "gradients/MatMul_grad/tuple/group_deps"
+  op: "NoOp"
+  input: "^gradients/MatMul_grad/MatMul"
+  input: "^gradients/MatMul_grad/MatMul_1"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+      }
+    }
+  }
+}
+node {
+  name: "gradients/MatMul_grad/tuple/control_dependency_1"
+  op: "Identity"
+  input: "gradients/MatMul_grad/MatMul_1"
+  input: "^gradients/MatMul_grad/tuple/group_deps"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@gradients/MatMul_grad/MatMul_1"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: -1
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "GradientDescent/update_hidden_weights/ApplyGradientDescent"
+  op: "ApplyGradientDescent"
+  input: "hidden_weights"
+  input: "GradientDescent/learning_rate"
+  input: "gradients/MatMul_grad/tuple/control_dependency_1"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@hidden_weights"
+      }
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 784
+          }
+          dim {
+            size: 100
+          }
+        }
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "GradientDescent"
+  op: "NoOp"
+  input: "^GradientDescent/update_hidden_weights/ApplyGradientDescent"
+  input: "^GradientDescent/update_hidden_biases/ApplyGradientDescent"
+  input: "^GradientDescent/update_logits_weights/ApplyGradientDescent"
+  input: "^GradientDescent/update_logits_biases/ApplyGradientDescent"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_2"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+      }
+    }
+  }
+}
+node {
+  name: "Reshape_3"
+  op: "Reshape"
+  input: "SoftmaxCrossEntropyWithLogits"
+  input: "Slice_2"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tshape"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+          dim {
+            size: 200
+          }
+        }
+      }
+    }
+  }
+}
+node {
+  name: "Mean"
+  op: "Mean"
+  input: "Reshape_3"
+  input: "Const"
+  device: "/job:localhost/replica:0/task:0/device:XLA_CPU:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "Tidx"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_XlaCluster"
+    value {
+      s: "cluster_1"
+    }
+  }
+  attr {
+    key: "_output_shapes"
+    value {
+      list {
+        shape {
+        }
+      }
+    }
+  }
+  attr {
+    key: "keep_dims"
+    value {
+      b: false
+    }
+  }
+}
+node {
+  name: "_send_Mean_0"
+  op: "_Send"
+  input: "Mean"
+  device: "/job:localhost/replica:0/task:0/cpu:0"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "client_terminated"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "recv_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/cpu:0"
+    }
+  }
+  attr {
+    key: "send_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/cpu:0"
+    }
+  }
+  attr {
+    key: "send_device_incarnation"
+    value {
+      i: -5924635994370253548
+    }
+  }
+  attr {
+    key: "tensor_name"
+    value {
+      s: "Mean:0"
+    }
+  }
+}
+library {
+}
+versions {
+  producer: 21
+}

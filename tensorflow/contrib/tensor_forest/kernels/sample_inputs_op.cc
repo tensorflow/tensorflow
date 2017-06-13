@@ -31,10 +31,6 @@
 
 namespace tensorflow {
 
-using shape_inference::DimensionHandle;
-using shape_inference::InferenceContext;
-using shape_inference::ShapeHandle;
-
 using tensorforest::CheckTensorBounds;
 using tensorforest::IsAllInitialized;
 
@@ -62,64 +58,6 @@ class SampleInputs : public OpKernel {
     string serialized_proto;
     OP_REQUIRES_OK(context, context->GetAttr("input_spec", &serialized_proto));
     input_spec_.ParseFromString(serialized_proto);
-  }
-
-  // Returns the number of sparse values for example input_index.
-  // Also returns the index where those features start in sparse_input_start
-  // if any were found.
-  int32 GetNumSparseFeatures(const Tensor& sparse_input_indices,
-                             int32 input_index, int64* sparse_input_start) {
-    // Binary search for input_index.
-    // TODO(gilberth): Consider using std::lower_bound, std::upper_bound
-    // for a simpler but possibly slower solution, or searching for
-    // input_start and input_end simultaneously.
-    const auto indices = sparse_input_indices.matrix<int64>();
-    const int64 num_total = sparse_input_indices.shape().dim_size(0);
-    int64 index;
-    int64 low = 0;
-    int64 high = num_total;
-
-    while (true) {
-      if (low == high) {
-        return 0;
-      }
-      index = low + (high - low) / 2;
-      const int64 feature_index = indices(index, 0);
-      if (feature_index == input_index) {
-        // found it.
-        break;
-      } else if (feature_index < input_index) {
-        // Correct for the implicit floor in the index assignment.
-        if (low == index) {
-          return 0;
-        }
-        low = index;
-      } else {
-        high = index;
-      }
-    }
-
-    // Scan for the start and end of the input_index range.
-    int64 input_start = index;
-    int64 val = indices(input_start, 0);
-    while (val == input_index) {
-      --input_start;
-      if (input_start < 0) {
-        break;
-      }
-      val = indices(input_start, 0);
-    }
-    *sparse_input_start = input_start + 1;
-    int32 input_end = index;
-    val = indices(input_end, 0);
-    while (val == input_index) {
-      ++input_end;
-      if (input_end >= num_total) {
-        break;
-      }
-      val = indices(input_end, 0);
-    }
-    return input_end - input_start - 1;
   }
 
   // increment_input implements a "++" operation for the situation when
@@ -333,8 +271,8 @@ class SampleInputs : public OpKernel {
           int64 sparse_input_start;
           int32 num_total_features = input_spec_.dense_features_size();
           if (sparse_input) {
-            num_total_features += GetNumSparseFeatures(
-                sparse_input_indices, *it, &sparse_input_start);
+            num_total_features += tensorforest::GetNumSparseFeatures(
+                sparse_input_indices.matrix<int64>(), *it, &sparse_input_start);
           }
           if (num_total_features == 0) {
             LOG(WARNING) << "num total features is zero.";

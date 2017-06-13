@@ -308,6 +308,7 @@ from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_rea
 from tensorflow.contrib.learn.python.learn.estimators.estimator import SKCompat
 from tensorflow.contrib.learn.python.learn.estimators.head import binary_svm_head
 from tensorflow.contrib.learn.python.learn.estimators.head import Head
+from tensorflow.contrib.learn.python.learn.estimators.head import loss_only_head
 from tensorflow.contrib.learn.python.learn.estimators.head import multi_class_head
 from tensorflow.contrib.learn.python.learn.estimators.head import multi_head
 from tensorflow.contrib.learn.python.learn.estimators.head import multi_label_head
@@ -323,6 +324,7 @@ from tensorflow.contrib.learn.python.learn.estimators.metric_key import MetricKe
 from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModeKeys
 from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModelFnOps
 from tensorflow.contrib.learn.python.learn.estimators.prediction_key import PredictionKey
+from tensorflow.contrib.learn.python.learn.estimators.rnn_common import PredictionType
 from tensorflow.contrib.learn.python.learn.estimators.run_config import ClusterConfig
 from tensorflow.contrib.learn.python.learn.estimators.run_config import Environment
 from tensorflow.contrib.learn.python.learn.estimators.run_config import RunConfig

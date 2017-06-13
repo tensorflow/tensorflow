@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
+#include "tensorflow/compiler/tf2xla/xla_helpers.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -50,6 +52,10 @@ const char XlaContext::kXlaContextResourceName[] = "_xla_context";
   // outlive the JIT compilation.
   context->Unref();
   return *context;
+}
+
+/* static */ XlaContext& XlaContext::Get(const XlaOpKernelContext* ctx) {
+  return Get(ctx->op_kernel_context());
 }
 
 void XlaContext::set_args(std::vector<Argument> args) {
@@ -123,26 +129,16 @@ void XlaContext::AddSideEffects() {
 
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
 
-Status XlaContext::CreateVariable(int variable_id, string name, DataType type,
-                                  const xla::ComputationDataHandle& handle) {
-  auto result = variables_.emplace(variable_id, Variable());
-  if (!result.second) {
-    return errors::InvalidArgument("Duplicate ID ", variable_id,
-                                   " for variable ", name);
-  }
-  Variable& var = result.first->second;
+Status XlaContext::CreateVariable(int arg_num, string name, DataType type,
+                                  const xla::ComputationDataHandle& handle,
+                                  XlaVariable** variable) {
+  variables_.emplace_back(new XlaVariable);
+  *variable = variables_.back().get();
+  XlaVariable& var = **variable;
+  var.arg_num = arg_num;
   var.name = std::move(name);
   var.type = type;
   var.initial_value = var.value = handle;
-  return Status::OK();
-}
-
-Status XlaContext::GetVariable(int variable_id, Variable** variable) {
-  auto it = variables_.find(variable_id);
-  if (it == variables_.end()) {
-    return errors::InvalidArgument("Unknown variable ID ", variable_id);
-  }
-  *variable = &it->second;
   return Status::OK();
 }
 
@@ -183,9 +179,14 @@ const xla::Computation* XlaContext::GetOrCreateSigmoid(const DataType type) {
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
     auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    auto one = b.ConstantLiteral(xla::LiteralUtil::One(xla_type));
-    auto minus_one = b.Neg(one);
-    b.Div(one, b.Add(b.Exp(b.Mul(x, minus_one)), one));
+    // Clamp the inputs to the range [-18, 18] since anything outside
+    // this range is 0.0f or 1.0f in single-precision. We must clamp the range
+    // of x to avoid incorrect outputs due to fast-math optimizations for large
+    // negative x.
+    x = b.Clamp(XlaHelpers::IntegerLiteral(&b, type, -18), x,
+                XlaHelpers::IntegerLiteral(&b, type, 18));
+    auto one = XlaHelpers::One(&b, type);
+    b.Div(one, b.Add(b.Exp(b.Neg(x)), one));
     return b.Build().ConsumeValueOrDie();
   });
 }

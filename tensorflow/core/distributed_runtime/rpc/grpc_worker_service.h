@@ -27,6 +27,7 @@ namespace tensorflow {
 
 class AsyncServiceInterface;
 struct WorkerEnv;
+struct WorkerSession;
 
 class GrpcWorker : public Worker {
  public:
@@ -39,11 +40,11 @@ class GrpcWorker : public Worker {
   WorkerEnv* env();
 };
 
-GrpcWorker* NewGrpcWorker(WorkerEnv* worker_env);
+std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* worker_env);
 
 // Returns an implementation of WorkerService rpc service.
-AsyncServiceInterface* NewGrpcWorkerService(GrpcWorker* worker,
-                                            ::grpc::ServerBuilder* builder);
+std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
+    GrpcWorker* worker, ::grpc::ServerBuilder* builder);
 
 }  // namespace tensorflow
 

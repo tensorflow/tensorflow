@@ -44,11 +44,6 @@ task extractModels(type: Copy) {
     fileMode  0644
     exclude '**/LICENSE'
 
-    dependsOn downloadFile
-}
-
-afterEvaluate {
-    // if models are not available, download & unzip them
     def needDownload = false
     for (f in models) {
         if (!(new File(project.ext.TMP_DIR + '/' + f)).exists()) {
@@ -57,8 +52,16 @@ afterEvaluate {
     }
 
     if (needDownload) {
-        assembleDebug.dependsOn extractModels
-        assembleRelease.dependsOn extractModels
+        dependsOn downloadFile
+    }
+}
+
+tasks.whenTaskAdded { task ->
+    if (task.name == 'assembleDebug') {
+        task.dependsOn 'extractModels'
+    }
+    if (task.name == 'assembleRelease') {
+        task.dependsOn 'extractModels'
     }
 }
 

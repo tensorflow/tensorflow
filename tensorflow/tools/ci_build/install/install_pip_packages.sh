@@ -35,6 +35,14 @@ pip3 install --upgrade six==1.10.0
 pip2 install --upgrade werkzeug==0.11.10
 pip3 install --upgrade werkzeug==0.11.10
 
+# Install bleach. html5lib will be picked up as a dependency.
+pip2 install --upgrade bleach==1.5.0
+pip3 install --upgrade bleach==1.5.0
+
+# Install markdown.
+pip2 install --upgrade markdown==2.6.8
+pip3 install --upgrade markdown==2.6.8
+
 # Install protobuf.
 pip2 install --upgrade protobuf==3.2.0
 pip3 install --upgrade protobuf==3.2.0
@@ -65,8 +73,8 @@ pip2 install py-cpuinfo
 pip3 install py-cpuinfo
 
 # pylint tests require the following:
-pip2 install pylint
-pip3 install pylint
+pip2 install pylint==1.6.4
+pip3 install pylint==1.6.4
 
 # pep8 tests require the following:
 pip2 install pep8
@@ -77,3 +85,6 @@ pip2 install mock
 
 pip2 install portpicker
 pip3 install portpicker
+
+pip2 install backports.weakref==1.0rc1
+pip3 install backports.weakref==1.0rc1

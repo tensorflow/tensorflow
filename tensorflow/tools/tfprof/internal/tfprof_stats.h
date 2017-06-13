@@ -35,8 +35,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_code.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_graph.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_node.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_op.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_scope.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_show.h"
@@ -54,26 +56,32 @@ class TFStats {
           std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader);
   ~TFStats() {}
 
-  // Prints the results to stdout. Also returns the printed output in
-  // a proto.
-  const TFProfNode& PrintGraph(const string& cmd, const Options& opts);
+  // Organize the TensorFlow model as different types of views, and generate
+  // outputs for profiling.
+  const TFGraphNodeProto& ShowGraphNode(const string& cmd, const Options& opts);
+  const TFMultiGraphNodeProto& ShowMultiGraphNode(const string& cmd,
+                                                  const Options& opts);
+
+  void ParseRunMeta(int64 step, std::unique_ptr<RunMetadata> run_meta);
+  void ParseOpLog(std::unique_ptr<OpLog> op_log);
 
  private:
+  bool Validate(const Options& opts);
+
   void ParseGraph();
 
-  void ParseOpLog();
-
-  void ParseRunMeta();
-
+  std::set<int64> steps_;
+  std::unique_ptr<GraphDef> graph_;
   std::unique_ptr<TFScope> scope_view_;
   std::unique_ptr<TFGraph> graph_view_;
-  std::unique_ptr<GraphDef> graph_;
-  std::unique_ptr<RunMetadata> run_meta_;
-  std::unique_ptr<OpLog> op_log_;
+  std::unique_ptr<TFCode> code_view_;
+  std::unique_ptr<TFOp> op_view_;
   std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader_;
-  // Store TFNode instead of TFNode* to avoid large number of dynamic alloc.
-  std::map<string, TFNode> nodes_map_;
-  TFProfNode empty_node_;
+  // Store TFGraphNode instead of TFGraphNode* to avoid large number of
+  // dynamic alloc.
+  std::map<string, std::unique_ptr<TFGraphNode>> nodes_map_;
+  TFGraphNodeProto empty_graph_node_;
+  TFMultiGraphNodeProto empty_multi_graph_node_;
 };
 
 }  // namespace tfprof

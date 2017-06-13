@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_WAV_WAV_IO_H_
 
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -41,6 +42,18 @@ namespace wav {
 Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
                              size_t num_channels, size_t num_frames,
                              string* wav_string);
+
+// Decodes the little-endian signed 16-bit PCM WAV file data (aka LIN16
+// encoding) into a float Tensor. The channels are encoded as the lowest
+// dimension of the tensor, with the number of frames as the second. This means
+// that a four frame stereo signal will have the shape [4, 2]. The sample rate
+// is read from the file header, and an error is returned if the format is not
+// supported.
+// The results are output as floats within the range -1 to 1,
+Status DecodeLin16WaveAsFloatVector(const string& wav_string,
+                                    std::vector<float>* float_values,
+                                    uint32* sample_count, uint16* channel_count,
+                                    uint32* sample_rate);
 
 }  // namespace wav
 }  // namespace tensorflow

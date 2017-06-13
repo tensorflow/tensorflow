@@ -54,7 +54,7 @@ class HloCostAnalysisTest : public ::testing::Test {
   HloCostAnalysisTest()
       : client_(ClientLibrary::LocalClientOrDie()),
         // Accessing service instance is required for the unit tests to enable
-        // whitebox acccesses to the user computation built from the client,
+        // whitebox accesses to the user computation built from the client,
         // as shown in the BuildHloGraph functions below.
         service_(static_cast<Service*>(ClientLibrary::GetXlaService(
             static_cast<LocalClient*>(client_)->platform()))),
@@ -127,7 +127,8 @@ class HloCostAnalysisTest : public ::testing::Test {
     VersionedComputationHandle versioned_handle =
         user_computation->GetVersionedHandle();
     return std::move(
-        computation_tracker_.BuildHloModule(versioned_handle).ValueOrDie());
+        computation_tracker_.BuildHloModule(versioned_handle, HloModuleConfig())
+            .ValueOrDie());
   }
 
   Client* client_;
@@ -373,6 +374,33 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
 
   EXPECT_EQ(fusion_analysis.flop_count(), 16);
   EXPECT_EQ(fusion_analysis.transcendental_count(), 4);
+}
+
+TEST_F(FusionCostAnalysis, NoLayout) {
+  Shape shape_with_layout = ShapeUtil::MakeShape(F32, {2, 3, 4, 5});
+  // Instructions within a fused op may have no layout.
+  Shape shape_without_layout = shape_with_layout;
+  shape_without_layout.clear_layout();
+
+  auto c1 = HloInstruction::CreateConstant(
+      LiteralUtil::CreateR4FromArray4D(Array4D<float>(2, 3, 4, 5)));
+  auto c2 =
+      HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1, 2, 3}));
+
+  auto broadcast =
+      HloInstruction::CreateBroadcast(shape_without_layout, c2.get(), {1});
+  auto add = HloInstruction::CreateBinary(shape_with_layout, HloOpcode::kAdd,
+                                          c1.get(), broadcast.get());
+
+  auto fusion = HloInstruction::CreateFusion(
+      shape_with_layout, HloInstruction::FusionKind::kLoop, add.get());
+  fusion->FuseInstruction(broadcast.get());
+
+  HloCostAnalysis fusion_analysis(ShapeSize);
+  ASSERT_IS_OK(fusion->Accept(&fusion_analysis));
+
+  EXPECT_EQ(fusion_analysis.flop_count(), 120);
+  EXPECT_EQ(fusion_analysis.transcendental_count(), 0);
 }
 
 TEST_F(HloCostAnalysisTest, TupleCost) {

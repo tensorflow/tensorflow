@@ -45,8 +45,8 @@ tf_cc_test(
         ":transform_utils",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -97,6 +97,7 @@ cc_library(
         "//tensorflow/core:tensorflow",
     ] + if_not_windows([
         "//tensorflow/core/kernels:quantized_ops",
+        "//tensorflow/core/kernels:remote_fused_graph_rewriter_transform",
         "//tensorflow/core/kernels/hexagon:hexagon_rewriter_transform",
     ]),
     alwayslink = 1,
@@ -216,6 +217,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 

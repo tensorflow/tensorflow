@@ -16,9 +16,9 @@
 """Distributed MNIST training and validation, with model replicas.
 
 A simple softmax model with one hidden layer is defined. The parameters
-(weights and biases) are located on two parameter servers (ps), while the
-ops are defined on a worker node. The TF sessions also run on the worker
-node.
+(weights and biases) are located on one parameter server (ps), while the ops
+are executed on two worker nodes by default. The TF sessions also run on the 
+worker node.
 Multiple invocations of this script can be done in parallel, with different
 values for --task_index. There should be exactly one invocation with
 --task_index, which will create a master session that carries out variable

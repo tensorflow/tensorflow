@@ -72,9 +72,6 @@ export class CameraDef {
  * array of visualizers and dispatches application events to them.
  */
 export class ScatterPlot {
-  private projectorEventContext: ProjectorEventContext;
-
-  private containerNode: HTMLElement;
   private visualizers: ScatterPlotVisualizer[] = [];
 
   private onCameraMoveListeners: OnCameraMoveListener[] = [];
@@ -102,9 +99,9 @@ export class ScatterPlot {
   private pointColors: Float32Array;
   private pointScaleFactors: Float32Array;
   private labels: LabelRenderParams;
-  private traceColors: {[trace: number]: Float32Array};
-  private traceOpacities: Float32Array;
-  private traceWidths: Float32Array;
+  private polylineColors: {[polylineIndex: number]: Float32Array};
+  private polylineOpacities: Float32Array;
+  private polylineWidths: Float32Array;
 
   private selecting = false;
   private nearestPoint: number;
@@ -113,17 +110,15 @@ export class ScatterPlot {
   private rectangleSelector: ScatterPlotRectangleSelector;
 
   constructor(
-      container: d3.Selection<any>,
-      projectorEventContext: ProjectorEventContext) {
-    this.containerNode = container.node() as HTMLElement;
-    this.projectorEventContext = projectorEventContext;
+      private container: HTMLElement,
+      private projectorEventContext: ProjectorEventContext) {
     this.getLayoutValues();
 
     this.scene = new THREE.Scene();
     this.renderer = new THREE.WebGLRenderer(
         {alpha: true, premultipliedAlpha: false, antialias: false});
     this.renderer.setClearColor(BACKGROUND_COLOR, 1);
-    this.containerNode.appendChild(this.renderer.domElement);
+    this.container.appendChild(this.renderer.domElement);
     this.light = new THREE.PointLight(0xFFECBF, 1, 0);
     this.scene.add(this.light);
 
@@ -132,18 +127,16 @@ export class ScatterPlot {
     this.renderer.render(this.scene, this.camera);
 
     this.rectangleSelector = new ScatterPlotRectangleSelector(
-        this.containerNode,
+        this.container,
         (boundingBox: BoundingBox) => this.selectBoundingBox(boundingBox));
     this.addInteractionListeners();
   }
 
   private addInteractionListeners() {
-    this.containerNode.addEventListener(
-        'mousemove', this.onMouseMove.bind(this));
-    this.containerNode.addEventListener(
-        'mousedown', this.onMouseDown.bind(this));
-    this.containerNode.addEventListener('mouseup', this.onMouseUp.bind(this));
-    this.containerNode.addEventListener('click', this.onClick.bind(this));
+    this.container.addEventListener('mousemove', this.onMouseMove.bind(this));
+    this.container.addEventListener('mousedown', this.onMouseDown.bind(this));
+    this.container.addEventListener('mouseup', this.onMouseUp.bind(this));
+    this.container.addEventListener('click', this.onClick.bind(this));
     window.addEventListener('keydown', this.onKeyDown.bind(this), false);
     window.addEventListener('keyup', this.onKeyUp.bind(this), false);
   }
@@ -356,7 +349,7 @@ export class ScatterPlot {
     // If shift is pressed, start selecting
     if (e.keyCode === SHIFT_KEY) {
       this.selecting = true;
-      this.containerNode.style.cursor = 'crosshair';
+      this.container.style.cursor = 'crosshair';
     }
   }
 
@@ -371,7 +364,7 @@ export class ScatterPlot {
     if (e.keyCode === SHIFT_KEY) {
       this.selecting = (this.getMouseMode() === MouseMode.AREA_SELECT);
       if (!this.selecting) {
-        this.containerNode.style.cursor = 'default';
+        this.container.style.cursor = 'default';
       }
       this.render();
     }
@@ -441,8 +434,8 @@ export class ScatterPlot {
   }
 
   private getLayoutValues(): Point2D {
-    this.width = this.containerNode.offsetWidth;
-    this.height = Math.max(1, this.containerNode.offsetHeight);
+    this.width = this.container.offsetWidth;
+    this.height = Math.max(1, this.container.offsetHeight);
     return [this.width, this.height];
   }
 
@@ -596,7 +589,8 @@ export class ScatterPlot {
         this.camera, cameraType, this.orbitCameraControls.target, this.width,
         this.height, cameraSpacePointExtents[0], cameraSpacePointExtents[1],
         this.backgroundColor, this.pointColors, this.pointScaleFactors,
-        this.labels, this.traceColors, this.traceOpacities, this.traceWidths);
+        this.labels, this.polylineColors, this.polylineOpacities,
+        this.polylineWidths);
 
     // Render first pass to picking target. This render fills pickingTexture
     // with colors that are actually point ids, so that sampling the texture at
@@ -622,10 +616,10 @@ export class ScatterPlot {
     this.mouseMode = mouseMode;
     if (mouseMode === MouseMode.AREA_SELECT) {
       this.selecting = true;
-      this.containerNode.style.cursor = 'crosshair';
+      this.container.style.cursor = 'crosshair';
     } else {
       this.selecting = false;
-      this.containerNode.style.cursor = 'default';
+      this.container.style.cursor = 'default';
     }
   }
 
@@ -644,17 +638,17 @@ export class ScatterPlot {
     this.labels = labels;
   }
 
-  /** Set the colors for every data trace. (RGB triplets) */
-  setTraceColors(colors: {[trace: number]: Float32Array}) {
-    this.traceColors = colors;
+  /** Set the colors for every data polyline. (RGB triplets) */
+  setPolylineColors(colors: {[polylineIndex: number]: Float32Array}) {
+    this.polylineColors = colors;
   }
 
-  setTraceOpacities(opacities: Float32Array) {
-    this.traceOpacities = opacities;
+  setPolylineOpacities(opacities: Float32Array) {
+    this.polylineOpacities = opacities;
   }
 
-  setTraceWidths(widths: Float32Array) {
-    this.traceWidths = widths;
+  setPolylineWidths(widths: Float32Array) {
+    this.polylineWidths = widths;
   }
 
   getMouseMode(): MouseMode {
@@ -667,9 +661,11 @@ export class ScatterPlot {
   }
 
   setDayNightMode(isNight: boolean) {
-    d3.select(this.containerNode)
-        .selectAll('canvas')
-        .style('filter', isNight ? 'invert(100%)' : null);
+    const canvases = this.container.querySelectorAll('canvas');
+    const filterValue = isNight ? 'invert(100%)' : null;
+    for (let i = 0; i < canvases.length; i++) {
+      canvases[i].style.filter = filterValue;
+    }
   }
 
   resize(render = true) {

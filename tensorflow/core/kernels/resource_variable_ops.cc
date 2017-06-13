@@ -39,10 +39,16 @@ class ReadVariableOp : public OpKernel {
  public:
   explicit ReadVariableOp(OpKernelConstruction* c) : OpKernel(c) {}
 
-  void Compute(OpKernelContext* ctx) {
+  void Compute(OpKernelContext* ctx) override {
     Var* variable = nullptr;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &variable));
+    ResourceHandle handle = HandleFromInput(ctx, 0);
+    OP_REQUIRES(
+        ctx, LookupResource(ctx, handle, &variable).ok(),
+        errors::NotFound("Attempted to read a nonexistent variable. "
+                         "This usually means that the variable was not "
+                         "initialized. Container: ",
+                         handle.container(), ", name: ", handle.name()));
+
     core::ScopedUnref s(variable);
     // TODO(apassos): It's possible to do copy-on-write here instead of always
     // copying by coordinating with the writing code. Do this. This will also
@@ -142,7 +148,7 @@ REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
 template <typename Device, typename T>
 class AssignVariableOp : public OpKernel {
  public:
-  AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
+  explicit AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
   }
 

@@ -40,10 +40,11 @@ Status ComputeTheoreticalJacobianTranspose(
     const std::vector<Tensor>& x_datas, const OutputList& ys,
     const std::vector<TensorShape>& y_shapes,
     std::vector<Tensor>& jacobian_ts) {
-  int y_num = y_shapes.size();
-  int x_num = x_shapes.size();
+  size_t y_num = y_shapes.size();
+  size_t x_num = x_shapes.size();
   // Call AddSymbolicGradients to get 'dxs' (we will feed 'dys').
   OutputList dys;
+  dys.reserve(y_shapes.size());
   for (const auto& y_shape : y_shapes) {
     // TODO(suharshs): This currently assumes that all x's are the same type.
     dys.push_back(Cast(scope, Const(scope, 1.0, y_shape), xs[0].type()));
@@ -130,8 +131,8 @@ Status ComputeNumericJacobianTranspose(const Scope& scope, const OutputList& xs,
                                        const T delta,
                                        std::vector<Tensor>& x_datas,
                                        std::vector<Tensor>& jacobian_ts) {
-  int y_num = y_shapes.size();
-  int x_num = x_shapes.size();
+  size_t y_num = y_shapes.size();
+  size_t x_num = x_shapes.size();
 
   ClientSession session(scope);
   for (int x_idx = 0; x_idx < x_num; x_idx++) {
@@ -176,8 +177,8 @@ void InitJacobians(const OutputList& xs,
                    const std::vector<TensorShape>& x_shapes,
                    const std::vector<TensorShape>& y_shapes,
                    std::vector<Tensor>& jacobians) {
-  int y_num = y_shapes.size();
-  int x_num = x_shapes.size();
+  size_t y_num = y_shapes.size();
+  size_t x_num = x_shapes.size();
 
   jacobians.resize(y_num * x_num);
   for (int x_idx = 0; x_idx < x_num; x_idx++) {

@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import contextlib
 import copy
 import linecache
 import re
@@ -32,11 +31,11 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
-from tensorflow.core.framework import tensor_shape_pb2
-from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
+from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import registry
 from tensorflow.python.framework import tensor_shape
@@ -44,6 +43,25 @@ from tensorflow.python.framework import versions
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import tf_contextlib
+
+
+# Temporary global switch determining if we should enable the work-in-progress
+# calls to the C API. Currently disabled by default but can be manually enabled
+# e.g. in tests. This will be removed once all functionality is supported and
+# there's no performance penalty with it enabled.
+#
+# TODO(skyewm) before we can remove this:
+# - functions
+# - import_graph_def() incrementally adds inputs to ops (i.e. creates an
+#   Operation and then calls _add_input()). The current code requires that all
+#   inputs be specified when creating the Operation (since we call
+#   TF_FinishOperation()).
+# - ops_test.py (and others?) create unregistered op types
+# - while loop
+# - performance (e.g. delete/refactor redundant Python functionality, switch to
+#   new session API)
+_USE_C_API = False
 
 
 def _override_helper(clazz_object, operator, func):
@@ -68,60 +86,6 @@ def _override_helper(clazz_object, operator, func):
   if operator not in Tensor.OVERLOADABLE_OPERATORS:
     raise ValueError("Overriding %s is disallowed" % operator)
   setattr(clazz_object, operator, func)
-
-
-def _convert_stack(stack):
-  """Converts a stack extracted using _extract_stack() to a traceback stack.
-
-  Args:
-    stack: A list of n 4-tuples, (filename, lineno, name, frame_globals).
-
-  Returns:
-    A list of n 4-tuples (filename, lineno, name, code), where the code tuple
-    element is calculated from the corresponding elements of the input tuple.
-  """
-  ret = []
-  for filename, lineno, name, frame_globals in stack:
-    linecache.checkcache(filename)
-    line = linecache.getline(filename, lineno, frame_globals)
-    if line:
-      line = line.strip()
-    else:
-      line = None
-    ret.append((filename, lineno, name, line))
-  return ret
-
-
-# pylint: disable=line-too-long
-def _extract_stack():
-  """A lightweight re-implementation of traceback.extract_stack.
-
-  NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
-    each stack frame using linecache, which results in an abundance of stat()
-    calls. This implementation does not retrieve the code, and any consumer
-    should apply _convert_stack to the result to obtain a traceback that can
-    be formatted etc. using traceback methods.
-
-  Returns:
-    A list of 4-tuples (filename, lineno, name, frame_globals) corresponding to
-    the call stack of the current thread.
-  """
-  # pylint: enable=line-too-long
-  try:
-    raise ZeroDivisionError
-  except ZeroDivisionError:
-    f = sys.exc_info()[2].tb_frame.f_back
-  ret = []
-  while f is not None:
-    lineno = f.f_lineno
-    co = f.f_code
-    filename = co.co_filename
-    name = co.co_name
-    frame_globals = f.f_globals
-    ret.append((filename, lineno, name, frame_globals))
-    f = f.f_back
-  ret.reverse()
-  return ret
 
 
 def _as_graph_element(obj):
@@ -293,8 +257,8 @@ class Tensor(_TensorLike):
     self._consumers = []
 
     # Attributes used for C++ shape inference. Not inspected, only forwarded.
-    self._handle_shape = tensor_shape_pb2.TensorShapeProto()
-    self._handle_dtype = types_pb2.DT_INVALID
+    # If set, will be a HandleData object from cpp_shape_inference.proto.
+    self._handle_data = None
 
   @property
   def op(self):
@@ -456,6 +420,13 @@ class Tensor(_TensorLike):
       return self._op.name
     else:
       return "%s:%d" % (self._op.name, self._value_index)
+
+  def _as_tf_output(self):
+    assert self.op._c_op  # pylint: disable=protected-access
+    tf_output = c_api.TF_Output()
+    tf_output.oper = self.op._c_op  # pylint: disable=protected-access
+    tf_output.index = self.value_index
+    return tf_output
 
   def __str__(self):
     return "Tensor(\"%s\"%s%s%s)" % (
@@ -1206,7 +1177,11 @@ class Operation(object):
     else:
       if not all(x.is_compatible_with(i.dtype)
                  for i, x in zip(self._inputs, input_types)):
-        raise TypeError("Inputs are not compatible with input types")
+        raise TypeError("In op '%s', input types (%s) are not compatible "
+                        "with expected types (%s)" % (
+                            self.node_def.name,
+                            [i.dtype for i in self._inputs],
+                            input_types))
     self._input_types = input_types
 
     # Build the list of control inputs.
@@ -1225,7 +1200,7 @@ class Operation(object):
 
     self._original_op = original_op
     self._op_def = op_def
-    self._traceback = _extract_stack()
+    self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
     # Add this op to the current control flow context:
     self._control_flow_context = g._get_control_flow_context()
     if self._control_flow_context is not None:
@@ -1237,6 +1212,103 @@ class Operation(object):
     # created.
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._recompute_node_def()
+
+    if _USE_C_API:
+      assert self._graph._c_graph, (  # pylint: disable=protected-access
+          "_USE_C_API set to False when creating Graph, you may need to "
+          "manually set 'ops._USE_C_API = True' before creating the Graph")
+      if self._op_def:
+        # TODO(skyewm): op_def_library.apply_op() flattens the incoming
+        # inputs. Refactor so we don't have to do this here.
+        grouped_inputs = self._reconstruct_sequence_inputs(
+            self._op_def, self._inputs, self._node_def.attr)
+      else:
+        # If no OpDef is specified, assume all inputs are scalar.
+        grouped_inputs = self._inputs
+
+      self._c_op = self._create_c_op(self._graph, self._node_def,
+                                     grouped_inputs, self._control_inputs)
+    else:
+      self._c_op = None
+
+  def _create_c_op(self, graph, node_def, inputs, control_inputs):
+    """Creates a TF_Operation.
+
+    Arguments:
+      graph: a `Graph`.
+      node_def: `node_def_pb2.NodeDef` for the operation to create.
+      inputs: A list of `Tensor`s (corresponding to scalar inputs) and lists of
+        `Tensor`s (corresponding to sequence inputs, e.g. "int64 * N",
+        "list(int64)"). The length of the list should be equal to the number of
+        inputs specified by this operation's op def.
+      control_inputs: A list of `Operation`s to set as control dependencies.
+
+    Returns:
+      A wrapped TF_Operation*.
+    """
+    # pylint: disable=protected-access
+    op_desc = c_api.TF_NewOperation(graph._c_graph, compat.as_str(node_def.op),
+                                    compat.as_str(node_def.name))
+    # Add inputs
+    for op_input in inputs:
+      if isinstance(op_input, (list, tuple)):
+        c_api.TF_AddInputList(op_desc, [t._as_tf_output() for t in op_input])
+      else:
+        c_api.TF_AddInput(op_desc, op_input._as_tf_output())
+
+    # Add control inputs
+    for control_input in control_inputs:
+      c_api.TF_AddControlInput(op_desc, control_input._c_op)
+    # pylint: enable=protected-access
+
+    # Add attrs
+    for name, attr_value in node_def.attr.items():
+      serialized = attr_value.SerializeToString()
+      # TODO(skyewm): this creates and deletes a new TF_Status for every attr.
+      # It might be worth creating a convenient way to re-use the same status.
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.TF_SetAttrValueProto(op_desc, compat.as_str(name), serialized,
+                                   status)
+
+    with errors.raise_exception_on_not_ok_status() as status:
+      c_op = c_api.TF_FinishOperation(op_desc, status)
+
+    return c_op
+
+  def _reconstruct_sequence_inputs(self, op_def, inputs, attrs):
+    """Regroups a flat list of input tensors into scalar and sequence inputs.
+
+    Arguments:
+      op_def: The `op_def_pb2.OpDef` (for knowing the input types)
+      inputs: a list of input `Tensor`s to the op.
+      attrs: mapping from attr name to `attr_value_pb2.AttrValue` (these define
+        how long each sequence is)
+
+    Returns:
+      A list of `Tensor`s (corresponding to scalar inputs) and lists of
+      `Tensor`s (corresponding to sequence inputs).
+    """
+    grouped_inputs = []
+    i = 0
+    for input_arg in op_def.input_arg:
+      if input_arg.number_attr:
+        input_len = attrs[input_arg.number_attr].i
+        is_sequence = True
+      elif input_arg.type_list_attr:
+        input_len = len(attrs[input_arg.type_list_attr].list.type)
+        is_sequence = True
+      else:
+        input_len = 1
+        is_sequence = False
+
+      if is_sequence:
+        grouped_inputs.append(inputs[i:i + input_len])
+      else:
+        grouped_inputs.append(inputs[i])
+      i += input_len
+
+    assert i == len(inputs)
+    return grouped_inputs
 
   def colocation_groups(self):
     """Returns the list of colocation groups of the op."""
@@ -1302,6 +1374,7 @@ class Operation(object):
     Args:
       device: string or device..  The device to set.
     """
+    assert not _USE_C_API, "Operation._set_device doesn't work with C API"
     self._node_def.device = _device_string(device)
 
   def _add_input(self, tensor, dtype=None):
@@ -1476,6 +1549,7 @@ class Operation(object):
 
   @property
   def node_def(self):
+    # pylint: disable=line-too-long
     """Returns a serialized `NodeDef` representation of this operation.
 
     Returns:
@@ -1483,10 +1557,12 @@ class Operation(object):
       [`NodeDef`](https://www.tensorflow.org/code/tensorflow/core/framework/node_def.proto)
       protocol buffer.
     """
+    # pylint: enable=line-too-long
     return self._node_def
 
   @property
   def op_def(self):
+    # pylint: disable=line-too-long
     """Returns the `OpDef` proto that represents the type of this op.
 
     Returns:
@@ -1494,12 +1570,23 @@ class Operation(object):
       [`OpDef`](https://www.tensorflow.org/code/tensorflow/core/framework/op_def.proto)
       protocol buffer.
     """
+    # pylint: enable=line-too-long
     return self._op_def
 
   @property
   def traceback(self):
     """Returns the call stack from when this operation was constructed."""
-    return _convert_stack(self._traceback)
+    return self._graph._convert_stack(self._traceback)  # pylint: disable=protected-access
+
+  @property
+  def traceback_with_start_lines(self):
+    """Same as traceback but includes start line of function definition.
+
+    Returns:
+      A list of 5-tuples (filename, lineno, name, code, func_start_lineno).
+    """
+    return self._graph._convert_stack(  # pylint: disable=protected-access
+        self._traceback, include_func_start_lineno=True)
 
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
@@ -1524,12 +1611,18 @@ class Operation(object):
     if x.HasField("list"):
       for f in fields:
         if getattr(x.list, f):
-          return list(getattr(x.list, f))
+          if f == "type":
+            return [dtypes.as_dtype(x) for x in list(getattr(x.list, f))]
+          else:
+            return list(getattr(x.list, f))
       return []
     else:
       for f in fields:
         if x.HasField(f):
-          return getattr(x, f)
+          if f == "type":
+            return dtypes.as_dtype(getattr(x, f))
+          else:
+            return getattr(x, f)
       assert False, "Unsupported field type in " + str(x)
 
   def run(self, feed_dict=None, session=None):
@@ -1724,12 +1817,10 @@ def set_shapes_for_outputs(op):
     # Returned by call_cpp_shape_fn
     shapes_dict = shapes
     shapes = shapes_dict["shapes"]
-    handle_shapes = shapes_dict["handle_shapes"]
-    handle_dtypes = shapes_dict["handle_dtypes"]
-    for output, handle_shape, handle_dtype in zip(op.outputs, handle_shapes, handle_dtypes):
+    handle_datas = shapes_dict["handle_data"]
+    for output, handle_data in zip(op.outputs, handle_datas):
       # pylint: disable=protected-access
-      output._handle_shape = handle_shape
-      output._handle_dtype = handle_dtype
+      output._handle_data = handle_data
       # pylint: enable=protected-access
 
   if len(op.outputs) != len(shapes):
@@ -1888,6 +1979,18 @@ def _name_from_scope_name(name):
   return name[:-1] if name[-1] == "/" else name
 
 
+class _ScopedTF_Graph(object):
+
+  def __init__(self):
+    self.graph = c_api.TF_NewGraph()
+
+  def __del__(self):
+    # Note: when we're destructing the global context (i.e when the process is
+    # terminating) we can have already deleted other modules.
+    if c_api.TF_DeleteGraph is not None:
+      c_api.TF_DeleteGraph(self.graph)
+
+
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
@@ -2001,6 +2104,83 @@ class Graph(object):
     self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
 
+    # TODO(skyewm): fold as much of the above as possible into the C
+    # implementation
+    if _USE_C_API:
+      self._scoped_c_graph = _ScopedTF_Graph()
+    else:
+      self._scoped_c_graph = None
+
+  def _convert_stack(self, stack, include_func_start_lineno=False):
+    """Converts a stack extracted using _extract_stack() to a traceback stack.
+
+    Args:
+      stack: A list of n 5-tuples,
+        (filename, lineno, name, frame_globals, func_start_lineno).
+      include_func_start_lineno: True if function start line number should be
+        included as the 5th entry in return tuples.
+
+    Returns:
+      A list of n 4-tuples or 5-tuples
+      (filename, lineno, name, code, [optional: func_start_lineno]), where the
+      code tuple element is calculated from the corresponding elements of the
+      input tuple.
+    """
+    ret = []
+    for (filename, lineno, name, frame_globals, func_start_lineno,
+         unused_frame_info) in stack:
+      linecache.checkcache(filename)
+      line = linecache.getline(filename, lineno, frame_globals)
+      if line:
+        line = line.strip()
+      else:
+        line = None
+      if include_func_start_lineno:
+        ret.append((filename, lineno, name, line, func_start_lineno))
+      else:
+        ret.append((filename, lineno, name, line))
+    return ret
+
+  def _extract_stack(self):
+    """A lightweight, extensible re-implementation of traceback.extract_stack.
+
+    NOTE(mrry): traceback.extract_stack eagerly retrieves the line of code for
+      each stack frame using linecache, which results in an abundance of stat()
+      calls. This implementation does not retrieve the code, and any consumer
+      should apply _convert_stack to the result to obtain a traceback that can
+      be formatted etc. using traceback methods.
+
+    Derived classes can implement _extract_frame_info() to add extra information
+    to the traceback.
+
+    Returns:
+      A list of 6-tuples
+      (filename, lineno, name, frame_globals, func_start_lineno, custom_info)
+      corresponding to the call stack of the current thread.
+    """
+    try:
+      raise ZeroDivisionError
+    except ZeroDivisionError:
+      f = sys.exc_info()[2].tb_frame.f_back
+    ret = []
+    while f is not None:
+      lineno = f.f_lineno
+      co = f.f_code
+      filename = co.co_filename
+      name = co.co_name
+      frame_globals = f.f_globals
+      func_start_lineno = co.co_firstlineno
+      frame_info = self._extract_frame_info(f)
+      ret.append((filename, lineno, name, frame_globals, func_start_lineno,
+                  frame_info))
+      f = f.f_back
+    ret.reverse()
+    return ret
+
+  def _extract_frame_info(self, frame):  # pylint: disable=unused-argument
+    """Extracts custom information from a frame in an op traceback."""
+    return None
+
   def _check_not_finalized(self):
     """Check if the graph is finalized.
 
@@ -2037,6 +2217,12 @@ class Graph(object):
       # pylint: enable=protected-access
 
   @property
+  def _c_graph(self):
+    if self._scoped_c_graph:
+      return self._scoped_c_graph.graph
+    return None
+
+  @property
   def version(self):
     """Returns a version number that increases as ops are added to the graph.
 
@@ -2051,6 +2237,7 @@ class Graph(object):
 
   @property
   def graph_def_versions(self):
+    # pylint: disable=line-too-long
     """The GraphDef version information of this graph.
 
     For details on the meaning of each version, see
@@ -2059,6 +2246,7 @@ class Graph(object):
     Returns:
       A `VersionDef`.
     """
+    # pylint: enable=line-too-long
     return self._graph_def_versions
 
   @property
@@ -2112,6 +2300,7 @@ class Graph(object):
     self._control_flow_context = context
 
   def _as_graph_def(self, from_version=None, add_shapes=False):
+    # pylint: disable=line-too-long
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
@@ -2137,6 +2326,7 @@ class Graph(object):
       ValueError: If the `graph_def` would be too large.
 
     """
+    # pylint: enable=line-too-long
     with self._lock:
       graph = graph_pb2.GraphDef()
       graph.versions.CopyFrom(self._graph_def_versions)
@@ -2166,6 +2356,7 @@ class Graph(object):
       return graph, self._version
 
   def as_graph_def(self, from_version=None, add_shapes=False):
+    # pylint: disable=line-too-long
     """Returns a serialized `GraphDef` representation of this graph.
 
     The serialized `GraphDef` can be imported into another `Graph`
@@ -2188,6 +2379,7 @@ class Graph(object):
     Raises:
       ValueError: If the `graph_def` would be too large.
     """
+    # pylint: enable=line-too-long
     result, _ = self._as_graph_def(from_version, add_shapes)
     return result
 
@@ -2608,6 +2800,11 @@ class Graph(object):
     """
     return _default_graph_stack.get_controller(self)
 
+  @property
+  def collections(self):
+    """Returns the names of the collections known to this graph."""
+    return list(self._collections)
+
   def add_to_collection(self, name, value):
     """Stores `value` in the collection with the given `name`.
 
@@ -2682,11 +2879,11 @@ class Graph(object):
     Args:
       name: The key for the collection. For example, the `GraphKeys` class
         contains many standard names for collections.
-      scope: (Optional.) If supplied, the resulting list is filtered to include
-        only items whose `name` attribute matches using `re.match`. Items
-        without a `name` attribute are never returned if a scope is supplied and
-        the choice or `re.match` means that a `scope` without special tokens
-        filters by prefix.
+      scope: (Optional.) A string. If supplied, the resulting list is filtered
+        to include only items whose `name` attribute matches `scope` using
+        `re.match`. Items without a `name` attribute are never returned if a
+        scope is supplied. The choice of `re.match` means that a `scope` without
+        special tokens filters by prefix.
 
     Returns:
       The list of values in the collection with the given `name`, or
@@ -2725,7 +2922,7 @@ class Graph(object):
       if name in self._collections:
         del self._collections[name]
 
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def _original_op(self, op):
     """Python 'with' handler to help annotate ops with their originator.
 
@@ -2750,8 +2947,8 @@ class Graph(object):
     finally:
       self._default_original_op = old_original_op
 
-  # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  # pylint: disable=g-doc-return-or-yield,line-too-long
+  @tf_contextlib.contextmanager
   def name_scope(self, name):
     r"""Returns a context manager that creates hierarchical names for operations.
 
@@ -2860,7 +3057,7 @@ class Graph(object):
       yield "" if new_stack is None else new_stack + "/"
     finally:
       self._name_stack = old_stack
-  # pylint: enable=g-doc-return-or-yield
+  # pylint: enable=g-doc-return-or-yield,line-too-long
 
   def unique_name(self, name, mark_as_used=True):
     """Return a unique operation name for `name`.
@@ -2907,7 +3104,24 @@ class Graph(object):
         self._names_in_use[name] = 1
     return name
 
-  @contextlib.contextmanager
+  def get_name_scope(self):
+    """Returns the current name scope.
+
+    For example:
+
+    ```python
+    with tf.name_scope('scope1'):
+      with tf.name_scope('scope2'):
+        print(tf.get_default_graph().get_name_scope())
+    ```
+    would print the string `scope1/scope2`.
+
+    Returns:
+      A string representing the current name scope.
+    """
+    return self._name_stack
+
+  @tf_contextlib.contextmanager
   def colocate_with(self, op, ignore_existing=False):
     """Returns a context manager that specifies an op to colocate with.
 
@@ -2982,8 +3196,9 @@ class Graph(object):
       if ignore_existing:
         self._colocation_stack = current_stack
 
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def device(self, device_name_or_function):
+    # pylint: disable=line-too-long
     """Returns a context manager that specifies the default device to use.
 
     The `device_name_or_function` argument may either be a device name
@@ -3040,6 +3255,7 @@ class Graph(object):
       created ops.
 
     """
+    # pylint: enable=line-too-long
     if (device_name_or_function is not None
         and not callable(device_name_or_function)):
       device_function = pydev.merge_device(device_name_or_function)
@@ -3064,7 +3280,7 @@ class Graph(object):
       op._set_device(device_function(op))
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def container(self, container_name):
     """Returns a context manager that specifies the resource container to use.
 
@@ -3332,7 +3548,7 @@ class Graph(object):
     return self._ControlDependenciesController(self, control_ops)
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def _attr_scope(self, attr_map):
     """EXPERIMENTAL: A context manager for setting attributes on operators.
 
@@ -3397,7 +3613,7 @@ class Graph(object):
   # pylint: enable=g-doc-return-or-yield
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def _kernel_label_map(self, op_to_kernel_label_map):
     """EXPERIMENTAL: A context manager for setting kernel labels.
 
@@ -3459,7 +3675,7 @@ class Graph(object):
   # pylint: enable=g-doc-return-or-yield
 
   # pylint: disable=g-doc-return-or-yield
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def gradient_override_map(self, op_type_map):
     """EXPERIMENTAL: A context manager for overriding gradient functions.
 
@@ -3617,7 +3833,7 @@ class _DefaultStack(threading.local):
   def enforce_nesting(self, value):
     self._enforce_nesting = value
 
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def get_controller(self, default):
     """A context manager for manipulating a default stack."""
     try:
@@ -3960,9 +4176,13 @@ class GraphKeys(object):
     for more details.
   * `REGULARIZATION_LOSSES`: regularization losses collected during graph
     construction.
-  * `WEIGHTS`: weights inside neural network layers
-  * `BIASES`: biases inside neural network layers
-  * `ACTIVATIONS`: activations of neural network layers
+
+  The following standard keys are _defined_, but their collections are **not**
+  automatically populated as many of the others are:
+
+  * `WEIGHTS`
+  * `BIASES`
+  * `ACTIVATIONS`
   """
 
   # Key to collect Variable objects that are global (shared across machines).
@@ -4120,7 +4340,7 @@ def get_all_collection_keys():
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def name_scope(name, default_name=None, values=None):
   """Returns a context manager for use when defining a Python op.
 
@@ -4182,10 +4402,15 @@ def strip_name_scope(name, export_scope):
     is None.
   """
   if export_scope:
-    # Strips export_scope/, export_scope///,
-    # ^export_scope/, loc:@export_scope/.
-    str_to_replace = r"([\^]|loc:@|^)" + export_scope + r"[\/]+(.*)"
-    return re.sub(str_to_replace, r"\1\2", compat.as_str(name), count=1)
+    try:
+      # Strips export_scope/, export_scope///,
+      # ^export_scope/, loc:@export_scope/.
+      str_to_replace = r"([\^]|loc:@|^)" + export_scope + r"[\/]+(.*)"
+      return re.sub(str_to_replace, r"\1\2", compat.as_str(name), count=1)
+    except TypeError as e:
+      # If the name is not of a type we can process, simply return it.
+      logging.warning(e)
+      return name
   else:
     return name
 
@@ -4202,15 +4427,20 @@ def prepend_name_scope(name, import_scope):
     is None.
   """
   if import_scope:
-    str_to_replace = r"([\^]|loc:@|^)(.*)"
-    return re.sub(str_to_replace, r"\1" + import_scope + r"/\2",
-                  compat.as_str(name))
+    try:
+      str_to_replace = r"([\^]|loc:@|^)(.*)"
+      return re.sub(str_to_replace, r"\1" + import_scope + r"/\2",
+                    compat.as_str(name))
+    except TypeError as e:
+      # If the name is not of a type we can process, simply return it.
+      logging.warning(e)
+      return name
   else:
     return name
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def op_scope(values, name, default_name=None):
   """DEPRECATED. Same as name_scope above, just different argument order."""
   logging.warn("tf.op_scope(values, name, default_name) is deprecated,"

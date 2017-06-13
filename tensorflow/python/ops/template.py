@@ -261,20 +261,23 @@ class Template(object):
           return self._call_func(args, kwargs, check_for_new_variables=True)
       else:
         # This is the first visit to __call__, but the scope has already been
-        # created in the constructor. Set _variables_created so that subsequent
-        # calls take the if branch above.
-        self._variables_created = True
+        # created in the constructor. Set _variables_created after the inner
+        # function is successfully called so that subsequent calls take the if
+        # branch above.
         with variable_scope.variable_scope(self._variable_scope):
-          return self._call_func(args, kwargs, check_for_new_variables=False)
+          result = self._call_func(args, kwargs, check_for_new_variables=False)
+          self._variables_created = True
+          return result
     else:
       # The scope was not created at construction time, so create it here.
       # Subsequent calls should reuse variables.
-      self._variables_created = True
       with variable_scope.variable_scope(
           self._unique_name, self._name,
           custom_getter=self._custom_getter) as vs:
         self._variable_scope = vs
-        return self._call_func(args, kwargs, check_for_new_variables=False)
+        result = self._call_func(args, kwargs, check_for_new_variables=False)
+        self._variables_created = True
+        return result
 
   @property
   def variable_scope(self):

@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -99,13 +100,6 @@ class TransferManager {
   // region for a host-to-device transfer.
   virtual int64 GetByteSizeRequirement(const Shape& shape) = 0;
 
-  // Returns whether tuple elements are distinct buffers (in which case each of
-  // the elements of a tuple should be deallocated, in addition to the tuple's
-  // buffer itself).
-  //
-  // TODO(b/36256956) Ideally tuple elements could always be distinct buffers.
-  virtual bool TupleElementsAreDistinctBuffers() const { return true; }
-
   // Transfer a memory block of the given size from the device source into the
   // 'destination' buffer.
   //
@@ -123,7 +117,7 @@ class TransferManager {
       perftools::gputools::StreamExecutor* executor, int64 size,
       const void* source, perftools::gputools::DeviceMemoryBase* destination);
 
-  typedef TransferManager* (*TransferManagerCreationFunction)();
+  typedef std::unique_ptr<TransferManager> (*TransferManagerCreationFunction)();
 
   /////
   // The TransferManager class also serves as a point to register objects for
@@ -153,7 +147,7 @@ class TransferManager {
   // set up creation_function, and then we use that to lazily create
   // "manager" the first time GetForPlatform is invoked for a particular id.
   struct State {
-    TransferManager* manager = nullptr;
+    std::unique_ptr<TransferManager> manager;
     TransferManagerCreationFunction creation_function = nullptr;
   };
 

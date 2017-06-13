@@ -2,6 +2,17 @@ syntax = "proto2";
 
 package tensorflow.tfprof;
 
+// It specifies the Python callstack that creates an op.
+message CodeDef {
+  repeated Trace traces = 1;
+  message Trace {
+    optional string file = 1;
+    optional int32 lineno = 2;
+    optional string function = 3;
+    optional string line = 4;
+  }
+}
+
 message OpLogEntry {
   // op name.
   optional string name = 1;
@@ -12,6 +23,8 @@ message OpLogEntry {
   // User can define extra op type information for an op. This allows the user
   // to select a group of ops precisely using op_type as a key.
   repeated string types = 3;
+  // Used to support tfprof "code" view.
+  optional CodeDef code_def = 4;
 }
 
 message OpLog {

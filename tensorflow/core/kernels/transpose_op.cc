@@ -89,7 +89,7 @@ REGISTER_KERNEL_BUILDER(Name("InvertPermutation")
                             .HostMemory("x")
                             .HostMemory("y"),
                         InvertPermutationOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // output = TransposeOp(T<any> input, T<int32> perm) takes a tensor
 // of type T and rank N, and a permutation of 0, 1, ..., N-1. It
@@ -115,11 +115,6 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
                                       perm.shape().DebugString()));
   auto Vperm = perm.vec<int32>();
   const int dims = input.dims();
-  static const int kMinDims = 0;
-  static const int kMaxDims = 10;
-  OP_REQUIRES(ctx, kMinDims <= dims && dims <= kMaxDims,
-              errors::Unimplemented("Transposing a tensor of rank ", dims,
-                                    " is not implemented."));
   OP_REQUIRES(ctx, dims == Vperm.size(),
               errors::InvalidArgument(
                   "transpose expects a vector of size ", input.dims(),
@@ -134,7 +129,6 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   // Check whether permutation is a permutation of integers of [0 .. dims).
   gtl::InlinedVector<bool, 8> bits(dims);
   bool is_identity = true;
-  int32 non_singleton_dims = 0;
   for (int i = 0; i < dims; ++i) {
     const int32 d = permutation[i];
     OP_REQUIRES(
@@ -143,7 +137,6 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
     bits[d] = true;
     const auto dim_size = input.dim_size(d);
     shape.AddDim(dim_size);
-    non_singleton_dims += dim_size != 1 ? 1 : 0;
     if (d != i) {
       is_identity = false;
     }
@@ -158,7 +151,8 @@ void TransposeOp::Compute(OpKernelContext* ctx) {
   if (dims <= 1 || is_identity) {
     ctx->set_output(0, input);
     return;
-  } else if (non_singleton_dims <= 1) {
+  } else if (internal::NonSingletonDimensionsAlign(input.shape(),
+                                                   permutation)) {
     Tensor output;
     OP_REQUIRES(ctx, output.CopyFrom(input, shape),
                 errors::Unknown("Error reshaping Tensor."));

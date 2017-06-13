@@ -30,6 +30,7 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
                sess,
                grpc_debug_server_addresses,
                watch_fn=None,
+               thread_name_filter=None,
                log_usage=True):
     """Constructor of DumpingDebugWrapperSession.
 
@@ -43,6 +44,9 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       watch_fn: (`Callable`) A Callable that can be used to define per-run
         debug ops and watched tensors. See the doc of
         `NonInteractiveDebugWrapperSession.__init__()` for details.
+      thread_name_filter: Regular-expression white list for threads on which the
+        wrapper session will be active. See doc of `BaseDebugWrapperSession` for
+        more details.
       log_usage: (`bool`) whether the usage of this class is to be logged.
 
     Raises:
@@ -54,7 +58,7 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
       pass  # No logging for open-source.
 
     framework.NonInteractiveDebugWrapperSession.__init__(
-        self, sess, watch_fn=watch_fn)
+        self, sess, watch_fn=watch_fn, thread_name_filter=thread_name_filter)
 
     if isinstance(grpc_debug_server_addresses, str):
       self._grpc_debug_server_urls = [

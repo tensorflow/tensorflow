@@ -22,7 +22,6 @@ from tensorflow.contrib.linalg.python.ops import linear_operator
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 
 __all__ = ["LinearOperatorFullMatrix"]
@@ -48,11 +47,11 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   operator.shape
   ==> [2, 2]
 
-  operator.log_determinant()
+  operator.log_abs_determinant()
   ==> scalar Tensor
 
   x = ... Shape [2, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 4 linear operators.
@@ -63,7 +62,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   #### Shape compatibility
 
   This operator acts on [batch] matrix with compatible shape.
-  `x` is a batch matrix with compatible shape for `apply` and `solve` if
+  `x` is a batch matrix with compatible shape for `matmul` and `solve` if
 
   ```
   operator.shape = [B1,...,Bb] + [M, N],  with b >= 0
@@ -82,7 +81,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   In all cases, suppose `operator` is a `LinearOperatorFullMatrix` of shape
   `[M, N]`, and `x.shape = [N, R]`.  Then
 
-  * `operator.apply(x)` is `O(M * N * R)`.
+  * `operator.matmul(x)` is `O(M * N * R)`.
   * If `M=N`, `operator.solve(x)` is `O(N^3 * R)`.
   * If `M=N`, `operator.determinant()` is `O(N^3)`.
 
@@ -92,7 +91,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   #### Matrix property hints
 
   This `LinearOperator` is initialized with boolean flags of the form `is_X`,
-  for `X = non_singular, self_adjoint, positive_definite`.
+  for `X = non_singular, self_adjoint, positive_definite, square`.
   These have the following meaning
   * If `is_X == True`, callers should expect the operator to have the
     property `X`.  This is a promise that should be fulfilled, but is *not* a
@@ -108,8 +107,9 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
+               is_square=None,
                name="LinearOperatorFullMatrix"):
-    """Initialize a `LinearOperatorFullMatrix`.
+    r"""Initialize a `LinearOperatorFullMatrix`.
 
     Args:
       matrix:  Shape `[B1,...,Bb, M, N]` with `b >= 0`, `M, N >= 0`.
@@ -118,10 +118,12 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
       is_positive_definite:  Expect that this operator is positive definite,
-        meaning the real part of all eigenvalues is positive.  We do not require
-        the operator to be self-adjoint to be positive-definite.  See:
-        https://en.wikipedia.org/wiki/Positive-definite_matrix
+        meaning the quadratic form `x^H A x` has positive real part for all
+        nonzero `x`.  Note that we do not require the operator to be
+        self-adjoint to be positive-definite.  See:
+        https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
+      is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 
     Raises:
@@ -132,19 +134,13 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
       self._matrix = ops.convert_to_tensor(matrix, name="matrix")
       self._check_matrix(self._matrix)
 
-      # Special treatment for (real) Symmetric Positive Definite.
-      self._is_spd = (
-          (not self._matrix.dtype.is_complex)
-          and is_self_adjoint and is_positive_definite)
-      if self._is_spd:
-        self._chol = linalg_ops.cholesky(self._matrix)
-
       super(LinearOperatorFullMatrix, self).__init__(
           dtype=self._matrix.dtype,
           graph_parents=[self._matrix],
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
+          is_square=is_square,
           name=name)
 
   def _check_matrix(self, matrix):
@@ -171,25 +167,9 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   def _shape_tensor(self):
     return array_ops.shape(self._matrix)
 
-  def _apply(self, x, adjoint=False):
-    return math_ops.matmul(self._matrix, x, adjoint_a=adjoint)
-
-  def _determinant(self):
-    if self._is_spd:
-      return math_ops.exp(self.log_abs_determinant())
-    return linalg_ops.matrix_determinant(self._matrix)
-
-  def _log_abs_determinant(self):
-    if self._is_spd:
-      diag = array_ops.matrix_diag_part(self._chol)
-      return 2 * math_ops.reduce_sum(math_ops.log(diag), reduction_indices=[-1])
-    abs_det = math_ops.abs(self.determinant())
-    return math_ops.log(abs_det)
-
-  def _solve(self, rhs, adjoint=False):
-    if self._is_spd:
-      return linalg_ops.cholesky_solve(self._chol, rhs)
-    return linalg_ops.matrix_solve(self._matrix, rhs, adjoint=adjoint)
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
+    return math_ops.matmul(
+        self._matrix, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 
   def _to_dense(self):
     return self._matrix

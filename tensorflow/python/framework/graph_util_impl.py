@@ -157,6 +157,8 @@ def extract_sub_graph(graph_def, dest_nodes):
   out = graph_pb2.GraphDef()
   for n in nodes_to_keep_list:
     out.node.extend([copy.deepcopy(name_to_node_map[n])])
+  out.library.CopyFrom(graph_def.library)
+  out.versions.CopyFrom(graph_def.versions)
 
   return out
 
@@ -239,6 +241,8 @@ def convert_variables_to_constants(sess, input_graph_def, output_node_names,
     else:
       output_node.CopyFrom(input_node)
     output_graph_def.node.extend([output_node])
+
+  output_graph_def.library.CopyFrom(inference_graph.library)
   print("Converted %d variables to const ops." % how_many_converted)
   return output_graph_def
 

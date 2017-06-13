@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 
 namespace tensorflow {
@@ -31,6 +32,17 @@ std::vector<const NodeDef*> GrapplerItem::MainOpsFanin() const {
 
 std::vector<const NodeDef*> GrapplerItem::InitOpsFanin() const {
   return ComputeTransitiveFanin(graph, init_ops);
+}
+
+std::vector<const NodeDef*> GrapplerItem::MainVariables() const {
+  std::vector<const NodeDef*> fanin = ComputeTransitiveFanin(graph, init_ops);
+  std::vector<const NodeDef*> vars;
+  for (const NodeDef* node : fanin) {
+    if (IsVariable(*node)) {
+      vars.push_back(node);
+    }
+  }
+  return vars;
 }
 
 std::vector<const NodeDef*> ComputeTransitiveFanin(

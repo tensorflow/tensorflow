@@ -54,16 +54,18 @@ const RemoteFusedGraphExecuteUtils::TensorShapeMap EMPTY_OUTPUT_TENSOR_MAP;
 class TestGraphTransferOpsDefinitions : public IGraphTransferOpsDefinitions {
  public:
   int GetTotalOpsCount() const final { return OP_TYPES.size(); }
-  int GetOpIdFor(const string& op_type) const final {
-    for (int i = 0; i < OP_TYPES.size(); ++i) {
-      if (OP_TYPES[i] == op_type) {
-        return i;
-      }
+
+int GetOpIdFor(const string& op_type, const DataTypeVector&) const final {
+  for (int i = 0; i < OP_TYPES.size(); ++i) {
+    if (OP_TYPES[i] == op_type) {
+      return i;
     }
-    return -1;
   }
-  GraphTransferInfo::Destination GetTransferDestination() const final {
-    return GraphTransferInfo::NOP;
+  return -1;
+}
+
+GraphTransferInfo::Destination GetTransferDestination() const final {
+  return GraphTransferInfo::NOP;
   }
 
  private:
@@ -267,7 +269,7 @@ TEST_F(GraphTransfererTest, LoadAddGraph) {
   GraphDef def = CreateAddGraphDef();
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      {}, std::vector<string>{NAME_A_PLUS_B},
-                                     false, EMPTY_OUTPUT_TENSOR_MAP)
+                                     false)
                   .ok());
   SanityCheckNodes(gt_);
 
@@ -308,9 +310,8 @@ TEST_F(GraphTransfererTest, LoadAddGraphWithOutputTensorMap) {
       def, inputs, {}, &output_tensor_info);
   ASSERT_TRUE(status.ok()) << status;
   const std::vector<string> output_node_names = {NAME_A_PLUS_B};
-  status =
-      gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def, inputs,
-                             output_node_names, false, output_tensor_info);
+  status = gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
+                                  inputs, output_node_names, false);
   ASSERT_TRUE(status.ok());
 }
 
@@ -322,7 +323,7 @@ TEST_F(GraphTransfererTest, LoadConvGraph) {
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      input_node_info_list, output_node_names,
-                                     false, EMPTY_OUTPUT_TENSOR_MAP)
+                                     false)
                   .ok());
   SanityCheckNodes(gt_);
   const int const_node_count =
@@ -348,7 +349,7 @@ TEST_F(GraphTransfererTest, LoadMaxPoolGraph) {
   const std::vector<string> output_node_names = {"softmax"};
   ASSERT_TRUE(gt_.LoadGraphFromProto(TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, def,
                                      input_node_info_list, output_node_names,
-                                     false, EMPTY_OUTPUT_TENSOR_MAP)
+                                     false)
                   .ok());
   SanityCheckNodes(gt_);
   const int const_node_count =
@@ -392,12 +393,11 @@ TEST(GraphTransferer, LoadGraphFromProtoFile) {
   // is_text_proto = false;
   // ops_definitions = &HexagonOpsDefinitions::getInstance();
 
-  RemoteFusedGraphExecuteUtils::TensorShapeMap output_tensor_info;
   GraphTransferer gt;
   gt.EnableStrictCheckMode(false);
   Status status = gt.LoadGraphFromProtoFile(
       *ops_definitions, filename, input_node_info_list, output_node_names,
-      is_text_proto, false, true, &output_tensor_info);
+      is_text_proto, false, true);
 }
 
 TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
@@ -416,7 +416,7 @@ TEST_F(GraphTransfererTest, BuildRemoteFusedGraphDefAddGraph) {
 
   GraphDef fused_graph_def = GraphTransferUtils::BuildFusedGraphDef(
       TEST_GRAPH_TRANSFER_OPS_DEFINITIONS, "remote_fused_graph_execute_node",
-      inputs, outputs, def, &gt_);
+      inputs, outputs, &def);
 
   EXPECT_EQ(3, fused_graph_def.node_size());
 }
@@ -457,7 +457,6 @@ TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
   // ops_definitions = &HexagonOpsDefinitions::getInstance();
 
   // First compute using Shape inference.
-  RemoteFusedGraphExecuteUtils::TensorShapeMap si_output_tensor_info;
   GraphTransferer si_gt;
   si_gt.EnableStrictCheckMode(false);
   bool shape_inference_for_unknown_shape = true;
@@ -465,12 +464,11 @@ TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
   Status status1 = si_gt.LoadGraphFromProtoFile(
       *ops_definitions, filename, input_node_info_list, output_node_names,
       is_text_proto, shape_inference_for_unknown_shape,
-      dry_run_for_unknown_shape, &si_output_tensor_info);
+      dry_run_for_unknown_shape);
   const GraphTransferInfo& si_graph_transfer_info =
       si_gt.GetGraphTransferInfo();
 
   // Now compute using dry run.
-  RemoteFusedGraphExecuteUtils::TensorShapeMap dr_output_tensor_info;
   GraphTransferer dr_gt;
   dr_gt.EnableStrictCheckMode(false);
   shape_inference_for_unknown_shape = false;
@@ -478,7 +476,7 @@ TEST(GraphTransferer, LoadGraphFromProtoFileShapeInferenceSimple) {
   Status status2 = dr_gt.LoadGraphFromProtoFile(
       *ops_definitions, filename, input_node_info_list, output_node_names,
       is_text_proto, shape_inference_for_unknown_shape,
-      dry_run_for_unknown_shape, &si_output_tensor_info);
+      dry_run_for_unknown_shape);
   const GraphTransferInfo& dr_graph_transfer_info =
       dr_gt.GetGraphTransferInfo();
 

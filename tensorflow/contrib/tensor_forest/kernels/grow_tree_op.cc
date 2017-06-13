@@ -32,10 +32,6 @@
 
 namespace tensorflow {
 
-using shape_inference::Dimension;
-using shape_inference::InferenceContext;
-using shape_inference::Shape;
-
 using tensorforest::CHILDREN_INDEX;
 using tensorforest::FEATURE_INDEX;
 using tensorforest::LEAF_NODE;

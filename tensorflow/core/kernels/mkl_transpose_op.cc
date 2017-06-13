@@ -18,9 +18,9 @@ limitations under the License.
 #ifdef INTEL_MKL
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/transpose_op.h"
-#include "tensorflow/core/kernels/transpose_functor.h"
 #include "third_party/mkl/include/mkl_trans.h"
+#include "tensorflow/core/kernels/transpose_functor.h"
+#include "tensorflow/core/kernels/transpose_op.h"
 
 namespace tensorflow {
 
@@ -50,9 +50,8 @@ Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
     // Parameters: (ordering:row-major, operation:transpose, num_rows, num_cols,
     //              alpha (for scaling), array, dist_bet_adjacent_cols/rows
     //              (source), array, dist_bet_adjacent_cols/rows (dest))
-    mkl_somatcopy('R', 'T', in.dim_size(0), in.dim_size(1), 1,
-                  user_i, in.dim_size(1),
-                  user_o, in.dim_size(0));
+    mkl_somatcopy('R', 'T', in.dim_size(0), in.dim_size(1), 1, user_i,
+                  in.dim_size(1), user_o, in.dim_size(0));
 
     return Status::OK();
   }
@@ -61,7 +60,7 @@ Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
   typedef Eigen::ThreadPoolDevice CPUDevice;
   return ::tensorflow::DoTranspose(ctx->eigen_device<CPUDevice>(), in, perm,
                                    out);
-} // MklTransposeCpuOp::DoTranspose
-} // namespace tensorflow
+}  // MklTransposeCpuOp::DoTranspose
+}  // namespace tensorflow
 
 #endif  // INTEL_MKL

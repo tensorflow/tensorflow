@@ -62,7 +62,7 @@ class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
   using ConstMatrixMap = typename Base::ConstMatrixMap;
   using ConstMatrixMaps = typename Base::ConstMatrixMaps;
 
-  virtual void ValidateInputMatrixShapes(
+  void ValidateInputMatrixShapes(
       OpKernelContext* context,
       const TensorShapes& input_matrix_shapes) const final {
     Base::ValidateSquareSolver(context, input_matrix_shapes);
@@ -97,8 +97,9 @@ class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
       // an empty set of equation as the empty matrix.
       return;
     }
-    const Scalar min_abs_pivot = matrix.diagonal().cwiseAbs().minCoeff();
-    OP_REQUIRES(context, min_abs_pivot > Scalar(0),
+    using RealScalar = typename Base::RealScalar;
+    const RealScalar min_abs_pivot = matrix.diagonal().cwiseAbs().minCoeff();
+    OP_REQUIRES(context, min_abs_pivot > RealScalar(0),
                 errors::InvalidArgument("Input matrix is not invertible."));
     if (lower_) {
       auto triangle = matrix.template triangularView<Eigen::Lower>();
@@ -124,12 +125,29 @@ class MatrixTriangularSolveOp : public LinearAlgebraOp<Scalar> {
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixTriangularSolveOp);
 };
 
+REGISTER_LINALG_OP_CPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOp<float>), float);
+REGISTER_LINALG_OP_CPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOp<double>), double);
+REGISTER_LINALG_OP_CPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOp<complex64>), complex64);
+REGISTER_LINALG_OP_CPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOp<complex128>), complex128);
+REGISTER_LINALG_OP_CPU("BatchMatrixTriangularSolve",
+                       (MatrixTriangularSolveOp<float>), float);
+REGISTER_LINALG_OP_CPU("BatchMatrixTriangularSolve",
+                       (MatrixTriangularSolveOp<double>), double);
 
 #ifdef GOOGLE_CUDA
+
+// TODO(rmlarsen): Re-factor to
+// 1. Enable buffer forwarding from rhs->out.
+// 2. Save Memcpy when buffer forwarding is used.
+// 3. Copy entire rhs in a single Memcpy when forwarding is not used.
 template <class Scalar>
 class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
  public:
-  typedef LinearAlgebraOp<Scalar> Base;
+  INHERIT_LINALG_TYPEDEFS(Scalar);
 
   explicit MatrixTriangularSolveOpGPU(OpKernelConstruction* context)
       : Base(context), lower_(true), adjoint_(false) {
@@ -137,14 +155,7 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
     OP_REQUIRES_OK(context, context->GetAttr("adjoint", &adjoint_));
   }
 
-  using TensorShapes = typename Base::TensorShapes;
-  using Matrix = typename Base::Matrix;
-  using MatrixMap = typename Base::MatrixMap;
-  using MatrixMaps = typename Base::MatrixMaps;
-  using ConstMatrixMap = typename Base::ConstMatrixMap;
-  using ConstMatrixMaps = typename Base::ConstMatrixMaps;
-
-  virtual void ValidateInputMatrixShapes(
+  void ValidateInputMatrixShapes(
       OpKernelContext* context,
       const TensorShapes& input_matrix_shapes) const final {
     Base::ValidateSquareSolver(context, input_matrix_shapes);
@@ -166,6 +177,8 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
                                                   : static_cast<int64>(cost);
   }
 
+  bool EnableInputForwarding() const final { return false; }
+
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
                      MatrixMaps* outputs) final {
     const ConstMatrixMap& matrix = inputs[0];
@@ -186,7 +199,7 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
     uint64 rhs_elems = rhs.rows() * rhs.cols();
     bool copy_status =
         stream->ThenMemcpyD2D(&out_ptr, rhs_ptr, sizeof(Scalar) * rhs_elems)
-        .ok();
+            .ok();
     if (!copy_status) {
       context->SetStatus(
           errors::Internal("Failed to copy rhs into output before solve"));
@@ -207,7 +220,8 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
       upper_lower_matrix = perftools::gputools::blas::UpperLower::kLower;
     }
     if (adjoint_) {
-      transpose_matrix = perftools::gputools::blas::Transpose::kTranspose;
+      transpose_matrix =
+          perftools::gputools::blas::Transpose::kConjugateTranspose;
     } else {
       transpose_matrix = perftools::gputools::blas::Transpose::kNoTranspose;
     }
@@ -236,41 +250,20 @@ class MatrixTriangularSolveOpGPU : public LinearAlgebraOp<Scalar> {
 
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixTriangularSolveOpGPU);
 };
+
+REGISTER_LINALG_OP_GPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOpGPU<float>), float);
+REGISTER_LINALG_OP_GPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOpGPU<double>), double);
+REGISTER_LINALG_OP_GPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOpGPU<complex64>), complex64);
+REGISTER_LINALG_OP_GPU("MatrixTriangularSolve",
+                       (MatrixTriangularSolveOpGPU<complex128>), complex128);
+REGISTER_LINALG_OP_GPU("BatchMatrixTriangularSolve",
+                       (MatrixTriangularSolveOpGPU<float>), float);
+REGISTER_LINALG_OP_GPU("BatchMatrixTriangularSolve",
+                       (MatrixTriangularSolveOpGPU<double>), double);
+
 #endif  // GOOGLE_CUDA
-
-REGISTER_LINALG_OP("MatrixTriangularSolve", (MatrixTriangularSolveOp<float>),
-                   float);
-REGISTER_LINALG_OP("MatrixTriangularSolve", (MatrixTriangularSolveOp<double>),
-                   double);
-REGISTER_LINALG_OP("BatchMatrixTriangularSolve",
-                   (MatrixTriangularSolveOp<float>), float);
-REGISTER_LINALG_OP("BatchMatrixTriangularSolve",
-                   (MatrixTriangularSolveOp<double>), double);
-
-#ifdef GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(
-    Name("MatrixTriangularSolve")
-        .Device(DEVICE_GPU)
-        .TypeConstraint<float>("T"),
-    MatrixTriangularSolveOpGPU<float>);
-
-REGISTER_KERNEL_BUILDER(
-    Name("MatrixTriangularSolve")
-        .Device(DEVICE_GPU)
-        .TypeConstraint<double>("T"),
-    MatrixTriangularSolveOpGPU<double>);
-
-REGISTER_KERNEL_BUILDER(
-    Name("BatchMatrixTriangularSolve")
-        .Device(DEVICE_GPU)
-        .TypeConstraint<float>("T"),
-    MatrixTriangularSolveOpGPU<float>);
-
-REGISTER_KERNEL_BUILDER(
-    Name("BatchMatrixTriangularSolve")
-        .Device(DEVICE_GPU)
-        .TypeConstraint<double>("T"),
-    MatrixTriangularSolveOpGPU<double>);
-#endif  //GOOGLE_CUDA
 
 }  // namespace tensorflow

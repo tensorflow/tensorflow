@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -114,7 +115,7 @@ class VariableScopeTest(test.TestCase):
           dtypes.int64, dtypes.bool
       ]
 
-      # Use different varibale_name to distinguish various dtypes
+      # Use different variable_name to distinguish various dtypes
       for (i, dtype) in enumerate(types):
         x = variable_scope.get_variable(
             name="x%d" % i, shape=(3, 4), dtype=dtype)
@@ -773,6 +774,11 @@ class VariableScopeTest(test.TestCase):
         self.assertEqual([v.name
                           for v in scope.global_variables()], ["foo/b:0"])
 
+  def testGetVariableWithRefDtype(self):
+    v = variable_scope.get_variable("v", shape=[3, 4], dtype=dtypes.float32)
+    # Ensure it is possible to do get_variable with a _ref dtype passed in.
+    _ = variable_scope.get_variable("w", shape=[5, 6], dtype=v.dtype)
+
 
 def axis0_into1_partitioner(shape=None, **unused_kwargs):
   part = [1] * len(shape)
@@ -801,7 +807,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
           dtypes.int64, dtypes.bool
       ]
 
-      # Use different varibale_name to distinguish various dtypes
+      # Use different variable_name to distinguish various dtypes
       for (i, dtype) in enumerate(types):
         x = variable_scope.get_variable(
             name="x%d" % i,
@@ -950,6 +956,25 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
     self.assertEqual(v, v2)
     self.assertEqual(v3, v4)
     self.assertEqual(3, called[0])  # skipped one in the first new_scope
+
+  def testCustomGetterWithReuse(self):
+    # Custom getter can choose to behave differently on reused variables.
+    def custom_getter(getter, *args, **kwargs):
+      var = getter(*args, **kwargs)
+      if kwargs["reuse"]:
+        # This can be used, e.g., for changing the caching device if needed.
+        return array_ops.identity(var, name="reused")
+      else:
+        return array_ops.identity(var, name="not_reused")
+
+    with variable_scope.variable_scope(
+        "scope", custom_getter=custom_getter) as scope:
+      v = variable_scope.get_variable("v", [1])
+    with variable_scope.variable_scope(scope, reuse=True):
+      v2 = variable_scope.get_variable("v", [1])
+
+    self.assertEqual(v.name, "not_reused:0")
+    self.assertEqual(v2.name, "reused:0")
 
   def testGetterThatCreatesTwoVariablesAndSumsThem(self):
 

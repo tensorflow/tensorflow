@@ -7,7 +7,7 @@ activation functions, and applying dropout regularization. In this tutorial,
 you'll learn how to use `layers` to build a convolutional neural network model
 to recognize the handwritten digits in the MNIST data set.
 
-![handwritten digits 0–9 from the MNIST data set](../images/mnist_0-9.png)
+![handwritten digits 0–9 from the MNIST data set](https://www.tensorflow.org/images/mnist_0-9.png)
 
 **The [MNIST dataset](http://yann.lecun.com/exdb/mnist/) comprises 60,000
 training examples and 10,000 test examples of the handwritten digits 0–9,
@@ -316,11 +316,11 @@ of 2, which indicates that the subregions extracted by the filter should be
 separated by 2 pixels in both the width and height dimensions (for a 2x2 filter,
 this means that none of the regions extracted will overlap). If you want to set
 different stride values for width and height, you can instead specify a tuple or
-list (e.g., `stride=[3,6]`).
+list (e.g., `stride=[3, 6]`).
 
 Our output tensor produced by `max_pooling2d()` (`pool1`) has a shape of
-<code>[<em>batch_size</em>, 14, 14, 1]</code>: the 2x2 filter reduces width and
-height by 50%.
+<code>[<em>batch_size</em>, 14, 14, 32]</code>: the 2x2 filter reduces width and
+height by 50% each.
 
 ### Convolutional Layer #2 and Pooling Layer #2
 
@@ -341,7 +341,7 @@ pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2)
 ```
 
 Note that convolutional layer #2 takes the output tensor of our first pooling
-layer (`pool1`) as input, and produces the tensor `h_conv2` as output. `conv2`
+layer (`pool1`) as input, and produces the tensor `conv2` as output. `conv2`
 has a shape of <code>[<em>batch_size</em>, 14, 14, 64]</code>, the same width
 and height as `pool1` (due to `padding="same"`), and 64 channels for the 64
 filters applied.
@@ -585,7 +585,7 @@ hand-drawn digits) and training labels (the corresponding value from 0–9 for
 each image) as [numpy
 arrays](https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html)
 in `train_data` and `train_labels`, respectively. Similarly, we store the
-evalulation feature data (10,000 images) and evaluation labels in `eval_data`
+evaluation feature data (10,000 images) and evaluation labels in `eval_data`
 and `eval_labels`, respectively.
 
 ### Create the Estimator {#create-the-estimator}

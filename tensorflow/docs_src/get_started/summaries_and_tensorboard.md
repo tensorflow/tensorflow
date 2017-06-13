@@ -8,7 +8,7 @@ your TensorFlow graph, plot quantitative metrics about the execution of your
 graph, and show additional data like images that pass through it. When
 TensorBoard is fully configured, it looks like this:
 
-![MNIST TensorBoard](../images/mnist_tensorboard.png "MNIST TensorBoard")
+![MNIST TensorBoard](https://www.tensorflow.org/images/mnist_tensorboard.png "MNIST TensorBoard")
 
 <div class="video-wrapper">
   <iframe class="devsite-embedded-youtube-video" data-video-id="eBbEDRsCmv4"
@@ -78,7 +78,7 @@ every `n` steps.
 The code example below is a modification of the
 @{$beginners$simple MNIST tutorial},
 in which we have added some summary ops, and run them every ten steps. If you
-run this and then launch `tensorboard --logdir=/tmp/mnist_logs`, you'll be able
+run this and then launch `tensorboard --logdir=/tmp/tensorflow/mnist`, you'll be able
 to visualize statistics, such as how the weights or accuracy varied during
 training. The code below is an excerpt; full source is
 [here](https://www.tensorflow.org/code/tensorflow/examples/tutorials/mnist/mnist_with_summaries.py).

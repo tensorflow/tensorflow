@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import re
 import shlex
 import subprocess
 import tempfile
@@ -26,6 +27,7 @@ import time
 
 from tensorflow.core.util import test_log_pb2
 from tensorflow.python.platform import gfile
+from tensorflow.tools.test import gpu_info_lib
 from tensorflow.tools.test import system_info_lib
 
 
@@ -93,7 +95,8 @@ def process_benchmarks(log_files):
   return benchmarks
 
 
-def run_and_gather_logs(name, test_name, test_args, benchmark_type):
+def run_and_gather_logs(name, test_name, test_args,
+                        benchmark_type):
   """Run the bazel test given by test_name.  Gather and return the logs.
 
   Args:
@@ -128,8 +131,18 @@ def run_and_gather_logs(name, test_name, test_args, benchmark_type):
     # Hopefully running in sandboxed mode
     test_executable = os.path.join(".", test_executable)
 
+  test_adjusted_name = name
+  gpu_config = gpu_info_lib.gather_gpu_devices()
+  if gpu_config:
+    gpu_name = gpu_config[0].model
+    gpu_short_name_match = re.search(r"Tesla [KP][4,8]0", gpu_name)
+    if gpu_short_name_match:
+      gpu_short_name = gpu_short_name_match.group(0)
+      test_adjusted_name = name + "|" + gpu_short_name.replace(" ", "_")
+
   temp_directory = tempfile.mkdtemp(prefix="run_and_gather_logs")
-  mangled_test_name = name.strip("/").replace("/", "_").replace(":", "_")
+  mangled_test_name = (test_adjusted_name.strip("/")
+                       .replace("|", "_").replace("/", "_").replace(":", "_"))
   test_file_prefix = os.path.join(temp_directory, mangled_test_name)
   test_file_prefix = "%s." % test_file_prefix
 
@@ -149,7 +162,7 @@ def run_and_gather_logs(name, test_name, test_args, benchmark_type):
       raise MissingLogsError("No log files found at %s." % test_file_prefix)
 
     return (process_test_logs(
-        name,
+        test_adjusted_name,
         test_name=test_name,
         test_args=test_args,
         benchmark_type=benchmark_type,

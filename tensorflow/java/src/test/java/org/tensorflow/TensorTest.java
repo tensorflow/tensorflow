@@ -15,6 +15,7 @@ limitations under the License.
 
 package org.tensorflow;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -43,7 +44,7 @@ public class TensorTest {
     boolean[] bools = {true, false, true, false};
     long[] bools_shape = {4};
     byte[] bools_ = TestUtil.bool2byte(bools);
-    byte[] strings = "test".getBytes();
+    byte[] strings = "test".getBytes(UTF_8);
     long[] strings_shape = {};
     byte[] strings_; // raw TF_STRING
     try (Tensor t = Tensor.create(strings)) {
@@ -471,7 +472,7 @@ public class TensorTest {
   @Test
   public void fromHandle() {
     // fromHandle is a package-visible method intended for use when the C TF_Tensor object has been
-    // created indepdently of the Java code. In practice, two Tensor instances MUST NOT have the
+    // created independently of the Java code. In practice, two Tensor instances MUST NOT have the
     // same native handle.
     //
     // An exception is made for this test, where the pitfalls of this is avoided by not calling

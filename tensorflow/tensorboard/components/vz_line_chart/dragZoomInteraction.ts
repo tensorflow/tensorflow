@@ -13,12 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-module Plottable {
-export class DragZoomLayer extends Components.SelectionBoxLayer {
-  private _dragInteraction: Interactions.Drag;
-  private _doubleClickInteraction: Interactions.DoubleClick;
+export class DragZoomLayer extends Plottable.Components.SelectionBoxLayer {
+  private _dragInteraction: Plottable.Interactions.Drag;
+  private _doubleClickInteraction: Plottable.Interactions.Click;
   private isZoomed = false;
-  private easeFn: (t: number) => number = d3.ease('cubic-in-out');
+  private easeFn: (t: number) => number = d3.easeCubicInOut;
   private _animationTime = 750;
   private onStart: Function;
   private onEnd: Function;
@@ -37,15 +36,15 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
    * TODO(danmane) - merge this into Plottable
    */
   constructor(
-      xScale: QuantitativeScale<number|{valueOf(): number}>,
-      yScale: QuantitativeScale<number|{valueOf(): number}>,
+      xScale: Plottable.QuantitativeScale<number|{valueOf(): number}>,
+      yScale: Plottable.QuantitativeScale<number|{valueOf(): number}>,
       unzoomMethod: Function) {
     super();
     this.xScale(xScale);
     this.yScale(yScale);
-    this._dragInteraction = new Interactions.Drag();
+    this._dragInteraction = new Plottable.Interactions.Drag();
     this._dragInteraction.attachTo(this);
-    this._doubleClickInteraction = new Interactions.DoubleClick();
+    this._doubleClickInteraction = new Plottable.Interactions.Click();
     this._doubleClickInteraction.attachTo(this);
     this.setupCallbacks();
     this.unzoomMethod = unzoomMethod;
@@ -54,16 +53,20 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
   /**
    * Register a method that calls when the DragZoom interaction starts.
    */
-  public interactionStart(cb: Function) { this.onStart = cb; }
+  public interactionStart(cb: Function) {
+    this.onStart = cb;
+  }
 
   /**
    * Register a method that calls when the DragZoom interaction ends.
    */
-  public interactionEnd(cb: Function) { this.onEnd = cb; }
+  public interactionEnd(cb: Function) {
+    this.onEnd = cb;
+  }
 
   private setupCallbacks() {
     let dragging = false;
-    this._dragInteraction.onDragStart((startPoint: Point) => {
+    this._dragInteraction.onDragStart((startPoint: Plottable.Point) => {
       this.bounds({
         topLeft: startPoint,
         bottomRight: startPoint,
@@ -114,7 +117,7 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
       throw new Error('ease function must be a function');
     }
     if (fn(0) !== 0 || fn(1) !== 1) {
-      Utils.Window.warn(
+      Plottable.Utils.Window.warn(
           'Easing function does not maintain invariant ' +
           'f(0)==0 && f(1)==1. Bad behavior may result.');
     }
@@ -186,7 +189,7 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
       this.xScale().domain([x0, x1]);
       this.yScale().domain([y0, y1]);
       if (p < 1) {
-        Utils.DOM.requestAnimationFramePolyfill(draw);
+        Plottable.Utils.DOM.requestAnimationFramePolyfill(draw);
       } else {
         this.onEnd();
         this.isZooming(false);
@@ -194,5 +197,4 @@ export class DragZoomLayer extends Components.SelectionBoxLayer {
     };
     draw();
   }
-}
 }

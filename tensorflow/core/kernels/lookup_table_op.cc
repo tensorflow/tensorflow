@@ -22,126 +22,12 @@ limitations under the License.
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/initializable_lookup_table.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
 namespace tensorflow {
 namespace lookup {
-namespace {
-
-// Ensure that the compiler cannot elide a copy into a local, for
-// bounds checking on source tensors that might be updated asynchronously for
-// integral types. However non-integer variables are not allowed and therefore
-// the local copy is unnecessary.
-template <typename T>
-T SubtleMustCopyUnlessStringOrFloat(const T& value) {
-  return internal::SubtleMustCopy(value);
-}
-
-const string& SubtleMustCopyUnlessStringOrFloat(const string& value) {
-  return value;
-}
-
-const float SubtleMustCopyUnlessStringOrFloat(const float value) {
-  return value;
-}
-
-const double SubtleMustCopyUnlessStringOrFloat(const double value) {
-  return value;
-}
-
-}  // namespace
-
-// Lookup table that wraps an unordered_map, where the key and value data type
-// is specified.
-//
-// This table is recommended for any variations to key values.
-//
-// For look up, the table is required to be initialized (allocated
-// and populated). Once the table is marked as initialized it becomes read-only.
-//
-// Sample use case:
-//
-// HashTable<int64, int64> table;  // int64 -> int64.
-// table.Prepare(10); // Prepare the underlying data structure, the number of
-//                    // elements is required by interface, but not used.
-// // Populate the table, elements could be added in one or multiple calls.
-// table.Insert(key_tensor, value_tensor); // Populate the table.
-// ...
-// table.set_is_initialized();
-//
-// table.Find(in_t, &out_t, default_t)
-//
-template <class K, class V>
-class HashTable : public InitializableLookupTable {
- public:
-  HashTable(OpKernelContext* ctx, OpKernel* kernel) {}
-
-  size_t size() const override {
-    // return the size of the table only if it's initialized, otherwise 0.
-    if (!is_initialized_) {
-      return 0;
-    }
-    std::atomic_thread_fence(std::memory_order_acquire);
-    return table_ ? table_->size() : 0;
-  }
-
-  DataType key_dtype() const override { return DataTypeToEnum<K>::v(); }
-
-  DataType value_dtype() const override { return DataTypeToEnum<V>::v(); }
-
- protected:
-  Status DoPrepare(size_t unused) override {
-    if (is_initialized_) {
-      return errors::Aborted("HashTable already initialized.");
-    }
-    if (!table_) {
-      table_ = std::unique_ptr<std::unordered_map<K, V>>(
-          new std::unordered_map<K, V>());
-    }
-    return Status::OK();
-  };
-
-  Status DoInsert(const Tensor& keys, const Tensor& values) override {
-    if (!table_) {
-      return errors::FailedPrecondition("HashTable is not prepared.");
-    }
-
-    const auto key_values = keys.flat<K>();
-    const auto value_values = values.flat<V>();
-    for (int64 i = 0; i < key_values.size(); ++i) {
-      const K key = SubtleMustCopyUnlessStringOrFloat(key_values(i));
-      const V value = SubtleMustCopyUnlessStringOrFloat(value_values(i));
-      const V& previous_value = gtl::LookupOrInsert(table_.get(), key, value);
-      if (previous_value != value) {
-        return errors::FailedPrecondition(
-            "HashTable has different value for same key. Key ", key, " has ",
-            previous_value, " and trying to add value ", value);
-      }
-    }
-    return Status::OK();
-  }
-
-  Status DoFind(const Tensor& key, Tensor* value,
-                const Tensor& default_value) override {
-    const V default_val = default_value.flat<V>()(0);
-    const auto key_values = key.flat<K>();
-    auto value_values = value->flat<V>();
-
-    for (int64 i = 0; i < key_values.size(); ++i) {
-      value_values(i) = gtl::FindWithDefault(
-          *table_, SubtleMustCopyUnlessStringOrFloat(key_values(i)),
-          default_val);
-    }
-    return Status::OK();
-  }
-
- private:
-  std::unique_ptr<std::unordered_map<K, V>> table_;
-};
 
 // Lookup table that wraps an unordered_map, where the key and value data type
 // is specified. Each individual value must be a scalar. If vector values are
@@ -738,7 +624,10 @@ class LookupTableFindOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {DT_STRING_REF, table->key_dtype(),
+    // Input 0 could be a STRING_REF or a RESOURCE
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
     DataTypeVector expected_outputs = {table->value_dtype()};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, expected_outputs));
@@ -761,6 +650,8 @@ class LookupTableFindOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LookupTableFind").Device(DEVICE_CPU),
                         LookupTableFindOp);
+REGISTER_KERNEL_BUILDER(Name("LookupTableFindV2").Device(DEVICE_CPU),
+                        LookupTableFindOp);
 
 // Table insert op.
 class LookupTableInsertOp : public OpKernel {
@@ -772,7 +663,9 @@ class LookupTableInsertOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {DT_STRING_REF, table->key_dtype(),
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
 
@@ -794,6 +687,8 @@ class LookupTableInsertOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LookupTableInsert").Device(DEVICE_CPU),
                         LookupTableInsertOp);
+REGISTER_KERNEL_BUILDER(Name("LookupTableInsertV2").Device(DEVICE_CPU),
+                        LookupTableInsertOp);
 
 // Op that returns the size of the given table.
 class LookupTableSizeOp : public OpKernel {
@@ -813,6 +708,8 @@ class LookupTableSizeOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LookupTableSize").Device(DEVICE_CPU),
                         LookupTableSizeOp);
+REGISTER_KERNEL_BUILDER(Name("LookupTableSizeV2").Device(DEVICE_CPU),
+                        LookupTableSizeOp);
 
 // Op that outputs tensors of all keys and all values.
 class LookupTableExportOp : public OpKernel {
@@ -830,6 +727,8 @@ class LookupTableExportOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LookupTableExport").Device(DEVICE_CPU),
                         LookupTableExportOp);
+REGISTER_KERNEL_BUILDER(Name("LookupTableExportV2").Device(DEVICE_CPU),
+                        LookupTableExportOp);
 
 // Clear the table and insert data.
 class LookupTableImportOp : public OpKernel {
@@ -841,7 +740,9 @@ class LookupTableImportOp : public OpKernel {
     OP_REQUIRES_OK(ctx, GetLookupTable("table_handle", ctx, &table));
     core::ScopedUnref unref_me(table);
 
-    DataTypeVector expected_inputs = {DT_STRING_REF, table->key_dtype(),
+    DataType expected_input_0 =
+        (ctx->input_dtype(0) == DT_RESOURCE) ? DT_RESOURCE : DT_STRING_REF;
+    DataTypeVector expected_inputs = {expected_input_0, table->key_dtype(),
                                       table->value_dtype()};
     OP_REQUIRES_OK(ctx, ctx->MatchSignature(expected_inputs, {}));
 
@@ -863,11 +764,20 @@ class LookupTableImportOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("LookupTableImport").Device(DEVICE_CPU),
                         LookupTableImportOp);
+REGISTER_KERNEL_BUILDER(Name("LookupTableImportV2").Device(DEVICE_CPU),
+                        LookupTableImportOp);
 
 // Register the HashTable op with the currently supported key and value types.
 #define REGISTER_KERNEL(key_dtype, value_dtype)                           \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("HashTable")                                                   \
+          .Device(DEVICE_CPU)                                             \
+          .TypeConstraint<key_dtype>("key_dtype")                         \
+          .TypeConstraint<value_dtype>("value_dtype"),                    \
+      LookupTableOp<lookup::HashTable<key_dtype, value_dtype>, key_dtype, \
+                    value_dtype>)                                         \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("HashTableV2")                                                 \
           .Device(DEVICE_CPU)                                             \
           .TypeConstraint<key_dtype>("key_dtype")                         \
           .TypeConstraint<value_dtype>("value_dtype"),                    \
@@ -893,12 +803,20 @@ REGISTER_KERNEL(string, bool);
           .TypeConstraint<key_dtype>("key_dtype")                              \
           .TypeConstraint<value_dtype>("value_dtype"),                         \
       LookupTableOp<lookup::MutableHashTableOfScalars<key_dtype, value_dtype>, \
+                    key_dtype, value_dtype>)                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MutableHashTableV2")                                               \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<key_dtype>("key_dtype")                              \
+          .TypeConstraint<value_dtype>("value_dtype"),                         \
+      LookupTableOp<lookup::MutableHashTableOfScalars<key_dtype, value_dtype>, \
                     key_dtype, value_dtype>)
 
 REGISTER_KERNEL(string, float);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
 REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(int64, float);
 
 #undef REGISTER_KERNEL
 
@@ -906,6 +824,13 @@ REGISTER_KERNEL(string, bool);
 #define REGISTER_KERNEL(key_dtype, value_dtype)                                \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("MutableHashTableOfTensors")                                        \
+          .Device(DEVICE_CPU)                                                  \
+          .TypeConstraint<key_dtype>("key_dtype")                              \
+          .TypeConstraint<value_dtype>("value_dtype"),                         \
+      LookupTableOp<lookup::MutableHashTableOfTensors<key_dtype, value_dtype>, \
+                    key_dtype, value_dtype>)                                   \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("MutableHashTableOfTensorsV2")                                      \
           .Device(DEVICE_CPU)                                                  \
           .TypeConstraint<key_dtype>("key_dtype")                              \
           .TypeConstraint<value_dtype>("value_dtype"),                         \
@@ -923,6 +848,13 @@ REGISTER_KERNEL(string, bool);
 #define REGISTER_KERNEL(key_dtype, value_dtype)                            \
   REGISTER_KERNEL_BUILDER(                                                 \
       Name("MutableDenseHashTable")                                        \
+          .Device(DEVICE_CPU)                                              \
+          .TypeConstraint<key_dtype>("key_dtype")                          \
+          .TypeConstraint<value_dtype>("value_dtype"),                     \
+      LookupTableOp<lookup::MutableDenseHashTable<key_dtype, value_dtype>, \
+                    key_dtype, value_dtype>)                               \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("MutableDenseHashTableV2")                                      \
           .Device(DEVICE_CPU)                                              \
           .TypeConstraint<key_dtype>("key_dtype")                          \
           .TypeConstraint<value_dtype>("value_dtype"),                     \

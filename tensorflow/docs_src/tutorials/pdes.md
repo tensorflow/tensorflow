@@ -6,7 +6,6 @@ pedestrian) example of using TensorFlow for simulating the behavior of a
 https://en.wikipedia.org/wiki/Partial_differential_equation).
 We'll simulate the surface of square pond as a few raindrops land on it.
 
-Note: This tutorial was originally prepared as an IPython notebook.
 
 ## Basic Setup
 
@@ -94,7 +93,7 @@ for n in range(40):
 DisplayArray(u_init, rng=[-0.1, 0.1])
 ```
 
-![jpeg](../images/pde_output_1.jpg)
+![jpeg](https://www.tensorflow.org/images/pde_output_1.jpg)
 
 
 Now let's specify the details of the differential equation.

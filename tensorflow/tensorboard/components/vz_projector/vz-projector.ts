@@ -70,7 +70,6 @@ export class Projector extends ProjectorPolymer implements
 
   private originalDataSet: DataSet;
   private dataSetBeforeFilter: DataSet;
-  private dom: d3.Selection<any>;
   private projectorScatterPlotAdapter: ProjectorScatterPlotAdapter;
   private dim: number;
 
@@ -94,13 +93,12 @@ export class Projector extends ProjectorPolymer implements
   private projectionsPanel: ProjectionsPanel;
   private metadataCard: MetadataCard;
 
-  private statusBar: d3.Selection<HTMLElement>;
+  private statusBar: HTMLDivElement;
   private analyticsLogger: AnalyticsLogger;
   private eventLogging: boolean;
   private pageViewLogging: boolean;
 
   ready() {
-    this.dom = d3.select(this);
     logging.setDomContainer(this);
 
     this.analyticsLogger =
@@ -130,7 +128,7 @@ export class Projector extends ProjectorPolymer implements
     this.bookmarkPanel = this.$['bookmark-panel'] as BookmarkPanel;
     this.bookmarkPanel.initialize(this, this as ProjectorEventContext);
     this.metadataCard = this.$['metadata-card'] as MetadataCard;
-    this.statusBar = this.dom.select('#status-bar');
+    this.statusBar = this.querySelector('#status-bar') as HTMLDivElement;
     this.scopeSubtree(this.$$('#notification-dialog'), true);
     this.setupUIControls();
     this.initializeDataProvider();
@@ -199,8 +197,8 @@ export class Projector extends ProjectorPolymer implements
       this.dataPanel.metadataChanged(spriteAndMetadata, metadataFile);
       // Set the container to a fixed height, otherwise in Colab the
       // height can grow indefinitely.
-      let container = this.dom.select('#container');
-      container.style('height', container.property('clientHeight') + 'px');
+      const container = this.querySelector('#container') as HTMLDivElement;
+      container.style.height = container.clientHeight + 'px';
     } else {
       this.setCurrentDataSet(null);
     }
@@ -226,7 +224,7 @@ export class Projector extends ProjectorPolymer implements
     this.dataSetFilterIndices = pointIndices;
     this.projectorScatterPlotAdapter.updateScatterPlotPositions();
     this.projectorScatterPlotAdapter.updateScatterPlotAttributes();
-    this.adjustSelectionAndHover(d3.range(selectionSize));
+    this.adjustSelectionAndHover(util.range(selectionSize));
   }
 
   resetFilterDataset() {
@@ -387,8 +385,10 @@ export class Projector extends ProjectorPolymer implements
       ds.normalize();
     }
     this.dim = (ds == null) ? 0 : ds.dim[1];
-    this.dom.select('span.numDataPoints').text((ds == null) ? '0' : ds.dim[0]);
-    this.dom.select('span.dim').text((ds == null) ? '0' : ds.dim[1]);
+    (this.querySelector('span.numDataPoints') as HTMLSpanElement).innerText =
+        (ds == null) ? '0' : '' + ds.dim[0];
+    (this.querySelector('span.dim') as HTMLSpanElement).innerText =
+        (ds == null) ? '0' : '' + ds.dim[1];
 
     this.dataSet = ds;
 
@@ -425,10 +425,9 @@ export class Projector extends ProjectorPolymer implements
     });
 
     window.addEventListener('resize', () => {
-      let container = this.dom.select('#container');
-      let parentHeight =
-          (container.node().parentNode as HTMLElement).clientHeight;
-      container.style('height', parentHeight + 'px');
+      const container = this.querySelector('#container') as HTMLDivElement;
+      const parentHeight = (container.parentNode as HTMLElement).clientHeight;
+      container.style.height = parentHeight + 'px';
       this.projectorScatterPlotAdapter.resize();
     });
 
@@ -463,13 +462,13 @@ export class Projector extends ProjectorPolymer implements
       }
     }
     if (this.selectedPointIndices.length === 0) {
-      this.statusBar.style('display', hoverText ? null : 'none');
-      this.statusBar.text(hoverText);
+      this.statusBar.style.display = hoverText ? null : 'none';
+      this.statusBar.innerText = hoverText;
     }
   }
 
-  private getScatterContainer(): d3.Selection<any> {
-    return this.dom.select('#scatter');
+  private getScatterContainer(): HTMLDivElement {
+    return this.querySelector('#scatter') as HTMLDivElement;
   }
 
   private onSelectionChanged(
@@ -479,8 +478,8 @@ export class Projector extends ProjectorPolymer implements
     this.neighborsOfFirstPoint = neighborsOfFirstPoint;
     let totalNumPoints =
         this.selectedPointIndices.length + neighborsOfFirstPoint.length;
-    this.statusBar.text(`Selected ${totalNumPoints} points`)
-        .style('display', totalNumPoints > 0 ? null : 'none');
+    this.statusBar.innerText = `Selected ${totalNumPoints} points`;
+    this.statusBar.style.display = totalNumPoints > 0 ? null : 'none';
   }
 
   setProjection(projection: Projection) {

@@ -65,6 +65,7 @@ class Flag {
   Flag(const char* name, int64* dst1, const string& usage_text);
   Flag(const char* name, bool* dst, const string& usage_text);
   Flag(const char* name, string* dst, const string& usage_text);
+  Flag(const char* name, float* dst, const string& usage_text);
 
  private:
   friend class Flags;
@@ -72,11 +73,12 @@ class Flag {
   bool Parse(string arg, bool* value_parsing_ok) const;
 
   string name_;
-  enum { TYPE_INT, TYPE_INT64, TYPE_BOOL, TYPE_STRING } type_;
+  enum { TYPE_INT, TYPE_INT64, TYPE_BOOL, TYPE_STRING, TYPE_FLOAT } type_;
   int* int_value_;
   int64* int64_value_;
   bool* bool_value_;
   string* string_value_;
+  float* float_value_;
   string usage_text_;
 };
 

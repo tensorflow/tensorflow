@@ -27,7 +27,6 @@ from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.learn.python import learn
 from tensorflow.contrib.learn.python.learn.monitors import BaseMonitor
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_ops
 from tensorflow.python.ops import control_flow_ops
@@ -36,7 +35,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
-from tensorflow.python.training import monitored_session
 from tensorflow.python.training import saver as saver_lib
 
 
@@ -220,7 +218,7 @@ class GraphActionsTest(test.TestCase):
       self.assertTrue(request_stop.called)
 
   def test_run_feeds_iter_calls_resources_init(self):
-    with ops.Graph().as_default() as g:
+    with ops.Graph().as_default():
       in0, _, _ = self._build_inference_graph()
       handle = test_ops.stub_resource_handle_op(container='a', shared_name='b')
       resources.register_resource(
@@ -314,7 +312,7 @@ class GraphActionsTest(test.TestCase):
     with ops.Graph().as_default() as g, self.test_session(g):
       variables_lib.create_global_step()
       v = variables.Variable(1.0)
-      w = variables.Variable(
+      variables.Variable(
           v + 1, collections=[ops.GraphKeys.LOCAL_VARIABLES], trainable=False)
       ready_for_local_init_op = variables.report_uninitialized_variables(
           variables.global_variables())
@@ -396,222 +394,10 @@ class GraphActionsTest(test.TestCase):
           }},
           expected_session_logs=[])
 
-  def test_train_invalid_args(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      train_op = constant_op.constant(1.0)
-      loss_op = constant_op.constant(2.0)
-      with self.assertRaisesRegexp(ValueError, 'utput directory'):
-        learn.graph_actions._monitored_train(
-            g,  # pylint: disable=protected-access
-            output_dir=None,
-            train_op=train_op,
-            loss_op=loss_op)
-      with self.assertRaisesRegexp(ValueError, 'utput directory'):
-        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-            g,
-            output_dir='',
-            train_op=constant_op.constant(1.0),
-            loss_op=constant_op.constant(2.0))
-      with self.assertRaisesRegexp(ValueError, 'train_op'):
-        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-            g,
-            output_dir=self._output_dir,
-            train_op=None,
-            loss_op=loss_op)
-      with self.assertRaisesRegexp(ValueError, 'loss_op'):
-        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-            g,
-            output_dir=self._output_dir,
-            train_op=constant_op.constant(1.0),
-            loss_op=None)
-      with self.assertRaisesRegexp(ValueError, 'global_step'):
-        learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-            g,
-            output_dir=self._output_dir,
-            train_op=constant_op.constant(1.0),
-            loss_op=loss_op)
-
   # TODO(ptucker): Resume training from previous ckpt.
   # TODO(ptucker): !supervisor_is_chief
   # TODO(ptucker): Custom init op for training.
   # TODO(ptucker): Mock supervisor, and assert all interactions.
-
-  def test_train(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      with ops.control_dependencies(self._build_inference_graph()):
-        train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
-      writer = learn.graph_actions.get_summary_writer(self._output_dir)
-      self._assert_summaries(self._output_dir, writer)
-      self._assert_ckpt(self._output_dir, False)
-      loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-          g,
-          output_dir=self._output_dir,
-          train_op=train_op,
-          loss_op=constant_op.constant(2.0),
-          steps=1)
-      meta_graph_def = meta_graph.create_meta_graph_def(
-          graph_def=g.as_graph_def(add_shapes=True),
-          saver_def=monitored_session.Scaffold().finalize().saver.saver_def)
-      self.assertEqual(2.0, loss)
-      self._assert_summaries(
-          self._output_dir,
-          writer,
-          expected_graphs=[g],
-          expected_meta_graphs=[meta_graph_def])
-      self._assert_ckpt(self._output_dir, True)
-
-  def test_train_steps_is_incremental(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      with ops.control_dependencies(self._build_inference_graph()):
-        train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
-      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-          g,
-          output_dir=self._output_dir,
-          train_op=train_op,
-          loss_op=constant_op.constant(2.0),
-          steps=10)
-      step = checkpoint_utils.load_variable(
-          self._output_dir, variables_lib.get_global_step().name)
-      self.assertEqual(10, step)
-
-    with ops.Graph().as_default() as g, self.test_session(g):
-      with ops.control_dependencies(self._build_inference_graph()):
-        train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
-      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-          g,
-          output_dir=self._output_dir,
-          train_op=train_op,
-          loss_op=constant_op.constant(2.0),
-          steps=15)
-      step = checkpoint_utils.load_variable(
-          self._output_dir, variables_lib.get_global_step().name)
-      self.assertEqual(25, step)
-
-  def test_train_max_steps_is_not_incremental(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      with ops.control_dependencies(self._build_inference_graph()):
-        train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
-      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-          g,
-          output_dir=self._output_dir,
-          train_op=train_op,
-          loss_op=constant_op.constant(2.0),
-          max_steps=10)
-      step = checkpoint_utils.load_variable(
-          self._output_dir, variables_lib.get_global_step().name)
-      self.assertEqual(10, step)
-
-    with ops.Graph().as_default() as g, self.test_session(g):
-      with ops.control_dependencies(self._build_inference_graph()):
-        train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
-      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-          g,
-          output_dir=self._output_dir,
-          train_op=train_op,
-          loss_op=constant_op.constant(2.0),
-          max_steps=15)
-      step = checkpoint_utils.load_variable(
-          self._output_dir, variables_lib.get_global_step().name)
-      self.assertEqual(15, step)
-
-  def test_train_skip_train_if_max_step_already_saved(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      with ops.control_dependencies(self._build_inference_graph()):
-        train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
-      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-          g,
-          output_dir=self._output_dir,
-          train_op=train_op,
-          loss_op=constant_op.constant(2.0),
-          max_steps=10)
-      step = checkpoint_utils.load_variable(
-          self._output_dir, variables_lib.get_global_step().name)
-      self.assertEqual(10, step)
-
-    with ops.Graph().as_default() as g, self.test_session(g):
-      with ops.control_dependencies(self._build_inference_graph()):
-        train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
-      learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-          g,
-          output_dir=self._output_dir,
-          train_op=train_op,
-          loss_op=constant_op.constant(2.0),
-          max_steps=10)
-      step = checkpoint_utils.load_variable(
-          self._output_dir, variables_lib.get_global_step().name)
-      self.assertEqual(10, step)
-
-  def test_train_loss(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      variables_lib.create_global_step()
-      loss_var = variables_lib.local_variable(10.0)
-      train_op = control_flow_ops.group(
-          state_ops.assign_add(variables_lib.get_global_step(), 1),
-          state_ops.assign_add(loss_var, -1.0))
-      writer = learn.graph_actions.get_summary_writer(self._output_dir)
-      self._assert_summaries(self._output_dir, writer)
-      self._assert_ckpt(self._output_dir, False)
-      loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-          g,
-          output_dir=self._output_dir,
-          train_op=train_op,
-          loss_op=loss_var.value(),
-          steps=6)
-      self.assertEqual(4.0, loss)
-      self._assert_summaries(
-          self._output_dir,
-          writer,
-          expected_graphs=[g],
-          expected_meta_graphs=None)
-      self._assert_ckpt(self._output_dir, True)
-
-  def test_train_summaries(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      with ops.control_dependencies(self._build_inference_graph()):
-        train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
-      loss_op = constant_op.constant(2.0)
-      summary.scalar('loss', loss_op)
-      writer = learn.graph_actions.get_summary_writer(self._output_dir)
-      self._assert_summaries(self._output_dir, writer)
-      self._assert_ckpt(self._output_dir, False)
-      loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-          g,
-          output_dir=self._output_dir,
-          train_op=train_op,
-          loss_op=loss_op,
-          steps=1)
-      meta_graph_def = meta_graph.create_meta_graph_def(
-          graph_def=g.as_graph_def(add_shapes=True),
-          saver_def=monitored_session.Scaffold().finalize().saver.saver_def)
-      self.assertEqual(2.0, loss)
-      self._assert_summaries(
-          self._output_dir,
-          writer,
-          expected_graphs=[g],
-          expected_meta_graphs=[meta_graph_def],
-          expected_summaries={1: {
-              'loss': 2.0
-          }})
-      self._assert_ckpt(self._output_dir, True)
-
-  def test_train_override_saver(self):
-    with ops.Graph().as_default() as g, self.test_session(g):
-      with ops.control_dependencies(self._build_inference_graph()):
-        train_op = state_ops.assign_add(variables_lib.get_global_step(), 1)
-      self._assert_ckpt(self._output_dir, False)
-      real_saver = saver_lib.Saver()
-      saver = test.mock.Mock(wraps=real_saver, saver_def=real_saver.saver_def)
-      ops.add_to_collection(ops.GraphKeys.SAVERS, saver)
-      loss = learn.graph_actions._monitored_train(  # pylint: disable=protected-access
-          g,
-          output_dir=self._output_dir,
-          train_op=train_op,
-          loss_op=constant_op.constant(2.0),
-          steps=1)
-      self.assertEqual(2.0, loss)
-      self._assert_ckpt(self._output_dir, True)
-      self.assertTrue(saver.build.called)
-      self.assertEqual(1, saver.save.call_count)
 
 
 # TODO(ispir): remove following tests after deprecated train.

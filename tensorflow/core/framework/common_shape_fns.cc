@@ -746,6 +746,7 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
     }
     // Build result of <rank> different unknown dims.
     std::vector<DimensionHandle> dims;
+    dims.reserve(rank);
     for (int i = 0; i < rank; ++i) dims.push_back(c->UnknownDim());
     c->set_output(0, c->MakeShape(dims));
     return Status::OK();
@@ -870,6 +871,13 @@ Status BroadcastBinaryOpShapeFn(InferenceContext* c) {
   }
 
   c->set_output(0, c->MakeShape(dims));
+  return Status::OK();
+}
+
+Status RandomShape(shape_inference::InferenceContext* c) {
+  shape_inference::ShapeHandle out;
+  TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+  c->set_output(0, out);
   return Status::OK();
 }
 

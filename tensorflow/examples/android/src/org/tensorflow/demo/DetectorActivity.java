@@ -83,6 +83,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
   private static final boolean MAINTAIN_ASPECT = USE_YOLO;
 
+  private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
+
   private static final boolean SAVE_PREVIEW_BITMAP = false;
   private static final float TEXT_SIZE_DIP = 10;
 
@@ -122,7 +124,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
-    tracker = new MultiBoxTracker(getResources().getDisplayMetrics());
+    tracker = new MultiBoxTracker(this);
 
     if (USE_YOLO) {
       detector =
@@ -271,13 +273,12 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
           yuvBytes[0],
           yuvBytes[1],
           yuvBytes[2],
-          rgbBytes,
           previewWidth,
           previewHeight,
           yRowStride,
           uvRowStride,
           uvPixelStride,
-          false);
+          rgbBytes);
 
       image.close();
     } catch (final Exception e) {
@@ -349,8 +350,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   }
 
   @Override
-  protected int getDesiredPreviewFrameSize() {
-    return CROP_SIZE;
+  protected Size getDesiredPreviewFrameSize() {
+    return DESIRED_PREVIEW_SIZE;
   }
 
   @Override

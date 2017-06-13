@@ -74,8 +74,8 @@ class SoftmaxOp : public XlaOpKernel {
   bool log_;
 };
 
-REGISTER_XLA_OP("Softmax", SoftmaxOp);
-REGISTER_XLA_OP("LogSoftmax", SoftmaxOp);
+REGISTER_XLA_OP(Name("Softmax"), SoftmaxOp);
+REGISTER_XLA_OP(Name("LogSoftmax"), SoftmaxOp);
 
 std::pair<xla::ComputationDataHandle, xla::ComputationDataHandle>
 CrossEntropyWithLogits(XlaOpKernelContext* ctx, DataType type,
@@ -152,7 +152,7 @@ class SoftmaxXentWithLogitsOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("SoftmaxCrossEntropyWithLogits", SoftmaxXentWithLogitsOp);
+REGISTER_XLA_OP(Name("SoftmaxCrossEntropyWithLogits"), SoftmaxXentWithLogitsOp);
 
 class SparseSoftmaxXentWithLogitsOp : public XlaOpKernel {
  public:
@@ -220,7 +220,7 @@ class SparseSoftmaxXentWithLogitsOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("SparseSoftmaxCrossEntropyWithLogits",
+REGISTER_XLA_OP(Name("SparseSoftmaxCrossEntropyWithLogits"),
                 SparseSoftmaxXentWithLogitsOp);
 
 }  // namespace

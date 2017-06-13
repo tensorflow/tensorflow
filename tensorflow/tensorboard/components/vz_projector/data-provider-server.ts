@@ -36,9 +36,9 @@ export class ServerDataProvider implements DataProvider {
   private getEmbeddingInfo(run: string, tensorName: string,
       callback: (e: EmbeddingInfo) => void): void {
     this.retrieveProjectorConfig(run, config => {
-      let embeddings = config.embeddings;
+      const embeddings = config.embeddings;
       for (let i = 0; i < embeddings.length; i++) {
-        let embedding = embeddings[i];
+        const embedding = embeddings[i];
         if (embedding.tensorName === tensorName) {
           callback(embedding);
           return;
@@ -49,15 +49,19 @@ export class ServerDataProvider implements DataProvider {
   }
 
   retrieveRuns(callback: (runs: string[]) => void): void {
-    let msgId = logging.setModalMessage('Fetching runs...');
-    d3.json(`${this.routePrefix}/runs`, (err, runs: string[]) => {
-      if (err) {
-        logging.setErrorMessage(err.responseText, 'fetching runs');
-        return;
-      }
+    const msgId = logging.setModalMessage('Fetching runs...');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `${this.routePrefix}/runs`);
+    xhr.onerror = (err) => {
+      logging.setErrorMessage(xhr.responseText, 'fetching runs');
+    };
+    xhr.onload = () => {
+      const runs = JSON.parse(xhr.responseText);
       logging.setModalMessage(null, msgId);
       callback(runs);
-    });
+    };
+    xhr.send();
   }
 
   retrieveProjectorConfig(run: string, callback: (d: ProjectorConfig) => void)
@@ -67,17 +71,20 @@ export class ServerDataProvider implements DataProvider {
       return;
     }
 
-    let msgId = logging.setModalMessage('Fetching projector config...');
-    d3.json(`${this.routePrefix}/info?run=${run}`, (err,
-        config: ProjectorConfig) => {
-      if (err) {
-        logging.setErrorMessage(err.responseText, 'fetching projector config');
-        return;
-      }
+    const msgId = logging.setModalMessage('Fetching projector config...');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `${this.routePrefix}/info?run=${run}`);
+    xhr.onerror = (err) => {
+      logging.setErrorMessage(xhr.responseText, 'fetching projector config');
+    };
+    xhr.onload = () => {
+      const config = JSON.parse(xhr.responseText) as ProjectorConfig;
       logging.setModalMessage(null, msgId);
       this.runProjectorConfigCache[run] = config;
       callback(config);
-    });
+    };
+    xhr.send();
   }
 
   retrieveTensor(run: string, tensorName: string,
@@ -112,14 +119,19 @@ export class ServerDataProvider implements DataProvider {
 
   getBookmarks(
       run: string, tensorName: string, callback: (r: State[]) => void) {
-    let msgId = logging.setModalMessage('Fetching bookmarks...');
-    d3.json(
-        `${this.routePrefix}/bookmarks?run=${run}&name=${tensorName}`,
-        (err, bookmarks: State[]) => {
-          logging.setModalMessage(null, msgId);
-          if (!err) {
-            callback(bookmarks);
-          }
-        });
+    const msgId = logging.setModalMessage('Fetching bookmarks...');
+
+    const xhr = new XMLHttpRequest();
+    xhr.open(
+        'GET', `${this.routePrefix}/bookmarks?run=${run}&name=${tensorName}`);
+    xhr.onerror = (err) => {
+      logging.setErrorMessage(xhr.responseText, 'fetching bookmarks');
+    };
+    xhr.onload = () => {
+      logging.setModalMessage(null, msgId);
+      const bookmarks = JSON.parse(xhr.responseText);
+      callback(bookmarks);
+    };
+    xhr.send();
   }
 }

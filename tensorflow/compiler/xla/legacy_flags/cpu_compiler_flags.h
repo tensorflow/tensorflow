@@ -41,6 +41,7 @@ typedef struct {
   bool xla_cpu_embed_ir;  // Embed the LLVM IR module string in the resultant
                           // CpuExecutable
   bool xla_cpu_parallel;  // Use the multi-threaded CPU backend.
+  string xla_cpu_dump_debug_json_to;  // Dump debug JSON to this directory.
 } CpuCompilerFlags;
 
 // Return a pointer to the CpuCompilerFlags struct;

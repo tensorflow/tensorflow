@@ -51,6 +51,7 @@ OPTIMIZER_SUMMARIES = [
     "loss",
     "gradients",
     "gradient_norm",
+    "global_gradient_norm",
 ]
 
 
@@ -148,6 +149,7 @@ def optimize_loss(loss,
         * `clip_gradients` is not float or callable.
         * `learning_rate` and `learning_rate_decay_fn` are supplied, but no
           `global_step` is available.
+        * `gradients` is empty
   """
   loss = ops.convert_to_tensor(loss)
   contrib_framework.assert_scalar(loss)
@@ -181,7 +183,7 @@ def optimize_loss(loss,
                          "Got %s of type %s" % (str(learning_rate),
                                                 str(type(learning_rate))))
     if summaries is None:
-      summaries = ["loss", "learning_rate"]
+      summaries = ["loss", "learning_rate", "global_gradient_norm"]
     else:
       for summ in summaries:
         if summ not in OPTIMIZER_SUMMARIES:
@@ -244,8 +246,12 @@ def optimize_loss(loss,
     # Multiply some gradients.
     if gradient_multipliers is not None:
       gradients = _multiply_gradients(gradients, gradient_multipliers)
+      if not gradients:
+        raise ValueError(
+            "Empty list of (gradient, var) pairs encountered. This is most "
+            "likely to be caused by an improper value of gradient_multipliers.")
 
-    if "gradient_norm" in summaries:
+    if "global_gradient_norm" in summaries or "gradient_norm" in summaries:
       summary.scalar("global_norm/gradient_norm",
                      clip_ops.global_norm(list(zip(*gradients))[0]))
 
@@ -255,8 +261,8 @@ def optimize_loss(loss,
     elif callable(clip_gradients):
       gradients = clip_gradients(gradients)
     elif clip_gradients is not None:
-      raise ValueError("Unknown type %s for clip_gradients" %
-                       type(clip_gradients))
+      raise ValueError(
+          "Unknown type %s for clip_gradients" % type(clip_gradients))
 
     # Add scalar summary for loss.
     if "loss" in summaries:
@@ -277,7 +283,8 @@ def optimize_loss(loss,
           summary.scalar("gradient_norm/%s" % var_name,
                          clip_ops.global_norm([grad_values]))
 
-    if clip_gradients is not None and "gradient_norm" in summaries:
+    if clip_gradients is not None and ("global_gradient_norm" in summaries or
+                                       "gradient_norm" in summaries):
       summary.scalar("global_norm/clipped_gradient_norm",
                      clip_ops.global_norm(list(zip(*gradients))[0]))
 

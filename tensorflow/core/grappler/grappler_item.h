@@ -42,6 +42,8 @@ struct GrapplerItem {
 
   // Initialization op(s).
   std::vector<string> init_ops;
+  // Expected initialization time in seconds, or 0 if unknown
+  int64 expected_init_time = 0;
 
   // Queue runner(s) required to run the queue(s) of this model.
   std::vector<QueueRunnerDef> queue_runners;
@@ -50,6 +52,8 @@ struct GrapplerItem {
   std::vector<const NodeDef*> MainOpsFanin() const;
   // Return the set nodes used by TensorFlow to initialize the graph.
   std::vector<const NodeDef*> InitOpsFanin() const;
+  // Return the set of variables accessed during a regular train/inference step.
+  std::vector<const NodeDef*> MainVariables() const;
 };
 
 // Return the transitive fanin of a set of terminal nodes.
