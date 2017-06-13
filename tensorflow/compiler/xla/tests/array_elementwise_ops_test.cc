@@ -1845,7 +1845,7 @@ TEST_F(ArrayElementwiseOpTest, ImplictBroadcastInFusedExpressions) {
 
   auto x = builder.Parameter(0, x_literal->shape(), "x");
   auto y = builder.Parameter(1, y_literal->shape(), "y");
-  auto slice = builder.Slice(x, {1}, {2});
+  auto slice = builder.Slice(x, {1}, {2}, {1});
   builder.Sub(slice, y);
 
   ComputeAndCompareR1<float>(&builder, {-2, -3}, {x_data.get(), y_data.get()},

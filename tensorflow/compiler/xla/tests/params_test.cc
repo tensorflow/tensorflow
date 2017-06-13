@@ -328,7 +328,7 @@ XLA_TEST_F(ParamsTest, R2_2x2_TryToPassReverseLayoutToParameter) {
   ComputationBuilder builder(client_, TestName());
   auto input = builder.Parameter(0, original, "input");
   // Use the slice operator to get an off-diagonal element.
-  builder.Slice(input, {0, 1}, {1, 2});
+  builder.Slice(input, {0, 1}, {1, 2}, {1, 1});
 
   std::unique_ptr<GlobalData> data =
       client_->TransferToServer(*literal).ConsumeValueOrDie();
