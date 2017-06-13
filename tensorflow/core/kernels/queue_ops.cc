@@ -435,7 +435,7 @@ class QueueIsClosedOp : public QueueOpKernel {
                     DoneCallback callback) override {
     Tensor* Tqueue_is_closed = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &Tqueue_is_closed));
-    Tqueue_is_closed->flat<bool>().setConstant(queue->closed());
+    Tqueue_is_closed->flat<bool>().setConstant(queue->is_closed());
     callback();
   }
 
