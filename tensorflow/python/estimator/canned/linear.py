@@ -159,7 +159,7 @@ class LinearClassifier(estimator.Estimator):
                n_classes=2,
                weight_column=None,
                label_vocabulary=None,
-               optimizer=None,
+               optimizer='Ftrl',
                config=None,
                partitioner=None):
     """Construct a `LinearClassifier` estimator object.
@@ -189,9 +189,8 @@ class LinearClassifier(estimator.Estimator):
         encoded as integer values in {0, 1,..., n_classes-1} for `n_classes`>2 .
         Also there will be errors if vocabulary is not provided and labels are
         string.
-      optimizer: The optimizer used to train the model. If specified, it should
-        be either an instance of `tf.Optimizer` or the SDCAOptimizer. If `None`,
-        the Ftrl optimizer will be used.
+      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
+        to FTRL optimizer.
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
 
@@ -268,7 +267,7 @@ class LinearRegressor(estimator.Estimator):
                model_dir=None,
                label_dimension=1,
                weight_column=None,
-               optimizer=None,
+               optimizer='Ftrl',
                config=None,
                partitioner=None):
     """Initializes a `LinearRegressor` instance.
@@ -290,9 +289,8 @@ class LinearRegressor(estimator.Estimator):
         used as a key to fetch weight tensor from the `features`. If it is a
         `_NumericColumn`, raw tensor is fetched by key `weight_column.key`,
         then weight_column.normalizer_fn is applied on it to get weight tensor.
-      optimizer: string, `tf.Optimizer` object, or callable that returns
-        `tf.Optimizer`. Defines the optimizer to use for training. If `None`,
-        will use the FTRL optimizer.
+      optimizer: An instance of `tf.Optimizer` used to train the model. Defaults
+        to FTRL optimizer.
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
     """
