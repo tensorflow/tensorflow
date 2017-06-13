@@ -100,8 +100,7 @@ class StageTest(test.TestCase):
       with ops.device(gpu_dev):
         stager = data_flow_ops.StagingArea([dtypes.float32])
         y = stager.put([v])
-        self.assertEqual(y.device, '/device:GPU:0' if gpu_dev
-                                                   else gpu_dev)
+        self.assertEqual(y.device, gpu_dev)
       with ops.device('/cpu:0'):
         x = stager.get()
         self.assertEqual(x.device, '/device:CPU:0')
