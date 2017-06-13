@@ -49,12 +49,13 @@ void ExecStep::AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
     if (op_end_rel_micros == 0) {
       ++op_end_rel_micros;
     }
-    latest_end_rel_micros_ =
-        std::max(latest_end_rel_micros_, op_end_rel_micros);
+    latest_end_micros_ = std::max(
+        latest_end_micros_, step_stat.all_start_micros() + op_end_rel_micros);
 
     op_execs_[dev].push_back(
         std::make_pair(step_stat.all_start_micros(), op_end_rel_micros));
 
+    // TODO(xpan): Can a stream only in stream:all or doesn't in stream at all?
     if (dev.find("stream") != dev.npos && dev.find("stream:all") == dev.npos) {
       gpu_kernel_execs_[dev].push_back(
           std::make_pair(step_stat.all_start_micros(), op_end_rel_micros));
@@ -142,12 +143,7 @@ void TFGraphNode::AddStepStat(int64 step, const string& device,
 }
 
 int64 ExecStep::exec_micros() const {
-  int64 total = 0;
-  for (const auto& execs : gpu_kernel_execs_) {
-    for (const auto& exec : execs.second) {
-      total += exec.second;
-    }
-  }
+  int64 total = accelerator_exec_micros();
   if (total > 0) return total;
 
   // If there is no gpu kernel time, fall back to assume it runs on cpu.
@@ -164,12 +160,51 @@ int64 ExecStep::exec_micros() const {
   return total;
 }
 
+int64 ExecStep::accelerator_exec_micros() const {
+  int64 total = 0;
+  for (const auto& execs : gpu_kernel_execs_) {
+    for (const auto& exec : execs.second) {
+      total += exec.second;
+    }
+  }
+  return total;
+}
+
 bool IsCombinedGPUStream(const string& device) {
   return device.find("stream:all") != device.npos;
 }
 
 bool IsCPUDevice(const string& device) {
   return device.find("cpu:0") != device.npos;
+}
+
+std::vector<int64> ShapeProtoToVec(const TensorShapeProto& shape_pb) {
+  std::vector<int64> shape_vec;
+  if (shape_pb.dim_size() == 0 && !shape_pb.unknown_rank()) {
+    // Scalar parameter with empty shape but known rank.
+    shape_vec.push_back(1);
+  } else {
+    for (const auto& d : shape_pb.dim()) {
+      shape_vec.push_back(d.size());
+    }
+  }
+  return shape_vec;
+}
+
+TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec) {
+  TensorShapeProto shape_pb;
+  if (shape_vec.empty()) {
+    shape_pb.set_unknown_rank(true);
+    return shape_pb;
+  }
+  for (const int64 s : shape_vec) {
+    shape_pb.add_dim()->set_size(s);
+  }
+  return shape_pb;
+}
+
+bool IsAcceleratorDevice(const string& device) {
+  return device.find("gpu") != device.npos;
 }
 }  // namespace tfprof
 }  // namespace tensorflow

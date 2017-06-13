@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
+
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 
@@ -33,6 +35,102 @@ constexpr char kRecv[] = "_Recv";
 constexpr char kBatchMatMul[] = "BatchMatMul";
 constexpr char kVariable[] = "Variable";
 constexpr char kVariableV2[] = "VariableV2";
+
+namespace {
+
+string GetDataFormat(const OpInfo& op_features) {
+  string data_format = "NHWC";  // Default format.
+  if (op_features.attr().find("data_format") != op_features.attr().end()) {
+    data_format = op_features.attr().at("data_format").s();
+  }
+  return data_format;
+}
+
+Padding GetPadding(const OpInfo& op_features) {
+  if (op_features.attr().find("padding") != op_features.attr().end() &&
+      op_features.attr().at("padding").s() == "VALID") {
+    return Padding::VALID;
+  }
+  return Padding::SAME;  // Default padding.
+}
+
+std::vector<int64> GetStrides(const OpInfo& op_features) {
+  if (op_features.attr().find("strides") != op_features.attr().end()) {
+    const auto strides = op_features.attr().at("strides").list().i();
+    return {strides[0], strides[1], strides[2], strides[3]};
+  }
+  return {1, 1, 1, 1};
+}
+
+int64 GetOutputSize(const int64 input, const int64 filter, const int64 stride,
+                    const Padding& padding) {
+  // Logic for calculating output shape is from GetWindowedOutputSizeVerbose()
+  // function in third_party/tensorflow/core/framework/common_shape_fns.cc.
+  if (padding == Padding::VALID) {
+    return (input - filter + stride) / stride;
+  } else {  // SAME.
+    return (input + stride - 1) / stride;
+  }
+}
+
+// Return a minimum shape if the shape is unknown. If known, return the original
+// shape.
+TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
+                                      int rank, bool* found_unknown_shapes) {
+  auto shape = original_shape;
+  if (shape.unknown_rank() || shape.dim_size() < rank) {
+    *found_unknown_shapes = true;
+    TensorShapeProto::Dim dim;
+    VLOG(1) << "WARNING: Use minimum shape because the rank is unknown.";
+    // The size of each dimension is at least 1, if unknown.
+    dim.set_size(1);
+    for (int i = 0; i < rank; i++) {
+      *shape.add_dim() = dim;
+    }
+  } else {
+    for (int i = 0; i < shape.dim_size(); i++) {
+      if (shape.dim(i).size() == -1) {
+        *found_unknown_shapes = true;
+        VLOG(1)
+            << "WARNING: Use minimum dim size 1 because the shape is unknown.";
+        // The size of each dimension is at least 1, if unknown.
+        shape.mutable_dim(i)->set_size(1);
+      }
+    }
+  }
+  return shape;
+}
+
+// Return the output element count of a binary element-wise op considering
+// broadcasting.
+int64 CwiseOutputElementCount(const TensorShapeProto& input_shape_1,
+                              const TensorShapeProto& input_shape_2) {
+  bool found_unknown_shapes;
+  int rank = std::max(1, input_shape_1.dim_size());
+  TensorShapeProto output_shape =
+      MaybeGetMinimumShape(input_shape_1, rank, &found_unknown_shapes);
+
+  if (input_shape_1.dim_size() == input_shape_2.dim_size()) {
+    auto shape_1 =
+        MaybeGetMinimumShape(input_shape_1, rank, &found_unknown_shapes);
+    auto shape_2 =
+        MaybeGetMinimumShape(input_shape_2, rank, &found_unknown_shapes);
+    if (shape_1.dim_size() == shape_2.dim_size()) {
+      for (int i = 0; i < shape_1.dim_size(); i++) {
+        output_shape.mutable_dim(i)->set_size(
+            std::max(shape_1.dim(i).size(), shape_2.dim(i).size()));
+      }
+    }
+  }
+
+  int64 count = 1;
+  for (int i = 0; i < output_shape.dim_size(); i++) {
+    count *= output_shape.dim(i).size();
+  }
+  return count;
+}
+
+}  // namespace
 
 OpLevelCostEstimator::OpLevelCostEstimator() {
   // Syntactic sugar to build and return a lambda that takes an OpInfo and
@@ -58,15 +156,114 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kVariable, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kVariableV2, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)}};
+
+  elementwise_ops_ = {
+      // Unary ops alphabetically sorted
+      {"Acos", Eigen::internal::functor_traits<
+                   Eigen::internal::scalar_acos_op<float>>::Cost},
+      {"Asin", Eigen::internal::functor_traits<
+                   Eigen::internal::scalar_asin_op<float>>::Cost},
+      {"Atan", Eigen::internal::functor_traits<
+                   Eigen::internal::scalar_atan_op<float>>::Cost},
+      {"Atan2", Eigen::internal::functor_traits<
+                    Eigen::internal::scalar_quotient_op<float>>::Cost +
+                    Eigen::internal::functor_traits<
+                        Eigen::internal::scalar_atan_op<float>>::Cost},
+      {"Ceil", Eigen::internal::functor_traits<
+                   Eigen::internal::scalar_ceil_op<float>>::Cost},
+      {"Cos", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_cos_op<float>>::Cost},
+      {"Erf", 1},
+      {"Erfc", 1},
+      {"Exp", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_exp_op<float>>::Cost},
+      {"Expm1", Eigen::internal::functor_traits<
+                    Eigen::internal::scalar_expm1_op<float>>::Cost},
+      {"Floor", Eigen::internal::functor_traits<
+                    Eigen::internal::scalar_floor_op<float>>::Cost},
+      {"Inv", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_inverse_op<float>>::Cost},
+      {"InvGrad", 1},
+      {"Lgamma", 1},
+      {"Log", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_log_op<float>>::Cost},
+      {"Log1p", Eigen::internal::functor_traits<
+                    Eigen::internal::scalar_log1p_op<float>>::Cost},
+      {"Neg", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_opposite_op<float>>::Cost},
+      {"Reciprocal", Eigen::internal::functor_traits<
+                         Eigen::internal::scalar_inverse_op<float>>::Cost},
+      {"Rint", 1},
+      {"Round", Eigen::internal::functor_traits<
+                    Eigen::internal::scalar_round_op<float>>::Cost},
+      {"Rsqrt", Eigen::internal::functor_traits<
+                    Eigen::internal::scalar_rsqrt_op<float>>::Cost},
+      {"Sqrt", Eigen::internal::functor_traits<
+                   Eigen::internal::scalar_sqrt_op<float>>::Cost},
+      {"Square", Eigen::internal::functor_traits<
+                     Eigen::internal::scalar_square_op<float>>::Cost},
+      {"Tanh", Eigen::internal::functor_traits<
+                   Eigen::internal::scalar_tanh_op<float>>::Cost},
+      {"Sigmoid", Eigen::internal::functor_traits<
+                      Eigen::internal::scalar_sigmoid_op<float>>::Cost},
+      {"Sign", Eigen::internal::functor_traits<
+                   Eigen::internal::scalar_sign_op<float>>::Cost},
+      {"Sin", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_sin_op<float>>::Cost},
+      {"Tan", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_tan_op<float>>::Cost},
+      // Binary ops alphabetically sorted
+      {"Add", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_sum_op<float>>::Cost},
+      {"ApproximateEqual", 1},
+      {"Div", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_quotient_op<float>>::Cost},
+      {"Equal", 1},
+      {"FloorDiv", Eigen::internal::functor_traits<
+                       Eigen::internal::scalar_quotient_op<float>>::Cost},
+      {"FloorMod", Eigen::internal::functor_traits<
+                       Eigen::internal::scalar_mod_op<float>>::Cost},
+      {"Greater", 1},
+      {"GreaterEqual", 1},
+      {"Less", 1},
+      {"LessEqual", 1},
+      {"LogicalAnd", Eigen::internal::functor_traits<
+                         Eigen::internal::scalar_boolean_and_op>::Cost},
+      {"LogicalNot", 1},
+      {"LogicalOr", Eigen::internal::functor_traits<
+                        Eigen::internal::scalar_boolean_or_op>::Cost},
+      {"Maximum", Eigen::internal::functor_traits<
+                      Eigen::internal::scalar_max_op<float>>::Cost},
+      {"Minimum", Eigen::internal::functor_traits<
+                      Eigen::internal::scalar_min_op<float>>::Cost},
+      {"Mod", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_mod_op<float>>::Cost},
+      {"Mul", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_product_op<float>>::Cost},
+      {"NotEqual", 1},
+      {"QuantizedAdd", Eigen::internal::functor_traits<
+                           Eigen::internal::scalar_sum_op<float>>::Cost},
+      {"QuantizedMul", Eigen::internal::functor_traits<
+                           Eigen::internal::scalar_product_op<float>>::Cost},
+      {"RealDiv", Eigen::internal::functor_traits<
+                      Eigen::internal::scalar_quotient_op<float>>::Cost},
+      {"SquareDifference", 1},
+      {"Sub", Eigen::internal::functor_traits<
+                  Eigen::internal::scalar_difference_op<float>>::Cost},
+      {"TruncateDiv", Eigen::internal::functor_traits<
+                          Eigen::internal::scalar_quotient_op<float>>::Cost},
+      {"TruncateMod", Eigen::internal::functor_traits<
+                          Eigen::internal::scalar_mod_op<float>>::Cost}};
 }
 
 Costs OpLevelCostEstimator::PredictCosts(const OpInfo& op_features) const {
   auto it = device_cost_impl_.find(op_features.op());
   if (it == device_cost_impl_.end()) {
+    if (elementwise_ops_.find(op_features.op()) != elementwise_ops_.end()) {
+      return PredictCwiseOp(op_features);
+    }
     VLOG(1) << "Missing implementation for op: " << op_features.op();
-    Costs costs;
-    costs = DummyExecutionTime(op_features);
-    return costs;
+    return DummyExecutionTime(op_features);
   }
 
   std::function<Costs(const OpInfo&)> estimator = it->second;
@@ -121,9 +318,42 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
   return std::make_pair(gflops, bandwidth);
 }
 
+Costs OpLevelCostEstimator::PredictCwiseOp(const OpInfo& op_features) const {
+  bool found_unknown_shapes = false;
+  // For unary or binary element-wise operations, op count is the element count
+  // of any input. We use the count for the largest input here to be more robust
+  // in case that the shape is unknown or partially known for other input.
+  int64 op_count =
+      CalculateLargestInputCount(op_features, &found_unknown_shapes);
+  // If output shape is available, try use the element count calcuated from
+  // that.
+  if (op_features.outputs_size() > 0) {
+    op_count =
+        std::max(op_count, CalculateTensorElementCount(op_features.outputs(0),
+                                                       &found_unknown_shapes));
+  }
+  // For binary ops, calculate the output shape possibly resulting from
+  // broadcasting.
+  if (op_features.inputs_size() >= 2) {
+    op_count = std::max(op_count,
+                        CwiseOutputElementCount(op_features.inputs(0).shape(),
+                                                op_features.inputs(1).shape()));
+  }
+
+  int op_cost = 1;
+  auto it = elementwise_ops_.find(op_features.op());
+  if (it != elementwise_ops_.end()) {
+    op_cost = it->second;
+  }
+  Costs costs = PredictOpCountBasedCost(op_count * op_cost, op_features);
+  costs.inaccurate = found_unknown_shapes;
+  return costs;
+}
+
 Costs OpLevelCostEstimator::DummyExecutionTime(
     const OpInfo& op_features) const {
-  Costs costs = PredictOpCountBasedCost(0, op_features);
+  // Use CwiseOp time as an estimation
+  auto costs = PredictCwiseOp(op_features);
   costs.inaccurate = true;
   return costs;
 }
@@ -158,75 +388,6 @@ int64 OpLevelCostEstimator::CountConv2DOperations(
     const OpInfo& op_features, bool* found_unknown_shapes) const {
   return CountConv2DOperations(op_features, nullptr, found_unknown_shapes);
 }
-
-namespace {
-
-string GetDataFormat(const OpInfo& op_features) {
-  string data_format = "NHWC";  // Default format.
-  if (op_features.attr().find("data_format") != op_features.attr().end()) {
-    data_format = op_features.attr().at("data_format").s();
-  }
-  return data_format;
-}
-
-Padding GetPadding(const OpInfo& op_features) {
-  if (op_features.attr().find("padding") != op_features.attr().end() &&
-      op_features.attr().at("padding").s() == "VALID") {
-    return Padding::VALID;
-  }
-  return Padding::SAME;  // Default padding.
-}
-
-std::vector<int64> GetStrides(const OpInfo& op_features) {
-  if (op_features.attr().find("strides") != op_features.attr().end()) {
-    const auto strides = op_features.attr().at("strides").list().i();
-    return {strides[0], strides[1], strides[2], strides[3]};
-  }
-  return {1, 1, 1, 1};
-}
-
-int64 GetOutputSize(const int64 input, const int64 filter, const int64 stride,
-                    const Padding& padding) {
-  // Logic for calculating output shape is from GetWindowedOutputSizeVerbose()
-  // function in third_party/tensorflow/core/framework/common_shape_fns.cc.
-  if (padding == Padding::VALID) {
-    return (input - filter + stride) / stride;
-  } else {  // SAME.
-    return (input + stride - 1) / stride;
-  }
-}
-
-// Return a minimum shape if the shape is unknown. If known, return the original
-// shape.
-TensorShapeProto MaybeGetMinimumShape(const TensorShapeProto& original_shape,
-                                      int rank, bool* found_unknown_shapes) {
-  auto shape = original_shape;
-  if (shape.unknown_rank()) {
-    *found_unknown_shapes = true;
-  }
-  if (shape.unknown_rank() || shape.dim_size() == 0) {
-    TensorShapeProto::Dim dim;
-    VLOG(1) << "WARNING: Use minimum shape because the shape is unknown.";
-    // The size of each dimension is at least 1, if unknown.
-    dim.set_size(1);
-    for (int i = 0; i < rank; i++) {
-      *shape.add_dim() = dim;
-    }
-  } else {
-    CHECK_EQ(shape.dim_size(), rank);
-    for (int i = 0; i < rank; i++) {
-      if (shape.dim(i).size() == -1) {
-        *found_unknown_shapes = true;
-        VLOG(1)
-            << "WARNING: Use minimum dim size 1 because the shape is unknown.";
-        // The size of each dimension is at least 1, if unknown.
-        shape.mutable_dim(i)->set_size(1);
-      }
-    }
-  }
-  return shape;
-}
-}  // namespace
 
 // Helper to translate the positional arguments into named fields.
 OpLevelCostEstimator::ConvolutionDimensions
@@ -398,8 +559,8 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
   }
 
   double ops = 0;
-  auto& a_input = op_features.inputs(0);
-  auto& b_input = op_features.inputs(1);
+  const auto& a_input = op_features.inputs(0);
+  const auto& b_input = op_features.inputs(1);
 
   // BatchMatMul requires inputs of at least matrix shape (rank 2).
   // The two most minor dimensions of each input are matrices that
@@ -469,7 +630,7 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
   OpInfo::TensorProperties* a_matrix = matmul_op_features.add_inputs();
   a_matrix->set_dtype(a_input.dtype());
   TensorShapeProto* a_matrix_shape = a_matrix->mutable_shape();
-  for (int i = a_input_shape.dim_size() - matrix_rank;
+  for (int i = std::max(0, a_input_shape.dim_size() - matrix_rank);
        i < a_input_shape.dim_size(); ++i) {
     *(a_matrix_shape->add_dim()) = a_input_shape.dim(i);
   }
@@ -477,7 +638,7 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
   OpInfo::TensorProperties* b_matrix = matmul_op_features.add_inputs();
   b_matrix->set_dtype(b_input.dtype());
   TensorShapeProto* b_matrix_shape = b_matrix->mutable_shape();
-  for (int i = b_input_shape.dim_size() - matrix_rank;
+  for (int i = std::max(0, b_input_shape.dim_size() - matrix_rank);
        i < b_input_shape.dim_size(); ++i) {
     *(b_matrix_shape->add_dim()) = b_input_shape.dim(i);
   }
@@ -485,7 +646,7 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
   for (int i = 0; i < num_matmuls; ++i) {
     bool matmul_unknown_shapes = false;
     ops += CountMatMulOperations(matmul_op_features, &matmul_unknown_shapes);
-    CHECK_EQ(false, matmul_unknown_shapes);
+    *found_unknown_shapes |= matmul_unknown_shapes;
   }
   return ops;
 }
@@ -560,30 +721,51 @@ int64 OpLevelCostEstimator::CountConv2DBackPropFilterOperations(
   return ops;
 }
 
-int64 OpLevelCostEstimator::CalculateSingleInputSize(
-    const OpInfo::TensorProperties& input, bool* found_unknown_shapes) const {
-  VLOG(1) << "   with " << input.dtype() << " input of shape "
-          << input.shape().DebugString();
-  int64 input_size = 1;
-  int num_dims = std::max(1, input.shape().dim_size());
-  auto input_shape =
-      MaybeGetMinimumShape(input.shape(), num_dims, found_unknown_shapes);
-  for (const auto& dim : input_shape.dim()) {
-    input_size *= dim.size();
+int64 OpLevelCostEstimator::CalculateTensorElementCount(
+    const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
+  VLOG(1) << "   with " << tensor.dtype() << " tensor of shape "
+          << tensor.shape().DebugString();
+  int64 tensor_size = 1;
+  int num_dims = std::max(1, tensor.shape().dim_size());
+  auto tensor_shape =
+      MaybeGetMinimumShape(tensor.shape(), num_dims, found_unknown_shapes);
+  for (const auto& dim : tensor_shape.dim()) {
+    tensor_size *= dim.size();
   }
-  return input_size * DataTypeSize(BaseType(input.dtype()));
+  return tensor_size;
+}
+
+int64 OpLevelCostEstimator::CalculateTensorSize(
+    const OpInfo::TensorProperties& tensor, bool* found_unknown_shapes) const {
+  return CalculateTensorElementCount(tensor, found_unknown_shapes) *
+         DataTypeSize(BaseType(tensor.dtype()));
 }
 
 int64 OpLevelCostEstimator::CalculateInputSize(
     const OpInfo& op_features, bool* found_unknown_shapes) const {
   int64 total_input_size = 0;
   for (auto& input : op_features.inputs()) {
-    int64 input_size = CalculateSingleInputSize(input, found_unknown_shapes);
+    int64 input_size = CalculateTensorSize(input, found_unknown_shapes);
     total_input_size += input_size;
     VLOG(1) << "Input Size: " << input_size
             << " Total Input Size:" << total_input_size;
   }
   return total_input_size;
+}
+
+int64 OpLevelCostEstimator::CalculateLargestInputCount(
+    const OpInfo& op_features, bool* found_unknown_shapes) const {
+  int64 largest_input_count = 0;
+  for (auto& input : op_features.inputs()) {
+    int64 input_count =
+        CalculateTensorElementCount(input, found_unknown_shapes);
+    if (input_count > largest_input_count) {
+      largest_input_count = input_count;
+    }
+    VLOG(1) << "Input Count: " << input_count
+            << " Largest Input Count:" << largest_input_count;
+  }
+  return largest_input_count;
 }
 
 int64 OpLevelCostEstimator::CalculateOutputSize(

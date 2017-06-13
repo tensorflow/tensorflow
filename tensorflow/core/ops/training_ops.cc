@@ -925,7 +925,7 @@ REGISTER_OP("ResourceApplyFtrl")
 Update '*var' according to the Ftrl-proximal scheme.
 
 accum_new = accum + grad * grad
-linear += grad + (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
+linear += grad - (accum_new^(-lr_power) - accum^(-lr_power)) / lr * var
 quadratic = 1.0 / (accum_new^(lr_power) * lr) + 2 * l2
 var = (sign(linear) * l1 - linear) / quadratic if |linear| > l1 else 0.0
 accum = accum_new

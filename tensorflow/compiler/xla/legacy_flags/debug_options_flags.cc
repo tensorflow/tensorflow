@@ -25,8 +25,9 @@ namespace legacy_flags {
 
 struct DebugOptionsFlags {
   string xla_generate_hlo_graph;
-
   string xla_disable_hlo_passes;
+  int32 xla_backend_optimization_level;
+  string xla_backend_extra_options;
 };
 
 namespace {
@@ -41,6 +42,8 @@ void AllocateFlags() {
   flag_values = new DebugOptionsFlags;
   flag_values->xla_generate_hlo_graph = "";
   flag_values->xla_disable_hlo_passes = "";
+  flag_values->xla_backend_optimization_level = 2;
+  flag_values->xla_backend_extra_options = "";
 
   flag_objects = new std::vector<tensorflow::Flag>(
       {tensorflow::Flag(
@@ -49,10 +52,21 @@ void AllocateFlags() {
            "throughout various stages in compilation."),
 
        tensorflow::Flag(
+           "xla_backend_optimization_level",
+           &flag_values->xla_backend_optimization_level,
+           "Numerical optimization level for the XLA compiler backend."),
+
+       tensorflow::Flag("xla_backend_extra_options",
+                        &flag_values->xla_backend_extra_options,
+                        "Extra options to pass to a backend; "
+                        "comma-separated list of 'key=val' strings (=val "
+                        "may be omitted); no whitespace around commas."),
+
+       tensorflow::Flag(
            "xla_disable_hlo_passes", &flag_values->xla_disable_hlo_passes,
            "Comma-separated list of HLO passes to be disabled. These names "
-           "must "
-           "exactly match the passes' names; no whitespace around commas.")});
+           "must exactly match the passes' names; "
+           "no whitespace around commas.")});
   ParseFlagsFromEnv(*flag_objects);
 }
 
@@ -68,13 +82,34 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   std::call_once(flags_init, &AllocateFlags);
 
   DebugOptions options;
-
   options.set_xla_generate_hlo_graph(flag_values->xla_generate_hlo_graph);
 
   std::vector<string> disabled_passes =
       tensorflow::str_util::Split(flag_values->xla_disable_hlo_passes, ',');
   for (const auto& passname : disabled_passes) {
     options.add_xla_disable_hlo_passes(passname);
+  }
+
+  options.set_xla_backend_optimization_level(
+      flag_values->xla_backend_optimization_level);
+
+  std::vector<string> extra_options_parts =
+      tensorflow::str_util::Split(flag_values->xla_backend_extra_options, ',');
+  auto* extra_options_map = options.mutable_xla_backend_extra_options();
+
+  // The flag contains a comma-separated list of options; some options have
+  // arguments following "=", some don't.
+  for (const auto& part : extra_options_parts) {
+    size_t eq_pos = part.find_first_of('=');
+    if (eq_pos == string::npos) {
+      (*extra_options_map)[part] = "";
+    } else {
+      string value = "";
+      if (eq_pos + 1 < part.size()) {
+        value = part.substr(eq_pos + 1);
+      }
+      (*extra_options_map)[part.substr(0, eq_pos)] = value;
+    }
   }
 
   return options;

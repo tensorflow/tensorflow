@@ -31,6 +31,14 @@ message DebugOptions {
   // List of HLO passes to disable. These names must exactly match the pass
   // names as specified by the HloPassInterface::name() method.
   repeated string xla_disable_hlo_passes = 2;
+
+  // Numerical optimization level for the XLA compiler backend; the specific
+  // interpretation of this value is left to the backends.
+  int32 xla_backend_optimization_level = 3;
+
+  // Extra options to pass to the compilation backend; specific interpretation
+  // of these values is left to the backend.
+  map<string, string> xla_backend_extra_options = 4;
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings

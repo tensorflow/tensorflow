@@ -58,8 +58,9 @@ class GenerateTest(googletest.TestCase):
     py_modules = [('tf', tf), ('tfdbg', tf_debug)]
 
     try:
-      generate_lib.extract(
-          py_modules, generate_lib._get_default_do_not_descend_map())
+      generate_lib.extract(py_modules,
+                           generate_lib._get_default_private_map(),
+                           generate_lib._get_default_do_not_descend_map())
     except RuntimeError:
       print('*****************************************************************')
       print('If this test fails, you have most likely introduced an unsealed')

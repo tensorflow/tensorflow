@@ -180,7 +180,7 @@ void HloValue::RemoveLocation(HloInstruction* instruction,
 }
 
 std::ostream& operator<<(std::ostream& out, const HloValue& value) {
-  out << value.ToString();
+  out << value.ToShortString();
   return out;
 }
 
@@ -354,7 +354,7 @@ HloValueSet& HloDataflowAnalysis::GetValueSet(const HloInstruction* instruction,
   return *GetInstructionValueSet(instruction).mutable_element(index);
 }
 
-std::vector<const HloValue*>& HloDataflowAnalysis::values() const {
+const std::vector<const HloValue*>& HloDataflowAnalysis::values() const {
   if (values_vector_.empty()) {
     // Lazily construct vector of values.
     values_vector_.reserve(values_.size());
@@ -691,6 +691,7 @@ InstructionValueSet HloDataflowAnalysis::RecomputeParameterValueSet(
   CHECK_EQ(call_graph_node.context(), CallContext::kSequential);
 
   std::vector<const InstructionValueSet*> inputs;
+  bool called_from_while = false;
   for (const CallSite& callsite : call_graph_node.caller_callsites()) {
     inputs.push_back(&GetInstructionValueSet(
         callsite.instruction()->operand(parameter->parameter_number())));
@@ -700,10 +701,11 @@ InstructionValueSet HloDataflowAnalysis::RecomputeParameterValueSet(
       // in the while body or the parameter is in the while condition.
       inputs.push_back(&GetInstructionValueSet(
           callsite.instruction()->while_body()->root_instruction()));
+      called_from_while = true;
     }
   }
 
-  if (ssa_form_) {
+  if (ssa_form_ && called_from_while) {
     return Phi(parameter, inputs);
   } else {
     return InstructionValueSet::Union(inputs);

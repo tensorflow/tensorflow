@@ -35,6 +35,12 @@ void ShowNode::ReInit(int64 step) {
   mutable_proto()->set_requested_bytes(node->requested_bytes(step));
   mutable_proto()->set_float_ops(node->float_ops());
 
+  mutable_proto()->clear_input_shapes();
+  for (const auto& inp : node->input_shapes()) {
+    (*mutable_proto()->mutable_input_shapes())[inp.first].MergeFrom(
+        VecToShapeProto(inp.second));
+  }
+
   proto_.clear_parameters();
   if (!node->shape().empty()) {
     int64 params = 1;

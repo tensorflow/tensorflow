@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 import {Backend, convertBins, filterTags, getRuns, getTags, RunToTag, TYPES} from '../backend';
 import {RequestManager} from '../requestManager';
-import {Router, router} from '../router';
+import {createRouter, setRouter} from '../router';
 import {BAD_CHARACTERS, demoify, queryEncoder} from '../urlPathHelpers';
 
 describe('urlPathHelpers', () => {
@@ -46,10 +46,11 @@ describe('backend tests', () => {
   let backend: Backend;
   let rm: RequestManager;
   const base = 'data';
-  const demoRouter = router(base, true);
+  const demoRouter = createRouter(base, /*demoMode=*/true);
   beforeEach(() => {
     // Construct a demo Backend (third param is true)
-    backend = new Backend(demoRouter);
+    setRouter(demoRouter);
+    backend = new Backend();
     rm = new RequestManager();
   });
 
@@ -110,7 +111,7 @@ describe('backend tests', () => {
   });
 
   it('trailing slash removed from base route', () => {
-    const r = router('foo/');
+    const r = createRouter('foo/');
     chai.assert.equal(r.runs(), 'foo/runs');
   });
 

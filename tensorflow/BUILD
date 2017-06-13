@@ -428,6 +428,7 @@ filegroup(
         "//tensorflow/tools/test:all_files",
         "//tensorflow/tools/tfprof:all_files",
         "//tensorflow/tools/tfprof/internal:all_files",
+        "//tensorflow/tools/tfprof/internal/advisor:all_files",
         "//tensorflow/user_ops:all_files",
         "//third_party/hadoop:all_files",
         "//third_party/sycl:all_files",

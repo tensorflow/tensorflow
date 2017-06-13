@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 import * as backend_backend from '../../tf-backend/backend';
-import * as backend_router from '../../tf-backend/router';
+import {createRouter, setRouter} from '../../tf-backend/router';
 
 // TODO(dandelion): Fix me.
 declare function fixture(id: string): any;
@@ -25,8 +25,9 @@ describe('audio dashboard tests', () => {
   let reloadCount = 0;
   beforeEach(() => {
     audioDash = fixture('testElementFixture');
-    const router = backend_router.router('/data', true);
-    const backend = new backend_backend.Backend(router);
+    const router = createRouter('/data', true);
+    setRouter(router);
+    const backend = new backend_backend.Backend();
     audioDash.backend = backend;
     stub('tf-audio-loader', {
       reload: () => { reloadCount++; },

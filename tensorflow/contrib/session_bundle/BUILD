@@ -162,6 +162,7 @@ py_library(
 
 py_test(
     name = "gc_test",
+    size = "small",
     srcs = [
         "gc_test.py",
     ],
