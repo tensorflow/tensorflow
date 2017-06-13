@@ -591,7 +591,7 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase):
         batch_size=batch_size)
 
 
-class DNNLinearCombinedTrainOpTest(test.TestCase):
+class DNNLinearCombinedTests(test.TestCase):
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -647,6 +647,34 @@ class DNNLinearCombinedTrainOpTest(test.TestCase):
     self.assertEqual(100.,
                      checkpoint_utils.load_variable(
                          self._model_dir, 'binary_logistic_head/dnn_called'))
+
+  def test_dnn_and_linear_logits_are_added(self):
+    with ops.Graph().as_default():
+      variables_lib.Variable([[1.0]], name='linear/linear_model/x/weights')
+      variables_lib.Variable([2.0], name='linear/linear_model/bias_weights')
+      variables_lib.Variable([[3.0]], name='dnn/hiddenlayer_0/kernel')
+      variables_lib.Variable([4.0], name='dnn/hiddenlayer_0/bias')
+      variables_lib.Variable([[5.0]], name='dnn/logits/kernel')
+      variables_lib.Variable([6.0], name='dnn/logits/bias')
+      variables_lib.Variable(1, name='global_step', dtype=dtypes.int64)
+      linear_testing_utils.save_variables_to_ckpt(self._model_dir)
+
+    x_column = feature_column.numeric_column('x')
+    est = dnn_linear_combined.DNNLinearCombinedRegressor(
+        linear_feature_columns=[x_column],
+        dnn_hidden_units=[1],
+        dnn_feature_columns=[x_column],
+        model_dir=self._model_dir)
+    input_fn = numpy_io.numpy_input_fn(
+        x={'x': np.array([[10.]])}, batch_size=1, shuffle=False)
+    # linear logits = 10*1 + 2 = 12
+    # dnn logits = (10*3 + 4)*5 + 6 = 176
+    # logits = dnn + linear = 176 + 12 = 188
+    self.assertAllClose(
+        {
+            prediction_keys.PredictionKeys.PREDICTIONS: [188.],
+        },
+        next(est.predict(input_fn=input_fn)))
 
 
 if __name__ == '__main__':
