@@ -697,15 +697,6 @@ TEST_F(ShapeInferenceTest, InferSliceShapeRank2WithStrides) {
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {16, 16}), inferred));
 }
 
-TEST_F(ShapeInferenceTest, InferSliceShapeRank2WithNegativeStrides) {
-  Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64});
-  auto inferred_status =
-     ShapeInference::InferSliceShape(matrix_shape, {64, 64}, {32, 0}, {-1, -4});
-  ASSERT_IS_OK(inferred_status.status());
-  Shape inferred = inferred_status.ValueOrDie();
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {32, 16}), inferred));
-}
-
 TEST_F(ShapeInferenceTest, InferSliceShapeRank2WithStridesNotIntegral) {
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {128, 64});
   auto inferred_status =
