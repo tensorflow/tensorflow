@@ -154,6 +154,61 @@ class LinearOnlyRegressorTrainingTest(
         self, _linear_regressor_fn)
 
 
+def _linear_classifier_fn(feature_columns,
+                          model_dir=None,
+                          n_classes=2,
+                          weight_feature_key=None,
+                          label_vocabulary=None,
+                          optimizer='Ftrl',
+                          config=None,
+                          partitioner=None):
+  return dnn_linear_combined.DNNLinearCombinedClassifier(
+      model_dir=model_dir,
+      linear_feature_columns=feature_columns,
+      linear_optimizer=optimizer,
+      n_classes=n_classes,
+      weight_feature_key=weight_feature_key,
+      label_vocabulary=label_vocabulary,
+      input_layer_partitioner=partitioner,
+      config=config)
+
+
+class LinearOnlyClassifierTrainingTest(
+    linear_testing_utils.BaseLinearClassifierTrainingTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierTrainingTest.__init__(
+        self, linear_classifier_fn=_linear_classifier_fn)
+
+
+class LinearOnlyClassifierClassesEvaluationTest(
+    linear_testing_utils.BaseLinearClassifierEvaluationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierEvaluationTest.__init__(
+        self, linear_classifier_fn=_linear_classifier_fn)
+
+
+class LinearOnlyClassifierPredictTest(
+    linear_testing_utils.BaseLinearClassifierPredictTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierPredictTest.__init__(
+        self, linear_classifier_fn=_linear_classifier_fn)
+
+
+class LinearOnlyClassifierIntegrationTest(
+    linear_testing_utils.BaseLinearClassifierIntegrationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierIntegrationTest.__init__(
+        self, linear_classifier_fn=_linear_classifier_fn)
+
+
 class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
 
   def setUp(self):
