@@ -162,8 +162,12 @@ bazel version > bazel.version
 curr_bazel_version=$(head -n 1 bazel.version | cut -d ' ' -f3)
 rm -f bazel.version
 
+
 echo "You have bazel $curr_bazel_version installed."
-if [ "$(version "$MIN_BAZEL_VERSION")" -gt "$(version "$curr_bazel_version")" ]; then
+if [ -z "$curr_bazel_version" ]; then
+  echo "WARNING: current bazel installation is not a release version."
+  echo "Make sure you are running at least bazel $MIN_BAZEL_VERSION."
+elif [ "$(version "$MIN_BAZEL_VERSION")" -gt "$(version "$curr_bazel_version")" ]; then
   echo "Please upgrade your bazel installation to version $MIN_BAZEL_VERSION or higher to build TensorFlow!"
   echo "Exiting..."
   exit 1
