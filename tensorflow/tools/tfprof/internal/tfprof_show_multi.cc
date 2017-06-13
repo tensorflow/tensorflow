@@ -125,8 +125,58 @@ string TFMultiShow::FormatLegend(const Options& opts) {
   if (opts.select.find(kShown[7]) != opts.select.end()) {
     legends.push_back("op occurrence");
   }
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    legends.push_back("input shapes");
+  }
   return strings::Printf("node name | %s\n",
                          str_util::Join(legends, " | ").c_str());
+}
+
+string TFMultiShow::FormatInputShapes(const TFMultiGraphNodeProto& proto) {
+  std::map<string, int> input_shapes_str;
+  std::map<string, int> input_time_str;
+  for (int i = 0; i < proto.graph_nodes_size(); ++i) {
+    const TFGraphNodeProto& gnode = proto.graph_nodes(i);
+    // Convert and sort by input_idx.
+    std::map<int, std::vector<int64>> input_shapes;
+    for (const auto& inp : gnode.input_shapes()) {
+      input_shapes[inp.first] = ShapeProtoToVec(inp.second);
+    }
+
+    std::vector<string> input_vec;
+    for (const auto& s : input_shapes) {
+      if (s.second.empty()) {
+        input_vec.push_back(strings::Printf("%d:unknown", s.first));
+      } else {
+        input_vec.push_back(strings::Printf(
+            "%d:%s", s.first, str_util::Join(s.second, "x").c_str()));
+      }
+    }
+    string shape_type_str = strings::Printf(
+        "input_type: %s", str_util::Join(input_vec, ",\t").c_str());
+    input_shapes_str[shape_type_str] += 1;
+    input_time_str[shape_type_str] += gnode.exec_micros();
+  }
+  if (input_shapes_str.empty()) {
+    return "";
+  }
+
+  std::vector<std::pair<string, int>> shape_count_vec(input_shapes_str.begin(),
+                                                      input_shapes_str.end());
+  std::sort(shape_count_vec.begin(), shape_count_vec.end(),
+            [](const std::pair<const string, int>& a,
+               const std::pair<const string, int>& b) {
+              return a.second > b.second;
+            });
+
+  std::vector<string> input_types;
+  input_types.reserve(shape_count_vec.size());
+  for (const auto& s : shape_count_vec) {
+    input_types.push_back(
+        strings::Printf("%s\t(*%d)\texec_time: %s", s.first.c_str(), s.second,
+                        FormatTime(input_time_str[s.first]).c_str()));
+  }
+  return str_util::Join(input_types, "\n");
 }
 
 }  // namespace tfprof

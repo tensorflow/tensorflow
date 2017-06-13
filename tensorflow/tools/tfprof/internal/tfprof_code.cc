@@ -282,6 +282,10 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
     attrs.push_back(str_util::Join(op_types, "|"));
   }
 
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    attrs.push_back(strings::Printf("%s N/A in code view", kShown[8]));
+  }
+
   return strings::Printf("%s%s (%s)\n", string(indent, ' ').c_str(),
                          node->name().c_str(),
                          str_util::Join(attrs, ", ").c_str());

@@ -384,7 +384,7 @@ class FunctionTest(test.TestCase):
 
   def testResourceVarAsImplicitInput(self):
     g = ops.Graph()
-    with g.as_default():
+    with g.as_default(), ops.device("cpu:0"):
       v = variable_scope.get_variable(
           "var", (4, 4), dtypes.float32, use_resource=True)
 

@@ -234,6 +234,7 @@ py_test(
 
 py_test(
     name = "experimental_test",
+    size = "small",
     srcs = ["python/framework/experimental_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -246,6 +247,7 @@ py_test(
 
 py_test(
     name = "tensor_util_test",
+    size = "small",
     srcs = ["python/framework/tensor_util_test.py"],
     srcs_version = "PY2AND3",
     deps = [

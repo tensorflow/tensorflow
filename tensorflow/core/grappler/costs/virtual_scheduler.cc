@@ -57,8 +57,7 @@ Costs CombineCosts(const Costs& left, const Costs& right) {
 
 VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
                                    const bool use_static_shapes,
-                                   const string& default_device_type,
-                                   Cluster* cluster, VirtualPlacer* placer)
+                                   Cluster* cluster)
     :  // TODO(dyoon): Use a better way than FIFO.
       ready_nodes_(new FIFOManager()),
       graph_costs_(Costs::ZeroCosts()),
@@ -66,8 +65,7 @@ VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
       cluster_(cluster),
       grappler_item_(grappler_item),
       use_static_shapes_(use_static_shapes),
-      default_device_type_(default_device_type),
-      placer_(placer) {
+      placer_(cluster) {
   initialized_ = false;
 }
 
@@ -240,11 +238,7 @@ bool VirtualScheduler::IsPersistentNode(const NodeDef* node) const {
 }
 
 string VirtualScheduler::DeviceName(const NodeDef* node) const {
-  CHECK(!initialized_) << "DeviceName is called after Init().";
-
-  // TODO(dyoon): integrate this part with VirtualPlacer.
-  return node->device().empty() ? "/device:" + default_device_type_ + ":0"
-                                : node->device();
+  return placer_.get_canonical_device_name(*node);
 }
 
 string VirtualScheduler::ChannelDeviceName(const NodeDef* from,
@@ -314,31 +308,9 @@ std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
 NodeInfo VirtualScheduler::GetCurrNodeInfo() const {
   const NodeDef* node = ready_nodes_->GetCurrNode();
 
-  // This is for compatibility; we can just use placer_->get_device() for all
-  // cases, once VirtualCluster is properly set up.
+  // Get the device from the placer.
   DeviceProperties device;
-  if (placer_) {
-    device = placer_->get_device(*node);
-  }
-  if (device.type() == "UNKNOWN") {
-    string device_type;
-    int device_id;
-    DeviceNameUtils::ParsedName parsed;
-    if (!node->device().empty() &&
-        DeviceNameUtils::ParseFullName(node_map_.at(node).device_name,
-                                       &parsed)) {
-      device_type = parsed.type;
-      device_id = parsed.id;
-    } else {
-      device_type = default_device_type_;
-      device_id = 0;
-    }
-    if (device_type == "GPU") {
-      device = GetLocalGPUInfo(device_id);
-    } else if (device_type == "CPU") {
-      device = GetLocalCPUInfo();
-    }
-  }
+  device = placer_.get_device(*node);
 
   // Special case for _Send op.
   if (IsSend(*node)) {
@@ -626,7 +598,6 @@ Costs VirtualScheduler::Summary() const {
                 << (persisent_ops.count(op) > 0 ? ": persistent op)" : ")");
       }
     }
-    VLOG(1) << "Per-op execution time (and memory usage at peak memory usage):";
     if (critical_path_costs.execution_time <= state.GetCurrTime()) {
       critical_path_costs = state.device_costs;
     }

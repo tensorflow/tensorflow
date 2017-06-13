@@ -803,12 +803,21 @@ py_test(
     ],
 )
 
+filegroup(
+    name = "meta_graph_testdata",
+    srcs = [
+        "framework/testdata/metrics_export_meta_graph.pb",
+    ],
+)
+
 py_test(
     name = "framework_meta_graph_test",
     size = "small",
     srcs = ["framework/meta_graph_test.py"],
+    data = ["//tensorflow/python:meta_graph_testdata"],
     main = "framework/meta_graph_test.py",
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -817,6 +826,7 @@ py_test(
         ":framework",
         ":framework_for_generated_wrappers",
         ":math_ops",
+        ":metrics",
         ":nn_ops",
         ":platform",
         ":random_ops",
@@ -2990,7 +3000,7 @@ py_test(
     srcs = ["client/session_clusterspec_prop_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_gpu",
+        "no_pip_gpu",
     ],
     deps = [
         ":array_ops",
@@ -3014,7 +3024,7 @@ py_test(
     srcs = ["client/session_list_devices_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "no_gpu",
+        "no_pip_gpu",
     ],
     deps = [
         ":client",

@@ -58,7 +58,7 @@ class HloModuleTest : public HloTestBase {
 
 TEST_F(HloModuleTest, OneComputationPostOrder) {
   // Create a module with a single computation.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(CreateConstantComputation());
 
   EXPECT_THAT(module->MakeComputationPostOrder(),
@@ -67,7 +67,7 @@ TEST_F(HloModuleTest, OneComputationPostOrder) {
 
 TEST_F(HloModuleTest, TwoComputationsPostOrder) {
   // Create a module with two unconnected computations.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation1 = module->AddEntryComputation(CreateConstantComputation());
   auto computation2 =
       module->AddEmbeddedComputation(CreateConstantComputation());
@@ -83,7 +83,7 @@ TEST_F(HloModuleTest, TwoComputationsPostOrder) {
 
 TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   // Create a module with a diamond call graph of computations.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation1 =
       module->AddEmbeddedComputation(CreateConstantComputation());
   auto computation2 =
@@ -104,3 +104,7 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
 }  // namespace
 
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

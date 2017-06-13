@@ -180,7 +180,6 @@ cc_library(
     deps = [
         ":eigen_helpers",
         "//tensorflow/core:framework",
-        "//third_party/eigen3",
     ],
 )
 
@@ -225,7 +224,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
-        "//third_party/eigen3",
     ],
 )
 
@@ -396,7 +394,6 @@ cc_library(
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/eigen3",
     ],
 )
 
@@ -1938,6 +1935,15 @@ tf_kernel_library(
     prefix = "identity_reader_op",
     deps = IO_DEPS,
 )
+
+# TODO(jhseu): Restore after merge.
+#tf_kernel_library(
+#    name = "lmdb_reader_op",
+#    prefix = "lmdb_reader_op",
+#    deps = IO_DEPS + [
+#        "@lmdb",
+#    ],
+#)
 
 tf_kernel_library(
     name = "lmdb_reader_op",
@@ -4495,7 +4501,6 @@ tf_cc_test(
 tf_cc_test(
     name = "quantization_utils_test",
     srcs = ["quantization_utils_test.cc"],
-    tags = ["noasan"],  # http://b/62136754
     deps = [
         ":quantized_ops",
         "//tensorflow/core:array_ops_op_lib",
@@ -5163,6 +5168,7 @@ tf_mkl_kernel_library(
 
 cc_library(
     name = "dataset",
+    srcs = ["dataset.cc"],
     hdrs = ["dataset.h"],
     deps = [
         "//tensorflow/core:framework",
@@ -5440,9 +5446,23 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "cache_dataset_ops",
+    srcs = ["cache_dataset_ops.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/tensor_bundle",
+    ],
+)
+
+tf_kernel_library(
     name = "dataset_ops",
     deps = [
         ":batch_dataset_op",
+        ":cache_dataset_ops",
         ":dense_to_sparse_batch_dataset_op",
         ":filter_dataset_op",
         ":flat_map_dataset_op",

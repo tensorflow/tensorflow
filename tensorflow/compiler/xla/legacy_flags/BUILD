@@ -29,6 +29,7 @@ cc_library(
 
 cc_test(
     name = "parse_flags_from_env_test",
+    size = "small",
     srcs = ["parse_flags_from_env_test.cc"],
     deps =
         [

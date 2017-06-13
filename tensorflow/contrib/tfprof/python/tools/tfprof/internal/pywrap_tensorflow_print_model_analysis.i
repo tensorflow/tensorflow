@@ -43,6 +43,7 @@ using tensorflow::int64;
 %unignore tensorflow::tfprof::DeleteProfiler;
 %unignore tensorflow::tfprof::AddStep;
 %unignore tensorflow::tfprof::Profile;
+%unignore tensorflow::tfprof::Advise;
 
 %include "tensorflow/tools/tfprof/internal/print_model_analysis.h"
 
