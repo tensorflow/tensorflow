@@ -431,16 +431,15 @@ HloInstruction* InstructionCopier::Copy() {
 
 // The 'read_only_indices' are initialized based on points-to analysis on the
 // while body corresponding to 'while_hlo'. If the init buffer corresponding to
-// a read-only index aliases with an entry parameter (or constant), it cannot be
-// considered read-only, and must be copied. This is necessary because some
-// backends don't support entry-parameter (or constant) aliasing with regular
-// instructions. This function performs this fix-up of 'read_only_indices'.
+// a read-only index aliases with a constant, it cannot be considered read-only,
+// and must be copied. This is necessary because BufferAssignment does not
+// currently assign an allocation for constants (b/32248867).
+// This function performs this fix-up of 'read_only_indices'.
 //
 // Returns a ShapeTree of copy_overrides, which implements an optimization to
-// allow multiple while loops that share the same read-only entry parameters to
+// allow multiple while loops that share the same read-only constants to
 // share a single copy.
-StatusOr<ShapeTree<HloInstruction*>>
-RevertReadOnlyIndicesForEntryParamsAndConstants(
+StatusOr<ShapeTree<HloInstruction*>> RevertReadOnlyIndicesForConstants(
     const HloInstruction* while_hlo,
     const TuplePointsToAnalysis& points_to_analysis,
     ShapeTree<bool>* read_only_indices,
@@ -462,23 +461,19 @@ RevertReadOnlyIndicesForEntryParamsAndConstants(
         }
         for (const LogicalBuffer* buffer : buffers) {
           HloInstruction* pointee = buffer->instruction();
-          const HloComputation* computation = pointee->parent();
-          const bool is_entry_parameter =
-              pointee->opcode() == HloOpcode::kParameter &&
-              computation == computation->parent()->entry_computation();
           const bool is_constant = pointee->opcode() == HloOpcode::kConstant;
-          if (!is_entry_parameter && !is_constant) {
+          if (!is_constant) {
             continue;
           }
 
-          // We have found an entry parameter or constant that is read-only in
+          // We have found an constant that is read-only in
           // the while body. These buffers are managed by the caller, and cannot
-          // be aliased with non-parameter buffers. Revert this read-only index,
+          // be aliased with HLO buffers. Revert this read-only index,
           // to allow it to be copied.
           *read_only_indices->mutable_element(index) = false;
 
           // Optimization to allow multiple while loops that share the same
-          // read-only entry parameters (or constants) to share a single copy.
+          // read-only entry constants to share a single copy.
           // Only unambiguous and distinct array-shaped buffers are allowed, to
           // reduce code complexity. The shape of the entry parameter must be
           // identical to the shape of the init_hlo at this index, to ensure
@@ -590,15 +585,15 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   // TODO(b/33301720) Remove redundant while instruction copies.
   FlatMap<const HloInstruction*, HloInstruction*> shared_copies;
   for (HloInstruction* while_hlo : while_instructions) {
-    // Fix read_only_indices to account for entry parameters and constants. Also
+    // Fix read_only_indices to account for entry constants. Also
     // initialize copy_overrides, which ensures a single copy for each read-only
-    // entry parameter or constant that is used in multiple while loops.
+    // constant that is used in multiple while loops.
     ShapeTree<bool>* read_only_indices =
         &while_body_read_only_indices[while_hlo->while_body()];
     TF_ASSIGN_OR_RETURN(
         const ShapeTree<HloInstruction*> copy_overrides,
-        RevertReadOnlyIndicesForEntryParamsAndConstants(
-            while_hlo, points_to_analysis, read_only_indices, &shared_copies));
+        RevertReadOnlyIndicesForConstants(while_hlo, points_to_analysis,
+                                          read_only_indices, &shared_copies));
     // Create InstructionCopier for init operand of while instruction.
     HloInstruction* init_hlo = while_hlo->mutable_operand(0);
     InstructionCopier init_copier(init_hlo, {while_hlo});
