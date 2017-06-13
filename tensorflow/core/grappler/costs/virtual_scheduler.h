@@ -145,9 +145,7 @@ struct NodeInfo {
 class VirtualScheduler {
  public:
   VirtualScheduler(const GrapplerItem* grappler_item,
-                   const bool use_static_shapes,
-                   const string& default_device_type, Cluster* cluster,
-                   VirtualPlacer* placer);
+                   const bool use_static_shapes, Cluster* cluster);
 
   // Initializes NodeState and DeviceState from grappler_item_ and
   // graph_properties_.
@@ -222,10 +220,7 @@ class VirtualScheduler {
   bool use_static_shapes_;
   bool initialized_;
 
-  // TODO(dyoon): Once VirtualCluster takes care of device names properly,
-  // move VirtualPlacer into the scheduler; also, delete default_device_type_.
-  const string default_device_type_;
-  VirtualPlacer* placer_;  // Not owned.
+  VirtualPlacer placer_;  // owned.
 };
 
 }  // namespace grappler

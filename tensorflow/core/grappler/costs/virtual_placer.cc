@@ -26,20 +26,31 @@ namespace grappler {
 VirtualPlacer::VirtualPlacer(const Cluster* cluster) : has_gpu_(false) {
   CHECK(cluster);
   devices_ = cluster->GetDevices();
-  for (const auto& device : devices_) {
-    if (str_util::Lowercase(device.first).find("gpu") != string::npos) {
-      has_gpu_ = true;
+  unknown_device_.set_type("UNKNOWN");
+
+  if (devices_.empty()) {
+    // If there are no devices in the cluster, add a single device, "UNKNOWN" to
+    // the cluster.
+    default_device_ = "UNKNOWN";
+    devices_["UNKNOWN"] = unknown_device_;
+  } else {
+    for (const auto& device : devices_) {
+      if (str_util::Lowercase(device.first).find("gpu") != string::npos) {
+        has_gpu_ = true;
+        default_device_ = device.first;
+        break;
+      }
+    }
+
+    // If doesn't have gpu, set default device to be the cpu.
+    if (!has_gpu_) {
+      default_device_ = devices_.begin()->first;
     }
   }
-
-  unknown_device_.set_type("UNKNOWN");
 }
 
 const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
   string device = get_canonical_device_name(node);
-  if (device.empty()) {
-    return unknown_device_;
-  }
   auto it = devices_.find(device);
   DCHECK(it != devices_.end());
   return it->second;
@@ -66,7 +77,7 @@ string VirtualPlacer::get_canonical_device_name(const NodeDef& node) const {
       }
     }
     if (!parsed) {
-      return "";
+      return get_default_device_name();
     } else {
       device = strings::StrCat(
           "/job:", parsed_name.job, "/replica:", parsed_name.replica,
@@ -81,9 +92,13 @@ string VirtualPlacer::get_canonical_device_name(const NodeDef& node) const {
     }
   }
   if (devices_.find(device) == devices_.end()) {
-    return "";
+    return get_default_device_name();
   }
   return device;
+}
+
+const string& VirtualPlacer::get_default_device_name() const {
+  return default_device_;
 }
 
 }  // end namespace grappler

@@ -110,7 +110,7 @@ filegroup(
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
-        "@lmdb//:LICENSE",
+        #"@lmdb//:LICENSE",  # TODO(jhseu): renenable after fixing
         "@local_config_sycl//sycl:LICENSE.text",
         "@nanopb_git//:LICENSE.txt",
         "@org_html5lib//:LICENSE",

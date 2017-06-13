@@ -1201,21 +1201,36 @@ class DebugDumpDir(object):
     return output[0] if len(output) == 1 else output
 
   def _infer_device_name(self, device_name, node_name):
+    """Infer the device name given node name.
+
+    If device_name is provided (i.e., not None), it'll be simply returned right
+    away.
+
+    Args:
+      device_name: (str or None) name of the device. If None, will try to infer
+        the device name by looking at the available nodes.
+      node_name: (str) name of the node.
+
+    Returns:
+      (str) Inferred name of the device, if available.
+
+    Raises:
+      ValueError: If the node name does not exist on any of the available
+        devices or if there are multiple devices that contain the node with
+        the given name.
+    """
     if device_name is None:
-      if len(self.devices()) == 1:
-        return self.devices()[0]
-      else:
-        if node_name in self._node_devices:
-          if len(self._node_devices[node_name]) == 1:
-            return list(self._node_devices[node_name])[0]
-          else:
-            raise ValueError(
-                "There are multiple (%d) devices with nodes named '%s' but "
-                "device_name is not specified." %
-                (len(self._node_devices[node_name]), node_name))
+      if node_name in self._node_devices:
+        if len(self._node_devices[node_name]) == 1:
+          return list(self._node_devices[node_name])[0]
         else:
-          raise ValueError("None of the %d devices has a node named '%s'." %
-                           (len(self._device_names), node_name))
+          raise ValueError(
+              "There are multiple (%d) devices with nodes named '%s' but "
+              "device_name is not specified." %
+              (len(self._node_devices[node_name]), node_name))
+      else:
+        raise ValueError("None of the %d device(s) has a node named '%s'." %
+                         (len(self._device_names), node_name))
     else:
       return device_name
 
@@ -1258,17 +1273,12 @@ class DebugDumpDir(object):
 
     Raises:
       LookupError: If no partition graphs have been loaded.
-      ValueError: If no node named node_name exists.
     """
     if self._partition_graphs is None:
       raise LookupError("No partition graphs have been loaded.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    if node_name in self._node_attributes[device_name]:
-      return self._node_attributes[device_name][node_name]
-    else:
-      raise ValueError("No node named \"%s\" exists on device %s." % (
-          node_name, device_name))
+    return self._node_attributes[device_name][node_name]
 
   def node_inputs(self, node_name, is_control=False, device_name=None):
     """Get the inputs of given node according to partition graphs.
@@ -1286,7 +1296,6 @@ class DebugDumpDir(object):
     Raises:
       LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
-      ValueError: If the node does not exist in partition graphs.
     """
 
     if self._partition_graphs is None:
@@ -1294,10 +1303,6 @@ class DebugDumpDir(object):
           "Node inputs are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    if node_name not in self._node_inputs[device_name]:
-      raise ValueError("Node '%s' does not exist in the partition graph of "
-                       "device %s." % (node_name, device_name))
-
     if is_control:
       return self._node_ctrl_inputs[device_name][node_name]
     else:
@@ -1322,7 +1327,6 @@ class DebugDumpDir(object):
     Raises:
       LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
-      ValueError: If the node does not exist in partition graphs.
     """
 
     if self._partition_graphs is None:
@@ -1330,10 +1334,6 @@ class DebugDumpDir(object):
           "Node inputs are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    if node_name not in self._node_inputs[device_name]:
-      raise ValueError(
-          "Node '%s' does not exist in the partition graph of device %s." %
-          (node_name, device_name))
 
     inputs = []
 
@@ -1394,7 +1394,6 @@ class DebugDumpDir(object):
     Raises:
       LookupError: If node inputs and control inputs have not been loaded
          from partition graphs yet.
-      ValueError: If the node does not exist in partition graphs.
     """
 
     if self._partition_graphs is None:
@@ -1402,11 +1401,6 @@ class DebugDumpDir(object):
           "Node recipients are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    if node_name not in self._node_recipients[device_name]:
-      raise ValueError(
-          "Node '%s' does not exist in the partition graph of device %s." %
-          (node_name, device_name))
-
     if is_control:
       return self._node_ctrl_recipients[device_name][node_name]
     else:
@@ -1494,7 +1488,6 @@ class DebugDumpDir(object):
     Raises:
       LookupError: If node op types have not been loaded
          from partition graphs yet.
-      ValueError: If the node does not exist in partition graphs.
     """
 
     if self._partition_graphs is None:
@@ -1502,11 +1495,6 @@ class DebugDumpDir(object):
           "Node op types are not loaded from partition graphs yet.")
 
     device_name = self._infer_device_name(device_name, node_name)
-    if node_name not in self._node_op_types[device_name]:
-      raise ValueError(
-          "Node '%s' does not exist in the partition graph of device '%s'. " %
-          (node_name, device_name))
-
     return self._node_op_types[device_name][node_name]
 
   def debug_watch_keys(self, node_name, device_name=None):

@@ -43,7 +43,7 @@ limitations under the License.
           </template>
           <script>
             import {Backend} from "../../tf-backend/backend";
-            import {router} from "../../tf-backend/router";
+            import {createRouter, setRouter} from "../../tf-backend/router";
 
             Polymer({
               is: "image-dash-demo",
@@ -51,11 +51,14 @@ limitations under the License.
                 backend: {
                   type: Object,
                   value: function() {
-                    var path = "data";
-                    var router = new router(path, true);
-                    return new Backend(router);
+                    return new Backend();
                   },
                 },
+              },
+              created: function() {
+                var path = "data";
+                var router = createRouter(path, true);
+                setRouter(router);
               },
             });
           </script>

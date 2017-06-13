@@ -367,6 +367,11 @@ class TensorShapeUtils {
 
   /// \brief Returns true iff `shape` ends with `suffix`.
   static bool EndsWith(const TensorShape& shape, const TensorShape& suffix);
+
+  /// \brief Returns the product of values in an int64 array,
+  /// or a failing Status if the array represents a value larger than
+  /// a `TensorShape` can hold.
+  static Status NumElements(gtl::ArraySlice<int64> shape, int64* num_elements);
 };
 
 /// Manages the partially known dimensions of a Tensor and their sizes.

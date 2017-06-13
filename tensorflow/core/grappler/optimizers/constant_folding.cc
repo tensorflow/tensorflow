@@ -90,17 +90,6 @@ class DeviceSimple : public DeviceBase {
   std::unique_ptr<Eigen::ThreadPoolDevice> eigen_device_;
 };
 
-Status NumOutputs(const NodeDef& node, int* num_outputs) {
-  const OpDef* op_def = nullptr;
-  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node.op(), &op_def));
-  if (node.op() == "ConcatOffset") {
-    *num_outputs = node.attr().at("N").i();
-  } else {
-    *num_outputs = op_def->output_arg_size();
-  }
-  return Status::OK();
-}
-
 string AsControlDependency(const NodeDef& node) {
   return strings::StrCat("^", node.name());
 }
@@ -341,15 +330,16 @@ Status ConstantFolding::EvaluateNode(const NodeDef& node,
   params.frame_iter = FrameAndIter(0, 0);
   params.inputs = &inputs;
   params.op_kernel = op_kernel.get();
-  int num_outputs;
-  TF_RETURN_IF_ERROR(NumOutputs(node, &num_outputs));
+
   gtl::InlinedVector<AllocatorAttributes, 4> output_attrs;
+  const int num_outputs = op_kernel->num_outputs();
   for (int i = 0; i < num_outputs; i++) {
     AllocatorAttributes attr;
     attr.set_on_host(true);
     output_attrs.push_back(attr);
   }
   params.output_attr_array = output_attrs.data();
+
   OpKernelContext op_context(&params);
   op_kernel->Compute(&op_context);
   for (int i = 0; i < num_outputs; i++) {

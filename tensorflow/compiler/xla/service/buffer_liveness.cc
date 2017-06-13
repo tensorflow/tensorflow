@@ -37,15 +37,17 @@ namespace xla {
 
 /* static */
 StatusOr<std::unique_ptr<BufferLiveness>> BufferLiveness::Run(
-    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering) {
+    const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
+    TuplePointsToAnalysis::Colorer colorer) {
   std::unique_ptr<BufferLiveness> liveness(
-      new BufferLiveness(module, std::move(hlo_ordering)));
+      new BufferLiveness(module, std::move(hlo_ordering), std::move(colorer)));
   TF_RETURN_IF_ERROR(liveness->Analyze());
   return std::move(liveness);
 }
 
 tensorflow::Status BufferLiveness::Analyze() {
-  TF_ASSIGN_OR_RETURN(points_to_analysis_, TuplePointsToAnalysis::Run(module_));
+  TF_ASSIGN_OR_RETURN(points_to_analysis_,
+                      TuplePointsToAnalysis::Run(module_, colorer_));
   for (auto& computation : module_->computations()) {
     // Gather all instructions whose buffers might alias other instructions into
     // the set aliased_buffers_.  This includes those contained as a tuple

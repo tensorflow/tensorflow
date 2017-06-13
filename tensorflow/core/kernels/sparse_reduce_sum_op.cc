@@ -57,7 +57,7 @@ ReduceDetails SparseTensorReduceHelper(const SparseTensor &sp,
   ReduceDetails reduction;
 
   std::vector<int32> reduction_axes(axes_slice.begin(), axes_slice.end());
-  int ndims = sp.shape().dims();
+  int ndims = sp.dims();
   for (int64 i = 0; i < reduction_axes.size(); ++i) {
     reduction_axes[i] = (reduction_axes[i] + ndims) % ndims;
   }
@@ -82,6 +82,7 @@ ReduceDetails SparseTensorReduceHelper(const SparseTensor &sp,
                       std::back_inserter(reduction.reorder_dims));
 
   // (1) Calculate the shape after reduction.
+  auto sp_shape = sp.shape();
   std::vector<int64> out_dim_sizes;
   if (keep_dims) {
     out_dim_sizes.reserve(ndims);
@@ -91,7 +92,7 @@ ReduceDetails SparseTensorReduceHelper(const SparseTensor &sp,
       if (std::find(beg, end, d) == end) {
         out_dim_sizes.push_back(1);  // A reduced axis.
       } else {
-        out_dim_sizes.push_back(sp.shape().dim_size(d));
+        out_dim_sizes.push_back(sp_shape[d]);
       }
     }
   } else {

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <deque>
+#include <mutex>
 #include <numeric>
 #include <vector>
 
@@ -39,21 +40,18 @@ class Buffer : public ResourceBase {
   std::size_t capacity_;
   std::size_t memory_limit_;
   std::size_t current_bytes_;
-  mutex mu_;
-  condition_variable non_empty_cond_var_;
-  condition_variable full_cond_var_;
-  std::deque<Tuple> buf_ GUARDED_BY(mu_);
-
+  std::mutex mu_;
+  std::condition_variable non_empty_cond_var_;
+  std::condition_variable full_cond_var_;
+  std::deque<Tuple> buf_;
 
  private:
   // private methods
 
   // If the buffer is configured for bounded capacity, notify
   // waiting inserters that space is now available
-  void notify_inserters_if_bounded(mutex_lock & l)
-  {
-    if(IsBounded())
-    {
+  void notify_inserters_if_bounded(std::unique_lock<std::mutex> & l) {
+    if(IsBounded()) {
       l.unlock();
       full_cond_var_.notify_one();
     }
@@ -90,7 +88,7 @@ class Buffer : public ResourceBase {
 
   // the Buffer takes ownership of the Tuple
   Status Put(Tuple* tuple) {
-    mutex_lock l(mu_);
+    std::unique_lock<std::mutex> l(mu_);
 
     std::size_t tuple_bytes = GetTupleBytes(*tuple);
 
@@ -132,7 +130,7 @@ class Buffer : public ResourceBase {
 
   // Get tuple at front of the buffer
   void Get(Tuple* tuple) {  // TODO(zhifengc): Support cancellation.
-    mutex_lock l(mu_);
+    std::unique_lock<std::mutex> l(mu_);
 
     // Wait for data if the buffer is empty
     non_empty_cond_var_.wait(l, [this]() {
@@ -151,7 +149,7 @@ class Buffer : public ResourceBase {
 
   // Return tuple at index
   Status Peek(std::size_t index, Tuple* tuple) {
-    mutex_lock l(mu_);
+    std::unique_lock<std::mutex> l(mu_);
 
     // Wait if the requested index is not available
     non_empty_cond_var_.wait(l, [index, this]() {
@@ -168,12 +166,12 @@ class Buffer : public ResourceBase {
 
   // Buffer size
   size_t Size() {
-    mutex_lock l(mu_);
+    std::unique_lock<std::mutex> l(mu_);
     return buf_.size();
   }
 
   void Clear() {
-    mutex_lock l(mu_);
+    std::unique_lock<std::mutex> l(mu_);
     buf_.clear();
     current_bytes_ = 0;
 
@@ -181,7 +179,7 @@ class Buffer : public ResourceBase {
   }
 
   string DebugString() override {
-    mutex_lock l(mu_);
+    std::unique_lock<std::mutex> l(mu_);
     return strings::StrCat("Staging size: ", buf_.size());
   }
 

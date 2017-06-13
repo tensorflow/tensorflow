@@ -46,6 +46,7 @@ cc_library(
 
 cc_test(
     name = "padding_test",
+    size = "small",
     srcs = ["padding_test.cc"],
     deps = [
         ":padding",

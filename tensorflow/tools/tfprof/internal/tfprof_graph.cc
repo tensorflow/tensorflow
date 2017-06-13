@@ -49,11 +49,11 @@ void TFGraph::Build() {
   // Filter out the root nodes (node not input of any other node).
   for (auto it = nodes_map_.begin(); it != nodes_map_.end(); it++) {
     GraphNode* node = it->second.get();
-    const std::map<string, TFGraphNode*>& inputs = node->node->inputs();
+    const std::map<int, TFGraphNode*>& inputs = node->node->inputs();
     for (auto inputs_it = inputs.cbegin(); inputs_it != inputs.cend();
          inputs_it++) {
-      nonroots.insert(inputs_it->first);
-      auto child_it = nodes_map_.find(inputs_it->first);
+      nonroots.insert(inputs_it->second->name());
+      auto child_it = nodes_map_.find(inputs_it->second->name());
       if (child_it != nodes_map_.end()) {
         node->children.push_back(child_it->second.get());
       }
