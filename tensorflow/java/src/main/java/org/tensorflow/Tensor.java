@@ -618,6 +618,12 @@ public final class Tensor implements AutoCloseable {
 
   private static native byte[] scalarBytes(long handle);
 
+  private static native int getEncodedStringSize(int numStringBytes);
+
+  private static native int setStringBytes(byte[] value, ByteBuffer buffer);
+
+  private static native byte[] getStringBytes(ByteBuffer buffer);
+
   private static native void readNDArray(long handle, Object value);
 
   static {
