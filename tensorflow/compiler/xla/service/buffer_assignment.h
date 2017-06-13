@@ -408,7 +408,7 @@ class BufferAssigner {
  public:
   // Build and return a BufferAssignment for the given module. The given
   // HloOrdering is used to determine buffer liveness. buffer_size is a function
-  // which returns the size of a LogicalBuffer. Alignment is the the minimum
+  // which returns the size of a LogicalBuffer. Alignment is the minimum
   // alignment of any buffer. allow_input_output_aliasing specifies whether
   // input buffer are allowed to be reused as outbut buffers by the client code.
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(

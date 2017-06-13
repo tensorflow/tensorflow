@@ -1582,7 +1582,7 @@ class StagingArea(BaseStagingArea):
   This is mostly useful for limiting the number of tensors on
   devices such as GPUs.
 
-  All get() and peek() commands block if the the requested data
+  All get() and peek() commands block if the requested data
   is not present in the Staging Area.
 
   """
