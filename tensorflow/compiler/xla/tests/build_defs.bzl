@@ -102,7 +102,7 @@ def xla_test(name,
     elif backend == "cpu_parallel":
       backend_deps = ["//tensorflow/compiler/xla/service:cpu_plugin"]
       backend_deps += ["//tensorflow/compiler/xla/tests:test_macros_cpu"]
-      this_backend_args += ["--xla_cpu_parallel=true"]
+      this_backend_args += ["--xla_backend_extra_options=\"xla_cpu_parallel\""]
     elif backend == "gpu":
       backend_deps = ["//tensorflow/compiler/xla/service:gpu_plugin"]
       backend_deps += ["//tensorflow/compiler/xla/tests:test_macros_gpu"]

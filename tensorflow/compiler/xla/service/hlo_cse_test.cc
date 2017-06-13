@@ -57,7 +57,7 @@ TEST_F(HloCseTest, CombineTwoConstants) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(3, computation->instruction_count());
@@ -87,7 +87,7 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndInsensitive) {
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(3, computation->instruction_count());
@@ -119,7 +119,7 @@ TEST_F(HloCseTest, CombineTwoConstantsDifferentLayoutsAndSensitive) {
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(3, computation->instruction_count());
@@ -156,13 +156,13 @@ TEST_F(HloCseTest, ConstantsSameValueDifferentType) {
   builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(7, computation->instruction_count());
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(&module).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(6, computation->instruction_count());
 }
@@ -184,15 +184,15 @@ TEST_F(HloCseTest, NonscalarConstants) {
   auto tuple = builder.AddInstruction(HloInstruction::CreateTuple(
       {common_constant1, common_constant2, uncommon_constant}));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(4, computation->instruction_count());
   EXPECT_THAT(tuple,
               op::Tuple(common_constant1, common_constant2, uncommon_constant));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(&module).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(3, computation->instruction_count());
   auto first_operand = tuple->operand(0);
@@ -216,14 +216,14 @@ TEST_F(HloCseTest, IdenticalInstructions) {
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({exp1, exp2, exp3}));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(5, computation->instruction_count());
   EXPECT_THAT(tuple, op::Tuple(exp1, exp2, exp3));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(&module).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(3, computation->instruction_count());
   auto first_operand = tuple->operand(0);
@@ -249,14 +249,14 @@ TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsSensitive) {
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({exp1, exp2}));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(4, computation->instruction_count());
   EXPECT_THAT(tuple, op::Tuple(exp1, exp2));
 
   HloCSE cse(/*is_layout_sensitive=*/true);
-  EXPECT_FALSE(cse.Run(&module).ValueOrDie());
+  EXPECT_FALSE(cse.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(4, computation->instruction_count());
   EXPECT_THAT(tuple, op::Tuple(exp1, exp2));
@@ -280,14 +280,14 @@ TEST_F(HloCseTest, IdenticalInstructionsDifferentLayoutsInsensitive) {
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({exp1, exp2}));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(4, computation->instruction_count());
   EXPECT_THAT(tuple, op::Tuple(exp1, exp2));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(&module).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(3, computation->instruction_count());
   auto first_operand = tuple->operand(0);
@@ -330,14 +330,14 @@ TEST_F(HloCseTest, IdenticalExpressions) {
   auto tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({add1, add2}));
 
-  HloModule module(TestName());
-  auto computation = module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(8, computation->instruction_count());
   EXPECT_THAT(tuple, op::Tuple(op::Add(negate1, exp1), op::Add(negate2, exp2)));
 
   HloCSE cse(/*is_layout_sensitive=*/false);
-  EXPECT_TRUE(cse.Run(&module).ValueOrDie());
+  EXPECT_TRUE(cse.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(5, computation->instruction_count());
   auto operand = tuple->operand(0);
@@ -362,7 +362,7 @@ TEST_F(HloCseTest, DoNotCombineRng) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, rng1, rng2));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloInstruction* root = computation->root_instruction();
@@ -384,7 +384,7 @@ TEST_F(HloCseTest, DISABLED_DoNotCombineCallsToImpureFunctions) {
   // Test that two calls to an impure function are not commoned. RNG
   // is the source of the impurity.
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
 
   // rng_function is an impure function because it does RNG.
   HloComputation* rng_function = nullptr;
@@ -435,3 +435,7 @@ TEST_F(HloCseTest, DISABLED_DoNotCombineCallsToImpureFunctions) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

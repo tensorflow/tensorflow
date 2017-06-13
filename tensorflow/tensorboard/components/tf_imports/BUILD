@@ -1,7 +1,7 @@
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
-load("//tensorflow/tensorboard:hacks.bzl", "tensorboard_typescript_bundle")
-load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
+load("//tensorflow/tensorboard/defs:hacks.bzl", "tensorboard_typescript_bundle")
+load("//tensorflow/tensorboard/defs:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -69,7 +69,7 @@ ts_web_library(
     name = "graphlib",
     srcs = [
         "graphlib.html",
-        "@io_github_cpettitt_graphlib//:graphlib.core.min.js",
+        "@io_github_cpettitt_graphlib//:graphlib.core.js",
     ],
     path = "/tf-imports",
     visibility = ["//visibility:public"],
@@ -80,7 +80,7 @@ ts_web_library(
     name = "dagre",
     srcs = [
         "dagre.html",
-        "@io_github_cpettitt_dagre//:dagre.core.min.js",
+        "@io_github_cpettitt_dagre//:dagre.core.js",
     ],
     path = "/tf-imports",
     visibility = ["//visibility:public"],

@@ -1502,9 +1502,10 @@ def false_negatives(labels, predictions, weights=None,
   with variable_scope.variable_scope(
       name, 'false_negatives', (predictions, labels, weights)):
 
-    labels = math_ops.cast(labels, dtype=dtypes.bool)
-    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
     is_false_negative = math_ops.logical_and(math_ops.equal(labels, True),
                                              math_ops.equal(predictions, False))
     return _count_condition(is_false_negative, weights, metrics_collections,

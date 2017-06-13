@@ -24,11 +24,11 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class ZipDatasetOp : public OpKernel {
+class ZipDatasetOp : public DatasetOpKernel {
  public:
-  explicit ZipDatasetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit ZipDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     std::vector<DatasetBase*> inputs;
     Status s;
     for (size_t i = 0; i < ctx->num_inputs(); ++i) {
@@ -43,17 +43,7 @@ class ZipDatasetOp : public OpKernel {
     }
 
     if (s.ok()) {
-      DatasetBase* dataset = new Dataset(inputs);
-      Tensor* output = nullptr;
-      s = ctx->allocate_output(0, TensorShape({}), &output);
-      if (s.ok()) {
-        ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-            ctx, ctx->step_container()->name(), name());
-        s = CreateResource(ctx, handle, dataset);
-        if (s.ok()) {
-          output->flat<ResourceHandle>()(0) = handle;
-        }
-      }
+      *output = new Dataset(inputs);
     }
 
     // TODO(mrry): Implement a container that acts as a

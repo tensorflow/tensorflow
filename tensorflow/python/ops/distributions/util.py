@@ -544,7 +544,7 @@ def fill_lower_triangular(x, validate_args=False, name="fill_lower_triangular"):
       m = np.prod(batch_shape).astype(np.int32)
     else:
       batch_shape = array_ops.shape(x)[:-1]
-      m = array_ops.reduce_prod(array_ops.shape(x)[:-1])
+      m = math_ops.reduce_prod(array_ops.shape(x)[:-1])
     batch_ids = math_ops.range(m)
 
     # Assemble the tril_ids into batch,tril_id pairs.

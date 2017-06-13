@@ -41,7 +41,11 @@ message TFGraphNodeProto {
   optional int64 total_float_ops = 14;
 
   // shape information, if available.
+  // TODO(xpan): Why is this repeated?
   repeated TensorShapeProto shapes = 11;
+
+  map<int32, TensorShapeProto> input_shapes = 16;
+
   // Descendants of the graph. The actual descendants depend on the data
   // structure used (scope, graph).
   repeated TFGraphNodeProto children = 12;

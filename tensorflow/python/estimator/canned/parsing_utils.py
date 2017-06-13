@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import parsing_ops
@@ -70,24 +72,29 @@ def classifier_parse_example_spec(feature_columns,
   estimator = DNNClassifier(
       n_classes=1000,
       feature_columns=feature_columns,
-      label_key='my-label',
+      weight_column='example-weight',
       label_vocabulary=['photos', 'keep', ...],
       hidden_units=[256, 64, 16])
   # This label configuration tells the classifier the following:
-  # * label is retrieved with key 'my-label'.
+  # * weights are retrieved with key 'example-weight'
   # * label is string and can be one of the following ['photos', 'keep', ...]
   # * integer id for label 'photos' is 0, 'keep' is 1, ...
 
 
   # Input builders
   def input_fn_train():  # Returns a dictionary which also contains labels.
-    return tf.contrib.learn.read_keyed_batch_features(
+    features = tf.contrib.learn.read_keyed_batch_features(
         file_pattern=train_files,
         batch_size=batch_size,
         # creates parsing configuration for tf.parse_example
         features=tf.estimator.classifier_parse_example_spec(
-            feature_columns, label_key='my-label', label_dtype=tf.string),
+            feature_columns,
+            label_key='my-label',
+            label_dtype=tf.string,
+            weight_column='example-weight'),
         reader=tf.RecordIOReader)
+     labels = features.pop('my-label')
+     return features, labels
 
   estimator.train(input_fn=input_fn_train)
   ```
@@ -134,6 +141,9 @@ def classifier_parse_example_spec(feature_columns,
 
   if weight_column is None:
     return parsing_spec
+
+  if isinstance(weight_column, six.string_types):
+    weight_column = fc.numeric_column(weight_column)
 
   if not isinstance(weight_column, fc._NumericColumn):  # pylint: disable=protected-access
     raise ValueError('weight_column should be an instance of '

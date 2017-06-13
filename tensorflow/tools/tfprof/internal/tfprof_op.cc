@@ -233,8 +233,17 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) {
         strings::Printf("%d", node->proto().graph_nodes_size()).c_str()));
   }
 
-  return strings::Printf(
-      "%-25s%s\n", node->name().c_str(), str_util::Join(attrs, ", ").c_str());
+  string node_str = strings::Printf("%-25s%s\n", node->name().c_str(),
+                                    str_util::Join(attrs, ", ").c_str());
+
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    string input_shape_str = FormatInputShapes(node->proto());
+    if (!input_shape_str.empty()) {
+      node_str = strings::Printf("%s\n%s\n\n", node_str.c_str(),
+                                 input_shape_str.c_str());
+    }
+  }
+  return node_str;
 }
 }  // namespace tfprof
 }  // namespace tensorflow

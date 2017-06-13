@@ -112,6 +112,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           use_resource=True)
 
       sess.run(variables.global_variables_initializer())
+      self.assertEqual(
+          resource_variable_ops.var_is_initialized_op(abc.handle).eval(),
+          True)
       print(sess.run(abc))
 
   def testInitFn(self):
