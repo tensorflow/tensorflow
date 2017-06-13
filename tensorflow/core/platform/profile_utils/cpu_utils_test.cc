@@ -53,9 +53,9 @@ TEST_F(CpuUtilsTest, CheckGetCurrentClockCycle) {
 }
 
 TEST_F(CpuUtilsTest, CheckCycleCounterFrequency) {
-  const int64 cpu_frequency = CpuUtils::GetCycleCounterFrequency();
+  const uint64 cpu_frequency = CpuUtils::GetCycleCounterFrequency();
   CHECK_GT(cpu_frequency, 0);
-  CHECK_NE(cpu_frequency, CpuUtils::INVALID_FREQUENCY);
+  CHECK_NE(cpu_frequency, unsigned(CpuUtils::INVALID_FREQUENCY));
   if (DBG) {
     LOG(INFO) << "Cpu frequency = " << cpu_frequency;
   }

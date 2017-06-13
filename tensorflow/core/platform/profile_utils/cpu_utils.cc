@@ -28,8 +28,8 @@ namespace profile_utils {
 
 static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 
-/* static */ int64 CpuUtils::GetCycleCounterFrequency() {
-  static const int64 cpu_frequency = GetCycleCounterFrequencyImpl();
+/* static */ uint64 CpuUtils::GetCycleCounterFrequency() {
+  static const uint64 cpu_frequency = GetCycleCounterFrequencyImpl();
   return cpu_frequency;
 }
 
@@ -53,7 +53,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
                                        GetCycleCounterFrequency());
 }
 
-/* static */ int64 CpuUtils::GetCycleCounterFrequencyImpl() {
+/* static */ uint64 CpuUtils::GetCycleCounterFrequencyImpl() {
 // TODO(satok): do not switch by macro here
 #if defined(__ANDROID__)
   return GetCpuUtilsHelperSingletonInstance().CalculateCpuFrequency();

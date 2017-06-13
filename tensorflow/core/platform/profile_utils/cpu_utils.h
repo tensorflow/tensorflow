@@ -97,7 +97,7 @@ class CpuUtils {
   // Return cycle counter frequency.
   // As this method caches the cpu frequency internally,
   // the first call will incur overhead, but not subsequent calls.
-  static int64 GetCycleCounterFrequency();
+  static uint64 GetCycleCounterFrequency();
 
   // Return micro secound per each clock
   // As this method caches the cpu frequency internally,
@@ -134,7 +134,7 @@ class CpuUtils {
   // CAVEAT: as this method calls system call and parse the mssage,
   // this call may be slow. This is why this class caches the value by
   // StaticVariableInitializer.
-  static int64 GetCycleCounterFrequencyImpl();
+  static uint64 GetCycleCounterFrequencyImpl();
 
   // Return a singleton of ICpuUtilsHelper
   // ICpuUtilsHelper is declared as a function-local static variable
