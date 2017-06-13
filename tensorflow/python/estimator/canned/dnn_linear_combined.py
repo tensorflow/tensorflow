@@ -307,7 +307,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                n_classes=2,
-               weight_feature_key=None,
+               weight_column=None,
                label_vocabulary=None,
                input_layer_partitioner=None,
                config=None):
@@ -335,9 +335,13 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         a given coordinate.
       n_classes: Number of label classes. Defaults to 2, namely binary
         classification. Must be > 1.
-      weight_feature_key: A string defining feature column name representing
+      weight_column: A string or a `_NumericColumn` created by
+        `tf.feature_column.numeric_column` defining feature column representing
         weights. It is used to down weight or boost examples during training. It
-        will be multiplied by the loss of the example.
+        will be multiplied by the loss of the example. If it is a string, it is
+        used as a key to fetch weight tensor from the `features`. If it is a
+        `_NumericColumn`, raw tensor is fetched by key `weight_column.key`,
+        then weight_column.normalizer_fn is applied on it to get weight tensor.
       label_vocabulary: A list of strings represents possible label values. If
         given, labels must be string type and have any value in
         `label_vocabulary`. If it is not given, that means labels are
@@ -362,12 +366,12 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                        'must be defined.')
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
-          weight_column=weight_feature_key,
+          weight_column=weight_column,
           label_vocabulary=label_vocabulary)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
           n_classes,
-          weight_column=weight_feature_key,
+          weight_column=weight_column,
           label_vocabulary=label_vocabulary)
     def _model_fn(features, labels, mode, config):
       return _dnn_linear_combined_model_fn(
@@ -461,7 +465,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                dnn_activation_fn=nn.relu,
                dnn_dropout=None,
                label_dimension=1,
-               weight_feature_key=None,
+               weight_column=None,
                input_layer_partitioner=None,
                config=None):
     """Initializes a DNNLinearCombinedRegressor instance.
@@ -489,9 +493,13 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       label_dimension: Number of regression targets per example. This is the
         size of the last dimension of the labels and logits `Tensor` objects
         (typically, these have shape `[batch_size, label_dimension]`).
-      weight_feature_key: A string defining feature column name representing
+      weight_column: A string or a `_NumericColumn` created by
+        `tf.feature_column.numeric_column` defining feature column representing
         weights. It is used to down weight or boost examples during training. It
-        will be multiplied by the loss of the example.
+        will be multiplied by the loss of the example. If it is a string, it is
+        used as a key to fetch weight tensor from the `features`. If it is a
+        `_NumericColumn`, raw tensor is fetched by key `weight_column.key`,
+        then weight_column.normalizer_fn is applied on it to get weight tensor.
       input_layer_partitioner: Partitioner for input layer. Defaults to
         `min_max_variable_partitioner` with `min_slice_size` 64 << 20.
       config: RunConfig object to configure the runtime settings.
@@ -515,8 +523,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           mode=mode,
           head=head_lib.  # pylint: disable=protected-access
           _regression_head_with_mean_squared_error_loss(
-              label_dimension=label_dimension,
-              weight_column=weight_feature_key),
+              label_dimension=label_dimension, weight_column=weight_column),
           linear_feature_columns=linear_feature_columns,
           linear_optimizer=linear_optimizer,
           dnn_feature_columns=dnn_feature_columns,

@@ -95,7 +95,7 @@ class DNNOnlyModelFnTest(dnn_testing_utils.BaseDNNModelFnTest, test.TestCase):
 def _linear_regressor_fn(feature_columns,
                          model_dir=None,
                          label_dimension=1,
-                         weight_feature_key=None,
+                         weight_column=None,
                          optimizer='Ftrl',
                          config=None,
                          partitioner=None):
@@ -104,7 +104,7 @@ def _linear_regressor_fn(feature_columns,
       linear_feature_columns=feature_columns,
       linear_optimizer=optimizer,
       label_dimension=label_dimension,
-      weight_feature_key=weight_feature_key,
+      weight_column=weight_column,
       input_layer_partitioner=partitioner,
       config=config)
 
@@ -157,7 +157,7 @@ class LinearOnlyRegressorTrainingTest(
 def _linear_classifier_fn(feature_columns,
                           model_dir=None,
                           n_classes=2,
-                          weight_feature_key=None,
+                          weight_column=None,
                           label_vocabulary=None,
                           optimizer='Ftrl',
                           config=None,
@@ -167,7 +167,7 @@ def _linear_classifier_fn(feature_columns,
       linear_feature_columns=feature_columns,
       linear_optimizer=optimizer,
       n_classes=n_classes,
-      weight_feature_key=weight_feature_key,
+      weight_column=weight_column,
       label_vocabulary=label_vocabulary,
       input_layer_partitioner=partitioner,
       config=config)
@@ -374,23 +374,22 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
 
 
 # A function to mimic dnn-classifier init reuse same tests.
-def _dnn_classifier_fn(
-    hidden_units,
-    feature_columns,
-    model_dir=None,
-    n_classes=2,
-    weight_feature_key=None,
-    label_vocabulary=None,
-    optimizer='Adagrad',
-    config=None,
-    input_layer_partitioner=None):
+def _dnn_classifier_fn(hidden_units,
+                       feature_columns,
+                       model_dir=None,
+                       n_classes=2,
+                       weight_column=None,
+                       label_vocabulary=None,
+                       optimizer='Adagrad',
+                       config=None,
+                       input_layer_partitioner=None):
   return dnn_linear_combined.DNNLinearCombinedClassifier(
       model_dir=model_dir,
       dnn_hidden_units=hidden_units,
       dnn_feature_columns=feature_columns,
       dnn_optimizer=optimizer,
       n_classes=n_classes,
-      weight_feature_key=weight_feature_key,
+      weight_column=weight_column,
       label_vocabulary=label_vocabulary,
       input_layer_partitioner=input_layer_partitioner,
       config=config)
@@ -424,22 +423,21 @@ class DNNOnlyClassifierTrainTest(
 
 
 # A function to mimic dnn-regressor init reuse same tests.
-def _dnn_regressor_fn(
-    hidden_units,
-    feature_columns,
-    model_dir=None,
-    label_dimension=1,
-    weight_feature_key=None,
-    optimizer='Adagrad',
-    config=None,
-    input_layer_partitioner=None):
+def _dnn_regressor_fn(hidden_units,
+                      feature_columns,
+                      model_dir=None,
+                      label_dimension=1,
+                      weight_column=None,
+                      optimizer='Adagrad',
+                      config=None,
+                      input_layer_partitioner=None):
   return dnn_linear_combined.DNNLinearCombinedRegressor(
       model_dir=model_dir,
       dnn_hidden_units=hidden_units,
       dnn_feature_columns=feature_columns,
       dnn_optimizer=optimizer,
       label_dimension=label_dimension,
-      weight_feature_key=weight_feature_key,
+      weight_column=weight_column,
       input_layer_partitioner=input_layer_partitioner,
       config=config)
 

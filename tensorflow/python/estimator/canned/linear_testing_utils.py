@@ -300,7 +300,7 @@ class BaseLinearRegressorEvaluationTest(object):
 
     linear_regressor = self._linear_regressor_fn(
         feature_columns=(feature_column_lib.numeric_column('age'),),
-        weight_feature_key='weights',
+        weight_column='weights',
         model_dir=self._model_dir)
     eval_metrics = linear_regressor.evaluate(input_fn=_input_fn, steps=1)
 
@@ -766,7 +766,7 @@ class BaseLinearRegressorTrainingTest(object):
     est = self._linear_regressor_fn(
         feature_columns=feature_columns,
         label_dimension=label_dimension,
-        weight_feature_key='w',
+        weight_column='w',
         model_dir=self._model_dir)
 
     data_rank_1 = np.linspace(0., 2., batch_size, dtype=np.float32)
@@ -1026,7 +1026,7 @@ class BaseLinearClassifierTrainingTest(object):
 
     est = linear.LinearClassifier(
         feature_columns=(feature_column_lib.numeric_column('age'),),
-        weight_feature_key='w',
+        weight_column='w',
         n_classes=n_classes,
         model_dir=self._model_dir)
     data_rank_1 = np.array([0, 1])
@@ -1052,7 +1052,7 @@ class BaseLinearClassifierTrainingTest(object):
 
     est = linear.LinearClassifier(
         feature_columns=(feature_column_lib.numeric_column('age'),),
-        weight_feature_key='w',
+        weight_column='w',
         n_classes=n_classes,
         model_dir=self._model_dir)
     data_rank_1 = np.array([0, 1])
@@ -1455,7 +1455,7 @@ class BaseLinearClassifierEvaluationTest(object):
     est = self._linear_classifier_fn(
         feature_columns=(feature_column_lib.numeric_column('age'),),
         n_classes=n_classes,
-        weight_feature_key='w',
+        weight_column='w',
         model_dir=self._model_dir)
     eval_metrics = est.evaluate(
         input_fn=lambda: ({'age': (age), 'w': (weights)}, (label)), steps=1)
