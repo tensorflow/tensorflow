@@ -17,6 +17,7 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -63,7 +64,7 @@ class CustomCallTest : public HloTestBase {
 };
 
 XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR0F32Add2)) {
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto constant = builder.AddInstruction(
@@ -71,15 +72,14 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR0F32Add2)) {
   builder.AddInstruction(
       HloInstruction::CreateCustomCall(r0f32_, {constant}, "R0F32Add2"));
 
-  hlo_module->AddEntryComputation(builder.Build());
+  module->AddEntryComputation(builder.Build());
 
-  std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), {});
+  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
   LiteralTestUtil::ExpectR0Near<float>(44.0f, *result, error_spec_);
 }
 
 XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto module = CreateNewModule();
   auto builder = HloComputation::Builder(TestName());
 
   Array2D<float> array(2, 2);
@@ -93,16 +93,15 @@ XLA_TEST_F(CustomCallTest, DISABLED_ON_GPU(CustomCallR2F32Reduce)) {
   builder.AddInstruction(
       HloInstruction::CreateCustomCall(r0f32_, {constant}, "R2F32ReduceSum"));
 
-  hlo_module->AddEntryComputation(builder.Build());
+  module->AddEntryComputation(builder.Build());
 
-  std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), {});
+  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
   LiteralTestUtil::ExpectR0Near<float>(10.0f, *result, error_spec_);
 }
 
 XLA_TEST_F(CustomCallTest,
            DISABLED_ON_GPU(CustomCall_UsedInOtherComputations)) {
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto module = CreateNewModule();
   auto b = HloComputation::Builder(TestName());
 
   auto input = b.AddInstruction(
@@ -118,10 +117,9 @@ XLA_TEST_F(CustomCallTest,
       HloInstruction::CreateConcatenate(ShapeUtil::MakeShape(F32, {2, 2, 2}),
                                         {incremented, incremented_again}, 0));
 
-  hlo_module->AddEntryComputation(b.Build());
+  module->AddEntryComputation(b.Build());
 
-  std::unique_ptr<Literal> result =
-      ExecuteAndTransfer(std::move(hlo_module), {});
+  std::unique_ptr<Literal> result = ExecuteAndTransfer(std::move(module), {});
   LiteralTestUtil::ExpectR3EqualArray3D<float>(
       Array3D<float>{{{2, 3}, {4, 5}}, {{3, 4}, {5, 6}}}, *result);
 }
@@ -132,6 +130,7 @@ XLA_TEST_F(CustomCallTest,
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {

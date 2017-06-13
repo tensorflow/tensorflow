@@ -59,7 +59,7 @@ TEST_F(InlinerTest, MapMax) {
       HloInstruction::CreateMap(lhs->shape(), {lhs, rhs}, max_f32.get()));
 
   auto computation = builder.Build();
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEmbeddedComputation(std::move(max_f32));
   hlo_module->AddEntryComputation(std::move(computation));
 
@@ -93,7 +93,7 @@ TEST_F(InlinerTest, MapConstant) {
       HloInstruction::CreateMap(lhs->shape(), {lhs}, const2_f32.get()));
 
   auto computation = builder.Build();
-  auto hlo_module = MakeUnique<HloModule>("test_module");
+  auto hlo_module = CreateNewModule();
   hlo_module->AddEmbeddedComputation(std::move(const2_f32));
   hlo_module->AddEntryComputation(std::move(computation));
   HloInstruction* root = hlo_module->entry_computation()->root_instruction();
@@ -110,3 +110,7 @@ TEST_F(InlinerTest, MapConstant) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

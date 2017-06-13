@@ -643,11 +643,13 @@ class BaseSession(SessionInterface):
     Returns:
       A list of devices in the session.
     """
-    assert not self._created_with_new_api, ('Session.list_devices() doesn\'t '
-                                            'work with C API')
     with errors.raise_exception_on_not_ok_status() as status:
-      raw_device_list = tf_session.TF_DeprecatedSessionListDevices(
-          self._session, status)
+      if self._created_with_new_api:
+        raw_device_list = tf_session.TF_SessionListDevices(
+            self._session, status)
+      else:
+        raw_device_list = tf_session.TF_DeprecatedSessionListDevices(
+            self._session, status)
       device_list = []
       size = tf_session.TF_DeviceListCount(raw_device_list)
       for i in range(size):

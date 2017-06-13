@@ -371,7 +371,7 @@ class DeserializeManySparseOp : public OpKernel {
 
     Tensor final_output_shape(DT_INT64, TensorShape({output.dims()}));
 
-    std::copy_n(output.shape().dim_sizes().data(), output.dims(),
+    std::copy_n(output.shape().data(), output.dims(),
                 final_output_shape.vec<int64>().data());
 
     context->set_output(0, output.indices());

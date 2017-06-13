@@ -36,6 +36,9 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
+std::vector<int64> ShapeProtoToVec(const TensorShapeProto& shape_pb);
+
+TensorShapeProto VecToShapeProto(const std::vector<int64> shape_vec);
 
 class TFGraphNode;
 
@@ -44,7 +47,7 @@ class ExecStep {
   ExecStep(TFGraphNode* node)
       : node(node),
         all_start_micros_(0),
-        latest_end_rel_micros_(0),
+        latest_end_micros_(0),
         mem_initiated_(false),
         requested_bytes_(0),
         host_temp_bytes_(0),
@@ -57,14 +60,19 @@ class ExecStep {
 
   void AddMemoryStats(const string& dev, const NodeExecStats& step_stat);
 
+  // The execution time of an op. If it runs on accelerator, then it's
+  // accelerator_exec_micros(). Otherwise, it's CPU time.
   int64 exec_micros() const;
+
+  // The execution time of an op. 0 if it runs on cpu.
+  int64 accelerator_exec_micros() const;
 
   const std::map<string, std::vector<std::pair<int64, int64>>>& op_execs()
       const {
     return op_execs_;
   }
   int64 all_start_micros() const { return all_start_micros_; }
-  int64 latest_end_rel_micros() const { return latest_end_rel_micros_; }
+  int64 latest_end_micros() const { return latest_end_micros_; }
 
   int64 requested_bytes() const { return requested_bytes_; }
   int64 accelerator_temp_bytes() const { return accelerator_temp_bytes_; }
@@ -80,10 +88,13 @@ class ExecStep {
 
  private:
   TFGraphNode* node;
-  // The earliest/latest time including scheduling and kernel execution.
+  // The earliest/latest time including scheduling and execution.
   int64 all_start_micros_;
-  int64 latest_end_rel_micros_;
-  // device -> vector of {op_start_micros, op_kernel_exec_micros} pairs.
+  int64 latest_end_micros_;
+  // device -> vector of {op_start_micros, op_exec_micros} pairs.
+  // For accelerator op, op_start_micros and op_exec_micros are kernel time.
+  // For cpu op, op_start_micros and op_exec_micros are scheduling time. (
+  // might include compute time if it's sync op).
   std::map<string, std::vector<std::pair<int64, int64>>> gpu_kernel_execs_;
   std::map<string, std::vector<std::pair<int64, int64>>> op_execs_;
   // All devices the op is associated with (e.g. gpu:0 (scheduling),
@@ -110,30 +121,37 @@ class TFGraphNode {
   TFGraphNode(const NodeDef* node)
       : node_(node), float_ops_(0), op_(node->op()) {
     for (const auto& attr : node->attr()) {
-      // TODO(xpan): Also consider _output_shapes.
-      if (attr.first != "shape" || !attr.second.has_shape()) continue;
-      if (!shape_.empty()) {
-        fprintf(stderr, "Found duplicated shapes!\n");
-        continue;
-      }
-      std::vector<int64> shape_vec;
-      if (attr.second.shape().dim_size() == 0 &&
-          !attr.second.shape().unknown_rank()) {
-        // Scalar parameter with empty shape but known rank.
-        shape_vec.push_back(1);
-      } else {
-        for (const auto& d : attr.second.shape().dim()) {
-          shape_vec.push_back(d.size());
+      op_attrs_[attr.first] = &attr.second;
+      if (attr.first == "shape" && attr.second.has_shape()) {
+        if (!shape_.empty()) {
+          fprintf(stderr, "Found duplicated shapes!\n");
+          continue;
+        }
+        shape_ = ShapeProtoToVec(attr.second.shape());
+      } else if (attr.first == "_output_shapes" && attr.second.has_list()) {
+        if (!output_shapes_.empty()) {
+          fprintf(stderr, "Found duplicated output shapes!\n");
+          continue;
+        }
+        for (int i = 0; i < attr.second.list().shape_size(); ++i) {
+          output_shapes_[i] = ShapeProtoToVec(attr.second.list().shape(i));
         }
       }
-      update_shape(shape_vec);
     }
     op_types_.insert(node->op());
   }
 
-  void AddInput(TFGraphNode* input, int64 output_idx) {
-    inputs_[input->name()] = input;
-    output_idx_[input->name()] = output_idx;
+  void AddInput(TFGraphNode* input, int64 output_idx, int input_idx) {
+    src_output_idx_[input->name()] = output_idx;
+
+    inputs_[input_idx] = input;
+    const auto& output_shape = input->output_shapes().find(output_idx);
+    // Always create an empty vec even if the shape info might be missing.
+    std::vector<int64>& shape_vec = input_shapes_[input_idx];
+    if (output_shape != input->output_shapes().end()) {
+      shape_vec.assign(output_shape->second.begin(),
+                       output_shape->second.end());
+    }
   }
 
   void AddOpType(const string& op_type) { op_types_.insert(op_type); }
@@ -161,8 +179,10 @@ class TFGraphNode {
     return true;
   }
 
-  const std::map<string, TFGraphNode*>& inputs() const { return inputs_; }
-  const std::map<string, int64>& output_idx() const { return output_idx_; }
+  const std::map<int, TFGraphNode*>& inputs() const { return inputs_; }
+  const std::map<string, int64>& src_output_idx() const {
+    return src_output_idx_;
+  }
 
   // This is time spent in kernel execution.
   int64 kernel_exec_micros(int64 step) const {
@@ -205,10 +225,10 @@ class TFGraphNode {
     return exec->second.all_start_micros();
   }
 
-  int64 latest_end_rel_micros(int64 step) const {
+  int64 latest_end_micros(int64 step) const {
     auto exec = execs_.find(step);
     CHECK(exec != execs_.end()) << "unknown step " << step;
-    return exec->second.latest_end_rel_micros();
+    return exec->second.latest_end_micros();
   }
 
   const std::map<string, std::vector<std::pair<int64, int64>>>& op_execs(
@@ -217,6 +237,8 @@ class TFGraphNode {
     CHECK(exec != execs_.end()) << "unknown step " << step;
     return exec->second.op_execs();
   }
+
+  const std::map<int64, ExecStep>& all_op_execs() const { return execs_; }
 
   int64 accelerator_temp_bytes(int64 step) const {
     auto exec = execs_.find(step);
@@ -255,20 +277,37 @@ class TFGraphNode {
   string canonical_device() const { return canonical_device_; }
   string host_device() const { return host_device_; }
   const std::set<string>& op_types() const { return op_types_; }
+
+  const std::map<string, const AttrValue*>& op_attrs() const {
+    return op_attrs_;
+  }
+
   const std::vector<int64>& shape() const { return shape_; }
 
- private:
-  void update_shape(const std::vector<int64>& shape) { shape_ = shape; }
+  const std::map<int, std::vector<int64>>& output_shapes() const {
+    return output_shapes_;
+  }
+  const std::map<int, std::vector<int64>>& input_shapes() const {
+    return input_shapes_;
+  }
 
-  std::map<string, TFGraphNode*> inputs_;
-  std::map<string, int64> output_idx_;
+ private:
+  std::map<int, TFGraphNode*> inputs_;
+  std::map<string, int64> src_output_idx_;
 
   const NodeDef* node_;
 
   CodeDef code_;
 
   std::vector<int64> shape_;
+  // Won't missing input_idx. But some shapes might be empty (unknown).
+  std::map<int, std::vector<int64>> input_shapes_;
+  // Could miss output_idx if no _output_shapes attr. some shapes can also
+  // be empty.
+  std::map<int, std::vector<int64>> output_shapes_;
+
   std::set<string> op_types_;
+  std::map<string, const AttrValue*> op_attrs_;
 
   std::map<int64, ExecStep> execs_;
 
@@ -399,6 +438,7 @@ class TFMultiGraphNode {
 
 bool IsCombinedGPUStream(const string& device);
 bool IsCPUDevice(const string& device);
+bool IsAcceleratorDevice(const string& device);
 }  // namespace tfprof
 }  // namespace tensorflow
 

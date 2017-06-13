@@ -59,6 +59,7 @@ py_library(
 
 py_test(
     name = "util_test",
+    size = "small",
     srcs = ["tests/util_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -73,6 +74,7 @@ py_test(
 
 py_test(
     name = "select_test",
+    size = "small",
     srcs = ["tests/select_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -87,6 +89,7 @@ py_test(
 
 py_test(
     name = "match_test",
+    size = "small",
     srcs = ["tests/match_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -102,6 +105,7 @@ py_test(
 
 py_test(
     name = "subgraph_test",
+    size = "small",
     srcs = ["tests/subgraph_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -116,6 +120,7 @@ py_test(
 
 py_test(
     name = "reroute_test",
+    size = "small",
     srcs = ["tests/reroute_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -131,6 +136,7 @@ py_test(
 
 py_test(
     name = "edit_test",
+    size = "small",
     srcs = ["tests/edit_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -146,6 +152,7 @@ py_test(
 
 py_test(
     name = "transform_test",
+    size = "small",
     srcs = ["tests/transform_test.py"],
     srcs_version = "PY2AND3",
     deps = [

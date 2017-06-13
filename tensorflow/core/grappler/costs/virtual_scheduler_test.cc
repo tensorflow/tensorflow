@@ -27,11 +27,8 @@ namespace grappler {
 class TestVirtualScheduler : public VirtualScheduler {
  public:
   TestVirtualScheduler(const GrapplerItem* grappler_item,
-                       const bool use_static_shapes,
-                       const string& default_device_type, Cluster* cluster,
-                       VirtualPlacer* placer)
-      : VirtualScheduler(grappler_item, use_static_shapes, default_device_type,
-                         cluster, placer) {}
+                       const bool use_static_shapes, Cluster* cluster)
+      : VirtualScheduler(grappler_item, use_static_shapes, cluster) {}
 
   FRIEND_TEST(VirtualSchedulerTest, CalculateOutputSize);
   FRIEND_TEST(VirtualSchedulerTest, MemoryUsage);
@@ -200,8 +197,7 @@ class VirtualSchedulerTest : public ::testing::Test {
   // Call this after creating grappler_item_ and setting up dependency_.
   void InitScheduler() {
     scheduler_.reset(new TestVirtualScheduler(
-        grappler_item_.get(), true /* use_static_shapes */,
-        "CPU" /* default_device_type */, cluster_.get(), placer_.get()));
+        grappler_item_.get(), true /* use_static_shapes */, cluster_.get()));
     TF_CHECK_OK(scheduler_->Init());
   }
 
