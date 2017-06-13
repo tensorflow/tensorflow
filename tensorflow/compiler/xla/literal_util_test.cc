@@ -858,6 +858,93 @@ TEST_F(LiteralUtilTest, ConvertR4) {
   EXPECT_TRUE(LiteralUtil::Equal(*expected, *converted));
 }
 
+TEST_F(LiteralUtilTest, ConvertIfTypesMatch) {
+  // clang-format off
+  auto s8 = LiteralUtil::CreateR4WithLayout<int8>({{
+    {{10, 0, 12, 0}, {0, 15, 0, 17}},
+    {{0, 19, 0, 21}, {22, 0, 24, 0}},
+    {{26, 0, 28, 0}, {0, 31, 0, 33}},
+  }}, layout_r4_dim0major_);
+  auto s32 = LiteralUtil::CreateR4WithLayout<int32>({{
+    {{10, 0, 12, 0}, {0, 15, 0, 17}},
+    {{0, 19, 0, 21}, {22, 0, 24, 0}},
+    {{26, 0, 28, 0}, {0, 31, 0, 33}},
+  }}, layout_r4_dim0major_);
+  auto u32 = LiteralUtil::CreateR4WithLayout<uint32>({{
+    {{10, 0, 12, 0}, {0, 15, 0, 17}},
+    {{0, 19, 0, 21}, {22, 0, 24, 0}},
+    {{26, 0, 28, 0}, {0, 31, 0, 33}},
+  }}, layout_r4_dim0major_);
+  auto s64 = LiteralUtil::CreateR4WithLayout<int64>({{
+    {{10, 0, 12, 0}, {0, 15, 0, 17}},
+    {{0, 19, 0, 21}, {22, 0, 24, 0}},
+    {{26, 0, 28, 0}, {0, 31, 0, 33}},
+  }}, layout_r4_dim0major_);
+  auto u64 = LiteralUtil::CreateR4WithLayout<uint64>({{
+    {{10, 0, 12, 0}, {0, 15, 0, 17}},
+    {{0, 19, 0, 21}, {22, 0, 24, 0}},
+    {{26, 0, 28, 0}, {0, 31, 0, 33}},
+  }}, layout_r4_dim0major_);
+  auto pred = LiteralUtil::CreateR4WithLayout<bool>({{
+    {{true, false, true, false}, {false, true, false, true}},
+    {{false, true, false, true}, {true, false, true, false}},
+    {{true, false, true, false}, {false, true, false, true}},
+  }}, layout_r4_dim0major_);
+  auto int32_pred = LiteralUtil::CreateR4WithLayout<int32>({{
+    {{1, 0, 1, 0}, {0, 1, 0, 1}},
+    {{0, 1, 0, 1}, {1, 0, 1, 0}},
+    {{1, 0, 1, 0}, {0, 1, 0, 1}},
+  }}, layout_r4_dim0major_);
+  auto f32 = LiteralUtil::CreateR4WithLayout<float>({{
+    {{10.0f, 0.0f, 12.0f, 0.0f}, {0.0f, 15.0f, 0.0f, 17.0f}},
+    {{0.0f, 19.0f, 0.0f, 21.0f}, {22.0f, 0.0f, 24.0f, 0.0f}},
+    {{26.0f, 0.0f, 28.0f, 0.0f}, {0.0f, 31.0f, 0.0f, 33.0f}},
+  }}, layout_r4_dim0major_);
+  auto f64 = LiteralUtil::CreateR4WithLayout<double>({{
+    {{10.0, 0.0, 12.0, 0.0}, {0.0, 15.0, 0.0, 17.0}},
+    {{0.0, 19.0, 0.0, 21.0}, {22.0, 0.0, 24.0, 0.0}},
+    {{26.0, 0.0, 28.0, 0.0}, {0.0, 31.0, 0.0, 33.0}},
+  }}, layout_r4_dim0major_);
+  // clang-format on
+  std::unique_ptr<Literal> conv;
+
+  conv = LiteralUtil::ConvertIfSrcTypeMatches(*s8, U32).ConsumeValueOrDie();
+  EXPECT_TRUE(LiteralUtil::Equal(*conv, *u32));
+
+  conv = LiteralUtil::ConvertIfSrcTypeMatches(*s8, S32).ConsumeValueOrDie();
+  EXPECT_TRUE(LiteralUtil::Equal(*conv, *s32));
+
+  conv = LiteralUtil::ConvertIfSrcTypeMatches(*s8, U64).ConsumeValueOrDie();
+  EXPECT_TRUE(LiteralUtil::Equal(*conv, *u64));
+
+  conv = LiteralUtil::ConvertIfSrcTypeMatches(*s8, S64).ConsumeValueOrDie();
+  EXPECT_TRUE(LiteralUtil::Equal(*conv, *s64));
+
+  conv = LiteralUtil::ConvertIfSrcTypeMatches(*s8, PRED).ConsumeValueOrDie();
+  EXPECT_TRUE(LiteralUtil::Equal(*conv, *pred));
+
+  conv = LiteralUtil::ConvertIfSrcTypeMatches(*pred, S32).ConsumeValueOrDie();
+  EXPECT_TRUE(LiteralUtil::Equal(*conv, *int32_pred));
+
+  conv = LiteralUtil::ConvertIfSrcTypeMatches(*f32, S32).ConsumeValueOrDie();
+  EXPECT_TRUE(LiteralUtil::Equal(*conv, *s32));
+
+  conv = LiteralUtil::ConvertIfSrcTypeMatches(*f64, S32).ConsumeValueOrDie();
+  EXPECT_TRUE(LiteralUtil::Equal(*conv, *s32));
+
+  conv = LiteralUtil::ConvertIfSrcTypeMatches(*s32, F32).ConsumeValueOrDie();
+  EXPECT_TRUE(LiteralUtil::Equal(*conv, *f32));
+
+  EXPECT_EQ(LiteralUtil::ConvertIfSrcTypeMatches(*s32, TUPLE).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(LiteralUtil::ConvertIfSrcTypeMatches(*s32, F16).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(LiteralUtil::ConvertIfSrcTypeMatches(*s32, S16).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
+  EXPECT_EQ(LiteralUtil::ConvertIfSrcTypeMatches(*s32, U16).status().code(),
+            tensorflow::error::INVALID_ARGUMENT);
+}
+
 TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
   LiteralProto p;
   p.mutable_shape()->set_element_type(PRED);
