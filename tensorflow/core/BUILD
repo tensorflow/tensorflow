@@ -928,7 +928,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",
-        ":reader_base_proto_cc",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
