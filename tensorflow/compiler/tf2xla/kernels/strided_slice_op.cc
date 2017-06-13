@@ -75,8 +75,30 @@ class StridedSliceOp : public XlaOpKernel {
                  &wrapped_dummy_processing_shape, &wrapped_final_shape, &dummy,
                  &dummy, &dummy, &begin, &end, &strides));
 
-    xla::ComputationDataHandle slice =
-        ctx->builder()->Slice(ctx->Input(0), begin, end, strides);
+    gtl::InlinedVector<int64, 4> dimensions_to_reverse;
+    gtl::InlinedVector<int64, 4> slice_begin, slice_end, slice_strides;
+
+    for (int i = 0; i < begin.size(); ++i) {
+      if (strides[i] > 0) {
+        slice_begin.push_back(begin[i]);
+        slice_end.push_back(end[i]);
+        slice_strides.push_back(strides[i]);
+      } else {
+        // Negative stride: swap begin and end, add 1 because the interval
+        // is semi-open, and mark the dimension to be reversed.
+        slice_begin.push_back(input_shape.dim_size(i) - begin[i] - 1);
+        slice_end.push_back(input_shape.dim_size(i) - end[i] - 1);
+        slice_strides.push_back(-strides[i]);
+        dimensions_to_reverse.push_back(i);
+      }
+    }
+
+    xla::ComputationDataHandle slice = ctx->Input(0);
+    if (!dimensions_to_reverse.empty()) {
+      slice = ctx->builder()->Rev(slice, dimensions_to_reverse);
+    }
+
+    slice = ctx->builder()->Slice(slice, slice_begin, slice_end, slice_strides);
 
     slice = ctx->builder()->Reshape(slice, final_shape.dim_sizes());
     ctx->SetOutput(0, slice);

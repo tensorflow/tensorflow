@@ -1056,13 +1056,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       }
       sizes.push_back((limit_index - start_index + stride - 1) / stride);
     } else {
-      if (start_index < limit_index) {
-        return InvalidArgument(
-            "limit index (%lld) must be less than or equal to "
-            "start index (%lld) in slice with negative stride",
-            limit_index, start_index);
-      }
-      sizes.push_back((start_index - limit_index - stride - 1) / -stride);
+      return InvalidArgument("Negative strides not supported");
     }
   }
 
