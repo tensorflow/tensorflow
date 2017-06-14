@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"
+#include "tensorflow/compiler/xla/service/gpu/infeed_manager.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -39,6 +40,11 @@ class GpuTransferManager : public GenericTransferManager {
                                  const Literal& literal) override;
 
  private:
+  // Internal helper function for TransferLiteralToInfeed(). Input
+  // literal cannot be a tuple.
+  StatusOr<gpu::InfeedBuffer*> TransferLiteralToInfeedInternal(
+      perftools::gputools::StreamExecutor* executor, const Literal& literal);
+
   TF_DISALLOW_COPY_AND_ASSIGN(GpuTransferManager);
 };
 

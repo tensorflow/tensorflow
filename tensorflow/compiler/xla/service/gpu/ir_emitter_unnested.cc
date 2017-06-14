@@ -1659,12 +1659,18 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildCopyThunk(
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildInfeedThunk(
     const HloInstruction* inst) {
   CHECK_EQ(HloOpcode::kInfeed, inst->opcode());
+
+  std::vector<BufferAllocation::Slice> tuple_element_buffers;
+  for (int64 i = 0; i < inst->shape().tuple_shapes_size(); ++i) {
+    BufferAllocation::Slice buffer = ir_emitter_context_->buffer_assignment()
+                                         .GetUniqueSlice(inst, {i})
+                                         .ConsumeValueOrDie();
+    tuple_element_buffers.push_back(buffer);
+  }
+
   return MakeUnique<InfeedThunk>(
-      /*destination_buffer=*/GetAllocationSlice(*inst),
-      /*mem_size=*/
-      llvm_ir::ByteSizeOf(inst->shape(),
-                          ir_emitter_context_->llvm_module()->getDataLayout()),
-      inst);
+      tuple_element_buffers,
+      /*destination_buffer=*/GetAllocationSlice(*inst), inst);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
