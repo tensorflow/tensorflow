@@ -130,6 +130,23 @@ public:
       }
     }
 
+    // For each output, see if there is an identical input and put it into the map
+    const HloComputation* comp = inst->parent();
+    for (int64 o=0; o<num; o++) {
+      poplar::Tensor out;
+      TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, o));
+
+      for (int64 i=0; i<comp->num_parameters(); i++) {
+        HloInstruction* param = comp->parameter_instruction(i);
+        poplar::Tensor in;
+        TF_ASSIGN_OR_RETURN(in, FindInstructionOutput(tensor_map, param, o));
+
+        if (in == out) {
+          output_map[o] = i;
+        }
+      }
+    }
+
     tensor_map.clear();
 
     return Status::OK();
