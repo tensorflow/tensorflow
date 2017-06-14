@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/costs/virtual_placer.h"
@@ -170,6 +171,9 @@ class VirtualScheduler {
 
   // Prints out summary of execution (timing, memory usage, etc.)
   Costs Summary() const;
+  // Like the above, but writes detailed stats to stepstats.
+  // If stepstats is nullptr, then just calls and return Summary().
+  Costs Summary(StepStats* stepstats);
 
  protected:
   // GetDeviceStates and GetNodeStates are currently for testing purpuse only.
@@ -228,6 +232,7 @@ class VirtualScheduler {
   // Auxilliary data structures for constructing NodeState and DeviceState.
   GraphProperties graph_properties_;
   Cluster* cluster_;                   // Not owned.
+
   const GrapplerItem* grappler_item_;  // Not owned.
   bool use_static_shapes_;
   bool initialized_;

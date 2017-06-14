@@ -244,8 +244,8 @@ string VirtualScheduler::DeviceName(const NodeDef* node) const {
 string VirtualScheduler::ChannelDeviceName(const NodeDef* from,
                                            const NodeDef* to) const {
   CHECK(!initialized_) << "ChannelDeviceName is called after Init().";
-
-  return kChannelDevice + ": " + DeviceName(from) + " to " + DeviceName(to);
+  return kChannelDevice + ": from " + DeviceName(from) + " to " +
+         DeviceName(to);
 }
 
 std::pair<const NodeDef*, const NodeDef*> VirtualScheduler::CreateSendRecv(
@@ -318,8 +318,8 @@ NodeInfo VirtualScheduler::GetCurrNodeInfo() const {
   }
 
   // Construct NodeInfo.
-  const auto& node_state = node_map_.at(node);
   NodeInfo node_info;
+  const auto& node_state = node_map_.at(node);
   node_info.name = node->name();
   node_info.device_name = node_state.device_name;
   auto& op_info = node_info.op_info;
@@ -577,6 +577,7 @@ Costs VirtualScheduler::Summary() const {
             << " GB, at the end: " << state.memory_usage << " B";
 
     VLOG(1) << "Per-op execution time (and memory usage at peak memory usage):";
+
     // Profile non-persistent op memory usage.
     for (const auto& node_port : state.mem_usage_snapshot_at_peak) {
       const auto* node = node_port.first;
@@ -615,6 +616,31 @@ Costs VirtualScheduler::Summary() const {
   VLOG(1) << "Critical path execution time: "
           << critical_path_costs.execution_time.count();
   return critical_path_costs;
+}
+
+Costs VirtualScheduler::Summary(StepStats* stepstats) {
+  if (stepstats != nullptr) {
+    for (const auto& device : device_) {
+      DeviceStepStats* device_stepstats = stepstats->add_dev_stats();
+      device_stepstats->set_device(device.first);
+      for (const auto& node_def : device.second.nodes_executed) {
+        const NodeState& nodestate = node_map_.at(node_def);
+        NodeExecStats* node_stats = device_stepstats->add_node_stats();
+        node_stats->set_node_name(node_def->op());
+        node_stats->set_timeline_label(node_def->name());
+        node_stats->set_op_start_rel_micros(0);
+        node_stats->set_all_start_micros(
+            nodestate.time_scheduled.asMicroSeconds().count());
+        node_stats->set_op_end_rel_micros(
+            nodestate.time_finished.asMicroSeconds().count() -
+            nodestate.time_scheduled.asMicroSeconds().count());
+        node_stats->set_all_end_rel_micros(
+            nodestate.time_finished.asMicroSeconds().count() -
+            nodestate.time_scheduled.asMicroSeconds().count());
+      }
+    }
+  }
+  return Summary();
 }
 
 }  // end namespace grappler
