@@ -33,15 +33,12 @@ void AppendGpuCompilerFlags(std::vector<tensorflow::Flag>* flag_list);
 
 // The values of flags associated with XLA's gpu_compiler module.
 typedef struct {
-  bool xla_gpu_embed_ir;     // Embed the LLVM IR module string in the resultant
-                             // GpuExecutable.
   string xla_cuda_data_dir;  // If non-empty, specifies a local directory
                              // containing ptxas and nvvm libdevice files.
                              // Otherwise, by default, we use those from runfile
                              // directories.
   string xla_ptxas_path;     // The path to ptxas.  Required to log stats of
                              // the ptx.
-  string xla_gpu_dump_debug_json_to;  // Dump debug JSON to this directory.
 } GpuCompilerFlags;
 
 // Return a pointer to the GpuCompilerFlags struct;

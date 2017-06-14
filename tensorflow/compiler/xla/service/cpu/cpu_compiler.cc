@@ -37,7 +37,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/Support/TargetSelect.h"
 #include "external/llvm/include/llvm/Target/TargetMachine.h"
 #include "external/llvm/include/llvm/Target/TargetOptions.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
@@ -367,7 +366,14 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
   }
 
   std::unique_ptr<Executable> cpu_executable;
-  legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
+
+  // Cache this flag here since we'll want to access it after the module's
+  // ownership is std::moved.
+  const bool embed_ir_in_executable =
+      module->config().debug_options().xla_embed_ir_in_executable();
+  const string dump_debug_json_to =
+      module->config().debug_options().xla_dump_debug_json_to();
+
   if (CpuParallelBackendRequested(module->config())) {
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
@@ -381,10 +387,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
                             MakeUnique<DependencyHloOrdering>(module.get()),
                             BufferSizeBytesFunction(), kMemoryAlignment));
 
-    if (!flags->xla_cpu_dump_debug_json_to.empty()) {
+    if (!dump_debug_json_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-          proto, flags->xla_cpu_dump_debug_json_to, module->name()));
+          proto, dump_debug_json_to, module->name()));
     }
 
     // If we are using the parallel CPU backend, we need to create map from
@@ -446,7 +452,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     }
 
     string ir_module_string;
-    if (flags->xla_cpu_embed_ir) {
+    if (embed_ir_in_executable) {
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
     }
 
@@ -457,7 +463,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         std::move(function_names), std::move(hlo_to_profile_idx),
         std::move(aligned_constants)));
 
-    if (flags->xla_cpu_embed_ir) {
+    if (embed_ir_in_executable) {
       static_cast<CpuExecutable&>(*cpu_executable)
           .set_ir_module_string(ir_module_string);
     }
@@ -478,10 +484,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
             MakeUnique<SequentialHloOrdering>(module.get(), module_sequence),
             BufferSizeBytesFunction(), kMemoryAlignment));
 
-    if (!flags->xla_cpu_dump_debug_json_to.empty()) {
+    if (!dump_debug_json_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-          proto, flags->xla_cpu_dump_debug_json_to, module->name()));
+          proto, dump_debug_json_to, module->name()));
     }
 
     // Each computation is a single function.  Emit all embedded computations
@@ -510,7 +516,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
     string function_name = llvm_ir::AsString(entry_function->getName());
     string ir_module_string;
-    if (flags->xla_cpu_embed_ir) {
+    if (embed_ir_in_executable) {
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
     }
 
@@ -520,7 +526,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
         std::move(jit), std::move(assignment), std::move(module), function_name,
         std::move(hlo_to_profile_idx)));
 
-    if (flags->xla_cpu_embed_ir) {
+    if (embed_ir_in_executable) {
       static_cast<CpuExecutable&>(*cpu_executable)
           .set_ir_module_string(ir_module_string);
     }
@@ -642,11 +648,12 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
             module, MakeUnique<SequentialHloOrdering>(module, module_sequence),
             BufferSizeBytesFunction(), kMemoryAlignment));
 
-    legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
-    if (!flags->xla_cpu_dump_debug_json_to.empty()) {
+    const string dump_debug_json_to =
+        module->config().debug_options().xla_dump_debug_json_to();
+    if (!dump_debug_json_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-          proto, flags->xla_cpu_dump_debug_json_to, module->name()));
+          proto, dump_debug_json_to, module->name()));
     }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,

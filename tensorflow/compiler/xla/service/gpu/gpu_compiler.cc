@@ -273,11 +273,12 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
       BufferAssigner::Run(module.get(), hlo_schedule->ConsumeHloOrdering(),
                           BufferSizeBytesFunction(), kMemoryAlignment));
 
-  legacy_flags::GpuCompilerFlags* flags = legacy_flags::GetGpuCompilerFlags();
-  if (!flags->xla_gpu_dump_debug_json_to.empty()) {
+  const string dump_debug_json_to =
+      module->config().debug_options().xla_dump_debug_json_to();
+  if (!dump_debug_json_to.empty()) {
     HloProto proto = MakeHloProto(*module, *buffer_assignment);
     TF_RETURN_IF_ERROR(protobuf_util::DumpJsonToDirectory(
-        proto, flags->xla_gpu_dump_debug_json_to, module->name()));
+        proto, dump_debug_json_to, module->name()));
   }
 
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
@@ -292,7 +293,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
       entry_computation->root_instruction()->Accept(&ir_emitter));
 
   string ir_module_string_before_opt;
-  if (VLOG_IS_ON(2) || flags->xla_gpu_embed_ir) {
+  const bool embed_ir_in_executable =
+      module->config().debug_options().xla_embed_ir_in_executable();
+  if (VLOG_IS_ON(2) || embed_ir_in_executable) {
     ir_module_string_before_opt = llvm_ir::DumpModuleToString(llvm_module);
     VLOG(2) << "LLVM module before optimizations:";
     XLA_VLOG_LINES(2, ir_module_string_before_opt);
@@ -333,7 +336,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
   auto* gpu_executable =
       new GpuExecutable(*ptx, std::move(thunk_schedule), std::move(module),
                         std::move(buffer_assignment), ShapeSizeBytesFunction());
-  if (flags->xla_gpu_embed_ir) {
+  if (embed_ir_in_executable) {
     DCHECK_NE("", ir_module_string_before_opt);
     gpu_executable->set_ir_module_string(ir_module_string_before_opt);
   }

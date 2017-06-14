@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/legacy_flags/alias_analysis_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/buffer_assignment_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/compiler_functor_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/hlo_graph_dumper_flags.h"
@@ -139,7 +138,6 @@ int main(int argc, char** argv) {
   xla::legacy_flags::AppendAliasAnalysisFlags(&flag_list);
   xla::legacy_flags::AppendBufferAssignmentFlags(&flag_list);
   xla::legacy_flags::AppendCompilerFunctorFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::legacy_flags::AppendCpuRuntimeFlags(&flag_list);
   xla::legacy_flags::AppendHloGraphDumperFlags(&flag_list);
   xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
