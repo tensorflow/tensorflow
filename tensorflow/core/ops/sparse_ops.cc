@@ -620,7 +620,7 @@ REGISTER_OP("SparseSlice")
       return Status::OK();
     })
     .Doc(R"doc(
-Slice a `SparseTensor` based on the `start` and `size.
+Slice a `SparseTensor` based on the `start` and `size`.
 
 For example, if the input is
 
