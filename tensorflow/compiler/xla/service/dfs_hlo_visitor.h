@@ -148,6 +148,9 @@ class DfsHloVisitor {
   virtual Status HandleLog(HloInstruction* log, HloInstruction* operand) {
     return HandleElementwiseUnary(log, HloOpcode::kLog, operand);
   }
+  virtual Status HandleCos(HloInstruction* cos, HloInstruction* operand) {
+    return HandleElementwiseUnary(cos, HloOpcode::kCos, operand);
+  }
   virtual Status HandleTanh(HloInstruction* tanh, HloInstruction* operand) {
     return HandleElementwiseUnary(tanh, HloOpcode::kTanh, operand);
   }

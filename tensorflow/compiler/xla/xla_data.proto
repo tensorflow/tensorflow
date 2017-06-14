@@ -603,6 +603,9 @@ enum UnaryOperation {
 
   // Elementwise, tests if values are finite (not NaN or inf)
   UNOP_IS_FINITE = 11;
+
+  // Elementwise, computes the cosine of x.
+  UNOP_COS = 12;
 }
 
 message UnaryOpRequest {

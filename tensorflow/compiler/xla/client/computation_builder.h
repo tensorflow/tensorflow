@@ -508,6 +508,9 @@ class ComputationBuilder {
   // Enqueues a sign instruction onto the computation.
   ComputationDataHandle Sign(const ComputationDataHandle& operand);
 
+  // Enqueues a cosine instruction onto the computation.
+  ComputationDataHandle Cos(const ComputationDataHandle& operand);
+
   // Enqueues a tanh instruction onto the computation.
   ComputationDataHandle Tanh(const ComputationDataHandle& operand);
 

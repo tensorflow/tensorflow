@@ -214,6 +214,7 @@ string InstructionSequenceGraph(
       case HloOpcode::kCeil:
       case HloOpcode::kClamp:
       case HloOpcode::kConvert:
+      case HloOpcode::kCos:
       case HloOpcode::kDivide:
       case HloOpcode::kEq:
       case HloOpcode::kExp:

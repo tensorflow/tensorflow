@@ -583,6 +583,8 @@ ComputationBuilder supports these element-wise unary functions:
 
 <b>`Ceil(operand)`</b> Element-wise ceil `x -> ⌈x⌉`.
 
+<b>`Cos(operand)`</b> Element-wise cosine `x -> cos(x)`.
+
 <b>`Exp(operand)`</b> Element-wise natural exponential `x -> e^x`.
 
 <b>`Floor(operand)`</b> Element-wise floor `x -> ⌊x⌋`.

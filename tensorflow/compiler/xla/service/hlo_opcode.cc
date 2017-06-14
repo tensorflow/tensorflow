@@ -42,6 +42,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "convert";
     case HloOpcode::kConvolution:
       return "convolution";
+    case HloOpcode::kCos:
+      return "cosine";
     case HloOpcode::kCrossReplicaSum:
       return "cross-replica-sum";
     case HloOpcode::kCustomCall:

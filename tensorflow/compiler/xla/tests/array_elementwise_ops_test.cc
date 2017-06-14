@@ -1297,6 +1297,15 @@ TEST_F(ArrayElementwiseOpTest, AddParameterToConstantF32s) {
                              {param0_data.get()}, error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, CosF32s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({3.14159f, 0.0f, 1.570796f, -0.78539f});
+  auto result = builder.Cos(a);
+
+  ComputeAndCompareR1<float>(&builder, {-1.0f, 1.0f, 0.0f, 0.707107f}, {},
+                             error_spec_);
+}
+
 TEST_F(ArrayElementwiseOpTest, TanhF32s) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<float>({-2.5f, 3.14f, 2.25f});

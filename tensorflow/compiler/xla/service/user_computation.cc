@@ -49,6 +49,8 @@ HloOpcode UnaryOperationToHloOpcode(UnaryOperation unop) {
       return HloOpcode::kAbs;
     case UNOP_CEIL:
       return HloOpcode::kCeil;
+    case UNOP_COS:
+      return HloOpcode::kCos;
     case UNOP_EXP:
       return HloOpcode::kExp;
     case UNOP_FLOOR:

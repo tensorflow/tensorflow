@@ -967,6 +967,11 @@ ComputationDataHandle ComputationBuilder::Sign(
   return UnaryOp(UNOP_SIGN, operand);
 }
 
+ComputationDataHandle ComputationBuilder::Cos(
+    const ComputationDataHandle& operand) {
+  return UnaryOp(UNOP_COS, operand);
+}
+
 ComputationDataHandle ComputationBuilder::Tanh(
     const ComputationDataHandle& operand) {
   return UnaryOp(UNOP_TANH, operand);
