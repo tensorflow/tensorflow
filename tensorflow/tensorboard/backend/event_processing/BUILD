@@ -83,6 +83,7 @@ py_library(
         ":plugin_asset_util",
         ":reservoir",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/tensorboard/plugins/distributions:compressor",
     ],
 )
 
@@ -94,6 +95,7 @@ py_test(
     deps = [
         ":event_accumulator",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/tensorboard/plugins/distributions:compressor",
     ],
 )
 

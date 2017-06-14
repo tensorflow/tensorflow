@@ -25,6 +25,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.tensorboard.backend.event_processing import event_accumulator as ea
+from tensorflow.tensorboard.plugins.distributions import compressor
 
 
 class _EventGenerator(object):
@@ -406,7 +407,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
     # Create the expected values after compressing hst1
     expected_vals1 = [
-        ea.CompressedHistogramValue(bp, val)
+        compressor.CompressedHistogramValue(bp, val)
         for bp, val in [(0, 1.0), (2500, 1.25), (5000, 1.5), (7500, 1.75
                                                              ), (10000, 2.0)]
     ]
@@ -416,7 +417,7 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
 
     # Create the expected values after compressing hst2
     expected_vals2 = [
-        ea.CompressedHistogramValue(bp, val)
+        compressor.CompressedHistogramValue(bp, val)
         for bp, val in [(0, -2),
                         (2500, 2),
                         (5000, 2 + 1 / 3),
@@ -426,60 +427,6 @@ class MockingEventAccumulatorTest(EventAccumulatorTest):
     expected_cmphst2 = ea.CompressedHistogramEvent(
         wall_time=2, step=12, compressed_histogram_values=expected_vals2)
     self.assertEqual(acc.CompressedHistograms('hst2'), [expected_cmphst2])
-
-  def testCompressedHistogramsWithEmptyHistogram(self):
-    """Tests that empty histograms compressed properly in EventAccumulator."""
-    gen = _EventGenerator(self)
-    acc = ea.EventAccumulator(gen, compression_bps=(0, 2500, 5000, 7500, 10000))
-
-    gen.AddHistogram(
-        'hst1',
-        wall_time=1,
-        step=10,
-        hmin=None,
-        hmax=None,
-        hnum=0,
-        hsum=0,
-        hsum_squares=0,
-        hbucket_limit=[1, 2, 3],
-        hbucket=[0, 0, 0])
-    acc.Reload()
-
-    # Create the expected values after compressing hst1
-    expected_vals1 = [
-        ea.CompressedHistogramValue(bp, val)
-        for bp, val in [(0, 0.0), (2500, 0), (5000, 0), (7500, 0), (10000, 0)]
-    ]
-    expected_cmphst1 = ea.CompressedHistogramEvent(
-        wall_time=1, step=10, compressed_histogram_values=expected_vals1)
-    self.assertEqual(acc.CompressedHistograms('hst1'), [expected_cmphst1])
-
-  def testCompressHistogram_uglyHistogram(self):
-    bps = (0, 668, 1587, 3085, 5000, 6915, 8413, 9332, 10000)
-    histogram_values = ea.HistogramValue(
-        min=0.0,
-        max=1.0,
-        num=960.0,
-        sum=64.0,
-        sum_squares=64.0,
-        bucket_limit=[
-            0.0, 1e-12, 0.917246389039776, 1.0089710279437536,
-            1.7976931348623157e+308
-        ],
-        bucket=[0.0, 896.0, 0.0, 64.0, 0.0])
-    histogram_event = ea.HistogramEvent(0, 0, histogram_values)
-    compressed_event = ea._CompressHistogram(histogram_event, bps)
-    vals = compressed_event.compressed_histogram_values
-    self.assertEquals(tuple(v.basis_point for v in vals), bps)
-    self.assertAlmostEqual(vals[0].value, 0.0)
-    self.assertAlmostEqual(vals[1].value, 7.157142857142856e-14)
-    self.assertAlmostEqual(vals[2].value, 1.7003571428571426e-13)
-    self.assertAlmostEqual(vals[3].value, 3.305357142857143e-13)
-    self.assertAlmostEqual(vals[4].value, 5.357142857142857e-13)
-    self.assertAlmostEqual(vals[5].value, 7.408928571428571e-13)
-    self.assertAlmostEqual(vals[6].value, 9.013928571428571e-13)
-    self.assertAlmostEqual(vals[7].value, 9.998571428571429e-13)
-    self.assertAlmostEqual(vals[8].value, 1.0)
 
   def testImages(self):
     """Tests 2 images inserted/accessed in EventAccumulator."""
