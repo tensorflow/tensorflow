@@ -1195,6 +1195,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
   StatusOr<ComputationDataHandle> handle_status;
 
   switch (arg->op_case()) {
+    case OpRequest::kBatchNormTrainingRequest:
+      handle_status = computation->AddBatchNormTrainingInstruction(
+          arg->batch_norm_training_request());
+      break;
     case OpRequest::kBinaryOpRequest:
       handle_status =
           computation->AddBinaryInstruction(arg->binary_op_request());

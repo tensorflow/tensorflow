@@ -64,6 +64,13 @@ class ShapeInference {
       tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
       const ProgramShape& to_apply);
 
+  // Infers the shape produced by InferBatchNormTraining with the given
+  // operands.
+  static StatusOr<Shape> InferBatchNormTrainingShape(const Shape& operand_shape,
+                                                     const Shape& offset_shape,
+                                                     const Shape& scale_shape,
+                                                     int64 feature_index);
+
   // Infers the shape produced by applying the given convolutional
   // filter (rhs) to lhs in the way specified by the fields on window.
   static StatusOr<Shape> InferConvolveShape(

@@ -282,6 +282,10 @@ string InstructionSequenceGraph(
         // port for each parameter instruction. No need to emit anything in this
         // case.
         continue;
+      case HloOpcode::kBatchNormTraining:
+        StrAppend(&name, " feature_index=", instruction->feature_index());
+        color = kPurple;
+        break;
       case HloOpcode::kReduce:
         StrAppend(&name, " dims=", Join(instruction->dimensions(), ","));
         color = kPurple;

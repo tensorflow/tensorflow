@@ -462,6 +462,14 @@ message ReduceWindowRequest {
   ComputationHandle to_apply = 5;
 }
 
+message BatchNormTrainingRequest {
+  ComputationDataHandle operand = 1;
+  ComputationDataHandle scale = 2;
+  ComputationDataHandle offset = 3;
+  float epsilon = 4;
+  int64 feature_index = 5;
+}
+
 message CrossReplicaSumRequest {
   ComputationDataHandle operand = 2;
 }
@@ -759,7 +767,8 @@ message OpRequest {
     SendRequest send_request = 30;
     RecvRequest recv_request = 31;
     OutfeedRequest outfeed_request = 32;
-    // Next: 35
+    BatchNormTrainingRequest batch_norm_training_request = 35;
+    // Next: 36
   }
 }
 

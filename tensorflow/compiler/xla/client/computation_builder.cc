@@ -1407,6 +1407,32 @@ ComputationDataHandle ComputationBuilder::ReduceWindowWithGeneralPadding(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::BatchNormTraining(
+    const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+    const ComputationDataHandle& offset, float epsilon, int64 feature_index) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+  BatchNormTrainingRequest request;
+  *request.mutable_operand() = operand;
+  *request.mutable_scale() = scale;
+  *request.mutable_offset() = offset;
+  request.set_epsilon(epsilon);
+  request.set_feature_index(feature_index);
+
+  OpRequest op_request;
+  *op_request.mutable_batch_norm_training_request() = request;
+  *op_request.mutable_computation() = computation_.handle();
+  AddOpMetadata(&op_request);
+
+  OpResponse response;
+
+  VLOG(2) << "making BatchNormTraining request";
+
+  Status s = client_->stub()->Op(&op_request, &response);
+  return ParseOpResponse(s, &response);
+}
+
 ComputationDataHandle ComputationBuilder::CrossReplicaSum(
     const ComputationDataHandle& operand) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {

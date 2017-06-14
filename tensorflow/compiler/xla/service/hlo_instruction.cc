@@ -370,6 +370,22 @@ HloInstruction::CreateDynamicUpdateSlice(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateBatchNormTraining(const Shape& shape,
+                                        HloInstruction* operand,
+                                        HloInstruction* scale,
+                                        HloInstruction* offset, float epsilon,
+                                        int64 feature_index) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kBatchNormTraining, shape));
+  instruction->AppendOperand(operand);
+  instruction->AppendOperand(scale);
+  instruction->AppendOperand(offset);
+  instruction->epsilon_ = epsilon;
+  instruction->feature_index_ = feature_index;
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateSelectAndScatter(
     const Shape& shape, HloInstruction* operand, HloComputation* select,
     const Window& window, HloInstruction* source, HloInstruction* init_value,
@@ -841,6 +857,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kParameter:
       return CreateParameter(parameter_number_, shape, parameter_name_);
     // Unsupported ops for cloning.
+    case HloOpcode::kBatchNormTraining:
     case HloOpcode::kRecv:
     case HloOpcode::kSend:
     case HloOpcode::kUpdate:
@@ -1137,6 +1154,10 @@ bool HloInstruction::Identical(
              // Check the shape too because `this` and `other` may be in
              // different HloComputations.
              ShapeUtil::Compatible(shape(), other.shape());
+
+    case HloOpcode::kBatchNormTraining:
+      return feature_index() == other.feature_index() &&
+             epsilon() == other.epsilon();
 
     // A constant is defined by the value in the literal.
     case HloOpcode::kConstant:
@@ -1733,6 +1754,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
   switch (opcode_) {
     case HloOpcode::kAbs:
       return visitor->HandleAbs(this, operands_[0]);
+    case HloOpcode::kBatchNormTraining:
+      return visitor->HandleBatchNormTraining(this);
     case HloOpcode::kSign:
       return visitor->HandleSign(this, operands_[0]);
     case HloOpcode::kConstant:

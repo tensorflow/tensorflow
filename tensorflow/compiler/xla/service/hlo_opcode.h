@@ -30,6 +30,7 @@ namespace xla {
 enum class HloOpcode {
   kAbs,
   kAdd,
+  kBatchNormTraining,
   kBitcast,
   kBroadcast,
   kCall,

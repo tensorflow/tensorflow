@@ -50,6 +50,11 @@ class DfsHloVisitorWithDefault : public DfsHloVisitor {
                                  HloInstruction* rhs) override {
     return DefaultAction(hlo);
   }
+
+  Status HandleBatchNormTraining(HloInstruction* hlo) override {
+    return DefaultAction(hlo);
+  }
+
   Status HandleClamp(HloInstruction* clamp, HloInstruction* /*min*/,
                      HloInstruction* /*arg*/,
                      HloInstruction* /*max*/) override {

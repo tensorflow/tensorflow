@@ -208,6 +208,11 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand, HloInstruction* init_value,
       const Window& window, HloComputation* reduce_computation);
 
+  // Creates a batch-norm-training instruction.
+  static std::unique_ptr<HloInstruction> CreateBatchNormTraining(
+      const Shape& shape, HloInstruction* operand, HloInstruction* scale,
+      HloInstruction* offset, float epsilon, int64 feature_index);
+
   // Creates a scatter computation that scatters the `source` array to the
   // selected indices of each window.
   static std::unique_ptr<HloInstruction> CreateSelectAndScatter(
@@ -526,6 +531,18 @@ class HloInstruction {
   //
   // Precondition: opcode() == HloOpcode::kSend or HloOpcode::kRecv
   int64 channel_id() const { return channel_id_; }
+
+  // Returns feature_index field associated with the instruction. The index
+  // represents the index of the feature dimension.
+  //
+  // Precondition: opcode() == HloOpcode::kBatchNormTraining
+  int64 feature_index() const { return feature_index_; }
+
+  // Returns a epsilon value associated with the instruction. The is a small
+  // number added to the variance to avoid divide-by-zero error.
+  //
+  // Precondition: opcode() == HloOpcode::kBatchNormTraining
+  int64 epsilon() const { return epsilon_; }
 
   // Returns the infeed configuration string. The infeed configuration includes
   // any metadata needed for the backend compiler (e.g., infeed buffer address)
@@ -922,6 +939,14 @@ class HloInstruction {
   // The distribution requested for random number generation.
   // Only present for kRng.
   RandomDistribution distribution_;
+
+  // A small float number added to the variance to avoid divide-by-zero error.
+  // Only present for kBatchNormTraining.
+  float epsilon_;
+
+  // An integer value representing the index of the feature dimension.
+  // Only present for kBatchNormTraining.
+  int64 feature_index_;
 
   // Represents a unique identifier for each Send/Recv instruction pair.
   // Only present for kSend or kRecv.

@@ -24,6 +24,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "abs";
     case HloOpcode::kAdd:
       return "add";
+    case HloOpcode::kBatchNormTraining:
+      return "batch-norm-training";
     case HloOpcode::kBitcast:
       return "bitcast";
     case HloOpcode::kBroadcast:
