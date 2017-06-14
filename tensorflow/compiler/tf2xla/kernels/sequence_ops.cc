@@ -138,7 +138,7 @@ class RangeOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Range", RangeOp);
+REGISTER_XLA_OP(Name("Range"), RangeOp);
 
 class LinSpaceOp : public XlaOpKernel {
  public:
@@ -207,7 +207,7 @@ class LinSpaceOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("LinSpace", LinSpaceOp);
+REGISTER_XLA_OP(Name("LinSpace"), LinSpaceOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -24,8 +24,9 @@ namespace tensorflow {
 RecordYielder::RecordYielder(OpKernelConstruction* context,
                              const RecordYielder::Options& opts)
     : opts_(opts),
-      thread_(new thread::ThreadPool(context->env(), "record_yielder",
-                                     1 + opts.parallelism)),
+      thread_(new thread::ThreadPool(context->env(), ThreadOptions(),
+                                     "record_yielder", 1 + opts.parallelism,
+                                     /* low_latency_hint */ false)),
       epoch_(0),
       rnd_(opts.seed) {
   thread_->Schedule([this]() { MainLoop(); });
@@ -114,7 +115,7 @@ void RecordYielder::MainLoop() {
     std::shuffle(filenames.begin(), filenames.end(), shuffle_rnd);
 
     // Left-shift the filename list.
-    const int64 num = filenames.size();
+    const std::vector<string>::size_type num = filenames.size();
     int64 shift;
     if (0 <= opts_.file_shuffle_shift_ratio &&
         opts_.file_shuffle_shift_ratio < 1) {
@@ -129,7 +130,7 @@ void RecordYielder::MainLoop() {
     for (int i = 0; i < N; ++i) {
       Shard* shard = &shards[i];
       shard->index = i;
-      for (int j = i; j < filenames.size(); j += N) {
+      for (std::vector<string>::size_type j = i; j < filenames.size(); j += N) {
         shard->filenames.push_back(filenames[j]);
       }
       thread_->Schedule([this, shard]() { ShardLoop(shard); });
@@ -144,6 +145,9 @@ void RecordYielder::MainLoop() {
     {
       mutex_lock l(mu_);
       epoch_end_ = true;
+      if (BufEnough()) {
+        buf_enough_.notify_all();
+      }
       while (!BufEmpty()) {
         buf_empty_.wait(l);
       }

@@ -27,7 +27,7 @@ SO_PATH := $(LIBDIR)$(SO_NAME)
 $(SO_PATH): $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
-	-c -o $(SO_NAME) \
-	$(LIBFLAGS) -shared $(LDFLAGS) $(LIBS)
+	-o $@ $(LIB_OBJS) \
+	$(LIBFLAGS) $(LDFLAGS) -shared $(LIBS)
 
 $(SO_NAME): $(SO_PATH)

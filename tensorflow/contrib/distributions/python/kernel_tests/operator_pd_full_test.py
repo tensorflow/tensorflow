@@ -47,7 +47,7 @@ class OperatorPDFullTest(test.TestCase):
       operator = operator_pd_full.OperatorPDFull(matrix, verify_pd=True)
       # Could fail inside Cholesky decomposition, or later when we test the
       # diag.
-      with self.assertRaisesOpError("x > 0|LLT"):
+      with self.assertRaisesOpError("x > 0|Cholesky"):
         operator.to_dense().eval()
 
   def testNonSymmetricMatrixRaises(self):

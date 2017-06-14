@@ -484,6 +484,12 @@ template <typename T>
 struct sign : base<T, Eigen::internal::scalar_sign_op<T> > {};
 
 template <typename T>
+struct sinh : base<T, Eigen::internal::scalar_sinh_op<T> > {};
+
+template <typename T>
+struct cosh : base<T, Eigen::internal::scalar_cosh_op<T> > {};
+
+template <typename T>
 struct tanh : base<T, Eigen::internal::scalar_tanh_op<T> > {};
 
 template <typename T>
@@ -658,6 +664,22 @@ struct zeta : base<T, Eigen::internal::scalar_zeta_op<T>> {};
 template <typename T>
 struct polygamma : base<T, Eigen::internal::scalar_polygamma_op<T>> {};
 
+template <typename Scalar>
+struct scalar_atan2_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_atan2_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
+  operator()(const Scalar& y, const Scalar& x) const {
+#if GOOGLE_CUDA
+    return ::atan2(y, x);
+#else
+    return std::atan2(y, x);
+#endif
+  }
+};
+
+template <typename T>
+struct atan2 : base<T, scalar_atan2_op<T>> {};
+
 template <typename T>
 struct squared_difference
     : base<T, Eigen::internal::scalar_compose_op<
@@ -751,6 +773,13 @@ struct BinaryFunctor {
              typename TTypes<typename Functor::in_type, NDIMS>::ConstTensor in1,
              typename Eigen::array<Eigen::DenseIndex, NDIMS> bcast1,
              bool* error);
+};
+
+template <typename Device, typename T>
+struct ApproximateEqual {
+  void operator()(const Device& d, typename TTypes<T>::ConstFlat x,
+                  typename TTypes<T>::ConstFlat y, T tolerance,
+                  typename TTypes<bool>::Flat z);
 };
 
 template <int NDIMS>

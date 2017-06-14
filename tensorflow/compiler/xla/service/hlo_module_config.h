@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 
 namespace xla {
 
@@ -32,14 +33,34 @@ namespace xla {
 // executable.
 class HloModuleConfig {
  public:
+  // A configuration can be created either with, or without an entry
+  // ComputationLayout. The default ctor creates it without -- in this case
+  // accessing entry_computation_layout will CHECK-fail. The ctor accepting a
+  // ProgramShape creates a computation layout using this shape.
+  HloModuleConfig();
   explicit HloModuleConfig(const ProgramShape& program_shape);
 
-  // Return a reference to the layout of the entry computation.
-  const ComputationLayout& entry_computation_layout() const {
-    return entry_computation_layout_;
+  // Checks if this config has an entry computation layout already.
+  bool has_entry_computation_layout() const {
+    return entry_computation_layout_.has_value();
   }
+
+  // Sets the entry computation layout for this config. If the entry computation
+  // layout already exists, it is silently replaced.
+  void SetDefaultComputationLayout(const ProgramShape& program_shape);
+
+  // Returns a constant reference to the layout of the entry computation.
+  // Assumes the layout was set.
+  const ComputationLayout& entry_computation_layout() const {
+    CHECK(entry_computation_layout_.has_value());
+    return *entry_computation_layout_;
+  }
+
+  // Returns a mutable pointer to the layout of the entry computation. Assumes
+  // the layout was set.
   ComputationLayout* mutable_entry_computation_layout() {
-    return &entry_computation_layout_;
+    CHECK(entry_computation_layout_.has_value());
+    return &(*entry_computation_layout_);
   }
 
   // Sets/returns whether to enable HLO-level profiling.
@@ -60,23 +81,21 @@ class HloModuleConfig {
   }
   int64 replica_count() const { return replica_count_; }
 
-  // Sets/returns whether unsafe math optimizations are disabled for this
-  // module.  Default is fast-math enabled.
-  //
-  // This is named fast_math_disabled rather than the more natural
-  // fast_math_enabled for consistency with the ExecutionOptions proto.
-  bool fast_math_disabled() const { return fast_math_disabled_; }
-  void set_fast_math_disabled(bool disabled) { fast_math_disabled_ = disabled; }
-
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
   string compilation_cache_key() const;
 
+  const DebugOptions& debug_options() const { return debug_options_; }
+
+  void set_debug_options(const DebugOptions& debug_options) {
+    debug_options_ = debug_options;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
-  ComputationLayout entry_computation_layout_;
+  tensorflow::gtl::optional<ComputationLayout> entry_computation_layout_;
 
   // Whether to enable HLO-level profiling.
   bool hlo_profiling_enabled_ = false;
@@ -97,7 +116,7 @@ class HloModuleConfig {
   // The number of replicas to compile this binary for.
   int64 replica_count_ = 1;
 
-  bool fast_math_disabled_ = false;
+  DebugOptions debug_options_;
 };
 
 }  // namespace xla

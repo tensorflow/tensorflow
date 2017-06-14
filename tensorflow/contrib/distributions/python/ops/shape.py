@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import contextlib
 
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
@@ -27,6 +26,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 class _DistributionShape(object):
@@ -195,8 +195,8 @@ class _DistributionShape(object):
     self._batch_ndims = batch_ndims
     self._event_ndims = event_ndims
     self._validate_args = validate_args
-    with ops.name_scope(name) as ns:
-      self._name = ns
+    with ops.name_scope(name):
+      self._name = name
       with ops.name_scope("init"):
         self._batch_ndims = self._assert_non_negative_int32_scalar(
             ops.convert_to_tensor(

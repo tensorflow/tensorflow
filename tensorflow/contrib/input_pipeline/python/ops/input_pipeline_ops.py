@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import random
 
+from tensorflow.contrib.input_pipeline.ops import gen_input_pipeline_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -42,7 +43,7 @@ def obtain_next(string_list_tensor, counter):
     An op that produces the element at counter + 1 in the list, round
     robin style.
   """
-  return _input_pipeline_ops.obtain_next(string_list_tensor, counter)
+  return gen_input_pipeline_ops.obtain_next(string_list_tensor, counter)
 
 
 def _maybe_randomize_list(string_list, shuffle):

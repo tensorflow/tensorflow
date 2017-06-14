@@ -13,7 +13,22 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utilities supporting export to SavedModel."""
+"""Utilities supporting export to SavedModel.
+
+Some contents of this file are moved to tensorflow/python/estimator/export.py:
+
+get_input_alternatives() -> obsolete
+get_output_alternatives() -> obsolete, but see _get_default_export_output()
+build_all_signature_defs() -> build_all_signature_defs()
+get_timestamped_export_directory() -> get_timestamped_export_directory()
+_get_* -> obsolete
+_is_* -> obsolete
+
+Functionality of build_standardized_signature_def() is moved to
+tensorflow/python/estimator/export_output.py as ExportOutput.as_signature_def().
+
+Anything to do with ExportStrategies or garbage collection is not moved.
+"""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -27,8 +42,11 @@ from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import gc
 from tensorflow.contrib.learn.python.learn.utils import input_fn_utils
+from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 
@@ -291,7 +309,7 @@ def get_most_recent_export(export_dir_base):
                      directories.
 
   Returns:
-    A gc.Path, whith is just a namedtuple of (path, export_version).
+    A gc.Path, with is just a namedtuple of (path, export_version).
   """
   select_filter = gc.largest_export_versions(1)
   results = select_filter(gc.get_paths(export_dir_base,
@@ -317,7 +335,10 @@ def garbage_collect_exports(export_dir_base, exports_to_keep):
   delete_filter = gc.negation(keep_filter)
   for p in delete_filter(gc.get_paths(export_dir_base,
                                       parser=_export_version_parser)):
-    gfile.DeleteRecursively(p.path)
+    try:
+      gfile.DeleteRecursively(p.path)
+    except errors_impl.NotFoundError as e:
+      logging.warn('Can not delete %s recursively: %s', p.path, e)
 
 
 def make_export_strategy(serving_input_fn,
@@ -332,7 +353,8 @@ def make_export_strategy(serving_input_fn,
       `InputFnOps`.
     default_output_alternative_key: the name of the head to serve when an
       incoming serving request does not explicitly request a specific head.
-      Not needed for single-headed models.
+      Must be `None` if the estimator inherits from ${tf.estimator.Estimator}
+      or for single-headed models.
     assets_extra: A dict specifying how to populate the assets.extra directory
       within the exported SavedModel.  Each key should give the destination
       path (including the filename) relative to the assets.extra directory.
@@ -364,14 +386,30 @@ def make_export_strategy(serving_input_fn,
 
     Returns:
       The string path to the exported directory.
+
+    Raises:
+      ValueError: If `estimator` is a ${tf.estimator.Estimator} instance
+        and `default_output_alternative_key` was specified.
     """
-    export_result = estimator.export_savedmodel(
-        export_dir_base,
-        serving_input_fn,
-        default_output_alternative_key=default_output_alternative_key,
-        assets_extra=assets_extra,
-        as_text=as_text,
-        checkpoint_path=checkpoint_path)
+    if isinstance(estimator, core_estimator.Estimator):
+      if default_output_alternative_key is not None:
+        raise ValueError(
+            'default_output_alternative_key is not supported in core '
+            'Estimator. Given: {}'.format(default_output_alternative_key))
+      export_result = estimator.export_savedmodel(
+          export_dir_base,
+          serving_input_fn,
+          assets_extra=assets_extra,
+          as_text=as_text,
+          checkpoint_path=checkpoint_path)
+    else:
+      export_result = estimator.export_savedmodel(
+          export_dir_base,
+          serving_input_fn,
+          default_output_alternative_key=default_output_alternative_key,
+          assets_extra=assets_extra,
+          as_text=as_text,
+          checkpoint_path=checkpoint_path)
 
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result

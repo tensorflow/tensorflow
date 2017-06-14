@@ -137,7 +137,7 @@ def copy_op_handler(info, op, copy_shape=True):
     op: the `tf.Operation` to be copied.
     copy_shape: also copy the shape of the tensor
   Returns:
-    A `(op, op_outputs)` tuple containgin the transformed op and its outputs.
+    A `(op, op_outputs)` tuple containing the transformed op and its outputs.
   """
   # pylint: disable=protected-access
 

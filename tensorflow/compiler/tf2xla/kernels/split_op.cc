@@ -99,7 +99,7 @@ class SplitOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Split", SplitOp);
+REGISTER_XLA_OP(Name("Split"), SplitOp);
 
 class SplitVOp : public XlaOpKernel {
  public:
@@ -202,7 +202,7 @@ class SplitVOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("SplitV", SplitVOp);
+REGISTER_XLA_OP(Name("SplitV"), SplitVOp);
 
 }  // namespace
 }  // namespace tensorflow

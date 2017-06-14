@@ -14,8 +14,11 @@
 # ==============================================================================
 
 # pylint: disable=g-short-docstring-punctuation
-"""Image processing and decoding ops. See the @{$python/image} guide.
+"""Image processing and decoding ops.
 
+See the @{$python/image} guide.
+
+@@decode_bmp
 @@decode_gif
 @@decode_jpeg
 @@encode_jpeg
@@ -57,6 +60,7 @@
 @@per_image_standardization
 @@draw_bounding_boxes
 @@non_max_suppression
+@@non_max_suppression_v2
 @@sample_distorted_bounding_box
 @@total_variation
 """

@@ -64,7 +64,7 @@ class DiagOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Diag", DiagOp);
+REGISTER_XLA_OP(Name("Diag"), DiagOp);
 
 class DiagPartOp : public XlaOpKernel {
  public:
@@ -132,7 +132,7 @@ class DiagPartOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("DiagPart", DiagPartOp);
+REGISTER_XLA_OP(Name("DiagPart"), DiagPartOp);
 
 class MatrixDiagOp : public XlaOpKernel {
  public:
@@ -167,7 +167,7 @@ class MatrixDiagOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("MatrixDiag", MatrixDiagOp);
+REGISTER_XLA_OP(Name("MatrixDiag"), MatrixDiagOp);
 
 class MatrixDiagPartOp : public XlaOpKernel {
  public:
@@ -249,7 +249,7 @@ class MatrixDiagPartOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("MatrixDiagPart", MatrixDiagPartOp);
+REGISTER_XLA_OP(Name("MatrixDiagPart"), MatrixDiagPartOp);
 
 }  // namespace
 }  // namespace tensorflow

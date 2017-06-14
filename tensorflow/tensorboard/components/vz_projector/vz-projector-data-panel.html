@@ -27,8 +27,10 @@ limitations under the License.
 <link rel="import" href="../paper-dialog/paper-dialog.html">
 <link rel="import" href="../paper-dialog-scrollable/paper-dialog-scrollable.html">
 <link rel="import" href="../paper-tooltip/paper-tooltip.html">
+<link rel="import" href="../tf-imports/d3.html">
 <link rel="import" href="vz-projector-legend.html">
 <link rel="import" href="styles.html">
+<link rel="import" href="bundle.html">
 
 <dom-module id="vz-projector-data-panel">
 <template>
@@ -275,7 +277,7 @@ paper-dropdown-menu paper-item {
       </paper-tooltip>
       <paper-button id="upload" class="ink-button" onclick="dataDialog.open()">Load data</paper-button>
     </span>
-    <span>
+    <span id="publish-container">
       <paper-tooltip position="bottom" animation-delay="0" fit-to-visible-bounds>
         Publish your embedding visualization and data
       </paper-tooltip>
@@ -286,7 +288,7 @@ paper-dropdown-menu paper-item {
     <paper-dialog id="dataDialog" with-backdrop>
       <h2>Load data from your computer</h2>
       <paper-dialog-scrollable class="scrollable-container">
-        <div class="data-step">
+        <div class="data-step" id="upload-tensors-step-container">
           <div class="upload-step">
             <div>
                 <b><span class="step-label">Step 1:</span> Load a TSV file of vectors.</b>
@@ -310,7 +312,7 @@ paper-dropdown-menu paper-item {
         <div class="data-step">
           <div class="upload-step">
             <div>
-                <span class="step-label"><b>Step 2</b> (optional):</span> <b>Load a TSV file of metadata.</b>
+                <span class="step-label" id="upload-metadata-label"><b>Step 2</b> (optional):</span> <b>Load a TSV file of metadata.</b>
             </div>
           </div>
           <div class="data-step-contents">
@@ -339,7 +341,7 @@ paper-dropdown-menu paper-item {
         <div>
           <p>
             If you'd like to share your visualization with the world, follow these simple steps.
-            See <a target=_blank href="https://www.tensorflow.org/versions/master/how_tos/embedding_viz/index.md">this tutorial</a> for more.
+            See <a target=_blank href="https://www.tensorflow.org/get_started/embedding_viz">this tutorial</a> for more.
           </p>
           <h4><span class="step-label">Step 1:</span> Make data public</h4>
           <p>
@@ -347,6 +349,7 @@ paper-dropdown-menu paper-item {
           </p>
           <p>
             One option is using a <a target=_blank href="https://gist.github.com/">github gist</a>.
+            If you choose this approach, make sure to link directly to the raw file.
           </p>
         </div>
         <div>
@@ -395,4 +398,5 @@ paper-dropdown-menu paper-item {
 </div>
 <!-- Closing global template -->
 </template>
+<script src="vz-projector-data-panel.js"></script>
 </dom-module>

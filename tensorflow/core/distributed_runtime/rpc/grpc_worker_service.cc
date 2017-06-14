@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/distributed_runtime/worker_session.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -57,9 +58,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
     cq_ = builder->AddCompletionQueue();
   }
 
-  ~GrpcWorkerService() {
-    delete shutdown_alarm_;
-  }
+  ~GrpcWorkerService() override { delete shutdown_alarm_; }
 
   void Shutdown() override {
     bool did_shutdown = false;
@@ -114,6 +113,7 @@ class GrpcWorkerService : public AsyncServiceInterface {
     // completes, and we may decide to bound some of the request
     // types.
     ENQUEUE_REQUEST(GetStatus, false);
+    ENQUEUE_REQUEST(CreateWorkerSession, false);
     ENQUEUE_REQUEST(CleanupAll, false);
     ENQUEUE_REQUEST(RegisterGraph, false);
     ENQUEUE_REQUEST(DeregisterGraph, false);
@@ -180,6 +180,16 @@ class GrpcWorkerService : public AsyncServiceInterface {
       call->SendResponse(ToGrpcStatus(s));
     });
     ENQUEUE_REQUEST(GetStatus, false);
+  }
+
+  void CreateWorkerSessionHandler(
+      WorkerCall<CreateWorkerSessionRequest, CreateWorkerSessionResponse>*
+          call) {
+    Schedule([this, call]() {
+      Status s = worker_->CreateWorkerSession(&call->request, &call->response);
+      call->SendResponse(ToGrpcStatus(s));
+    });
+    ENQUEUE_REQUEST(CreateWorkerSession, false);
   }
 
   void CleanupAllHandler(
@@ -376,15 +386,18 @@ void GrpcWorker::RecvTensorAsync(CallOptions* opts,
           done(status);
         }
       });
-  }
+}
 
-  WorkerEnv* GrpcWorker::env() { return env_; }
+WorkerEnv* GrpcWorker::env() { return env_; }
 
-  GrpcWorker* NewGrpcWorker(WorkerEnv* env) { return new GrpcWorker(env); }
+std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* env) {
+  return std::unique_ptr<GrpcWorker>(new GrpcWorker(env));
+}
 
-  AsyncServiceInterface* NewGrpcWorkerService(GrpcWorker* worker,
-                                              ::grpc::ServerBuilder* builder) {
-    return new GrpcWorkerService(worker, builder);
+std::unique_ptr<AsyncServiceInterface> NewGrpcWorkerService(
+    GrpcWorker* worker, ::grpc::ServerBuilder* builder) {
+  return std::unique_ptr<AsyncServiceInterface>(
+      new GrpcWorkerService(worker, builder));
 }
 
 }  // namespace tensorflow

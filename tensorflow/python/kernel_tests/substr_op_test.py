@@ -183,7 +183,7 @@ class SubstrOpTest(test.TestCase):
 
     position = np.array([[1, 2, 3], [1, 2, 3], [1, 2, 3]], dtype)
     length = np.array([[2, 3, 4]], dtype)
-    # Should fail: postion/length have different dimensionality
+    # Should fail: position/length have different dimensionality
     with self.assertRaises(ValueError):
       substr_op = string_ops.substr(test_string, position, length)
 

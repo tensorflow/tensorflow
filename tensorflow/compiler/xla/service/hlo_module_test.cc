@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
-#include "tensorflow/compiler/xla/test_helpers.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
@@ -58,27 +58,32 @@ class HloModuleTest : public HloTestBase {
 
 TEST_F(HloModuleTest, OneComputationPostOrder) {
   // Create a module with a single computation.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(CreateConstantComputation());
 
-  EXPECT_EQ(module->MakeComputationPostOrder().front(), computation);
+  EXPECT_THAT(module->MakeComputationPostOrder(),
+              ::testing::ElementsAre(computation));
 }
 
 TEST_F(HloModuleTest, TwoComputationsPostOrder) {
   // Create a module with two unconnected computations.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation1 = module->AddEntryComputation(CreateConstantComputation());
   auto computation2 =
       module->AddEmbeddedComputation(CreateConstantComputation());
 
-  EXPECT_MATCH(
-      testing::ListToVec<HloComputation*>(module->MakeComputationPostOrder()),
-      testing::UnorderedMatcher<HloComputation*>(computation1, computation2));
+  EXPECT_THAT(module->MakeComputationPostOrder(),
+              ::testing::UnorderedElementsAre(computation1, computation2));
+
+  // We specified the same name for both computations, but the HloModule should
+  // have made the names unique.
+  EXPECT_EQ(computation1->name(), "Constant");
+  EXPECT_EQ(computation2->name(), "Constant.1");
 }
 
 TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
   // Create a module with a diamond call graph of computations.
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation1 =
       module->AddEmbeddedComputation(CreateConstantComputation());
   auto computation2 =
@@ -89,9 +94,9 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
       CreateCallComputation({computation2, computation3}));
 
   auto post_order = module->MakeComputationPostOrder();
-  EXPECT_MATCH(testing::ListToVec<HloComputation*>(post_order),
-               testing::UnorderedMatcher<HloComputation*>(
-                   computation1, computation2, computation3, computation4));
+  EXPECT_THAT(post_order,
+              ::testing::UnorderedElementsAre(computation1, computation2,
+                                              computation3, computation4));
   EXPECT_EQ(post_order.back(), computation4);
   EXPECT_EQ(post_order.front(), computation1);
 }
@@ -99,3 +104,7 @@ TEST_F(HloModuleTest, DiamondComputationsPostOrder) {
 }  // namespace
 
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

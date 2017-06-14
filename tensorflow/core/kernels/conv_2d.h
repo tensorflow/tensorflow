@@ -256,6 +256,26 @@ struct NCHWToNHWC {
                   typename TTypes<T, NDIMS>::Tensor out);
 };
 
+// Converts a tensor from:
+//   [dim0, dim1, dim2]
+// to:
+//   [dim0, dim2, dim1]
+template <typename Device, typename T>
+struct SwapDimension1And2InTensor3 {
+  void operator()(const Device& d, const T* in,
+                  const gtl::ArraySlice<int64>& input_dims, T* out);
+};
+
+// Converts a tensor from:
+//   [dim0, dim1, dim2]
+// to:
+//   [dim2, dim1, dim0]
+template <typename Device, typename T>
+struct SwapDimension0And2InTensor3 {
+  void operator()(const Device& d, const T* in,
+                  const gtl::ArraySlice<int64>& input_dims, T* out);
+};
+
 // Reverses the effect of TransformFilter above.
 template <typename Device, typename T, int NDIMS>
 struct ReverseTransformFilter {

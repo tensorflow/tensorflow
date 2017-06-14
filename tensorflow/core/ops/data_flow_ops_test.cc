@@ -137,4 +137,16 @@ TEST(DataFlowOpsTest, DynamicStitch) {
               "[2,3];[5,6];[2,3,4,5];[5,6,13,14]");
 }
 
+TEST(DataFlowOpsTest, TensorArrayV3) {
+  ShapeInferenceTestOp op("TensorArrayV3");
+  TF_ASSERT_OK(NodeDefBuilder("test", "TensorArrayV3")
+                   .Input({"size", 0, DT_INT32})
+                   .Attr("dtype", DT_FLOAT)
+                   .Finalize(&op.node_def));
+
+  INFER_OK(op, "[]", "[2];[]");
+  INFER_OK(op, "?", "[2];[]");
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "[2]");
+}
+
 }  // end namespace tensorflow

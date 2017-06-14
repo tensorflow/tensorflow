@@ -20,6 +20,15 @@ py_library(
     ],
 )
 
+# Transitive dependencies of this target will be included in the pip package.
+py_library(
+    name = "data_pip",
+    deps = [
+        ":data",
+        ":test_utils",
+    ],
+)
+
 py_library(
     name = "data_decoder",
     srcs = ["data_decoder.py"],
@@ -50,6 +59,7 @@ py_library(
 
 py_test(
     name = "dataset_data_provider_test",
+    size = "small",
     srcs = ["dataset_data_provider_test.py"],
     srcs_version = "PY2AND3",
     deps = [

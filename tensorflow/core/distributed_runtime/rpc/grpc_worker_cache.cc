@@ -55,7 +55,7 @@ class GrpcWorkerCache : public WorkerCachePartial {
     delete channel_cache_;
   }
 
-  void ListWorkers(std::vector<string>* workers) override {
+  void ListWorkers(std::vector<string>* workers) const override {
     channel_cache_->ListWorkers(workers);
   }
 

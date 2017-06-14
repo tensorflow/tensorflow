@@ -235,7 +235,7 @@ REGISTER_OP("SparseToSparseSetOperation")
       DimensionHandle input1_rank_dim = c->Dim(input1_shape_shape, 0);
       DimensionHandle output_rank_dim;
       if (c->ValueKnown(input0_rank_dim)) {
-        const int32 input0_rank = c->Value(input0_rank_dim);
+        const int64 input0_rank = c->Value(input0_rank_dim);
         if (input0_rank < 2) {
           return errors::InvalidArgument("Input 0, expected rank >= 2, got ",
                                          input0_rank, ".");
@@ -244,7 +244,7 @@ REGISTER_OP("SparseToSparseSetOperation")
             c->WithValue(input1_rank_dim, input0_rank, &input1_rank_dim));
         output_rank_dim = input0_rank_dim;
       } else if (c->ValueKnown(input1_rank_dim)) {
-        const int32 input1_rank = c->Value(input1_rank_dim);
+        const int64 input1_rank = c->Value(input1_rank_dim);
         if (input1_rank < 2) {
           return errors::InvalidArgument("Input 1, expected rank >= 2, got ",
                                          input1_rank, ".");

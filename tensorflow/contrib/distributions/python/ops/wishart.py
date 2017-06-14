@@ -21,11 +21,8 @@ from __future__ import print_function
 import math
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import operator_pd_cholesky
 from tensorflow.contrib.distributions.python.ops import operator_pd_full
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -36,6 +33,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 __all__ = [
@@ -110,7 +109,7 @@ class _WishartOperatorPD(distribution.Distribution):
     """
     parameters = locals()
     self._cholesky_input_output_matrices = cholesky_input_output_matrices
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name):
       with ops.name_scope("init", values=[df, scale_operator_pd]):
         if not scale_operator_pd.dtype.is_floating:
           raise TypeError(
@@ -121,7 +120,7 @@ class _WishartOperatorPD(distribution.Distribution):
             df,
             dtype=scale_operator_pd.dtype,
             name="df")
-        contrib_tensor_util.assert_same_float_dtype(
+        check_ops.assert_same_float_dtype(
             (self._df, self._scale_operator_pd))
         if (self._scale_operator_pd.get_shape().ndims is None or
             self._scale_operator_pd.get_shape()[-1].value is None):
@@ -156,12 +155,11 @@ class _WishartOperatorPD(distribution.Distribution):
         dtype=self._scale_operator_pd.dtype,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        is_continuous=True,
         reparameterization_type=distribution.FULLY_REPARAMETERIZED,
         parameters=parameters,
         graph_parents=([self._df, self._dimension] +
                        self._scale_operator_pd.inputs),
-        name=ns)
+        name=name)
 
   @property
   def df(self):
@@ -522,7 +520,7 @@ class WishartCholesky(_WishartOperatorPD):
       name: Python `str` name prefixed to Ops created by this class.
     """
     parameters = locals()
-    with ops.name_scope(name, values=[scale]) as ns:
+    with ops.name_scope(name, values=[scale]):
       super(WishartCholesky, self).__init__(
           df=df,
           scale_operator_pd=operator_pd_cholesky.OperatorPDCholesky(
@@ -530,7 +528,7 @@ class WishartCholesky(_WishartOperatorPD):
           cholesky_input_output_matrices=cholesky_input_output_matrices,
           validate_args=validate_args,
           allow_nan_stats=allow_nan_stats,
-          name=ns)
+          name=name)
     self._parameters = parameters
 
 

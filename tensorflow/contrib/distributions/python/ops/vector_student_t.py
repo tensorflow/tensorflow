@@ -19,14 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import bijectors
-from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.contrib.distributions.python.ops import student_t
-from tensorflow.contrib.distributions.python.ops import transformed_distribution
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.distributions import student_t
+from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 # TODO(jvdillon): Add unittests for this once we know where will put this code
@@ -191,7 +191,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
   ```
 
   For more examples of how to construct the `scale` matrix, see the
-  `bijectors.Affine` docstring.
+  `tf.contrib.distributions.bijectors.Affine` docstring.
 
   """
 
@@ -252,7 +252,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
     parameters = locals()
     graph_parents = [df, loc, scale_identity_multiplier, scale_diag,
                      scale_tril, scale_perturb_factor, scale_perturb_diag]
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name):
       with ops.name_scope("init", values=graph_parents):
         # The shape of the _VectorStudentT distribution is governed by the
         # relationship between df.batch_shape and affine.batch_shape. In
@@ -294,7 +294,7 @@ class _VectorStudentT(transformed_distribution.TransformedDistribution):
             batch_shape=override_batch_shape,
             event_shape=override_event_shape,
             validate_args=validate_args,
-            name=ns)
+            name=name)
         self._parameters = parameters
 
   @property

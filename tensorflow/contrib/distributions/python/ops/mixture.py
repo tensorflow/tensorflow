@@ -20,9 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import categorical
-from tensorflow.contrib.distributions.python.ops import distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
@@ -31,6 +28,9 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops.distributions import categorical
+from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 class Mixture(distribution.Distribution):
@@ -42,6 +42,27 @@ class Mixture(distribution.Distribution):
 
   Methods supported include `log_prob`, `prob`, `mean`, `sample`, and
   `entropy_lower_bound`.
+
+
+  #### Examples
+
+  ```python
+  # Create a mixture of two Gaussians:
+  ds = tf.contrib.distributions
+  mix = 0.3
+  bimix_gauss = ds.Mixture(
+    cat=ds.Categorical(probs=[mix, 1.-mix]),
+    components=[
+      ds.Normal(loc=-1., scale=0.1),
+      ds.Normal(loc=+1., scale=0.5),
+  ])
+
+  # Plot the PDF.
+  import matplotlib.pyplot as plt
+  x = tf.linspace(-2., 3., int(1e4)).eval()
+  plt.plot(x, bimix_gauss.prob(x).eval());
+  ```
+
   """
 
   def __init__(self,
@@ -106,11 +127,6 @@ class Mixture(distribution.Distribution):
     if not all(d.dtype == dtype for d in components):
       raise TypeError("All components must have the same dtype, but saw "
                       "dtypes: %s" % [(d.name, d.dtype) for d in components])
-    is_continuous = components[0].is_continuous
-    if not all(d.is_continuous == is_continuous for d in components):
-      raise TypeError(
-          "All components must either be continuous or not, but continuity "
-          "values are: %s" % [(d.name, d.is_continuous) for d in components])
     static_event_shape = components[0].event_shape
     static_batch_shape = cat.batch_shape
     for d in components:
@@ -122,7 +138,7 @@ class Mixture(distribution.Distribution):
           "none of the components provide a static number of ndims")
 
     # Ensure that all batch and event ndims are consistent.
-    with ops.name_scope(name, values=[cat.logits]) as ns:
+    with ops.name_scope(name, values=[cat.logits]):
       num_components = cat.event_size
       static_num_components = tensor_util.constant_value(num_components)
       if static_num_components is None:
@@ -170,12 +186,11 @@ class Mixture(distribution.Distribution):
     super(Mixture, self).__init__(
         dtype=dtype,
         reparameterization_type=distribution.NOT_REPARAMETERIZED,
-        is_continuous=is_continuous,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
         parameters=parameters,
         graph_parents=graph_parents,
-        name=ns)
+        name=name)
 
   @property
   def cat(self):
@@ -235,6 +250,19 @@ class Mixture(distribution.Distribution):
       log_sum_exp = math_ops.reduce_logsumexp(concat_log_probs, [0])
       return log_sum_exp
 
+  def _log_cdf(self, x):
+    with ops.control_dependencies(self._assertions):
+      x = ops.convert_to_tensor(x, name="x")
+      distribution_log_cdfs = [d.log_cdf(x) for d in self.components]
+      cat_log_probs = self._cat_probs(log_probs=True)
+      final_log_cdfs = [
+          cat_lp + d_lcdf
+          for (cat_lp, d_lcdf) in zip(cat_log_probs, distribution_log_cdfs)
+      ]
+      concatted_log_cdfs = array_ops.stack(final_log_cdfs, axis=0)
+      mixture_log_cdf = math_ops.reduce_logsumexp(concatted_log_cdfs, [0])
+      return mixture_log_cdf
+
   def _prob(self, x):
     return math_ops.exp(self._log_prob(x))
 
@@ -258,7 +286,7 @@ class Mixture(distribution.Distribution):
         batch_size = static_batch_shape.num_elements()
       else:
         batch_shape = self.batch_shape_tensor()
-        batch_size = array_ops.reduce_prod(batch_shape)
+        batch_size = math_ops.reduce_prod(batch_shape)
       static_event_shape = self.event_shape
       if static_event_shape.is_fully_defined():
         event_shape = np.array(static_event_shape.as_list(), dtype=np.int32)

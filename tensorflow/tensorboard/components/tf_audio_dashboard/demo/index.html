@@ -16,47 +16,52 @@ See the License for the specific language governing permissions and
 limitations under the License.
 -->
 
-<html>
-  <head>
-    <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
-    <link rel="stylesheet" type="text/css" href="../../../lib/css/global.css">
-    <link rel="import" href="../tf-audio-dashboard.html">
-    <title>Audio Dashboard Demo</title>
-    <style>
-      #container{
-        width: 1000px;
-        height: 800px;
-        border: 2px solid grey;
-      }
-      html,body {
-        height: 100%;
-      }
-    </style>
-  </head>
-  <body>
+<script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
+<link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
+<link rel="import" href="../../paper-styles/typography.html">
+<link rel="import" href="../tf-audio-dashboard.html">
+
+<title>Audio Dashboard Demo</title>
+<style>
+  #container {
+    height: 300px;
+    width: 100%;
+  }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: "RobotoDraft","Roboto",sans-serif;
+  }
+
+</style>
+<demo-snippet>
+  <template>
     <dom-module id="audio-dash-demo">
       <template>
-        <tf-audio-dashboard id="demo" backend="[[backend]]">
-        </tf-audio-dashboard>
+        <tf-audio-dashboard id="demo" backend="[[backend]]"></tf-audio-dashboard>
       </template>
       <script>
+        import {Backend} from '../tf-backend/backend';
+        import {createRouter, setRouter} from '../tf-backend/router';
+
         Polymer({
           is: "audio-dash-demo",
           properties: {
             backend: {
               type: Object,
               value: function() {
-                var path = "/demo/data";
-                var router = new TF.Backend.router(path, true);
-                return new TF.Backend.Backend(router);
+                return new Backend();
               },
             },
+          },
+          created: function() {
+            var router = createRouter("/data", true);
+            setRouter(router);
           },
         });
       </script>
     </dom-module>
-    <div id="container">
-      <audio-dash-demo></audio-dash-demo>
-    </div>
-  </body>
-</html>
+    <audio-dash-demo id="container"></audio-dash-demo>
+  </template>
+</demo-snippet>

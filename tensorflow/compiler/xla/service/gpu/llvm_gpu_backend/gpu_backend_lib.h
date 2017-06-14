@@ -18,6 +18,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_LLVM_GPU_BACKEND_GPU_BACKEND_LIB_H_
 
 #include <string>
+#include <utility>
 
 #include "external/llvm/include/llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -28,14 +29,15 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// The Compile.* interfaces each create their own llvm::LLVMContext objects for
-// thread safety, but note that LLVM's multithreaded support is very
-// preliminary; multithreaded use is not recommended at this time.
-//
 // Compiles the argument module and returns it. libdevice_dir_path is the parent
 // directory of the libdevice bitcode libraries. The contents of the module may
 // be changed.
+//
+// The Compile.* interfaces each create their own llvm::LLVMContext objects for
+// thread safety, but note that LLVM's multithreaded support is very
+// preliminary; multithreaded use is not recommended at this time.
 StatusOr<string> CompileToPtx(llvm::Module* module,
+                              std::pair<int, int> compute_capability,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path);
 

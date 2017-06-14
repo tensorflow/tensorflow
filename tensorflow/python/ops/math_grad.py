@@ -369,6 +369,24 @@ def _Log1pGrad(op, grad):
     return grad * math_ops.reciprocal(1 + x)
 
 
+@ops.RegisterGradient("Sinh")
+def _SinhGrad(op, grad):
+  """Returns grad * cosh(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
+    return grad * math_ops.cosh(x)
+
+
+@ops.RegisterGradient("Cosh")
+def _CoshGrad(op, grad):
+  """Returns grad * sinh(x)."""
+  x = op.inputs[0]
+  with ops.control_dependencies([grad.op]):
+    x = math_ops.conj(x)
+    return grad * math_ops.sinh(x)
+
+
 @ops.RegisterGradient("Tanh")
 def _TanhGrad(op, grad):
   """Returns grad * (1 - tanh(x) * tanh(x))."""
@@ -429,7 +447,7 @@ def _DigammaGrad(op, grad):
 
 @ops.RegisterGradient("Igamma")
 def _IgammaGrad(op, grad):
-  """Returns gradient of igamma(a, x) with respect to a and x."""
+  """Returns gradient of igamma(a, x) with respect to x."""
   # TODO(ebrevdo): Perhaps add the derivative w.r.t. a
   a = op.inputs[0]
   x = op.inputs[1]
@@ -440,14 +458,43 @@ def _IgammaGrad(op, grad):
   # Perform operations in log space before summing, because Gamma(a)
   # and Gamma'(a) can grow large.
   partial_x = math_ops.exp(-x + (a - 1) * math_ops.log(x) - math_ops.lgamma(a))
+  # TODO(b/36815900): Mark None return values as NotImplemented
   return (None,
           array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
 
 @ops.RegisterGradient("Igammac")
 def _IgammacGrad(op, grad):
-  """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. a and x."""
-  return [-1 * g if g is not None else None for g in _IgammaGrad(op, grad)]
+  """Returns gradient of igammac(a, x) = 1 - igamma(a, x) w.r.t. x."""
+  _, igamma_grad_x = _IgammaGrad(op, grad)
+  return None, -igamma_grad_x
+
+
+@ops.RegisterGradient("Betainc")
+def _BetaincGrad(op, grad):
+  """Returns gradient of betainc(a, b, x) with respect to x."""
+  # TODO(ebrevdo): Perhaps add the derivative w.r.t. a, b
+  a, b, x = op.inputs
+
+  # two cases: x is a scalar and a/b are same-shaped tensors, or vice
+  # versa; so its sufficient to check against shape(a).
+  sa = array_ops.shape(a)
+  sx = array_ops.shape(x)
+  # pylint: disable=protected-access
+  _, rx = gen_array_ops._broadcast_gradient_args(sa, sx)
+  # pylint: enable=protected-access
+
+  # Perform operations in log space before summing, because terms
+  # can grow large.
+  log_beta = (gen_math_ops.lgamma(a) + gen_math_ops.lgamma(b)
+              - gen_math_ops.lgamma(a + b))
+  partial_x = math_ops.exp(
+      (b - 1) * math_ops.log(1 - x) + (a - 1) * math_ops.log(x) - log_beta)
+
+  # TODO(b/36815900): Mark None return values as NotImplemented
+  return (None,  # da
+          None,  # db
+          array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
 
 @ops.RegisterGradient("Zeta")
@@ -465,6 +512,7 @@ def _ZetaGrad(op, grad):
     x = math_ops.conj(x)
     q = math_ops.conj(q)
     partial_q = -x * math_ops.zeta(x + 1, q)
+    # TODO(b/36815900): Mark None return values as NotImplemented
     return (None,
             array_ops.reshape(math_ops.reduce_sum(partial_q * grad, rq), sq))
 
@@ -484,6 +532,7 @@ def _PolygammaGrad(op, grad):
     n = math_ops.conj(n)
     x = math_ops.conj(x)
     partial_x = math_ops.polygamma(n + 1, x)
+    # TODO(b/36815900): Mark None return values as NotImplemented
     return (None,
             array_ops.reshape(math_ops.reduce_sum(partial_x * grad, rx), sx))
 
@@ -580,6 +629,16 @@ def _AtanGrad(op, grad):
     one = constant_op.constant(1, dtype=grad.dtype)
     inv = math_ops.reciprocal(math_ops.add(one, x2))
     return grad * inv
+
+
+@ops.RegisterGradient("Atan2")
+def _Atan2Grad(op, grad):
+  """Returns grad * x / (x^2 + y^2), grad * -y / (x^2 + y^2)."""
+  y = op.inputs[0]
+  x = op.inputs[1]
+  with ops.control_dependencies([grad.op]):
+    grad_inv = grad / (math_ops.square(x) + math_ops.square(y))
+    return x * grad_inv, -y * grad_inv
 
 
 @ops.RegisterGradient("AddN")
@@ -755,6 +814,7 @@ ops.NotDifferentiable("LessEqual")
 ops.NotDifferentiable("Greater")
 ops.NotDifferentiable("GreaterEqual")
 ops.NotDifferentiable("Equal")
+ops.NotDifferentiable("ApproximateEqual")
 ops.NotDifferentiable("NotEqual")
 ops.NotDifferentiable("LogicalAnd")
 ops.NotDifferentiable("LogicalOr")
@@ -772,24 +832,25 @@ def _SelectGrad(op, grad):
 
 @ops.RegisterGradient("MatMul")
 def _MatMulGrad(op, grad):
+  """Gradient for MatMul."""
+
   t_a = op.get_attr("transpose_a")
   t_b = op.get_attr("transpose_b")
+  a = math_ops.conj(op.inputs[0])
+  b = math_ops.conj(op.inputs[1])
   if not t_a and not t_b:
-    return (math_ops.matmul(
-        grad, op.inputs[1], transpose_b=True), math_ops.matmul(
-            op.inputs[0], grad, transpose_a=True))
+    grad_a = math_ops.matmul(grad, b, transpose_b=True)
+    grad_b = math_ops.matmul(a, grad, transpose_a=True)
   elif not t_a and t_b:
-    return (math_ops.matmul(grad, op.inputs[1]), math_ops.matmul(
-        grad, op.inputs[0], transpose_a=True))
+    grad_a = math_ops.matmul(grad, b)
+    grad_b = math_ops.matmul(grad, a, transpose_a=True)
   elif t_a and not t_b:
-    return (math_ops.matmul(
-        op.inputs[1], grad, transpose_b=True),
-            math_ops.matmul(op.inputs[0], grad))
+    grad_a = math_ops.matmul(b, grad, transpose_b=True)
+    grad_b = math_ops.matmul(a, grad)
   elif t_a and t_b:
-    return (math_ops.matmul(
-        op.inputs[1], grad, transpose_a=True, transpose_b=True),
-            math_ops.matmul(
-                grad, op.inputs[0], transpose_a=True, transpose_b=True))
+    grad_a = math_ops.matmul(b, grad, transpose_a=True, transpose_b=True)
+    grad_b = math_ops.matmul(grad, a, transpose_a=True, transpose_b=True)
+  return grad_a, grad_b
 
 
 @ops.RegisterGradient("SparseMatMul")
@@ -949,48 +1010,6 @@ def _CastGrad(op, grad):
     return math_ops.cast(grad, src_type)
   else:
     return None
-
-
-def _FFTSizeForGrad(grad, rank):
-  return math_ops.reduce_prod(
-      array_ops.slice(
-          array_ops.reverse_v2(array_ops.shape(grad), [0]), (0,), (rank,)))
-
-
-@ops.RegisterGradient("FFT")
-def _FFTGrad(_, grad):
-  size = math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
-  return math_ops.ifft(grad) * math_ops.complex(size, 0.)
-
-
-@ops.RegisterGradient("IFFT")
-def _IFFTGrad(_, grad):
-  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 1), dtypes.float32)
-  return math_ops.fft(grad) * math_ops.complex(rsize, 0.)
-
-
-@ops.RegisterGradient("FFT2D")
-def _FFT2DGrad(_, grad):
-  size = math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
-  return math_ops.ifft2d(grad) * math_ops.complex(size, 0.)
-
-
-@ops.RegisterGradient("IFFT2D")
-def _IFFT2DGrad(_, grad):
-  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 2), dtypes.float32)
-  return math_ops.fft2d(grad) * math_ops.complex(rsize, 0.)
-
-
-@ops.RegisterGradient("FFT3D")
-def _FFT3DGrad(_, grad):
-  size = math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
-  return math_ops.ifft3d(grad) * math_ops.complex(size, 0.)
-
-
-@ops.RegisterGradient("IFFT3D")
-def _IFFT3DGrad(_, grad):
-  rsize = 1. / math_ops.cast(_FFTSizeForGrad(grad, 3), dtypes.float32)
-  return math_ops.fft3d(grad) * math_ops.complex(rsize, 0.)
 
 
 @ops.RegisterGradient("Cross")

@@ -49,7 +49,7 @@ class StringSource : public TensorResponse::Source {
  public:
   explicit StringSource(const string* s, int block_size)
       : s_(s), stream_(nullptr), block_size_(block_size) {}
-  virtual ~StringSource() { DeleteStream(); }
+  ~StringSource() override { DeleteStream(); }
 
   protobuf::io::ZeroCopyInputStream* contents() override {
     DeleteStream();

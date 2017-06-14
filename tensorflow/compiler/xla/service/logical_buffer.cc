@@ -29,12 +29,34 @@ namespace xla {
 string LogicalBuffer::ToString() const {
   return tensorflow::strings::StrCat(instruction_->FullyQualifiedName(), "[",
                                      tensorflow::str_util::Join(index_, ","),
-                                     "](#", id_, ")");
+                                     "](#", id_, " @", color_.value(), ")");
 }
 
 std::ostream& operator<<(std::ostream& out, const LogicalBuffer& buffer) {
   out << buffer.ToString();
   return out;
+}
+
+/*static*/ LogicalBufferProto::Location LogicalBuffer::ToLocationProto(
+    const HloInstruction& instruction, const ShapeIndex& index) {
+  LogicalBufferProto::Location proto;
+  proto.set_computation_name(instruction.parent()->name());
+  proto.set_instruction_name(instruction.name());
+  for (const int64 index_entry : index) {
+    proto.add_shape_index(index_entry);
+  }
+  return proto;
+}
+
+LogicalBufferProto LogicalBuffer::ToProto(const SizeFunction& size_fn) const {
+  LogicalBufferProto proto;
+  proto.set_id(id_);
+  proto.set_size(size_fn(*this));
+  LogicalBufferProto::Location proto_location =
+      ToLocationProto(*instruction_, index_);
+  proto.mutable_defined_at()->Swap(&proto_location);
+  proto.set_color(color_.value());
+  return proto;
 }
 
 }  // namespace xla

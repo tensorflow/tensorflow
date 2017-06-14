@@ -28,51 +28,27 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_constants.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_node.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_node_show.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_tensor.h"
+#include "tensorflow/tools/tfprof/internal/tfprof_timeline.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_utils.h"
 #include "tensorflow/tools/tfprof/tfprof_output.pb.h"
 
 namespace tensorflow {
 namespace tfprof {
-class ShowNode {
- public:
-  explicit ShowNode(TFNode* node);
-  virtual ~ShowNode() {}
-
-  const string& name() const { return node->node_def()->name(); }
-  TFProfNode* mutable_proto();
-  const TFProfNode& proto() const;
-
-  string Format(const Options& opts);
-
-  string FormatMeta(const Options& opts);
-
-  TFNode* node;
-  bool account;
-  string formatted_str;
-
- protected:
-  void AggregateTotalStats(ShowNode* node);
-
-  void AddSelfToTotalStats();
-
-  void ResetTotalStats();
-
-  TFProfNode proto_;
-};
-
 class TFShow {
  public:
   explicit TFShow(checkpoint::CheckpointReader* ckpt_reader)
       : ckpt_reader_(ckpt_reader) {}
   virtual ~TFShow() {}
-  virtual void AddNode(TFNode* node) = 0;
+  virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  const TFProfNode& Show(const Options& opts);
+  const TFGraphNodeProto& Show(const Options& opts);
 
  protected:
-  virtual const ShowNode* ShowInternal(const Options& opts) = 0;
+  virtual const ShowNode* ShowInternal(const Options& opts,
+                                       Timeline* timeline) = 0;
 
   bool LookUpCheckPoint(const string& name,
                         std::unique_ptr<TFProfTensor>* tensor);
@@ -87,7 +63,11 @@ class TFShow {
 
   bool ShouldTrim(ShowNode* node, const std::vector<string>& regexes);
 
-  bool ShouldAccount(ShowNode* node, const Options& opts);
+  bool ReAccount(ShowNode* node, const Options& opts);
+
+  string FormatNode(ShowNode* node, const Options& opts);
+
+  string FormatLegend(const Options& opts);
 
   template <typename T>
   std::vector<T*> SortNodes(const std::vector<T*>& nodes, const Options& opts) {

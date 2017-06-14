@@ -115,7 +115,7 @@ class DeviceBase {
     cpu_worker_threads_ = t;
   }
 
-  const CpuWorkerThreads* tensorflow_cpu_worker_threads() const {
+  virtual const CpuWorkerThreads* tensorflow_cpu_worker_threads() const {
     CHECK(cpu_worker_threads_ != nullptr);
     return cpu_worker_threads_;
   }
@@ -132,6 +132,7 @@ class DeviceBase {
     perftools::gputools::Stream* stream = nullptr;
     DeviceContext* default_context = nullptr;
     EventMgr* event_mgr = nullptr;
+    int gpu_id = -1;
   };
 
   // Does not take ownership.
@@ -139,7 +140,7 @@ class DeviceBase {
     gpu_device_info_ = g;
   }
 
-  const GpuDeviceInfo* tensorflow_gpu_device_info() const {
+  virtual const GpuDeviceInfo* tensorflow_gpu_device_info() const {
     return gpu_device_info_;
   }
 
@@ -169,13 +170,13 @@ class DeviceBase {
     return GetAllocator(attr);
   }
 
-  const Eigen::ThreadPoolDevice* eigen_cpu_device() {
+  virtual const Eigen::ThreadPoolDevice* eigen_cpu_device() {
     CHECK(eigen_cpu_device_ != nullptr);
     return eigen_cpu_device_;
   }
 
 #ifdef TENSORFLOW_USE_SYCL
-  const Eigen::SyclDevice* eigen_sycl_device() const {
+  virtual const Eigen::SyclDevice* eigen_sycl_device() const {
     CHECK(eigen_sycl_device_ != nullptr);
     return eigen_sycl_device_;
   }

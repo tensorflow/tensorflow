@@ -45,7 +45,7 @@ enum JPEGErrors {
   JPEGERRORS_BAD_PARAM
 };
 
-// Prevent bad compiler behaviour in ASAN mode by wrapping most of the
+// Prevent bad compiler behavior in ASAN mode by wrapping most of the
 // arguments in a struct struct.
 class FewerArgsForCompiler {
  public:
@@ -90,7 +90,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
   }
 
   // if empty image, return
-  if (datasize == 0 || srcdata == NULL) return nullptr;
+  if (datasize == 0 || srcdata == nullptr) return nullptr;
 
   // Declare temporary buffer pointer here so that we can free on error paths
   JSAMPLE* tempdata = nullptr;
@@ -183,7 +183,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
 
   // Temporary buffer used for CMYK -> RGB conversion.
   const bool use_cmyk = (cinfo.out_color_space == JCS_CMYK);
-  tempdata = use_cmyk ? new JSAMPLE[cinfo.output_width * 4] : NULL;
+  tempdata = use_cmyk ? new JSAMPLE[cinfo.output_width * 4] : nullptr;
 
   // If there is an error reading a line, this aborts the reading.
   // Save the fraction of the image that has been read.
@@ -246,7 +246,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
     output_line += stride;
   }
   delete[] tempdata;
-  tempdata = NULL;
+  tempdata = nullptr;
 
   // Convert the RGB data to RGBA, with alpha set to 0xFF to indicate
   // opacity.
@@ -337,17 +337,18 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
 uint8* Uncompress(const void* srcdata, int datasize,
                   const UncompressFlags& flags, int64* nwarn,
                   std::function<uint8*(int, int, int)> allocate_output) {
-  FewerArgsForCompiler argball(datasize, flags, nwarn, allocate_output);
+  FewerArgsForCompiler argball(datasize, flags, nwarn,
+                               std::move(allocate_output));
   uint8* const dstdata = UncompressLow(srcdata, &argball);
 
   const float fraction_read =
       argball.height_ == 0
           ? 1.0
           : (static_cast<float>(argball.height_read_) / argball.height_);
-  if (dstdata == NULL ||
+  if (dstdata == nullptr ||
       fraction_read < std::min(1.0f, flags.min_acceptable_fraction)) {
     // Major failure, none or too-partial read returned; get out
-    return NULL;
+    return nullptr;
   }
 
   // If there was an error in reading the jpeg data,
@@ -365,7 +366,7 @@ uint8* Uncompress(const void* srcdata, int datasize,
 uint8* Uncompress(const void* srcdata, int datasize,
                   const UncompressFlags& flags, int* pwidth, int* pheight,
                   int* pcomponents, int64* nwarn) {
-  uint8* buffer = NULL;
+  uint8* buffer = nullptr;
   uint8* result =
       Uncompress(srcdata, datasize, flags, nwarn,
                  [=, &buffer](int width, int height, int components) {
@@ -390,7 +391,7 @@ bool GetImageInfo(const void* srcdata, int datasize, int* width, int* height,
   if (components) *components = 0;
 
   // If empty image, return
-  if (datasize == 0 || srcdata == NULL) return false;
+  if (datasize == 0 || srcdata == nullptr) return false;
 
   // Initialize libjpeg structures to have a memory source
   // Modify the usual jpeg error manager to catch fatal errors.
@@ -448,7 +449,7 @@ bool CompressInternal(const uint8* srcdata, int width, int height,
     return false;
   }
 
-  JOCTET* buffer = 0;
+  JOCTET* buffer = nullptr;
 
   // NOTE: for broader use xmp_metadata should be made a unicode string
   CHECK(srcdata != nullptr);

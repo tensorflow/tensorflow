@@ -1,0 +1,27 @@
+path: "tensorflow.estimator"
+tf_module {
+  member {
+    name: "Estimator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "EstimatorSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ModeKeys"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RunConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "export"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "inputs"
+    mtype: "<type \'module\'>"
+  }
+}

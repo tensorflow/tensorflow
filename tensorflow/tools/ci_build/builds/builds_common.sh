@@ -230,7 +230,7 @@ android_sdk_repository(
 android_ndk_repository(
     name="androidndk",
     path="${ANDROID_NDK_HOME}",
-    api_level=21)
+    api_level=14)
 EOF
     fi
   fi

@@ -332,7 +332,7 @@ void Quantize(OpKernelContext* tf_context, const float* input, int count,
   // The float to int/uint cast in NEON uses round toward 0. To keep the
   // rounding consistent with Eigen, which uses round toward closest, we can
   // add 0.5f and exploit the fact that we only operate on non negative values.
-  // TODO(maciekc): fix the the actual kernel in gemmlowp/meta
+  // TODO(maciekc): fix the actual kernel in gemmlowp/meta
   params.kernel.range_offset =
       static_cast<float>(std::numeric_limits<uint8_t>::lowest()) + 0.5f;
 

@@ -30,6 +30,48 @@ const int Graph::kControlSlot = -1;
 
 // Node
 
+#define REF_CLASS(key, value) \
+  {key, value}, { "Ref" key, value }
+
+const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
+    *new std::unordered_map<string, Node::NodeClass>({
+        // Keep in same order as NodeClass values
+        REF_CLASS("Switch", NC_SWITCH),
+        REF_CLASS("Merge", NC_MERGE),
+        REF_CLASS("Enter", NC_ENTER),
+        REF_CLASS("Exit", NC_EXIT),
+        REF_CLASS("NextIteration", NC_NEXT_ITERATION),
+        {"LoopCond", NC_LOOP_COND},
+        {"ControlTrigger", NC_CONTROL_TRIGGER},
+        {"_Send", NC_SEND},
+        {"_HostSend", NC_HOST_SEND},
+        {"_Recv", NC_RECV},
+        {"_HostRecv", NC_HOST_RECV},
+        {"Const", NC_CONSTANT},
+        {"HostConst", NC_CONSTANT},
+        {"Variable", NC_VARIABLE},
+        {"VariableV2", NC_VARIABLE},
+        REF_CLASS("Identity", NC_IDENTITY),
+        {"GetSessionHandle", NC_GET_SESSION_HANDLE},
+        {"GetSessionHandleV2", NC_GET_SESSION_HANDLE},
+        {"GetSessionTensor", NC_GET_SESSION_TENSOR},
+        {"DeleteSessionTensor", NC_DELETE_SESSION_TENSOR},
+        {"Size", NC_METADATA},
+        {"Shape", NC_METADATA},
+        {"Rank", NC_METADATA},
+    });
+
+#undef REF_CLASS
+
+Node::NodeClass Node::GetNodeClassForOp(const string& ts) {
+  auto it = kNodeClassTable.find(ts);
+  if (it != kNodeClassTable.end()) {
+    return it->second;
+  } else {
+    return NC_OTHER;
+  }
+}
+
 string Node::DebugString() const {
   string ret = strings::StrCat("{name:'", name(), "' id:", id_);
   if (IsSource()) {
@@ -38,8 +80,8 @@ string Node::DebugString() const {
     strings::StrAppend(&ret, " sink}");
   } else {
     strings::StrAppend(&ret, " op device:");
-    strings::StrAppend(&ret, "{", assigned_device_name_, "}");
-    strings::StrAppend(&ret, " def:{", SummarizeNodeDef(def()), "}}");
+    strings::StrAppend(&ret, "{", assigned_device_name(), "}");
+    strings::StrAppend(&ret, " def:{", SummarizeNode(*this), "}}");
   }
   return ret;
 }
@@ -49,7 +91,7 @@ Node::Node()
       cost_id_(-1),
       class_(NC_UNINITIALIZED),
       props_(nullptr),
-      assigned_device_name_() {}
+      assigned_device_name_index_(0) {}
 
 Node::~Node() {
   if (props_) {
@@ -70,40 +112,7 @@ void Node::Initialize(int id, int cost_id, Properties* props) {
   }
   props_ = props;
   // Initialize the class_ based on the type string
-  const string& ts = this->type_string();
-  class_ = NC_UNINITIALIZED;
-
-#define SET_CLASS(enum_val, ts, str1, str2)        \
-  do {                                             \
-    if ((((ts) == (str1)) || ((ts) == (str2)))) {  \
-      /* Cannot be member of more than one class*/ \
-      CHECK(class_ == NC_UNINITIALIZED);           \
-      class_ = (enum_val);                         \
-    }                                              \
-  } while (0)
-
-  SET_CLASS(NC_SWITCH, ts, "Switch", "RefSwitch");
-  SET_CLASS(NC_MERGE, ts, "Merge", "RefMerge");
-  SET_CLASS(NC_ENTER, ts, "Enter", "RefEnter");
-  SET_CLASS(NC_EXIT, ts, "Exit", "RefExit");
-  SET_CLASS(NC_NEXT_ITERATION, ts, "NextIteration", "RefNextIteration");
-  SET_CLASS(NC_LOOP_COND, ts, "LoopCond", "");
-  SET_CLASS(NC_CONTROL_TRIGGER, ts, "ControlTrigger", "");
-  SET_CLASS(NC_SEND, ts, "_Send", "");
-  SET_CLASS(NC_HOST_SEND, ts, "_HostSend", "");
-  SET_CLASS(NC_RECV, ts, "_Recv", "");
-  SET_CLASS(NC_HOST_RECV, ts, "_HostRecv", "");
-  SET_CLASS(NC_CONSTANT, ts, "Const", "HostConst");
-  SET_CLASS(NC_VARIABLE, ts, "Variable", "");
-  SET_CLASS(NC_VARIABLE, ts, "VariableV2", "");
-  SET_CLASS(NC_IDENTITY, ts, "Identity", "RefIdentity");
-  SET_CLASS(NC_GET_SESSION_HANDLE, ts, "GetSessionHandle", "");
-  SET_CLASS(NC_GET_SESSION_TENSOR, ts, "GetSessionTensor", "");
-  SET_CLASS(NC_DELETE_SESSION_TENSOR, ts, "DeleteSessionTensor", "");
-  if (class_ == NC_UNINITIALIZED) {
-    class_ = NC_OTHER;  // Catch all
-  }
-#undef SET_CLASS
+  class_ = GetNodeClassForOp(props->node_def_.op());
 }
 
 void Node::Clear() {
@@ -118,7 +127,7 @@ void Node::Clear() {
     props_ = nullptr;
   }
 
-  assigned_device_name_.clear();
+  assigned_device_name_index_ = 0;
 }
 
 gtl::iterator_range<NeighborIter> Node::out_nodes() const {
@@ -198,7 +207,7 @@ Status Node::input_edges(std::vector<const Edge*>* input_edges) const {
   return Status::OK();
 }
 
-Status Node::input_node(int idx, const Node** n) const {
+Status Node::input_node(int idx, Node** n) const {
   const Edge* e;
   TF_RETURN_IF_ERROR(input_edge(idx, &e));
   if (e == nullptr) {
@@ -206,6 +215,13 @@ Status Node::input_node(int idx, const Node** n) const {
   } else {
     *n = e->src();
   }
+  return Status::OK();
+}
+
+Status Node::input_node(int idx, const Node** const_n) const {
+  Node* n;
+  TF_RETURN_IF_ERROR(input_node(idx, &n));
+  *const_n = n;
   return Status::OK();
 }
 
@@ -224,9 +240,13 @@ Node::Properties::~Properties() {}
 // Graph
 
 Graph::Graph(const OpRegistryInterface* ops)
-    : ops_(ops), arena_(8 << 10 /* 8kB */) {
+    : ops_(ops, FunctionDefLibrary()), arena_(8 << 10 /* 8kB */) {
   versions_.set_producer(TF_GRAPH_DEF_VERSION);
   versions_.set_min_consumer(TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
+
+  // Initialize the name interning table for assigned_device_name.
+  device_names_.push_back("");
+  DCHECK_EQ(0, InternDeviceName(""));
 
   // Source and sink have no endpoints, just control edges.
   NodeDef def;
@@ -243,6 +263,12 @@ Graph::Graph(const OpRegistryInterface* ops)
   CHECK_EQ(sink->id(), kSinkId);
 
   AddControlEdge(source, sink);
+}
+
+Graph::Graph(const FunctionLibraryDefinition& flib_def)
+    : Graph(flib_def.default_registry()) {
+  Status s = ops_.AddLibrary(flib_def);
+  CHECK(s.ok()) << s.error_message();
 }
 
 Graph::~Graph() {
@@ -262,7 +288,7 @@ Graph::~Graph() {
 
 Node* Graph::AddNode(const NodeDef& node_def, Status* status) {
   const OpDef* op_def;
-  status->Update(ops_->LookUpOpDef(node_def.op(), &op_def));
+  status->Update(ops_.LookUpOpDef(node_def.op(), &op_def));
   if (!status->ok()) return nullptr;
 
   DataTypeVector inputs;
@@ -285,6 +311,17 @@ Node* Graph::CopyNode(Node* node) {
   props->Ref();
   Node* copy = AllocateNode(props, node);
   copy->set_assigned_device_name(node->assigned_device_name());
+
+  // Since the OpDef of a function may be owned by the Graph that owns 'node',
+  // relookup the OpDef in the target graph. If it differs, then clone the
+  // node properties with the updated OpDef.
+  const OpDef* op_def;
+  TF_CHECK_OK(ops_.LookUpOpDef(node->type_string(), &op_def));
+  if (op_def != props->op_def_) {
+    copy->MaybeCopyOnWrite();
+    copy->props_->op_def_ = op_def;
+  }
+
   return copy;
 }
 
@@ -330,7 +367,7 @@ const Edge* Graph::AddEdge(Node* source, int x, Node* dest, int y) {
   CHECK(source->out_edges_.insert(e).second);
   CHECK(dest->in_edges_.insert(e).second);
   edges_.push_back(e);
-  edge_set_.insert(e);
+  ++num_edges_;
   return e;
 }
 
@@ -340,8 +377,8 @@ void Graph::RemoveEdge(const Edge* e) {
   CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
   CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
   CHECK_EQ(e, edges_[e->id_]);
+  CHECK_GT(num_edges_, 0);
 
-  CHECK_EQ(edge_set_.erase(e), size_t{1});
   edges_[e->id_] = nullptr;
 
   Edge* del = const_cast<Edge*>(e);
@@ -351,6 +388,39 @@ void Graph::RemoveEdge(const Edge* e) {
   del->src_output_ = kControlSlot - 1;
   del->dst_input_ = kControlSlot - 1;
   free_edges_.push_back(del);
+  --num_edges_;
+}
+
+Status Graph::AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+  for (const FunctionDef& fdef : fdef_lib.function()) {
+    const FunctionDef* preexisting_fdef = ops_.Find(fdef.signature().name());
+    if (preexisting_fdef != nullptr) {
+      if (!FunctionDefsEqual(*preexisting_fdef, fdef)) {
+        return errors::InvalidArgument(
+            "Cannot add function '", fdef.signature().name(),
+            "' because a different function with the same name already "
+            "exists.");
+      }
+      // Ignore duplicate FunctionDefs
+      continue;
+    }
+    TF_RETURN_IF_ERROR(ops_.AddFunctionDef(fdef));
+  }
+  for (const GradientDef& grad : fdef_lib.gradient()) {
+    string preexisting_grad_func = ops_.FindGradient(grad.function_name());
+    if (!preexisting_grad_func.empty()) {
+      if (preexisting_grad_func != grad.gradient_func()) {
+        return errors::InvalidArgument(
+            "Cannot assign gradient function '", grad.gradient_func(), "' to '",
+            grad.function_name(), "' because it already has gradient function ",
+            "'", preexisting_grad_func, "'");
+      }
+      // Ignore duplicate GradientDefs
+      continue;
+    }
+    TF_RETURN_IF_ERROR(ops_.AddGradientDef(grad));
+  }
+  return Status::OK();
 }
 
 namespace {
@@ -373,7 +443,8 @@ void Graph::ToGraphDef(GraphDef* graph_def) const {
 
 void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   graph_def->Clear();
-  graph_def->mutable_versions()->CopyFrom(versions());
+  *graph_def->mutable_versions() = versions();
+  *graph_def->mutable_library() = ops_.ToProto();
   std::vector<const Edge*>
       inputs;  // Construct this outside the loop for speed.
   for (auto id = from_node_id; id < num_node_ids(); ++id) {
@@ -410,7 +481,7 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
     for (size_t i = 0; i < inputs.size(); ++i) {
       const Edge* edge = inputs[i];
       if (edge == nullptr) {
-        node_def->add_input(node->def().input(i));
+        node_def->add_input(node->requested_inputs()[i]);
       } else {
         const Node* src = edge->src();
         if (!src->IsOp()) continue;
@@ -422,12 +493,6 @@ void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
 
 string Graph::NewName(StringPiece prefix) {
   return strings::StrCat(prefix, "/_", name_counter_++);
-}
-
-gtl::iterator_range<NodeIter> Graph::nodes() const {
-  // Note that NodeId 0 is always valid since we don't let the source
-  // node be removed from the graph.
-  return gtl::make_range(NodeIter(this, 0), NodeIter(this, num_node_ids()));
 }
 
 bool Graph::IsValidNode(Node* node) const {
@@ -445,6 +510,7 @@ Node* Graph::AllocateNode(Node::Properties* props, const Node* cost_node) {
     node = free_nodes_.back();
     free_nodes_.pop_back();
   }
+  node->graph_ = this;
   const int id = nodes_.size();
   int cost_id = cost_node ? cost_node->cost_id() : id;
   node->Initialize(id, cost_id, props);
@@ -459,6 +525,28 @@ void Graph::ReleaseNode(Node* node) {
   free_nodes_.push_back(node);
   --num_nodes_;
   node->Clear();
+}
+
+// Ensures that 'device_name' is present in the device name table, and returns
+// the index of that device name. The index is stable, and can be used in
+// calls to Node::set_assigned_device_name_index().
+int Graph::InternDeviceName(const string& device_name) {
+  // Special case, very common.  Also, this allows us to use a single map
+  // lookup below, instead of two.  The 'if (index_cell > 0)' test below
+  // relies on this check.
+  if (device_name.empty()) {
+    return 0;
+  }
+
+  int& index_cell = device_names_map_[device_name];
+  if (index_cell > 0) {
+    return index_cell;
+  }
+
+  const int index = device_names_map_.size();
+  index_cell = index;
+  device_names_.push_back(device_name);
+  return index;
 }
 
 }  // namespace tensorflow

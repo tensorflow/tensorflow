@@ -89,7 +89,8 @@ def optimize_for_inference(input_graph_def, input_node_names, output_node_names,
                                                       input_node_names,
                                                       output_node_names,
                                                       placeholder_type_enum)
-  optimized_graph_def = graph_util.remove_training_nodes(optimized_graph_def)
+  optimized_graph_def = graph_util.remove_training_nodes(
+      optimized_graph_def, output_node_names)
   optimized_graph_def = fold_batch_norms(optimized_graph_def)
   optimized_graph_def = fuse_resize_and_conv(optimized_graph_def,
                                              output_node_names)

@@ -14,7 +14,7 @@
 # ==============================================================================
 """Stochastic gradient estimators.
 
-These functions are meant to be used in conjuction with `StochasticTensor`
+These functions are meant to be used in conjunction with `StochasticTensor`
 (`loss_fn` parameter) and `surrogate_loss`.
 
 See Gradient Estimation Using Stochastic Computation Graphs

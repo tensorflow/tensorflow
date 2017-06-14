@@ -38,6 +38,9 @@ message CreateSessionRequest {
 
   // Configuration options.
   ConfigProto config = 2;
+
+  // The target string used from the client's perspective.
+  string target = 3;
 }
 
 message CreateSessionResponse {
@@ -188,6 +191,20 @@ message CloseSessionRequest {
 message CloseSessionResponse {
 }
 
+// Reset() allows misbehaving or slow sessions to be aborted and closed, and
+// causes their resources eventually to be released.  Reset() does not wait
+// for the computations in old sessions to cease; it merely starts the
+// process of tearing them down.  However, if a new session is started after
+// a Reset(), the new session is isolated from changes that old sessions
+// (started prior to the Reset()) may continue to make to resources, provided
+// all those resources are in containers listed in "containers".
+//
+// Old sessions may continue to have side-effects on resources not in
+// containers listed in "containers", and thus may affect future
+// sessions' results in ways that are hard to predict.  Thus, if well-defined
+// behavior is desired, is it recommended that all containers be listed in
+// "containers".  Similarly, if a device_filter is specified, results may be
+// hard to predict.
 message ResetRequest {
   // A list of container names, which may be empty.
   //
@@ -197,6 +214,11 @@ message ResetRequest {
   // If 'container' is empty, releases resources in the default
   // container in all devices.
   repeated string container = 1;
+
+  // When any filters are present, only devices that match the filters
+  // will be reset. Each filter can be partially specified,
+  // e.g. "/job:ps" "/job:worker/replica:3", etc.
+  repeated string device_filters = 2;
 }
 
 message ResetResponse {
@@ -212,6 +234,15 @@ message ResetResponse {
 ////////////////////////////////////////////////////////////////////////////////
 
 message ListDevicesRequest {
+  // Optional: session_handle must be returned by a CreateSession call to the
+  // same master service.
+  //
+  // When session_handle is empty, the ClusterSpec provided when the master was
+  // started is used to compute the available devices. If the session_handle is
+  // provided but not recognized, an error is returned. Finally, if a valid
+  // session_handle is provided, the cluster configuration for that session is
+  // used when computing the response.
+  string session_handle = 1;
 }
 
 message ListDevicesResponse {

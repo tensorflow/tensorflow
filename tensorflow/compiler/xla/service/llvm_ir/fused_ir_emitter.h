@@ -62,6 +62,13 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
   // Returns the generator function for the given instruction.
   Generator GetGenerator(const HloInstruction* instruction) const;
 
+  // Returns the ir value for instruction 'hlo'.
+  llvm::Value* GetIrValueForGTE(const HloInstruction* hlo) const {
+    auto it = gte_values_.find(hlo);
+    CHECK(it != gte_values_.end());
+    return it->second;
+  }
+
  private:
   // Arrays of parameters of fusion instruction
   tensorflow::gtl::ArraySlice<llvm_ir::IrArray> parameter_arrays_;

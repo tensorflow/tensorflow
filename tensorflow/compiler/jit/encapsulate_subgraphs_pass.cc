@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -46,6 +45,7 @@ namespace tensorflow {
 
 const char* const kXlaCompiledKernelAttr = "_XlaCompiledKernel";
 const char* const kXlaNumConstantArgsAttr = "_XlaNumConstantArgs";
+const char* const kXlaNumResourceArgsAttr = "_XlaNumResourceArgs";
 
 namespace {
 
@@ -87,9 +87,12 @@ class Encapsulator {
 
   // Build a FunctionDef for each subgraph, and add it 'library'. The values of
   // the 'group_attribute' annotations become the function names.
+  // If 'reuse_existing_functions' is set, use an existing function with the
+  // same name, if any.
   // If 'rewrite_subgraph_fn' is set, it is applied to each subgraph before
   // function conversion.
   Status BuildFunctionDefs(const RewriteSubgraphFn& rewrite_subgraph_fn,
+                           bool reuse_existing_functions,
                            FunctionLibraryDefinition* library);
 
   // Write a copy of the input graph to 'graph_out', where the subgraphs are
@@ -109,8 +112,8 @@ class Encapsulator {
     // returned by _Retval nodes.
     std::unique_ptr<Graph> graph;
 
-    // Which device are these nodes on? Used both to check that all nodes
-    // are assigned to the same device, and to assign a device to the call node.
+    // Which device are these nodes on? Used to assign a device to the call
+    // node.
     string device;
 
     // NodeDef for the function call node.
@@ -161,7 +164,7 @@ static const char* const kRetValOp = "_Retval";
 // none.
 string Encapsulator::GetFunctionNameAttr(Node const* node) const {
   string attr;
-  if (!GetNodeAttr(node->def(), group_attribute_, &attr).ok()) {
+  if (!GetNodeAttr(node->attrs(), group_attribute_, &attr).ok()) {
     attr.clear();
   }
   return attr;
@@ -174,8 +177,7 @@ Status Encapsulator::SplitIntoSubgraphs() {
   std::unordered_map<Node*, Node*> node_images;
 
   // Copy all marked nodes to a subgraph. Do nothing for unmarked nodes.
-  for (Node* node : graph_in_->nodes()) {
-    if (node->IsSource() || node->IsSink()) continue;
+  for (Node* node : graph_in_->op_nodes()) {
     string func_id = GetFunctionNameAttr(node);
     if (func_id.empty()) continue;
 
@@ -189,16 +191,10 @@ Status Encapsulator::SplitIntoSubgraphs() {
     image->ClearAttr(group_attribute_);
     node_images[node] = image;
 
-    // Check the device matches any existing device.
-    string device = node->assigned_device_name().empty()
-                        ? node->def().device()
-                        : node->assigned_device_name();
-
     if (subgraph.device.empty()) {
-      subgraph.device = device;
-    } else if (subgraph.device != device) {
-      s.Update(errors::InvalidArgument(
-          "Mismatched devices for nodes to be grouped by Encapsulator"));
+      subgraph.device = node->assigned_device_name().empty()
+                            ? node->requested_device()
+                            : node->assigned_device_name();
     }
   }
 
@@ -235,9 +231,16 @@ Status Encapsulator::SplitIntoSubgraphs() {
         // Create a new _Retval node
         DataType dtype = edge->src()->output_type(edge->src_output());
 
+        if (IsRefType(dtype)) {
+          return errors::InvalidArgument(
+              "Ref Tensors (e.g., Variables) are not supported: tensor ",
+              edge->src()->name(), ":", edge->src_output());
+        }
+
         NodeDef ret_def;
         ret_def.set_op(kRetValOp);
-        ret_def.set_name(src_subgraph.graph->NewName("output"));
+        ret_def.set_name(strings::StrCat(edge->src()->name(), "_",
+                                         edge->src_output(), "_retval"));
         AddNodeAttr("T", dtype, &ret_def);
         AddNodeAttr("index", ret_index, &ret_def);
         Node* ret = src_subgraph.graph->AddNode(ret_def, &s);
@@ -262,8 +265,16 @@ Status Encapsulator::SplitIntoSubgraphs() {
         // This is the first time we have seen this tensor. Create an _Arg node.
         DataType dtype = edge->dst()->input_type(edge->dst_input());
 
+        if (IsRefType(dtype)) {
+          return errors::InvalidArgument(
+              "Ref Tensors (e.g., Variables) are not supported: tensor ",
+              edge->src()->name(), ":", edge->src_output());
+        }
+
         NodeDef arg_def;
-        NodeDefBuilder builder(dst_subgraph.graph->NewName("input"), kArgOp);
+        NodeDefBuilder builder(strings::StrCat(edge->src()->name(), "_",
+                                               edge->src_output(), "_arg"),
+                               kArgOp);
         builder.Attr("T", dtype);
         builder.Attr("index", arg_index);
         s = builder.Finalize(&arg_def);
@@ -290,11 +301,11 @@ Status Encapsulator::SplitIntoSubgraphs() {
 }
 
 Status Encapsulator::BuildFunctionDefs(
-    const RewriteSubgraphFn& rewrite_subgraph_fn,
+    const RewriteSubgraphFn& rewrite_subgraph_fn, bool reuse_existing_functions,
     FunctionLibraryDefinition* library) {
   // For each subgraph, build a FunctionDef.
   for (auto& subgraph_entry : subgraphs_) {
-    const string& name = subgraph_entry.first;
+    string name = subgraph_entry.first;
     Subgraph& subgraph = subgraph_entry.second;
 
     subgraph.call_node_def.set_op(name);
@@ -331,6 +342,8 @@ Status Encapsulator::BuildFunctionDefs(
       for (auto& result : subgraph.results) {
         result.second = output_permutation[result.second];
       }
+
+      name = subgraph.call_node_def.op();
     }
 
     FunctionDef fdef;
@@ -345,7 +358,9 @@ Status Encapsulator::BuildFunctionDefs(
           strings::StrCat("encapsulate_fdef_", name), fdef);
     }
 
-    TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+    if (!reuse_existing_functions || library->Find(name) == nullptr) {
+      TF_RETURN_IF_ERROR(library->AddFunctionDef(fdef));
+    }
   }
   return Status::OK();
 }
@@ -422,8 +437,7 @@ Status Encapsulator::BuildOutputGraph(bool parallel_checking,
   std::unordered_map<const Node*, Node*> node_images;
 
   // Copy all unmarked nodes to the output graph.
-  for (Node* node : graph_in_->nodes()) {
-    if (node->IsSource() || node->IsSink()) continue;
+  for (Node* node : graph_in_->op_nodes()) {
     string func_id = GetFunctionNameAttr(node);
 
     // Don't copy nodes that going to be encapsulated, unless parallel checking
@@ -544,14 +558,16 @@ Status Encapsulator::BuildOutputGraph(bool parallel_checking,
 Status EncapsulateSubgraphsInFunctions(
     string group_attribute, const Graph& graph_in,
     const RewriteSubgraphFn& rewrite_subgraph_fn, bool parallel_checking,
-    std::unique_ptr<Graph>* graph_out, FunctionLibraryDefinition* library) {
+    bool reuse_existing_functions, std::unique_ptr<Graph>* graph_out,
+    FunctionLibraryDefinition* library) {
   Status s;
 
   Encapsulator encapsulator(std::move(group_attribute), &graph_in);
   s = encapsulator.SplitIntoSubgraphs();
   if (!s.ok()) return s;
 
-  s = encapsulator.BuildFunctionDefs(rewrite_subgraph_fn, library);
+  s = encapsulator.BuildFunctionDefs(rewrite_subgraph_fn,
+                                     reuse_existing_functions, library);
   if (!s.ok()) return s;
 
   std::unique_ptr<Graph> out(new Graph(library));
@@ -563,14 +579,29 @@ Status EncapsulateSubgraphsInFunctions(
   return s;
 }
 
+// Finds the types of the _Arg nodes, indexed by position.
+static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
+  for (Node* n : graph.op_nodes()) {
+    if (n->type_string() == kArgOp) {
+      int index;
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+      if (index < 0 || index >= types->size()) {
+        return errors::InvalidArgument("Invalid argument number");
+      }
+      (*types)[index] = n->output_type(0);
+    }
+  }
+  return Status::OK();
+}
+
 // Renumber the indices of _Arg nodes in a graph, according to
 // 'permutation' that maps old indices to new indices.
 static Status RenumberArguments(Graph* graph,
                                 const std::vector<int>& permutation) {
-  for (Node* n : graph->nodes()) {
+  for (Node* n : graph->op_nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       if (index < 0 || index >= permutation.size()) {
         return errors::InvalidArgument("Invalid argument number");
       }
@@ -604,19 +635,40 @@ Status EncapsulateSubgraphsPass::Run(
     // Optimize the subgraph.
     OptimizeGraph(flr.get(), subgraph);
 
-    std::vector<bool> const_args(input_permutation->size());
+    const int num_args = input_permutation->size();
+    std::vector<bool> const_args(num_args);
     TF_RETURN_IF_ERROR(BackwardsConstAnalysis(**subgraph, &const_args));
+
+    DataTypeVector arg_types(num_args);
+    TF_RETURN_IF_ERROR(GetArgTypes(**subgraph, &arg_types));
 
     // Compute a permutation of the arguments such that the constant arguments
     // are first.
     const int num_consts =
         std::count(const_args.begin(), const_args.end(), true);
+
+    const int num_resources =
+        std::count(arg_types.begin(), arg_types.end(), DT_RESOURCE);
+    const int num_nonconsts = num_args - num_resources - num_consts;
+    if (num_nonconsts < 0) {
+      return errors::Internal("num_nonconsts should be >= 0, was ",
+                              num_nonconsts);
+    }
+
     int const_pos = 0;
     int arg_pos = num_consts;
-    for (int i = 0; i < const_args.size(); ++i) {
+    int resource_pos = num_consts + num_nonconsts;
+    for (int i = 0; i < num_args; ++i) {
       if (const_args[i]) {
+        if (arg_types[i] == DT_RESOURCE) {
+          return errors::Internal(
+              "Resource arguments cannot be constant (argument ", i, ")");
+        }
         (*input_permutation)[i] = const_pos;
         ++const_pos;
+      } else if (arg_types[i] == DT_RESOURCE) {
+        (*input_permutation)[i] = resource_pos;
+        ++resource_pos;
       } else {
         (*input_permutation)[i] = arg_pos;
         ++arg_pos;
@@ -631,12 +683,14 @@ Status EncapsulateSubgraphsPass::Run(
 
     AddNodeAttr(kXlaCompiledKernelAttr, true, node);
     AddNodeAttr(kXlaNumConstantArgsAttr, num_consts, node);
+    AddNodeAttr(kXlaNumResourceArgsAttr, num_resources, node);
     return Status::OK();
   };
 
   TF_RETURN_IF_ERROR(EncapsulateSubgraphsInFunctions(
       kXlaClusterAttr, **options.graph, rewrite_subgraph,
-      flags->tf_xla_parallel_checking, &graph_out, library));
+      flags->tf_xla_parallel_checking, /*reuse_existing_functions=*/false,
+      &graph_out, library));
 
   if (VLOG_IS_ON(1)) {
     dump_graph::DumpGraphToFile("after_encapsulate_subgraphs", *graph_out,
@@ -650,7 +704,7 @@ Status EncapsulateSubgraphsPass::Run(
 bool IsXlaCompiledKernel(const Node& node) {
   bool is_compiled = false;
   bool has_compilation_attr =
-      GetNodeAttr(node.def(), kXlaCompiledKernelAttr, &is_compiled).ok() &&
+      GetNodeAttr(node.attrs(), kXlaCompiledKernelAttr, &is_compiled).ok() &&
       is_compiled;
   return has_compilation_attr ? is_compiled : false;
 }

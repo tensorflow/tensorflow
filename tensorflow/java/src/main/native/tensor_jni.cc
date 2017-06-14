@@ -276,10 +276,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Tensor_allocateScalarBytes(
 
   TF_Status* status = TF_NewStatus();
   TF_StringEncode(src.get(), src_len, dst + 8, dst_len, status);
-  if (TF_GetCode(status) != TF_OK) {
-    // TODO(ashankar): Replace with throwExceptionIfNotOK() being added to
-    // exception_jni.h in another change.
-    throwException(env, kIllegalStateException, TF_Message(status));
+  if (!throwExceptionIfNotOK(env, status)) {
     TF_DeleteStatus(status);
     return 0;
   }
@@ -401,12 +398,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Tensor_scalarBytes(
   size_t dst_len = 0;
   TF_Status* status = TF_NewStatus();
   TF_StringDecode(src, src_len, &dst, &dst_len, status);
-  if (TF_GetCode(status) != TF_OK) {
-    // TODO(ashankar): Replace with throwExceptionIfNotOK introduced into
-    // exception_jni.h by another change.
-    throwException(env, kIllegalArgumentException,
-                   "invalid tensor encoding: %s", TF_Message(status));
-  } else {
+  if (throwExceptionIfNotOK(env, status)) {
     ret = env->NewByteArray(dst_len);
     jbyte* cpy = env->GetByteArrayElements(ret, nullptr);
     memcpy(cpy, dst, dst_len);

@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import re
 
 import six
 
@@ -28,11 +27,13 @@ from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -118,7 +119,6 @@ def _linear_model_fn(features, labels, mode, params, config=None):
           optimizer to use for training. If `None`, will use a FTRL optimizer.
       * gradient_clip_norm: A float > 0. If provided, gradients are
           clipped to their global norm with this clipping ratio.
-      * num_ps_replicas: The number of parameter server replicas.
       * joint_weights: If True, the weights for all columns will be stored in a
         single (possibly partitioned) variable. It's more efficient, but it's
         incompatible with SDCAOptimizer, and requires all feature columns are
@@ -150,22 +150,24 @@ def _linear_model_fn(features, labels, mode, params, config=None):
       parent_scope,
       values=tuple(six.itervalues(features)),
       partitioner=partitioner) as scope:
-    if joint_weights:
-      logits, _, _ = (
-          layers.joint_weighted_sum_from_feature_columns(
-              columns_to_tensors=features,
-              feature_columns=feature_columns,
-              num_outputs=head.logits_dimension,
-              weight_collections=[parent_scope],
-              scope=scope))
+    if all([isinstance(fc, feature_column._FeatureColumn)  # pylint: disable=protected-access
+            for fc in feature_columns]):
+      if joint_weights:
+        layer_fn = layers.joint_weighted_sum_from_feature_columns
+      else:
+        layer_fn = layers.weighted_sum_from_feature_columns
+      logits, _, _ = layer_fn(
+          columns_to_tensors=features,
+          feature_columns=feature_columns,
+          num_outputs=head.logits_dimension,
+          weight_collections=[parent_scope],
+          scope=scope)
     else:
-      logits, _, _ = (
-          layers.weighted_sum_from_feature_columns(
-              columns_to_tensors=features,
-              feature_columns=feature_columns,
-              num_outputs=head.logits_dimension,
-              weight_collections=[parent_scope],
-              scope=scope))
+      logits = fc_core.linear_model(
+          features=features,
+          feature_columns=feature_columns,
+          units=head.logits_dimension,
+          weight_collections=[parent_scope])
 
     def _train_op_fn(loss):
       global_step = contrib_variables.get_global_step()
@@ -238,6 +240,8 @@ def sdca_model_fn(features, labels, mode, params):
 
   with variable_scope.variable_op_scope(
       features.values(), parent_scope) as scope:
+    features = features.copy()
+    features.update(layers.transform_features(features, feature_columns))
     logits, columns_to_variables, bias = (
         layers.weighted_sum_from_feature_columns(
             columns_to_tensors=features,
@@ -338,9 +342,34 @@ class LinearClassifier(estimator.Estimator):
     ...
   def input_fn_eval: # returns x, y (where y represents label's class index).
     ...
+  def input_fn_predict: # returns x, None.
+    ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
+  # predict_classes returns class indices.
+  estimator.predict_classes(input_fn=input_fn_predict)
+  ```
+
+  If the user specifies `label_keys` in constructor, labels must be strings from
+  the `label_keys` vocabulary. Example:
+
+  ```python
+  label_keys = ['label0', 'label1', 'label2']
+  estimator = LinearClassifier(
+      n_classes=n_classes,
+      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
+      label_keys=label_keys)
+
+  def input_fn_train: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.fit(input_fn=input_fn_train)
+
+  def input_fn_eval: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  def input_fn_predict: # returns x, None
+  # predict_classes returns one of label_keys.
+  estimator.predict_classes(input_fn=input_fn_predict)
   ```
 
   Input of `fit` and `evaluate` should have following features,
@@ -368,7 +397,8 @@ class LinearClassifier(estimator.Estimator):
                enable_centered_bias=False,
                _joint_weight=False,
                config=None,
-               feature_engineering_fn=None):
+               feature_engineering_fn=None,
+               label_keys=None):
     """Construct a `LinearClassifier` estimator object.
 
     Args:
@@ -403,6 +433,8 @@ class LinearClassifier(estimator.Estimator):
                         labels which are the output of `input_fn` and
                         returns features and labels which will be fed
                         into the model.
+      label_keys: Optional list of strings with size `[n_classes]` defining the
+        label vocabulary. Only supported for `n_classes` > 2.
 
     Returns:
       A `LinearClassifier` estimator.
@@ -414,7 +446,6 @@ class LinearClassifier(estimator.Estimator):
     #    requested for SDCA once its default changes to False.
     self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
-    self._optimizer = optimizer
 
     chief_hook = None
     if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
@@ -422,10 +453,11 @@ class LinearClassifier(estimator.Estimator):
       enable_centered_bias = False
       logging.warning("centered_bias is not supported with SDCA, "
                       "please disable it explicitly.")
-    head = head_lib._multi_class_head(  # pylint: disable=protected-access
+    head = head_lib.multi_class_head(
         n_classes,
         weight_column_name=weight_column_name,
-        enable_centered_bias=enable_centered_bias)
+        enable_centered_bias=enable_centered_bias,
+        label_keys=label_keys)
     params = {
         "head": head,
         "feature_columns": feature_columns,
@@ -566,6 +598,7 @@ class LinearClassifier(estimator.Estimator):
       return _as_iterable(preds, output=key)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -589,37 +622,6 @@ class LinearClassifier(estimator.Estimator):
         prediction_key=prediction_key.PredictionKey.PROBABILITIES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def weights_(self):
-    values = {}
-    if self._optimizer and not callable(self._optimizer):
-      optimizer_name = _get_optimizer(self._optimizer).get_name()
-    elif self._optimizer and callable(self._optimizer):
-      raise ValueError("Callable optimizer is not supported in this method.")
-    else:
-      optimizer_name = _get_default_optimizer(self._feature_columns).get_name()
-    optimizer_regex = r".*/" + optimizer_name + r"(_\d)?$"
-    for name in self.get_variable_names():
-      if (name.startswith("linear/") and
-          name != "linear/bias_weight" and
-          not re.match(optimizer_regex, name)):
-        values[name] = self.get_variable_value(name)
-    if len(values) == 1:
-      return values[list(values.keys())[0]]
-    return values
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def bias_(self):
-    return self.get_variable_value("linear/bias_weight")
 
 
 class LinearRegressor(estimator.Estimator):
@@ -712,7 +714,6 @@ class LinearRegressor(estimator.Estimator):
     """
     self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
-    self._optimizer = optimizer
 
     chief_hook = None
     if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
@@ -720,7 +721,7 @@ class LinearRegressor(estimator.Estimator):
       enable_centered_bias = False
       logging.warning("centered_bias is not supported with SDCA, "
                       "please disable it explicitly.")
-    head = head_lib._regression_head(  # pylint: disable=protected-access
+    head = head_lib.regression_head(
         weight_column_name=weight_column_name,
         label_dimension=label_dimension,
         enable_centered_bias=enable_centered_bias)
@@ -833,6 +834,7 @@ class LinearRegressor(estimator.Estimator):
       return _as_iterable(preds, output=key)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -856,40 +858,8 @@ class LinearRegressor(estimator.Estimator):
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def weights_(self):
-    values = {}
-    if self._optimizer and not callable(self._optimizer):
-      optimizer_name = _get_optimizer(self._optimizer).get_name()
-    elif self._optimizer and callable(self._optimizer):
-      raise ValueError("Callable optimizer is not supported in this method.")
-    else:
-      optimizer_name = _get_default_optimizer(self._feature_columns).get_name()
-    optimizer_regex = r".*/" + optimizer_name + r"(_\d)?$"
-    for name in self.get_variable_names():
-      if (name.startswith("linear/") and
-          name != "linear/bias_weight" and
-          not re.match(optimizer_regex, name)):
-        values[name] = self.get_variable_value(name)
-    if len(values) == 1:
-      return values[list(values.keys())[0]]
-    return values
 
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def bias_(self):
-    return self.get_variable_value("linear/bias_weight")
-
-
-# TODO(zakaria): Make it public when b/34751732 is fixed.
-class _LinearEstimator(estimator.Estimator):
+class LinearEstimator(estimator.Estimator):
   """Linear model with user specified head.
 
   Train a generalized linear model to predict label value given observation of
@@ -904,9 +874,9 @@ class _LinearEstimator(estimator.Estimator):
 
   sparse_feature_a_x_sparse_feature_b = crossed_column(...)
 
-  estimator = _LinearEstimator(
+  estimator = LinearEstimator(
       feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
-      head=head_lib._poisson_regression_head())
+      head=head_lib.poisson_regression_head())
 
   # Input builders
   def input_fn_train: # returns x, y
@@ -943,7 +913,7 @@ class _LinearEstimator(estimator.Estimator):
                _joint_weights=False,
                config=None,
                feature_engineering_fn=None):
-    """Construct a `_LinearEstimator` object.
+    """Construct a `LinearEstimator` object.
 
     Args:
       feature_columns: An iterable containing all the feature columns used by
@@ -971,14 +941,14 @@ class _LinearEstimator(estimator.Estimator):
                         into the model.
 
     Returns:
-      A `_LinearEstimator` estimator.
+      A `LinearEstimator` estimator.
 
     Raises:
       ValueError: if optimizer is not supported, e.g., SDCAOptimizer
     """
     assert feature_columns
     if isinstance(optimizer, sdca_optimizer.SDCAOptimizer):
-      raise ValueError("_LinearEstimator does not support SDCA optimizer.")
+      raise ValueError("LinearEstimator does not support SDCA optimizer.")
 
     params = {
         "head": head,
@@ -987,7 +957,7 @@ class _LinearEstimator(estimator.Estimator):
         "gradient_clip_norm": gradient_clip_norm,
         "joint_weights": _joint_weights,
     }
-    super(_LinearEstimator, self).__init__(
+    super(LinearEstimator, self).__init__(
         model_fn=_linear_model_fn,
         model_dir=model_dir,
         config=config,

@@ -142,7 +142,7 @@ class RecordYielder {
     // any.
     return stop_ || !status_.ok() || (epoch_end_ && !buf_.empty()) ||
            (!epoch_end_ &&
-            buf_.size() >= std::max<int64>(1, opts_.bufsize / 2));
+            buf_.size() >= std::max<uint64>(1, opts_.bufsize / 2));
   }
 
   void MainLoop();

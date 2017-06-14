@@ -33,7 +33,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.summary import plugin_asset
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer
 from tensorflow.python.summary.writer import writer_cache
@@ -256,6 +258,15 @@ class SummaryWriterTestCase(test.TestCase):
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
+  def testNonBlockingClose(self):
+    test_dir = self._CleanTestDir("non_blocking_close")
+    sw = writer.FileWriter(test_dir)
+    # Sleep 1.2 seconds to make sure event queue is empty.
+    time.sleep(1.2)
+    time_before_close = time.time()
+    sw.close()
+    self._assertRecent(time_before_close)
+
   # Checks that values returned from session Run() calls are added correctly to
   # summaries.  These are numpy types so we need to check they fit in the
   # protocol buffers correctly.
@@ -306,6 +317,22 @@ class SummaryWriterTestCase(test.TestCase):
     # We should be done.
     self.assertRaises(StopIteration, lambda: next(rr))
 
+  def testFileWriterWithSuffix(self):
+    test_dir = self._CleanTestDir("test_suffix")
+    sw = writer.FileWriter(test_dir, filename_suffix="_test_suffix")
+    for _ in range(10):
+      sw.add_summary(
+          summary_pb2.Summary(value=[
+              summary_pb2.Summary.Value(tag="float_ten", simple_value=10.0)
+          ]),
+          10)
+      sw.close()
+      sw.reopen()
+    sw.close()
+    event_filenames = glob.glob(os.path.join(test_dir, "event*"))
+    for filename in event_filenames:
+      self.assertTrue(filename.endswith("_test_suffix"))
+
 
 class SummaryWriterCacheTest(test.TestCase):
   """SummaryWriterCache tests."""
@@ -352,6 +379,33 @@ class SummaryWriterCacheTest(test.TestCase):
       writer_cache.FileWriterCache.clear()
       sw2 = writer_cache.FileWriterCache.get(dir1)
       self.assertFalse(sw1 == sw2)
+
+
+class ExamplePluginAsset(plugin_asset.PluginAsset):
+  plugin_name = "example"
+
+  def assets(self):
+    return {"foo.txt": "foo!", "bar.txt": "bar!"}
+
+
+class PluginAssetsTest(test.TestCase):
+
+  def testPluginAssetSerialized(self):
+    with ops.Graph().as_default() as g:
+      plugin_asset.get_plugin_asset(ExamplePluginAsset)
+
+      logdir = self.get_temp_dir()
+      fw = writer.FileWriter(logdir)
+      fw.add_graph(g)
+    plugin_dir = os.path.join(logdir, writer._PLUGINS_DIR, "example")
+
+    with gfile.Open(os.path.join(plugin_dir, "foo.txt"), "r") as f:
+      content = f.read()
+    self.assertEqual(content, "foo!")
+
+    with gfile.Open(os.path.join(plugin_dir, "bar.txt"), "r") as f:
+      content = f.read()
+    self.assertEqual(content, "bar!")
 
 
 if __name__ == "__main__":

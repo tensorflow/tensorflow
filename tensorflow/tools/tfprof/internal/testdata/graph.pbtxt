@@ -17,10 +17,10 @@ node {
             size: 2
           }
           dim {
-            size: 6
+            size: 8
           }
           dim {
-            size: 6
+            size: 8
           }
           dim {
             size: 3
@@ -32,8 +32,203 @@ node {
   }
 }
 node {
-  name: "DW"
-  op: "Variable"
+  name: "conv2d/kernel/Initializer/random_uniform/shape"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/kernel"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        tensor_content: "\003\000\000\000\003\000\000\000\003\000\000\000\005\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "conv2d/kernel/Initializer/random_uniform/min"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/kernel"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: -0.288675129414
+      }
+    }
+  }
+}
+node {
+  name: "conv2d/kernel/Initializer/random_uniform/max"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/kernel"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+        }
+        float_val: 0.288675129414
+      }
+    }
+  }
+}
+node {
+  name: "conv2d/kernel/Initializer/random_uniform/RandomUniform"
+  op: "RandomUniform"
+  input: "conv2d/kernel/Initializer/random_uniform/shape"
+  attr {
+    key: "T"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/kernel"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "seed"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "seed2"
+    value {
+      i: 0
+    }
+  }
+}
+node {
+  name: "conv2d/kernel/Initializer/random_uniform/sub"
+  op: "Sub"
+  input: "conv2d/kernel/Initializer/random_uniform/max"
+  input: "conv2d/kernel/Initializer/random_uniform/min"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/kernel"
+      }
+    }
+  }
+}
+node {
+  name: "conv2d/kernel/Initializer/random_uniform/mul"
+  op: "Mul"
+  input: "conv2d/kernel/Initializer/random_uniform/RandomUniform"
+  input: "conv2d/kernel/Initializer/random_uniform/sub"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/kernel"
+      }
+    }
+  }
+}
+node {
+  name: "conv2d/kernel/Initializer/random_uniform"
+  op: "Add"
+  input: "conv2d/kernel/Initializer/random_uniform/mul"
+  input: "conv2d/kernel/Initializer/random_uniform/min"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/kernel"
+      }
+    }
+  }
+}
+node {
+  name: "conv2d/kernel"
+  op: "VariableV2"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/kernel"
+      }
+    }
+  }
   attr {
     key: "container"
     value {
@@ -60,7 +255,7 @@ node {
           size: 3
         }
         dim {
-          size: 6
+          size: 5
         }
       }
     }
@@ -73,177 +268,10 @@ node {
   }
 }
 node {
-  name: "DW/Initializer/random_normal/shape"
-  op: "Const"
-  attr {
-    key: "_class"
-    value {
-      list {
-        s: "loc:@DW"
-      }
-    }
-  }
-  attr {
-    key: "dtype"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_INT32
-        tensor_shape {
-          dim {
-            size: 4
-          }
-        }
-        tensor_content: "\003\000\000\000\003\000\000\000\003\000\000\000\006\000\000\000"
-      }
-    }
-  }
-}
-node {
-  name: "DW/Initializer/random_normal/mean"
-  op: "Const"
-  attr {
-    key: "_class"
-    value {
-      list {
-        s: "loc:@DW"
-      }
-    }
-  }
-  attr {
-    key: "dtype"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_FLOAT
-        tensor_shape {
-        }
-        float_val: 0.0
-      }
-    }
-  }
-}
-node {
-  name: "DW/Initializer/random_normal/stddev"
-  op: "Const"
-  attr {
-    key: "_class"
-    value {
-      list {
-        s: "loc:@DW"
-      }
-    }
-  }
-  attr {
-    key: "dtype"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "value"
-    value {
-      tensor {
-        dtype: DT_FLOAT
-        tensor_shape {
-        }
-        float_val: 0.0010000000475
-      }
-    }
-  }
-}
-node {
-  name: "DW/Initializer/random_normal/RandomStandardNormal"
-  op: "RandomStandardNormal"
-  input: "DW/Initializer/random_normal/shape"
-  attr {
-    key: "T"
-    value {
-      type: DT_INT32
-    }
-  }
-  attr {
-    key: "_class"
-    value {
-      list {
-        s: "loc:@DW"
-      }
-    }
-  }
-  attr {
-    key: "dtype"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "seed"
-    value {
-      i: 87654321
-    }
-  }
-  attr {
-    key: "seed2"
-    value {
-      i: 5
-    }
-  }
-}
-node {
-  name: "DW/Initializer/random_normal/mul"
-  op: "Mul"
-  input: "DW/Initializer/random_normal/RandomStandardNormal"
-  input: "DW/Initializer/random_normal/stddev"
-  attr {
-    key: "T"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "_class"
-    value {
-      list {
-        s: "loc:@DW"
-      }
-    }
-  }
-}
-node {
-  name: "DW/Initializer/random_normal"
-  op: "Add"
-  input: "DW/Initializer/random_normal/mul"
-  input: "DW/Initializer/random_normal/mean"
-  attr {
-    key: "T"
-    value {
-      type: DT_FLOAT
-    }
-  }
-  attr {
-    key: "_class"
-    value {
-      list {
-        s: "loc:@DW"
-      }
-    }
-  }
-}
-node {
-  name: "DW/Assign"
+  name: "conv2d/kernel/Assign"
   op: "Assign"
-  input: "DW"
-  input: "DW/Initializer/random_normal"
+  input: "conv2d/kernel"
+  input: "conv2d/kernel/Initializer/random_uniform"
   attr {
     key: "T"
     value {
@@ -254,7 +282,7 @@ node {
     key: "_class"
     value {
       list {
-        s: "loc:@DW"
+        s: "loc:@conv2d/kernel"
       }
     }
   }
@@ -272,9 +300,9 @@ node {
   }
 }
 node {
-  name: "DW/read"
+  name: "conv2d/kernel/read"
   op: "Identity"
-  input: "DW"
+  input: "conv2d/kernel"
   attr {
     key: "T"
     value {
@@ -285,16 +313,187 @@ node {
     key: "_class"
     value {
       list {
-        s: "loc:@DW"
+        s: "loc:@conv2d/kernel"
       }
     }
   }
 }
 node {
-  name: "Conv2D"
+  name: "conv2d/bias/Initializer/Const"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/bias"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 5
+          }
+        }
+        float_val: 0.0
+      }
+    }
+  }
+}
+node {
+  name: "conv2d/bias"
+  op: "VariableV2"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/bias"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 5
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "conv2d/bias/Assign"
+  op: "Assign"
+  input: "conv2d/bias"
+  input: "conv2d/bias/Initializer/Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/bias"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "validate_shape"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "conv2d/bias/read"
+  op: "Identity"
+  input: "conv2d/bias"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/bias"
+      }
+    }
+  }
+}
+node {
+  name: "conv2d/convolution/Shape"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        tensor_content: "\003\000\000\000\003\000\000\000\003\000\000\000\005\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "conv2d/convolution/dilation_rate"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        tensor_content: "\001\000\000\000\001\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "conv2d/convolution"
   op: "Conv2D"
   input: "zeros"
-  input: "DW/read"
+  input: "conv2d/kernel/read"
   attr {
     key: "T"
     value {
@@ -310,7 +509,7 @@ node {
   attr {
     key: "padding"
     value {
-      s: "SAME"
+      s: "VALID"
     }
   }
   attr {
@@ -318,8 +517,8 @@ node {
     value {
       list {
         i: 1
-        i: 2
-        i: 2
+        i: 1
+        i: 1
         i: 1
       }
     }
@@ -332,54 +531,31 @@ node {
   }
 }
 node {
-  name: "DW2"
-  op: "Variable"
+  name: "conv2d/BiasAdd"
+  op: "BiasAdd"
+  input: "conv2d/convolution"
+  input: "conv2d/bias/read"
   attr {
-    key: "container"
-    value {
-      s: ""
-    }
-  }
-  attr {
-    key: "dtype"
+    key: "T"
     value {
       type: DT_FLOAT
     }
   }
   attr {
-    key: "shape"
+    key: "data_format"
     value {
-      shape {
-        dim {
-          size: 2
-        }
-        dim {
-          size: 2
-        }
-        dim {
-          size: 6
-        }
-        dim {
-          size: 12
-        }
-      }
-    }
-  }
-  attr {
-    key: "shared_name"
-    value {
-      s: ""
+      s: "NHWC"
     }
   }
 }
 node {
-  name: "DW2/Initializer/random_normal/shape"
+  name: "conv2d_1/kernel/Initializer/random_uniform/shape"
   op: "Const"
   attr {
     key: "_class"
     value {
       list {
-        s: "loc:@DW2"
+        s: "loc:@conv2d_1/kernel"
       }
     }
   }
@@ -399,19 +575,19 @@ node {
             size: 4
           }
         }
-        tensor_content: "\002\000\000\000\002\000\000\000\006\000\000\000\014\000\000\000"
+        tensor_content: "\003\000\000\000\003\000\000\000\005\000\000\000\005\000\000\000"
       }
     }
   }
 }
 node {
-  name: "DW2/Initializer/random_normal/mean"
+  name: "conv2d_1/kernel/Initializer/random_uniform/min"
   op: "Const"
   attr {
     key: "_class"
     value {
       list {
-        s: "loc:@DW2"
+        s: "loc:@conv2d_1/kernel"
       }
     }
   }
@@ -428,19 +604,19 @@ node {
         dtype: DT_FLOAT
         tensor_shape {
         }
-        float_val: 0.0
+        float_val: -0.25819888711
       }
     }
   }
 }
 node {
-  name: "DW2/Initializer/random_normal/stddev"
+  name: "conv2d_1/kernel/Initializer/random_uniform/max"
   op: "Const"
   attr {
     key: "_class"
     value {
       list {
-        s: "loc:@DW2"
+        s: "loc:@conv2d_1/kernel"
       }
     }
   }
@@ -457,15 +633,15 @@ node {
         dtype: DT_FLOAT
         tensor_shape {
         }
-        float_val: 0.0010000000475
+        float_val: 0.25819888711
       }
     }
   }
 }
 node {
-  name: "DW2/Initializer/random_normal/RandomStandardNormal"
-  op: "RandomStandardNormal"
-  input: "DW2/Initializer/random_normal/shape"
+  name: "conv2d_1/kernel/Initializer/random_uniform/RandomUniform"
+  op: "RandomUniform"
+  input: "conv2d_1/kernel/Initializer/random_uniform/shape"
   attr {
     key: "T"
     value {
@@ -476,7 +652,7 @@ node {
     key: "_class"
     value {
       list {
-        s: "loc:@DW2"
+        s: "loc:@conv2d_1/kernel"
       }
     }
   }
@@ -489,21 +665,41 @@ node {
   attr {
     key: "seed"
     value {
-      i: 87654321
+      i: 0
     }
   }
   attr {
     key: "seed2"
     value {
-      i: 15
+      i: 0
     }
   }
 }
 node {
-  name: "DW2/Initializer/random_normal/mul"
+  name: "conv2d_1/kernel/Initializer/random_uniform/sub"
+  op: "Sub"
+  input: "conv2d_1/kernel/Initializer/random_uniform/max"
+  input: "conv2d_1/kernel/Initializer/random_uniform/min"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d_1/kernel"
+      }
+    }
+  }
+}
+node {
+  name: "conv2d_1/kernel/Initializer/random_uniform/mul"
   op: "Mul"
-  input: "DW2/Initializer/random_normal/RandomStandardNormal"
-  input: "DW2/Initializer/random_normal/stddev"
+  input: "conv2d_1/kernel/Initializer/random_uniform/RandomUniform"
+  input: "conv2d_1/kernel/Initializer/random_uniform/sub"
   attr {
     key: "T"
     value {
@@ -514,16 +710,16 @@ node {
     key: "_class"
     value {
       list {
-        s: "loc:@DW2"
+        s: "loc:@conv2d_1/kernel"
       }
     }
   }
 }
 node {
-  name: "DW2/Initializer/random_normal"
+  name: "conv2d_1/kernel/Initializer/random_uniform"
   op: "Add"
-  input: "DW2/Initializer/random_normal/mul"
-  input: "DW2/Initializer/random_normal/mean"
+  input: "conv2d_1/kernel/Initializer/random_uniform/mul"
+  input: "conv2d_1/kernel/Initializer/random_uniform/min"
   attr {
     key: "T"
     value {
@@ -534,16 +730,65 @@ node {
     key: "_class"
     value {
       list {
-        s: "loc:@DW2"
+        s: "loc:@conv2d_1/kernel"
       }
     }
   }
 }
 node {
-  name: "DW2/Assign"
+  name: "conv2d_1/kernel"
+  op: "VariableV2"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d_1/kernel"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 3
+        }
+        dim {
+          size: 3
+        }
+        dim {
+          size: 5
+        }
+        dim {
+          size: 5
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "conv2d_1/kernel/Assign"
   op: "Assign"
-  input: "DW2"
-  input: "DW2/Initializer/random_normal"
+  input: "conv2d_1/kernel"
+  input: "conv2d_1/kernel/Initializer/random_uniform"
   attr {
     key: "T"
     value {
@@ -554,7 +799,7 @@ node {
     key: "_class"
     value {
       list {
-        s: "loc:@DW2"
+        s: "loc:@conv2d_1/kernel"
       }
     }
   }
@@ -572,9 +817,9 @@ node {
   }
 }
 node {
-  name: "DW2/read"
+  name: "conv2d_1/kernel/read"
   op: "Identity"
-  input: "DW2"
+  input: "conv2d_1/kernel"
   attr {
     key: "T"
     value {
@@ -585,16 +830,187 @@ node {
     key: "_class"
     value {
       list {
-        s: "loc:@DW2"
+        s: "loc:@conv2d_1/kernel"
       }
     }
   }
 }
 node {
-  name: "Conv2D_1"
+  name: "conv2d_1/bias/Initializer/Const"
+  op: "Const"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d_1/bias"
+      }
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_FLOAT
+        tensor_shape {
+          dim {
+            size: 5
+          }
+        }
+        float_val: 0.0
+      }
+    }
+  }
+}
+node {
+  name: "conv2d_1/bias"
+  op: "VariableV2"
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d_1/bias"
+      }
+    }
+  }
+  attr {
+    key: "container"
+    value {
+      s: ""
+    }
+  }
+  attr {
+    key: "dtype"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "shape"
+    value {
+      shape {
+        dim {
+          size: 5
+        }
+      }
+    }
+  }
+  attr {
+    key: "shared_name"
+    value {
+      s: ""
+    }
+  }
+}
+node {
+  name: "conv2d_1/bias/Assign"
+  op: "Assign"
+  input: "conv2d_1/bias"
+  input: "conv2d_1/bias/Initializer/Const"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d_1/bias"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "validate_shape"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "conv2d_1/bias/read"
+  op: "Identity"
+  input: "conv2d_1/bias"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d_1/bias"
+      }
+    }
+  }
+}
+node {
+  name: "conv2d_2/convolution/Shape"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        tensor_content: "\003\000\000\000\003\000\000\000\005\000\000\000\005\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "conv2d_2/convolution/dilation_rate"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_INT32
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_INT32
+        tensor_shape {
+          dim {
+            size: 2
+          }
+        }
+        tensor_content: "\001\000\000\000\001\000\000\000"
+      }
+    }
+  }
+}
+node {
+  name: "conv2d_2/convolution"
   op: "Conv2D"
-  input: "Conv2D"
-  input: "DW2/read"
+  input: "conv2d/BiasAdd"
+  input: "conv2d_1/kernel/read"
   attr {
     key: "T"
     value {
@@ -610,7 +1026,7 @@ node {
   attr {
     key: "padding"
     value {
-      s: "SAME"
+      s: "VALID"
     }
   }
   attr {
@@ -618,8 +1034,8 @@ node {
     value {
       list {
         i: 1
-        i: 2
-        i: 2
+        i: 1
+        i: 1
         i: 1
       }
     }
@@ -631,6 +1047,537 @@ node {
     }
   }
 }
+node {
+  name: "conv2d_2/BiasAdd"
+  op: "BiasAdd"
+  input: "conv2d_2/convolution"
+  input: "conv2d_1/bias/read"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "data_format"
+    value {
+      s: "NHWC"
+    }
+  }
+}
+node {
+  name: "save/Const"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+        }
+        string_val: "model"
+      }
+    }
+  }
+}
+node {
+  name: "save/SaveV2/tensor_names"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        string_val: "conv2d/bias"
+        string_val: "conv2d/kernel"
+        string_val: "conv2d_1/bias"
+        string_val: "conv2d_1/kernel"
+      }
+    }
+  }
+}
+node {
+  name: "save/SaveV2/shape_and_slices"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 4
+          }
+        }
+        string_val: ""
+        string_val: ""
+        string_val: ""
+        string_val: ""
+      }
+    }
+  }
+}
+node {
+  name: "save/SaveV2"
+  op: "SaveV2"
+  input: "save/Const"
+  input: "save/SaveV2/tensor_names"
+  input: "save/SaveV2/shape_and_slices"
+  input: "conv2d/bias"
+  input: "conv2d/kernel"
+  input: "conv2d_1/bias"
+  input: "conv2d_1/kernel"
+  attr {
+    key: "dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+        type: DT_FLOAT
+        type: DT_FLOAT
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+node {
+  name: "save/control_dependency"
+  op: "Identity"
+  input: "save/Const"
+  input: "^save/SaveV2"
+  attr {
+    key: "T"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@save/Const"
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2/tensor_names"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: "conv2d/bias"
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2/shape_and_slices"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: ""
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2"
+  op: "RestoreV2"
+  input: "save/Const"
+  input: "save/RestoreV2/tensor_names"
+  input: "save/RestoreV2/shape_and_slices"
+  attr {
+    key: "dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+node {
+  name: "save/Assign"
+  op: "Assign"
+  input: "conv2d/bias"
+  input: "save/RestoreV2"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/bias"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "validate_shape"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "save/RestoreV2_1/tensor_names"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: "conv2d/kernel"
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2_1/shape_and_slices"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: ""
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2_1"
+  op: "RestoreV2"
+  input: "save/Const"
+  input: "save/RestoreV2_1/tensor_names"
+  input: "save/RestoreV2_1/shape_and_slices"
+  attr {
+    key: "dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+node {
+  name: "save/Assign_1"
+  op: "Assign"
+  input: "conv2d/kernel"
+  input: "save/RestoreV2_1"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d/kernel"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "validate_shape"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "save/RestoreV2_2/tensor_names"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: "conv2d_1/bias"
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2_2/shape_and_slices"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: ""
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2_2"
+  op: "RestoreV2"
+  input: "save/Const"
+  input: "save/RestoreV2_2/tensor_names"
+  input: "save/RestoreV2_2/shape_and_slices"
+  attr {
+    key: "dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+node {
+  name: "save/Assign_2"
+  op: "Assign"
+  input: "conv2d_1/bias"
+  input: "save/RestoreV2_2"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d_1/bias"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "validate_shape"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "save/RestoreV2_3/tensor_names"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: "conv2d_1/kernel"
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2_3/shape_and_slices"
+  op: "Const"
+  attr {
+    key: "dtype"
+    value {
+      type: DT_STRING
+    }
+  }
+  attr {
+    key: "value"
+    value {
+      tensor {
+        dtype: DT_STRING
+        tensor_shape {
+          dim {
+            size: 1
+          }
+        }
+        string_val: ""
+      }
+    }
+  }
+}
+node {
+  name: "save/RestoreV2_3"
+  op: "RestoreV2"
+  input: "save/Const"
+  input: "save/RestoreV2_3/tensor_names"
+  input: "save/RestoreV2_3/shape_and_slices"
+  attr {
+    key: "dtypes"
+    value {
+      list {
+        type: DT_FLOAT
+      }
+    }
+  }
+}
+node {
+  name: "save/Assign_3"
+  op: "Assign"
+  input: "conv2d_1/kernel"
+  input: "save/RestoreV2_3"
+  attr {
+    key: "T"
+    value {
+      type: DT_FLOAT
+    }
+  }
+  attr {
+    key: "_class"
+    value {
+      list {
+        s: "loc:@conv2d_1/kernel"
+      }
+    }
+  }
+  attr {
+    key: "use_locking"
+    value {
+      b: true
+    }
+  }
+  attr {
+    key: "validate_shape"
+    value {
+      b: true
+    }
+  }
+}
+node {
+  name: "save/restore_all"
+  op: "NoOp"
+  input: "^save/Assign"
+  input: "^save/Assign_1"
+  input: "^save/Assign_2"
+  input: "^save/Assign_3"
+}
+node {
+  name: "init"
+  op: "NoOp"
+  input: "^conv2d/kernel/Assign"
+  input: "^conv2d/bias/Assign"
+  input: "^conv2d_1/kernel/Assign"
+  input: "^conv2d_1/bias/Assign"
+}
 versions {
-  producer: 13
+  producer: 21
 }

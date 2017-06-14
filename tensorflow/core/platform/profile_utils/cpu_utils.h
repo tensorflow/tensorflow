@@ -53,11 +53,7 @@ class CpuUtils {
   // is less than 2 ^ 61.
   static inline uint64 GetCurrentClockCycle() {
 #if defined(__ANDROID__)
-#if defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
     return GetCpuUtilsHelperSingletonInstance().GetCurrentClockCycle();
-#else   // defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
-    return DUMMY_CYCLE_CLOCK;
-#endif  // defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
 // ----------------------------------------------------------------
 #elif defined(__x86_64__) || defined(__amd64__)
     uint64_t high, low;

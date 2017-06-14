@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -33,15 +34,112 @@ limitations under the License.
 
 namespace xla {
 
-PredecessorHloOrdering::PredecessorHloOrdering(const HloModule* module)
-    : module_(module) {}
+namespace {
 
-bool PredecessorHloOrdering::ExecutesBefore(const HloInstruction* a,
-                                            const HloInstruction* b) const {
-  // Instructions in different computations are unordered.
-  if (a->parent() != b->parent()) {
+// Returns the nearest call graph ancestors of instructions 'a' and 'b' for
+// which the ancestors are in the same computation. An instruction is an call
+// graph ancestor of 'a' if the instruction calls the computation containing 'a'
+// either directly or transitively. Degeneratively an instruction is an ancestor
+// of itself. nullptr is returned if there is no common ancestor or if the
+// caller chain of 'a' or 'b' diverges (has multiple callers) before the nearest
+// common ancestor.
+//
+// Example:
+//
+// Entry computation:
+//   %x = Call(A, {Constant(42.0)})
+//   %y = Call(B, {%x})
+//
+// Computation A:
+//   %a = Negate(Param())
+//
+// Computation B:
+//   %b = Exp(Param());
+//
+// If called with %a and %b, this function would return (%x, %y). %x is an
+// ancestor of %a, and %y is an ancestor of %b, and %x and %y are in the same
+// computation.
+std::pair<const HloInstruction*, const HloInstruction*>
+GetNearestCallGraphAncestorsInSameComputation(const HloInstruction* a,
+                                              const HloInstruction* b,
+                                              const CallGraph& call_graph) {
+  // Lambda which returns the next instruction in the callee->caller chain in
+  // the call graph. This is the unique instruction which calls the computation
+  // containing 'instruction'. If more than one instruction calls the
+  // computation containing 'instruction' or no instructions call the
+  // computation then nullptr is returned.
+  auto next_caller =
+      [&call_graph](
+          const HloInstruction* instruction) -> const HloInstruction* {
+    const CallGraphNode& node = call_graph.GetNode(instruction->parent());
+    if (node.caller_callsites().size() != 1) {
+      return nullptr;
+    }
+    return node.caller_callsites()[0].instruction();
+  };
+
+  // Iterate through the callee->caller chains and find the earliest common
+  // element.
+  for (const HloInstruction* a_ancestor = a; a_ancestor != nullptr;
+       a_ancestor = next_caller(a_ancestor)) {
+    for (const HloInstruction* b_ancestor = b; b_ancestor != nullptr;
+         b_ancestor = next_caller(b_ancestor)) {
+      if (a_ancestor->parent() == b_ancestor->parent()) {
+        return {a_ancestor, b_ancestor};
+      }
+    }
+  }
+  return {nullptr, nullptr};
+}
+
+}  // namespace
+
+bool HloOrdering::ExecutesBefore(const HloInstruction* a,
+                                 const HloInstruction* b) const {
+  // 'a' and 'b' may be in different computations. In this case, find the
+  // callgraph ancestor instructions which call (potentially transitively) the
+  // computations containing 'a' and 'b' and use these ancestor instructions to
+  // compare order.
+  const HloInstruction* a_ancestor;
+  const HloInstruction* b_ancestor;
+  std::tie(a_ancestor, b_ancestor) =
+      GetNearestCallGraphAncestorsInSameComputation(a, b, *call_graph_);
+
+  if (a_ancestor == nullptr) {
+    // Ancestors in a common computation could not be found so consider the
+    // instructions 'a' and 'b' to be unordered.
     return false;
   }
+  // a_ancestor and b_ancestor must be either both null or both non-null.
+  CHECK_NE(b_ancestor, nullptr);
+  CHECK_EQ(a_ancestor->parent(), b_ancestor->parent());
+  return ExecutesBeforeInSameComputation(a_ancestor, b_ancestor);
+}
+
+HloOrderingProto HloOrdering::ToProto() const {
+  HloOrderingProto proto;
+  for (const auto& computation : module_->computations()) {
+    const std::vector<const HloInstruction*>* sequence =
+        SequentialOrder(*computation);
+    if (sequence != nullptr) {
+      HloOrderingProto::SequentialComputation* proto_computation =
+          proto.add_sequential_computations();
+      proto_computation->set_computation_name(computation->name());
+      for (const HloInstruction* instruction : *sequence) {
+        *proto_computation->add_instruction_names() = instruction->name();
+      }
+    }
+  }
+  return proto;
+}
+
+PredecessorHloOrdering::PredecessorHloOrdering(const HloModule* module)
+    : HloOrdering(module) {}
+
+bool PredecessorHloOrdering::ExecutesBeforeInSameComputation(
+    const HloInstruction* a, const HloInstruction* b) const {
+  CHECK_EQ(a->parent(), b->parent());
+
   // 'a' executes before 'b' if 'a' is in the strict predecessor set of 'b'.
   return strict_predecessors_.at(b->parent())->IsReachable(b, a);
 }
@@ -85,9 +183,9 @@ string DependencyHloOrdering::ToString() const {
 
 SequentialHloOrdering::SequentialHloOrdering(
     const HloModule* module, const HloModuleSequence& module_sequence)
-    : module_(module) {
+    : HloOrdering(module), module_sequence_(module_sequence) {
   // Create a map from instruction to its order position.
-  for (auto computation_order : module_sequence) {
+  for (auto computation_order : module_sequence_) {
     const std::vector<const HloInstruction*>& order = computation_order.second;
     for (int i = 0; i < order.size(); ++i) {
       DCHECK_EQ(0, order_position_.count(order[i]));
@@ -96,17 +194,21 @@ SequentialHloOrdering::SequentialHloOrdering(
   }
 }
 
-bool SequentialHloOrdering::ExecutesBefore(const HloInstruction* a,
-                                           const HloInstruction* b) const {
-  // Instructions in different computations are unordered.
-  if (a->parent() != b->parent()) {
-    return false;
-  }
+bool SequentialHloOrdering::ExecutesBeforeInSameComputation(
+    const HloInstruction* a, const HloInstruction* b) const {
+  CHECK_EQ(a->parent(), b->parent());
   // If either instruction is not in the order, then 'a' and 'b' are unordered.
   if (order_position_.count(a) == 0 || order_position_.count(b) == 0) {
     return false;
   }
   return order_position_.at(a) < order_position_.at(b);
+}
+
+const std::vector<const HloInstruction*>*
+SequentialHloOrdering::SequentialOrder(
+    const HloComputation& computation) const {
+  auto find_it = module_sequence_.find(&computation);
+  return find_it == module_sequence_.end() ? nullptr : &find_it->second;
 }
 
 string SequentialHloOrdering::ToString() const {
@@ -134,6 +236,29 @@ string SequentialHloOrdering::ToString() const {
     }
   }
   return tensorflow::str_util::Join(pieces, "\n");
+}
+
+StatusOr<int64> MinimumMemoryForSequence(
+    const SequentialHloOrdering::HloModuleSequence& module_sequence,
+    const LogicalBuffer::SizeFunction& size_function) {
+  if (module_sequence.empty()) {
+    return 0;
+  }
+
+  const HloModule* module = module_sequence.begin()->first->parent();
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
+                      TuplePointsToAnalysis::Run(module));
+
+  // The absolute minimum memory required for a given sequence of instructions
+  // is determined by the sequence of Alloc and Free calls on a simulated heap,
+  // ignoring fragmentation. We run the heap simulation on the whole module,
+  // rather than summing each computation, since it gives us a better lower
+  // bound, by minimizing the liveness of sub-computations.
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), *module,
+                         module_sequence, *points_to_analysis, size_function));
+  return result.heap_size;
 }
 
 namespace {
@@ -235,7 +360,7 @@ class ListScheduler {
     return freed_bytes;
   }
 
-  // Construct the scheduling priority of the given instruciton.
+  // Construct the scheduling priority of the given instruction.
   Priority GetPriority(const HloInstruction* instruction) {
     return {BytesFreedIfScheduled(instruction), instruction->user_count()};
   }
@@ -243,11 +368,24 @@ class ListScheduler {
   std::vector<const HloInstruction*> CreateSchedule() {
     std::vector<const HloInstruction*> schedule;
 
-    // Populate the ready list with instructions which have no operands.
+    // Populate the ready list with instructions which have no operands or
+    // control predecessors.
+    std::unordered_map<const HloInstruction*, int64> unscheduled_pred_count;
     std::list<const HloInstruction*> ready_list;
     for (auto& instruction : computation_.instructions()) {
-      if (instruction->operand_count() == 0 &&
-          instruction->control_predecessors().empty()) {
+      // TODO(b/34466113): Replace this and above with successors() or
+      // predecessors() when these methods are added to HloInstruction.
+      for (const HloInstruction* user : instruction->users()) {
+        unscheduled_pred_count[user]++;
+      }
+      for (const HloInstruction* succ : instruction->control_successors()) {
+        unscheduled_pred_count[succ]++;
+      }
+    }
+    for (auto& instruction : computation_.instructions()) {
+      // Instruction with no operands or control predecessors will
+      // not be in the map.
+      if (unscheduled_pred_count.count(instruction.get()) == 0) {
         ready_list.push_back(instruction.get());
       }
     }
@@ -279,28 +417,21 @@ class ListScheduler {
       }
 
       // Add new instructions to ready list.
-      // TODO(b/34466113): Replace this with successors()/predecessors() when
-      // predecessor/successor methods are added to HloInstruction. This also
-      // will resolve the nondeterminism of using a set here assuming
-      // predecessors/successors is a vector.
-      std::set<HloInstruction*> successors = best->users();
-      successors.insert(best->control_successors().begin(),
-                        best->control_successors().end());
-      for (auto* successor : successors) {
-        std::set<HloInstruction*> predecessors(successor->operands().begin(),
-                                               successor->operands().end());
-        predecessors.insert(successor->control_predecessors().begin(),
-                            successor->control_predecessors().end());
-        bool is_ready = true;
-        for (auto* predecessor : predecessors) {
-          if (scheduled_instructions_.count(predecessor) == 0) {
-            is_ready = false;
-            break;
-          }
+      auto update_pred_count = [&unscheduled_pred_count,
+                                &ready_list](HloInstruction* inst) {
+        int64 pred_count = --unscheduled_pred_count.at(inst);
+        CHECK_GE(pred_count, 0);
+        if (pred_count == 0) {
+          ready_list.push_back(inst);
         }
-        if (is_ready) {
-          ready_list.push_back(successor);
-        }
+      };
+      // TODO(b/34466113): Replace this and above with successors() or
+      // predecessors() when these methods are added to HloInstruction.
+      for (HloInstruction* user : best->users()) {
+        update_pred_count(user);
+      }
+      for (HloInstruction* succ : best->control_successors()) {
+        update_pred_count(succ);
       }
     }
     CHECK_EQ(schedule.size(), computation_.instructions().size());
@@ -327,6 +458,113 @@ class ListScheduler {
   std::unordered_set<const HloInstruction*> scheduled_instructions_;
 };
 
+int64 SumLogicalBufferSizes(const std::vector<const LogicalBuffer*>& buffers,
+                            const LogicalBuffer::SizeFunction& size_function) {
+  int64 size = 0;
+  for (const LogicalBuffer* buffer : buffers) {
+    size += size_function(*buffer);
+  }
+  return size;
+}
+
+StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function) {
+  // This ordering is based on DFS post-order, with a heuristic to decide which
+  // operand to visit first.  The heuristic is based on 'extra_users', which is
+  // simply users-1 for each instruction.  By subtracting 1, we're saying that
+  // instructions with no users or a single user don't count; instructions with
+  // lots of fan-out will be visited earlier.
+  tensorflow::gtl::FlatMap<const HloInstruction*, int64> extra_users;
+  tensorflow::gtl::FlatMap<const HloInstruction*, int64> total_sizes;
+  for (const HloInstruction* hlo : computation.MakeInstructionPostOrder()) {
+    extra_users[hlo] = hlo->users().empty() ? 0 : hlo->users().size() - 1;
+    total_sizes[hlo] = SumLogicalBufferSizes(
+        points_to_analysis.GetBuffersDefinedByInstruction(hlo), size_function);
+    tensorflow::gtl::FlatSet<const HloInstruction*> unique_operands(
+        hlo->operands().begin(), hlo->operands().end());
+    for (const HloInstruction* operand : unique_operands) {
+      extra_users[hlo] += extra_users[operand];
+      total_sizes[hlo] += total_sizes[operand];
+    }
+  }
+  CHECK_EQ(extra_users.size(), computation.instructions().size());
+  CHECK_EQ(total_sizes.size(), computation.instructions().size());
+
+  // Construct a total order based on DFS post-order, visiting operands in
+  // decreasing cumulative extra user order, and next by cumulative size, with a
+  // tiebreaker by name for determinism.
+  std::vector<const HloInstruction*> sequence;
+  FunctionVisitor visitor([&sequence](HloInstruction* hlo) {
+    sequence.push_back(hlo);
+    return Status::OK();
+  });
+  TF_RETURN_IF_ERROR(computation.AcceptWithOperandOrder(
+      &visitor, [&extra_users, &total_sizes](const HloInstruction* a,
+                                             const HloInstruction* b) {
+        if (extra_users[a] != extra_users[b]) {
+          return extra_users[a] > extra_users[b];
+        }
+        if (total_sizes[a] != total_sizes[b]) {
+          return total_sizes[a] > total_sizes[b];
+        }
+        return a->name() < b->name();
+      }));
+  CHECK_EQ(sequence.size(), computation.instructions().size());
+  return sequence;
+}
+
+StatusOr<int64> MinimumMemoryForComputation(
+    const HloComputation& computation,
+    const std::vector<const HloInstruction*>& sequence,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function) {
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), computation,
+                         sequence, points_to_analysis, size_function));
+  return result.heap_size;
+}
+
+StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
+    const HloComputation& computation,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function) {
+  // We try both a list-scheduler based ordering and a DFS based ordering, and
+  // choose whichever returns a lower min-memory, not accounting for
+  // fragmentation.
+  //
+  // Note that this is just a heuristic. One obvious inaccuracy is that the
+  // memory required for sub-computations might be different when considered
+  // within the caller's context. But it's good enough for now.
+  TF_ASSIGN_OR_RETURN(
+      std::vector<const HloInstruction*> list_sequence,
+      ListScheduler::Run(computation, points_to_analysis, size_function));
+  TF_ASSIGN_OR_RETURN(
+      const int64 list_memory,
+      MinimumMemoryForComputation(computation, list_sequence,
+                                  points_to_analysis, size_function));
+  VLOG(2) << "Min-memory list sequence: " << list_memory << " bytes";
+
+  TF_ASSIGN_OR_RETURN(
+      std::vector<const HloInstruction*> dfs_sequence,
+      RunDFSMemoryScheduler(computation, points_to_analysis, size_function));
+  TF_ASSIGN_OR_RETURN(
+      const int64 dfs_memory,
+      MinimumMemoryForComputation(computation, dfs_sequence, points_to_analysis,
+                                  size_function));
+  VLOG(2) << "Min-memory dfs sequence: " << dfs_memory << " bytes";
+
+  if (list_memory <= dfs_memory) {
+    VLOG(2) << "Chose min-memory list sequence: " << list_memory << " bytes";
+    return list_sequence;
+  } else {
+    VLOG(2) << "Chose min-memory dfs sequence: " << dfs_memory << " bytes";
+    return dfs_sequence;
+  }
+}
+
 }  // namespace
 
 StatusOr<SequentialHloOrdering::HloModuleSequence>
@@ -335,14 +573,21 @@ CreateMemoryMinimizingSequence(
   SequentialHloOrdering::HloModuleSequence sequence;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
-
-  for (auto& computation : module.computations()) {
-    TF_ASSIGN_OR_RETURN(
-        sequence[computation.get()],
-        ListScheduler::Run(*computation, *points_to_analysis, size_function));
+  for (const auto& computation : module.computations()) {
+    TF_ASSIGN_OR_RETURN(sequence[computation.get()],
+                        CreateMemoryMinimizingSequence(
+                            *computation, *points_to_analysis, size_function));
   }
-
   return sequence;
+}
+
+StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
+    const HloComputation& computation,
+    const LogicalBuffer::SizeFunction& size_function) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
+                      TuplePointsToAnalysis::Run(computation.parent()));
+  return CreateMemoryMinimizingSequence(computation, *points_to_analysis,
+                                        size_function);
 }
 
 std::ostream& operator<<(

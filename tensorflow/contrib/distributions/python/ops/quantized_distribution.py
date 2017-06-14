@@ -20,14 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops import distribution as distributions
-from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.contrib.framework.python.framework import tensor_util as contrib_tensor_util
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution as distributions
+from tensorflow.python.ops.distributions import util as distribution_util
 
 __all__ = ["QuantizedDistribution"]
 
@@ -218,14 +217,14 @@ class QuantizedDistribution(distributions.Distribution):
     values = (
         list(distribution.parameters.values()) +
         [low, high])
-    with ops.name_scope(name, values=values) as ns:
+    with ops.name_scope(name, values=values):
       self._dist = distribution
 
       if low is not None:
         low = ops.convert_to_tensor(low, name="low")
       if high is not None:
         high = ops.convert_to_tensor(high, name="high")
-      contrib_tensor_util.assert_same_float_dtype(
+      check_ops.assert_same_float_dtype(
           tensors=[self.distribution, low, high])
 
       # We let QuantizedDistribution access _graph_parents since this class is
@@ -233,7 +232,7 @@ class QuantizedDistribution(distributions.Distribution):
       graph_parents = self._dist._graph_parents  # pylint: disable=protected-access
 
       checks = []
-      if low is not None and high is not None:
+      if validate_args and low is not None and high is not None:
         message = "low must be strictly less than high."
         checks.append(
             check_ops.assert_less(
@@ -253,13 +252,12 @@ class QuantizedDistribution(distributions.Distribution):
 
     super(QuantizedDistribution, self).__init__(
         dtype=self._dist.dtype,
-        is_continuous=False,
         reparameterization_type=distributions.NOT_REPARAMETERIZED,
         validate_args=validate_args,
         allow_nan_stats=self._dist.allow_nan_stats,
         parameters=parameters,
         graph_parents=graph_parents,
-        name=ns)
+        name=name)
 
   def _batch_shape_tensor(self):
     return self.distribution.batch_shape_tensor()

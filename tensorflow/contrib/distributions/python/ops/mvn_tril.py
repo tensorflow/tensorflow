@@ -19,13 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import linalg
-from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.contrib.distributions.python.ops import mvn_linear_operator as mvn_linop
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 __all__ = [
@@ -55,7 +51,7 @@ class MultivariateNormalTriL(
   where:
 
   * `loc` is a vector in `R^k`,
-  * `scale` is a linear operator in `R^{k x k}`, `cov = scale @ scale.T`,
+  * `scale` is a matrix in `R^{k x k}`, `covariance = scale @ scale.T`,
   * `Z` denotes the normalization constant, and,
   * `||y||**2` denotes the squared Euclidean norm of `y`.
 
@@ -140,8 +136,8 @@ class MultivariateNormalTriL(
     The `batch_shape` is the broadcast shape between `loc` and `scale`
     arguments.
 
-    The `event_shape` is given by the last dimension of `loc` or the last
-    dimension of the matrix implied by `scale`.
+    The `event_shape` is given by last dimension of the matrix implied by
+    `scale`. The last dimension of `loc` (if provided) must broadcast with this.
 
     Recall that `covariance = scale @ scale.T`. A (non-batch) `scale` matrix is:
 
@@ -179,7 +175,7 @@ class MultivariateNormalTriL(
       return None if x is None else ops.convert_to_tensor(x, name=name)
     if loc is None and scale_tril is None:
       raise ValueError("Must specify one or both of `loc`, `scale_tril`.")
-    with ops.name_scope(name) as ns:
+    with ops.name_scope(name):
       with ops.name_scope("init", values=[loc, scale_tril]):
         loc = _convert_to_tensor(loc, name="loc")
         scale_tril = _convert_to_tensor(scale_tril, name="scale_tril")
@@ -191,14 +187,9 @@ class MultivariateNormalTriL(
               is_positive_definite=True,
               assert_proper_shapes=validate_args)
         else:
-          if validate_args:
-            scale_tril = control_flow_ops.with_dependencies([
-                # TODO(b/35157376): Use `assert_none_equal` once it exists.
-                check_ops.assert_greater(
-                    math_ops.abs(array_ops.matrix_diag_part(scale_tril)),
-                    array_ops.zeros([], scale_tril.dtype),
-                    message="`scale_tril` must have non-zero diagonal"),
-            ], scale_tril)
+          # No need to validate that scale_tril is non-singular.
+          # LinearOperatorTriL has an assert_non_singular method that is called
+          # by the Bijector.
           scale = linalg.LinearOperatorTriL(
               scale_tril,
               is_non_singular=True,
@@ -209,5 +200,5 @@ class MultivariateNormalTriL(
         scale=scale,
         validate_args=validate_args,
         allow_nan_stats=allow_nan_stats,
-        name=ns)
+        name=name)
     self._parameters = parameters

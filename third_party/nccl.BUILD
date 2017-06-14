@@ -44,17 +44,17 @@ cc_library(
         "-O3",
     ] + cuda_default_copts(),
     linkopts = select({
-        "@//tensorflow:android": [
+        "@%ws%//tensorflow:android": [
             "-pie",
         ],
-        "@//tensorflow:darwin": [
+        "@%ws%//tensorflow:darwin": [
             "-Wl,-framework",
             "-Wl,CoreFoundation",
             "-Wl,-framework",
             "-Wl,Security",
         ],
-        "@//tensorflow:ios": [],
-        "@//tensorflow:windows": [
+        "@%ws%//tensorflow:ios": [],
+        "@%ws%//tensorflow:windows": [
             "ws2_32.lib",
         ],
         "//conditions:default": [

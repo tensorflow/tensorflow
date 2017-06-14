@@ -1,9 +1,21 @@
 licenses(["notice"])  # Apache 2.0
 
-package(
-    default_visibility = [
+package_group(
+    name = "internal",
+    includes = [
         "//tensorflow/compiler/tf2xla:internal",
     ],
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//tensorflow/compiler/tf2xla:friends",
+    ],
+)
+
+package(
+    default_visibility = [":internal"],
 )
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -19,6 +31,7 @@ py_library(
     testonly = 1,
     srcs = ["xla_test.py"],
     srcs_version = "PY2AND3",
+    visibility = [":friends"],
     deps = [
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/core:protos_all_py",
@@ -36,6 +49,34 @@ cc_library(
     testonly = 1,
     srcs = ["depthwise_conv2d_test_kernel.cc"],
     deps = ["//tensorflow/core:framework_lite"],
+)
+
+tf_xla_py_test(
+    name = "adagrad_test",
+    size = "small",
+    srcs = ["adagrad_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "adam_test",
+    size = "small",
+    srcs = ["adam_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
 )
 
 tf_xla_py_test(
@@ -101,6 +142,22 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "conv3d_test",
+    size = "medium",
+    srcs = ["conv3d_test.py"],
+    shard_count = 5,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "dynamic_stitch_test",
     size = "small",
     srcs = ["dynamic_stitch_test.py"],
@@ -110,6 +167,33 @@ tf_xla_py_test(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "slice_ops_test",
+    size = "small",
+    srcs = ["slice_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:data_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "ftrl_test",
+    size = "small",
+    srcs = ["ftrl_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -136,6 +220,20 @@ tf_xla_py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "momentum_test",
+    size = "small",
+    srcs = ["momentum_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
     ],
 )
 
@@ -180,6 +278,21 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "pooling_ops_3d_test",
+    size = "medium",
+    srcs = ["pooling_ops_3d_test.py"],
+    shard_count = 10,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "random_ops_test",
     size = "small",
     srcs = ["random_ops_test.py"],
@@ -209,6 +322,64 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "reverse_ops_test",
+    size = "small",
+    srcs = ["reverse_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_xla_py_test(
+    name = "rmsprop_test",
+    size = "small",
+    srcs = ["rmsprop_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "spacetobatch_op_test",
+    size = "medium",
+    srcs = ["spacetobatch_op_test.py"],
+    shard_count = 3,
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "tensor_array_ops_test",
+    size = "small",
+    srcs = ["tensor_array_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:tensor_array_grad",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "ternary_ops_test",
     size = "small",
     srcs = ["ternary_ops_test.py"],
@@ -233,6 +404,23 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "variable_ops_test",
+    size = "small",
+    srcs = ["variable_ops_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:math_ops_gen",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
     ],
 )
 

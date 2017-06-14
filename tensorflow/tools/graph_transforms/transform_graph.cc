@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/tools/graph_transforms/transform_graph.h"
 
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
@@ -48,6 +49,11 @@ Status ParseTransformParameters(const string& transforms_string,
       func_parameters.clear();
       // Eat up any leading spaces.
       Scanner(remaining).AnySpace().GetResult(&remaining, &match);
+      if (remaining.empty()) {
+        // Nothing remains after consuming trailing spaces.
+        // Consumed all transform parameter string without errors.
+        return Status::OK();
+      }
       // See if we have a valid transform name.
       const bool found_transform_name =
           Scanner(remaining)
@@ -247,7 +253,7 @@ Status TransformGraph(const std::vector<string>& inputs,
   TransformRegistry* transform_registry = GetTransformRegistry();
   for (const auto& transform_info : transform_params) {
     const string& transform_name = transform_info.first;
-    if (transform_name == "") {
+    if (transform_name.empty()) {
       continue;
     }
     if (!transform_registry->count(transform_name)) {
@@ -277,7 +283,7 @@ Status TransformGraph(const std::vector<string>& inputs,
       }
     }
     // Copy over the library from the original input graph.
-    transformed_graph_def.mutable_library()->CopyFrom(graph_def->library());
+    *transformed_graph_def.mutable_library() = graph_def->library();
     TF_RETURN_IF_ERROR(IsGraphValid(transformed_graph_def));
 
     *graph_def = transformed_graph_def;

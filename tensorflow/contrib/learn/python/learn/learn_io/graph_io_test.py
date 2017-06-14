@@ -21,19 +21,13 @@ from __future__ import print_function
 import base64
 import os
 import random
-import sys
 import tempfile
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.learn.python.learn.learn_io import graph_io
-from tensorflow.contrib.learn.python.learn.learn_io.graph_io import _read_keyed_batch_examples_shared_queue
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -49,7 +43,9 @@ from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import server_lib
 
 _VALID_FILE_PATTERN = "VALID"
+_VALID_FILE_PATTERN_2 = "VALID_2"
 _FILE_NAMES = [b"abc", b"def", b"ghi", b"jkl"]
+_FILE_NAMES_2 = [b"mno", b"pqr"]
 _INVALID_FILE_PATTERN = "INVALID"
 
 
@@ -58,6 +54,8 @@ class GraphIOTest(test.TestCase):
   def _mock_glob(self, pattern):
     if _VALID_FILE_PATTERN == pattern:
       return _FILE_NAMES
+    if _VALID_FILE_PATTERN_2 == pattern:
+      return _FILE_NAMES_2
     self.assertEqual(_INVALID_FILE_PATTERN, pattern)
     return []
 
@@ -111,6 +109,18 @@ class GraphIOTest(test.TestCase):
         False,
         num_epochs=None,
         queue_capacity=queue_capacity,
+        num_threads=num_threads,
+        name=name)
+    self.assertRaisesRegexp(
+        ValueError,
+        "Invalid batch_size",
+        graph_io.read_batch_examples,
+        _VALID_FILE_PATTERN,
+        default_batch_size,
+        io_ops.TFRecordReader,
+        False,
+        num_epochs=None,
+        queue_capacity=default_batch_size,
         num_threads=num_threads,
         name=name)
     self.assertRaisesRegexp(
@@ -262,14 +272,14 @@ class GraphIOTest(test.TestCase):
       self.assertEqual(queue_capacity,
                        op_nodes[example_queue_name].attr["capacity"].i)
 
-  def test_batch_randomized(self):
+  def test_batch_randomized_multiple_globs(self):
     batch_size = 17
     queue_capacity = 1234
     name = "my_batch"
 
     with ops.Graph().as_default() as g, self.test_session(graph=g) as sess:
       inputs = graph_io.read_batch_examples(
-          _VALID_FILE_PATTERN,
+          [_VALID_FILE_PATTERN, _VALID_FILE_PATTERN_2],
           batch_size,
           reader=io_ops.TFRecordReader,
           randomize_input=True,
@@ -288,7 +298,8 @@ class GraphIOTest(test.TestCase):
           name: "QueueDequeueManyV2"
       }, g)
       self.assertEqual(
-          set(_FILE_NAMES), set(sess.run(["%s:0" % file_names_name])[0]))
+          set(_FILE_NAMES + _FILE_NAMES_2),
+          set(sess.run(["%s:0" % file_names_name])[0]))
       self.assertEqual(queue_capacity,
                        op_nodes[example_queue_name].attr["capacity"].i)
 
@@ -356,7 +367,7 @@ class GraphIOTest(test.TestCase):
     ]
     filename = self._create_temp_file("".join(json_lines))
     batch_size = 10000
-    queue_capacity = 10000
+    queue_capacity = 100000
     name = "my_large_batch"
 
     features = {"sequence": parsing_ops.FixedLenFeature([], dtypes_lib.string)}
@@ -452,7 +463,7 @@ class GraphIOTest(test.TestCase):
     name = "my_batch"
 
     with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
-      keys, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = graph_io.read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=io_ops.TextLineReader,
@@ -516,7 +527,7 @@ class GraphIOTest(test.TestCase):
 
     with ops.Graph().as_default() as g1, session_lib.Session(
         server.target, graph=g1) as session:
-      keys, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = graph_io.read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=io_ops.TextLineReader,
@@ -545,7 +556,7 @@ class GraphIOTest(test.TestCase):
 
     with ops.Graph().as_default() as g2, session_lib.Session(
         server.target, graph=g2) as session:
-      keys, inputs = _read_keyed_batch_examples_shared_queue(
+      keys, inputs = graph_io.read_keyed_batch_examples_shared_queue(
           filenames,
           batch_size,
           reader=io_ops.TextLineReader,
@@ -740,6 +751,17 @@ class GraphIOTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         session.run((keys, inputs))
 
+      coord.request_stop()
+      coord.join(threads)
+
+  def test_queue_parsed_features_single_tensor(self):
+    with ops.Graph().as_default() as g, self.test_session(graph=g) as session:
+      features = {"test": constant_op.constant([1, 2, 3])}
+      _, queued_features = graph_io.queue_parsed_features(features)
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(session, coord=coord)
+      out_features = session.run(queued_features["test"])
+      self.assertAllEqual([1, 2, 3], out_features)
       coord.request_stop()
       coord.join(threads)
 

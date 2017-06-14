@@ -16,7 +16,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb_text.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/register_types.h"

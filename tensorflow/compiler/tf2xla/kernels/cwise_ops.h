@@ -32,9 +32,7 @@ namespace tensorflow {
 // description of the operation; and Computation adds the
 // implementation of the operation to a xla::ComputationBuilder. For most
 // arithmetic Ops XLA handles the broadcasting automatically given the input
-// tensors. Ops like ReluGrad that need to map a scalar function over the inputs
-// can use the XlaBinaryMapOp subclass below which handles manual
-// broadcasting of the inputs.
+// tensors.
 class XlaBinaryOp : public XlaOpKernel {
  public:
   explicit XlaBinaryOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
@@ -83,6 +81,8 @@ class XlaBinaryOp : public XlaOpKernel {
 // virtual methods to override: description is a textual description
 // of the mapped function; and BuildMapLambda adds the
 // implementation of the lambda to a xla::ComputationBuilder.
+// Operations may have better performance if implemented as graphs of
+// element-wise tensor operations.
 class XlaBinaryMapOp : public XlaBinaryOp {
  public:
   explicit XlaBinaryMapOp(OpKernelConstruction* ctx) : XlaBinaryOp(ctx) {}

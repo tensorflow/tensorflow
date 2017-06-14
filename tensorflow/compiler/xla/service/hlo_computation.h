@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -54,8 +55,10 @@ class HloComputation {
   // Builder class for HloComputation.
   class Builder {
    public:
-    explicit Builder(const string& name)
-        : name_(name), last_added_instruction_(nullptr) {}
+    explicit Builder(const string& name, bool is_fusion_computation = false)
+        : name_(name),
+          last_added_instruction_(nullptr),
+          is_fusion_computation_(is_fusion_computation) {}
 
     // Build and return an HloComputation. The parameter root_instruction
     // specifies the already-added instruction to use as the root. If
@@ -74,12 +77,23 @@ class HloComputation {
    private:
     const string name_;
     HloInstruction* last_added_instruction_;
+    bool is_fusion_computation_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
   };
 
   // Add an instruction to the computation. The computation takes ownership of
   // the instruction.
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction);
+
+  // Remove the param_no'th parameter from the computation.
+  // Note this is only applicatable to the computation for the fusion
+  // instruction.
+  Status RemoveParameter(int64 param_no);
+
+  // Add new parameter instruction to the computation.
+  // This should be a new parameter. Instruction will be appended to parameters
+  // and inserted to the instruction list.
+  HloInstruction* AddParameter(std::unique_ptr<HloInstruction> instruction);
 
   // Remove an instruction from the computation. The instruction must have no
   // users. Instruction is deallocated with this call.
@@ -111,7 +125,7 @@ class HloComputation {
   // Returns the parameter instruction for the given parameter number.
   HloInstruction* parameter_instruction(int64 param_no) const {
     CHECK_GE(param_no, 0);
-    CHECK_LT(param_no, param_instructions_.size());
+    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()));
     return param_instructions_[param_no];
   }
 
@@ -121,23 +135,19 @@ class HloComputation {
 
   const string& name() const { return name_; }
 
+  // Use the given NameUniquer to select a unique name for the computation based
+  // on the computation's existing name.
+  void UniquifyName(NameUniquer* name_uniquer);
+
   // Return a string representation of the computation.
-  string ToString() const;
+  string ToString(int nested_level = 0) const;
+
+  // Returns a serialized representation of this computation.
+  HloComputationProto ToProto() const;
 
   const std::list<std::unique_ptr<HloInstruction>>& instructions() const {
     return instructions_;
   }
-
-  // Add a control dependency between the two instructions in this computation
-  // so that the 'predecessor' is visited before the 'successor' during the DFS
-  // traversal of the computation. Returns an error status if either of the
-  // given instructions does not belong to the current computation.
-  //
-  // This is used to enforce an additional ordering requirement that is not
-  // captured by normal data dependencies, such as ordering among Send or Recv
-  // operations to avoid deadlock.
-  Status AddControlDependency(HloInstruction* predecessor,
-                              HloInstruction* successor);
 
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
@@ -205,6 +215,7 @@ class HloComputation {
   // Set/get the module containing this computation.
   void set_parent(HloModule* module) { parent_ = module; }
   const HloModule* parent() const { return parent_; }
+  HloModule* parent() { return parent_; }
 
   // Visit every node in the computation in DFS post-order with the given
   // visitor. This is similar to calling HloInstruction::Accept on the root of
@@ -214,6 +225,13 @@ class HloComputation {
   // root instruction as the argument).
   Status Accept(DfsHloVisitor* visitor) const;
 
+  // Same as Accept() above, but the order of operand and control predecessor
+  // visitation is determined by the given operand order; if compare(A, B) ==
+  // true, A is visited before B.
+  Status AcceptWithOperandOrder(
+      DfsHloVisitor* visitor,
+      const HloInstruction::CompareFunction& operand_order) const;
+
   // Visit every node in the computation in the given order. 'order' must
   // be a topological sort of all instructions in the computation.
   Status AcceptOrdered(DfsHloVisitor* visitor,
@@ -222,26 +240,32 @@ class HloComputation {
   // Same as Accept() above, but the visitor is given as a function.
   Status Accept(const FunctionVisitor::VisitorFunction& visitor_func) const;
 
-  // Returns true if instructions of the given opcode can be removed from the
+  // Returns a deep copy of this computation including all instructions.
+  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone");
+
+  // Returns true if the given instruction can be removed from the
   // computation. Instructions such as parameters and send/receive instructions
   // cannot be removed without violating invariants of the HLO computation or
-  // module.
-  static bool IsRemovable(const HloOpcode& opcode);
+  // module with the exception of fusion computation.  A parameter instruction
+  // is removable for a fusion computation.
+  bool IsRemovable(const HloInstruction* instruction);
+
+  // Returns if this computation is a fusion computation.
+  bool IsFusionComputation() const { return is_fusion_computation_; }
 
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction);
+      HloInstruction* root_instruction, bool is_fusion_computation = false);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
       std::unique_ptr<HloInstruction> instruction);
 
-  // Remove an instruction from the computation if found. The instruction must
-  // have no users. Instruction is deallocated with this call.
-  // Return whether instruction was found and removed.
-  StatusOr<bool> RemoveInstructionIfFound(HloInstruction* instruction);
+  // Helper for setting the parent of instructions that are added to this
+  // computation.
+  void Reparent(HloInstruction* instruction);
 
   // Fuses HLOs in instructions_to_fuse into fusion_instruction.
   //
@@ -254,8 +278,14 @@ class HloComputation {
   // of the given instruction. The given instruction must be tuple-shaped.
   StatusOr<HloInstruction*> DeepCopyTuple(HloInstruction* instruction);
 
-  const string name_;
+  // Internal helper to collect unreachable roots.
+  std::vector<HloInstruction*> CollectUnreachableRoots() const;
+
+  string name_;
   HloInstruction* root_instruction_;
+
+  // A tag shows if this is a fusion computation.
+  bool is_fusion_computation_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;

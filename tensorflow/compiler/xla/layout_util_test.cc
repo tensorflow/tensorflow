@@ -14,11 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-
 #include "tensorflow/compiler/xla/legacy_flags/layout_util_flags.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace {
@@ -114,8 +113,8 @@ TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleDifferentRank) {
   Shape dst = MakeShapeWithLayout(F32, {2, 3}, {1, 0});
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_MATCH(status.error_message(),
-               testing::ContainsRegex("cannot copy layout from shape"));
+  EXPECT_THAT(status.error_message(),
+              ::testing::ContainsRegex("cannot copy layout from shape"));
 }
 
 TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleTuple) {
@@ -133,8 +132,8 @@ TEST_F(LayoutUtilTest, CopyLayoutNotCompatibleTuple) {
 
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_MATCH(status.error_message(),
-               testing::ContainsRegex("cannot copy layout from shape"));
+  EXPECT_THAT(status.error_message(),
+              ::testing::ContainsRegex("cannot copy layout from shape"));
 }
 
 TEST_F(LayoutUtilTest, CopyLayoutBogusLayout) {
@@ -145,9 +144,10 @@ TEST_F(LayoutUtilTest, CopyLayoutBogusLayout) {
 
   auto status = LayoutUtil::CopyLayoutBetweenShapes(src, &dst);
   EXPECT_FALSE(status.ok());
-  EXPECT_MATCH(status.error_message(),
-               testing::ContainsRegex("layout minor_to_major field contains .* "
-                                      "elements, but shape is rank"));
+  EXPECT_THAT(
+      status.error_message(),
+      ::testing::ContainsRegex("layout minor_to_major field contains .* "
+                               "elements, but shape is rank"));
 }
 
 TEST_F(LayoutUtilTest, ClearLayoutTuple) {

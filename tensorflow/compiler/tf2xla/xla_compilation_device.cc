@@ -18,6 +18,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/platform/mem.h"
@@ -75,14 +76,27 @@ XlaCompilationDevice::XlaCompilationDevice(const SessionOptions& options,
           options,
           Device::BuildDeviceAttributes(
               "", type, Bytes(256 << 20), DeviceLocality(),
-              strings::StrCat("device: XLA compilation device ", type.type())),
-          cpu_allocator()),
+              strings::StrCat("device: XLA compilation device ", type.type()))),
       allocator_(new XlaCompilationAllocator()) {}
 
 XlaCompilationDevice::~XlaCompilationDevice() {}
 
 Allocator* XlaCompilationDevice::GetAllocator(AllocatorAttributes attr) {
   return allocator_.get();
+}
+
+void XlaCompilationDevice::Compute(OpKernel* op_kernel,
+                                   OpKernelContext* context) {
+  VLOG(1) << "XlaCompilationDevice::Compute "
+          << SummarizeNodeDef(op_kernel->def());
+  auto* b = XlaContext::Get(context).builder();
+  xla::OpMetadata metadata;
+  metadata.set_op_type(op_kernel->type_string());
+  metadata.set_op_name(op_kernel->name());
+  b->SetOpMetadata(metadata);
+  op_kernel->Compute(context);
+  b->ClearOpMetadata();
+  VLOG(2) << "Done";
 }
 
 Status XlaCompilationDevice::Sync() { return Status::OK(); }
@@ -94,13 +108,10 @@ Status XlaCompilationDevice::MakeTensorFromProto(
       "XLACompilationDevice::MakeTensorFromProto should not be called");
 }
 
-XlaExpression::XlaExpression() : has_constant_value_(false) {}
+XlaExpression::XlaExpression() = default;
 
 void XlaExpression::set_handle(const xla::ComputationDataHandle& h) {
   handle_ = h;
-}
-const xla::ComputationDataHandle& XlaExpression::handle() const {
-  return handle_;
 }
 
 void XlaExpression::set_constant_value(Tensor value) {

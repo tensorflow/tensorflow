@@ -38,7 +38,8 @@ void MetricTableReport::SetEntryName(string entry_name) {
 
 void MetricTableReport::SetShowAllEntries() {
   max_entries_to_show_ = std::numeric_limits<int64>::max();
-  max_metric_proportion_to_show = 1.1;  // more than 100%
+  max_entries_per_category_to_show_ = std::numeric_limits<int64>::max();
+  max_metric_proportion_to_show_ = 1.1;  // more than 100%
 }
 
 void MetricTableReport::SetShowCategoryTable() { show_category_table_ = true; }
@@ -141,7 +142,7 @@ void MetricTableReport::AppendCategoryTable() {
   int64 categories_shown = 0;
   for (const auto& category : categories) {
     if (categories_shown >= max_entries_to_show_ ||
-        metric_sum / expected_metric_sum_ > max_metric_proportion_to_show) {
+        metric_sum / expected_metric_sum_ > max_metric_proportion_to_show_) {
       break;
     }
     ++categories_shown;
@@ -149,22 +150,21 @@ void MetricTableReport::AppendCategoryTable() {
 
     // Show the category.
     string text = category.category_text;
-    if (text == "") {
+    if (text.empty()) {
       text = "[no category]";
     }
     tensorflow::strings::StrAppend(&text, " (", category.entries.size(), " ",
                                    entry_name_, ")");
     AppendTableRow(text, category.metric_sum, metric_sum);
 
-    // Show the top few entries in the category.
-    const int64 kMaxToShow = 5;
+    // Show the top entries in the category.
     const char* const kIndentPrefix = "                              * ";
-    int64 entries_to_show =
-        std::min<int64>(kMaxToShow, category.entries.size());
-    if (category.entries.size() == kMaxToShow + 1) {
+    int64 entries_to_show = std::min<int64>(max_entries_per_category_to_show_,
+                                            category.entries.size());
+    if (category.entries.size() == entries_to_show + 1) {
       // May as well show the last entry on the line that would otherwise say
       // that there is a single entry not shown.
-      entries_to_show = category.entries.size();
+      ++entries_to_show;
     }
     for (int64 i = 0; i < entries_to_show; ++i) {
       AppendLine(kIndentPrefix, MetricPercent(category.entries[i]->metric), " ",
@@ -193,14 +193,14 @@ void MetricTableReport::AppendEntryTable() {
   int64 entries_shown = 0;
   for (const auto& entry : entries_) {
     if (entries_shown >= max_entries_to_show_ ||
-        metric_sum / expected_metric_sum_ > max_metric_proportion_to_show) {
+        metric_sum / expected_metric_sum_ > max_metric_proportion_to_show_) {
       break;
     }
     ++entries_shown;
     metric_sum += entry.metric;
 
     string text = entry.text;
-    if (text == "") {
+    if (text.empty()) {
       text = "[no entry text]";
     }
     AppendTableRow(text, entry.metric, metric_sum);
@@ -220,7 +220,14 @@ void MetricTableReport::AppendTableRow(const string& text, const double metric,
   const int64 max_metric_string_size =
       MetricString(expected_metric_sum_).size();
   string metric_string = MetricString(metric);
-  string padding(max_metric_string_size - metric_string.size() + 1, ' ');
+
+  // Don't try to make a gigantic string and crash if expected_metric_sum_ is
+  // wrong somehow.
+  int64 padding_len = 1;
+  if (max_metric_string_size >= metric_string.size()) {
+    padding_len += max_metric_string_size - metric_string.size();
+  }
+  string padding(padding_len, ' ');
   AppendLine(padding, metric_string, " (", MetricPercent(metric), " Σ",
              MetricPercent(running_metric_sum), ")   ", text);
 }

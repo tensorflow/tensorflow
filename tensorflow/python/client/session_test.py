@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import os
+import sys
 import threading
 import time
 
@@ -28,6 +30,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
@@ -42,12 +45,16 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+# Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
+ops._USE_C_API = True
 
 # NOTE(mrry): Dummy shape registration for ops used in the tests, since they
 # don't have C++ op registrations on which to attach C++ shape fns.
@@ -56,6 +63,7 @@ ops.RegisterShape('ConstructionFails')(common_shapes.unknown_shape)
 
 class SessionTest(test_util.TensorFlowTestCase):
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testUseExistingGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
       a = constant_op.constant(6.0, shape=[1, 1])
@@ -65,6 +73,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       result = c.eval()
       self.assertAllEqual(result, [[42.0]])
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testUseDefaultGraph(self):
     with ops.Graph().as_default(), ops.device('/cpu:0'):
       a = constant_op.constant(6.0, shape=[1, 1])
@@ -131,6 +140,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesOpError(lambda e: e.op == a.op):
         a.eval()
 
+  @test_util.disable_c_api  # Partial runs don't work with C API
   def testErrorCodeWithNoNodeDef(self):
     with session.Session() as s:
       a = array_ops.placeholder(dtypes.float32, shape=[])
@@ -144,6 +154,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         # Run with a bogus handle.
         s.partial_run('foo', r1, feed_dict={a: 1, b: 2})
 
+  @test_util.disable_c_api  # No shape registration for 'ConstructionFails'
   def testOpConstructionErrorPayload(self):
     with session.Session():
       failing_op = ops.get_default_graph().create_op(
@@ -186,12 +197,19 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaises(TypeError):
         s.run({'a': a, 'b': None})
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchSingleton(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
       res = sess.run(a)
       self.assertEqual(42.0, res)
       res = sess.run(a.op)  # An op, not a tensor.
+      self.assertEqual(None, res)
+      tensor_runner = sess.make_callable(a)
+      res = tensor_runner()
+      self.assertEqual(42.0, res)
+      op_runner = sess.make_callable(a.op)
+      res = op_runner()
       self.assertEqual(None, res)
 
   def testFetchSingletonByName(self):
@@ -202,6 +220,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       res = sess.run(a.op)  # An op, not a tensor.
       self.assertEqual(None, res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchList(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
@@ -211,13 +230,13 @@ class SessionTest(test_util.TensorFlowTestCase):
       assign = v.assign([63.0])
       res = sess.run([a, b, c, a.name, assign.op])
       self.assertTrue(isinstance(res, list))
-      self.assertEqual(42.0, res[0])
-      self.assertEqual(None, res[1])
-      self.assertEqual(44.0, res[2])
-      self.assertEqual(42.0, res[3])
-      self.assertEqual(None, res[4])
-      self.assertEqual(63.0, sess.run(v))
+      self.assertEqual([42.0, None, 44.0, 42.0, None], res)
+      list_runner = sess.make_callable([a, b, c, a.name, assign.op])
+      res = list_runner()
+      self.assertTrue(isinstance(res, list))
+      self.assertEqual([42.0, None, 44.0, 42.0, None], res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchTuple(self):
     with session.Session() as sess:
       a = constant_op.constant(42.0)
@@ -225,11 +244,13 @@ class SessionTest(test_util.TensorFlowTestCase):
       c = constant_op.constant(44.0)
       res = sess.run((a, b, c, a.name))
       self.assertTrue(isinstance(res, tuple))
-      self.assertEqual(42.0, res[0])
-      self.assertEqual(None, res[1])
-      self.assertEqual(44.0, res[2])
-      self.assertEqual(42.0, res[3])
+      self.assertEqual((42.0, None, 44.0, 42.0), res)
+      tuple_runner = sess.make_callable((a, b, c, a.name))
+      res = tuple_runner()
+      self.assertTrue(isinstance(res, tuple))
+      self.assertEqual((42.0, None, 44.0, 42.0), res)
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFetchNamedTuple(self):
     # pylint: disable=invalid-name
     ABC = collections.namedtuple('ABC', ['a', 'b', 'c'])
@@ -239,6 +260,12 @@ class SessionTest(test_util.TensorFlowTestCase):
       b = control_flow_ops.no_op()  # An op, not a tensor.
       c = constant_op.constant(44.0)
       res = sess.run(ABC(a, b, c))
+      self.assertTrue(isinstance(res, ABC))
+      self.assertEqual(42.0, res.a)
+      self.assertEqual(None, res.b)
+      self.assertEqual(44.0, res.c)
+      namedtuple_runner = sess.make_callable(ABC(a, b, c))
+      res = namedtuple_runner()
       self.assertTrue(isinstance(res, ABC))
       self.assertEqual(42.0, res.a)
       self.assertEqual(None, res.b)
@@ -841,6 +868,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       v_val = v.eval()
       self.assertAllEqual([[6.0, 6.0, 6.0]], v_val)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testExtendWithGroupBy(self):
     with session.Session() as s:
       a = constant_op.constant(1.0, shape=[1, 2])
@@ -1052,6 +1080,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
         sess.run({})
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testNotEntered(self):
     # pylint: disable=protected-access
     self.assertEqual(ops._default_session_stack.get_default(), None)
@@ -1067,6 +1096,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           ValueError, lambda e: 'No default session is registered.' in str(e)):
         c_2.eval()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInteractive(self):
     with ops.device('/cpu:0'):
       sess = session.InteractiveSession()
@@ -1079,6 +1109,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[24.0]], e.eval())
       sess.close()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInteractivePlacePrunedGraph(self):
     sess = session.InteractiveSession()
 
@@ -1100,6 +1131,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       a.eval()
     sess.close()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testDefaultSessionPlacePrunedGraph(self):
     sess = session.Session()
 
@@ -1121,6 +1153,7 @@ class SessionTest(test_util.TensorFlowTestCase):
 
     sess.close()
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testSharedGraph(self):
     with ops.Graph().as_default() as g, ops.device('/cpu:0'):
       a = constant_op.constant(1.0, shape=[1, 2])
@@ -1140,6 +1173,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(b_val, [[2.0, 2.0, 2.0]])
       self.assertAllEqual(a2_val, [[1.0, 1.0]])
 
+  @test_util.disable_c_api  # session.make_callable() doesn't work with C API
   def testFeedAndFetch(self):
     with session.Session() as sess:
       for dtype in [dtypes.float16,
@@ -1178,6 +1212,11 @@ class SessionTest(test_util.TensorFlowTestCase):
           # Also check that we can get both back.
           out_v, feed_v = sess.run([out_t, feed_t],
                                    feed_dict={feed_t: np_array})
+          self.assertAllEqual(np_array, out_v)
+          self.assertAllEqual(np_array, feed_v)
+
+          feed_fetch_runner = sess.make_callable([out_t, feed_t], [feed_t])
+          out_v, feed_v = feed_fetch_runner(np_array)
           self.assertAllEqual(np_array, out_v)
           self.assertAllEqual(np_array, feed_v)
 
@@ -1323,128 +1362,13 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess_2.run(c_1.op)
       self.assertEqual(2.0, sess_2.run(c_2))
 
-  def runTestPartialRun(self, sess):
-    a = array_ops.placeholder(dtypes.float32, shape=[])
-    b = array_ops.placeholder(dtypes.float32, shape=[])
-    c = array_ops.placeholder(dtypes.float32, shape=[])
-    r1 = math_ops.add(a, b)
-    r2 = math_ops.multiply(r1, c)
-
-    h = sess.partial_run_setup([r1, r2], [a, b, c])
-    res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
-    self.assertEqual(3, res)
-    temp = res * 17
-    res = sess.partial_run(h, r2, feed_dict={c: temp})
-    self.assertEqual(153, res)
-
-    # Call again on the same graph.
-    h2 = sess.partial_run_setup([r1, r2], [a, b, c])
-    res = sess.partial_run(h2, r1, feed_dict={a: 1, b: 2})
-    self.assertEqual(3, res)
-    temp = res * 18
-    res = sess.partial_run(h2, r2, feed_dict={c: temp})
-    self.assertEqual(162, res)
-
-  def runTestPartialRunIncomplete(self, sess):
-    a = array_ops.placeholder(dtypes.float32, shape=[])
-    b = array_ops.placeholder(dtypes.float32, shape=[])
-    c = array_ops.placeholder(dtypes.float32, shape=[])
-    r1 = math_ops.add(a, b)
-    r2 = math_ops.multiply(r1, c)
-
-    h = sess.partial_run_setup([r1, r2], [a, b, c])
-    res = sess.partial_run(h, r1, feed_dict={a: 1, b: 2})
-    self.assertEqual(3, res)
-
-  def runTestConcurrentPartialRun(self, sess):
-    a = array_ops.placeholder(dtypes.float32, shape=[])
-    b = array_ops.placeholder(dtypes.float32, shape=[])
-    c = array_ops.placeholder(dtypes.float32, shape=[])
-    r1 = math_ops.add(a, b)
-    r2 = math_ops.multiply(r1, c)
-
-    h1 = sess.partial_run_setup([r1], [a, b, c])
-    h2 = sess.partial_run_setup([r1, r2], [a, b, c])
-    res = sess.partial_run(h1, r1, feed_dict={a: 1, b: 2})
-    self.assertEqual(3, res)
-    temp = res * 19
-    res = sess.partial_run(h2, r1, feed_dict={a: temp, b: 9})
-    self.assertEqual(66, res)
-    res = sess.partial_run(h2, r2, feed_dict={c: 7})
-    self.assertEqual(462, res)
-
-  def runTestManyPartialRun(self, sess):
-    steps = 200
-    inputs = []
-    outputs = []
-    a = constant_op.constant(2.0, dtypes.float32)
-    for i in xrange(steps):
-      inputs.append(array_ops.placeholder(dtypes.float32, shape=[]))
-      a = math_ops.multiply(a, inputs[i])
-      outputs.append(a)
-
-    h = sess.partial_run_setup(outputs, inputs)
-    for i in xrange(steps):
-      res = sess.partial_run(h, outputs[i], feed_dict={inputs[i]: 1.0})
-    self.assertEqual(2.0, res)
-
-    feed_dict = {}
-    for i in xrange(steps):
-      feed_dict[inputs[i]] = 1.0
-    res = sess.run(outputs, feed_dict)
-    self.assertEqual(steps, len(res))
-    self.assertEqual(2.0, res[-1])
-
-  def runTestRunAndPartialRun(self, sess):
-    a = constant_op.constant(2.0, dtypes.float32)
-    b = a * 2
-    c = b * 3
-    r1 = sess.run([b, c])
-    h = sess.partial_run_setup([b, c], [])
-    r2 = sess.partial_run(h, [b, c])
-    self.assertEqual(r1, r2)
-
-  def testPartialRunDirect(self):
-    self.runTestPartialRun(session.Session())
-
-  def testPartialRunIncompleteDirect(self):
-    self.runTestPartialRunIncomplete(session.Session())
-
-  def testConcurrentPartialRunDirect(self):
-    self.runTestConcurrentPartialRun(session.Session())
-
-  def testManyPartialRunDirect(self):
-    self.runTestManyPartialRun(session.Session())
-
-  def testRunAndPartialRunDirect(self):
-    self.runTestRunAndPartialRun(session.Session())
-
-  def testPartialRunDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestPartialRun(session.Session(server.target))
-
-  def testPartialRunIncompleteDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestPartialRunIncomplete(session.Session(server.target))
-
-  def testConcurrentPartialRunDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestConcurrentPartialRun(session.Session(server.target))
-
-  def testManyPartialRunDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestManyPartialRun(session.Session(server.target))
-
-  def testRunAndPartialRunDist(self):
-    server = server_lib.Server.create_local_server()
-    self.runTestRunAndPartialRun(session.Session(server.target))
-
   def testFeedDictKeyException(self):
     with session.Session() as sess:
       a = constant_op.constant(1.0, dtypes.float32, name='a')
       with self.assertRaisesRegexp(TypeError, 'Cannot interpret feed_dict'):
         sess.run(a, feed_dict={'a': [2.0]})
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testPerStepTrace(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -1465,6 +1389,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         self.assertTrue(run_metadata.HasField('step_stats'))
         self.assertEquals(len(run_metadata.step_stats.dev_stats), 1)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testRunOptionsRunMetadata(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -1500,6 +1425,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, 'may not be fed'):
         sess.run(reshaped_tensor, feed_dict={new_shape: [3, 7]})
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInferShapesFalse(self):
     with ops.Graph().as_default(), ops.device('/cpu:0'):
       a = constant_op.constant([[1, 2]])
@@ -1508,6 +1434,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       # Avoid lint error regarding 'unused' var a.
       self.assertTrue(a == a)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testInferShapesTrue(self):
     config = config_pb2.ConfigProto(
         graph_options=config_pb2.GraphOptions(infer_shapes=True))
@@ -1518,6 +1445,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       # Avoid lint error regarding 'unused' var a.
       self.assertTrue(a == a)
 
+  @test_util.disable_c_api  # Operation._set_device doesn't work with C API
   def testBuildCostModel(self):
     run_options = config_pb2.RunOptions()
     config = config_pb2.ConfigProto(
@@ -1597,6 +1525,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess.run(enqueue_op)
       self.assertEqual(sess.run(q.size()), num_epochs * 2)
 
+  @test_util.disable_c_api  # Partial runs don't work with C API
   def testRegisterFetchAndFeedConversionFunctions(self):
     class SquaredTensor(object):
       def __init__(self, tensor):
@@ -1623,6 +1552,151 @@ class SessionTest(test_util.TensorFlowTestCase):
       partial_run = sess.partial_run_setup([squared_tensor], [])
       squared_eval = sess.partial_run(partial_run, squared_tensor)
       self.assertAllClose(np2 * np2, squared_eval)
+
+  def testDefaultLogDevicePlacement(self):
+    class CaptureStderr(str):
+      """Class to capture stderr from C++ shared library."""
+
+      def __enter__(self):
+        self._esc = compat.as_str('\b')
+        self._output = compat.as_str('')
+        self._stderr = sys.stderr
+        self._fd = self._stderr.fileno()
+        self._out_pipe, in_pipe = os.pipe()
+        # Save the original io stream.
+        self._dup_fd = os.dup(self._fd)
+        # Replace the original io stream with in pipe.
+        os.dup2(in_pipe, self._fd)
+        return self
+
+      def __exit__(self, *args):
+        self._stderr.write(self._esc)
+        self._stderr.flush()
+        self.read()
+        os.close(self._out_pipe)
+        # Restore the original io stream.
+        os.dup2(self._dup_fd, self._fd)
+
+      def read(self):
+        while True:
+          data = os.read(self._out_pipe, 1)
+          if not data or compat.as_str(data) == self._esc:
+            break
+          self._output += compat.as_str(data)
+
+      def __str__(self):
+        return self._output
+
+    # Passing the config to the server, but not the session should still result
+    # in logging device placement.
+    config = config_pb2.ConfigProto(log_device_placement=True)
+    server = server_lib.Server.create_local_server(config=config)
+    a = constant_op.constant(1)
+    b = constant_op.constant(2)
+    c = a + b
+    with session.Session(server.target) as sess:
+      with CaptureStderr() as log:
+        sess.run(c)
+      # Ensure that we did log device placement.
+      self.assertTrue('/job:local/replica:0/task:0/cpu:0' in str(log), str(log))
+
+  def testLocalMasterSessionTimeout(self):
+    # Test that the timeout passed in a config to the session works correctly.
+    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
+    server = server_lib.Server.create_local_server()
+    q = data_flow_ops.FIFOQueue(1, dtypes.float32)
+    dequeued_t = q.dequeue()
+
+    with session.Session(server.target, config=config) as sess:
+      # Intentionally do not run any enqueue_ops so that dequeue will block
+      # until operation_timeout_in_ms.
+      with self.assertRaises(errors.DeadlineExceededError):
+        sess.run(dequeued_t)
+
+  def testDefaultServerTimeout(self):
+    # Test that the default server config timeout gets used when no Session
+    # config is provided.
+    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
+    server = server_lib.Server.create_local_server(config=config)
+    q = data_flow_ops.FIFOQueue(1, dtypes.float32)
+    dequeued_t = q.dequeue()
+
+    with session.Session(server.target) as sess:
+      # Intentionally do not run any enqueue_ops so that dequeue will block
+      # until operation_timeout_in_ms.
+      with self.assertRaises(errors.DeadlineExceededError):
+        sess.run(dequeued_t)
+
+  def runTestBuildGraphError(self, sess):
+    # Ensure that errors from building the graph get propagated.
+    data = array_ops.placeholder(dtypes.float32, shape=[])
+    enter_1 = control_flow_ops.enter(data, 'foo_1', False)
+    enter_2 = control_flow_ops.enter(data, 'foo_2', False)
+    res = math_ops.add(enter_1, enter_2)
+    with self.assertRaisesOpError('has inputs from different frames'):
+      sess.run(res, feed_dict={data: 1.0})
+
+  def testBuildGraphErrorDirect(self):
+    self.runTestBuildGraphError(session.Session())
+
+  def testBuildGraphErrorDist(self):
+    server = server_lib.Server.create_local_server()
+    self.runTestBuildGraphError(session.Session(server.target))
+
+  def testGraphOptimizer(self):
+    rewrite_options = rewriter_config_pb2.RewriterConfig(
+        disable_model_pruning=False, constant_folding=True)
+    graph_options = config_pb2.GraphOptions(
+        rewrite_options=rewrite_options, build_cost_model=1)
+    config = config_pb2.ConfigProto(graph_options=graph_options)
+
+    with ops.Graph().as_default() as g:
+      r1 = random_ops.random_normal(shape=[2, 3], name='R1')
+      r2 = random_ops.random_normal(shape=[2, 3], name='R2')
+      copy1 = array_ops.stop_gradient(r1)
+      copy2 = array_ops.identity(r2)
+      result = copy1 + copy2
+
+      with session.Session(graph=g, config=config) as sess:
+        metadata = config_pb2.RunMetadata()
+        sess.run(result, run_metadata=metadata)
+
+    # Check that we optimized the graph by looking at the cost model: the add
+    # node should have been reconnected directly to the R1 and R2 nodes.
+    found_valid_nodes = 0
+    for node in metadata.cost_graph.node:
+      if node.name == 'R1':
+        r1_cost_id = node.id
+        found_valid_nodes += 1
+      if node.name == 'R2':
+        r2_cost_id = node.id
+        found_valid_nodes += 1
+      if node.name == 'add':
+        if node.input_info[0].preceding_node == r1_cost_id:
+          self.assertEqual(node.input_info[1].preceding_node, r2_cost_id)
+          found_valid_nodes += 1
+        elif node.input_info[0].preceding_node == r2_cost_id:
+          self.assertEqual(node.input_info[1].preceding_node, r1_cost_id)
+          found_valid_nodes += 1
+    self.assertEqual(3, found_valid_nodes)
+
+  def testDeviceAttributes(self):
+    attrs = session._DeviceAttributes(
+        '/job:worker/replica:0/task:3/device:CPU:2', 'TYPE', 1337)
+    self.assertEqual(1337, attrs.memory_limit_bytes)
+    self.assertEqual('/job:worker/replica:0/task:3/device:CPU:2', attrs.name)
+    self.assertEqual('TYPE', attrs.device_type)
+    str_repr = '%s' % attrs
+    self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
+
+  def testDeviceAttributesCanonicalization(self):
+    attrs = session._DeviceAttributes('/job:worker/replica:0/task:3/cpu:1',
+                                      'TYPE', 1337)
+    self.assertEqual(1337, attrs.memory_limit_bytes)
+    self.assertEqual('/job:worker/replica:0/task:3/device:CPU:1', attrs.name)
+    self.assertEqual('TYPE', attrs.device_type)
+    str_repr = '%s' % attrs
+    self.assertTrue(str_repr.startswith('_DeviceAttributes'), str_repr)
 
 
 if __name__ == '__main__':

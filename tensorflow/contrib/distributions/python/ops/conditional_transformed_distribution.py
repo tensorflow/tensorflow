@@ -18,9 +18,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.distributions.python.ops import conditional_distribution
-from tensorflow.contrib.distributions.python.ops import distribution_util
-from tensorflow.contrib.distributions.python.ops import transformed_distribution
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import transformed_distribution
+from tensorflow.python.ops.distributions import util as distribution_util
 
 
 # pylint: disable=protected-access

@@ -21,6 +21,7 @@ from __future__ import print_function
 from abc import ABCMeta
 
 from tensorflow.contrib.learn.python import learn
+from tensorflow.contrib.learn.python.learn.dataframe import transform
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 
@@ -123,11 +124,11 @@ class MockTransform(learn.TensorFlowTransform):
   def name(self):
     return "MockTransform"
 
-  @learn.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def param_one(self):
     return self._param_one
 
-  @learn.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def param_two(self):
     return self._param_two
 
@@ -184,7 +185,7 @@ class MockTwoOutputTransform(MockTransform):
 
   _mock_output_names = ["out1", "out2"]
 
-  @learn.parameter
+  @transform._parameter  # pylint: disable=protected-access
   def param_three(self):
     return self._param_three
 

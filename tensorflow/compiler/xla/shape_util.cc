@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include "tensorflow/compiler/xla/index_util.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -120,7 +122,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   for (const auto& shape : parameters) {
     *program_shape.add_parameters() = shape;
   }
-  *program_shape.mutable_result() = result;
+  *program_shape.mutable_result() = std::move(result);
   return program_shape;
 }
 
@@ -200,7 +202,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ void ShapeUtil::AppendMajorDimension(int bound, Shape* shape) {
-  shape->mutable_layout()->add_minor_to_major(ShapeUtil::Rank(*shape));
+  shape->mutable_layout()->add_minor_to_major(Rank(*shape));
   shape->add_dimensions(bound);
   TF_DCHECK_OK(ValidateShape(*shape));
 }
@@ -293,7 +295,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 
   std::vector<Shape> new_elements(tuple.tuple_shapes().begin() + start,
                                   tuple.tuple_shapes().begin() + limit);
-  return ShapeUtil::MakeTupleShape(new_elements);
+  return MakeTupleShape(new_elements);
 }
 
 /* static */ bool ShapeUtil::IsOpaque(const Shape& shape) {
@@ -307,7 +309,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   if (shape.element_type() != element_type) {
     return false;
   }
-  if (shape.dimensions_size() != ShapeUtil::Rank(shape)) {
+  if (shape.dimensions_size() != Rank(shape)) {
     return false;
   }
   int64 i = 0;
@@ -321,7 +323,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ int64 ShapeUtil::ElementsIn(const Shape& shape) {
-  CHECK_EQ(shape.dimensions_size(), ShapeUtil::Rank(shape));
+  CHECK_EQ(shape.dimensions_size(), Rank(shape));
   return std::accumulate<decltype(shape.dimensions().begin()), int64>(
       shape.dimensions().begin(), shape.dimensions().end(), 1LL,
       std::multiplies<int64>());
@@ -332,7 +334,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 }
 
 /* static */ bool ShapeUtil::IsScalarF32(const Shape& shape) {
-  return shape.element_type() == F32 && ShapeUtil::Rank(shape) == 0;
+  return shape.element_type() == F32 && Rank(shape) == 0;
 }
 
 /* static */ string ShapeUtil::HumanString(const Shape& shape) {
@@ -430,13 +432,12 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     }
     Shape result;
     if (layout_string.empty()) {
-      result = ShapeUtil::MakeShape(primitive_type, dimensions);
+      result = MakeShape(primitive_type, dimensions);
     } else {
       TF_ASSIGN_OR_RETURN(std::vector<int64> min2maj,
                           comma_list_to_int64s(layout_string));
       TF_RET_CHECK(dimensions.size() == min2maj.size());
-      result =
-          ShapeUtil::MakeShapeWithLayout(primitive_type, dimensions, min2maj);
+      result = MakeShapeWithLayout(primitive_type, dimensions, min2maj);
     }
     TF_DCHECK_OK(ValidateShape(result));
     return result;
@@ -466,7 +467,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
 /* static */ int64 ShapeUtil::GetDimensionNumber(const Shape& shape,
                                                  int64 dimension_number) {
   if (dimension_number < 0) {
-    dimension_number += ShapeUtil::Rank(shape);
+    dimension_number += Rank(shape);
   }
   CHECK_GE(dimension_number, 0);
   return dimension_number;
@@ -518,7 +519,7 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   }
   int64 allocated_element_count;
   if (shape.layout().padded_dimensions_size() > 0) {
-    CHECK_EQ(ShapeUtil::Rank(shape), shape.layout().padded_dimensions_size());
+    CHECK_EQ(Rank(shape), shape.layout().padded_dimensions_size());
     allocated_element_count = 1;
     for (int64 dimension_size : shape.layout().padded_dimensions()) {
       allocated_element_count *= dimension_size;
@@ -534,9 +535,9 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     const Shape& shape) {
   if (shape.element_type() == TUPLE) {
     // Tuple shape.
-    if (ShapeUtil::Rank(shape) != 0) {
+    if (Rank(shape) != 0) {
       return InvalidArgument("tuples must be rank-0; got rank %lld",
-                             ShapeUtil::Rank(shape));
+                             Rank(shape));
     }
     if (shape.dimensions_size() != 0) {
       return InvalidArgument("tuples must not have dimensions specified");
@@ -556,13 +557,13 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     return InvalidArgument("shape has invalid element type: %s",
                            shape.ShortDebugString().c_str());
   }
-  if (ShapeUtil::Rank(shape) != shape.dimensions_size()) {
+  if (Rank(shape) != shape.dimensions_size()) {
     return InvalidArgument(
         "shape's rank is mismatched with dimension count; rank=%lld "
         "dimensions_size=%d",
-        ShapeUtil::Rank(shape), shape.dimensions_size());
+        Rank(shape), shape.dimensions_size());
   }
-  for (int64 i = 0; i < ShapeUtil::Rank(shape); ++i) {
+  for (int64 i = 0; i < Rank(shape); ++i) {
     int64 dimension = shape.dimensions(i);
     if (dimension < 0) {
       return InvalidArgument(
@@ -615,6 +616,11 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
     return_shape = return_shape->mutable_tuple_shapes(i);
   }
   return return_shape;
+}
+
+/* static */
+bool ShapeUtil::IsLeafIndex(const Shape& shape, const ShapeIndex& index) {
+  return !IsTuple(GetSubshape(shape, index));
 }
 
 /* static */ Shape ShapeUtil::StripDegenerateDimensions(const Shape& shape) {
@@ -675,7 +681,7 @@ namespace {
 // Helper for ForEachSubshape which visits the subshapes of the given shape in
 // DFS pre-order starting with the index.
 Status ForEachSubshapeHelper(const Shape& shape,
-                             const ShapeUtil::VisitorFunction func,
+                             const ShapeUtil::StatusVisitorFunction& func,
                              ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(shape)) {
@@ -692,7 +698,7 @@ Status ForEachSubshapeHelper(const Shape& shape,
 // Helper for ForEachMutableSubshape which visits the subshapes of the given
 // shape in DFS pre-order starting with the index.
 Status ForEachMutableSubshapeHelper(
-    Shape* shape, const ShapeUtil::MutatingVisitorFunction func,
+    Shape* shape, const ShapeUtil::MutatingStatusVisitorFunction& func,
     ShapeIndex* index) {
   TF_RETURN_IF_ERROR(func(shape, *index));
   if (ShapeUtil::IsTuple(*shape)) {
@@ -708,14 +714,40 @@ Status ForEachMutableSubshapeHelper(
 
 }  // namespace
 
-/* static */ Status ShapeUtil::ForEachSubshape(const Shape& shape,
-                                               VisitorFunction func) {
+/* static */ void ShapeUtil::ForEachSubshape(const Shape& shape,
+                                             const VisitorFunction& func) {
+  ShapeIndex index;
+  ForEachSubshapeHelper(
+      shape,
+      [&func](const Shape& subshape, const ShapeIndex& index) {
+        func(subshape, index);
+        return Status::OK();
+      },
+      &index)
+      .IgnoreError();
+}
+
+/* static */ void ShapeUtil::ForEachMutableSubshape(
+    Shape* shape, const MutatingVisitorFunction& func) {
+  ShapeIndex index;
+  ForEachMutableSubshapeHelper(
+      shape,
+      [&func](Shape* subshape, const ShapeIndex& index) {
+        func(subshape, index);
+        return Status::OK();
+      },
+      &index)
+      .IgnoreError();
+}
+
+/* static */ Status ShapeUtil::ForEachSubshapeWithStatus(
+    const Shape& shape, const StatusVisitorFunction& func) {
   ShapeIndex index;
   return ForEachSubshapeHelper(shape, func, &index);
 }
 
-/* static */ Status ShapeUtil::ForEachMutableSubshape(
-    Shape* shape, MutatingVisitorFunction func) {
+/* static */ Status ShapeUtil::ForEachMutableSubshapeWithStatus(
+    Shape* shape, const MutatingStatusVisitorFunction& func) {
   ShapeIndex index;
   return ForEachMutableSubshapeHelper(shape, func, &index);
 }
@@ -728,9 +760,17 @@ Status ForEachMutableSubshapeHelper(
     new_shape.add_dimensions(dim);
   }
   if (shape.has_layout()) {
-    new_shape.mutable_layout()->clear_minor_to_major();
+    Layout* new_layout = new_shape.mutable_layout();
+    new_layout->clear_minor_to_major();
     for (auto index : Permute(permutation, shape.layout().minor_to_major())) {
-      new_shape.mutable_layout()->add_minor_to_major(index);
+      new_layout->add_minor_to_major(index);
+    }
+    if (shape.layout().padded_dimensions_size() > 0) {
+      new_layout->clear_padded_dimensions();
+      for (auto dim :
+           Permute(permutation, shape.layout().padded_dimensions())) {
+        new_layout->add_padded_dimensions(dim);
+      }
     }
   }
   return new_shape;
@@ -747,27 +787,28 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
   // and unmodified_dim_pair have size >1. Otherwise, returns true and appends
   // the degerenate input/output dimensions in the gap to
   // deleted_indices/inserted_indices respectively.
-  auto check_modified_dims = [&shape_pre, &shape_post, &deleted_indices,
-                              &inserted_indices](
-      std::pair<int64, int64> prior_unmodified_dim_pair,
-      std::pair<int64, int64> unmodified_dim_pair) {
-    for (int64 modified_input_dim = prior_unmodified_dim_pair.first + 1;
-         modified_input_dim < unmodified_dim_pair.first; ++modified_input_dim) {
-      if (shape_pre.dimensions(modified_input_dim) > 1) {
-        return false;
-      }
-      deleted_indices.push_back(modified_input_dim);
-    }
-    for (int64 modified_output_dim = prior_unmodified_dim_pair.second + 1;
-         modified_output_dim < unmodified_dim_pair.second;
-         ++modified_output_dim) {
-      if (shape_post.dimensions(modified_output_dim) > 1) {
-        return false;
-      }
-      inserted_indices.push_back(modified_output_dim);
-    }
-    return true;
-  };
+  auto check_modified_dims =
+      [&shape_pre, &shape_post, &deleted_indices, &inserted_indices](
+          std::pair<int64, int64> prior_unmodified_dim_pair,
+          std::pair<int64, int64> unmodified_dim_pair) {
+        for (int64 modified_input_dim = prior_unmodified_dim_pair.first + 1;
+             modified_input_dim < unmodified_dim_pair.first;
+             ++modified_input_dim) {
+          if (shape_pre.dimensions(modified_input_dim) > 1) {
+            return false;
+          }
+          deleted_indices.push_back(modified_input_dim);
+        }
+        for (int64 modified_output_dim = prior_unmodified_dim_pair.second + 1;
+             modified_output_dim < unmodified_dim_pair.second;
+             ++modified_output_dim) {
+          if (shape_post.dimensions(modified_output_dim) > 1) {
+            return false;
+          }
+          inserted_indices.push_back(modified_output_dim);
+        }
+        return true;
+      };
 
   std::vector<std::pair<int64, int64>> unmodified_dims =
       DimensionsUnmodifiedByReshape(shape_pre, shape_post);
@@ -783,8 +824,7 @@ ShapeUtil::InsertedOrDeleted1SizedDimensions(const Shape& shape_pre,
     auto unmodified_dim_pair =
         i < unmodified_dims.size()
             ? unmodified_dims[i]
-            : std::make_pair(ShapeUtil::Rank(shape_pre),
-                             ShapeUtil::Rank(shape_post));
+            : std::make_pair(Rank(shape_pre), Rank(shape_post));
     if (!check_modified_dims(prior_unmodified_dim_pair, unmodified_dim_pair)) {
       return nil;
     }
@@ -859,9 +899,8 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     return false;
   }
 
-  CHECK_EQ(ShapeUtil::ElementsIn(input_shape),
-           ShapeUtil::ElementsIn(output_shape));
-  if (ShapeUtil::ElementsIn(input_shape) == 0) {
+  CHECK_EQ(ElementsIn(input_shape), ElementsIn(output_shape));
+  if (ElementsIn(input_shape) == 0) {
     return true;
   }
 
@@ -975,21 +1014,17 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     // as input_shape/output_shape and the dimension-0-major layout. These two
     // shapes are used for conversion between logical linear indices and
     // multi-dimensional indices.
-    Shape input_shape_dim0_major =
-        ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-            input_shape.element_type(), AsInt64Slice(input_shape.dimensions()));
-    Shape output_shape_dim0_major =
-        ShapeUtil::MakeShapeWithMonotonicDim0MajorLayout(
-            output_shape.element_type(),
-            AsInt64Slice(output_shape.dimensions()));
+    Shape input_shape_dim0_major = MakeShapeWithMonotonicDim0MajorLayout(
+        input_shape.element_type(), AsInt64Slice(input_shape.dimensions()));
+    Shape output_shape_dim0_major = MakeShapeWithMonotonicDim0MajorLayout(
+        output_shape.element_type(), AsInt64Slice(output_shape.dimensions()));
 
-    for (int64 input_dim = 0; input_dim < ShapeUtil::Rank(input_shape);
-         ++input_dim) {
+    for (int64 input_dim = 0; input_dim < Rank(input_shape); ++input_dim) {
       if (input_shape.dimensions(input_dim) <= 1) {
         continue;
       }
 
-      std::vector<int64> input_unit_index(ShapeUtil::Rank(input_shape), 0);
+      std::vector<int64> input_unit_index(Rank(input_shape), 0);
       input_unit_index[input_dim] = 1;
       int64 logical_linear_index =
           IndexUtil::MultidimensionalIndexToLinearIndex(input_shape_dim0_major,
@@ -1011,6 +1046,140 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   };
   return check_input_unit_indices(input_shape, output_shape) &&
          check_input_unit_indices(output_shape, input_shape);
+}
+
+/* static */ tensorflow::gtl::optional<Shape> ShapeUtil::AlignLayouts(
+    const Shape& input_shape, const Shape& output_shape) {
+  int64 input_rank = Rank(input_shape);
+  int64 output_rank = Rank(output_shape);
+
+  // First, calculate an alignment of the dimensions. A consecutive sequence of
+  // input dimensions and output dimensions belong to the same alignment part if
+  // the products of their dimension bounds are the same. In the easiest case,
+  // an alignment part consists of one input dimension and one output dimension
+  // which both have the same dimension bound. An alignment part specifies which
+  // dimensions need to be kept together in a physical layout if we want a
+  // reshape to be a bitcast. The order of the alignment parts is defined by the
+  // physical layout of the input shape, so when we construct the layout for the
+  // output shape we just process the alignment parts in this order, and then
+  // layout the dimensions belonging to each part in descending (major to minor)
+  // order.
+
+  // Stores the input and output dimension numbers where each alignment part
+  // starts.
+  std::vector<std::pair<int64, int64>> alignment;
+  alignment.push_back({0, 0});
+
+  // Stores a mapping from the input dimension to the alignment part it belongs
+  // to.
+  std::vector<int64> dimension_to_alignment_index(input_rank);
+  int64 input_dimension_product = 1, output_dimension_product = 1;
+  for (int64 i = 0, j = 0; i < input_rank || j < output_rank;) {
+    // Check if we have reached the end of an alignment part.
+    if (input_dimension_product == output_dimension_product &&
+        input_dimension_product > 1) {
+      alignment.push_back({i, j});
+      input_dimension_product = output_dimension_product = 1;
+    }
+    if (input_dimension_product < output_dimension_product ||
+        j == output_rank) {
+      if (i == input_rank) {
+        return tensorflow::gtl::nullopt;
+      }
+      dimension_to_alignment_index[i] = alignment.size() - 1;
+      input_dimension_product *= input_shape.dimensions(i);
+      ++i;
+    } else {
+      output_dimension_product *= output_shape.dimensions(j);
+      ++j;
+    }
+  }
+  if (input_dimension_product != output_dimension_product) {
+    return tensorflow::gtl::nullopt;
+  }
+  // We also need to store an end element so that we know where the last
+  // alignment part ends.
+  alignment.push_back({input_rank, output_rank});
+
+  // Now check if the physical layout can potentially be aligned to the output
+  // shape by changing the physical layout of the output shape. We need to check
+  // that all dimension numbers that belong to the same alignment part appear
+  // consecutively, and are in descending order. However we can ignore any
+  // trivial dimension bounds of 1, because they can be placed anywhere.
+  auto input_dimension_numbers = input_shape.layout().minor_to_major();
+  std::vector<int64> output_layout;
+  output_layout.reserve(output_rank);
+  for (int64 i = 0; i < input_rank;) {
+    int64 current_dimension_number = input_dimension_numbers[i];
+
+    // Skip trivial dimensions with a bound of 1.
+    if (input_shape.dimensions(current_dimension_number) == 1) {
+      ++i;
+      continue;
+    }
+
+    // Calculate the number of non-trivial dimension bounds in the input shape
+    // belonging to the current alignment part.
+    const int64 current_alignment_index =
+        dimension_to_alignment_index[current_dimension_number];
+    // Because of the special end element that we added, we can be sure that
+    // 'current_alignment_index' is < alignment.size() - 1.
+    CHECK_LT(current_alignment_index, alignment.size() - 1);
+    int64 num_non_trivial_dimensions_in_alignment_part = 0;
+    for (int64 j = alignment[current_alignment_index].first;
+         j < alignment[current_alignment_index + 1].first; ++j) {
+      if (input_shape.dimensions(j) != 1) {
+        ++num_non_trivial_dimensions_in_alignment_part;
+      }
+    }
+
+    // Check that the following 'num_non_trivial_dimensions_in_alignment_part'
+    // dimension numbers (ignoring dimension numbers with dimension bound 1) are
+    // in descending order and belong to the current alignment part.
+    for (int64 j = 0; j < num_non_trivial_dimensions_in_alignment_part;
+         ++i, ++j) {
+      if (i == input_rank) {
+        return tensorflow::gtl::nullopt;
+      }
+      // Skip trivial dimensions with a bound of 1.
+      if (input_shape.dimensions(input_dimension_numbers[i]) == 1) {
+        --j;
+        continue;
+      }
+      // If the current dimension number belongs to a different alignment part,
+      // or the dimension numbers are not in descending order, we can return
+      // early.
+      if (dimension_to_alignment_index[input_dimension_numbers[i]] !=
+              current_alignment_index ||
+          input_dimension_numbers[i] > current_dimension_number) {
+        return tensorflow::gtl::nullopt;
+      }
+      current_dimension_number = input_dimension_numbers[i];
+    }
+
+    // The output dimension numbers that belong to the current alignment part
+    // need to appear in the same descending order as in the input. Again, we
+    // can skip dimensions with a bound of 1.
+    for (int64 j = alignment[current_alignment_index + 1].second - 1;
+         j >= alignment[current_alignment_index].second; --j) {
+      if (output_shape.dimensions(j) != 1) {
+        output_layout.push_back(j);
+      }
+    }
+  }
+  // Now add all the dimensions with dimension bound 1 at the end of
+  // 'output_layout'.
+  for (int64 i = 0; i < output_rank; ++i) {
+    if (output_shape.dimensions(i) == 1) {
+      output_layout.push_back(i);
+    }
+  }
+  CHECK_EQ(output_layout.size(), output_rank);
+  Shape output_shape_with_layout = MakeShapeWithLayout(
+      output_shape.element_type(), AsInt64Slice(output_shape.dimensions()),
+      output_layout);
+  CHECK(ReshapeIsBitcast(input_shape, output_shape_with_layout));
+  return output_shape_with_layout;
 }
 
 /* static */ Shape ShapeUtil::DeleteDimension(int64 dim_to_delete,
@@ -1045,6 +1214,36 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
     shape = DeleteDimension(dim, shape);
   }
   return shape;
+}
+
+/* static */ void ShapeUtil::ForEachIndex(
+    const Shape& shape, tensorflow::gtl::ArraySlice<int64> base,
+    tensorflow::gtl::ArraySlice<int64> count,
+    tensorflow::gtl::ArraySlice<int64> incr,
+    const IndexVisitorFunction& visitor_function) {
+  if (ShapeUtil::HasZeroElements(shape)) {
+    return;
+  }
+  DCHECK_EQ(Rank(shape), base.size());
+  DCHECK_EQ(incr.size(), base.size());
+  DCHECK_EQ(count.size(), base.size());
+  const Layout& layout = shape.layout();
+  int64 rank = layout.minor_to_major_size();
+  // Allows handling R0 arrays, such that the visitor function will be called
+  // once with the proper empty indexes.
+  int64 n = -1;
+  std::vector<int64> indexes(base.begin(), base.end());
+  while (n < rank && visitor_function(indexes)) {
+    // Increments dimensions in minor to major order.
+    for (n = 0; n < rank; ++n) {
+      int64 dim = layout.minor_to_major(n);
+      indexes[dim] += incr[dim];
+      if (indexes[dim] < base[dim] + count[dim]) {
+        break;
+      }
+      indexes[dim] = base[dim];
+    }
+  }
 }
 
 }  // namespace xla

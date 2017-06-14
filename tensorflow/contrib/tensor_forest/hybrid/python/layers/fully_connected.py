@@ -32,7 +32,7 @@ class FullyConnectedLayer(hybrid_layer.HybridLayer):
     pass
 
   def inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
       # Compute activations for the neural network.
       nn_activations = layers.fully_connected(data, self.params.layer_size)
 
@@ -49,7 +49,7 @@ class ManyToOneLayer(hybrid_layer.HybridLayer):
     pass
 
   def inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
       # Compute activations for the neural network.
       nn_activations = layers.fully_connected(data, 1)
 
@@ -65,7 +65,7 @@ class FlattenedFullyConnectedLayer(hybrid_layer.HybridLayer):
     pass
 
   def inference_graph(self, data):
-    with ops.device(self.device_assigner.get_device(self.layer_num)):
+    with ops.device(self.device_assigner):
       # Compute activations for the neural network.
       nn_activations = [layers.fully_connected(data, self.params.layer_size)]
 

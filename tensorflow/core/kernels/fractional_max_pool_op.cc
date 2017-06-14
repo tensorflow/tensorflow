@@ -245,9 +245,11 @@ class FractionalMaxPoolGradOp : public OpKernel {
     constexpr int tensor_in_and_out_dims = 4;
     std::vector<int64> input_size;
     std::vector<int64> output_size;
+    input_size.reserve(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       input_size.push_back(tensor_in.dim_size(i));
     }
+    output_size.reserve(tensor_in_and_out_dims);
     for (int i = 0; i < tensor_in_and_out_dims; ++i) {
       output_size.push_back(tensor_out.dim_size(i));
     }
@@ -256,9 +258,9 @@ class FractionalMaxPoolGradOp : public OpKernel {
     // Step 1
     // ---------
     Tensor tensor_out_dup;
-    OP_REQUIRES_OK(context,
-                   context->allocate_temp(DataTypeToEnum<T>::v(),
-                                          tensor_out.shape(), &tensor_out_dup));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_temp(
+                                {1}, DataTypeToEnum<T>::v(), tensor_out.shape(),
+                                &tensor_out_dup));
     Tensor tensor_out_arg_max;
     OP_REQUIRES_OK(context, context->allocate_temp(DataTypeToEnum<int64>::v(),
                                                    tensor_out.shape(),
@@ -343,8 +345,8 @@ class FractionalMaxPoolGradOp : public OpKernel {
     }
 
     Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, tensor_in.shape(), &output));
+    OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
+                                {0}, 0, tensor_in.shape(), &output));
     output->flat<T>().setZero();
 
     auto out_backprop_flat = out_backprop.flat<T>();

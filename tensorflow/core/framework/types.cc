@@ -169,7 +169,9 @@ bool DataTypeFromString(StringPiece sp, DataType* dt) {
   return false;
 }
 
-string DeviceTypeString(DeviceType device_type) { return device_type.type(); }
+string DeviceTypeString(const DeviceType& device_type) {
+  return device_type.type();
+}
 
 string DataTypeSliceString(const DataTypeSlice types) {
   string out;

@@ -38,6 +38,7 @@ cc_library(
         ":google_auth_provider",
         ":http_request",
         ":retrying_file_system",
+        ":retrying_utils",
         ":time_util",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
@@ -235,6 +236,19 @@ tf_cc_test(
     srcs = ["time_util_test.cc"],
     deps = [
         ":time_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "retrying_utils_test",
+    size = "small",
+    srcs = ["retrying_utils_test.cc"],
+    deps = [
+        ":retrying_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

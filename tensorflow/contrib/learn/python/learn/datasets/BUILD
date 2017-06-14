@@ -1,6 +1,6 @@
 # Prepare training and testing data.
 
-package(default_visibility = ["//tensorflow:__subpackages__"])
+package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 

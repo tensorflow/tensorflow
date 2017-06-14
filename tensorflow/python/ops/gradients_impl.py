@@ -44,6 +44,7 @@ from tensorflow.python.ops import logging_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -272,28 +273,6 @@ def _VerifyGeneratedGradients(grads, op):
   if len(grads) != len(op.inputs):
     raise ValueError("Num gradients %d generated for op %s do not match num "
                      "inputs %d" % (len(grads), op.node_def, len(op.inputs)))
-    for i in xrange(len(grads)):
-      grad = grads[i]
-      inp = op.inputs[i]
-      if grad is None:
-        continue
-      if grad.dtype.is_floating:
-        if not inp.dtype.is_floating:
-          raise TypeError("Gradient type %s generated for real-valued op %s "
-                           "with type %s must be real" %
-                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
-                            dtypes.as_dtype(inp.dtype).name))
-      elif grad.dtype.is_complex:
-        if not inp.dtype.is_complex:
-          raise TypeError("Gradient type %s generated for complex-valued op %s"
-                           " with type %s must be complex" %
-                           (dtypes.as_dtype(grad.dtype).name, op.node_def,
-                            dtypes.as_dtype(inp.dtype).name))
-      else:
-        raise TypeError("Gradient type %s generated for op %s "
-                         "with type %s must be either real or complex" %
-                         (dtypes.as_dtype(grad.dtype).name, op.node_def,
-                          dtypes.as_dtype(inp.dtype).name))
 
 
 def _StopOps(from_ops, pending_count):
@@ -354,10 +333,14 @@ def _MaybeCompile(scope, op, func, grad_fn):
   scope = scope.rstrip("/").replace("/", "_")
   if func is not None:
     xla_compile = func.definition.attr["_XlaCompile"].b
+    xla_separate_compiled_gradients = func.definition.attr[
+        "_XlaSeparateCompiledGradients"].b
     xla_scope = func.definition.attr["_XlaScope"].s.decode()
   else:
     try:
       xla_compile = op.get_attr("_XlaCompile")
+      xla_separate_compiled_gradients = op.get_attr(
+          "_XlaSeparateCompiledGradients")
       xla_scope = op.get_attr("_XlaScope").decode()
     except ValueError:
       return grad_fn()  # Exit early
@@ -365,9 +348,19 @@ def _MaybeCompile(scope, op, func, grad_fn):
   if not xla_compile:
     return grad_fn()  # Exit early
 
-  attrs = {"_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
-           "_XlaScope": attr_value_pb2.AttrValue(
-               s=("%s_grad_%s" % (xla_scope, scope)).encode())}
+  # If the gradients are supposed to be compiled separately, we give them a
+  # _XlaScope name that is based on the name_scope of the gradients.  Otherwise
+  # they just inherit the existing _XlaScope name, which lets them be merged
+  # together with the non-gradient computation.
+  if xla_separate_compiled_gradients:
+    xla_grad_scope = "%s_grad_%s" % (xla_scope, scope)
+  else:
+    xla_grad_scope = xla_scope
+
+  attrs = {
+      "_XlaCompile": attr_value_pb2.AttrValue(b=xla_compile),
+      "_XlaScope": attr_value_pb2.AttrValue(s=xla_grad_scope.encode())
+  }
   with ops.get_default_graph()._attr_scope(attrs):  # pylint: disable=protected-access
     return grad_fn()
 
@@ -446,6 +439,8 @@ def gradients(ys,
 
     # Initialize the pending count for ops in the connected subgraph from ys
     # to the xs.
+    if len(ys) > 1:
+      ys = [array_ops.identity(y) if y.consumers() else y for y in ys]
     to_ops = [t.op for t in ys]
     from_ops = [t.op for t in xs]
     pending_count, loop_state = _PendingCount(ops.get_default_graph(), to_ops,

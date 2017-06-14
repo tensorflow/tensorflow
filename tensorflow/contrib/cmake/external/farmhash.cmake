@@ -1,3 +1,17 @@
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ==============================================================================
 include (ExternalProject)
 
 set(farmhash_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/external/farmhash_archive ${CMAKE_CURRENT_BINARY_DIR}/external/farmhash_archive/util)
@@ -19,7 +33,7 @@ if(WIN32)
       URL_HASH ${farmhash_HASH}
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
       BUILD_IN_SOURCE 1
-      PATCH_COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_SOURCE_DIR}/patches/farmhash/CMakeLists.txt ${farmhash_BUILD}
+      PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/farmhash/CMakeLists.txt ${farmhash_BUILD}
       INSTALL_DIR ${farmhash_INSTALL}
       CMAKE_CACHE_ARGS
           -DCMAKE_BUILD_TYPE:STRING=Release
@@ -53,5 +67,5 @@ add_custom_target(farmhash_copy_headers_to_destination
 
 foreach(header_file ${farmhash_HEADERS})
     add_custom_command(TARGET farmhash_copy_headers_to_destination PRE_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${header_file} ${farmhash_INCLUDE_DIR}/)
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${header_file} ${farmhash_INCLUDE_DIR}/)
 endforeach()

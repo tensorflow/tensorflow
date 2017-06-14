@@ -18,13 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
 import tempfile
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -35,18 +29,19 @@ from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import dynamic_rnn_estimator
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
+from tensorflow.contrib.learn.python.learn.estimators import rnn_common
 from tensorflow.contrib.learn.python.learn.estimators import run_config
-from tensorflow.contrib.rnn.python.ops import core_rnn_cell_impl
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -112,7 +107,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
 
   def setUp(self):
     super(DynamicRnnEstimatorTest, self).setUp()
-    self.rnn_cell = core_rnn_cell_impl.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
+    self.rnn_cell = rnn_cell.BasicRNNCell(self.NUM_RNN_CELL_UNITS)
     self.mock_target_column = MockTargetColumn(
         num_label_columns=self.NUM_LABEL_COLUMNS)
 
@@ -162,7 +157,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
         self.context_feature_columns)
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.tables_initializer())
+      sess.run(lookup_ops.tables_initializer())
       sequence_input_val = sess.run(sequence_input)
     expected_shape = np.array([
         3,  # expected batch size
@@ -183,7 +178,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
     # Obtain values of activations and final state.
     with session.Session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.tables_initializer())
+      sess.run(lookup_ops.tables_initializer())
       activations, final_state = sess.run([activations_t, final_state_t])
 
     expected_activations_shape = np.array([3, 2, self.NUM_LABEL_COLUMNS])
@@ -191,96 +186,9 @@ class DynamicRnnEstimatorTest(test.TestCase):
     expected_state_shape = np.array([3, self.NUM_RNN_CELL_UNITS])
     self.assertAllEqual(expected_state_shape, final_state.shape)
 
-  def testMaskActivationsAndLabels(self):
-    """Test `mask_activations_and_labels`."""
-    batch_size = 4
-    padded_length = 6
-    num_classes = 4
-    np.random.seed(1234)
-    sequence_length = np.random.randint(0, padded_length + 1, batch_size)
-    activations = np.random.rand(batch_size, padded_length, num_classes)
-    labels = np.random.randint(0, num_classes, [batch_size, padded_length])
-    (activations_masked_t,
-     labels_masked_t) = dynamic_rnn_estimator.mask_activations_and_labels(
-         constant_op.constant(
-             activations, dtype=dtypes.float32),
-         constant_op.constant(
-             labels, dtype=dtypes.int32),
-         constant_op.constant(
-             sequence_length, dtype=dtypes.int32))
-
-    with session.Session() as sess:
-      activations_masked, labels_masked = sess.run(
-          [activations_masked_t, labels_masked_t])
-
-    expected_activations_shape = [sum(sequence_length), num_classes]
-    np.testing.assert_equal(
-        expected_activations_shape, activations_masked.shape,
-        'Wrong activations shape. Expected {}; got {}.'.format(
-            expected_activations_shape, activations_masked.shape))
-
-    expected_labels_shape = [sum(sequence_length)]
-    np.testing.assert_equal(expected_labels_shape, labels_masked.shape,
-                            'Wrong labels shape. Expected {}; got {}.'.format(
-                                expected_labels_shape, labels_masked.shape))
-    masked_index = 0
-    for i in range(batch_size):
-      for j in range(sequence_length[i]):
-        actual_activations = activations_masked[masked_index]
-        expected_activations = activations[i, j, :]
-        np.testing.assert_almost_equal(
-            expected_activations,
-            actual_activations,
-            err_msg='Unexpected logit value at index [{}, {}, :].'
-            '  Expected {}; got {}.'.format(i, j, expected_activations,
-                                            actual_activations))
-
-        actual_labels = labels_masked[masked_index]
-        expected_labels = labels[i, j]
-        np.testing.assert_almost_equal(
-            expected_labels,
-            actual_labels,
-            err_msg='Unexpected logit value at index [{}, {}].'
-            ' Expected {}; got {}.'.format(i, j, expected_labels,
-                                           actual_labels))
-        masked_index += 1
-
-  def testSelectLastActivations(self):
-    """Test `select_last_activations`."""
-    batch_size = 4
-    padded_length = 6
-    num_classes = 4
-    np.random.seed(4444)
-    sequence_length = np.random.randint(0, padded_length + 1, batch_size)
-    activations = np.random.rand(batch_size, padded_length, num_classes)
-    last_activations_t = dynamic_rnn_estimator.select_last_activations(
-        constant_op.constant(
-            activations, dtype=dtypes.float32),
-        constant_op.constant(
-            sequence_length, dtype=dtypes.int32))
-
-    with session.Session() as sess:
-      last_activations = sess.run(last_activations_t)
-
-    expected_activations_shape = [batch_size, num_classes]
-    np.testing.assert_equal(
-        expected_activations_shape, last_activations.shape,
-        'Wrong activations shape. Expected {}; got {}.'.format(
-            expected_activations_shape, last_activations.shape))
-
-    for i in range(batch_size):
-      actual_activations = last_activations[i, :]
-      expected_activations = activations[i, sequence_length[i] - 1, :]
-      np.testing.assert_almost_equal(
-          expected_activations,
-          actual_activations,
-          err_msg='Unexpected logit value at index [{}, :].'
-          '  Expected {}; got {}.'.format(i, expected_activations,
-                                          actual_activations))
-
   def testGetOutputAlternatives(self):
     test_cases = (
-        (dynamic_rnn_estimator.PredictionType.SINGLE_VALUE,
+        (rnn_common.PredictionType.SINGLE_VALUE,
          constants.ProblemType.CLASSIFICATION,
          {prediction_key.PredictionKey.CLASSES: True,
           prediction_key.PredictionKey.PROBABILITIES: True,
@@ -290,7 +198,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
            {prediction_key.PredictionKey.CLASSES: True,
             prediction_key.PredictionKey.PROBABILITIES: True})}),
 
-        (dynamic_rnn_estimator.PredictionType.SINGLE_VALUE,
+        (rnn_common.PredictionType.SINGLE_VALUE,
          constants.ProblemType.LINEAR_REGRESSION,
          {prediction_key.PredictionKey.SCORES: True,
           dynamic_rnn_estimator._get_state_name(0): True,
@@ -299,7 +207,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
           (constants.ProblemType.LINEAR_REGRESSION,
            {prediction_key.PredictionKey.SCORES: True})}),
 
-        (dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        (rnn_common.PredictionType.MULTIPLE_VALUE,
          constants.ProblemType.CLASSIFICATION,
          {prediction_key.PredictionKey.CLASSES: True,
           prediction_key.PredictionKey.PROBABILITIES: True,
@@ -345,7 +253,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
         target_column=target_column_lib.multi_class_target(n_classes=2),
         # Only CLASSIFICATION yields eval metrics to test for.
         problem_type=constants.ProblemType.CLASSIFICATION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
         optimizer='SGD',
         sequence_feature_columns=self.sequence_feature_columns,
         context_feature_columns=self.context_feature_columns,
@@ -376,7 +284,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
     def estimator_fn():
       return dynamic_rnn_estimator.DynamicRnnEstimator(
           problem_type=constants.ProblemType.CLASSIFICATION,
-          prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+          prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
           num_classes=2,
           num_units=self.NUM_RNN_CELL_UNITS,
           sequence_feature_columns=self.sequence_feature_columns,
@@ -404,19 +312,19 @@ class DynamicRnnEstimatorTest(test.TestCase):
     # A MultiRNNCell of LSTMCells is both a common choice and an interesting
     # test case, because it has two levels of nesting, with an inner class that
     # is not a plain tuple.
-    cell = core_rnn_cell_impl.MultiRNNCell(
-        [core_rnn_cell_impl.LSTMCell(i) for i in cell_sizes])
+    cell = rnn_cell.MultiRNNCell(
+        [rnn_cell.LSTMCell(i) for i in cell_sizes])
     state_dict = {
         dynamic_rnn_estimator._get_state_name(i):
         array_ops.expand_dims(math_ops.range(cell_size), 0)
         for i, cell_size in enumerate([5, 5, 3, 3, 7, 7])
     }
-    expected_state = (core_rnn_cell_impl.LSTMStateTuple(
+    expected_state = (rnn_cell.LSTMStateTuple(
         np.reshape(np.arange(5), [1, -1]), np.reshape(np.arange(5), [1, -1])),
-                      core_rnn_cell_impl.LSTMStateTuple(
+                      rnn_cell.LSTMStateTuple(
                           np.reshape(np.arange(3), [1, -1]),
                           np.reshape(np.arange(3), [1, -1])),
-                      core_rnn_cell_impl.LSTMStateTuple(
+                      rnn_cell.LSTMStateTuple(
                           np.reshape(np.arange(7), [1, -1]),
                           np.reshape(np.arange(7), [1, -1])))
     actual_state = dynamic_rnn_estimator.dict_to_state_tuple(state_dict, cell)
@@ -479,14 +387,14 @@ class DynamicRnnEstimatorTest(test.TestCase):
 
     seq_columns = [feature_column.real_valued_column('inputs', dimension=1)]
     config = run_config.RunConfig(tf_random_seed=21212)
-    cell = core_rnn_cell_impl.MultiRNNCell(
-        [core_rnn_cell_impl.BasicLSTMCell(size) for size in cell_sizes])
+    cell_type = 'lstm'
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.CLASSIFICATION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
         num_classes=2,
+        num_units=cell_sizes,
         sequence_feature_columns=seq_columns,
-        cell_type=cell,
+        cell_type=cell_type,
         learning_rate=learning_rate,
         config=config,
         predict_probabilities=True)
@@ -501,56 +409,6 @@ class DynamicRnnEstimatorTest(test.TestCase):
     for i, state_size in enumerate([4, 4, 8, 8, 7, 7]):
       state_piece = prediction_dict[dynamic_rnn_estimator._get_state_name(i)]
       self.assertListEqual(list(state_piece.shape), [batch_size, state_size])
-
-  def testLegacyConstructor(self):
-    """Exercise legacy constructor function."""
-    num_units = 16
-    num_layers = 6
-    output_keep_prob = 0.9
-    input_keep_prob = 0.7
-    batch_size = 11
-    learning_rate = 0.1
-    train_sequence_length = 21
-    train_steps = 121
-
-    def get_input_fn(batch_size, sequence_length, state_dict, starting_step=0):
-
-      def input_fn():
-        sequence = constant_op.constant(
-            [[(starting_step + i + j) % 2 for j in range(sequence_length + 1)]
-             for i in range(batch_size)],
-            dtype=dtypes.int32)
-        labels = array_ops.slice(sequence, [0, 0],
-                                 [batch_size, sequence_length])
-        inputs = array_ops.expand_dims(
-            math_ops.to_float(
-                array_ops.slice(sequence, [0, 1], [batch_size, sequence_length
-                                                  ])), 2)
-        input_dict = state_dict
-        input_dict['inputs'] = inputs
-        return input_dict, labels
-
-      return input_fn
-
-    seq_columns = [feature_column.real_valued_column('inputs', dimension=1)]
-    config = run_config.RunConfig(tf_random_seed=21212)
-
-    model_dir = tempfile.mkdtemp()
-    sequence_estimator = dynamic_rnn_estimator.multi_value_rnn_classifier(
-        num_classes=2,
-        num_units=num_units,
-        num_rnn_layers=num_layers,
-        input_keep_probability=input_keep_prob,
-        output_keep_probability=output_keep_prob,
-        sequence_feature_columns=seq_columns,
-        learning_rate=learning_rate,
-        config=config,
-        model_dir=model_dir)
-
-    train_input_fn = get_input_fn(
-        batch_size, train_sequence_length, state_dict={})
-
-    sequence_estimator.fit(input_fn=train_input_fn, steps=train_steps)
 
   def testMultipleRuns(self):
     """Tests resuming training by feeding state."""
@@ -587,7 +445,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
     model_dir = tempfile.mkdtemp()
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.CLASSIFICATION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
         num_classes=2,
         sequence_feature_columns=seq_columns,
         num_units=cell_sizes,
@@ -618,7 +476,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
         incremental_state_dict = {
             k: v
             for (k, v) in prediction_dict.items()
-            if k.startswith(dynamic_rnn_estimator.RNNKeys.STATE_PREFIX)
+            if k.startswith(rnn_common.RNNKeys.STATE_PREFIX)
         }
       return prediction_dict
 
@@ -636,7 +494,7 @@ class DynamicRnnEstimatorTest(test.TestCase):
         err_msg='Mismatch on last {} predictions.'.format(prediction_steps[-1]))
     # Check that final states are identical.
     for k, v in pred_all_at_once.items():
-      if k.startswith(dynamic_rnn_estimator.RNNKeys.STATE_PREFIX):
+      if k.startswith(rnn_common.RNNKeys.STATE_PREFIX):
         np.testing.assert_array_equal(
             v, pred_step_by_step[k], err_msg='Mismatch on state {}.'.format(k))
 
@@ -684,7 +542,7 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
     config = run_config.RunConfig(tf_random_seed=1234)
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.LINEAR_REGRESSION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
         num_units=cell_size,
         sequence_feature_columns=seq_columns,
         learning_rate=learning_rate,
@@ -743,7 +601,7 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
     config = run_config.RunConfig(tf_random_seed=21212)
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.CLASSIFICATION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.MULTIPLE_VALUE,
+        prediction_type=rnn_common.PredictionType.MULTIPLE_VALUE,
         num_classes=2,
         num_units=cell_size,
         sequence_feature_columns=seq_columns,
@@ -822,7 +680,7 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
     config = run_config.RunConfig(tf_random_seed=6)
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.LINEAR_REGRESSION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.SINGLE_VALUE,
+        prediction_type=rnn_common.PredictionType.SINGLE_VALUE,
         num_units=cell_size,
         sequence_feature_columns=seq_columns,
         cell_type=cell_type,
@@ -877,7 +735,7 @@ class DynamicRNNEstimatorLearningTest(test.TestCase):
     config = run_config.RunConfig(tf_random_seed=77)
     sequence_estimator = dynamic_rnn_estimator.DynamicRnnEstimator(
         problem_type=constants.ProblemType.CLASSIFICATION,
-        prediction_type=dynamic_rnn_estimator.PredictionType.SINGLE_VALUE,
+        prediction_type=rnn_common.PredictionType.SINGLE_VALUE,
         num_classes=2,
         num_units=cell_size,
         sequence_feature_columns=seq_columns,

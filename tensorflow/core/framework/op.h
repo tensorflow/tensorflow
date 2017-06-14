@@ -70,7 +70,7 @@ class OpRegistry : public OpRegistryInterface {
   OpRegistry();
   ~OpRegistry() override;
 
-  void Register(OpRegistrationDataFactory op_data_factory);
+  void Register(const OpRegistrationDataFactory& op_data_factory);
 
   Status LookUp(const string& op_type_name,
                 const OpRegistrationData** op_reg_data) const override;
@@ -138,8 +138,8 @@ class OpRegistry : public OpRegistryInterface {
   // Add 'def' to the registry with additional data 'data'. On failure, or if
   // there is already an OpDef with that name registered, returns a non-okay
   // status.
-  Status RegisterAlreadyLocked(OpRegistrationDataFactory op_data_factory) const
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status RegisterAlreadyLocked(const OpRegistrationDataFactory& op_data_factory)
+      const EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutable mutex mu_;
   // Functions in deferred_ may only be called with mu_ held.
@@ -205,7 +205,6 @@ class OpDefBuilderWrapper;
 template <>
 class OpDefBuilderWrapper<true> {
  public:
-  typedef OpDefBuilderWrapper<true> WrapperType;
   OpDefBuilderWrapper(const char name[]) : builder_(name) {}
   OpDefBuilderWrapper<true>& Attr(StringPiece spec) {
     builder_.Attr(spec);
@@ -292,6 +291,18 @@ struct OpDefBuilderReceiver {
       TF_ATTRIBUTE_UNUSED =                                                  \
           ::tensorflow::register_op::OpDefBuilderWrapper<SHOULD_REGISTER_OP( \
               name)>(name)
+
+// The `REGISTER_SYSTEM_OP()` macro acts as `REGISTER_OP()` except
+// that the op is registered unconditionally even when selective
+// registration is used.
+#define REGISTER_SYSTEM_OP(name) \
+  REGISTER_SYSTEM_OP_UNIQ_HELPER(__COUNTER__, name)
+#define REGISTER_SYSTEM_OP_UNIQ_HELPER(ctr, name) \
+  REGISTER_SYSTEM_OP_UNIQ(ctr, name)
+#define REGISTER_SYSTEM_OP_UNIQ(ctr, name)                                \
+  static ::tensorflow::register_op::OpDefBuilderReceiver register_op##ctr \
+      TF_ATTRIBUTE_UNUSED =                                               \
+          ::tensorflow::register_op::OpDefBuilderWrapper<true>(name)
 
 }  // namespace tensorflow
 

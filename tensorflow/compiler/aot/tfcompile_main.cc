@@ -23,9 +23,16 @@ limitations under the License.
 #include "tensorflow/compiler/aot/flags.h"
 #include "tensorflow/compiler/aot/tfcompile.pb.h"
 #include "tensorflow/compiler/aot/tfcompile_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/alias_analysis_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/buffer_assignment_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/compiler_functor_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/hlo_graph_dumper_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/llvm_util_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/service_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/util_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -52,7 +59,8 @@ const char kUsageHeader[] =
     "header file that gives access to the functionality in the object file.\n"
     "A typical invocation looks like this:\n"
     "\n"
-    "   $ tfcompile --graph=mygraph.pb --config=myfile.pbtxt\n"
+    "   $ tfcompile --graph=mygraph.pb --config=myfile.pbtxt "
+    "--cpp_class=\"mynamespace::MyComputation\"\n"
     "\n";
 
 Status ReadProtoFile(const string& kind, const string& fname,
@@ -73,6 +81,9 @@ void ParseTensorId(const string& name, TensorId* id) {
 Status Main(const MainFlags& flags) {
   // Process config.
   Config config;
+  if (flags.config.empty()) {
+    return errors::InvalidArgument("Must specify --config");
+  }
   TF_RETURN_IF_ERROR(ReadProtoFile("config", flags.config, &config));
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   if (flags.dump_fetch_nodes) {
@@ -85,15 +96,16 @@ Status Main(const MainFlags& flags) {
   }
 
   // Read and initialize the graph.
+  if (flags.graph.empty()) {
+    return errors::InvalidArgument("Must specify --graph");
+  }
   GraphDef graph_def;
   TF_RETURN_IF_ERROR(ReadProtoFile("graph", flags.graph, &graph_def));
   std::unique_ptr<Graph> graph;
-  FunctionLibraryDefinition flib(OpRegistry::Global(), graph_def.library());
-  TF_RETURN_IF_ERROR(InitGraph(graph_def, config, flags, &flib, &graph));
+  TF_RETURN_IF_ERROR(InitGraph(graph_def, config, flags, &graph));
 
   CompileResult compile_result;
-  TF_RETURN_IF_ERROR(
-      CompileGraph(std::move(graph), flags, &flib, &compile_result));
+  TF_RETURN_IF_ERROR(CompileGraph(std::move(graph), flags, &compile_result));
 
   // Write output files.
   Env* env = Env::Default();
@@ -101,6 +113,9 @@ Status Main(const MainFlags& flags) {
   TF_RETURN_IF_ERROR(WriteStringToFile(env, flags.out_object,
                                        StringPiece(obj.data(), obj.size())));
   HeaderOpts header_opts;
+  if (flags.cpp_class.empty()) {
+    return errors::InvalidArgument("Must specify --cpp_class");
+  }
   TF_RETURN_IF_ERROR(ParseCppClass(flags.cpp_class, &header_opts.class_name,
                                    &header_opts.namespaces));
   string header;
@@ -121,9 +136,16 @@ int main(int argc, char** argv) {
 
   std::vector<tensorflow::Flag> flag_list;
   AppendMainFlags(&flag_list, &flags);
+  xla::legacy_flags::AppendAliasAnalysisFlags(&flag_list);
+  xla::legacy_flags::AppendBufferAssignmentFlags(&flag_list);
   xla::legacy_flags::AppendCompilerFunctorFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::legacy_flags::AppendCpuRuntimeFlags(&flag_list);
+  xla::legacy_flags::AppendHloGraphDumperFlags(&flag_list);
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::legacy_flags::AppendLlvmUtilFlags(&flag_list);
+  xla::legacy_flags::AppendServiceFlags(&flag_list);
+  xla::legacy_flags::AppendUtilFlags(&flag_list);
 
   tensorflow::string usage = tensorflow::tfcompile::kUsageHeader;
   usage += tensorflow::Flags::Usage(argv[0], flag_list);
@@ -131,12 +153,16 @@ int main(int argc, char** argv) {
   QCHECK(parsed_flags_ok) << "\n" << usage;
 
   tensorflow::port::InitMain(usage.c_str(), &argc, &argv);
-  QCHECK(argc == 1 && !flags.config.empty() &&
-         (flags.dump_fetch_nodes ||
-          (!flags.graph.empty() && !flags.entry_point.empty())))
-      << "\n"
-      << usage;
-
-  TF_QCHECK_OK(tensorflow::tfcompile::Main(flags));
+  QCHECK(argc == 1) << "\nERROR: This command does not take any arguments "
+                       "other than flags\n\n"
+                    << usage;
+  tensorflow::Status status = tensorflow::tfcompile::Main(flags);
+  if (status.code() == tensorflow::error::INVALID_ARGUMENT) {
+    std::cerr << "INVALID ARGUMENTS: " << status.error_message() << "\n\n"
+              << usage;
+    return 1;
+  } else {
+    TF_QCHECK_OK(status);
+  }
   return 0;
 }

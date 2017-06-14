@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -59,6 +60,11 @@ bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
 }  // namespace
 
 bool ImplementedAsGemm(const HloInstruction& hlo) {
+  // We can only do this if the HLO is unnested.
+  if (hlo.parent() != hlo.GetModule()->entry_computation()) {
+    return false;
+  }
+
   // For certain types of Dot, we can call pre-canned BLAS gemm.
   if (hlo.opcode() == HloOpcode::kDot) {
     const Shape& lhs_shape = hlo.operand(0)->shape();
@@ -85,15 +91,19 @@ bool ImplementedAsGemm(const HloInstruction& hlo) {
 }
 
 bool ImplementedAsDnnConvolution(const HloInstruction& hlo) {
+  // We can only do this if the HLO is unnested.
+  if (hlo.parent() != hlo.GetModule()->entry_computation()) {
+    return false;
+  }
+
   // Forward convolution.
   if (hlo.opcode() == HloOpcode::kConvolution) {
     const ConvolutionDimensionNumbers& dnums =
         hlo.convolution_dimension_numbers();
-    // Only 2D convolutions are implemented.
-    // TODO(b/32873825): add support for 3D convolutions using CuDNN.
-    if (dnums.spatial_dimensions_size() != 2) {
+    if (dnums.spatial_dimensions_size() > 3) {
       return false;
     }
+
     // CuDNN does not accept zero-element arguments
     if (ShapeUtil::HasZeroElements(hlo.operand(0)->shape()) ||
         ShapeUtil::HasZeroElements(hlo.operand(1)->shape())) {

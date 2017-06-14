@@ -27,6 +27,7 @@ REGISTER7(BinaryOp, CPU, "Pow", functor::pow, float, Eigen::half, double, int32,
                           .TypeConstraint<TYPE>("T"),                 \
                           BinaryOp<SYCLDevice, functor::pow<TYPE>>);
 REGISTER_SYCL_KERNEL(float);
+REGISTER_SYCL_KERNEL(double);
 #undef REGISTER_SYCL_KERNEL
 #endif // TENSORFLOW_USE_SYCL
 

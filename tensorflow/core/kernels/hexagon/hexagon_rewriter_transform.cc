@@ -45,9 +45,9 @@ Status RewriteQuantizedStrippedModelForHexagon(
     GraphDef* output_graph_def) {
   LOG(INFO) << "Transforming quantized stripped model to a remote fused "
                "graph execute op...";
-  std::vector<GraphTransferer::InputNodeInfo> inputs;
+  std::vector<std::pair<string, Tensor>> inputs;
   std::vector<string> outputs;
-  for (int i = 0; i < context.input_names.size(); ++i) {
+  for (auto i = 0; static_cast<size_t>(i) < context.input_names.size(); ++i) {
     const string& input_name = context.input_names.at(i);
 
     // Get input shape
@@ -69,18 +69,16 @@ Status RewriteQuantizedStrippedModelForHexagon(
               << ", shape = " << shape_string
               << ", type = " << data_type_string;
 
-    inputs.emplace_back(GraphTransferer::InputNodeInfo{
-        input_name, {data_type, TensorShape(dims)}});
+    inputs.emplace_back(input_name, Tensor(data_type, TensorShape(dims)));
   }
 
   for (const string& output_name : context.output_names) {
     outputs.emplace_back(output_name);
   }
-  GraphTransferer gt;
-  gt.EnableStrictCheckMode(false);
+  GraphDef mutable_input_graph_def = input_graph_def;
   *output_graph_def = GraphTransferUtils::BuildFusedGraphDef(
       HexagonOpsDefinitions::getInstance(), "remote_fused_graph_execute_node",
-      inputs, outputs, input_graph_def, &gt);
+      inputs, outputs, &mutable_input_graph_def);
   return Status::OK();
 }
 

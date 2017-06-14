@@ -38,6 +38,9 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class PadOp : public OpKernel {
@@ -198,5 +201,27 @@ REGISTER_KERNEL_BUILDER(Name("Pad")
                             .HostMemory("output"),
                         PadOp<CPUDevice, int32>);
 #endif
+
+#ifdef TENSORFLOW_USE_SYCL
+// Registration of the GPU implementations.
+#define REGISTER_SYCL_KERNEL(T)                                   \
+  REGISTER_KERNEL_BUILDER(Name("Pad")                             \
+                              .Device(DEVICE_SYCL)                \
+                              .TypeConstraint<T>("T")             \
+                              .TypeConstraint<int32>("Tpaddings") \
+                              .HostMemory("paddings"),            \
+                          PadOp<SYCLDevice, T>)
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNEL);
+REGISTER_KERNEL_BUILDER(Name("Pad")
+                            .Device(DEVICE_SYCL)
+                            .TypeConstraint<int32>("T")
+                            .TypeConstraint<int32>("Tpaddings")
+                            .HostMemory("input")
+                            .HostMemory("paddings")
+                            .HostMemory("output"),
+                        PadOp<CPUDevice, int32>);
+#undef REGISTER_SYCL_KERNEL
+#endif // TENSORFLOW_USE_SYCL
 
 }  // end namespace tensorflow

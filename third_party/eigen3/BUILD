@@ -13,6 +13,7 @@ exports_files(["LICENSE"])
 
 # INTEL_MKL start
 load("//tensorflow:tensorflow.bzl", "if_mkl")
+
 # INTEL_MKL end
 load("//tensorflow:tensorflow.bzl", "if_mkl")
 

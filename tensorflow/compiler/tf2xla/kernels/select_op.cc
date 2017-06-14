@@ -83,7 +83,7 @@ class SelectOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(SelectOp);
 };
 
-REGISTER_XLA_OP("Select", SelectOp);
+REGISTER_XLA_OP(Name("Select"), SelectOp);
 
 }  // namespace
 }  // namespace tensorflow
