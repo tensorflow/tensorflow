@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import {runsColorScale} from '../tf-color-scale/colorScale';
 import * as storage from '../tf-storage/storage';
 
 Polymer({
@@ -47,10 +48,6 @@ Polymer({
       notify: true,
       computed: 'computeOutSelected(namesMatchingRegex.*, runSelectionState.*)'
     },
-    colorScale: {
-      type: Object,
-      observer: 'synchronizeColors',
-    },  // map from run name to css class
     maxRunsToEnableByDefault: {
       // When TB first loads, if it has k or fewer runs, they are all enabled
       // by default. If there are more, then they are all disabled.
@@ -127,32 +124,26 @@ Polymer({
     });
   },
   synchronizeColors: function(e) {
-    if (!this.colorScale) return;
-
     this._setIsolatorIcon();
 
-    var checkboxes =
-        Array.prototype.slice.call(this.querySelectorAll('paper-checkbox'));
-    var scale = this.colorScale;
-    checkboxes.forEach(function(p) {
-      var color = scale.scale(p.name);
+    const checkboxes = this.querySelectorAll('paper-checkbox');
+    checkboxes.forEach(p => {
+      const color = runsColorScale(p.name);
       p.customStyle['--paper-checkbox-checked-color'] = color;
       p.customStyle['--paper-checkbox-checked-ink-color'] = color;
       p.customStyle['--paper-checkbox-unchecked-color'] = color;
       p.customStyle['--paper-checkbox-unchecked-ink-color'] = color;
     });
-    var buttons =
-        Array.prototype.slice.call(this.querySelectorAll('.isolator'));
-    buttons.forEach(function(p) {
-      var color = scale.scale(p.name);
+    const buttons = this.querySelectorAll('.isolator');
+    buttons.forEach(p => {
+      const color = runsColorScale(p.name);
       p.style['color'] = color;
     });
     // The updateStyles call fails silently if the browser doesn't have focus,
     // e.g. if TensorBoard was opened into a new tab that isn't visible.
     // So we wait for requestAnimationFrame.
-    var _this = this;
-    window.requestAnimationFrame(function() {
-      _this.updateStyles();
+    window.requestAnimationFrame(() => {
+      this.updateStyles();
     });
   },
   _isolateRun: function(e) {

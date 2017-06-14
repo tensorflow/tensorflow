@@ -19,7 +19,6 @@ limitations under the License.
 <link rel="import" href="../paper-dialog/paper-dialog.html">
 <link rel="import" href="../paper-icon-button/paper-icon-button.html">
 <link rel="import" href="../tf-backend/tf-backend.html">
-<link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-dashboard-common/tf-panes-helper.html">
 <link rel="import" href="../tf-dashboard-common/tf-sidebar-helper.html">
@@ -31,20 +30,11 @@ tf-text-dashboard displays a dashboard that loads texts from a TensorFlow run.
 <dom-module id="tf-text-dashboard">
   <template>
     <paper-dialog with-backdrop id="actual-text-size-dialog"></paper-dialog>
-    <div id="plumbing">
-      <tf-color-scale
-        id="colorScale"
-        runs="[[runs]]"
-        out-color-scale="{{_colorScale}}"
-        ></tf-color-scale>
-    </div>
-
     <tf-dashboard-layout>
       <div class="sidebar">
         <tf-sidebar-helper
           backend="[[backend]]"
           categories="{{_categories}}"
-          color-scale="[[_colorScale]]"
           run2tag="[[run2tag]]"
           runs="[[runs]]"
           selected-runs="{{_selectedRuns}}"
@@ -54,7 +44,6 @@ tf-text-dashboard displays a dashboard that loads texts from a TensorFlow run.
       <div class="center">
         <tf-panes-helper
           categories="[[_categories]]"
-          color-scale="[[_colorScale]]"
           data-type="[[dataType]]"
           data-provider="[[dataProvider]]"
           data-not-found="[[dataNotFound]]"
@@ -63,7 +52,7 @@ tf-text-dashboard displays a dashboard that loads texts from a TensorFlow run.
           repeat-for-runs
           >
           <template>
-            <tf-text-loader color-scale="[[_colorScale]]"></tf-text-loader>
+            <tf-text-loader></tf-text-loader>
           </template>
         </tf-panes-helper>
       </div>

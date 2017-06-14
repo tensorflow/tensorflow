@@ -33,6 +33,7 @@ ts_web_library(
     ],
     path = "/tf-dashboard-common",
     deps = [
+        "//tensorflow/tensorboard/components/tf_color_scale",
         "//tensorflow/tensorboard/components/tf_imports:d3",
         "//tensorflow/tensorboard/components/tf_imports:lodash",
         "//tensorflow/tensorboard/components/tf_imports:polymer",

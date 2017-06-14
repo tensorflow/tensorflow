@@ -41,22 +41,9 @@ can customize how data is organized and displayed.
 
 Each chart has a button that can toggle whether it is "expanded"; expanded
 charts are larger.
-
-Organizationally, the #plumbing div contains components that have no concrete
-manifestation and just effect data bindings or data loading. The .sidebar div
-contains shared controls provided by tf-sidebar-helper. The .center div
-contains vz-line-charts embedded inside tf-panes-helper's.
 -->
 <dom-module id="tf-scalar-dashboard">
   <template>
-    <div id="plumbing">
-      <tf-color-scale
-        id="colorScale"
-        runs="[[runs]]"
-        out-color-scale="{{_colorScale}}"
-      ></tf-color-scale>
-    </div>
-
     <tf-dashboard-layout>
       <div class="sidebar">
         <div class="sidebar-section">
@@ -121,7 +108,6 @@ contains vz-line-charts embedded inside tf-panes-helper's.
       <div class="center">
         <tf-panes-helper
           categories="[[_categories]]"
-          color-scale="[[_colorScale]]"
           data-type="[[dataType]]"
           data-provider="[[dataProvider]]"
           data-not-found="[[dataNotFound]]"
@@ -133,7 +119,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
           <template>
             <vz-line-chart
               x-type="[[_xType]]"
-              color-scale="[[_colorScale]]"
+              color-scale="[[_runsColorScale]]"
               smoothing-enabled="[[_smoothingEnabled]]"
               smoothing-weight="[[_smoothingWeight]]"
               tooltip-sorting-method="[[_tooltipSortingMethod]]"
@@ -218,6 +204,7 @@ contains vz-line-charts embedded inside tf-panes-helper's.
     import {ReloadBehavior} from "../tf-dashboard-common/reload-behavior";
     import {BackendBehavior} from "../tf-backend/behavior";
     import {getRouter} from "../tf-backend/router";
+    import {runsColorScale} from "../tf-color-scale/colorScale";
     import * as storage from "../tf-storage/storage";
 
     Polymer({
@@ -263,6 +250,14 @@ contains vz-line-charts embedded inside tf-panes-helper's.
         _xType: {
           type: String,
           value: "step"
+        },
+        _runsColorScale: {
+          type: Object,
+          value: function() {
+            return {
+              scale: runsColorScale,
+            };
+          },
         },
       },
       attached: function() {

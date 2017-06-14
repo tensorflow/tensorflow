@@ -31,7 +31,6 @@ it with extra configuration components, add them to the element's component:
 <tf-sidebar-helper
   backend: "[[backend]]",
   categories: "{{outputCategories}}",
-  colorScale: "[[colorScale]]",
   run2tag: "[[run2tag]]",
   runs: "[[runs]]",
   selectedRuns: "{{outSelectedRuns}}",
@@ -67,7 +66,6 @@ tf-run-selector.
         id="runSelector"
         backend="[[backend]]"
         runs="[[runs]]"
-        color-scale="[[colorScale]]"
         out-selected="{{selectedRuns}}"
         ></tf-run-selector>
     </div>
@@ -127,11 +125,6 @@ tf-run-selector.
           type: Array,
           notify: true,
         },
-
-        /**
-         * Input of the colors that are used for the user's runs.
-         */
-        colorScale: Object,
 
         /**
          * Map from runs to the valid tags that have them.

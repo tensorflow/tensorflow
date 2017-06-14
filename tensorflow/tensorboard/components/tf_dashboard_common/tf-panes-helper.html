@@ -181,6 +181,7 @@ downloadLinkUrlFunction property to an appropriate value.
     </style>
   </template>
   <script>
+    import {runsColorScale} from '../tf-color-scale/colorScale';
     Polymer({
       is: "tf-panes-helper",
       properties: {
@@ -190,11 +191,6 @@ downloadLinkUrlFunction property to an appropriate value.
          * objects, each with a 'name' property and a 'tags' array of strings.
          */
         categories: Array,
-
-        /**
-         * Input of the colors that are used for the user's runs.
-         */
-        colorScale: Object,
 
         /**
          * The name of the data type that is used by this dashboard. This will
@@ -323,7 +319,7 @@ downloadLinkUrlFunction property to an appropriate value.
         return cards;
       },
       _titleBorderColor: function(run) {
-        return this.repeatForRuns ? this.colorScale.scale(run) : 'white';
+        return this.repeatForRuns ? runsColorScale(run) : 'white';
       },
 
       /*

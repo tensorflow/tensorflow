@@ -20,6 +20,8 @@ limitations under the License.
 // ccs.getColor("train");
 // ccs.getColor("test1");
 
+import * as RunsStore from '../tf-backend/runsStore';
+
 import {palettes} from './palettes';
 
 export class ColorScale {
@@ -40,13 +42,6 @@ export class ColorScale {
    */
   public domain(strings: string[]): this {
     this.identifiers = d3.map();
-
-    // TODO(wchargin): Remove this call to `sort` once we have only a
-    // singleton ColorScale, linked directly to the RunsStore, which
-    // will always give sorted output.
-    strings = strings.slice();
-    strings.sort();
-
     strings.forEach((s, i) => {
       this.identifiers.set(s, this.palette[i % this.palette.length]);
     });
@@ -67,23 +62,16 @@ export class ColorScale {
   }
 }
 
-Polymer({
-  is: 'tf-color-scale',
-  properties: {
-    runs: {
-      type: Array,
-    },
-    outColorScale: {
-      type: Object,
-      readOnly: true,
-      notify: true,
-      value() {
-        return new ColorScale();
-      },
-    },
-  },
-  observers: ['updateColorScale(runs.*)'],
-  updateColorScale(runsChange) {
-    this.outColorScale.domain(this.runs);
-  },
-});
+/**
+ * A color scale whose domain is the set of runs currently available.
+ * Automatically updated as this data changes.
+ */
+const _runsColorScale = new ColorScale();
+export const runsColorScale: ((runName: string) => string) =
+    _runsColorScale.scale.bind(_runsColorScale);
+
+function updateRunsColorScale(): void {
+  _runsColorScale.domain(RunsStore.getRuns());
+}
+RunsStore.addListener(updateRunsColorScale);
+updateRunsColorScale();

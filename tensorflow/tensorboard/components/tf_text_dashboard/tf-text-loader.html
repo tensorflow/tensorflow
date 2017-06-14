@@ -17,6 +17,7 @@ limitations under the License.
 
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-material/paper-material.html">
+<link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-dashboard-common/scrollbar-style.html">
 <link rel="import" href="../tf-imports/d3.html">
 
@@ -102,10 +103,10 @@ tf-text-loader displays markdown text data from the Text plugin.
 
   </template>
   <script>
+    import {runsColorScale} from "../tf-color-scale/colorScale";
     Polymer({
       is: "tf-text-loader",
       properties: {
-        colorScale: Object,
         run: String,
         // This is an array of Tensorboard Text&Datum objects (See backend.ts for details). The
         // properties of objects in this array are
@@ -132,7 +133,7 @@ tf-text-loader displays markdown text data from the Text plugin.
         this.set("_texts", texts.reverse());
 
         // Update the border color based on the run.
-        var color = this.colorScale.scale(run);
+        var color = runsColorScale(run);
         this.$$("#outer").style.borderColor = color;
       },
       _numfmt: function(n) {

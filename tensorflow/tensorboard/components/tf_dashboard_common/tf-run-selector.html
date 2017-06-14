@@ -27,7 +27,6 @@ It also displays tooltips.
 
 Properties in:
 - runs: Array of strings representing the runs that may be selected
-- colorScale: a TF.ColorScale mapping run names to colors
 
 Properties out:
 - outSelected: The array of run names that are currently checked by the user.
@@ -48,7 +47,6 @@ Properties out:
       id="multiCheckbox"
       names="[[runs]]"
       out-selected="{{outSelected}}"
-      color-scale="[[colorScale]]"
     ></tf-multi-checkbox>
     <paper-button
       class="x-button"
@@ -121,7 +119,6 @@ Properties out:
       outSelected: {type: Array, notify: true},
       // runs: an array of strings, representing the run names that may be chosen
       runs: Array,
-      colorScale: Object, // TF.ColorScale
       logdir: {
         type: String,
         notify: true,

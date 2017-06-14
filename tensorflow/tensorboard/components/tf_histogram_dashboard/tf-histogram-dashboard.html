@@ -46,20 +46,11 @@ contains vz-histogram-timeseries embedded inside tf-panes-helper's.
 -->
 <dom-module id="tf-histogram-dashboard">
   <template>
-    <div id="plumbing">
-      <tf-color-scale
-        id="colorScale"
-        runs="[[runs]]"
-        out-color-scale="{{_colorScale}}"
-      ></tf-color-scale>
-    </div>
-
     <tf-dashboard-layout>
       <div class="sidebar">
         <tf-sidebar-helper
           backend="[[backend]]"
           categories="{{_categories}}"
-          color-scale="[[_colorScale]]"
           run2tag="[[run2tag]]"
           runs="[[runs]]"
           selected-runs="{{_selectedRuns}}"
@@ -92,7 +83,6 @@ contains vz-histogram-timeseries embedded inside tf-panes-helper's.
       <div class="center">
         <tf-panes-helper
           categories="[[_categories]]"
-          color-scale="[[_colorScale]]"
           data-type="[[dataType]]"
           data-provider="[[dataProvider]]"
           data-not-found="[[dataNotFound]]"
@@ -124,6 +114,7 @@ contains vz-histogram-timeseries embedded inside tf-panes-helper's.
     import {DashboardBehavior} from "../tf-dashboard-common/dashboard-behavior";
     import {ReloadBehavior} from "../tf-dashboard-common/reload-behavior";
     import {BackendBehavior} from "../tf-backend/behavior";
+    import {runsColorScale} from "../tf-color-scale/colorScale";
 
     Polymer({
       is: "tf-histogram-dashboard",
@@ -151,16 +142,21 @@ contains vz-histogram-timeseries embedded inside tf-panes-helper's.
         },
         _colorScaleFunction: {
           type: Function,
-          computed: "_getColorScaleFunction(_colorScale)"
+          value: function() {
+            // NOTE: Because the result is a function, we can't just write
+            //
+            //     value: runsColorScale,
+            //
+            // above. If we did, Polymer would try to invoke _that_ to
+            // get an initial property value.
+            return runsColorScale;
+          },
         },
       },
       attached: function() {
         this.async(function() {
           this.fire("rendered");
         });
-      },
-      _getColorScaleFunction: function() {
-        return this._colorScale.scale.bind(this._colorScale);
       },
     });
   </script>

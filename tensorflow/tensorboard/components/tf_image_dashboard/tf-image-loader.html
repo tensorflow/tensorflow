@@ -18,6 +18,7 @@ limitations under the License.
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-slider/paper-slider.html">
 <link rel="import" href="../paper-spinner/paper-spinner-lite.html">
+<link rel="import" href="../tf-color-scale/tf-color-scale.html">
 <link rel="import" href="../tf-dashboard-common/tensorboard-color.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="../tf-imports/d3.html">
@@ -110,11 +111,11 @@ future for loading older images.
   </template>
   <script>
     "use strict";
+    import {runsColorScale} from "../tf-color-scale/colorScale";
 
     Polymer({
       is: "tf-image-loader",
       properties: {
-        colorScale: Object,
         run: String,
         // This is an array of Tensorboard Image&Datum objects (See backend.ts for details). The
         // properties of objects in this array are
@@ -181,7 +182,7 @@ future for loading older images.
         this.set("_stepIndex", steps.length - 1);
 
         // Update the border color based on the run.
-        var color = this.colorScale.scale(run);
+        var color = runsColorScale(run);
         this.$$("#image-annotation").style.borderColor = color;
       },
       _updateImageUrl: function(steps, stepIndex) {
