@@ -672,8 +672,7 @@ class QuantizeNodesTest : public ::testing::Test {
     TF_ASSERT_OK(root.ToGraphDef(&float_graph_def));
 
     Tensor input_tensor(DT_FLOAT, {1, 128, 128, 3});
-    auto float_input_tensor = input_tensor.flat<float>();
-    float_input_tensor.constant(100.0f);
+    test::FillFn<float>(&input_tensor, [](int) { return 100.0f; });
 
     TestQuantizedVersusFloatGraph(float_graph_def,
                                   {{"placeholder_op", input_tensor}},
