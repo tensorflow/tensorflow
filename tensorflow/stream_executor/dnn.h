@@ -52,8 +52,11 @@ enum class DataLayout : int64 {
   kYXDepthBatch = 0,  // Same as dist_belief::DF_DEPTH_MAJOR.
   kYXBatchDepth,      // Same as dist_belief::DF_BATCH_MAJOR.
   kBatchYXDepth,      // Same as run_brain output, and tensorflow's layout.
-  kBatchDepthYX,      // cuDNN's NCHW layout, data laid out as image, feature,
+  kBatchDepthYX,      // cuDNN's NCHW layout, data laid out as image, feature
                       // maps, rows, columns.
+  kBatchDepthYX4,     // cuDNN's NCHW_VECT_C layout, data laid out the same as
+                      // kBatchDepthYX but each element is a vector of 4 feature
+                      // maps.
 };
 
 // Specifies an index to use when accessing specific spatial dimensions.
@@ -87,6 +90,7 @@ enum class DataType {
   kFloat = 0,
   kDouble = 1,
   kHalf = 2,
+  kInt8 = 3,
 };
 
 // A helper class to convert C/C++ types to the proper enums.
@@ -103,6 +107,10 @@ struct ToDataType<double> {
 template <>
 struct ToDataType<Eigen::half> {
   static constexpr DataType value = DataType::kHalf;
+};
+template <>
+struct ToDataType<int8> {
+  static constexpr DataType value = DataType::kInt8;
 };
 
 // Specifies the types of a RNN model.
@@ -341,8 +349,10 @@ enum class FilterLayout : int64 {
   kOutputInputYX = 0,  // cuDNN's default filter layout, laid out as:
                        // (major) output feature maps >> input feature maps >>
                        // rows >> columns (minor).
-  kInputYXOutput,      // Same as dist_belief's default filter layout.
-  kYXInputOutput,      // Same as tensorflow's default filter layout.
+  kOutputInputYX4,  // laid out the same as kOutputInputYX but each element is a
+                    // vector of 4 feature maps.
+  kInputYXOutput,   // Same as dist_belief's default filter layout.
+  kYXInputOutput,   // Same as tensorflow's default filter layout.
 };
 
 // Returns a string representation of the given filter layout.
@@ -1965,15 +1975,19 @@ class DnnSupport {
   //
   // Arguments:
   //  stream: pointer to the stream where this operation should be enqueued to.
-  //  input_desc: descriptor for the input tensor.
+  //  input_desc: specifies the shape and the data layout of the input tensor.
+  //  input_type: the data type of the input tensor.
   //  input_data: the device memory region that contains the input tensor.
-  //  output_desc: descriptor for the output tensor.
+  //  output_desc: specifies the shape and the data layout of the output tensor.
+  //  output_type: the data type of the output tensor.
   //  output_data: the device memory region that contains the output tensor.
   virtual bool DoTransformTensor(Stream* stream,
                                  const dnn::BatchDescriptor& input_desc,
-                                 const DeviceMemory<float>& input_data,
+                                 dnn::DataType input_type,
+                                 const DeviceMemoryBase& input_data,
                                  const dnn::BatchDescriptor& output_desc,
-                                 DeviceMemory<float>* output_data) {
+                                 dnn::DataType output_type,
+                                 DeviceMemoryBase* output_data) {
     return false;
   }
 

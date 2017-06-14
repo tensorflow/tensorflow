@@ -225,9 +225,23 @@ you to specify the version numbers of Cuda and cuDNN. If several
 versions of Cuda or cuDNN are installed on your system, explicitly select
 the desired version instead of relying on the default.
 
+One of the questions that `configure` will ask is as follows:
+
+<pre>
+Please specify optimization flags to use during compilation when bazel option "--config=opt" is specified [Default is -march=native]
+</pre>
+
+This question refers to a later phase in which you'll use bazel to 
+[build the pip package](#build-the-pip-package).  We recommend 
+accepting the default (`-march=native`), which will
+optimize the generated code for your local machine's CPU type.  However,
+if you are building TensorFlow on one CPU type but will run TensorFlow on
+a different CPU type, then consider specifying a more specific optimization
+flag as described in [the gcc
+documentation](https://gcc.gnu.org/onlinedocs/gcc-4.5.3/gcc/i386-and-x86_002d64-Options.html).
+
 Here is an example execution of the `configure` script.  Note that your
 own input will likely differ from our sample input:
-
 
 <pre>
 $ <b>cd tensorflow</b>  # cd to the top-level directory created
@@ -290,7 +304,7 @@ Note the following:
 ## Build the pip package
 
 To build a pip package for TensorFlow with CPU-only support,
-invoke the following command:
+you would typically invoke the following command:
 
 <pre>
 $ <b>bazel build --config=opt //tensorflow/tools/pip_package:build_pip_package</b>
@@ -301,7 +315,12 @@ invoke the following command:
 
 <pre>$ <b>bazel build --config=opt --config=cuda //tensorflow/tools/pip_package:build_pip_package</b> </pre>
 
-**NOTE on gcc 5 or later:** the binary pip packages available on the TensorFlow website are built with gcc 4, which uses the older ABI. To make your build compatible with the older ABI, you need to add `--cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"` to your `bazel build` command. ABI compatibility allows custom ops built against the TensorFlow pip package to continue to work against your built package.
+**NOTE on gcc 5 or later:** the binary pip packages available on the
+TensorFlow website are built with gcc 4, which uses the older ABI. To
+make your build compatible with the older ABI, you need to add
+`--cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"` to your `bazel build` command.
+ABI compatibility allows custom ops built against the TensorFlow pip package
+to continue to work against your built package.
 
 <b>Tip:</b> By default, building TensorFlow from sources consumes
 a lot of RAM.  If RAM is an issue on your system, you may limit RAM usage
@@ -383,6 +402,14 @@ Stack Overflow and specify the `tensorflow` tag.
 
 <table>
 <tr> <th>Stack Overflow Link</th> <th>Error Message</th> </tr>
+
+<tr>
+  <td><a
+  href="https://stackoverflow.com/questions/41293077/how-to-compile-tensorflow-with-sse4-2-and-avx-instructions">41293077</a></td>
+  <td><pre>W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow
+  library wasn't compiled to use SSE4.1 instructions, but these are available on
+  your machine and could speed up CPU computations.</pre></td>
+</tr>
 
 <tr>
   <td><a href="http://stackoverflow.com/q/42013316">42013316</a></td>

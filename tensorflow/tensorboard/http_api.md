@@ -45,40 +45,18 @@ requests to an inactive plugin - the routes of an inactive plugin do not work.
 
 ## `data/runs`
 
-> **NOTE:** TensorBoard is migrating away from this API. Over time, each tag
-> type will own a dedicated route, such as `data/plugin/scalars/tags`.
+Returns an array containing the names of all the runs known to the
+TensorBoard backend at this time. Each entry is a string corresponding
+to a single run.
 
-Returns a dictionary mapping from `run name` (quoted string) to dictionaries
-mapping from most available tagTypes (see "Migrations" below) to a list of tags
-of that type available for the run. Think of this as a comprehensive index of
-all of the data available from the TensorBoard server. Here is an example:
+We guarantee that as new runs are created in the log directory, they
+will always appear at the end of the list returned by this route. That
+is, the order of runs is persistent, and the result of this route is an
+&ldquo;append-only&rdquo; list.
 
-    {
-      "train_run": {
-        "firstEventTimestamp": 123456.789
-      },
-      "eval": {
-      }
-    }
+Example response:
 
-The `firstEventTimestamp` value is in seconds since the epoch.
-
-Note that the same tag may be present for many runs. It is not guaranteed that
-they will have the same meaning across runs. It is also not guaranteed that they
-will have the same tag type across different runs.
-
-### Migrations
-
-Each of the following tag types `<t>` has been migrated to `/data/plugin/<t>/tags`,
-and will not appear in the output from this route:
-
-  - `audio`
-  - `images`
-  - `scalars`
-  - `compressedHistograms`, moved to `distributions`
-  - `histograms`
-  - `graph`, as `/data/plugin/graphs/runs`
-  - `run_metadata`, as `/data/plugin/graphs/run_metadata_tags`
+    ["train_run", "eval"]
 
 ## `/data/plugin/scalars/tags`
 

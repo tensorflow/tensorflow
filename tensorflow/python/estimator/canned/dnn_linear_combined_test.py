@@ -95,7 +95,7 @@ class DNNOnlyModelFnTest(dnn_testing_utils.BaseDNNModelFnTest, test.TestCase):
 def _linear_regressor_fn(feature_columns,
                          model_dir=None,
                          label_dimension=1,
-                         weight_feature_key=None,
+                         weight_column=None,
                          optimizer='Ftrl',
                          config=None,
                          partitioner=None):
@@ -104,7 +104,7 @@ def _linear_regressor_fn(feature_columns,
       linear_feature_columns=feature_columns,
       linear_optimizer=optimizer,
       label_dimension=label_dimension,
-      weight_feature_key=weight_feature_key,
+      weight_column=weight_column,
       input_layer_partitioner=partitioner,
       config=config)
 
@@ -152,6 +152,61 @@ class LinearOnlyRegressorTrainingTest(
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearRegressorTrainingTest.__init__(
         self, _linear_regressor_fn)
+
+
+def _linear_classifier_fn(feature_columns,
+                          model_dir=None,
+                          n_classes=2,
+                          weight_column=None,
+                          label_vocabulary=None,
+                          optimizer='Ftrl',
+                          config=None,
+                          partitioner=None):
+  return dnn_linear_combined.DNNLinearCombinedClassifier(
+      model_dir=model_dir,
+      linear_feature_columns=feature_columns,
+      linear_optimizer=optimizer,
+      n_classes=n_classes,
+      weight_column=weight_column,
+      label_vocabulary=label_vocabulary,
+      input_layer_partitioner=partitioner,
+      config=config)
+
+
+class LinearOnlyClassifierTrainingTest(
+    linear_testing_utils.BaseLinearClassifierTrainingTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierTrainingTest.__init__(
+        self, linear_classifier_fn=_linear_classifier_fn)
+
+
+class LinearOnlyClassifierClassesEvaluationTest(
+    linear_testing_utils.BaseLinearClassifierEvaluationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierEvaluationTest.__init__(
+        self, linear_classifier_fn=_linear_classifier_fn)
+
+
+class LinearOnlyClassifierPredictTest(
+    linear_testing_utils.BaseLinearClassifierPredictTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierPredictTest.__init__(
+        self, linear_classifier_fn=_linear_classifier_fn)
+
+
+class LinearOnlyClassifierIntegrationTest(
+    linear_testing_utils.BaseLinearClassifierIntegrationTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    linear_testing_utils.BaseLinearClassifierIntegrationTest.__init__(
+        self, linear_classifier_fn=_linear_classifier_fn)
 
 
 class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
@@ -319,22 +374,23 @@ class DNNLinearCombinedRegressorIntegrationTest(test.TestCase):
 
 
 # A function to mimic dnn-classifier init reuse same tests.
-def _dnn_classifier_fn(
-    hidden_units,
-    feature_columns,
-    model_dir=None,
-    n_classes=2,
-    weight_feature_key=None,
-    optimizer='Adagrad',
-    config=None,
-    input_layer_partitioner=None):
+def _dnn_classifier_fn(hidden_units,
+                       feature_columns,
+                       model_dir=None,
+                       n_classes=2,
+                       weight_column=None,
+                       label_vocabulary=None,
+                       optimizer='Adagrad',
+                       config=None,
+                       input_layer_partitioner=None):
   return dnn_linear_combined.DNNLinearCombinedClassifier(
       model_dir=model_dir,
       dnn_hidden_units=hidden_units,
       dnn_feature_columns=feature_columns,
       dnn_optimizer=optimizer,
       n_classes=n_classes,
-      weight_feature_key=weight_feature_key,
+      weight_column=weight_column,
+      label_vocabulary=label_vocabulary,
       input_layer_partitioner=input_layer_partitioner,
       config=config)
 
@@ -367,22 +423,21 @@ class DNNOnlyClassifierTrainTest(
 
 
 # A function to mimic dnn-regressor init reuse same tests.
-def _dnn_regressor_fn(
-    hidden_units,
-    feature_columns,
-    model_dir=None,
-    label_dimension=1,
-    weight_feature_key=None,
-    optimizer='Adagrad',
-    config=None,
-    input_layer_partitioner=None):
+def _dnn_regressor_fn(hidden_units,
+                      feature_columns,
+                      model_dir=None,
+                      label_dimension=1,
+                      weight_column=None,
+                      optimizer='Adagrad',
+                      config=None,
+                      input_layer_partitioner=None):
   return dnn_linear_combined.DNNLinearCombinedRegressor(
       model_dir=model_dir,
       dnn_hidden_units=hidden_units,
       dnn_feature_columns=feature_columns,
       dnn_optimizer=optimizer,
       label_dimension=label_dimension,
-      weight_feature_key=weight_feature_key,
+      weight_column=weight_column,
       input_layer_partitioner=input_layer_partitioner,
       config=config)
 
@@ -589,7 +644,7 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase):
         batch_size=batch_size)
 
 
-class DNNLinearCombinedTrainOpTest(test.TestCase):
+class DNNLinearCombinedTests(test.TestCase):
 
   def setUp(self):
     self._model_dir = tempfile.mkdtemp()
@@ -645,6 +700,34 @@ class DNNLinearCombinedTrainOpTest(test.TestCase):
     self.assertEqual(100.,
                      checkpoint_utils.load_variable(
                          self._model_dir, 'binary_logistic_head/dnn_called'))
+
+  def test_dnn_and_linear_logits_are_added(self):
+    with ops.Graph().as_default():
+      variables_lib.Variable([[1.0]], name='linear/linear_model/x/weights')
+      variables_lib.Variable([2.0], name='linear/linear_model/bias_weights')
+      variables_lib.Variable([[3.0]], name='dnn/hiddenlayer_0/kernel')
+      variables_lib.Variable([4.0], name='dnn/hiddenlayer_0/bias')
+      variables_lib.Variable([[5.0]], name='dnn/logits/kernel')
+      variables_lib.Variable([6.0], name='dnn/logits/bias')
+      variables_lib.Variable(1, name='global_step', dtype=dtypes.int64)
+      linear_testing_utils.save_variables_to_ckpt(self._model_dir)
+
+    x_column = feature_column.numeric_column('x')
+    est = dnn_linear_combined.DNNLinearCombinedRegressor(
+        linear_feature_columns=[x_column],
+        dnn_hidden_units=[1],
+        dnn_feature_columns=[x_column],
+        model_dir=self._model_dir)
+    input_fn = numpy_io.numpy_input_fn(
+        x={'x': np.array([[10.]])}, batch_size=1, shuffle=False)
+    # linear logits = 10*1 + 2 = 12
+    # dnn logits = (10*3 + 4)*5 + 6 = 176
+    # logits = dnn + linear = 176 + 12 = 188
+    self.assertAllClose(
+        {
+            prediction_keys.PredictionKeys.PREDICTIONS: [188.],
+        },
+        next(est.predict(input_fn=input_fn)))
 
 
 if __name__ == '__main__':

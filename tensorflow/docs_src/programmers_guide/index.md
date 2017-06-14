@@ -24,13 +24,11 @@ days:
     session.
 
 TensorFlow provides a debugger named `tfdbg`, which is documented in the
-following two guides:
+following guide:
 
-  * @{$debugger$TensorFlow Debugger (tfdbg) Command-Line-Interface Tutorial: MNIST},
-    which walks you through the use of `tfdbg` within an application written
-    in the low-level TensorFlow API.
-  * @{$tfdbg-tflearn$How to Use TensorFlow Debugger (tfdbg) with tf.contrib.learn},
-    which demonstrates how to use `tfdbg` within the Estimators API.
+  * @{$debugger$Debugging TensorFlow Programs},
+    which walks you through the use of `tfdbg` within an application. It covers
+    using `tfdbg` with both the low-level TensorFlow API and the Estimator API.
 
 A `MetaGraph` consists of both a computational graph and its associated
 metadata.  A `MetaGraph` contains the information required to continue

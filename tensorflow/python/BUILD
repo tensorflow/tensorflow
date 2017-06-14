@@ -808,6 +808,7 @@ filegroup(
     srcs = [
         "framework/testdata/metrics_export_meta_graph.pb",
     ],
+    visibility = ["//visibility:public"],
 )
 
 py_test(
@@ -1881,6 +1882,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":check_ops",
         ":control_flow_ops",
         ":framework",
         ":framework_for_generated_wrappers",
@@ -2028,6 +2030,7 @@ py_library(
     deps = [
         ":framework_for_generated_wrappers",
         ":logging_ops_gen",
+        ":summary_op_util",
     ],
 )
 
@@ -3404,6 +3407,18 @@ tf_py_test(
 )
 
 py_library(
+    name = "summary_op_util",
+    srcs = ["ops/summary_op_util.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":framework",
+        ":framework_for_generated_wrappers",
+        ":platform",
+    ],
+)
+
+py_library(
     name = "summary",
     srcs = glob(
         ["summary/**/*.py"],
@@ -3420,6 +3435,7 @@ py_library(
         ":platform",
         ":protos_all_py",
         ":pywrap_tensorflow",
+        ":summary_op_util",
         ":summary_ops",
         ":util",
         "//third_party/py/numpy",

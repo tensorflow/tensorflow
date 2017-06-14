@@ -36,9 +36,18 @@ message DebugOptions {
   // interpretation of this value is left to the backends.
   int32 xla_backend_optimization_level = 3;
 
+  // When true, "unsafe" mathematical optimizations are enabled. These
+  // transformations include but are not limited to:
+  //
+  //  - Reducing the precision of operations (e.g. using an approximate sin
+  //    function, or transforming x/y into x * (1/y)).
+  //  - Assuming that operations never produce or consume NaN or +/- Inf.
+  //  - Assuming that +0 and -0 are indistinguishable.
+  bool xla_enable_fast_math = 4;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
-  map<string, string> xla_backend_extra_options = 4;
+  map<string, string> xla_backend_extra_options = 5;
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings
@@ -46,15 +55,6 @@ message DebugOptions {
 //
 // When adding new fields, keep in mind that boolean fields default to false.
 message ExecutionOptions {
-  // When false, "unsafe" mathematical optimizations are enabled.  These
-  // transformations include but are not limited to:
-  //
-  //  - Reducing the precision of operations (e.g. using an approximate sin
-  //    function, or transforming x/y into x * (1/y)).
-  //  - Assuming that operations never produce or consume NaN or +/- Inf.
-  //  - Assuming that +0 and -0 are indistinguishable.
-  bool disable_fast_math = 1;
-
   // This optional field's layout is used as a hint when storing the output of
   // this computation.  Subsequent transfers of this output array to the client
   // may be faster when using this layout.

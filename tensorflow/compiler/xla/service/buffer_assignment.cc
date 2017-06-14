@@ -1259,6 +1259,18 @@ void BufferAssigner::AssignColocatedBufferSets(
     FlatSet<BufferAllocation::Index>* colocated_allocations) {
   for (const ColocatedBufferSet& colocated_buffer_set : colocated_buffer_sets) {
     BufferAllocation* allocation = nullptr;
+    // Set 'entry_parameter_number' if entry param in 'colocated_buffer_set'.
+    int64 entry_parameter_number = -1;
+    for (const LogicalBuffer* buffer : colocated_buffer_set) {
+      const HloInstruction* instruction = buffer->instruction();
+      const HloComputation* computation = instruction->parent();
+      if (instruction->opcode() == HloOpcode::kParameter &&
+          computation == computation->parent()->entry_computation()) {
+        entry_parameter_number = instruction->parameter_number();
+        break;
+      }
+    }
+
     for (const LogicalBuffer* buffer : colocated_buffer_set) {
       if (allocation == nullptr) {
         // TODO(b/32491382) Avoid current trivial solution of using new
@@ -1268,25 +1280,20 @@ void BufferAssigner::AssignColocatedBufferSets(
         allocation = assignment->NewAllocation(
             *buffer, assignment->buffer_size_(*buffer),
             /*is_thread_local=*/false, /*is_reusable=*/true);
+        if (entry_parameter_number >= 0) {
+          // This colocated buffer set contains an entry parameter and other
+          // logical buffers which use the parameter as read-only in a while
+          // body computation (which updates in place).
+          // Set 'entry_computation_parameter' to indicate that it contains
+          // an entry parameter, and to prevent reuse in MaybeAssignBuffer.
+          allocation->set_entry_computation_parameter(entry_parameter_number);
+        }
         colocated_allocations->insert(allocation->index());
       } else {
         assignment->AddAssignment(allocation, *buffer, /*offset=*/0,
                                   assignment->buffer_size_(*buffer));
       }
       colocated_buffers->insert(buffer);
-
-      // Each entry parameter must reside in its own BufferAllocation. As a
-      // result, it doesn't make sense for entry parameters to appear in a
-      // colocated buffer set, since the only correct scenario would be a
-      // degenerate colocated set that only contains the entry parameter.
-      const HloInstruction* instruction = buffer->instruction();
-      const HloComputation* computation = instruction->parent();
-      const bool is_entry_parameter =
-          instruction->opcode() == HloOpcode::kParameter &&
-          computation == computation->parent()->entry_computation();
-      CHECK(!is_entry_parameter)
-          << "allocation: " << *allocation << " instruction: " << *buffer << " "
-          << instruction->ToString();
     }
   }
 }

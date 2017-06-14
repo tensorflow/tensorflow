@@ -199,6 +199,7 @@ tensorflow/core/kernels/quantized_matmul_op.cc
 tensorflow/core/kernels/quantized_mul_op.cc
 tensorflow/core/kernels/quantized_pooling_ops.cc
 tensorflow/core/kernels/quantized_reshape_op.cc
+tensorflow/core/kernels/quantized_resize_bilinear_op.cc
 tensorflow/core/kernels/requantization_range_op.cc
 tensorflow/core/kernels/requantize.cc
 tensorflow/core/ops/training_ops.cc

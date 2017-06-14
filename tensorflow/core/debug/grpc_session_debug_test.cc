@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_session.h"
 
+#include <memory>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/debug/debug_io_utils.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"
@@ -37,8 +39,9 @@ limitations under the License.
 #include "tensorflow/core/util/port.h"
 
 namespace tensorflow {
+namespace {
 
-static SessionOptions Devices(int num_cpus, int num_gpus) {
+SessionOptions Devices(int num_cpus, int num_gpus) {
   SessionOptions result;
   (*result.config.mutable_device_count())["CPU"] = num_cpus;
   (*result.config.mutable_device_count())["GPU"] = num_gpus;
@@ -67,13 +70,13 @@ void CreateGraphDef(GraphDef* graph_def, string node_names[3]) {
 
 // Asserts that "val" is a single float tensor. The only float is
 // "expected_val".
-static void IsSingleFloatValue(const Tensor& val, float expected_val) {
+void IsSingleFloatValue(const Tensor& val, float expected_val) {
   ASSERT_EQ(val.dtype(), DT_FLOAT);
   ASSERT_EQ(val.NumElements(), 1);
   ASSERT_EQ(val.flat<float>()(0), expected_val);
 }
 
-static SessionOptions Options(const string& target, int placement_period) {
+SessionOptions Options(const string& target, int placement_period) {
   SessionOptions options;
   // NOTE(mrry): GrpcSession requires a grpc:// scheme prefix in the target
   // string.
@@ -85,8 +88,8 @@ static SessionOptions Options(const string& target, int placement_period) {
   return options;
 }
 
-static Session* NewRemote(const SessionOptions& options) {
-  return CHECK_NOTNULL(NewSession(options));
+std::unique_ptr<Session> NewRemote(const SessionOptions& options) {
+  return std::unique_ptr<Session>(CHECK_NOTNULL(NewSession(options)));
 }
 
 class GrpcSessionDebugTest : public ::testing::Test {
@@ -149,9 +152,7 @@ TEST_F(GrpcSessionDebugTest, FileDebugURL) {
   std::unique_ptr<test::TestCluster> cluster;
   TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
 
-  std::unique_ptr<Session> session(
-      NewRemote(Options(cluster->targets()[0], 1)));
-  ASSERT_TRUE(session != nullptr);
+  auto session = NewRemote(Options(cluster->targets()[0], 1));
   TF_CHECK_OK(session->Create(graph));
 
   // Iteration 0: No watch.
@@ -220,9 +221,7 @@ void SetDevice(GraphDef* graph, const string& name, const string& dev) {
 TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
   std::unique_ptr<test::TestCluster> cluster;
   TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 1), 2, &cluster));
-  std::unique_ptr<Session> session(
-      NewRemote(Options(cluster->targets()[0], 1000)));
-  ASSERT_TRUE(session != nullptr);
+  auto session = NewRemote(Options(cluster->targets()[0], 1000));
 
   // b = a
   Graph graph(OpRegistry::Global());
@@ -289,4 +288,5 @@ TEST_F(GrpcSessionDebugTest, MultiDevices_String) {
   }
 }
 
+}  // namespace
 }  // namespace tensorflow
