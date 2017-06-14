@@ -41,7 +41,7 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
     graph_optimizer.reset(new LayoutOptimizer());
   }
   if (optimizer == "memory") {
-    graph_optimizer.reset(new MemoryOptimizer());
+    graph_optimizer.reset(new MemoryOptimizer(RewriterConfig::MANUAL));
   }
   if (optimizer == "autoparallel") {
     graph_optimizer.reset(
@@ -66,8 +66,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           std::unique_ptr<GraphOptimizer>(new LayoutOptimizer()));
     }
     if (cfg_.memory_optimization() > 0) {
-      optimizers.push_back(
-          std::unique_ptr<GraphOptimizer>(new MemoryOptimizer()));
+      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
+          new MemoryOptimizer(cfg_.memory_optimization())));
     }
     if (cfg_.auto_parallel().enable()) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
@@ -114,7 +114,8 @@ void MetaOptimizer::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
   return cfg.optimize_tensor_layout() || cfg.constant_folding() ||
-         cfg.auto_parallel().enable() || !cfg.optimizers().empty();
+         cfg.auto_parallel().enable() || cfg.memory_optimization() > 0 ||
+         !cfg.optimizers().empty();
 }
 
 Status RunMetaOptimizer(const GrapplerItem& item, const RewriterConfig& cfg,
