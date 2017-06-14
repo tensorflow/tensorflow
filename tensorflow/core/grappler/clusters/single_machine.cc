@@ -36,6 +36,8 @@ SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
       num_gpus_(num_gpus),
       expected_init_time_s_(0),
       closing_(false) {
+  VLOG(1) << "Number of CPU cores: " << num_cpu_cores
+          << " Number of GPUs: " << num_gpus;
   thread_pool_.reset(new thread::ThreadPool(
       Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
 
@@ -73,9 +75,12 @@ Status SingleMachine::Provision() {
   DeviceProperties attr = GetLocalCPUInfo();
   devices_["/job:localhost/replica:0/task:0/cpu:0"] = GetLocalCPUInfo();
 
+  VLOG(1) << "Number of GPUs: " << num_gpus_;
   for (int i = 0; i < num_gpus_; ++i) {
-    devices_[strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i)] =
-        GetLocalGPUInfo(i);
+    string device_name =
+        strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i);
+    VLOG(1) << "Adding GPU device " << device_name;
+    devices_[device_name] = GetLocalGPUInfo(i);
   }
   return Status::OK();
 }

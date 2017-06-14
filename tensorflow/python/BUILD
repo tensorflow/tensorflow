@@ -3832,6 +3832,19 @@ py_library(
     deps = [":pywrap_tensorflow_internal"],
 )
 
+py_binary(
+    name = "cost_analyzer_tool",
+    srcs = [
+        "grappler/cost_analyzer_tool.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":cost_analyzer",
+        ":framework_for_generated_wrappers",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
 py_test(
     name = "cost_analyzer_test",
     size = "small",

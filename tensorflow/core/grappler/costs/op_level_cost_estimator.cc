@@ -314,6 +314,8 @@ std::pair<double, double> OpLevelCostEstimator::GetDeviceInfo(
       bandwidth = 100;
     }
   }
+  VLOG(1) << "Device: " << device.type() << " GFLOPS: " << gflops
+          << " Bandwidth: " << bandwidth;
 
   return std::make_pair(gflops, bandwidth);
 }
@@ -461,7 +463,7 @@ int64 OpLevelCostEstimator::CountConv2DOperations(
   ops *= conv_dims.kx * conv_dims.ky;
   ops *= conv_dims.iz * conv_dims.oz;
   ops *= kOpsPerMac;
-  VLOG(1) << "Operations for Conv2D" << ops;
+  VLOG(1) << "Operations for Conv2D " << ops;
 
   if (conv_info != nullptr) {
     *conv_info = conv_dims;
@@ -679,7 +681,7 @@ int64 OpLevelCostEstimator::CountConv2DBackPropInputOperations(
   ops *= conv_dims.iz * conv_dims.oz;
   ops *= kOpsPerMac;
 
-  VLOG(1) << "Operations for Conv2DBackPropInput" << ops;
+  VLOG(1) << "Operations for Conv2DBackPropInput " << ops;
 
   if (returned_conv_dims != nullptr) {
     *returned_conv_dims = conv_dims;
