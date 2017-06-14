@@ -756,11 +756,14 @@ def parallel_stack(values, name="parallel_stack"):
   parallel_stack([x, y, z])  # => [[1, 4], [2, 5], [3, 6]]
   ```
 
-  The difference between stack and parallel_stack is that stack requires all
-  of the inputs be computed before the operation will begin but doesn't require
-  that the input shapes be known during graph construction.  Parallel stack
-  will copy pieces of the input into the output as they become available, in
-  some situations this can provide a performance benefit.
+  The difference between `stack` and `parallel_stack` is that `stack` requires
+  all the inputs be computed before the operation will begin but doesn't require
+  that the input shapes be known during graph construction.
+  
+  `parallel_stack` will copy pieces of the input into the output as they become
+  available, in some situations this can provide a performance benefit.
+  
+  Unlike `stack`, `parallel_stack` does NOT support backpropagation.
 
   This is the opposite of unstack.  The numpy equivalent is
 
