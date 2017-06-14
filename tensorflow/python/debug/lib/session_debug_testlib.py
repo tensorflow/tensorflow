@@ -797,6 +797,36 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     dump = debug_data.DebugDumpDir(self._dump_root, validate=False)
     self.assertTrue(dump.loaded_partition_graphs())
 
+  def testGraphPathFindingOnControlEdgesWorks(self):
+    with session.Session() as sess:
+      v1 = variables.Variable(1.0, name="v1")
+      v2 = variables.Variable(2.0, name="v2")
+      v3 = variables.Variable(3.0, name="v3")
+      a = math_ops.add(v1, v2, name="a")
+      with ops.control_dependencies([a]):
+        c = math_ops.subtract(v3, v3, name="c")
+
+      sess.run(variables.global_variables_initializer())
+      _, dump = self._debug_run_and_get_dump(sess, c)
+
+      self.assertEqual(["v1", "v1/read", "a", "c"],
+                       dump.find_some_path("v1", "c"))
+      self.assertIsNone(dump.find_some_path("v1", "c", include_control=False))
+
+  def testGraphPathFindingReverseRefEdgeWorks(self):
+    with session.Session() as sess:
+      v = variables.Variable(10.0, name="v")
+      delta = variables.Variable(1.0, name="delta")
+      inc_v = state_ops.assign_add(v, delta, name="inc_v")
+
+      sess.run(variables.global_variables_initializer())
+      _, dump = self._debug_run_and_get_dump(sess, inc_v)
+
+      self.assertEqual(
+          ["delta", "delta/read", "inc_v", "v"],
+          dump.find_some_path("delta", "v", include_reversed_ref=True))
+      self.assertIsNone(dump.find_some_path("delta", "v"))
+
   def testCausalityCheckOnDumpsDetectsWrongTemporalOrder(self):
     with session.Session() as sess:
       u_name = "testDumpCausalityCheck/u"

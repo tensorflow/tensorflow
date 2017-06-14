@@ -214,6 +214,7 @@ allows the user to toggle between various dashboards.
     import {TABS, setUseHash} from "../tf-globals/globals";
     import {getString, setString, TAB} from "../tf-storage/storage";
     import {setRouter, createRouter} from "../tf-backend/router";
+    import {fetchRuns} from "../tf-backend/runsStore";
 
     Polymer({
       is: "tf-tensorboard",
@@ -325,6 +326,7 @@ allows the user to toggle between various dashboards.
         window.addEventListener('hashchange', function() {
           this._getModeFromHash();
         }.bind(this));
+        fetchRuns();
       },
       _getModeFromHash: function() {
         var tabName = getString(TAB);
@@ -347,7 +349,9 @@ allows the user to toggle between various dashboards.
         if (!this._debuggerDataEnabled && this._modeIsGraphs(this.mode)) {
           return;
         }
-        this.selectedDashboard().reload();
+        fetchRuns().then(function() {
+          this.selectedDashboard().reload();
+        }.bind(this));
       },
       openSettings: function() {
         this.$.settings.open();

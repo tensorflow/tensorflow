@@ -26,6 +26,7 @@ namespace legacy_flags {
 struct DebugOptionsFlags {
   string xla_generate_hlo_graph;
   string xla_disable_hlo_passes;
+  bool xla_enable_fast_math;
   int32 xla_backend_optimization_level;
   string xla_backend_extra_options;
 };
@@ -42,6 +43,7 @@ void AllocateFlags() {
   flag_values = new DebugOptionsFlags;
   flag_values->xla_generate_hlo_graph = "";
   flag_values->xla_disable_hlo_passes = "";
+  flag_values->xla_enable_fast_math = true;
   flag_values->xla_backend_optimization_level = 2;
   flag_values->xla_backend_extra_options = "";
 
@@ -51,6 +53,10 @@ void AllocateFlags() {
            "HLO modules matching this regex will be dumped to a .dot file "
            "throughout various stages in compilation."),
 
+       tensorflow::Flag(
+           "xla_enable_fast_math", &flag_values->xla_enable_fast_math,
+           "Enable unsafe fast-math optimizations in the compiler; "
+           "this may produce faster code at the expense of some accuracy."),
        tensorflow::Flag(
            "xla_backend_optimization_level",
            &flag_values->xla_backend_optimization_level,
@@ -90,6 +96,7 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
     options.add_xla_disable_hlo_passes(passname);
   }
 
+  options.set_xla_enable_fast_math(flag_values->xla_enable_fast_math);
   options.set_xla_backend_optimization_level(
       flag_values->xla_backend_optimization_level);
 
