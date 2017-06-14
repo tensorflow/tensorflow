@@ -141,6 +141,31 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Tensor_scalarBytes(JNIEnv *,
 JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_readNDArray(JNIEnv *, jclass,
                                                               jlong, jobject);
 
+/*
+ * Class:     org_tensorflow_Tensor
+ * Method:    getEncodedStringSize
+ * Signature: (I)I
+ */
+JNIEXPORT jint JNICALL Java_org_tensorflow_Tensor__getEncodedStringSize
+  (JNIEnv *, jobject, jint);
+
+/*
+ * Class:     org_tensorflow_Tensor
+ * Method:    setStringBytes
+ * Signature: ([BL)I
+ */
+JNIEXPORT jint JNICALL Java_org_tensorflow_Tensor__setStringBytes
+  (JNIEnv *, jobject, jbyteArray, jobject);
+
+/*
+ * Class:     org_tensorflow_Tensor
+ * Method:    getStringBytes
+ * Signature: (L)V
+ */
+JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Tensor__getStringBytes
+  (JNIEnv *, jobject, jobject);
+
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

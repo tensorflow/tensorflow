@@ -427,3 +427,39 @@ JNIEXPORT void JNICALL Java_org_tensorflow_Tensor_readNDArray(JNIEnv* env,
   readNDArray(env, dtype, static_cast<const char*>(data), sz, num_dims,
               static_cast<jarray>(value));
 }
+
+JNIEXPORT jint JNICALL Java_org_tensorflow_Tensor__setStringBytes(
+    JNIEnv* env, jobject object, jbyteArray string, jobject string_buffer) {
+  char* dst_buffer = reinterpret_cast<char*>(env->GetDirectBufferAddress(string_buffer));
+  size_t src_len = static_cast<size_t>(env->GetArrayLength(string));
+  size_t dst_len = TF_StringEncodedSize(src_len);
+  std::unique_ptr<char[]> buffer(new char[src_len]);
+  env->GetByteArrayRegion(string, 0, static_cast<jsize>(src_len), reinterpret_cast<jbyte*>(buffer.get()));
+  TF_Status* status = TF_NewStatus();
+  size_t num_bytes_written = TF_StringEncode(buffer.get(), src_len, dst_buffer, dst_len, status);
+  throwExceptionIfNotOK(env, status);
+  TF_DeleteStatus(status);
+  return static_cast<jsize>(num_bytes_written);
+}
+
+JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Tensor__getStringBytes(
+    JNIEnv* env, jobject object, jobject string_buffer) {
+  char* src_buffer = reinterpret_cast<char*>(env->GetDirectBufferAddress(string_buffer));
+  jbyteArray return_array = nullptr;
+  const char* dst = nullptr;
+  size_t dst_len = 0;
+  TF_Status* status = TF_NewStatus();
+  size_t src_len = static_cast<size_t>(env->GetDirectBufferCapacity(string_buffer));
+  TF_StringDecode(src_buffer, src_len, &dst, &dst_len, status);
+  if (throwExceptionIfNotOK(env, status)) {
+    return_array = env->NewByteArray(static_cast<jsize>(dst_len));
+    env->SetByteArrayRegion(return_array, 0, static_cast<jsize>(dst_len), reinterpret_cast<const jbyte*>(dst));
+  }
+  TF_DeleteStatus(status);
+  return return_array;
+}
+
+JNIEXPORT jint JNICALL Java_org_tensorflow_Tensor__getEncodedStringSize(
+    JNIEnv* env, jobject object, jint string_num_bytes) {
+  return static_cast<jint>(TF_StringEncodedSize(static_cast<size_t>(string_num_bytes)));
+}
