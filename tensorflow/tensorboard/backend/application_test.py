@@ -23,7 +23,6 @@ from __future__ import print_function
 
 import gzip
 import json
-import numbers
 import os
 import shutil
 import socket
@@ -83,8 +82,10 @@ class TensorboardServerTest(tf.test.TestCase):
   _only_use_meta_graph = False  # Server data contains only a GraphDef
 
   def setUp(self):
-    self.temp_dir = self._GenerateTestData()
-    multiplexer = event_multiplexer.EventMultiplexer(
+    self.logdir = self.get_temp_dir()
+
+    self._GenerateTestData(run_name='run1')
+    self._multiplexer = event_multiplexer.EventMultiplexer(
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
     plugins = [
@@ -92,7 +93,7 @@ class TensorboardServerTest(tf.test.TestCase):
         FakePlugin(plugin_name='bar', is_active_value=False, routes_mapping={})
     ]
     app = application.TensorBoardWSGIApp(
-        self.temp_dir, plugins, multiplexer, reload_interval=0)
+        self.logdir, plugins, self._multiplexer, reload_interval=0)
     try:
       self._server = serving.BaseWSGIServer('localhost', 0, app)
       # 0 to pick an unused port.
@@ -145,7 +146,7 @@ class TensorboardServerTest(tf.test.TestCase):
   def testLogdir(self):
     """Test the format of the data/logdir endpoint."""
     parsed_object = self._getJson('/data/logdir')
-    self.assertEqual(parsed_object, {'logdir': self.temp_dir})
+    self.assertEqual(parsed_object, {'logdir': self.logdir})
 
   def testPluginsListing(self):
     """Test the format of the data/plugins_listing endpoint."""
@@ -156,20 +157,61 @@ class TensorboardServerTest(tf.test.TestCase):
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""
     run_json = self._getJson('/data/runs')
+    self.assertEqual(run_json, ['run1'])
 
-    # Don't check the actual timestamp since it's time-dependent.
-    self.assertTrue(
-        isinstance(run_json['run1']['firstEventTimestamp'], numbers.Number))
-    del run_json['run1']['firstEventTimestamp']
-    self.assertEqual(
-        run_json,
-        {
-            'run1': {
-                # if only_use_meta_graph, the graph is from the metagraph
-                'meta_graph': self._only_use_meta_graph,
-                'tensors': [],
-            }
-        })
+  def testRunsAppendOnly(self):
+    """Test that new runs appear after old ones in /data/runs."""
+    # We use three runs: the 'run1' that we already created in our
+    # `setUp` method, plus runs with names lexicographically before and
+    # after it (so that just sorting by name doesn't have a chance of
+    # working).
+    fake_wall_times = {
+        'run1': 1234.0,
+        'avocado': 2345.0,
+        'zebra': 3456.0,
+        'mysterious': None,
+    }
+
+    stubs = tf.test.StubOutForTesting()
+    # pylint: disable=invalid-name
+    def FirstEventTimestamp_stub(multiplexer_self, run_name):
+      del multiplexer_self
+      matches = [candidate_name
+                 for candidate_name in fake_wall_times
+                 if run_name.endswith(candidate_name)]
+      self.assertEqual(len(matches), 1, '%s (%s)' % (matches, run_name))
+      wall_time = fake_wall_times[matches[0]]
+      if wall_time is None:
+        raise ValueError('No event timestamp could be found')
+      else:
+        return wall_time
+    # pylint: enable=invalid-name
+
+    stubs.SmartSet(self._multiplexer,
+                   'FirstEventTimestamp',
+                   FirstEventTimestamp_stub)
+
+    def add_run(run_name):
+      self._GenerateTestData(run_name)
+      self._multiplexer.AddRunsFromDirectory(self.logdir)
+      self._multiplexer.Reload()
+
+    # Add one run: it should come last.
+    add_run('avocado')
+    self.assertEqual(self._getJson('/data/runs'),
+                     ['run1', 'avocado'])
+
+    # Add another run: it should come last, too.
+    add_run('zebra')
+    self.assertEqual(self._getJson('/data/runs'),
+                     ['run1', 'avocado', 'zebra'])
+
+    # And maybe there's a run for which we somehow have no timestamp.
+    add_run('mysterious')
+    self.assertEqual(self._getJson('/data/runs'),
+                     ['run1', 'avocado', 'zebra', 'mysterious'])
+
+    stubs.UnsetAll()
 
   def testApplicationPaths_getCached(self):
     """Test the format of the /data/runs endpoint."""
@@ -197,20 +239,20 @@ class TensorboardServerTest(tf.test.TestCase):
       response.read()
       connection.close()
 
-  def _GenerateTestData(self):
+  def _GenerateTestData(self, run_name):
     """Generates the test data directory.
 
-    The test data has a single run named run1 which contains:
-     - a graph definition and metagraph definition
+    The test data has a single run of the given name, containing:
+      - a graph definition and metagraph definition
 
-    Returns:
-      temp_dir: The directory the test data is generated under.
+    Arguments:
+      run_name: the directory under self.logdir into which to write
+        events
     """
-    temp_dir = tempfile.mkdtemp(prefix=self.get_temp_dir())
-    self.addCleanup(shutil.rmtree, temp_dir)
-    run1_path = os.path.join(temp_dir, 'run1')
-    os.makedirs(run1_path)
-    writer = tf.summary.FileWriter(run1_path)
+    run_path = os.path.join(self.logdir, run_name)
+    os.makedirs(run_path)
+
+    writer = tf.summary.FileWriter(run_path)
 
     # Add a simple graph event.
     graph_def = tf.GraphDef()
@@ -229,8 +271,6 @@ class TensorboardServerTest(tf.test.TestCase):
 
     writer.flush()
     writer.close()
-
-    return temp_dir
 
 
 class TensorboardServerPluginNameTest(tf.test.TestCase):

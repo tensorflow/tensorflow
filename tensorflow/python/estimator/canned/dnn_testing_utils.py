@@ -541,6 +541,35 @@ class BaseDNNClassifierEvaluateTest(object):
     metrics = dnn_classifier.evaluate(input_fn=_input_fn, steps=1)
     self.assertAlmostEqual(2.7314420, metrics[metric_keys.MetricKeys.LOSS])
 
+  def test_multi_dim_weights(self):
+    """Tests evaluation with weights."""
+    # Uses same checkpoint with test_multi_dims
+    global_step = 100
+    create_checkpoint((([[.6, .5], [-.6, -.5]],
+                        [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
+                       ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3, .0]),),
+                      global_step, self._model_dir)
+    n_classes = 3
+
+    dnn_classifier = self._dnn_classifier_fn(
+        hidden_units=(2, 2),
+        feature_columns=[feature_column.numeric_column('age', shape=[2])],
+        n_classes=n_classes,
+        weight_column='w',
+        model_dir=self._model_dir)
+
+    def _input_fn():
+      # batch_size = 2, one false label, and one true.
+      return {'age': [[10., 8.], [10., 8.]], 'w': [[10.], [100.]]}, [[1], [0]]
+
+    # Uses identical numbers as test_multi_dims
+    # See that test for calculation of logits.
+    # loss = -log(0.43538380)*10 - log(0.16670536)*100
+    expected_loss = 187.468007
+    metrics = dnn_classifier.evaluate(input_fn=_input_fn, steps=1)
+    self.assertAlmostEqual(
+        expected_loss, metrics[metric_keys.MetricKeys.LOSS], places=3)
+
 
 class BaseDNNRegressorEvaluateTest(object):
 
@@ -610,6 +639,34 @@ class BaseDNNRegressorEvaluateTest(object):
         ops.GraphKeys.GLOBAL_STEP: global_step
     }, dnn_regressor.evaluate(input_fn=_input_fn, steps=1))
 
+  def test_multi_dim_weights(self):
+    """Asserts evaluation metrics for multi-dimensional input and logits."""
+    # same checkpoint with test_multi_dim.
+    global_step = 100
+    create_checkpoint((([[.6, .5], [-.6, -.5]],
+                        [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
+                       ([[-1., 1., .5], [-1., 1., .5]], [.3, -.3, .0]),),
+                      global_step, self._model_dir)
+    label_dimension = 3
+
+    dnn_regressor = self._dnn_regressor_fn(
+        hidden_units=(2, 2),
+        feature_columns=[feature_column.numeric_column('age', shape=[2])],
+        label_dimension=label_dimension,
+        weight_column='w',
+        model_dir=self._model_dir)
+
+    def _input_fn():
+      return {'age': [[10., 8.]], 'w': [10.]}, [[1., -1., 0.5]]
+
+    # Uses identical numbers as test_multi_dim.
+    # See that test for calculation of logits.
+    # loss = 4.3929*10
+    expected_loss = 43.929
+    metrics = dnn_regressor.evaluate(input_fn=_input_fn, steps=1)
+    self.assertAlmostEqual(
+        expected_loss, metrics[metric_keys.MetricKeys.LOSS], places=3)
+
 
 class BaseDNNClassifierPredictTest(object):
 
@@ -624,7 +681,7 @@ class BaseDNNClassifierPredictTest(object):
       writer_cache.FileWriterCache.clear()
       shutil.rmtree(self._model_dir)
 
-  def test_one_dim(self):
+  def _test_one_dim(self, label_vocabulary, label_output_fn):
     """Asserts predictions for one-dimensional input and logits."""
     create_checkpoint(
         (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
@@ -634,6 +691,7 @@ class BaseDNNClassifierPredictTest(object):
 
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=(2, 2),
+        label_vocabulary=label_vocabulary,
         feature_columns=(feature_column.numeric_column('x'),),
         model_dir=self._model_dir)
     input_fn = numpy_io.numpy_input_fn(
@@ -654,10 +712,20 @@ class BaseDNNClassifierPredictTest(object):
          0.11105597], predictions[prediction_keys.PredictionKeys.PROBABILITIES])
     self.assertAllClose([0],
                         predictions[prediction_keys.PredictionKeys.CLASS_IDS])
-    self.assertAllEqual([b'0'],
+    self.assertAllEqual([label_output_fn(0)],
                         predictions[prediction_keys.PredictionKeys.CLASSES])
 
-  def test_multi_dim(self):
+  def test_one_dim_without_label_vocabulary(self):
+    self._test_one_dim(label_vocabulary=None,
+                       label_output_fn=lambda x: ('%s' % x).encode())
+
+  def test_one_dim_with_label_vocabulary(self):
+    n_classes = 2
+    self._test_one_dim(
+        label_vocabulary=['class_vocab_{}'.format(i) for i in range(n_classes)],
+        label_output_fn=lambda x: ('class_vocab_%s' % x).encode())
+
+  def _test_multi_dim_with_3_classes(self, label_vocabulary, label_output_fn):
     """Asserts predictions for multi-dimensional input and logits."""
     create_checkpoint(
         (([[.6, .5], [-.6, -.5]], [.1, -.1]),
@@ -669,6 +737,7 @@ class BaseDNNClassifierPredictTest(object):
     dnn_classifier = self._dnn_classifier_fn(
         hidden_units=(2, 2),
         feature_columns=(feature_column.numeric_column('x', shape=(2,)),),
+        label_vocabulary=label_vocabulary,
         n_classes=3,
         model_dir=self._model_dir)
     input_fn = numpy_io.numpy_input_fn(
@@ -698,7 +767,19 @@ class BaseDNNClassifierPredictTest(object):
     self.assertAllEqual(
         [1], predictions[prediction_keys.PredictionKeys.CLASS_IDS])
     self.assertAllEqual(
-        [b'1'], predictions[prediction_keys.PredictionKeys.CLASSES])
+        [label_output_fn(1)],
+        predictions[prediction_keys.PredictionKeys.CLASSES])
+
+  def test_multi_dim_with_3_classes_but_no_label_vocab(self):
+    self._test_multi_dim_with_3_classes(
+        label_vocabulary=None,
+        label_output_fn=lambda x: ('%s' % x).encode())
+
+  def test_multi_dim_with_3_classes_and_label_vocab(self):
+    n_classes = 3
+    self._test_multi_dim_with_3_classes(
+        label_vocabulary=['class_vocab_{}'.format(i) for i in range(n_classes)],
+        label_output_fn=lambda x: ('class_vocab_%s' % x).encode())
 
 
 class BaseDNNRegressorPredictTest(object):

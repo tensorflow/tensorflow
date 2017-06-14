@@ -10,7 +10,10 @@ load(
 
 py_binary(
     name = "tf_upgrade",
-    srcs = ["tf_upgrade.py"],
+    srcs = [
+        "ast_edits.py",
+        "tf_upgrade.py",
+    ],
     srcs_version = "PY2AND3",
 )
 

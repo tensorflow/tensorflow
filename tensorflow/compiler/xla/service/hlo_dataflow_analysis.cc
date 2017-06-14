@@ -409,6 +409,7 @@ InstructionValueSet HloDataflowAnalysis::Phi(
             input_value_ids.push_back(value_id);
           }
         }
+        std::sort(input_value_ids.begin(), input_value_ids.end());
         input_value_ids.erase(
             std::unique(input_value_ids.begin(), input_value_ids.end()),
             input_value_ids.end());

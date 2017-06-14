@@ -822,11 +822,10 @@ TEST_F(WhileCopyInsertionTest,
 
   InsertCopies(module_.get());
 
-  // Both while loops share a single copy of iter_param, since index 0 is
-  // read-only in the body.
+  // Both while loops alias iter_param, since index 0 is read-only in the body.
   EXPECT_EQ(while_hlo1->operand(0)->operand(0),
             while_hlo2->operand(0)->operand(0));
-  EXPECT_THAT(while_hlo1->operand(0)->operand(0), op::Copy(iter_param));
+  EXPECT_EQ(while_hlo1->operand(0)->operand(0), iter_param);
 
   // Each while loop gets its own copy of data_param, since index 1 is not
   // read-only in the body.

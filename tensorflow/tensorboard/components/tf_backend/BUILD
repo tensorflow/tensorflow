@@ -12,6 +12,7 @@ ts_web_library(
         "behavior.ts",
         "requestManager.ts",
         "router.ts",
+        "runsStore.ts",
         "tf-backend.html",
         "urlPathHelpers.ts",
     ],
