@@ -109,6 +109,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LMDBReader"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LogMessage"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }

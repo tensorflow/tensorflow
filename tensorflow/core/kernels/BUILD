@@ -1901,7 +1901,7 @@ cc_library(
     deps = [
         ":fixed_length_record_reader_op",
         ":identity_reader_op",
-        #":lmdb_reader_op",
+        ":lmdb_reader_op",
         ":matching_files_op",
         ":reader_ops",
         ":restore_op",
@@ -1936,14 +1936,13 @@ tf_kernel_library(
     deps = IO_DEPS,
 )
 
-# TODO(jhseu): Restore after merge.
-#tf_kernel_library(
-#    name = "lmdb_reader_op",
-#    prefix = "lmdb_reader_op",
-#    deps = IO_DEPS + [
-#        "@lmdb",
-#    ],
-#)
+tf_kernel_library(
+    name = "lmdb_reader_op",
+    prefix = "lmdb_reader_op",
+    deps = IO_DEPS + [
+        "@lmdb",
+    ],
+)
 
 tf_kernel_library(
     name = "matching_files_op",

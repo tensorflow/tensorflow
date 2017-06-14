@@ -22,9 +22,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-inline void MDB_CHECK(int mdb_status) {
-  CHECK_EQ(mdb_status, MDB_SUCCESS) << mdb_strerror(mdb_status);
-}
+#define MDB_CHECK(val) CHECK_EQ(val, MDB_SUCCESS) << mdb_strerror(val)
 
 class LMDBReader : public ReaderBase {
  public:
