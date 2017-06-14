@@ -825,12 +825,6 @@ class HloInstruction {
       const Shape& shape,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands);
 
-  // Inner DFS traversal function -- this function being called (rather than
-  // Accept above) allows us to distinguish the root of the traversal.
-  Status AcceptInternal(DfsHloVisitor* visitor,
-                        const CompareFunction* operand_order,
-                        bool ignore_control_predecessors);
-
   // CHECKs various invariants of a fusion instruction.
   void CheckFusionInstruction() const;
 

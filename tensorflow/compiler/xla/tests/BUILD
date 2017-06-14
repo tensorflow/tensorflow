@@ -1357,6 +1357,16 @@ xla_test(
     ],
 )
 
+xla_test(
+    name = "deep_graph_test",
+    srcs = ["deep_graph_test.cc"],
+    deps = [
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+        "//tensorflow/compiler/xla/legacy_flags:user_computation_flags",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+    ],
+)
+
 cc_test(
     name = "literal_test_util_test",
     srcs = ["literal_test_util_test.cc"],

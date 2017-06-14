@@ -1893,72 +1893,86 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
                        HloOpcodeString(opcode_).c_str());
 }
 
-Status HloInstruction::AcceptInternal(DfsHloVisitor* visitor,
-                                      const CompareFunction* operand_order,
-                                      bool ignore_control_predecessors) {
-  // Do not visit this HLO node again if it is already visited.
-  if (visitor->DidVisit(*this)) {
-    VLOG(3) << "Not visiting HLO " << name() << " as it was already visited.";
-    return Status::OK();
-  }
-
-  // If the instruction is in the visiting state, it means a cycle.
-  if (visitor->IsVisiting(*this)) {
+static Status PushDFSChild(DfsHloVisitor* visitor,
+                           std::vector<HloInstruction*>* dfs_stack,
+                           HloInstruction* parent, HloInstruction* child) {
+  if (visitor->IsVisiting(*child)) {
     return FailedPrecondition(
         "A cycle is detected while visiting instruction %s",
-        ToString().c_str());
-  }
-  visitor->SetVisiting(*this);
-
-  // Sort operands, if an ordering was provided. 'temp_sorted_operands' must
-  // live at this scope, since 'operands' will point to it if the operands are
-  // sorted.  The purpose of the 'operands' pointer is to avoid copying the
-  // operands in the common case where the operands are not sorted.
-  std::vector<HloInstruction*>* operands = &operands_;
-  std::vector<HloInstruction*> temp_sorted_operands;
-  if (operand_order != nullptr) {
-    temp_sorted_operands = operands_;
-    std::sort(temp_sorted_operands.begin(), temp_sorted_operands.end(),
-              *operand_order);
-    operands = &temp_sorted_operands;
-  }
-  for (HloInstruction* operand : *operands) {
-    VLOG(3) << "Going to visit HLO " << operand->name() << " as operand of HLO "
-            << name();
-    TF_RETURN_IF_ERROR(operand->AcceptInternal(visitor, operand_order,
-                                               ignore_control_predecessors));
+        parent->ToString().c_str());
   }
 
-  if (!ignore_control_predecessors) {
-    // This uses the same pointer/vector sorting to avoid extra copies as above.
-    std::vector<HloInstruction*>* predecessors = &control_predecessors_;
-    std::vector<HloInstruction*> temp_sorted_predecessors;
+  if (!visitor->DidVisit(*child)) {
+    dfs_stack->push_back(child);
+  } else {
+    VLOG(3) << "Not visiting HLO " << child->name()
+            << " as it was already visited.";
+  }
+  return Status::OK();
+}
+
+static Status PostOrderDFS(HloInstruction* root, DfsHloVisitor* visitor,
+                           const HloInstruction::CompareFunction* operand_order,
+                           bool ignore_control_predecessors) {
+  std::vector<HloInstruction*> dfs_stack;
+  dfs_stack.push_back(root);
+
+  do {
+    DCHECK(!dfs_stack.empty());
+
+    HloInstruction* current_node = dfs_stack.back();
+    if (visitor->DidVisit(*current_node)) {
+      dfs_stack.pop_back();
+      VLOG(3) << "Not visiting HLO " << current_node->name()
+              << " as it was already visited.";
+      continue;
+    }
+
+    if (visitor->IsVisiting(*current_node)) {
+      dfs_stack.pop_back();
+
+      TF_RETURN_IF_ERROR(visitor->Preprocess(current_node));
+      VLOG(2) << "Visiting HLO " << current_node->name();
+      TF_RETURN_IF_ERROR(current_node->Visit(visitor));
+      visitor->SetVisited(*current_node);
+      TF_RETURN_IF_ERROR(visitor->Postprocess(current_node));
+      continue;
+    }
+
+    visitor->SetVisiting(*current_node);
+
+    const size_t old_dfs_stack_size = dfs_stack.size();
+
+    for (HloInstruction* child : current_node->operands()) {
+      TF_RETURN_IF_ERROR(
+          PushDFSChild(visitor, &dfs_stack, current_node, child));
+    }
+
+    if (!ignore_control_predecessors) {
+      for (HloInstruction* child : current_node->control_predecessors()) {
+        TF_RETURN_IF_ERROR(
+            PushDFSChild(visitor, &dfs_stack, current_node, child));
+      }
+    }
+
     if (operand_order != nullptr) {
-      temp_sorted_predecessors = control_predecessors_;
-      std::sort(temp_sorted_predecessors.begin(),
-                temp_sorted_predecessors.end(), *operand_order);
-      predecessors = &temp_sorted_predecessors;
+      std::sort(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end(),
+                *operand_order);
     }
-    for (HloInstruction* control_predecessor : *predecessors) {
-      VLOG(3) << "Going to visit HLO " << control_predecessor->name()
-              << " as a control predecessor of HLO " << name();
-      TF_RETURN_IF_ERROR(control_predecessor->AcceptInternal(
-          visitor, operand_order, ignore_control_predecessors));
-    }
-  }
 
-  TF_RETURN_IF_ERROR(visitor->Preprocess(this));
-  VLOG(2) << "Visiting HLO " << name();
-  TF_RETURN_IF_ERROR(Visit(visitor));
-  visitor->SetVisited(*this);
-  return visitor->Postprocess(this);
+    // This makes the traversal order the same as what you'd expect
+    // out of a recursive algorithm.
+    std::reverse(dfs_stack.begin() + old_dfs_stack_size, dfs_stack.end());
+  } while (!dfs_stack.empty());
+
+  return Status::OK();
 }
 
 Status HloInstruction::Accept(DfsHloVisitor* visitor, bool call_finish_visit,
                               bool ignore_control_predecessors) {
   VLOG(2) << "HloInstruction::Accept(" << name() << ")";
   TF_RETURN_IF_ERROR(
-      AcceptInternal(visitor, nullptr, ignore_control_predecessors));
+      PostOrderDFS(this, visitor, nullptr, ignore_control_predecessors));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
@@ -1969,8 +1983,8 @@ Status HloInstruction::AcceptWithOperandOrder(
     DfsHloVisitor* visitor, const CompareFunction& operand_order,
     bool call_finish_visit) {
   VLOG(2) << "HloInstruction::AcceptWithOperandOrder(" << name() << ")";
-  TF_RETURN_IF_ERROR(AcceptInternal(visitor, &operand_order,
-                                    /*ignore_control_predecessors=*/false));
+  TF_RETURN_IF_ERROR(PostOrderDFS(this, visitor, &operand_order,
+                                  /*ignore_control_predecessors=*/false));
   if (call_finish_visit) {
     TF_RETURN_IF_ERROR(visitor->FinishVisit(this));
   }
