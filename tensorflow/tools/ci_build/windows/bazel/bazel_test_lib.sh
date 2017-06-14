@@ -208,5 +208,5 @@ function create_python_test_dir() {
 
 function reinstall_tensorflow_pip() {
   echo "y" | pip uninstall tensorflow -q || true
-  pip install ${1}
+  pip install ${1} --no-deps
 }
