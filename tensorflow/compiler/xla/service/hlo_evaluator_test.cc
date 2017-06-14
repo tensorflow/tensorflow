@@ -241,5 +241,28 @@ TEST_F(HloEvaluatorTest, DoesReshape) {
       });
 }
 
+// Verifies Broadcast operation is correctly evaluated.
+TEST_F(HloEvaluatorTest, DoesBroadcast) {
+  HloComputation::Builder builder(
+      ::testing::UnitTest::GetInstance()->current_test_info()->name());
+
+  auto input_literal = LiteralUtil::CreateR2<int32>({{1, 2}, {3, 4}, {5, 6}});
+  auto output_literal = LiteralUtil::CreateR3<int32>(
+      {{{1, 2}, {3, 4}, {5, 6}}, {{1, 2}, {3, 4}, {5, 6}}});
+  HloInstruction* literal_instruction = builder.AddInstruction(
+      HloInstruction::CreateConstant(std::move(input_literal)));
+
+  builder.AddInstruction(HloInstruction::CreateBroadcast(
+      output_literal->shape(), literal_instruction, {1, 2}));
+
+  std::unique_ptr<Literal> result =
+      evaluator_->Evaluate(builder.Build().get(), {}).ConsumeValueOrDie();
+
+  LiteralUtil::EachCell<int32>(
+      *result, [&](tensorflow::gtl::ArraySlice<int64> indices, int32 value) {
+        EXPECT_TRUE(value == LiteralUtil::Get<int32>(*output_literal, indices));
+      });
+}
+
 }  // namespace
 }  // namespace xla

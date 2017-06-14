@@ -168,6 +168,24 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return HandleAbs<ReturnT>(abs, operand);
   };
 
+  Status HandleBroadcast(HloInstruction* broadcast) override {
+    parent_->evaluated_[broadcast] =
+        LiteralUtil::CreateFromShape(broadcast->shape());
+    auto output = parent_->evaluated_[broadcast].get();
+    auto operand_to_broadcast =
+        parent_->GetEvaluatedLiteralFor(broadcast->operand(0));
+    std::vector<int64> broadcast_indices(
+        ShapeUtil::Rank(broadcast->operand(0)->shape()), 0);
+    return LiteralUtil::Populate<ReturnT>(
+        output, [&](tensorflow::gtl::ArraySlice<int64> multi_index) {
+          for (int64 i = 0; i < broadcast->dimensions().size(); ++i) {
+            broadcast_indices[i] = multi_index[broadcast->dimensions(i)];
+          }
+          return LiteralUtil::Get<ReturnT>(operand_to_broadcast,
+                                           broadcast_indices);
+        });
+  }
+
   Status HandleCeil(HloInstruction* ceil, HloInstruction* operand) override {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[ceil],
                         ElementWiseUnaryOp(ceil, [](ReturnT elem_operand) {
