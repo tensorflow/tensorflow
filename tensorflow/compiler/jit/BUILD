@@ -22,22 +22,6 @@ load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
-# TODO(jhseu): Fix this target.
-#
-# This target can be used by XLA device plugins to prevent circular
-# dependencies, and provides access to all of the required headers
-# for building a device library.
-#cc_header_only_library(
-#    name = "xla_jit_headers_lib",
-#    visibility = ["//visibility:public"],
-#    deps = [
-#        ":xla_cpu_device",
-#        ":xla_cpu_jit",
-#        ":xla_gpu_device",
-#        ":xla_gpu_jit",
-#    ],
-#)
-
 # Target that bundles up the XLA CPU and GPU JIT devices.
 cc_library(
     name = "jit",
@@ -284,4 +268,16 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+# This target can be used by XLA device plugins to prevent circular dependencies, and provides access to all of the required headers for building a device library.
+cc_header_only_library(
+    name = "xla_jit_headers_lib",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xla_cpu_device",
+        ":xla_cpu_jit",
+        ":xla_gpu_device",
+        ":xla_gpu_jit",
+    ],
 )
