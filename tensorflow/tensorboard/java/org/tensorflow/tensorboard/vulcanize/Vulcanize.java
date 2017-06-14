@@ -30,6 +30,7 @@ import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Multimap;
+import com.google.javascript.jscomp.BasicErrorManager;
 import com.google.javascript.jscomp.CheckLevel;
 import com.google.javascript.jscomp.CompilationLevel;
 import com.google.javascript.jscomp.Compiler;
@@ -476,7 +477,7 @@ public final class Vulcanize {
       options.setPrettyPrint(true);
       options.setGeneratePseudoNames(true);
     }
-    Compiler compiler = new Compiler();
+    Compiler compiler = new Compiler(new JsPrintlessErrorManager());
     compiler.disableThreads();
     compiler.compile(
         ImmutableList.<SourceFile>of(),
@@ -569,5 +570,14 @@ public final class Vulcanize {
       }
     }
     return ImmutableMultimap.copyOf(builder);
+  }
+
+  private static final class JsPrintlessErrorManager extends BasicErrorManager {
+
+    @Override
+    public void println(CheckLevel level, JSError error) {}
+
+    @Override
+    public void printSummary() {}
   }
 }
