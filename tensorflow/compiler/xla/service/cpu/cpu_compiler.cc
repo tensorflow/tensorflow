@@ -315,7 +315,8 @@ llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& module_config) {
   llvm::TargetOptions target_options;
   llvm_ir::SetTargetOptions(
-      /*fast_math_enabled=*/!module_config.fast_math_disabled(),
+      /*fast_math_enabled=*/module_config.debug_options()
+          .xla_enable_fast_math(),
       &target_options);
   return target_options;
 }
@@ -546,12 +547,14 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags. At the moment, the only
   // flag that needs to be consistent is fast-math.
-  bool fast_math_disabled = modules[0]->config().fast_math_disabled();
+  const bool fast_math_enabled =
+      modules[0]->config().debug_options().xla_enable_fast_math();
   for (const auto& module : modules) {
-    if (module->config().fast_math_disabled() != fast_math_disabled) {
+    if (module->config().debug_options().xla_enable_fast_math() !=
+        fast_math_enabled) {
       return InvalidArgument(
           "All HLO module configs must have the same value for "
-          "fast_math_disabled.");
+          "xla_enable_fast_math.");
     }
   }
 

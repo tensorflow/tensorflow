@@ -361,7 +361,7 @@ Costs OpLevelCostEstimator::DummyExecutionTime(
 Costs OpLevelCostEstimator::PredictOpCountBasedCost(
     double operations, const OpInfo& op_features) const {
   std::pair<double, double> device_perf = GetDeviceInfo(op_features.device());
-  Costs::NanoSeconds compute_cost(operations / device_perf.first);
+  Costs::NanoSeconds compute_cost(std::ceil(operations / device_perf.first));
   VLOG(1) << "Op:" << op_features.op() << " GOps:" << operations / 1e9
           << " Execution Time (ns):" << compute_cost.count();
 
@@ -372,7 +372,7 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
       CalculateOutputSize(op_features, &found_unknown_shapes);
   double total_io_size = total_input_size + total_output_size;
 
-  Costs::NanoSeconds memory_cost(total_io_size / device_perf.second);
+  Costs::NanoSeconds memory_cost(std::ceil(total_io_size / device_perf.second));
   VLOG(1) << "Op:" << op_features.op() << " Size (KB):" << (total_io_size) / 1e3
           << " Memory Time (ns):" << memory_cost.count();
 

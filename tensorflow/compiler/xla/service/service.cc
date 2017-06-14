@@ -326,7 +326,6 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
   }
 
   module_config->set_replica_count(backend->Replicas().size());
-  module_config->set_fast_math_disabled(execution_options.disable_fast_math());
   module_config->set_seed(execution_options.seed());
   module_config->set_debug_options(execution_options.debug_options());
 
@@ -1073,7 +1072,7 @@ tensorflow::Status Service::ComputeConstant(const ComputeConstantRequest* arg,
   TF_DCHECK_OK(ShapeUtil::ValidateShape(program_shape.result()));
 
   ExecutionOptions execution_options;
-  execution_options.set_disable_fast_math(true);
+  execution_options.mutable_debug_options()->set_xla_enable_fast_math(false);
   *execution_options.mutable_shape_with_output_layout() =
       program_shape.result();
 
