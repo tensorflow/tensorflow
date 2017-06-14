@@ -262,6 +262,12 @@ REGISTER_KERNELS_GPU(float);
 namespace functor {
 
 namespace {
+Status BatchIndexOutOfBoundsError(int64 ind, std::size_t i, int j,
+                                  std::size_t a_dim_size) {
+  return errors::InvalidArgument("a_index (", ind, ") from index[", i, ",", j,
+                                 "] out of bounds (>=", a_dim_size, ")");
+}
+
 Status KOutOfBoundsError(int64 k, std::size_t i, int rhs_index_a,
                          std::size_t lhs_right) {
   return errors::InvalidArgument("k (", k, ") from index[", i, ",", rhs_index_a,
@@ -307,12 +313,20 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B, NDIM
         }
         const Tindices m = indices[lhs_index_a];
         const Tindices k = indices[rhs_index_a];
+        
+        // bounds checks
+        for (int j = 0; j < NDIM - 2; ++j) {
+          if(!FastBoundsCheck(indices[j], b.dimension(j))) {
+            return BatchIndexOutOfBoundsError(indices[j], i, j, b.dimension(j));
+          }
+        }
         if (!FastBoundsCheck(k, lhs_right)) {
           return KOutOfBoundsError(k, i, rhs_index_a, lhs_right);
         }
         if (!FastBoundsCheck(m, out.dimension(NDIM - 2))) {
           return MOutOfBoundsError(m, i, lhs_index_a, out.dimension(NDIM - 2));
         }
+        
         const T a_value = ADJ_A ? MaybeConj(a_values(i)) : a_values(i);
         for (std::size_t n = 0; n < rhs_right; ++n) {
           indices[NDIM - 2] = k;
@@ -338,12 +352,20 @@ struct SparseTensorDenseMatMulFunctor<CPUDevice, T, Tindices, ADJ_A, ADJ_B, NDIM
         const Tindices m = out_offsets[lhs_index_a];
         const Tindices k = out_offsets[rhs_index_a];
         const T a_value = (ADJ_A) ? MaybeConj(a_values(i)) : a_values(i);
+        
+        // bounds checks
+        for (int j = 0; j < NDIM - 2; ++j) {
+          if (!FastBoundsCheck(out_offsets[j], b.dimension(j))) {
+            return BatchIndexOutOfBoundsError(out_offsets[j], i, j, b.dimension(j));
+          }
+        }
         if (!FastBoundsCheck(k, lhs_right)) {
           return KOutOfBoundsError(k, i, rhs_index_a, lhs_right);
         }
         if (!FastBoundsCheck(m, out.dimension(NDIM - 2))) {
           return MOutOfBoundsError(m, i, lhs_index_a, out.dimension(NDIM - 2));
         }
+        
         out_offsets[NDIM - 2] = m;
         out_offsets[NDIM - 1] = 0;
         out_extends[NDIM - 2] = 1;
