@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tools/tfprof/internal/advisor/tfprof_advisor.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_stats.h"
 #include "tensorflow/tools/tfprof/tfprof_log.pb.h"
@@ -142,5 +143,8 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
 
   return RunProfile(*command, *options, &tf_stats);
 }
+
+void Advise() { Advisor(tf_stat).Advise(); }
+
 }  // namespace tfprof
 }  // namespace tensorflow

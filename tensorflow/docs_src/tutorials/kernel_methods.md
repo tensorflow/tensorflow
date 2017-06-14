@@ -153,7 +153,7 @@ input space to another feature space (of possibly higher dimension) where the
 model on the mapped features. This is shown in the following figure:
 
 <div style="text-align:center">
-<img src="../images/kernel_mapping.png" alt>
+<img src="https://www.tensorflow.org/versions/master/images/kernel_mapping.png" />
 </div>
 
 
@@ -279,8 +279,8 @@ accuracy by very little, while making training take more time. This is shown in
 the following two Figures which depict the eval accuracy as a function of the
 output dimension and the training time, respectively.
 
-![image](../images/acc_vs_outdim.png)
-![image](../images/acc-vs-trn_time.png)
+![image](https://www.tensorflow.org/versions/master/images/acc_vs_outdim.png)
+![image](https://www.tensorflow.org/versions/master/images/acc-vs-trn_time.png)
 
 
 ## Summary

@@ -327,7 +327,7 @@ class LuongAttention(_BaseAttentionMechanism):
       raise ValueError(
           "Incompatible or unknown inner dimensions between query and keys.  "
           "Query (%s) has units: %s.  Keys (%s) have units: %s.  "
-          "Perhaps you need to set num_units to the the keys' dimension (%s)?"
+          "Perhaps you need to set num_units to the keys' dimension (%s)?"
           % (query, depth, self.keys, key_units, key_units))
     dtype = query.dtype
 

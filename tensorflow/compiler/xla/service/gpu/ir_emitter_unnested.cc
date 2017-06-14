@@ -193,9 +193,11 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   // the result).  We also know how many bytes can be dereferenced in it.
   const llvm::Argument& temp_buffer = *std::prev(kernel->arg_end());
   int64 temp_buffer_arg_no = temp_buffer.getArgNo();
-  if (const BufferAllocation* allocation =
-          ir_emitter_context_->buffer_assignment().GetTempAllocation()) {
-    kernel->addDereferenceableAttr(temp_buffer_arg_no + 1, allocation->size());
+  int64 temp_allocation_total_size =
+      ir_emitter_context_->buffer_assignment().temp_allocation_total_size();
+  if (temp_allocation_total_size != 0) {
+    kernel->addDereferenceableAttr(temp_buffer_arg_no + 1,
+                                   temp_allocation_total_size);
   }
   kernel->addAttribute(temp_buffer_arg_no + 1, llvm::Attribute::NoAlias);
 

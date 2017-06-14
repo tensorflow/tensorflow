@@ -1578,7 +1578,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "random_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["random_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2184,11 +2184,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:spectral_ops",
     ],
-    tags = [
-        "noasan",
-        "nomsan",
-        "notsan",  # http://b/62067589
-    ],
+    shard_count = 3,
 )
 
 cuda_py_test(
@@ -2386,7 +2382,11 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
-    tags = ["manual"],  # http://b/62429636
+    tags = [
+        "manual",  # http://b/62429636
+        "noguitar",
+        "notap",
+    ],
 )
 
 cuda_py_test(
@@ -2401,7 +2401,11 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
-    tags = ["manual"],  # http://b/62429636
+    tags = [
+        "manual",  # http://b/62429636
+        "noguitar",
+        "notap",
+    ],
 )
 
 cuda_py_test(

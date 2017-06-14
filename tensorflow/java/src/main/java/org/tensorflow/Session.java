@@ -125,7 +125,7 @@ public final class Session implements AutoCloseable {
      *     <tt>operation_name:output_index</tt> , in which case this method acts like {@code
      *     feed(operation_name, output_index)}. These colon-separated names are commonly used in the
      *     {@code SignatureDef} protocol buffer messages that are included in {@link
-     *     SavedModelBundle.metaGraphDef()}.
+     *     SavedModelBundle#metaGraphDef()}.
      */
     public Runner feed(String operation, Tensor t) {
       return feed(parseOutput(operation), t);
@@ -165,7 +165,7 @@ public final class Session implements AutoCloseable {
      *     <tt>operation_name:output_index</tt> , in which case this method acts like {@code
      *     fetch(operation_name, output_index)}. These colon-separated names are commonly used in
      *     the {@code SignatureDef} protocol buffer messages that are included in {@link
-     *     SavedModelBundle.metaGraphDef()}.
+     *     SavedModelBundle#metaGraphDef()}.
      */
     public Runner fetch(String operation) {
       return fetch(parseOutput(operation));

@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -1368,6 +1369,7 @@ TEST_F(ConvolutionVariantsTest, BackwardFilterEvenPadding3D) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

@@ -24,28 +24,18 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class TakeDatasetOp : public OpKernel {
+class TakeDatasetOp : public UnaryDatasetOpKernel {
  public:
-  explicit TakeDatasetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit TakeDatasetOp(OpKernelConstruction* ctx)
+      : UnaryDatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
-    // Create a new RepeatDatasetOp::Dataset, insert it in the step-local
-    // container, and return it as the output.
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
-    const Tensor* count_t;
-    OP_REQUIRES_OK(ctx, ctx->input("count", &count_t));
-    const int64 count = count_t->flat<int64>()(0);
-
-    DatasetBase* dataset = new Dataset(count, input);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+ protected:
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
+    // Create a new TakeDatasetOp::Dataset, and return it as the output.
+    int64 count;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "count", &count));
+    *output = new Dataset(count, input);
   }
 
  private:
@@ -124,8 +114,7 @@ class TakeDatasetOp : public OpKernel {
   };
 };
 
-REGISTER_KERNEL_BUILDER(Name("TakeDataset").Device(DEVICE_CPU),
-                        TakeDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("TakeDataset").Device(DEVICE_CPU), TakeDatasetOp);
 
 }  // namespace
 

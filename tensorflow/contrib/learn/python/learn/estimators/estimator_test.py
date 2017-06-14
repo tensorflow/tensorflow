@@ -405,7 +405,7 @@ class EstimatorModelFnTest(test.TestCase):
       return None, loss, None
 
     est = estimator.Estimator(model_fn=_invalid_model_fn)
-    with self.assertRaisesRegexp(ValueError, 'Missing training_op'):
+    with self.assertRaisesRegexp(ValueError, 'Missing train_op'):
       est.fit(input_fn=boston_input_fn, steps=1)
 
   def testInvalidModelFn_no_loss(self):

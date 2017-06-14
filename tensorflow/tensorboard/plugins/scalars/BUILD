@@ -1,13 +1,11 @@
 # Description:
 # TensorBoard plugin for scalars
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 ## Scalars Plugin ##
 py_library(
@@ -15,7 +13,7 @@ py_library(
     srcs = ["scalars_plugin.py"],
     srcs_version = "PY2AND3",
     visibility = [
-        "//tensorflow:internal",
+        "//tensorflow/tensorboard:internal",
     ],
     deps = [
         "//tensorflow:tensorflow_py",

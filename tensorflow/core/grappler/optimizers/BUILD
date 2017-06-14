@@ -35,6 +35,7 @@ cc_library(
 
 cc_test(
     name = "static_schedule_test",
+    size = "small",
     srcs = ["static_schedule_test.cc"],
     deps = [
         ":static_schedule",
@@ -71,6 +72,7 @@ cc_library(
 
 cc_test(
     name = "auto_parallel_test",
+    size = "small",
     srcs = ["auto_parallel_test.cc"],
     deps = [
         ":auto_parallel",
@@ -106,19 +108,22 @@ cc_library(
 
 cc_test(
     name = "constant_folding_test",
+    size = "small",
     srcs = ["constant_folding_test.cc"],
     deps = [
         ":constant_folding",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
-        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
 
@@ -166,6 +171,7 @@ cc_library(
 
 cc_test(
     name = "model_pruner_test",
+    size = "small",
     srcs = ["model_pruner_test.cc"],
     deps = [
         ":model_pruner",
@@ -199,6 +205,7 @@ cc_library(
 
 cc_test(
     name = "memory_optimizer_test",
+    size = "small",
     srcs = ["memory_optimizer_test.cc"],
     deps = [
         ":memory_optimizer",
@@ -230,11 +237,13 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/costs:graph_properties",
     ],
 )
 
 cc_test(
     name = "layout_optimizer_test",
+    size = "small",
     srcs = ["layout_optimizer_test.cc"],
     deps = [
         ":layout_optimizer",

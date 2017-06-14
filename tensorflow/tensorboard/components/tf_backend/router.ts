@@ -30,11 +30,13 @@ export interface Router {
 ;
 
 /**
- * The standard router for communicating with the TensorBoard backend
+ * Create a router for communicating with the TensorBoard backend. You
+ * can pass this to `setRouter` to make it the global router.
+ *
  * @param dataDir {string} The base prefix for finding data on server.
  * @param demoMode {boolean} Whether to modify urls for filesystem demo usage.
  */
-export function router(dataDir = 'data', demoMode = false): Router {
+export function createRouter(dataDir = 'data', demoMode = false): Router {
   var clean = demoMode ? demoify : (x) => x;
   if (dataDir[dataDir.length - 1] === '/') {
     dataDir = dataDir.slice(0, dataDir.length - 1);
@@ -69,3 +71,27 @@ export function router(dataDir = 'data', demoMode = false): Router {
     pluginRunTagRoute,
   };
 };
+
+let _router: Router = createRouter();
+
+/**
+ * @return {Router} the global router
+ */
+export function getRouter(): Router {
+  return _router;
+}
+
+/**
+ * Set the global router, to be returned by future calls to `getRouter`.
+ * You may wish to invoke this if you are running a demo server with a
+ * custom path prefix, or if you have customized the TensorBoard backend
+ * to use a different path.
+ *
+ * @param {Router} router the new global router
+ */
+export function setRouter(router: Router): void {
+  if (router == null) {
+    throw new Error('Router required, but got: ' + router);
+  }
+  _router = router;
+}

@@ -27,45 +27,28 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class ShuffleDatasetOp : public OpKernel {
+class ShuffleDatasetOp : public UnaryDatasetOpKernel {
  public:
-  explicit ShuffleDatasetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit ShuffleDatasetOp(OpKernelConstruction* ctx)
+      : UnaryDatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
-    // Create a new ShuffleDatasetOp::Dataset, insert it in the step-local
-    // container, and return it as the output.
-    DatasetBase* input;
-    OP_REQUIRES_OK(ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &input));
-    core::ScopedUnref unref_input(input);
-
-    const Tensor* buffer_size_t;
-    OP_REQUIRES_OK(ctx, ctx->input("buffer_size", &buffer_size_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(buffer_size_t->shape()),
-                errors::InvalidArgument("buffer_size must be a scalar"));
-    const int64 buffer_size = buffer_size_t->flat<int64>()(0);
+  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) override {
+    // Create a new ShuffleDatasetOp::Dataset, and return it as the output.
+    int64 buffer_size;
+    OP_REQUIRES_OK(
+        ctx, ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
     OP_REQUIRES(
         ctx, buffer_size > 0,
         errors::InvalidArgument("buffer_size must be greater than zero."));
 
-    const Tensor* seed_t;
-    OP_REQUIRES_OK(ctx, ctx->input("seed", &seed_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(seed_t->shape()),
-                errors::InvalidArgument("seed must be a scalar"));
-    const int64 seed = seed_t->flat<int64>()(0);
+    int64 seed;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "seed", &seed));
 
-    const Tensor* seed2_t;
-    OP_REQUIRES_OK(ctx, ctx->input("seed2", &seed2_t));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(seed2_t->shape()),
-                errors::InvalidArgument("seed2 must be a scalar"));
-    const int64 seed2 = seed2_t->flat<int64>()(0);
+    int64 seed2;
+    OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "seed2", &seed2));
 
-    DatasetBase* dataset = new Dataset(input, buffer_size, seed, seed2);
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(input, buffer_size, seed, seed2);
   }
 
  private:

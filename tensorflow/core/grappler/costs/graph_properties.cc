@@ -197,14 +197,6 @@ Status GraphProperties::InferStatically() {
       output_properties.push_back(properties);
     }
     output_properties_[node->name()] = output_properties;
-
-    if (!node->assigned_device_name().empty()) {
-      device_names_[node->name()] = node->assigned_device_name();
-    } else if (!node->requested_device().empty()) {
-      device_names_[node->name()] = node->requested_device();
-    } else {
-      device_names_[node->name()] = "not set";
-    }
   }
 
   return Status::OK();
@@ -250,9 +242,6 @@ Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
         FindInputFeatures(node, name_to_cost, name_to_node);
 
     input_properties_[node.name()] = inputs;
-
-    const CostGraphDef::Node* cost_node = it->second;
-    device_names_[node.name()] = cost_node->device();
   }
   return Status::OK();
 }
@@ -277,14 +266,6 @@ std::vector<OpInfo::TensorProperties> GraphProperties::GetOutputProperties(
     return it->second;
   }
   return std::vector<OpInfo::TensorProperties>();
-}
-
-string GraphProperties::GetDeviceName(const string& node_name) const {
-  auto it = device_names_.find(node_name);
-  if (it != device_names_.end()) {
-    return it->second;
-  }
-  return "";
 }
 
 }  // end namespace grappler

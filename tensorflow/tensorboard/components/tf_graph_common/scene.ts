@@ -90,7 +90,13 @@ module tf.graph.scene {
     wall_time: number;
     step: number;
   }
-  ;
+
+  interface HealthPillNumericStats {
+    min: number;
+    max: number;
+    mean: number;
+    stddev: number;
+  }
 
   /**
    * Encapsulates how to render a single entry in a health pill. Each entry
@@ -531,6 +537,42 @@ export function humanizeHealthPillStat(stat, shouldRoundOnesDigit) {
 }
 
 /**
+ * Get text content describing a health pill.
+ */
+function _getHealthPillTextContent(healthPill: HealthPill,
+                                   totalCount: number,
+                                   elementsBreakdown: number[],
+                                   numericStats: HealthPillNumericStats) {
+  let text = 'Device: ' + healthPill.device_name + '\n';
+  text += 'dtype: ' + healthPill.dtype + '\n';
+
+  let shapeStr = '(scalar)';
+  if (healthPill.shape.length > 0) {
+    shapeStr = '(' + healthPill.shape.join(',') + ')';
+  }
+  text += '\nshape: ' + shapeStr + '\n\n';
+
+  text += '#(elements): ' + totalCount + '\n';
+  const breakdownItems = [];
+  for (let i = 0; i < elementsBreakdown.length; i++) {
+    if (elementsBreakdown[i] > 0) {
+      breakdownItems.push(
+          '#(' + healthPillEntries[i].label + '): ' + elementsBreakdown[i]);
+    }
+  }
+  text += breakdownItems.join(', ') + '\n\n';
+
+  // In some cases (e.g., size-0 tensors; all elements are nan or inf) the
+  // min/max and mean/stddev stats are meaningless.
+  if (numericStats.max >= numericStats.min) {
+    text += 'min: ' + numericStats.min + ', max: ' + numericStats.max + '\n';
+    text += 'mean: ' + numericStats.mean + ', stddev: ' + numericStats.stddev;
+  }
+
+  return text;
+}
+
+/**
  * Renders a health pill for an op atop a node.
  */
 function _addHealthPill(
@@ -543,23 +585,18 @@ function _addHealthPill(
     return;
   }
 
-  const deviceName = healthPill.device_name;
-  const dtypeName = healthPill.dtype;
-  let shapeStr = '(';
-  for (const dimSize of healthPill.shape) {
-    shapeStr += dimSize + ',';
-  }
-  shapeStr += ')';
   let lastHealthPillData = healthPill.value;
 
   // For now, we only visualize the 6 values that summarize counts of tensor
   // elements of various categories: -Inf, negative, 0, positive, Inf, and NaN.
-  let lastHealthPillOverview = lastHealthPillData.slice(2, 8);
+  const lastHealthPillElementsBreakdown = lastHealthPillData.slice(2, 8);
   let totalCount = lastHealthPillData[1];
-  const minVal = lastHealthPillData[8];
-  const maxVal = lastHealthPillData[9];
-  const meanVal = lastHealthPillData[10];
-  const stddevVal = Math.sqrt(lastHealthPillData[11]);
+  const numericStats: HealthPillNumericStats = {
+      min: lastHealthPillData[8],
+      max: lastHealthPillData[9],
+      mean: lastHealthPillData[10],
+      stddev: Math.sqrt(lastHealthPillData[11])
+  };
 
   let healthPillWidth = 60;
   let healthPillHeight = 10;
@@ -579,15 +616,15 @@ function _addHealthPill(
       document.createElementNS(svgNamespace, 'linearGradient');
   const healthPillGradientId = 'health-pill-gradient';
   healthPillGradient.setAttribute('id', healthPillGradientId);
-  let titleOnHoverTextEntries = [];
+
   let cumulativeCount = 0;
   let previousOffset = '0%';
-  for (let i = 0; i < lastHealthPillOverview.length; i++) {
-    if (!lastHealthPillOverview[i]) {
+  for (let i = 0; i < lastHealthPillElementsBreakdown.length; i++) {
+    if (!lastHealthPillElementsBreakdown[i]) {
       // Exclude empty categories.
       continue;
     }
-    cumulativeCount += lastHealthPillOverview[i];
+    cumulativeCount += lastHealthPillElementsBreakdown[i];
 
     // Create a color interval using 2 stop elements.
     let stopElement0 = document.createElementNS(svgNamespace, 'stop');
@@ -603,10 +640,6 @@ function _addHealthPill(
         'stop-color', healthPillEntries[i].background_color);
     healthPillGradient.appendChild(stopElement1);
     previousOffset = percent;
-
-    // Include this number in the title that appears on hover.
-    titleOnHoverTextEntries.push(
-        '#(' + healthPillEntries[i].label + '): ' + lastHealthPillOverview[i]);
   }
   healthPillDefs.appendChild(healthPillGradient);
 
@@ -619,10 +652,8 @@ function _addHealthPill(
 
   // Show a title with specific counts on hover.
   let titleSvg = document.createElementNS(svgNamespace, 'title');
-  titleSvg.textContent = 'Device: ' + deviceName + '\ndtype: ' + dtypeName +
-      '\nshape: ' + shapeStr + '\n\n#(elements): ' + totalCount + '\n' +
-      titleOnHoverTextEntries.join(', ') + '\n\nmin: ' + minVal +
-      ', max: ' + maxVal + '\nmean: ' + meanVal + ', stddev: ' + stddevVal;
+  titleSvg.textContent = _getHealthPillTextContent(
+      healthPill, totalCount, lastHealthPillElementsBreakdown, numericStats);
   healthPillGroup.appendChild(titleSvg);
   // TODO(cais): Make the tooltip content prettier.
 
@@ -634,8 +665,9 @@ function _addHealthPill(
     healthPillY += nodeInfo.labelOffset;
   }
 
-  if (lastHealthPillOverview[2] || lastHealthPillOverview[3] ||
-      lastHealthPillOverview[4]) {
+  if (lastHealthPillElementsBreakdown[2] ||
+      lastHealthPillElementsBreakdown[3] ||
+      lastHealthPillElementsBreakdown[4]) {
     // At least 1 "non-Inf and non-NaN" value exists (a -, 0, or + value). Show
     // stats on tensor values.
 
@@ -657,9 +689,13 @@ function _addHealthPill(
     }
 
     let statsSvg = document.createElementNS(svgNamespace, 'text');
-    const minString = humanizeHealthPillStat(minVal, shouldRoundOnesDigit);
-    const maxString = humanizeHealthPillStat(maxVal, shouldRoundOnesDigit);
-    statsSvg.textContent = minString + ' ~ ' + maxString;
+    const minString = humanizeHealthPillStat(numericStats.min, shouldRoundOnesDigit);
+    const maxString = humanizeHealthPillStat(numericStats.max, shouldRoundOnesDigit);
+    if (totalCount > 1) {
+      statsSvg.textContent = minString + ' ~ ' + maxString;
+    } else {
+      statsSvg.textContent = minString;
+    }
     statsSvg.classList.add('health-pill-stats');
     statsSvg.setAttribute('x', String(healthPillWidth / 2));
     statsSvg.setAttribute('y', '-2');

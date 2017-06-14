@@ -613,6 +613,8 @@ std::vector<int64> OpTest::ImageDims(TensorFormat format, int batch,
         dims.push_back(dim);
       }
       break;
+    case FORMAT_NCHW_VECT_C:
+      LOG(FATAL) << "FORMAT_NCHW_VECT_C not supported.";
   }
   return dims;
 }

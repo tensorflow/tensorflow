@@ -1,23 +1,23 @@
 # Large-scale Linear Models with TensorFlow
 
-The tf.learn API provides (among other things) a rich set of tools for working
+The tf.contrib.learn API provides (among other things) a rich set of tools for working
 with linear models in TensorFlow. This document provides an overview of those
 tools. It explains:
 
    * what a linear model is.
    * why you might want to use a linear model.
-   * how tf.learn makes it easy to build linear models in TensorFlow.
-   * how you can use tf.learn to combine linear models with
+   * how tf.contrib.learn makes it easy to build linear models in TensorFlow.
+   * how you can use tf.contrib.learn to combine linear models with
    deep learning to get the advantages of both.
 
-Read this overview to decide whether the tf.learn linear model tools might be
+Read this overview to decide whether the tf.contrib.learn linear model tools might be
 useful to you. Then do the @{$wide$Linear Models tutorial} to
 give it a try. This overview uses code samples from the tutorial, but the
 tutorial walks through the code in greater detail.
 
 To understand this overview it will help to have some familiarity
 with basic machine learning concepts, and also with
-@{$tflearn$tf.learn}.
+@{$tflearn$tf.contrib.learn}.
 
 [TOC]
 
@@ -52,16 +52,16 @@ Linear models:
    * provide an excellent starting point for learning about machine learning.
    * are widely used in industry.
 
-## How does tf.learn help you build linear models?
+## How does tf.contrib.learn help you build linear models?
 
 You can build a linear model from scratch in TensorFlow without the help of a
-special API. But tf.learn provides some tools that make it easier to build
+special API. But tf.contrib.learn provides some tools that make it easier to build
 effective large-scale linear models.
 
 ### Feature columns and transformations
 
 Much of the work of designing a linear model consists of transforming raw data
-into suitable input features. tf.learn uses the `FeatureColumn` abstraction to
+into suitable input features. tf.contrib.learn uses the `FeatureColumn` abstraction to
 enable these transformations.
 
 A `FeatureColumn` represents a single feature in your data. A `FeatureColumn`
@@ -86,9 +86,9 @@ become [0, 1, 0] and 'green' would become [0, 0, 1]. These vectors are called
 "sparse" because they may be very long, with many zeros, when the set of
 possible values is very large (such as all English words).
 
-While you don't need to use sparse columns to use tf.learn linear models, one
+While you don't need to use sparse columns to use tf.contrib.learn linear models, one
 of the strengths of linear models is their ability to deal with large sparse
-vectors. Sparse features are a primary use case for the tf.learn linear model
+vectors. Sparse features are a primary use case for the tf.contrib.learn linear model
 tools.
 
 ##### Encoding sparse columns
@@ -148,7 +148,7 @@ age = tf.contrib.layers.real_valued_column("age")
 ```
 
 Although, as a single real number, a continuous feature can often be input
-directly into the model, tf.learn offers useful transformations for this sort
+directly into the model, tf.contrib.learn offers useful transformations for this sort
 of column as well.
 
 ##### Bucketization
@@ -187,7 +187,7 @@ initiate training and testing, as described in the next section.
 
 ### Linear estimators
 
-tf.learn's estimator classes provide a unified training and evaluation harness
+tf.contrib.learn's estimator classes provide a unified training and evaluation harness
 for regression and classification models. They take care of the details of the
 training and evaluation loops and allow the user to focus on model inputs and
 architecture.
@@ -197,7 +197,7 @@ To build a linear estimator, you can use either the
 `tf.contrib.learn.LinearRegressor` estimator, for classification and
 regression respectively.
 
-As with all tf.learn estimators, to run the estimator you just:
+As with all tf.contrib.learn estimators, to run the estimator you just:
 
    1. Instantiate the estimator class. For the two linear estimator classes,
    you pass a list of `FeatureColumn`s to the constructor.
@@ -222,7 +222,7 @@ for key in sorted(results):
 
 ### Wide and deep learning
 
-The tf.learn API also provides an estimator class that lets you jointly train
+The tf.contrib.learn API also provides an estimator class that lets you jointly train
 a linear model and a deep neural network. This novel approach combines the
 ability of linear models to "memorize" key features with the generalization
 ability of neural nets. Use `tf.contrib.learn.DNNLinearCombinedClassifier` to

@@ -48,7 +48,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   }
 
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_.reset(new HloModule(TestName()));
+    module_ = CreateNewModule();
     module_->AddEntryComputation(std::move(computation));
   }
 
@@ -764,3 +764,7 @@ TEST_F(FusionPointsToAnalysisTest, FusionParam0TwoUsers) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

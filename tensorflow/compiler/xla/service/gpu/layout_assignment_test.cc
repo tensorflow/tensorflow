@@ -55,9 +55,9 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
             HloInstruction::CreateParameter(1, ashape, "y"));
         auto add = builder.AddInstruction(
             HloInstruction::CreateBinary(ashape, HloOpcode::kAdd, x, y));
-        HloModule module(TestName());
+        auto module = CreateNewModule();
         HloComputation* computation =
-            module.AddEntryComputation(builder.Build(add));
+            module->AddEntryComputation(builder.Build(add));
 
         ComputationLayout computation_layout(
             computation->ComputeProgramShape());
@@ -69,7 +69,7 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
             ShapeLayout(result_shape_with_layout);
 
         GpuLayoutAssignment layout_assignment(&computation_layout);
-        EXPECT_TRUE(layout_assignment.Run(&module).ValueOrDie());
+        EXPECT_TRUE(layout_assignment.Run(module.get()).ValueOrDie());
 
         for (const HloInstruction* operand : add->operands()) {
           EXPECT_TRUE(LayoutUtil::Equal(add->shape().layout(),
@@ -83,3 +83,7 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

@@ -1,6 +1,6 @@
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
-load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
+load("//tensorflow/tensorboard/defs:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -17,6 +17,7 @@ ts_web_library(
         "//tensorflow/tensorboard/components/tf_dashboard_common",
         "//tensorflow/tensorboard/components/tf_imports:lodash",
         "//tensorflow/tensorboard/components/tf_imports:polymer",
+        "//tensorflow/tensorboard/components/tf_runs_selector",
         "//tensorflow/tensorboard/components/vz_line_chart",
         "@org_polymer_iron_collapse",
         "@org_polymer_paper_checkbox",

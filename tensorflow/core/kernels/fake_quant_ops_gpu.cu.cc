@@ -29,12 +29,8 @@ template struct FakeQuantWithMinMaxArgsFunctor<GPUDevice>;
 template struct FakeQuantWithMinMaxArgsGradientFunctor<GPUDevice>;
 template struct FakeQuantWithMinMaxVarsFunctor<GPUDevice>;
 template struct FakeQuantWithMinMaxVarsGradientFunctor<GPUDevice>;
-template struct FakeQuant1WithMinMaxVarsPerChannelFunctor<GPUDevice>;
-template struct FakeQuant2WithMinMaxVarsPerChannelFunctor<GPUDevice>;
-template struct FakeQuant4WithMinMaxVarsPerChannelFunctor<GPUDevice>;
-template struct FakeQuant1WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>;
-template struct FakeQuant2WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>;
-template struct FakeQuant4WithMinMaxVarsPerChannelGradientFunctor<GPUDevice>;
+template struct FakeQuantWithMinMaxVarsPerChannelFunctor<GPUDevice>;
+template struct FakeQuantWithMinMaxVarsPerChannelGradientFunctor<GPUDevice>;
 
 }  // namespace tensorflow
 
