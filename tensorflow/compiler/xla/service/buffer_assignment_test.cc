@@ -730,7 +730,7 @@ TEST_F(BufferAssignmentTest, ReuseNonOperandBuffer) {
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   auto broadcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
 
@@ -762,7 +762,7 @@ TEST_F(BufferAssignmentTest, NoReuseLiveBuffer) {
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   auto broadcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
   builder.AddInstruction(HloInstruction::CreateTuple({negate, broadcast}));
@@ -799,7 +799,7 @@ TEST_F(BufferAssignmentTest, NoReuseAliasedBuffer) {
   auto tuple_element = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(f32vec100_, tuple, 0));
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, tuple_element, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, tuple_element, {0}, {10}, {1}));
   auto broadcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
   builder.AddInstruction(HloInstruction::CreateTuple({tuple, broadcast}));
@@ -834,7 +834,7 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBuffer) {
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
   // Slice output is 10 elements.
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   // Broadcast output is 40 elements.
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::MakeShape(F32, {10, 4}), slice, {0}));
@@ -866,7 +866,7 @@ TEST_F(BufferAssignmentTest, ReuseOutputBufferIfExactlySized) {
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   // Broadcast output is 40 elements.
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::MakeShape(F32, {10, 10}), slice, {0}));
@@ -903,7 +903,7 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBufferInTuple) {
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
   // Slice output is 10 elements.
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   // Broadcast output is 40 elements.
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::MakeShape(F32, {10, 4}), slice, {0}));
