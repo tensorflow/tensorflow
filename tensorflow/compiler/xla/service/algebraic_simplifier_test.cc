@@ -522,7 +522,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({})));
   HloInstruction* empty_slice =
       builder.AddInstruction(HloInstruction::CreateSlice(
-          ShapeUtil::MakeShape(F32, {0}), param1, {42}, {42}));
+          ShapeUtil::MakeShape(F32, {0}), param1, {42}, {42}, {1}));
   Shape result_shape = ShapeUtil::MakeShape(F32, {3 * kParamLength});
   builder.AddInstruction(HloInstruction::CreateConcatenate(
       result_shape, {empty_literal, param0, param0, empty_slice, param1}, 0));
@@ -553,7 +553,7 @@ TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({})));
   HloInstruction* empty_slice =
       builder.AddInstruction(HloInstruction::CreateSlice(
-          ShapeUtil::MakeShape(F32, {0}), param0, {42}, {42}));
+          ShapeUtil::MakeShape(F32, {0}), param0, {42}, {42}, {1}));
   Shape result_shape = ShapeUtil::MakeShape(F32, {0});
   builder.AddInstruction(HloInstruction::CreateConcatenate(
       result_shape, {empty_literal, empty_slice}, 0));
@@ -1134,7 +1134,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSlice) {
           0, ShapeUtil::MakeShape(F32, {dim0, dim1}), "param"));
   builder.AddInstruction(HloInstruction::CreateSlice(
       ShapeUtil::MakeShape(F32, {dim0, dim1}), param, /*start_indices=*/{0, 0},
-      /*limit_indices=*/{dim0, dim1}));
+      /*limit_indices=*/{dim0, dim1}, /*slices=*/{1, 1}));
 
   HloModule module(TestName());
   HloComputation* computation = module.AddEntryComputation(builder.Build());
@@ -1539,7 +1539,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToSlice) {
 
   Shape slice_shape = ShapeUtil::MakeShape(F32, {2, 2, 3, 3});
   HloInstruction* slice = builder.AddInstruction(HloInstruction::CreateSlice(
-      slice_shape, broadcast, {0, 1, 2, 3}, {2, 3, 5, 6}));
+      slice_shape, broadcast, {0, 1, 2, 3}, {2, 3, 5, 6}, {1, 1, 1, 1}));
 
   HloModule module(TestName());
   auto computation = module.AddEntryComputation(builder.Build());
