@@ -24,6 +24,7 @@ import com.google.common.base.Joiner;
 import com.google.common.base.Optional;
 import com.google.common.base.Splitter;
 import com.google.common.collect.HashMultimap;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMultimap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
@@ -259,12 +260,18 @@ public final class Vulcanize {
       path = me().lookup(Webpath.get(node.attr("src")));
       script = new String(Files.readAllBytes(getWebfile(path)), UTF_8);
     }
+    boolean wantsMinify = getAttrTransitive(node, "jscomp-minify").isPresent();
     if (node.attr("src").endsWith(".min.js")
-        || getAttrTransitive(node, "jscomp-nocompile").isPresent()) {
+        || getAttrTransitive(node, "jscomp-nocompile").isPresent()
+        || wantsMinify) {
+      if (wantsMinify) {
+        script = minify(path, script);
+      }
       Node newScript =
           new Element(Tag.valueOf("script"), node.baseUri(), node.attributes())
               .appendChild(new DataNode(script, node.baseUri()))
               .removeAttr("src")
+              .removeAttr("jscomp-minify")
               .removeAttr("jscomp-nocompile");
       if (firstCompiledScript != null) {
         firstCompiledScript.before(newScript);
@@ -456,6 +463,26 @@ public final class Vulcanize {
     tag.replaceWith(
         new Element(Tag.valueOf("script"), tag.baseUri())
             .appendChild(new DataNode(script, tag.baseUri())));
+  }
+
+  private static String minify(Webpath path, String script) {
+    CompilerOptions options = new CompilerOptions();
+    options.skipAllCompilerPasses();
+    options.setLanguageIn(CompilerOptions.LanguageMode.ECMASCRIPT_2016);
+    options.setLanguageOut(CompilerOptions.LanguageMode.ECMASCRIPT5);
+    options.setContinueAfterErrors(true);
+    CompilationLevel.SIMPLE_OPTIMIZATIONS.setOptionsForCompilationLevel(options);
+    if (testOnly) {
+      options.setPrettyPrint(true);
+      options.setGeneratePseudoNames(true);
+    }
+    Compiler compiler = new Compiler();
+    compiler.disableThreads();
+    compiler.compile(
+        ImmutableList.<SourceFile>of(),
+        ImmutableList.of(SourceFile.fromCode(path.toString(), script)),
+        options);
+    return compiler.toSource();
   }
 
   private static void handleLicense(String text) {

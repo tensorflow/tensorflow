@@ -189,11 +189,12 @@ def tensorboard_js_workspace():
               "http://mirror.bazel.build/raw.githubusercontent.com/sloisel/numeric/v1.2.6/license.txt",
               "https://raw.githubusercontent.com/sloisel/numeric/v1.2.6/license.txt",
           ],
-          "dfaca3b8485bee735788cc6eebca82ea25719adc1fb8911c7799c6bd5a95df3b": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/sloisel/numeric/v1.2.6/src/numeric.js",
-              "https://raw.githubusercontent.com/sloisel/numeric/v1.2.6/src/numeric.js",
+          "5dcaba2016fd237091e3a17b0dc272fb21f0e2b15d7628f95a0ad0cd4cdf4020": [
+              "http://mirror.bazel.build/www.numericjs.com/lib/numeric-1.2.6.js",
+              "http://www.numericjs.com/lib/numeric-1.2.6.js",
           ],
       },
+      rename = {"numeric-1.2.6.js": "numeric.js"},
   )
 
   filegroup_external(
