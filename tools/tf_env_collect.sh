@@ -16,10 +16,20 @@
 
 set -u  # Check for undefined variables
 
+die() {
+  # Print a message and exit with code 1.
+  #
+  # Usage: die <error_message>
+  #   e.g., die "Something bad happened."
+
+  echo $@
+  exit 1
+}
+
 echo "Collecting system information..."
 
 OUTPUT_FILE=tf_env.txt
-python_bin_path=$(which python || which python3 || true)
+python_bin_path=$(which python || which python3 || die "Cannot find Python binary")
 
 {
   echo
