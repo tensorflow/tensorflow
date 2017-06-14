@@ -245,25 +245,24 @@ void HloAliasAnalysis::FlattenInstructionBufferSets(
   if (instructions.size() < 2) {
     return;
   }
-  GetInstructionBufferSet(instructions[0])
-      .ForEachMutableElement(
-          [this, &instructions](const ShapeIndex& index,
-                                HloBufferSet* /*buffer_set*/) {
-            // Gather all HloBuffers contained in all the buffer sets of the
-            // given instructions at the current index.
-            std::vector<HloBuffer::Id> to_unify;
-            for (const HloInstruction* instruction : instructions) {
-              const HloBufferSet& buffer_set = GetBufferSet(instruction, index);
-              to_unify.insert(to_unify.end(), buffer_set.buffer_ids().begin(),
-                              buffer_set.buffer_ids().end());
-            }
-            // Sort and uniquify buffers to combine.
-            std::sort(to_unify.begin(), to_unify.end());
-            to_unify.erase(std::unique(to_unify.begin(), to_unify.end()),
-                           to_unify.end());
+  ShapeUtil::ForEachSubshape(
+      instructions[0]->shape(),
+      [this, instructions](const Shape& /*subshape*/, const ShapeIndex& index) {
+        // Gather all HloBuffers contained in all the buffer sets of the
+        // given instructions at the current index.
+        std::vector<HloBuffer::Id> to_unify;
+        for (const HloInstruction* instruction : instructions) {
+          const HloBufferSet& buffer_set = GetBufferSet(instruction, index);
+          to_unify.insert(to_unify.end(), buffer_set.buffer_ids().begin(),
+                          buffer_set.buffer_ids().end());
+        }
+        // Sort and uniquify buffers to combine.
+        std::sort(to_unify.begin(), to_unify.end());
+        to_unify.erase(std::unique(to_unify.begin(), to_unify.end()),
+                       to_unify.end());
 
-            CombineBuffers(to_unify);
-          });
+        CombineBuffers(to_unify);
+      });
 }
 
 HloBuffer& HloAliasAnalysis::NewHloBuffer() {

@@ -297,9 +297,10 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
     self.assertEqual(3, dump_dir.size)
 
     with self.assertRaisesRegexp(
-        ValueError,
-        r"There are multiple \(3\) devices, but device_name is not specified"):
-      dump_dir.nodes()
+        ValueError, r"Invalid device name: "):
+      dump_dir.nodes("/job:localhost/replica:0/task:0/gpu:2")
+    self.assertItemsEqual(["node_foo_1", "node_foo_1", "node_foo_1"],
+                          dump_dir.nodes())
     self.assertItemsEqual(
         ["node_foo_1"],
         dump_dir.nodes(device_name="/job:localhost/replica:0/task:0/cpu:0"))

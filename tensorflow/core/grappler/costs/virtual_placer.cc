@@ -23,28 +23,24 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-VirtualPlacer::VirtualPlacer(const Cluster* cluster) : has_gpu_(false) {
+VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
   CHECK(cluster);
   devices_ = cluster->GetDevices();
-  unknown_device_.set_type("UNKNOWN");
 
   if (devices_.empty()) {
     // If there are no devices in the cluster, add a single device, "UNKNOWN" to
     // the cluster.
     default_device_ = "UNKNOWN";
-    devices_["UNKNOWN"] = unknown_device_;
+    DeviceProperties& prop = devices_["UNKNOWN"];
+    prop.set_type("UNKNOWN");
+
   } else {
+    default_device_ = devices_.begin()->first;
     for (const auto& device : devices_) {
       if (str_util::Lowercase(device.first).find("gpu") != string::npos) {
-        has_gpu_ = true;
         default_device_ = device.first;
-        break;
       }
-    }
-
-    // If doesn't have gpu, set default device to be the cpu.
-    if (!has_gpu_) {
-      default_device_ = devices_.begin()->first;
+      break;
     }
   }
 }
@@ -85,11 +81,7 @@ string VirtualPlacer::get_canonical_device_name(const NodeDef& node) const {
           str_util::Lowercase(parsed_name.type), ":", parsed_name.id);
     }
   } else {
-    if (has_gpu_) {
-      device = "/job:localhost/replica:0/task:0/gpu:0";
-    } else {
-      device = "/job:localhost/replica:0/task:0/cpu:0";
-    }
+    return get_default_device_name();
   }
   if (devices_.find(device) == devices_.end()) {
     return get_default_device_name();

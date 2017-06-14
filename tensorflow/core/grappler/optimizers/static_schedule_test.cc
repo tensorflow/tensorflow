@@ -64,17 +64,17 @@ TEST_F(StaticScheduleTest, BasicGraph) {
     if (time.first->name() == "Const/Const") {
       EXPECT_EQ(Costs::NanoSeconds(1), time.second);
     } else if (time.first->name() == "x") {
-      EXPECT_EQ(Costs::NanoSeconds(250001), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(250002), time.second);
     } else if (time.first->name() == "AddN") {
-      EXPECT_EQ(Costs::NanoSeconds(1500003), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(1500005), time.second);
     } else if (time.first->name() == "AddN_1") {
-      EXPECT_EQ(Costs::NanoSeconds(2750005), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(2750008), time.second);
     } else if (time.first->name() == "AddN_2") {
-      EXPECT_EQ(Costs::NanoSeconds(4000007), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(4000011), time.second);
     } else if (time.first->name() == "AddN_3") {
-      EXPECT_EQ(Costs::NanoSeconds(5250009), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(5250014), time.second);
     } else if (time.first->name() == "y") {
-      EXPECT_EQ(Costs::NanoSeconds(6500011), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(6500017), time.second);
     }
   }
 }

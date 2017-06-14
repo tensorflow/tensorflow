@@ -738,6 +738,176 @@ void BenchmarkRequantizeManyInNewRange() {
   TimeRequantizeManyInNewRange<quint8, qint32>(1000000, 10, true);
 }
 
+#ifdef QUANTIZATION_UTILS_USE_NEON
+template <int POW>
+void TestDivide64x2Pow(int64 val, int64 ref) {
+  const int64x2_t val_64x2 = vmovq_n_s64(val);
+  const int64x2_t ret = Divide64x2Pow<POW>(val_64x2);
+  int64 rets[2];
+  vst1q_s64(rets, ret);
+  EXPECT_EQ(rets[0], ref);
+  EXPECT_EQ(rets[1], ref);
+  VLOG(1) << "div: val " << val << ", " << ref;
+}
+
+template <int POW>
+void TestDivide64x2PowRound(int64 val, int64 ref) {
+  const int64x2_t val_64x2 = vmovq_n_s64(val);
+  const int64x2_t shifted = Divide64x2PowRound<POW>(val_64x2);
+  int64 rets[2];
+  vst1q_s64(rets, shifted);
+  EXPECT_EQ(rets[0], ref) << "in = " << val << ", " << POW
+                          << ", act = " << rets[0] << ", ref = " << ref;
+  EXPECT_EQ(rets[1], ref);
+  VLOG(1) << "div round: " << val << ", " << rets[0];
+}
+
+void TestDivide64x2PowAll() {
+  for (int64 i = 0; i < 1000; ++i) {
+    TestDivide64x2PowRound<1>(
+        i, static_cast<int64>(static_cast<float>(i) / 2.0f + 0.5f));
+    TestDivide64x2PowRound<1>(
+        -i, static_cast<int64>(static_cast<float>(-i) / 2.0f - 0.5f));
+    TestDivide64x2PowRound<2>(
+        i, static_cast<int64>(static_cast<float>(i) / 4.0f + 0.5f));
+    TestDivide64x2PowRound<2>(
+        -i, static_cast<int64>(static_cast<float>(-i) / 4.0f - 0.5f));
+    TestDivide64x2PowRound<4>(
+        i, static_cast<int64>(static_cast<float>(i) / 16.0f + 0.5f));
+    TestDivide64x2PowRound<4>(
+        -i, static_cast<int64>(static_cast<float>(-i) / 16.0f - 0.5f));
+    TestDivide64x2PowRound<8>(
+        i, static_cast<int64>(static_cast<float>(i) / 256.0f + 0.5f));
+    TestDivide64x2PowRound<8>(
+        -i, static_cast<int64>(static_cast<float>(-i) / 256.0f - 0.5f));
+    TestDivide64x2PowRound<16>(
+        i, static_cast<int64>(static_cast<float>(i) / 65536.0f + 0.5f));
+    TestDivide64x2PowRound<16>(
+        -i, static_cast<int64>(static_cast<float>(-i) / 65536.0f - 0.5f));
+  }
+
+  TestDivide64x2Pow<2>(100, 25);
+  TestDivide64x2Pow<2>(-100, -25);
+  TestDivide64x2Pow<4>(100, 6);
+  TestDivide64x2Pow<4>(-100, -6);
+
+  for (int64 i = 0; i < 1000; ++i) {
+    TestDivide64x2Pow<1>(i, i / 2);
+    TestDivide64x2Pow<1>(-i, -i / 2);
+    TestDivide64x2Pow<2>(i, i / 4);
+    TestDivide64x2Pow<2>(-i, -i / 4);
+    TestDivide64x2Pow<4>(i, i / 16);
+    TestDivide64x2Pow<4>(-i, -i / 16);
+    TestDivide64x2Pow<8>(i, i / 256);
+    TestDivide64x2Pow<8>(-i, -i / 256);
+    TestDivide64x2Pow<16>(i, i / 65536);
+    TestDivide64x2Pow<16>(-i, -i / 65536);
+  }
+}
+
+uint8x8_t To8x8(uint8 val) { return vmov_n_u8(val); }
+
+int16x8_t To16x8(int16 val) { return vmovq_n_s16(val); }
+
+int32x2_t To32x2(int32 val) {
+  int32 vals[2];
+  vals[0] = val;
+  vals[1] = val;
+  return vld1_s32(vals);
+}
+
+template <int RESOLUTION, typename T_CALC>
+T_CALC ComputeRefLerp(T_CALC top_left, T_CALC top_right, T_CALC bottom_left,
+                      T_CALC bottom_right, T_CALC x_lerp, T_CALC y_lerp) {
+  constexpr T_CALC RESOLUTION_POW = (1 << RESOLUTION);
+  const T_CALC top =
+      top_left * RESOLUTION_POW + (top_right - top_left) * x_lerp;
+  const T_CALC bottom =
+      bottom_left * RESOLUTION_POW + (bottom_right - bottom_left) * x_lerp;
+  const T_CALC out = top + (bottom - top) / RESOLUTION_POW * y_lerp;
+  return (out + RESOLUTION_POW / 2) / RESOLUTION_POW;
+}
+
+template <int RESOLUTION>
+void TestComputeLerp8x8(uint8 top_left, uint8 top_right, uint8 bottom_left,
+                        uint8 bottom_right, int16 x_lerp, int16 y_lerp) {
+  uint8x8_t top_left8x8 = To8x8(top_left);
+  uint8x8_t top_right8x8 = To8x8(top_right);
+  uint8x8_t bottom_left8x8 = To8x8(bottom_left);
+  uint8x8_t bottom_right8x8 = To8x8(bottom_right);
+  int16x8_t x_lerp16x8 = To16x8(x_lerp);
+  int16x8_t y_lerp16x8 = To16x8(y_lerp);
+  const uint8x8_t ret =
+      ComputeLerp8x8<RESOLUTION>(top_left8x8, top_right8x8, bottom_left8x8,
+                                 bottom_right8x8, x_lerp16x8, y_lerp16x8);
+
+  uint8 rets[8];
+  vst1_u8(rets, ret);
+
+  const int16 ref = ComputeRefLerp<RESOLUTION, int16>(
+      static_cast<int16>(top_left), static_cast<int16>(top_right),
+      static_cast<int16>(bottom_left), static_cast<int16>(bottom_right), x_lerp,
+      y_lerp);
+
+  for (int i = 0; i < 8; ++i) {
+    EXPECT_EQ(ref, static_cast<int16>(rets[i]));
+  }
+
+  VLOG(1) << "Lerp(8): " << static_cast<int>(top_left) << ", "
+          << static_cast<int>(top_right) << ", "
+          << static_cast<int>(bottom_left) << ", "
+          << static_cast<int>(bottom_right) << ", " << x_lerp << ", " << y_lerp
+          << ", " << static_cast<int>(rets[0]) << ", " << ref;
+}
+
+template <int RESOLUTION>
+void TestComputeLerp32x2(int32 top_left, int32 top_right, int32 bottom_left,
+                         int32 bottom_right, int32 x_lerp, int32 y_lerp) {
+  int32x2_t top_left32x2 = To32x2(top_left);
+  int32x2_t top_right32x2 = To32x2(top_right);
+  int32x2_t bottom_left32x2 = To32x2(bottom_left);
+  int32x2_t bottom_right32x2 = To32x2(bottom_right);
+  int32x2_t x_lerp32x2 = To32x2(x_lerp);
+  int32x2_t y_lerp32x2 = To32x2(y_lerp);
+  const int32x2_t ret =
+      ComputeLerp32x2<RESOLUTION>(top_left32x2, top_right32x2, bottom_left32x2,
+                                  bottom_right32x2, x_lerp32x2, y_lerp32x2);
+  int32 rets[2];
+  vst1_s32(rets, ret);
+  const int64 ref = ComputeRefLerp<RESOLUTION, int64>(
+      static_cast<int64>(top_left), static_cast<int64>(top_right),
+      static_cast<int64>(bottom_left), static_cast<int64>(bottom_right),
+      static_cast<int64>(x_lerp), static_cast<int64>(y_lerp));
+  EXPECT_EQ(static_cast<int64>(rets[0]), ref);
+  VLOG(1) << "Lerp(32): " << top_left << ", " << top_right << ", "
+          << bottom_left << ", " << bottom_right << ", " << x_lerp << ", "
+          << y_lerp << ", " << rets[0] << ", " << ref;
+}
+
+void TestComputeLerp4xAll() {
+  constexpr int32 RESOLUTION_32 = 30;
+  constexpr int32 RESOLUTION_MULT_32 = (1 << RESOLUTION_32);
+  constexpr int32 HALF_32 = RESOLUTION_MULT_32 / 2;
+  TestComputeLerp32x2<RESOLUTION_32>(100, 200, 300, 400, HALF_32, HALF_32);
+  TestComputeLerp32x2<RESOLUTION_32>(100, 100, 200, 200, HALF_32, HALF_32);
+  TestComputeLerp32x2<RESOLUTION_32>(200, 200, 100, 100, HALF_32, HALF_32);
+  TestComputeLerp32x2<RESOLUTION_32>(100, 200, 100, 200, HALF_32, HALF_32);
+  TestComputeLerp32x2<RESOLUTION_32>(200, 100, 200, 100, HALF_32, HALF_32);
+  TestComputeLerp32x2<RESOLUTION_32>(200, 200, 200, 200, HALF_32, HALF_32);
+
+  constexpr int32 RESOLUTION_8 = 7;
+  constexpr int32 RESOLUTION_MULT_8 = (1 << RESOLUTION_8);
+  constexpr int32 HALF_8 = RESOLUTION_MULT_8 / 2;
+  TestComputeLerp8x8<RESOLUTION_8>(10, 20, 30, 40, HALF_8, HALF_8);
+  TestComputeLerp8x8<RESOLUTION_8>(100, 100, 200, 200, HALF_8, HALF_8);
+  TestComputeLerp8x8<RESOLUTION_8>(200, 200, 100, 100, HALF_8, HALF_8);
+  TestComputeLerp8x8<RESOLUTION_8>(100, 200, 100, 200, HALF_8, HALF_8);
+  TestComputeLerp8x8<RESOLUTION_8>(200, 100, 200, 100, HALF_8, HALF_8);
+  TestComputeLerp8x8<RESOLUTION_8>(200, 200, 200, 200, HALF_8, HALF_8);
+}
+
+#endif
+
 }  // namespace tensorflow
 
 #if defined(__ANDROID__)
@@ -768,6 +938,10 @@ int main(int argc, char** argv) {
   RUN_TEST(TestQuantizedToFloatInPlaceUsingEigen);
 
 #if defined(__ANDROID__)
+#ifdef QUANTIZATION_UTILS_USE_NEON
+  RUN_TEST(TestDivide64x2PowAll);
+  RUN_TEST(TestComputeLerp4xAll);
+#endif
 
   tensorflow::BenchmarkRequantizeManyInNewRange();
 

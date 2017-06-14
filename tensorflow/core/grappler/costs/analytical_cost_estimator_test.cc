@@ -102,7 +102,7 @@ TEST_F(AnalyticalCostEstimatorTest, SimpleTest) {
   Costs summary;
   TF_ASSERT_OK(estimator.PredictCosts(item.graph, &cost_graph, &summary));
 
-  EXPECT_EQ(Costs::NanoSeconds(9136), summary.execution_time);
+  EXPECT_EQ(Costs::NanoSeconds(9156), summary.execution_time);
   EXPECT_FALSE(summary.inaccurate);
 }
 

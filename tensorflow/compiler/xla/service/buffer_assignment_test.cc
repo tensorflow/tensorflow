@@ -1460,16 +1460,17 @@ TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
   RunCopyInsertion(module.get());
   auto assignment = RunBufferAssignment(module.get());
 
-  // While instruction 'while0' has no predecessor while instructions with
-  // which to share allocations.
-
-  // While instruction 'while1' can share allocations with the following
-  // buffers:
-  // *) while0[2], while1[0]
-  // *) while0[1], while1[1]
+  // Verify 'input0' and read-only use while0{0} alias.
+  EXPECT_EQ(assignment->GetUniqueSlice(input0, {}).ConsumeValueOrDie(),
+            assignment->GetUniqueSlice(while0, {0}).ConsumeValueOrDie());
+  // Verify 'weights0' and read-only use while0{1} alias.
+  EXPECT_EQ(assignment->GetUniqueSlice(weights0, {}).ConsumeValueOrDie(),
+            assignment->GetUniqueSlice(while0, {1}).ConsumeValueOrDie());
+  // Verify 'while0{2}' and read-only use while1{0} alias.
   EXPECT_EQ(assignment->GetUniqueSlice(while0, {2}).ConsumeValueOrDie(),
             assignment->GetUniqueSlice(while1, {0}).ConsumeValueOrDie());
-  EXPECT_EQ(assignment->GetUniqueSlice(while0, {1}).ConsumeValueOrDie(),
+  // Verify 'weights1' and read-only use while1{1} alias.
+  EXPECT_EQ(assignment->GetUniqueSlice(weights1, {}).ConsumeValueOrDie(),
             assignment->GetUniqueSlice(while1, {1}).ConsumeValueOrDie());
 }
 

@@ -82,76 +82,40 @@ class LinearRegressorTrainingTest(
 # Tests for Linear Classifier.
 
 
-class LinearClassifierWithBinaryClassesTrainingTest(
+class LinearClassifierTrainingTest(
     linear_testing_utils.BaseLinearClassifierTrainingTest, test.TestCase):
 
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearClassifierTrainingTest.__init__(
-        self, n_classes=2)
+        self, linear_classifier_fn=_linear_classifier_fn)
 
 
-class LinearClassifierWithMultiClassesTrainingTest(
-    linear_testing_utils.BaseLinearClassifierTrainingTest, test.TestCase):
-
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    test.TestCase.__init__(self, methodName)
-    linear_testing_utils.BaseLinearClassifierTrainingTest.__init__(
-        self, n_classes=4)
-
-
-class LinearClassifierWithBinaryClassesEvaluationTest(
+class LinearClassifierEvaluationTest(
     linear_testing_utils.BaseLinearClassifierEvaluationTest, test.TestCase):
 
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearClassifierEvaluationTest.__init__(
-        self, n_classes=2, linear_classifier_fn=_linear_classifier_fn)
+        self, linear_classifier_fn=_linear_classifier_fn)
 
 
-class LinearClassifierWithMultiClassesEvaluationTest(
-    linear_testing_utils.BaseLinearClassifierEvaluationTest, test.TestCase):
-
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    test.TestCase.__init__(self, methodName)
-    linear_testing_utils.BaseLinearClassifierEvaluationTest.__init__(
-        self, n_classes=4, linear_classifier_fn=_linear_classifier_fn)
-
-
-class LinearClassifierWithBinaryClassesPredictTest(
+class LinearClassifierPredictTest(
     linear_testing_utils.BaseLinearClassifierPredictTest, test.TestCase):
 
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearClassifierPredictTest.__init__(
-        self, n_classes=2, linear_classifier_fn=_linear_classifier_fn)
+        self, linear_classifier_fn=_linear_classifier_fn)
 
 
-class LinearClassifierWithMultiClassesPredictTest(
-    linear_testing_utils.BaseLinearClassifierPredictTest, test.TestCase):
-
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    test.TestCase.__init__(self, methodName)
-    linear_testing_utils.BaseLinearClassifierPredictTest.__init__(
-        self, n_classes=4, linear_classifier_fn=_linear_classifier_fn)
-
-
-class LinearClassifierWithBinaryClassesIntegrationTest(
+class LinearClassifierIntegrationTest(
     linear_testing_utils.BaseLinearClassifierIntegrationTest, test.TestCase):
 
   def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
     test.TestCase.__init__(self, methodName)
     linear_testing_utils.BaseLinearClassifierIntegrationTest.__init__(
-        self, n_classes=2, linear_classifier_fn=_linear_classifier_fn)
-
-
-class LinearClassifierWithMultiClassesIntegrationTest(
-    linear_testing_utils.BaseLinearClassifierIntegrationTest, test.TestCase):
-
-  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
-    test.TestCase.__init__(self, methodName)
-    linear_testing_utils.BaseLinearClassifierIntegrationTest.__init__(
-        self, n_classes=4, linear_classifier_fn=_linear_classifier_fn)
+        self, linear_classifier_fn=_linear_classifier_fn)
 
 
 if __name__ == '__main__':
