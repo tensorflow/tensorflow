@@ -19,6 +19,7 @@ limitations under the License.
 #include <list>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
@@ -80,16 +81,27 @@ struct DeviceState {
   // Nodes executed on this device in execution order.
   std::vector<const NodeDef*> nodes_executed;
 
+  struct NodePairHash {
+   public:
+    const std::size_t operator()(
+        const std::pair<const NodeDef*, int>& element) const {
+      return std::hash<const NodeDef*>()(element.first);
+    }
+  };
+
   // Nodes currently allocated in memory: set of NodeDef* and port_num pairs
   // so that we can track which output of the node is in memory.
-  std::set<std::pair<const NodeDef*, int>> nodes_in_memory;
+  std::unordered_set<std::pair<const NodeDef*, int>, NodePairHash>
+      nodes_in_memory;
 
   // Nodes allocated in memory persistently: e.g., Variables.
-  std::set<std::pair<const NodeDef*, int>> persistent_nodes;
+  std::unordered_set<std::pair<const NodeDef*, int>, NodePairHash>
+      persistent_nodes;
 
   // Snapshot of nodes_in_memory, when memory usage is at peak.
   // Same to nodes_in_memory, it's a set of NodeDef* and port_num pairs.
-  std::set<std::pair<const NodeDef*, int>> mem_usage_snapshot_at_peak;
+  std::unordered_set<std::pair<const NodeDef*, int>, NodePairHash>
+      mem_usage_snapshot_at_peak;
 
   Costs device_costs;
   std::map<string, Costs> op_to_cost;    // Per-op cost.

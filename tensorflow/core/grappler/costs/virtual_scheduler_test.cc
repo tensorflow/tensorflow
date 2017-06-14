@@ -263,7 +263,8 @@ class VirtualSchedulerTest : public ::testing::Test {
   // Helper method tthat checks name - port pairs.
   void ValidateMemoryUsageSnapshot(
       const std::vector<string>& expected_names, const int port_num_expected,
-      const std::set<std::pair<const NodeDef*, int>>& mem_usage_snapshot) {
+      const std::unordered_set<std::pair<const NodeDef*, int>,
+                               DeviceState::NodePairHash>& mem_usage_snapshot) {
     std::set<std::pair<string, int>> nodes_at_peak_mem_usage;
     std::transform(
         mem_usage_snapshot.begin(), mem_usage_snapshot.end(),
