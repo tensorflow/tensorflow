@@ -188,7 +188,8 @@ def run_simple_server(tb_app):
     server, url = make_simple_server(tb_app, FLAGS.host, FLAGS.port)
   except socket.error:
     # An error message was already logged
-    exit(-1)
+    # TODO(jart): Remove log and throw anti-pattern.
+    sys.exit(-1)
   msg = 'Starting TensorBoard %s at %s' % (tb_app.tag, url)
   print(msg)
   tf.logging.info(msg)
