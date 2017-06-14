@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/stream_executor/cuda/cuda_driver.h"
 
+#include <cuda_runtime.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <map>
@@ -1093,9 +1094,16 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
 
 /* static */ bool CUDADriver::SynchronizeContext(CudaContext* context) {
   ScopedActivateContext activation{context};
-  CUresult res = cuCtxSynchronize();
+  const CUresult res = cuCtxSynchronize();
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "could not synchronize on CUDA context: " << ToString(res)
+               << " :: " << port::CurrentStackTrace();
+    return false;
+  }
+  const auto cudart_error = cudaPeekAtLastError();
+  if (cudart_error != cudaSuccess) {
+    LOG(ERROR) << "could not synchronize on CUDA context: "
+               << cudaGetErrorString(cudart_error)
                << " :: " << port::CurrentStackTrace();
     return false;
   }
