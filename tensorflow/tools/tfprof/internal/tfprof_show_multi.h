@@ -66,6 +66,7 @@ class TFMultiShow {
   bool ReAccount(ShowMultiNode* node, const Options& opts);
 
   string FormatLegend(const Options& opts);
+  string FormatInputShapes(const TFMultiGraphNodeProto& proto);
 
   template <typename T>
   std::vector<T*> SortNodes(const std::vector<T*>& nodes, const Options& opts) {

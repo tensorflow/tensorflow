@@ -1,18 +1,17 @@
-licenses(["notice"])  # Apache 2.0
-
 package(default_visibility = ["//visibility:public"])
+
+licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 
 py_library(
     name = "model_analyzer",
     srcs = ["model_analyzer.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":pywrap_tensorflow_print_model_analysis_lib",
         ":tfprof_logger",
+        "//tensorflow/contrib/tfprof/python/tools/tfprof/internal:pywrap_tensorflow_print_model_analysis_lib",
         "//tensorflow/tools/tfprof:protos_all_py",
     ],
 )
@@ -24,7 +23,7 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":model_analyzer",
-        ":model_analyzer_testlib",
+        "//tensorflow/contrib/tfprof/python/tools/tfprof/internal:model_analyzer_testlib",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -40,32 +39,11 @@ py_test(
     tags = ["no_pip"],
     deps = [
         ":model_analyzer",
-        ":model_analyzer_testlib",
+        "//tensorflow/contrib/tfprof/python/tools/tfprof/internal:model_analyzer_testlib",
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
-        "//tensorflow/python:variables",
-    ],
-)
-
-py_library(
-    name = "model_analyzer_testlib",
-    srcs = ["model_analyzer_testlib.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":model_analyzer",
-        "//tensorflow/contrib/rnn:rnn_py",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:rnn",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
 )
@@ -84,6 +62,7 @@ py_library(
 
 tf_py_test(
     name = "tfprof_logger_test",
+    size = "small",
     srcs = ["tfprof_logger_test.py"],
     additional_deps = [
         ":tfprof_logger",
@@ -98,39 +77,6 @@ tf_py_test(
     ],
 )
 
-tf_py_wrap_cc(
-    name = "pywrap_tensorflow_print_model_analysis_lib",
-    srcs = ["pywrap_tensorflow_print_model_analysis.i"],
-    swig_includes = [
-        "//tensorflow/python:lib/core/strings.i",
-        "//tensorflow/python:platform/base.i",
-    ],
-    deps = [
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/tools/tfprof/internal:print_model_analysis_hdr",
-        "//util/python:python_headers",
-    ],
-)
-
-py_test(
-    name = "print_model_analysis_test",
-    srcs = ["print_model_analysis_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":pywrap_tensorflow_print_model_analysis_lib",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:nn_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/tools/tfprof:protos_all_py",
-    ],
-)
-
 py_library(
     name = "pprof_profiler",
     srcs = ["pprof_profiler.py"],
@@ -140,6 +86,7 @@ py_library(
 
 py_test(
     name = "pprof_profiler_test",
+    size = "small",
     srcs = ["pprof_profiler_test.py"],
     main = "pprof_profiler_test.py",
     srcs_version = "PY2AND3",

@@ -376,6 +376,41 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
     VLOG(10) << "trying to replace " << concatenate->ToString() << " with "
              << replacement->ToString();
     ReplaceInstructionIfSameShape(concatenate, replacement);
+  } else if (operands.size() == 2) {
+    // A binary concat with a broadcasted scalar as an operand can be converted
+    // into a pad which is simpler to fold into other operations.
+    bool is_effective_low_pad =
+        operands[0]->opcode() == HloOpcode::kBroadcast &&
+        ShapeUtil::IsScalar(operands[0]->operand(0)->shape());
+    bool is_effective_high_pad =
+        operands[1]->opcode() == HloOpcode::kBroadcast &&
+        ShapeUtil::IsScalar(operands[1]->operand(0)->shape());
+    if (!is_effective_low_pad && !is_effective_high_pad) {
+      return Status::OK();
+    }
+    PaddingConfig padding_config;
+    for (int64 dim = 0; dim < ShapeUtil::Rank(operands[0]->shape()); ++dim) {
+      auto padding_config_dim = padding_config.add_dimensions();
+      padding_config_dim->set_edge_padding_high(0);
+      padding_config_dim->set_edge_padding_low(0);
+      padding_config_dim->set_interior_padding(0);
+      if (dim == concatenate->concatenate_dimension()) {
+        if (is_effective_low_pad) {
+          padding_config_dim->set_edge_padding_low(
+              operands[0]->shape().dimensions(dim));
+        } else {
+          padding_config_dim->set_edge_padding_high(
+              operands[1]->shape().dimensions(dim));
+        }
+      }
+    }
+    int64 operand_to_pad = is_effective_low_pad ? 1 : 0;
+    int64 pad_value_operand = is_effective_low_pad ? 0 : 1;
+    HloInstruction* pad =
+        computation_->AddInstruction(HloInstruction::CreatePad(
+            concatenate->shape(), operands[operand_to_pad],
+            operands[pad_value_operand]->mutable_operand(0), padding_config));
+    return ReplaceInstruction(concatenate, pad);
   }
   return Status::OK();
 }
@@ -629,8 +664,9 @@ std::pair<bool, std::vector<int64>> ReshapeLeavesDimensionsUnmodified(
   return std::make_pair(true, output_dim_indices);
 }
 
-// Returns true if the output of "instruction" is a permutation of the elements
-// of "operand". Precondition: "operand" is an operand of "instruction".
+// Returns true if the output of "instruction" is a permutation of the
+// elements of "operand". Precondition: "operand" is an operand of
+// "instruction".
 bool OutputIsPermutationOfOperandElements(HloInstruction* instruction,
                                           HloInstruction* operand) {
   DCHECK(!instruction->OperandIndices(operand).empty());
@@ -695,8 +731,8 @@ Status AlgebraicSimplifierVisitor::HandleBroadcast(HloInstruction* broadcast) {
                                                    broadcast->dimensions()));
   }
 
-  // A broadcast of a reshape which merely inserts 1-sized dimensions can elide
-  // its operand.
+  // A broadcast of a reshape which merely inserts 1-sized dimensions can
+  // elide its operand.
   {
     bool merely_inserts_or_deletes_1_sized_dimensions;
     std::vector<int64> inserted_indices, deleted_indices;
@@ -1020,8 +1056,8 @@ Status AlgebraicSimplifierVisitor::HandleReshape(HloInstruction* reshape) {
 
 Status AlgebraicSimplifierVisitor::HandleReverse(HloInstruction* reverse,
                                                  HloInstruction* operand) {
-  // When all the dimensions to reverse are trivial (i.e. the bound is 1), there
-  // is nothing to be done.
+  // When all the dimensions to reverse are trivial (i.e. the bound is 1),
+  // there is nothing to be done.
   auto dim_is_one = [&](int64 i) -> bool {
     return reverse->shape().dimensions(i) == 1;
   };
@@ -1084,9 +1120,9 @@ Status AlgebraicSimplifierVisitor::HandleReduce(
                     new_reduce_dimensions, function));
   }
 
-  // A reshape that collapses multiple dimensions into a dimension being reduced
-  // can just reduce all of those dimensions instead of doing a collapsing
-  // reshape before a reduction.
+  // A reshape that collapses multiple dimensions into a dimension being
+  // reduced can just reduce all of those dimensions instead of doing a
+  // collapsing reshape before a reduction.
   if (arg->opcode() == HloOpcode::kReshape) {
     std::vector<std::pair<int64, int64>> unmodified_dims =
         ShapeUtil::DimensionsUnmodifiedByReshape(arg->operand(0)->shape(),
@@ -1171,8 +1207,8 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
         reduce_init_value->opcode() != HloOpcode::kConstant ||
         !LiteralUtil::Equal(pad_value->literal(),
                             reduce_init_value->literal())) {
-      VLOG(10)
-          << "Not folding pad into reduce-window due to different pad values.";
+      VLOG(10) << "Not folding pad into reduce-window due to different pad "
+                  "values.";
       return Status::OK();
     }
   }

@@ -46,23 +46,6 @@ DEFAULT_SIZE_GUIDANCE = {
     event_accumulator.HISTOGRAMS: 50,
 }
 
-# The following types of data shouldn't be shown in the output of the
-# /data/runs route, because they're now handled by independent plugins
-# (e.g., the content at the 'scalars' key should now be fetched from
-# /data/plugin/scalars/runs).
-#
-# Once everything has been migrated, we should be able to delete
-# /data/runs entirely.
-_MIGRATED_DATA_KEYS = frozenset((
-    'audio',
-    'distributions',
-    'graph',
-    'histograms',
-    'images',
-    'run_metadata',
-    'scalars',
-))
-
 DATA_PREFIX = '/data'
 LOGDIR_ROUTE = '/logdir'
 RUNS_ROUTE = '/runs'
@@ -149,10 +132,8 @@ class TensorBoardWSGIApp(object):
             self._serve_logdir,
         # TODO(chizeng): Delete this RPC once we have skylark rules that obviate
         # the need for the frontend to determine which plugins are active.
-        DATA_PREFIX + PLUGINS_LISTING_ROUTE:
-            self._serve_plugins_listing,
-        DATA_PREFIX + RUNS_ROUTE:
-            self._serve_runs,
+        DATA_PREFIX + PLUGINS_LISTING_ROUTE: self._serve_plugins_listing,
+        DATA_PREFIX + RUNS_ROUTE: self._serve_runs,
     }
 
     # Serve the routes from the registered plugins using their name as the route
@@ -235,19 +216,25 @@ class TensorBoardWSGIApp(object):
       A werkzeug Response with the following content:
       {runName: {firstEventTimestamp: 123456.789}}
     """
-    runs = self._multiplexer.Runs()
-    for run_name, run_data in runs.items():
-      for key in _MIGRATED_DATA_KEYS:
-        if key in run_data:
-          del run_data[key]
+    run_names = sorted(self._multiplexer.Runs())  # Why `sorted`? See below.
+    def get_first_event_timestamp(run_name):
       try:
-        run_data['firstEventTimestamp'] = self._multiplexer.FirstEventTimestamp(
-            run_name)
+        return self._multiplexer.FirstEventTimestamp(run_name)
       except ValueError:
         tf.logging.warning('Unable to get first event timestamp for run %s',
                            run_name)
-        run_data['firstEventTimestamp'] = None
-    return http_util.Respond(request, runs, 'application/json')
+        # Put runs without a timestamp at the end. Their internal
+        # ordering would be nondeterministic, but Python's sorts are
+        # stable, so `sorted`ing the initial list above provides a
+        # deterministic ordering. Of course, we cannot guarantee that
+        # this will be append-only for new event-less runs.
+        return float('inf')
+    first_event_timestamps = {
+        run_name: get_first_event_timestamp(run_name)
+        for run_name in run_names
+    }
+    run_names.sort(key=first_event_timestamps.get)
+    return http_util.Respond(request, run_names, 'application/json')
 
   @wrappers.Request.application
   def _serve_index(self, request):

@@ -24,11 +24,15 @@ dependency list in the 'plugin' target. For instance:
     deps = ["//tensorflow/compiler/plugin/example:plugin_lib"],
 """
 
+licenses(["notice"])
+
 package(
     default_visibility = ["//visibility:public"],
 )
 
 cc_library(
     name = "plugin",
-    deps = [],
+    deps = [
+        "//tensorflow/compiler/plugin/executor:plugin_lib",
+    ],
 )

@@ -184,6 +184,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "ftrl_test",
+    size = "small",
+    srcs = ["ftrl_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],

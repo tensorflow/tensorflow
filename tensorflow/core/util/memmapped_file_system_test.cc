@@ -45,7 +45,8 @@ Status CreateMemmappedFileSystemFile(const string& filename, bool corrupted,
 
   // Create a proto with some fields.
   GraphDef graph_def;
-  graph_def.set_version(kTestGraphDefVersion);
+  graph_def.mutable_versions()->set_producer(kTestGraphDefVersion);
+  graph_def.mutable_versions()->set_min_consumer(kTestGraphDefVersion);
   TF_RETURN_IF_ERROR(writer.SaveProtobuf(graph_def, kProtoFileName));
 
   // Save a tensor after the proto to check that alignment works.
@@ -74,7 +75,8 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
   GraphDef test_graph_def;
   TF_EXPECT_OK(
       ReadBinaryProto(&memmapped_env, kProtoFileName, &test_graph_def));
-  EXPECT_EQ(kTestGraphDefVersion, test_graph_def.version());
+  EXPECT_EQ(kTestGraphDefVersion, test_graph_def.versions().producer());
+  EXPECT_EQ(kTestGraphDefVersion, test_graph_def.versions().min_consumer());
   // Check that we can correctly get a tensor memory.
   std::unique_ptr<ReadOnlyMemoryRegion> memory_region;
   TF_ASSERT_OK(memmapped_env.NewReadOnlyMemoryRegionFromFile(kTensor2FileName,

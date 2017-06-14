@@ -144,6 +144,7 @@ CORE_PROTO_SRCS = [
     "framework/log_memory.proto",
     "framework/node_def.proto",
     "framework/op_def.proto",
+    "framework/reader_base.proto",
     "framework/remote_fused_graph_execute_info.proto",
     "framework/resource_handle.proto",
     "framework/step_stats.proto",
@@ -183,15 +184,6 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "util/event.proto",
     "util/test_log.proto",
 ]
-
-tf_proto_library(
-    name = "reader_base_proto",
-    srcs = ["framework/reader_base.proto"],
-    cc_api_version = 2,
-    go_api_version = 2,
-    java_api_version = 2,
-    visibility = ["//visibility:public"],
-)
 
 tf_proto_library(
     name = "protos_all",
@@ -441,7 +433,6 @@ cc_library(
     deps = [
         ":framework",
         ":lib",
-        ":reader_base_proto_cc",
     ],
 )
 
@@ -937,7 +928,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":protos_cc",
-        ":reader_base_proto_cc",
         "//third_party/eigen3",
     ],
     alwayslink = 1,

@@ -1,10 +1,10 @@
 package(
     default_testonly = True,
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = ["//tensorflow/tensorboard:internal"],
 )
 
-load("//tensorflow/tensorboard:vulcanize.bzl", "tensorboard_html_binary")
-load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
+load("//tensorflow/tensorboard/defs:vulcanize.bzl", "tensorboard_html_binary")
+load("//tensorflow/tensorboard/defs:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 

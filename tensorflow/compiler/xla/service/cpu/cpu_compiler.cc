@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 #include <string.h>
 #include <map>
+#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -144,22 +145,54 @@ CpuCompiler::CpuCompiler() {
   LLVMInitializePowerPCTargetMC();
   LLVMInitializePowerPCAsmPrinter();
   LLVMInitializePowerPCDisassembler();
+}
 
-  // LLVM command-line flags are global, so set them during initialization.
-  legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
-  if (!flags->xla_cpu_llvm_cl_opts.empty()) {
-    std::vector<string> opts =
-        tensorflow::str_util::Split(flags->xla_cpu_llvm_cl_opts, ',');
+namespace {
+
+const char* kXlaParallelCpuOption = "xla_cpu_parallel";
+
+// LLVM makes certain options configurable only through its command-line
+// options; it provide the ParseCommandLineOptions function that lets us set
+// flags at runtime. However, since these flags are global we want to avoid
+// multiple invocations of the LLVM compilation pipeline with a different set of
+// flags. Therefore, we only pass command-line flags to LLVM once, before the
+// first module is compiled.
+std::once_flag llvm_command_line_options_initialized;
+
+void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
+  auto options = config.debug_options().xla_backend_extra_options();
+  if (!options.empty()) {
+    std::vector<string> fake_argv_storage;
+    fake_argv_storage.push_back("");
+    for (const auto& it : options) {
+      // Skip options the XLA backend itself consumes.
+      if (it.first != kXlaParallelCpuOption) {
+        if (it.second.empty()) {
+          fake_argv_storage.push_back(it.first);
+        } else {
+          fake_argv_storage.push_back(it.first + "=" + it.second);
+        }
+      }
+    }
+
+    VLOG(2) << "Passing argv to LLVM:";
     std::vector<const char*> fake_argv;
-    fake_argv.push_back("");
-    for (const string& opt : opts) {
-      fake_argv.push_back(opt.c_str());
+    for (const auto& s : fake_argv_storage) {
+      fake_argv.push_back(s.c_str());
+      VLOG(2) << s;
     }
     llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
   }
 }
 
-namespace {
+// Helps determine whether the parallel CPU backend was requested in the options
+// of this module configuration.
+bool CpuParallelBackendRequested(const HloModuleConfig& config) {
+  const auto& extra_options_map =
+      config.debug_options().xla_backend_extra_options();
+  return extra_options_map.count(kXlaParallelCpuOption) > 0;
+}
+
 // This visitor records which HLO instructions should have profiling information
 // recorded.
 class CollectProfileCandidates : public DfsHloVisitorWithDefault {
@@ -252,8 +285,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, HloDumper dump_hlo) {
       /*enable_dot_simplification=*/false);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   // Outline ops in the entry computation into calls to subcomputations.
-  legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
-  if (flags->xla_cpu_parallel) {
+  if (CpuParallelBackendRequested(module->config())) {
     pipeline.AddPass<ParallelizationPreparation>();
   }
   // Copy insertion should be performed immediately before IR emission to avoid
@@ -264,7 +296,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, HloDumper dump_hlo) {
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<CopyInsertion>();
-  if (flags->xla_cpu_parallel) {
+  if (CpuParallelBackendRequested(module->config())) {
     // Re-run the outlining, in case any copies were inserted into the entry
     // computation.
     pipeline.AddPass<ParallelizationPreparation>();
@@ -283,14 +315,16 @@ llvm::TargetOptions CompilerTargetOptions(
     const HloModuleConfig& module_config) {
   llvm::TargetOptions target_options;
   llvm_ir::SetTargetOptions(
-      /*fast_math_enabled=*/!module_config.fast_math_disabled(),
+      /*fast_math_enabled=*/module_config.debug_options()
+          .xla_enable_fast_math(),
       &target_options);
   return target_options;
 }
 
-llvm::CodeGenOpt::Level CodeGenOptLevel() {
-  legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
-  switch (flags->xla_cpu_llvm_opt_level) {
+llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
+  VLOG(2) << "backend_optimization_level: "
+          << module_config.debug_options().xla_backend_optimization_level();
+  switch (module_config.debug_options().xla_backend_optimization_level()) {
     case 1:
       return llvm::CodeGenOpt::Less;
     case 2:
@@ -310,13 +344,15 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     std::unique_ptr<HloModule> module, HloDumper dump_hlo,
     se::StreamExecutor* stream_exec) {
   TF_RET_CHECK(stream_exec != nullptr);
+  std::call_once(llvm_command_line_options_initialized,
+                 &InitializeLLVMCommandLineOptions, module->config());
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   auto llvm_context = MakeUnique<llvm::LLVMContext>();
   auto llvm_module =
       MakeUnique<llvm::Module>("__compute_module", *llvm_context);
   auto jit = MakeUnique<SimpleOrcJIT>(CompilerTargetOptions(module->config()),
-                                      CodeGenOptLevel());
+                                      CodeGenOptLevel(module->config()));
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
@@ -332,7 +368,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
   std::unique_ptr<Executable> cpu_executable;
   legacy_flags::CpuCompilerFlags* flags = legacy_flags::GetCpuCompilerFlags();
-  if (flags->xla_cpu_parallel) {
+  if (CpuParallelBackendRequested(module->config())) {
     // Run buffer analysis on the HLO graph. This analysis figures out which
     // temporary buffers are required to run the computation.
     // DependencyHloOrdering is used for the parallel emitter because the order
@@ -505,16 +541,20 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                                 HloDumper dump_hlo,
                                 const AotCompilationOptions& aot_options) {
   TF_RET_CHECK(!modules.empty());
+  std::call_once(llvm_command_line_options_initialized,
+                 &InitializeLLVMCommandLineOptions, modules[0]->config());
 
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags. At the moment, the only
   // flag that needs to be consistent is fast-math.
-  bool fast_math_disabled = modules[0]->config().fast_math_disabled();
+  const bool fast_math_enabled =
+      modules[0]->config().debug_options().xla_enable_fast_math();
   for (const auto& module : modules) {
-    if (module->config().fast_math_disabled() != fast_math_disabled) {
+    if (module->config().debug_options().xla_enable_fast_math() !=
+        fast_math_enabled) {
       return InvalidArgument(
           "All HLO module configs must have the same value for "
-          "fast_math_disabled.");
+          "xla_enable_fast_math.");
     }
   }
 
@@ -565,7 +605,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
   }
   llvm::StringRef cpu_name = llvm_ir::AsStringRef(options.cpu_name());
   llvm::StringRef features = llvm_ir::AsStringRef(options.features());
-  llvm::CodeGenOpt::Level opt_level = CodeGenOptLevel();
+  llvm::CodeGenOpt::Level opt_level = CodeGenOptLevel(modules[0]->config());
   std::unique_ptr<llvm::TargetMachine> target_machine =
       WrapUnique(target->createTargetMachine(
           triple.getTriple(), cpu_name, features,

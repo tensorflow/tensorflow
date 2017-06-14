@@ -52,7 +52,8 @@ class ClientLibraryTestBase : public ::testing::Test {
   string TestName() const;
 
   void SetFastMathDisabled(bool disabled) {
-    execution_options_.set_disable_fast_math(disabled);
+    execution_options_.mutable_debug_options()->set_xla_enable_fast_math(
+        !disabled);
   }
 
   void SetSeed(uint64 seed) { execution_options_.set_seed(seed); }

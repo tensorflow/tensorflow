@@ -45,7 +45,7 @@ TEST_F(HloConstantFoldingTest, ConvertF32ToS64) {
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(S64, {}), input));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
@@ -67,7 +67,7 @@ TEST_F(HloConstantFoldingTest, ConvertS64ToF32) {
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(F32, {}), input));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
@@ -89,7 +89,7 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(S64, {2}), input));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
@@ -135,7 +135,7 @@ TEST_F(HloConstantFoldingTest, Concatenate) {
     Shape shape = ShapeUtil::MakeShape(F32, dimensions);
     builder.AddInstruction(HloInstruction::CreateConcatenate(
         shape, operands, test_config.concat_dimension));
-    auto module = MakeUnique<HloModule>(TestName());
+    auto module = CreateNewModule();
     auto computation = module->AddEntryComputation(builder.Build());
 
     HloConstantFolding const_folder;
@@ -161,7 +161,7 @@ TEST_F(HloConstantFoldingTest, Slice) {
   Shape shape = ShapeUtil::MakeShape(F32, {6, 6, 3, 4, 4});
   builder.AddInstruction(HloInstruction::CreateSlice(
       shape, literal_instruction, slice_start, slice_limits));
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloConstantFolding const_folder;
@@ -186,7 +186,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   const int64 permutation[] = {1, 2, 0, 4, 3};
   builder.AddInstruction(
       HloInstruction::CreateTranspose(shape, literal_instruction, permutation));
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloConstantFolding const_folder;
@@ -211,3 +211,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

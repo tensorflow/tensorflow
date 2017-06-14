@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
@@ -206,6 +207,19 @@ class NodeProcessor {
     return Status::OK();
   }
 
+  Status UpdateAttrValueOfInput(int input_index) {
+    auto input_node = node_map_->GetNode(node_->input(input_index));
+    NodeDef* added_node = graph_->add_node();
+    *added_node = *input_node;
+    string base_name = strings::StrCat(node_->name(), "-", input_node->name());
+    string node_name = AddPrefixToNodeName(base_name, "LayoutOptimizer", "-");
+    added_node->set_name(node_name);
+    *node_->mutable_input(input_index) = node_name;
+    node_map_->AddNode(node_name, added_node);
+    node_map_->AddOutput(node_name, node_->name());
+    return UpdateAttrValue(added_node);
+  }
+
   virtual std::vector<int> GetInputPos() const {
     std::vector<int> input_pos = {0};
     return input_pos;
@@ -328,10 +342,7 @@ class AvgPoolGradProcessor : public NodeProcessor {
     std::vector<int> input_pos = {1};
     return input_pos;
   }
-  Status CustomizedProcessing() override {
-    NodeDef* node = node_map_->GetNode(node_->input(0));
-    return UpdateAttrValue(node);
-  }
+  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(0); }
 };
 
 class BiasAddGradProcessor : public NodeProcessor {
@@ -466,16 +477,7 @@ class Conv2DBackpropInputProcessor : public Conv2DProcessor {
     return input_pos;
   }
 
-  Status CustomizedProcessing() override {
-    NodeDef* node = node_map_->GetNode(node_->input(0));
-    NodeDef* added_node = graph_->add_node();
-    *added_node = *node;
-    string node_name =
-        AddPrefixToNodeName(node->name(), "LayoutOptimizer", "-");
-    added_node->set_name(node_name);
-    node_map_->AddNode(node_name, added_node);
-    return UpdateAttrValue(added_node);
-  }
+  Status CustomizedProcessing() override { return UpdateAttrValueOfInput(0); }
 };
 
 class FusedBatchNormGradProcessor : public NodeProcessor {
@@ -767,8 +769,7 @@ class SliceProcessorConst : public AgnosticNodeProcessor {
   Status CustomizedProcessing() override {
     // Skip the first input, which is the data to be sliced.
     for (int i = 1; i < node_->input_size(); i++) {
-      auto shape_node = node_map_->GetNode(node_->input(i));
-      TF_RETURN_IF_ERROR(UpdateAttrValue(shape_node));
+      TF_RETURN_IF_ERROR(UpdateAttrValueOfInput(i));
     }
     return Status::OK();
   }
@@ -1147,6 +1148,21 @@ int GetNumTranspose(const GraphDef& graph) {
   return number;
 }
 
+Status LayoutOptimizer::InferOutputShapes(GrapplerItem* item) {
+  GraphProperties graph_properties(*item);
+  TF_RETURN_IF_ERROR(graph_properties.InferStatically());
+  for (int i = 0; i < item->graph.node_size(); i++) {
+    auto node = item->graph.mutable_node(i);
+    AttrValue attr_output_shape;
+    auto tensor_properties = graph_properties.GetOutputProperties(node->name());
+    for (const auto& tensor_property : tensor_properties) {
+      *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
+    }
+    node->mutable_attr()->insert({"_output_shapes", attr_output_shape});
+  }
+  return Status::OK();
+}
+
 Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
   if (num_gpus_ == 0) {
@@ -1154,20 +1170,27 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   }
   if (num_gpus_ < 1) {
     // LayoutOptimizer is currently only tuned for GPU.
+    *output = item.graph;
     return Status::OK();
   }
 
-  *output = item.graph;
+  GrapplerItem new_item = item;
+  auto status = InferOutputShapes(&new_item);
+  if (!status.ok()) {
+    *output = item.graph;
+    return status;
+  }
+
+  *output = new_item.graph;
   TuningConfig config;
   config.no_gemm = false;
   DataLayoutOptimizer layout_optimizer(output, config);
-  auto status = layout_optimizer.Optimize();
-
+  status = layout_optimizer.Optimize();
   // This is based on an empirical observation that if the introduced Transpose
   // nodes is more than 30, not using GEMM implementation would result in better
   // performance.
   if (status.ok() && GetNumTranspose(*output) > 30) {
-    *output = item.graph;
+    *output = new_item.graph;
     config.no_gemm = true;
     DataLayoutOptimizer layout_optimizer(output, config);
     status = layout_optimizer.Optimize();

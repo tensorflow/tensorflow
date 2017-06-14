@@ -326,6 +326,25 @@ seed: A scalar seed for the random number generator. If either seed or
 seed2: A second scalar seed to avoid seed collision.
 )doc");
 
+REGISTER_OP("CacheDataset")
+    .Input("input_dataset: resource")
+    .Input("filename: string")
+    .Output("handle: resource")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that caches elements from `input_dataset`.
+
+A CacheDataset will iterate over the input_dataset, and store tensors. If the
+cache already exists, the cache will be used. If the cache is inappropriate
+(e.g. cannot be opened, contains tensors of the wrong shape / size), an error
+will the returned when used.
+
+filename: A path on the filesystem where we should cache the dataset. Note: this
+  will be a directory.
+)doc");
+
 REGISTER_OP("TextLineDataset")
     .Input("filenames: string")
     .Output("handle: resource")
