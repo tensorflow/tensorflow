@@ -47,9 +47,9 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename Device, typename T>
-class AvgPoolingOp : public UnaryOp<T> {
+class AvgPoolingOp : public OpKernel {
  public:
-  explicit AvgPoolingOp(OpKernelConstruction* context) : UnaryOp<T>(context) {
+  explicit AvgPoolingOp(OpKernelConstruction* context) : OpKernel(context) {
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
     OP_REQUIRES(context, FormatFromString(data_format, &data_format_),
@@ -57,23 +57,51 @@ class AvgPoolingOp : public UnaryOp<T> {
     OP_REQUIRES(
         context, data_format_ == FORMAT_NHWC,
         errors::InvalidArgument("Default AvgPoolingOp only supports NHWC."));
-    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
-    OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
-    OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window stride field must "
-                                        "specify 4 dimensions"));
+    if (context->num_inputs() == 1) {
+      OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+      OP_REQUIRES(context, ksize_.size() == 4,
+                  errors::InvalidArgument("Sliding window ksize field must "
+                                          "specify 4 dimensions"));
+      OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+      OP_REQUIRES(context, stride_.size() == 4,
+                  errors::InvalidArgument("Sliding window stride field must "
+                                          "specify 4 dimensions"));
+      OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+                  errors::Unimplemented(
+                      "Pooling is not yet supported on the batch dimension."));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented(
-                    "Pooling is not yet supported on the batch dimension."));
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
-    PoolParameters params{context,  ksize_,       stride_,
+
+    std::vector<int32> ksize = ksize_;
+    std::vector<int32> stride = stride_;
+
+    if (context->num_inputs() == 3) {
+      const Tensor& tensor_ksize = context->input(1);
+      auto value_ksize = tensor_ksize.flat<int32>();
+      ksize.resize(tensor_ksize.shape().num_elements());
+      std::copy_n(&value_ksize(0), ksize.size(), ksize.begin());
+
+      const Tensor& tensor_stride = context->input(2);
+      auto value_stride = tensor_stride.flat<int32>();
+      stride.resize(tensor_stride.shape().num_elements());
+      std::copy_n(&value_stride(0), stride.size(), stride.begin());
+    }
+
+    OP_REQUIRES(context, ksize.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, stride.size() == 4,
+                errors::InvalidArgument("Sliding window stride field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, ksize[0] == 1 && stride[0] == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+
+    PoolParameters params{context,  ksize,        stride,
                           padding_, data_format_, tensor_in.shape()};
     if (!context->status().ok()) {
       return;
@@ -105,6 +133,13 @@ REGISTER_KERNEL_BUILDER(
     AvgPoolingOp<CPUDevice, float>);
 REGISTER_KERNEL_BUILDER(
     Name("AvgPool").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
+    AvgPoolingOp<CPUDevice, Eigen::half>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("AvgPoolV2").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    AvgPoolingOp<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("AvgPoolV2").Device(DEVICE_CPU).TypeConstraint<Eigen::half>("T"),
     AvgPoolingOp<CPUDevice, Eigen::half>);
 
 #if GOOGLE_CUDA
@@ -213,18 +248,21 @@ class AvgPoolingGradOp : public OpKernel {
     OP_REQUIRES(context, data_format_ == FORMAT_NHWC,
                 errors::InvalidArgument(
                     "Default AvgPoolingGradOp only supports NHWC."));
-    OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
-    OP_REQUIRES(context, ksize_.size() == 4,
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify 4 dimensions"));
-    OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
-    OP_REQUIRES(context, stride_.size() == 4,
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify 4 dimensions"));
+
+    if (context->num_inputs() == 2) {
+      OP_REQUIRES_OK(context, context->GetAttr("ksize", &ksize_));
+      OP_REQUIRES(context, ksize_.size() == 4,
+                  errors::InvalidArgument("Sliding window ksize field must "
+                                          "specify 4 dimensions"));
+      OP_REQUIRES_OK(context, context->GetAttr("strides", &stride_));
+      OP_REQUIRES(context, stride_.size() == 4,
+                  errors::InvalidArgument("Sliding window strides field must "
+                                          "specify 4 dimensions"));
+      OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
+                  errors::Unimplemented(
+                      "Pooling is not yet supported on the batch dimension."));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    OP_REQUIRES(context, ksize_[0] == 1 && stride_[0] == 1,
-                errors::Unimplemented(
-                    "Pooling is not yet supported on the batch dimension."));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -256,12 +294,36 @@ class AvgPoolingGradOp : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(0, output_shape, &output));
     output->flat<T>().setZero();
 
-    const int window_rows = ksize_[1];
-    const int window_cols = ksize_[2];
-    const int depth_window = ksize_[3];
+    std::vector<int32> ksize = ksize_;
+    std::vector<int32> stride = stride_;
+    if (context->num_inputs() == 4) {
+      const Tensor& tensor_ksize = context->input(2);
+      auto value_ksize = tensor_ksize.flat<int32>();
+      ksize.resize(tensor_ksize.shape().num_elements());
+      std::copy_n(&value_ksize(0), ksize.size(), ksize.begin());
 
-    const int row_stride = stride_[1];
-    const int col_stride = stride_[2];
+      const Tensor& tensor_stride = context->input(3);
+      auto value_stride = tensor_stride.flat<int32>();
+      stride.resize(tensor_stride.shape().num_elements());
+      std::copy_n(&value_stride(0), stride.size(), stride.begin());
+    }
+
+    OP_REQUIRES(context, ksize.size() == 4,
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, stride.size() == 4,
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify 4 dimensions"));
+    OP_REQUIRES(context, ksize[0] == 1 && stride[0] == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+
+    const int window_rows = ksize[1];
+    const int window_cols = ksize[2];
+    const int depth_window = ksize[3];
+
+    const int row_stride = stride[1];
+    const int col_stride = stride[2];
 
     // We (will) use different code for spatial pooling and
     // non-spatial pooling.
@@ -347,6 +409,11 @@ class AvgPoolingGradOp : public OpKernel {
 
 #define REGISTER_CPU_KERNEL(T)                                 \
   REGISTER_KERNEL_BUILDER(Name("AvgPoolGrad")                  \
+                              .Device(DEVICE_CPU)              \
+                              .TypeConstraint<T>("T")          \
+                              .HostMemory("orig_input_shape"), \
+                          AvgPoolingGradOp<CPUDevice, T>);     \
+  REGISTER_KERNEL_BUILDER(Name("AvgPoolGradV2")                \
                               .Device(DEVICE_CPU)              \
                               .TypeConstraint<T>("T")          \
                               .HostMemory("orig_input_shape"), \
