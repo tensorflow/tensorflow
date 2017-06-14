@@ -273,6 +273,17 @@ XLA_TEST_F(PrngTest, TenValuesN01) {
   // TODO(b/25995601): Test that resultant values are reasonable
 }
 
+XLA_TEST_F(PrngTest, RngUniformCrash) {
+  ComputationBuilder builder(client_, TestName());
+
+  // This used to crash XLA during LLVM IR generation for CPUs.
+  auto rng_uniform = builder.RngUniform(builder.ConstantR0<int32>(0),
+                                        builder.ConstantR0<int32>(1000 * 1000),
+                                        ShapeUtil::MakeShape(S32, {}));
+  SetSeed(0);
+  ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
+}
+
 }  // namespace
 }  // namespace xla
 
