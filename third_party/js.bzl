@@ -17,9 +17,11 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "web_library_external")
 
 
+def tensorboard_js_workspace():
+
   ##############################################################################
   # TensorBoard Build Tools
-def tensorboard_js_workspace():
+
   filegroup_external(
       name = "org_nodejs",
       # MIT with portions licensed:
@@ -67,7 +69,7 @@ def tensorboard_js_workspace():
           "node.exe",
       ],
   )
-  
+
   filegroup_external(
       name = "com_microsoft_typescript",
       licenses = ["notice"],  # Apache 2.0
@@ -151,19 +153,20 @@ def tensorboard_js_workspace():
       # no @license header
       licenses = ["notice"],  # MIT
       sha256_urls = {
-          "7aff264bd84c90bed3c72a4dc31db8c19151853c6df6980f52b01d3e9872c82d": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/mrdoob/three.js/ad419d40bdaab80abbb34b8f359b4ee840033a02/build/three.js",
-              "https://raw.githubusercontent.com/mrdoob/three.js/ad419d40bdaab80abbb34b8f359b4ee840033a02/build/three.js",
+          "881cc79c84c34a1f61f8c8af0ee3f237d83a2eda3868720fdcb47bcacf8da44a": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/mrdoob/three.js/r77/build/three.js",
+              "https://raw.githubusercontent.com/mrdoob/three.js/r77/build/three.js",
           ],
-          "0e98ded15bb7fe398a655667e76b39909d36c0973a8950d01c62f65f93161c27": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/mrdoob/three.js/ad419d40bdaab80abbb34b8f359b4ee840033a02/examples/js/controls/OrbitControls.js",
-              "https://raw.githubusercontent.com/mrdoob/three.js/ad419d40bdaab80abbb34b8f359b4ee840033a02/examples/js/controls/OrbitControls.js",
+          "98b8b5954901025a98033c8bdd65969be1f30b59e11f823ec864253bb72f768d": [
+              "http://mirror.bazel.build/raw.githubusercontent.com/mrdoob/three.js/r77/examples/js/controls/OrbitControls.js",
+              "https://raw.githubusercontent.com/mrdoob/three.js/r77/examples/js/controls/OrbitControls.js",
           ],
       },
   )
-  
+
   ##############################################################################
   # TensorBoard JavaScript Production Dependencies
+
   web_library_external(
       name = "com_lodash",
       licenses = ["notice"],  # MIT
@@ -245,7 +248,7 @@ def tensorboard_js_workspace():
       licenses = ["notice"],  # MIT
       sha256_urls = {
           "633f2861a9a862b9cd7967e841e14dd3527912f209d6563595774fa31e3d84cb": [
-              "http://mirror.bazel.build/raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/LICENSES",
+              "http://mirror.bazel.build/raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/LICENSE",
               "https://raw.githubusercontent.com/waylonflinn/weblas/v0.9.0/LICENSE",
           ],
           "f138fce57f673ca8a633f4aee5ae5b6fcb6ad0de59069a42a74e996fd04d8fcc": [
@@ -260,9 +263,9 @@ def tensorboard_js_workspace():
       # no @license header
       licenses = ["notice"],  # BSD-3-Clause
       sha256_urls_extract = {
-          "b5fac5b296bc196e6aa7b59f9e33986fc44d23d59a0e211705187be9e35b943d": [
-              "http://mirror.bazel.build/github.com/d3/d3/releases/download/v4.8.0/d3.zip",
-              "https://github.com/d3/d3/releases/download/v4.8.0/d3.zip",
+          "d858c0878af36bd00e2af6029029106328d408c2bff0a60a9d78c4e27f47b99a": [
+              "http://mirror.bazel.build/github.com/d3/d3/releases/download/v4.9.1/d3.zip",
+              "https://github.com/d3/d3/releases/download/v4.9.1/d3.zip",
           ],
       },
       # TODO(jart): Use srcs=["d3.js"] instead of this once supported.
@@ -292,6 +295,7 @@ def tensorboard_js_workspace():
 
   ##############################################################################
   # TensorBoard Testing Dependencies
+
   web_library_external(
       name = "org_npmjs_registry_accessibility_developer_tools",
       licenses = ["notice"],  # Apache License 2.0
@@ -417,4 +421,3 @@ def tensorboard_js_workspace():
       path = "/test-fixture",
       exclude = ["test/**"],
   )
-
