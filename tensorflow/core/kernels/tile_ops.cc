@@ -44,21 +44,12 @@ typedef Eigen::GpuDevice GPUDevice;
 typedef Eigen::SyclDevice SYCLDevice;
 #endif // TENSORFLOW_USE_SYCL
 
-// Forward declarations of functors that will be defined in
-// tile_ops_cpu_impl*.cc and tile_ops_gpu.cu.cc.
+// Forward declarations of functors that will be defined in tile_ops_impl.h
 namespace functor {
-template <typename Device, typename T, int NDIM>
-struct Tile {
-  void operator()(const Device& d, typename TTypes<T, NDIM>::Tensor out,
-                  typename TTypes<T, NDIM>::ConstTensor in,
-                  const Eigen::array<int32, NDIM>& broadcast_array) const;
-};
-
 template <typename Device, typename T>
-struct Tile<Device, T, 0> {
-  void operator()(const Device& d, typename TTypes<T, 0>::Tensor out,
-                  typename TTypes<T, 0>::ConstTensor in,
-                  const Eigen::array<int32, 0>&) const;
+struct Tile {
+  void operator()(const Device& d, Tensor* out, const Tensor& in,
+                  const gtl::ArraySlice<int32> broadcast_array) const;
 };
 
 template <typename Device, typename T, int NDIM>
@@ -185,8 +176,8 @@ class TileOp : public OpKernel {
       broadcast_array[i] = multiples_array[i];
     }
     functor::Tile<Device, T>() (
-        context->eigen_device<Device>(), context->input(0),
-        result, multiples_array);
+        context->eigen_device<Device>(), result,
+        context->input(0), multiples_array);
     //functor::Tile<Device, T, NDIM>()(
     //    context->eigen_device<Device>(), result->tensor<T, NDIM>(),
     //    context->input(0).tensor<T, NDIM>(), broadcast_array);

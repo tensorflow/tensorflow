@@ -21,13 +21,14 @@ limitations under the License.
 #include "tensorflow/core/kernels/tile_ops_impl.h"
 
 namespace tensorflow {
+
 namespace functor {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
+
 // Register functors used for TileOp.
-#define DEFINE_DIM(T, NDIM) template struct Tile<CPUDevice, T, NDIM>;
-#define DEFINE_TYPE(T) DEFINE_DIM(T, CPU_PROVIDED_IXDIM)
+#define DEFINE_TYPE(T) template struct Tile<CPUDevice, T>;
 
 TF_CALL_bool(DEFINE_TYPE);
 TF_CALL_float(DEFINE_TYPE);
