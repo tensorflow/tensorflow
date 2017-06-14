@@ -73,7 +73,6 @@ cc_library(
     deps =
         [
             ":parse_flags_from_env",
-            "//tensorflow/compiler/xla:types",
             "//tensorflow/compiler/xla:xla_proto",
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
