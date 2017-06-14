@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <stdlib.h>
 #include <fstream>
+#include <dlfcn.h>
+#include <unistd.h>
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
@@ -61,6 +63,32 @@ namespace sep = ::perftools::gputools::poplarplugin;
 
 namespace xla {
 namespace poplarplugin {
+
+static std::string GetPathToGraphProgFile() {
+  Dl_info dlInfo;
+  static const void* dummy;
+  if (dladdr(&dummy, &dlInfo)) {
+    std::string path(dlInfo.dli_fname);
+    path = path.substr(0, path.find_last_of( '/' ) + 1);
+    path = path + "../compiler/plugin/poplar/tf.gp";
+    if (access(path.c_str(), R_OK) != -1) {
+      return path;
+    }
+  }
+
+  // This is for unit tests
+  {
+    char buf[256];
+    getcwd(buf, 255);
+    std::string path(buf);
+    path = path + "/tensorflow/compiler/plugin/poplar/tf.gp";
+    if (access(path.c_str(), R_OK) != -1) {
+      return path;
+    }
+  }
+
+  return "";
+}
 
 class EntryVisitor : public FullVisitor {
 public:
@@ -154,15 +182,11 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
 StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     std::unique_ptr<HloModule> hlo_module, HloDumper dump_hlo,
     se::StreamExecutor* stream_exec) {
-  TF_RET_CHECK(stream_exec != nullptr);
 
   VLOG(1) << "Begin compilation of module " << hlo_module->name();
 
   TF_RETURN_IF_ERROR(
           RunHloOptimization(hlo_module.get(), dump_hlo));
-
-  sep::PoplarExecutor* poplarExecutor(
-          static_cast<sep::PoplarExecutor*>(stream_exec->implementation()));
 
   bool use_ipu_model = (getenv("TF_POPLAR_COMPILE_IPU_MODEL") != NULL);
 
@@ -175,7 +199,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
                      poplar::createCPUDevice(dev_opts));
 
   poplar::Graph* graph = new poplar::Graph(dev);
-  graph->addCodelets(poplarExecutor->GetPathToGraphProgFile());
+  graph->addCodelets(GetPathToGraphProgFile());
   popconv::addCodelets(*graph);
   poplin::addCodelets(*graph);
   popnn::addCodelets(*graph);

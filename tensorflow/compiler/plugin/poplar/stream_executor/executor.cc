@@ -26,7 +26,6 @@ limitations under the License.
 #include <fstream>
 
 #include <string.h>
-#include <dlfcn.h>
 
 #include <poplar/Tensor.hpp>
 
@@ -390,20 +389,6 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
 
   return retbuf;
 }
-
-std::string PoplarExecutor::GetPathToGraphProgFile() {
-  Dl_info dlInfo;
-  static const void* dummy;
-  if (dladdr(&dummy, &dlInfo)) {
-    std::string path(dlInfo.dli_fname);
-    path = path.substr(0, path.find_last_of( '/' ) + 1);
-    path = path + "../compiler/plugin/poplar/tf.gp";
-    return path;
-  }
-  return "";
-}
-
-
 
 }  // namespace poplarplugin
 }  // namespace gputools
