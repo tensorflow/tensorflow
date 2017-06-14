@@ -40,8 +40,8 @@ VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
     for (const auto& device : devices_) {
       if (str_util::Lowercase(device.first).find("gpu") != string::npos) {
         default_device_ = device.first;
+        break;
       }
-      break;
     }
   }
 }
