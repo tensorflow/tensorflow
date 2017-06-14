@@ -9,10 +9,6 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
-    name: "AutoParallelOptions"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
-  }
-  member {
     name: "COMPILER_VERSION"
     mtype: "<type \'str\'>"
   }
@@ -167,10 +163,6 @@ tf_module {
   member {
     name: "RegisterGradient"
     mtype: "<type \'type\'>"
-  }
-  member {
-    name: "RewriterConfig"
-    mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
     name: "RunMetadata"

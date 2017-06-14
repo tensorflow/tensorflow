@@ -12,6 +12,9 @@ message AutoParallelOptions {
 }
 
 message RewriterConfig {
+  // Graph rewriting is experimental and subject to change, not covered by any
+  // API stability guarantees.
+
   bool optimize_tensor_layout = 1;
   bool disable_model_pruning = 2;
   bool constant_folding = 3;
