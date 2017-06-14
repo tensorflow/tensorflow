@@ -571,6 +571,29 @@ TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
   EXPECT_EQ(computation->root_instruction(), empty_literal);
 }
 
+// Test that concat with a scalar broadcast becomes a pad.
+TEST_F(AlgebraicSimplifierTest, ConcatenateOfBroadcastBecomesPad) {
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {100});
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(r1f32, param1, {}));
+  builder.AddInstruction(HloInstruction::CreateConcatenate(
+      param0->shape(), {broadcast, param0}, 0));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Pad(param0, param1));
+}
+
 // Test that a simplification which changes layouts is not performed if layout
 // sensitive is true.
 TEST_F(AlgebraicSimplifierTest, CopyWithDifferentLayout) {

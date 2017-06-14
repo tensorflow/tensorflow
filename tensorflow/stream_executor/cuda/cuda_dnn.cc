@@ -170,6 +170,7 @@ static port::ThreadPool* GetCudaThreadpool() {
   __macro(cudnnGetConvolutionForwardWorkspaceSize)        \
   __macro(cudnnTransformTensor)                           \
   __macro(cudnnSetConvolutionNdDescriptor)                \
+  __macro(cudnnSetTensor4dDescriptor)                     \
   __macro(cudnnSetTensorNdDescriptor)                     \
   __macro(cudnnSetFilterNdDescriptor)                     \
   __macro(cudnnPoolingForward)                            \
@@ -407,34 +408,47 @@ class ScopedTensorDescriptor {
 
     switch (batch_descriptor.layout()) {
       case dnn::DataLayout::kBatchYXDepth:
-      case dnn::DataLayout::kBatchDepthYX:
-        break;
+      case dnn::DataLayout::kBatchDepthYX: {
+        const int nd = batch_descriptor.ndims() + 2;
+        // cuDNN requires the strides and dims to be ordered as BDYX.
+        std::vector<int64> strides64 =
+            batch_descriptor.full_strides(dnn::DataLayout::kBatchDepthYX);
+        std::vector<int64> dims64 =
+            batch_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
+
+        // cuDNN requires arrays of ints.
+        std::vector<int> strides(nd);
+        std::vector<int> dims(nd);
+        std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
+                       &CheckedNarrowing<int64, int>);
+        std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
+                       &CheckedNarrowing<int64, int>);
+        status = wrap::cudnnSetTensorNdDescriptor(
+            parent_, handle_, elem_type, nd, dims.data(), strides.data());
+
+        if (status != CUDNN_STATUS_SUCCESS) {
+          LOG(FATAL) << "could not convert BatchDescriptor "
+                     << batch_descriptor.ToString()
+                     << " to cudnn tensor descriptor: " << ToString(status);
+        }
+      } break;
+#if CUDNN_VERSION >= 6000
+      case dnn::DataLayout::kBatchDepthYX4: {
+        status = wrap::cudnnSetTensor4dDescriptor(
+            parent_, handle_, CUDNN_TENSOR_NCHW_VECT_C, elem_type,
+            batch_descriptor.count(), batch_descriptor.feature_map_count(),
+            batch_descriptor.height(), batch_descriptor.width());
+        if (status != CUDNN_STATUS_SUCCESS) {
+          LOG(FATAL) << "could not convert BatchDescriptor "
+                     << batch_descriptor.ToString()
+                     << " to cudnn tensor descriptor: " << ToString(status);
+        }
+      } break;
+#endif
       default:
         LOG(FATAL) << "Unsupported tensor format "
                    << DataLayoutString(batch_descriptor.layout());
         break;
-    }
-
-    const int nd = batch_descriptor.ndims() + 2;
-    // cuDNN requires the strides and dims to be ordered as BDYX.
-    std::vector<int64> strides64 =
-        batch_descriptor.full_strides(dnn::DataLayout::kBatchDepthYX);
-    std::vector<int64> dims64 =
-        batch_descriptor.full_dims(dnn::DataLayout::kBatchDepthYX);
-
-    // cuDNN requires arrays of ints.
-    std::vector<int> strides(nd);
-    std::vector<int> dims(nd);
-    std::transform(strides64.cbegin(), strides64.cend(), strides.begin(),
-                   &CheckedNarrowing<int64, int>);
-    std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
-                   &CheckedNarrowing<int64, int>);
-    status = wrap::cudnnSetTensorNdDescriptor(parent_, handle_, elem_type, nd,
-                                              dims.data(), strides.data());
-
-    if (status != CUDNN_STATUS_SUCCESS) {
-      LOG(FATAL) << "could not set cudnn tensor descriptor: "
-                 << ToString(status);
     }
   }
 
@@ -479,6 +493,11 @@ class ScopedFilterDescriptor {
       case dnn::FilterLayout::kOutputInputYX:
         format = CUDNN_TENSOR_NCHW;
         break;
+#if CUDNN_VERSION >= 6000
+      case dnn::FilterLayout::kOutputInputYX4:
+        format = CUDNN_TENSOR_NCHW_VECT_C;
+        break;
+#endif
       default:
         LOG(FATAL) << "Unsupported filter format "
                    << FilterLayoutString(filter_descriptor.layout());
@@ -773,12 +792,19 @@ class ScopedActivationDescriptor {
 #endif
 
 namespace {
-cudnnDataType_t ToCudnnDataType(dnn::DataType data_type) {
+cudnnDataType_t ToCudnnDataType(
+    dnn::DataType data_type,
+    dnn::DataLayout data_layout = dnn::DataLayout::kBatchDepthYX) {
   switch (data_type) {
     case dnn::DataType::kFloat:
     case dnn::DataType::kDouble:
     case dnn::DataType::kHalf:
       return static_cast<cudnnDataType_t>(data_type);
+#if CUDNN_VERSION >= 6000
+    case dnn::DataType::kInt8:
+      return data_layout == dnn::DataLayout::kBatchDepthYX4 ? CUDNN_DATA_INT8x4
+                                                            : CUDNN_DATA_INT8;
+#endif
     default:
       LOG(FATAL) << "Invalid DNN data type: " << static_cast<int>(data_type);
   }
@@ -2403,24 +2429,28 @@ DeviceMemory<T> CudnnSupport::MaybeTransformLayout(
 
 bool CudnnSupport::DoTransformTensor(Stream* stream,
                                      const dnn::BatchDescriptor& input_desc,
-                                     const DeviceMemory<float>& input_data,
+                                     dnn::DataType input_type,
+                                     const DeviceMemoryBase& input_data,
                                      const dnn::BatchDescriptor& output_desc,
-                                     DeviceMemory<float>* output_data) {
+                                     dnn::DataType output_type,
+                                     DeviceMemoryBase* output_data) {
   mutex_lock lock{dnn_handle_mutex_};
   float alpha = 1.0f;
   float beta = 0.0f;
-  ScopedTensorDescriptor input_tensor_desc(parent_, input_desc,
-                                           CUDNN_DATA_FLOAT);
-  ScopedTensorDescriptor output_tensor_desc(parent_, output_desc,
-                                            CUDNN_DATA_FLOAT);
+  ScopedTensorDescriptor input_tensor_desc(
+      parent_, input_desc, ToCudnnDataType(input_type, input_desc.layout()));
+  ScopedTensorDescriptor output_tensor_desc(
+      parent_, output_desc, ToCudnnDataType(output_type, output_desc.layout()));
   cudnnStatus_t status = wrap::cudnnTransformTensor(
       parent_, ToHandle(dnn_handle_), &alpha, input_tensor_desc.handle(),
       input_data.opaque(), &beta, output_tensor_desc.handle(),
       output_data->opaque());
   if (status != CUDNN_STATUS_SUCCESS) {
-    LOG(ERROR) << "Could not transform a tensor from layout "
-               << input_desc.ToShortString() << " to "
-               << output_desc.ToShortString();
+    LOG(ERROR) << "Could not transform a tensor with layout "
+               << input_desc.ToString() << " and data type "
+               << static_cast<int>(input_type) << " to another with layout "
+               << output_desc.ToString() << " and data type "
+               << static_cast<int>(output_type) << ": " << ToString(status);
     return false;
   }
   return true;

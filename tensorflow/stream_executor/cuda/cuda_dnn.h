@@ -451,6 +451,13 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::BatchDescriptor* output_batch_descriptor);
 
+  bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
+                         dnn::DataType input_type,
+                         const DeviceMemoryBase& input_data,
+                         const dnn::BatchDescriptor& output_desc,
+                         dnn::DataType output_type,
+                         DeviceMemoryBase* output_data) override;
+
  private:
   // Guards the enqueueing of DNN operations via the dnn_handle_ below.
   mutex dnn_handle_mutex_;
@@ -480,11 +487,6 @@ class CudnnSupport : public dnn::DnnSupport {
       DeviceMemory<T> backward_output_data,
       std::unique_ptr<TemporaryDeviceMemory<T>>* transform_scratch)
       EXCLUSIVE_LOCKS_REQUIRED(dnn_handle_mutex_);
-
-  bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
-                         const DeviceMemory<float>& input_data,
-                         const dnn::BatchDescriptor& output_desc,
-                         DeviceMemory<float>* output_data) override;
 
   template <class T>
   bool DoBatchNormalizationForwardImpl(

@@ -20,10 +20,9 @@ limitations under the License.
 // ccs.getColor("train");
 // ccs.getColor("test1");
 
-import {palettes} from './palettes'
+import {palettes} from './palettes';
 
 export class ColorScale {
-  private palette: string[];
   private identifiers = d3.map();
 
   /**
@@ -31,9 +30,8 @@ export class ColorScale {
    * @param {Array<string>} [palette=palettes.googleColorBlind] - The color
    *     palette you want as an Array of hex strings.
    */
-  constructor(palette: string[] = palettes.googleColorBlindAssist) {
-    this.palette = palette;
-  }
+  constructor(
+      private readonly palette: string[] = palettes.googleColorBlindAssist) {}
 
   /**
    * Set the domain of strings.
@@ -42,6 +40,13 @@ export class ColorScale {
    */
   public domain(strings: string[]): this {
     this.identifiers = d3.map();
+
+    // TODO(wchargin): Remove this call to `sort` once we have only a
+    // singleton ColorScale, linked directly to the RunsStore, which
+    // will always give sorted output.
+    strings = strings.slice();
+    strings.sort();
+
     strings.forEach((s, i) => {
       this.identifiers.set(s, this.palette[i % this.palette.length]);
     });
@@ -72,13 +77,13 @@ Polymer({
       type: Object,
       readOnly: true,
       notify: true,
-      value: function() {
+      value() {
         return new ColorScale();
       },
     },
   },
   observers: ['updateColorScale(runs.*)'],
-  updateColorScale: function(runsChange) {
+  updateColorScale(runsChange) {
     this.outColorScale.domain(this.runs);
   },
 });
