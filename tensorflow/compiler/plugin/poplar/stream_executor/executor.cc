@@ -110,9 +110,11 @@ PoplarExecutor::~PoplarExecutor() {}
 void *PoplarExecutor::Allocate(uint64 size) {
   void* raw_buf = new char[size + sizeof(TensorControl)];
   TensorControl* allocated = reinterpret_cast<TensorControl*>(raw_buf);
+  allocated->size = size;
   allocated->on_device = false;
   allocated->input_handle = -1;
   allocated->output_handle = -1;
+  allocated->output_convertor = nullptr;
   {
     std::lock_guard<std::recursive_mutex> g(mutex_);
     allocations_.push_back(allocated);
@@ -231,6 +233,7 @@ DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
 se::DeviceMemoryBase
 PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
                                      int64 n,
+                                     ConversionFn convertor_fn,
                                      const OutputMap& map,
                                      const Args& args) {
   auto it(map.find(n));
@@ -239,6 +242,7 @@ PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
     TensorControl* tc = reinterpret_cast<TensorControl*>(buf.opaque());
     tc->on_device = true;
     tc->output_handle = n;
+    tc->output_convertor = convertor_fn;
     return buf;
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape));
@@ -246,6 +250,7 @@ PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
             reinterpret_cast<TensorControl*>(Allocate(size));
     tc->on_device = true;
     tc->output_handle = n;
+    tc->output_convertor = convertor_fn;
     return se::DeviceMemoryBase(tc, size);
   }
 }
@@ -253,10 +258,11 @@ PoplarExecutor::AllocateSingleOutput(const xla::Shape& shape,
 port::StatusOr<se::DeviceMemoryBase>
 PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape,
                                      const OutputMap& map,
+                                     const ConversionList& output_convertors,
                                      const Args& args) {
 
   if (shape.element_type() != xla::TUPLE) {
-    return AllocateSingleOutput(shape, 0, map, args);
+    return AllocateSingleOutput(shape, 0, output_convertors[0], map, args);
   } else {
     int64 size(xla::ShapeUtil::ByteSizeOf(shape, sizeof(void*)));
     TensorControl* tc = reinterpret_cast<TensorControl*>(Allocate(size));
@@ -265,6 +271,7 @@ PoplarExecutor::AllocateOutputBuffer(const xla::Shape& shape,
     for (int64 n=0; n<xla::ShapeUtil::TupleElementCount(shape); n++) {
       se::DeviceMemoryBase out(AllocateSingleOutput(shape.tuple_shapes(n),
                                                     n,
+                                                    output_convertors[n],
                                                     map,
                                                     args));
       *buf++ = out.opaque();
@@ -299,7 +306,12 @@ port::Status
 PoplarExecutor::MoveDeviceToHost(TensorControl* tc) const {
   if (tc->on_device == true && tc->output_handle != -1) {
     void* buf(static_cast<void*>(tc->data));
-    current_engine_->readTensor(GetCopyHandle(tc->output_handle), buf);
+    if (tc->output_convertor) {
+      buf = tc->output_convertor(buf, tc->size).data();
+      current_engine_->readTensor(GetCopyHandle(tc->output_handle), buf);
+    } else {
+      current_engine_->readTensor(GetCopyHandle(tc->output_handle), buf);
+    }
     tc->on_device = false;
     tc->output_handle = -1;
     return port::Status::OK();
@@ -356,15 +368,22 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
         TensorControl *tc = reinterpret_cast<TensorControl *>(mem.opaque());
         if (tc->on_device == false || tc->input_handle != a || engine_changed) {
           void *buf(static_cast<void *>(tc->data));
-
-          current_engine_->writeTensor(GetCopyHandle(a), buf);
+          if (input_convertors[a]) {
+            buf = input_convertors[a](buf, tc->size).data();
+            current_engine_->writeTensor(GetCopyHandle(a), buf);
+          } else {
+            current_engine_->writeTensor(GetCopyHandle(a), buf);
+          }
           tc->on_device = true;
           tc->input_handle = a;
         }
       }
 
       TF_ASSIGN_OR_RETURN(retbuf,
-                          AllocateOutputBuffer(shape, output_map, args));
+                          AllocateOutputBuffer(shape,
+                                               output_map,
+                                               output_convertors,
+                                               args));
 
       engine->run(0);
 

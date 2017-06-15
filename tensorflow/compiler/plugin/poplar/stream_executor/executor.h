@@ -47,9 +47,10 @@ namespace poplarplugin {
 
 std::string GetCopyHandle(int64 i);
 
+typedef std::vector<char> (*ConversionFn)(void*, int64);
+
 using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
 using OutputMap = std::map<int64, int64>;
-using ConversionFn = std::function<std::vector<char>(void*, int64)>;
 using ConversionList = std::vector<ConversionFn>;
 
 class PoplarExecutor : public internal::StreamExecutorInterface {
@@ -203,19 +204,23 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
  private:
   struct TensorControl {
+    size_t size = 0;
     bool on_device = false;
     int64 input_handle = -1;
     int64 output_handle = -1;
+    ConversionFn output_convertor;
     char data[0];
   };
 
   DeviceMemoryBase AllocateSingleOutput(const xla::Shape& shape,
                                         int64 n,
+                                        ConversionFn,
                                         const OutputMap& map,
                                         const Args& args);
 
   port::StatusOr<DeviceMemoryBase> AllocateOutputBuffer(const xla::Shape&,
                                                         const OutputMap&,
+                                                        const ConversionList&,
                                                         const Args&);
 
   port::StatusOr<DeviceMemoryBase> RemapArgs(const xla::Shape&,
