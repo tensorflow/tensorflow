@@ -197,8 +197,6 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
                                                  const Args& args,
                                                  const OutputMap& output_map);
 
-  std::string GetPathToGraphProgFile();
-
  private:
   struct TensorControl {
     bool on_device = false;

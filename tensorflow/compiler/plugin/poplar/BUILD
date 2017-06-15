@@ -112,7 +112,18 @@ cc_library(
         ":tf_graph_program",
         "@local_config_poplar//poplar:poplar_lib",
     ],
-    linkstatic=0,
+    linkstatic=1,
+)
+
+cc_test(
+    name = "graph_compile_io_map_test",
+    srcs = ["tests/graph_compile_io_map_test.cc"],
+    deps = [
+        ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
 )
 
 cc_test(
@@ -220,6 +231,7 @@ test_suite(
         "variable_test",
         "reduce_test",
         "f16_test",
+        "graph_compile_io_map_test",
     ],
 )
 

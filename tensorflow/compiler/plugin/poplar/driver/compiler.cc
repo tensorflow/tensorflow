@@ -18,6 +18,8 @@ limitations under the License.
 
 #include <stdlib.h>
 #include <fstream>
+#include <dlfcn.h>
+#include <unistd.h>
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
@@ -62,6 +64,32 @@ namespace sep = ::perftools::gputools::poplarplugin;
 namespace xla {
 namespace poplarplugin {
 
+static std::string GetPathToGraphProgFile() {
+  Dl_info dlInfo;
+  static const void* dummy;
+  if (dladdr(&dummy, &dlInfo)) {
+    std::string path(dlInfo.dli_fname);
+    path = path.substr(0, path.find_last_of( '/' ) + 1);
+    path = path + "../compiler/plugin/poplar/tf.gp";
+    if (access(path.c_str(), R_OK) != -1) {
+      return path;
+    }
+  }
+
+  // This is for unit tests
+  {
+    char buf[256];
+    getcwd(buf, 255);
+    std::string path(buf);
+    path = path + "/tensorflow/compiler/plugin/poplar/tf.gp";
+    if (access(path.c_str(), R_OK) != -1) {
+      return path;
+    }
+  }
+
+  return "";
+}
+
 class EntryVisitor : public FullVisitor {
 public:
   EntryVisitor(poplar::Graph* graph,
@@ -99,6 +127,23 @@ public:
       all_outputs_are_parameters = true;
       for (auto op : inst->operands()) {
         all_outputs_are_parameters &= (op->opcode() == HloOpcode::kParameter);
+      }
+    }
+
+    // For each output, see if there is an identical input and put it into the map
+    const HloComputation* comp = inst->parent();
+    for (int64 o=0; o<num; o++) {
+      poplar::Tensor out;
+      TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, o));
+
+      for (int64 i=0; i<comp->num_parameters(); i++) {
+        HloInstruction* param = comp->parameter_instruction(i);
+        poplar::Tensor in;
+        TF_ASSIGN_OR_RETURN(in, FindInstructionOutput(tensor_map, param, 0));
+
+        if (in == out) {
+          output_map[o] = i;
+        }
       }
     }
 
@@ -154,15 +199,11 @@ Status PoplarCompiler::RunHloOptimization(HloModule* hlo_module,
 StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
     std::unique_ptr<HloModule> hlo_module, HloDumper dump_hlo,
     se::StreamExecutor* stream_exec) {
-  TF_RET_CHECK(stream_exec != nullptr);
 
   VLOG(1) << "Begin compilation of module " << hlo_module->name();
 
   TF_RETURN_IF_ERROR(
           RunHloOptimization(hlo_module.get(), dump_hlo));
-
-  sep::PoplarExecutor* poplarExecutor(
-          static_cast<sep::PoplarExecutor*>(stream_exec->implementation()));
 
   bool use_ipu_model = (getenv("TF_POPLAR_COMPILE_IPU_MODEL") != NULL);
 
@@ -175,7 +216,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
                      poplar::createCPUDevice(dev_opts));
 
   poplar::Graph* graph = new poplar::Graph(dev);
-  graph->addCodelets(poplarExecutor->GetPathToGraphProgFile());
+  graph->addCodelets(GetPathToGraphProgFile());
   popconv::addCodelets(*graph);
   poplin::addCodelets(*graph);
   popnn::addCodelets(*graph);
