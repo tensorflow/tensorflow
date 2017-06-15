@@ -255,11 +255,15 @@ message ComputationDataHandle {
   int64 handle = 1;
 }
 
-// Handle given to a user that represents a device to execute a computation.
-// When replication is enabled, the device handle represents the device for the
-// replica id 0.
+// Handle given to a user that represents a replicated virtual device. Each
+// replicated device represents N physical devices for execution where N is the
+// number of replicas.
 message DeviceHandle {
   int64 handle = 1;
+
+  // The number of model-parallel virtual devices that communicate via XLA
+  // Send/Recv instructions.
+  int64 device_count = 2;
 }
 
 // Handle given to a user to represent a channel between two computations
@@ -267,6 +271,21 @@ message DeviceHandle {
 // Send instructions will be blocked until the data is transferred.
 message ChannelHandle {
   int64 handle = 1;
+}
+
+// DeviceAssignmentProto is a serialized form of DeviceAssignment class, which
+// represents the device ids assigned to a set of replicated computations.
+// See xla::DeviceAssignment class comment for more details.
+message DeviceAssignmentProto {
+  int32 replica_count = 1;
+  int32 computation_count = 2;
+
+  // Each logical computation runs on replica_count physical devices.
+  // ComputationDevice represents the device ids assinged to the replicas.
+  message ComputationDevice {
+    repeated int32 replica_device_ids = 1;
+  }
+  repeated ComputationDevice computation_devices = 3;
 }
 
 // Literals are used when the server and client need to exchange materialized

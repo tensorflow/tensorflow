@@ -332,6 +332,7 @@ cc_library(
     hdrs = ["backend.h"],
     deps = [
         ":compiler",
+        ":computation_placer",
         ":device_memory_allocator",
         ":platform_util",
         ":pool",
@@ -948,6 +949,26 @@ cc_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:test_main",
     ],
+)
+
+cc_library(
+    name = "computation_placer",
+    srcs = ["computation_placer.cc"],
+    hdrs = ["computation_placer.h"],
+    deps = [
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+    alwayslink = True,  # Contains per-platform computation placer registration
 )
 
 cc_library(

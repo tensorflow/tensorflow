@@ -96,9 +96,11 @@ struct Backend::EigenThreadPoolWrapper {
                       PlatformUtil::GetStreamExecutors(platform));
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
-  std::unique_ptr<Backend> backend(
-      new Backend(replica_count, platform, compiler, stream_executors,
-                  transfer_manager, options.intra_op_parallelism_threads()));
+  TF_ASSIGN_OR_RETURN(auto computation_placer,
+                      ComputationPlacer::GetForPlatform(platform));
+  std::unique_ptr<Backend> backend(new Backend(
+      replica_count, platform, compiler, stream_executors, transfer_manager,
+      computation_placer, options.intra_op_parallelism_threads()));
   return std::move(backend);
 }
 
@@ -135,10 +137,12 @@ Backend::Backend(
     int64 replica_count, perftools::gputools::Platform* platform,
     Compiler* compiler,
     tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors,
-    TransferManager* transfer_manager, int intra_op_parallelism_threads)
+    TransferManager* transfer_manager, ComputationPlacer* computation_placer,
+    int intra_op_parallelism_threads)
     : platform_(platform),
       compiler_(compiler),
       transfer_manager_(transfer_manager),
+      computation_placer_(computation_placer),
       replica_count_(replica_count) {
   // The given set of stream executors set may include invalid executors.
   for (se::StreamExecutor* exec : stream_executors) {
@@ -177,36 +181,6 @@ Backend::~Backend() {}
 
 int Backend::default_device_ordinal() const {
   return default_stream_executor()->device_ordinal();
-}
-
-StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Backend::Replicas(
-    int device_ordinal) const {
-  if (stream_executors_[device_ordinal] == nullptr) {
-    return InvalidArgument("device %s not supported by XLA service",
-                           device_name(device_ordinal).c_str());
-  }
-
-  // Find replica_count_ stream executors starting from the given device
-  // ordinal.
-  std::vector<perftools::gputools::StreamExecutor*> replicas;
-  for (se::StreamExecutor* exec : stream_executors_) {
-    CHECK(exec != nullptr);
-    if (exec->device_ordinal() >= device_ordinal) {
-      replicas.push_back(exec);
-      if (replicas.size() >= replica_count_) {
-        return replicas;
-      }
-    }
-  }
-
-  return InvalidArgument(
-      "Not enough devices for replicas for the device ordinal %d",
-      device_ordinal);
-}
-
-std::vector<perftools::gputools::StreamExecutor*> Backend::Replicas() const {
-  CHECK_GE(stream_executors_.size(), replica_count_);
-  return Replicas(default_device_ordinal()).ValueOrDie();
 }
 
 tensorflow::thread::ThreadPool* Backend::inter_op_thread_pool() const {
