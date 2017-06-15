@@ -3148,7 +3148,6 @@ cuda_py_tests(
         "training/adagrad_da_test.py",
         "training/adagrad_test.py",
         "training/basic_loops_test.py",
-        "training/checkpoint_utils_test.py",
         "training/coordinator_test.py",
         "training/device_setter_test.py",
         "training/ftrl_test.py",
@@ -3349,6 +3348,27 @@ py_test(
         ":variables",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/testing:testing_py",
+    ],
+)
+
+py_test(
+    name = "checkpoint_utils_test",
+    size = "small",
+    srcs = ["training/checkpoint_utils_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_windows"],
+    deps = [
+        ":client",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":io_ops",
+        ":partitioned_variables",
+        ":platform",
+        ":pywrap_tensorflow",
+        ":state_ops",
+        ":training",
+        ":variable_scope",
+        ":variables",
     ],
 )
 
