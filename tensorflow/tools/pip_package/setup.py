@@ -34,7 +34,7 @@ _VERSION = '1.2.0-rc2'
 REQUIRED_PACKAGES = [
     'numpy >= 1.11.0',
     'six >= 1.10.0',
-    'protobuf >= 3.2.0',
+    'protobuf >= 3.3.0',
     'werkzeug >= 0.11.10',
     'html5lib == 0.9999999',  # identical to 1.0b8
     'markdown == 2.2.0',
