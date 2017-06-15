@@ -291,11 +291,33 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "six_archive",
       urls = [
           "http://mirror.bazel.build/pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
-          "http://pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
+          "https://pypi.python.org/packages/source/s/six/six-1.10.0.tar.gz",
       ],
       sha256 = "105f8d68616f8248e24bf0e9372ef04d3cc10104f1980f54d57b2ce73a5ad56a",
       strip_prefix = "six-1.10.0",
       build_file = str(Label("//third_party:six.BUILD")),
+  )
+
+  native.new_http_archive(
+      name = "org_python_pypi_backports_weakref",
+      urls = [
+          "http://mirror.bazel.build/pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
+          "https://pypi.python.org/packages/bc/cc/3cdb0a02e7e96f6c70bd971bc8a90b8463fda83e264fa9c5c1c98ceabd81/backports.weakref-1.0rc1.tar.gz",
+      ],
+      sha256 = "8813bf712a66b3d8b85dc289e1104ed220f1878cf981e2fe756dfaabe9a82892",
+      strip_prefix = "backports.weakref-1.0rc1/src",
+      build_file = str(Label("//third_party:backports_weakref.BUILD")),
+  )
+
+  filegroup_external(
+      name = "org_python_license",
+      licenses = ["notice"],  # Python 2.0
+      sha256_urls = {
+          "b5556e921715ddb9242c076cae3963f483aa47266c5e37ea4c187f77cc79501c": [
+              "http://mirror.bazel.build/docs.python.org/2.7/_sources/license.txt",
+              "https://docs.python.org/2.7/_sources/license.txt",
+          ],
+      },
   )
 
   native.bind(
@@ -622,4 +644,3 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       strip_prefix = "pprof-c0fb62ec88c411cc91194465e54db2632845b650",
       build_file = str(Label("//third_party:pprof.BUILD")),
   )
-

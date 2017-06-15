@@ -2464,6 +2464,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//third_party/py/numpy",
+        "@org_python_pypi_backports_weakref",
         "@protobuf//:protobuf_python",
         "@six_archive//:six",
     ],
