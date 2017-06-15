@@ -89,6 +89,12 @@ Status GpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
   return Status::OK();
 }
 
+Status GpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
+                                                  int64 size,
+                                                  const void* source) {
+  return TransferBufferToInfeedInternal(executor, size, source).status();
+}
+
 StatusOr<gpu::InfeedBuffer*>
 GpuTransferManager::TransferLiteralToInfeedInternal(
     se::StreamExecutor* executor, const Literal& literal) {
@@ -107,6 +113,12 @@ GpuTransferManager::TransferLiteralToInfeedInternal(
                          ShapeUtil::HumanString(literal.shape()).c_str());
   }
 
+  return TransferBufferToInfeedInternal(executor, size,
+                                        LiteralUtil::InternalData(literal));
+}
+
+StatusOr<gpu::InfeedBuffer*> GpuTransferManager::TransferBufferToInfeedInternal(
+    se::StreamExecutor* executor, int64 size, const void* source) {
   gpu::InfeedManager* infeed_manager = gpu::GetOrCreateInfeedManager();
   se::Stream* stream = infeed_manager->GetStream(executor);
   if (stream == nullptr) {
@@ -114,8 +126,7 @@ GpuTransferManager::TransferLiteralToInfeedInternal(
   }
 
   gpu::InfeedBuffer* buffer = new gpu::InfeedBuffer(executor, size);
-  stream->ThenMemcpy(buffer->device_memory(),
-                     LiteralUtil::InternalData(literal), size);
+  stream->ThenMemcpy(buffer->device_memory(), source, size);
 
   VLOG(2) << "Queued infeed data on stream " << stream;
 

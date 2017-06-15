@@ -38,12 +38,19 @@ class GpuTransferManager : public GenericTransferManager {
 
   Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
                                  const Literal& literal) override;
+  Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
+                                int64 size, const void* source) override;
 
  private:
   // Internal helper function for TransferLiteralToInfeed(). Input
   // literal cannot be a tuple.
   StatusOr<gpu::InfeedBuffer*> TransferLiteralToInfeedInternal(
       perftools::gputools::StreamExecutor* executor, const Literal& literal);
+
+  // Internal helper function for TransferLiteralToInfeed().
+  StatusOr<gpu::InfeedBuffer*> TransferBufferToInfeedInternal(
+      perftools::gputools::StreamExecutor* executor, int64 size,
+      const void* source);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuTransferManager);
 };

@@ -159,7 +159,13 @@ Status GenericTransferManager::TransferLiteralToDevice(
 
 Status GenericTransferManager::TransferLiteralToInfeed(
     se::StreamExecutor* executor, const Literal& literal) {
-  return Unimplemented("Infeed is not supported on GPU (b/30467474)");
+  return Unimplemented("Generic transfer to Infeed");
+}
+
+Status GenericTransferManager::TransferBufferToInfeed(
+    perftools::gputools::StreamExecutor* executor, int64 size,
+    const void* source) {
+  return Unimplemented("Generic transfer to Infeed");
 }
 
 Status GenericTransferManager::TransferLiteralFromOutfeed(

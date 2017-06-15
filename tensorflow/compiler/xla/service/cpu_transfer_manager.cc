@@ -75,20 +75,27 @@ Status CpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
                          ShapeUtil::HumanString(literal.shape()).c_str());
   }
 
-  cpu::runtime::InfeedManager* infeed_manager =
-      cpu::runtime::GetInfeedManager();
-
   int64 size = GetByteSizeRequirement(shape);
   if (size > std::numeric_limits<int32>::max()) {
     return Unimplemented("Infeed shape is too large: %s needs %lld bytes",
                          ShapeUtil::HumanString(literal.shape()).c_str(), size);
   }
+
+  return TransferBufferToInfeed(executor, size,
+                                LiteralUtil::InternalData(literal));
+}
+
+Status CpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
+                                                  int64 size,
+                                                  const void* source) {
   int32 size_32 = static_cast<int32>(size);
   CpuInfeedBuffer* queued_buffer = new CpuInfeedBuffer(size_32);
-  TF_RETURN_IF_ERROR(TransferBufferToDevice(
-      executor, /*size=*/size, /*source=*/LiteralUtil::InternalData(literal),
-      queued_buffer->device_memory()));
+  TF_RETURN_IF_ERROR(TransferBufferToDevice(executor, /*size=*/size,
+                                            /*source=*/source,
+                                            queued_buffer->device_memory()));
 
+  cpu::runtime::InfeedManager* infeed_manager =
+      cpu::runtime::GetInfeedManager();
   infeed_manager->EnqueueBuffer(queued_buffer);
 
   return Status::OK();
