@@ -32,6 +32,24 @@ py_library(
 )
 
 cuda_py_test(
+    name = "csiszar_divergence_test",
+    size = "small",
+    srcs = ["python/kernel_tests/csiszar_divergence_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//third_party/py/numpy",
+        "//tensorflow/contrib/distributions:distributions_py",
+        "//tensorflow/contrib/layers:layers_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:nn_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "entropy_test",
     size = "medium",
     srcs = ["python/kernel_tests/entropy_test.py"],
