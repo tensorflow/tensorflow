@@ -101,10 +101,7 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
   private int previewWidth = 0;
   private int previewHeight = 0;
-  private byte[][] yuvBytes;
-  private int[] rgbBytes = null;
-  private Bitmap rgbFrameBitmap = null;
-  private Bitmap croppedBitmap = null;
+
 
   private final float[] styleVals = new float[NUM_STYLES];
   private int[] intValues;
@@ -112,17 +109,13 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
   private int frameNum = 0;
 
-  private Bitmap cropCopyBitmap;
   private Bitmap textureCopyBitmap;
 
-  private boolean computing = false;
 
   private Matrix frameToCropTransform;
   private Matrix cropToFrameTransform;
 
   private BorderedText borderedText;
-
-  private long lastProcessingTimeMs;
 
   private TensorFlowInferenceInterface inferenceInterface;
 
@@ -132,7 +125,6 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
 
   private ImageGridAdapter adapter;
   private GridView grid;
-  private Runnable postInferenceCallback;
 
   private final OnTouchListener gridTouchAdapter =
       new OnTouchListener() {
@@ -398,12 +390,6 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     grid = (GridView) findViewById(R.id.grid_layout);
     grid.setAdapter(adapter);
     grid.setOnTouchListener(gridTouchAdapter);
-
-    LOGGER.i(
-        "Initializing at size preview size %dx%d, stylize size %d",
-        previewWidth, previewHeight, desiredSize);
-    rgbBytes = new int[previewWidth * previewHeight];
-    rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
     setStyle(adapter.items[0], 1.0f);
   }
 
@@ -484,114 +470,41 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     initializedSize = desiredSize;
   }
 
-  /*
-   * Callback for android.hardware.Camera API
-   */
-  @Override
-  public void onPreviewFrame(final byte[] bytes, final Camera camera) {
-    if (computing) {
-      return;
+  protected void processImageRGBbytes(byte[] luminance) {
+    if (desiredSize != initializedSize) {
+      LOGGER.i(
+              "Initializing at size preview size %dx%d, stylize size %d",
+              previewWidth, previewHeight, desiredSize);
+      rgbFrameBitmap = Bitmap.createBitmap(previewWidth, previewHeight, Config.ARGB_8888);
+      croppedBitmap = Bitmap.createBitmap(desiredSize, desiredSize, Config.ARGB_8888);
+
+      frameToCropTransform =
+              ImageUtils.getTransformationMatrix(
+                      previewWidth, previewHeight,
+                      desiredSize, desiredSize,
+                      sensorOrientation, true);
+
+      cropToFrameTransform = new Matrix();
+      frameToCropTransform.invert(cropToFrameTransform);
+
+      yuvBytes = new byte[3][];
+
+      intValues = new int[desiredSize * desiredSize];
+      floatValues = new float[desiredSize * desiredSize * 3];
+      initializedSize = desiredSize;
     }
-    computing = true;
-
-    Camera.Size previewSize = camera.getParameters().getPreviewSize();
-    try {
-      // Initialize the storage bitmaps once when the resolution is known.
-      if (previewWidth != previewSize.width || previewHeight != previewSize.height) {
-        onPreviewSizeChosen(new Size(previewSize.width, previewSize.height), 90);
-      }
-      if (desiredSize != initializedSize) {
-        resetPreviewBuffers();
-      }
-
-      ImageUtils.convertYUV420SPToARGB8888(bytes, rgbBytes, previewWidth, previewHeight, false);
-
-    } catch (final Exception e) {
-      LOGGER.e(e, "Exception!");
-      return;
-    }
-
     rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
-    postInferenceCallback= new Runnable() {
-      @Override
-      public void run() {
-        camera.addCallbackBuffer(bytes);
-      }
-    };
-    processImageRGBbytes();
-  }
+    final Canvas canvas = new Canvas(croppedBitmap);
+    canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
 
-  /*
-   * Callback for Camera2 API
-   */
-  @Override
-  public void onImageAvailable(final ImageReader reader) {
-    Image image = null;
-
-    try {
-      image = reader.acquireLatestImage();
-
-      if (image == null) {
-        return;
-      }
-
-      if (computing) {
-        image.close();
-        return;
-      }
-
-      if (desiredSize != initializedSize) {
-        resetPreviewBuffers();
-      }
-
-      computing = true;
-
-      Trace.beginSection("imageAvailable");
-
-      final Plane[] planes = image.getPlanes();
-      fillBytes(planes, yuvBytes);
-
-      final int yRowStride = planes[0].getRowStride();
-      final int uvRowStride = planes[1].getRowStride();
-      final int uvPixelStride = planes[1].getPixelStride();
-      ImageUtils.convertYUV420ToARGB8888(
-          yuvBytes[0],
-          yuvBytes[1],
-          yuvBytes[2],
-          rgbBytes,
-          previewWidth,
-          previewHeight,
-          yRowStride,
-          uvRowStride,
-          uvPixelStride,
-          false);
-
-      image.close();
-    } catch (final Exception e) {
-      if (image != null) {
-        image.close();
-      }
-      LOGGER.e(e, "Exception!");
-      Trace.endSection();
+    // For examining the actual TF input.
+    if (SAVE_PREVIEW_BITMAP) {
+      ImageUtils.saveBitmap(croppedBitmap);
     }
 
-    processImageRGBbytes();
-    Trace.endSection();
-  }
-
-  private void processImageRGBbytes() {
     runInBackground(new Runnable() {
       @Override
       public void run() {
-        rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
-        final Canvas canvas = new Canvas(croppedBitmap);
-        canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);
-
-        // For examining the actual TF input.
-        if (SAVE_PREVIEW_BITMAP) {
-          ImageUtils.saveBitmap(croppedBitmap);
-        }
-
         cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
 
         final long startTime = SystemClock.uptimeMillis();
@@ -608,6 +521,9 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
         }
       }
     });
+    if (desiredSize != initializedSize) {
+      resetPreviewBuffers();
+    }
   }
 
   private void stylizeImage(final Bitmap bitmap) {
@@ -638,6 +554,7 @@ public class StylizeActivity extends CameraActivity implements OnImageAvailableL
     }
 
     // Copy the input data into TensorFlow.
+    LOGGER.i("Width: %s , Height: %s",bitmap.getWidth(),bitmap.getHeight());
     inferenceInterface.feed(
         INPUT_NODE, floatValues, 1, bitmap.getWidth(), bitmap.getHeight(), 3);
     inferenceInterface.feed(STYLE_NODE, styleVals, NUM_STYLES);
