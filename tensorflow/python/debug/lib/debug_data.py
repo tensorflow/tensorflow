@@ -40,6 +40,7 @@ METADATA_FILE_PREFIX = "_tfdbg_"
 CORE_METADATA_TAG = "core_metadata_"
 GRAPH_FILE_TAG = "graph_"
 DEVICE_TAG = "device_"
+HASH_TAG = "hash"
 
 FETCHES_INFO_FILE_TAG = "fetches_info_"
 FEED_KEYS_INFO_FILE_TAG = "feed_keys_info_"

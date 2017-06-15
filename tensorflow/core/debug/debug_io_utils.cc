@@ -131,6 +131,9 @@ const char* const DebugIO::kDeviceTag = "device_";
 // static
 const char* const DebugIO::kGraphTag = "graph_";
 
+// static
+const char* const DebugIO::kHashTag = "hash";
+
 DebugNodeKey::DebugNodeKey(const string& device_name, const string& node_name,
                            const int32 output_slot, const string& debug_op)
     : device_name(device_name),
@@ -351,8 +354,10 @@ Status DebugIO::PublishGraph(const Graph& graph, const string& device_name,
       const string dump_root_dir =
           io::JoinPath(debug_url.substr(strlen(kFileURLScheme)),
                        DebugNodeKey::DeviceNameToDevicePath(device_name));
-      const string file_name = strings::StrCat(DebugIO::kMetadataFilePrefix,
-                                               DebugIO::kGraphTag, now_micros);
+      const uint64 graph_hash = ::tensorflow::Hash64(buf);
+      const string file_name =
+          strings::StrCat(DebugIO::kMetadataFilePrefix, DebugIO::kGraphTag,
+                          DebugIO::kHashTag, graph_hash, "_", now_micros);
 
       status.Update(
           DebugFileIO::DumpEventProtoToFile(event, dump_root_dir, file_name));
