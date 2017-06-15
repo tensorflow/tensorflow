@@ -17,6 +17,7 @@ cc_library(
     name = "driver",
     srcs = [
         "driver/compiler.cc",
+        "driver/conversions.cc",
         "driver/conv_op.cc",
         "driver/executable.cc",
         "driver/map_ops.cc",
@@ -35,6 +36,7 @@ cc_library(
     hdrs = [
         "driver/compiler.h",
         "driver/compiler_resources.h",
+        "driver/conversions.h",
         "driver/executable.h",
         "driver/ops.h",
         "driver/tensor.h",
@@ -118,6 +120,17 @@ cc_library(
 cc_test(
     name = "graph_compile_io_map_test",
     srcs = ["tests/graph_compile_io_map_test.cc"],
+    deps = [
+        ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_test(
+    name = "conversions_test",
+    srcs = ["tests/conversions_test.cc"],
     deps = [
         ":poplar_lib",
         "//tensorflow/compiler/xla/service:hlo_matchers",
@@ -232,6 +245,7 @@ test_suite(
         "reduce_test",
         "f16_test",
         "graph_compile_io_map_test",
+        "conversions_test",
     ],
 )
 
