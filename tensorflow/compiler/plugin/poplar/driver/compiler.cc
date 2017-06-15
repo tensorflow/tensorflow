@@ -108,14 +108,14 @@ public:
   }
 
   Status FinishVisit(HloInstruction* inst) {
-    size_t num;
+    size_t num_outputs;
     if (ShapeUtil::IsTuple(inst->shape())) {
-      num = ShapeUtil::TupleElementCount(inst->shape());
+      num_outputs = ShapeUtil::TupleElementCount(inst->shape());
     } else {
-      num = 1;
+      num_outputs = 1;
     }
 
-    for (int64 i=0; i<num; i++) {
+    for (int64 i=0; i<num_outputs; i++) {
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, i));
       graph_->createHostRead(sep::GetCopyHandle(i), out);
@@ -132,7 +132,7 @@ public:
 
     // For each output, see if there is an identical input and put it into the map
     const HloComputation* comp = inst->parent();
-    for (int64 o=0; o<num; o++) {
+    for (int64 o=0; o<num_outputs; o++) {
       poplar::Tensor out;
       TF_ASSIGN_OR_RETURN(out, FindInstructionOutput(tensor_map, inst, o));
 
@@ -147,12 +147,17 @@ public:
       }
     }
 
+    input_convertors.resize(comp->num_parameters());
+    output_convertors.resize(num_outputs);
+
     tensor_map.clear();
 
     return Status::OK();
   }
 
-  std::map<int64,int64> output_map;
+  sep::OutputMap output_map;
+  sep::ConversionList input_convertors;
+  sep::ConversionList output_convertors;
   bool all_outputs_are_parameters;
 
 
@@ -295,7 +300,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::Compile(
   executable.reset(
           new PoplarExecutable(std::move(hlo_module),
                                std::move(engine),
-                               std::move(visitor.output_map)));
+                               std::move(visitor.output_map),
+                               std::move(visitor.input_convertors),
+                               std::move(visitor.output_convertors)));
 
   return std::move(executable);
 }

@@ -28,11 +28,14 @@ namespace poplarplugin {
 PoplarExecutable::PoplarExecutable(
         std::unique_ptr<HloModule> hlo_module,
         std::unique_ptr<poplar::Engine> engine,
-        const std::map<int64, int64>& output_map)
+        const sep::OutputMap& output_map,
+        const sep::ConversionList& input_convertors,
+        const sep::ConversionList& output_convertors)
     : Executable(std::move(hlo_module), ShapeSizeBytes),
       poplar_engine_(std::move(engine)),
-      output_map_(output_map) {
-}
+      output_map_(std::move(output_map)),
+      input_convertors_(std::move(input_convertors)),
+      output_convertors_(std::move(output_convertors)) {}
 
 PoplarExecutable::~PoplarExecutable() {}
 
@@ -61,7 +64,9 @@ PoplarExecutable::ExecuteOnStream(
                       poplarExecutor->ExecuteEngine(poplar_engine_.get(),
                                                     result_shape(),
                                                     arguments,
-                                                    output_map_));
+                                                    output_map_,
+                                                    input_convertors_,
+                                                    output_convertors_));
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 

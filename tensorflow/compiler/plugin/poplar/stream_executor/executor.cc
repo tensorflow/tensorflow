@@ -312,7 +312,9 @@ port::StatusOr<se::DeviceMemoryBase>
 PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
                               const xla::Shape& shape,
                               const Args& args,
-                              const OutputMap& output_map) {
+                              const OutputMap& output_map,
+                              const ConversionList& input_convertors,
+                              const ConversionList& output_convertors) {
 
   perftools::gputools::DeviceMemoryBase retbuf;
 
@@ -354,6 +356,7 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
         TensorControl *tc = reinterpret_cast<TensorControl *>(mem.opaque());
         if (tc->on_device == false || tc->input_handle != a || engine_changed) {
           void *buf(static_cast<void *>(tc->data));
+
           current_engine_->writeTensor(GetCopyHandle(a), buf);
           tc->on_device = true;
           tc->input_handle = a;

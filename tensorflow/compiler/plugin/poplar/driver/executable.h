@@ -29,7 +29,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
+#include "tensorflow/compiler/plugin/poplar/stream_executor/executor.h"
+
 #include <poplar/Engine.hpp>
+
+namespace sep = ::perftools::gputools::poplarplugin;
 
 namespace xla {
 namespace poplarplugin {
@@ -41,7 +45,9 @@ class PoplarExecutable : public Executable {
  public:
   PoplarExecutable(std::unique_ptr<HloModule> hlo_module,
                    std::unique_ptr<poplar::Engine> engine,
-                   const std::map<int64, int64>& output_map);
+                   const sep::OutputMap& output_map,
+                   const sep::ConversionList& input_convertors,
+                   const sep::ConversionList& output_convertors);
   ~PoplarExecutable() override;
 
 
@@ -67,7 +73,9 @@ class PoplarExecutable : public Executable {
   friend class GraphCompileIoMapTest;
 
   std::unique_ptr<poplar::Engine> poplar_engine_;
-  std::map<int64, int64> output_map_;
+  sep::OutputMap output_map_;
+  sep::ConversionList input_convertors_;
+  sep::ConversionList output_convertors_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(PoplarExecutable);
 };

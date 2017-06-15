@@ -49,6 +49,8 @@ std::string GetCopyHandle(int64 i);
 
 using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
 using OutputMap = std::map<int64, int64>;
+using ConversionFn = std::function<std::vector<char>(void*, int64)>;
+using ConversionList = std::vector<ConversionFn>;
 
 class PoplarExecutor : public internal::StreamExecutorInterface {
  public:
@@ -192,10 +194,12 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   // Poplar Interface
 
-  port::StatusOr<DeviceMemoryBase> ExecuteEngine(poplar::Engine* engine,
-                                                 const xla::Shape& shape,
-                                                 const Args& args,
-                                                 const OutputMap& output_map);
+  port::StatusOr<DeviceMemoryBase> ExecuteEngine(poplar::Engine*,
+                                                 const xla::Shape&,
+                                                 const Args&,
+                                                 const OutputMap&,
+                                                 const ConversionList&,
+                                                 const ConversionList&);
 
  private:
   struct TensorControl {
