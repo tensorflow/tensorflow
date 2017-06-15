@@ -560,9 +560,9 @@ def batch_norm(inputs,
           layer.moving_mean, variables_collections, 'moving_mean')
       _add_variable_to_collections(
           layer.moving_variance, variables_collections, 'moving_variance')
-      if layer.beta:
+      if layer.beta is not None:
         _add_variable_to_collections(layer.beta, variables_collections, 'beta')
-      if layer.gamma:
+      if layer.gamma is not None:
         _add_variable_to_collections(
             layer.gamma, variables_collections, 'gamma')
 
