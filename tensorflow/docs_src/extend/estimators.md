@@ -41,7 +41,7 @@ feature columns, input functions, and `fit()`/`evaluate()`/`predict()`
 operations. If you've never used tf.contrib.learn before, or need a refresher,
 you should first review the following tutorials:
 
-*   @{$tflearn$tf.contrib.learn Quickstart}: Quick introduction to
+*   @{$estimator$tf.estimator Quickstart}: Quick introduction to
     training a neural network using tf.contrib.learn.
 *   @{$wide$TensorFlow Linear Model Tutorial}: Introduction to
     feature columns, and an overview on building a linear classifier in

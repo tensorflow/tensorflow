@@ -10,7 +10,8 @@ median house values.
 
 When training a neural network using tf.contrib.learn, it's possible to pass
 your feature and target data directly into your `fit`, `evaluate`, or `predict`
-operations. Here's an example taken from the @{$tflearn$tf.contrib.learn quickstart tutorial}:
+operations. Here's an example taken from the
+@{$estimator$tf.estimator quickstart tutorial}:
 
 ```python
 training_set = tf.contrib.learn.datasets.base.load_csv_with_header(
