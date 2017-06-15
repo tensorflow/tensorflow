@@ -13,7 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/outliner.h"
+#include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
+#include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -22,83 +24,40 @@ namespace xla {
 namespace poplarplugin {
 namespace {
 
-using OutlinerTest = HloTestBase;
+using ConversionsTest = HloTestBase;
 
-static Window GetDefaultWindow() {
-  Window window;
-  for (int i = 0; i < 2; ++i) {
-    auto dim = window.add_dimensions();
-    dim->set_size(4);
-    dim->set_stride(1);
-    dim->set_padding_low(0);
-    dim->set_padding_high(0);
-    dim->set_window_dilation(1);
-    dim->set_base_dilation(1);
-  }
-  return window;
+TEST_F(ConversionsTest, Int64ToInt32) {
+  int64 src[] = {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9
+  };
+  std::vector<char> res = ConvertInt64ToInt32((void*)src, sizeof(src));
+
+  EXPECT_EQ(20 * sizeof(int32), res.size());
+
+  int32* d = reinterpret_cast<int32*>(res.data());
+  EXPECT_EQ(0, d[0]);
+  EXPECT_EQ(1, d[1]);
+  EXPECT_EQ(2, d[2]);
+  EXPECT_EQ(0, d[10]);
+  EXPECT_EQ(-1, d[11]);
+  EXPECT_EQ(-9, d[19]);
 }
 
-static ConvolutionDimensionNumbers GetDefaultDimensions() {
-  ConvolutionDimensionNumbers dimension;
-  dimension.set_batch_dimension(0);
-  dimension.add_spatial_dimensions(1);
-  dimension.add_spatial_dimensions(2);
-  dimension.set_feature_dimension(3);
-  dimension.set_kernel_output_feature_dimension(0);
-  dimension.set_kernel_input_feature_dimension(1);
-  dimension.add_kernel_spatial_dimensions(2);
-  dimension.add_kernel_spatial_dimensions(3);
-  return dimension;
-}
+TEST_F(ConversionsTest, Int32ToInt64) {
+  int32 src[] = {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9
+  };
+  std::vector<char> res = ConvertInt32ToInt64((void*)src, sizeof(src));
 
-// Test that `map` with `max` is transformed to `max`
-TEST_F(OutlinerTest, Convolution) {
-  Shape image_shape = ShapeUtil::MakeShape(F32, {1, 4, 4, 2});
-  Shape kernel_shape = ShapeUtil::MakeShape(F32, {2, 2, 4, 4});
-  Shape bias_shape = ShapeUtil::MakeShape(F32, {4, 4, 2});
+  EXPECT_EQ(20 * sizeof(int64), res.size());
 
-  Window window = GetDefaultWindow();
-  ConvolutionDimensionNumbers dimension = GetDefaultDimensions();
-
-  auto builder = HloComputation::Builder(TestName());
-  auto in = builder.AddInstruction(
-          HloInstruction::CreateParameter(0, image_shape, "input"));
-  auto w1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(1, kernel_shape, "weights1"));
-  auto w2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(2, kernel_shape, "weights2"));
-  auto b1 = builder.AddInstruction(
-          HloInstruction::CreateParameter(3, bias_shape, "bias1"));
-  auto b2 = builder.AddInstruction(
-          HloInstruction::CreateParameter(4, bias_shape, "bias2"));
-  auto c1 = builder.AddInstruction(
-          HloInstruction::CreateConvolve(image_shape, in, w1, window,
-                                         dimension));
-  auto a1 = builder.AddInstruction(
-          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, c1, b1));
-  auto c2 = builder.AddInstruction(
-          HloInstruction::CreateConvolve(image_shape, a1, w2, window,
-                                         dimension));
-  auto a2 = builder.AddInstruction(
-          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, c2, b2));
-
-  builder.AddInstruction(
-        HloInstruction::CreateTuple({a2}));
-
-  auto computation = builder.Build();
-
-
-  auto hlo_module = MakeUnique<HloModule>("test_module");
-  hlo_module->AddEntryComputation(std::move(computation));
-
-  EXPECT_THAT(hlo_module->computations().size(), 1);
-  EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 10);
-
-
-  Outliner outliner(2);
-  EXPECT_TRUE(outliner.Run(hlo_module.get()).ValueOrDie());
-  EXPECT_THAT(hlo_module->computations().size(), 3);
-  EXPECT_THAT(hlo_module->entry_computation()->instruction_count(), 8);
+  int64* d = reinterpret_cast<int64*>(res.data());
+  EXPECT_EQ(0, d[0]);
+  EXPECT_EQ(1, d[1]);
+  EXPECT_EQ(2, d[2]);
+  EXPECT_EQ(0, d[10]);
+  EXPECT_EQ(-1, d[11]);
+  EXPECT_EQ(-9, d[19]);
 }
 
 
