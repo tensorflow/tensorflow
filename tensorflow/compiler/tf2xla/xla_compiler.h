@@ -294,6 +294,7 @@ class XlaCompiler {
   XlaCompilationDevice* device_;  // Owned by device_mgr_
   DeviceMgr device_mgr_;
 
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
   std::unique_ptr<FunctionLibraryRuntime> flib_runtime_;
 
   struct SignatureHash {

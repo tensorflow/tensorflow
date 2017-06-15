@@ -42,6 +42,7 @@ cc_library(
     deps = [
         ":common",
         ":dump_graph",
+        ":functionalize_control_flow",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
@@ -200,6 +201,58 @@ cc_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+cc_library(
+    name = "functionalize_control_flow",
+    srcs = ["functionalize_control_flow.cc"],
+    hdrs = ["functionalize_control_flow.h"],
+    deps = [
+        "//tensorflow/compiler/jit:graph_to_functiondef",
+        "//tensorflow/compiler/tf2xla:dump_graph",
+        "//tensorflow/compiler/tf2xla/ops:functional_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+    ],
+)
+
+cc_test(
+    name = "functionalize_control_flow_test",
+    srcs = ["functionalize_control_flow_test.cc"],
+    deps = [
+        ":functionalize_control_flow",
+        ":test_util",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
+        "//tensorflow/compiler/tf2xla/cc:functional_ops",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:resource_variable_ops_op_lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "test_util",
+    testonly = 1,
+    srcs = ["test_util.cc"],
+    hdrs = ["test_util.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 

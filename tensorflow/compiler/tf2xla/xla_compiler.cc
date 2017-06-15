@@ -18,6 +18,7 @@ limitations under the License.
 #include <numeric>
 
 #include "tensorflow/compiler/tf2xla/dump_graph.h"
+#include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -85,9 +86,10 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
         (*options_.populate_resource_manager)(device_->resource_manager());
   }
 
+  flib_def_.reset(new FunctionLibraryDefinition(*options.flib_def));
   flib_runtime_.reset(NewFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), device_, options.graph_def_version,
-      options.flib_def, OptimizerOptions(),
+      flib_def_.get(), OptimizerOptions(),
       nullptr /* custom_kernel_creator */));
 }
 
@@ -412,6 +414,10 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
 
   // Report the error here if initialization failed.
   TF_RETURN_IF_ERROR(initialization_status_);
+
+  // Converts Tensorflow's graph control-flow constructs into functional
+  // control-flow that can be compiled into XLA code.
+  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(graph.get(), flib_def_.get()));
 
   xla::ComputationBuilder builder(client(), name);
   XlaContext* context =
