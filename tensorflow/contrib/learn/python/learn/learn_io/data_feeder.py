@@ -364,7 +364,7 @@ class DataFeeder(object):
     num_samples = list(self._x.values())[0].shape[
         0] if x_is_dict else self._x.shape[0]
     if self._shuffle:
-      self.indices = self.random_state.permutation(num_samples)
+      self.indices = self.random_state.permutation(num_samples.value)
     else:
       self.indices = np.array(range(num_samples))
     self.offset = 0
