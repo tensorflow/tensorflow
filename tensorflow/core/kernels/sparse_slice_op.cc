@@ -79,11 +79,14 @@ class SparseSliceOp : public OpKernel {
 
     context->set_output(0, output.indices());
     context->set_output(1, output.values());
+
+    const TensorShape output_shape(output.shape());
+
     Tensor* shape = nullptr;
-    OP_REQUIRES_OK(
-        context, context->allocate_output(2, {output.shape().dims()}, &shape));
-    for (int dim = 0; dim < output.shape().dims(); ++dim) {
-      shape->vec<int64>()(dim) = output.shape().dim_size(dim);
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(2, {output_shape.dims()}, &shape));
+    for (int dim = 0; dim < output_shape.dims(); ++dim) {
+      shape->vec<int64>()(dim) = output_shape.dim_size(dim);
     }
   }
 

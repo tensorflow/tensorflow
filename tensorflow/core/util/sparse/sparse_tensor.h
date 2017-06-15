@@ -59,8 +59,8 @@ class SparseTensor {
         shape_(shape.begin(), shape.end()),
         order_(order.begin(), order.end()),
         dims_(GetDimsFromIx(ix)) {
-    CHECK_EQ(ix.dtype(), DT_INT64)
-        << "indices must be type int64 but got: " << ix.dtype();
+    CHECK_EQ(ix.dtype(), DT_INT64) << "indices must be type int64 but got: "
+                                   << ix.dtype();
     CHECK(TensorShapeUtils::IsVector(vals.shape()))
         << "vals must be a vec, but got: " << vals.shape().DebugString();
     CHECK_EQ(ix.shape().dim_size(0), vals.shape().dim_size(0))
@@ -554,9 +554,9 @@ template <typename T>
 SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
                                  const gtl::ArraySlice<int64>& start,
                                  const gtl::ArraySlice<int64>& size) {
-  TensorShape output_shape = input_tensor.shape();
+  TensorShape output_shape(input_tensor.shape());
 
-  const int dims = input_tensor.shape().dims();
+  const int dims = input_tensor.dims();
   for (int dim = 0; dim < dims; dim++) {
     int64 dim_size = start[dim] + size[dim] < output_shape.dim_size(dim)
                          ? size[dim]

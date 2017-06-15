@@ -642,7 +642,7 @@ TEST(SparseTensorTest, Slice) {
 
   SparseTensor slice = SparseTensor::Slice<int64>(st, start, size);
 
-  EXPECT_EQ(slice.shape(), TensorShape({2, 3}));
+  EXPECT_EQ(TensorShape(slice.shape()), TensorShape({2, 3}));
   EXPECT_EQ(slice.values().NumElements(), 3);
   EXPECT_EQ(slice.values().vec<int64>()(0), 1);
   EXPECT_EQ(slice.values().vec<int64>()(1), 2);
