@@ -136,7 +136,7 @@ TEST_F(RecomputeSubgraphTest, MultiNode) {
 
 class MemoryOptimizerTest : public ::testing::Test {
  public:
-  static VirtualCluster CreateVirtualCluster() {
+  static std::unique_ptr<VirtualCluster> CreateVirtualCluster() {
     DeviceProperties cpu_device;
     cpu_device.set_type("CPU");
     cpu_device.set_frequency(1000);
@@ -144,7 +144,7 @@ class MemoryOptimizerTest : public ::testing::Test {
     cpu_device.set_bandwidth(32);
     std::unordered_map<string, DeviceProperties> devices;
     devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
-    return VirtualCluster(devices);
+    return std::unique_ptr<VirtualCluster>(new VirtualCluster(devices));
   }
 };
 
@@ -167,11 +167,11 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
       (*item.graph.mutable_node(4)->mutable_attr())["_swap_to_host"];
   val.mutable_list()->add_i(0);
 
-  VirtualCluster cluster(CreateVirtualCluster());
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
 
   MemoryOptimizer optimizer(RewriterConfig::MANUAL);
   GraphDef output;
-  Status status = optimizer.Optimize(&cluster, item, &output);
+  Status status = optimizer.Optimize(cluster.get(), item, &output);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(7, output.node_size());

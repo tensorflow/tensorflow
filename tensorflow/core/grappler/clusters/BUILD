@@ -65,7 +65,24 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler/costs:op_level_cost_estimator",
+        "//tensorflow/core/grappler/costs:virtual_scheduler",
+    ],
+)
+
+cc_test(
+    name = "virtual_cluster_test",
+    srcs = ["virtual_cluster_test.cc"],
+    deps = [
+        ":virtual_cluster",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
 
