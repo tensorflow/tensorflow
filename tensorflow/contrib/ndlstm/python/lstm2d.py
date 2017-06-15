@@ -106,23 +106,23 @@ def get_blocks(images, kernel_size):
   with variable_scope.variable_scope("image_blocks"):
     batch_size, height, width, chanels = _shape(images)
 
-    if height%kernel_size[0] != 0:
+    if height % kernel_size[0] != 0:
       offset = array_ops.zeros([batch_size,
-                                kernel_size[0]-(height%kernel_size[0]),
+                                kernel_size[0] - (height % kernel_size[0]),
                                 width,
                                 chanels])
       images = array_ops.concat([images, offset], 1)
       batch_size, height, width, chanels = _shape(images)
-    if width%kernel_size[1] != 0:
+    if width % kernel_size[1] != 0:
       offset = array_ops.zeros([batch_size,
                                 height,
-                                kernel_size[1]-(width%kernel_size[1]),
+                                kernel_size[1] - (width % kernel_size[1]),
                                 chanels])
       images = array_ops.concat([images, offset], 2)
       batch_size, height, width, chanels = _shape(images)
 
-    h, w = int(height/kernel_size[0]), int(width/kernel_size[1])
-    features = kernel_size[1]*kernel_size[0]*chanels
+    h, w = int(height / kernel_size[0]), int(width / kernel_size[1])
+    features = kernel_size[1] * kernel_size[0] * chanels
 
     lines = array_ops.split(images, h, axis=1)
     line_blocks = []
