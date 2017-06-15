@@ -574,10 +574,14 @@ function _getHealthPillTextContent(healthPill: HealthPill,
 
 /**
  * Renders a health pill for an op atop a node.
+ * nodeGroupElement: The SVG element in which to render.
+ * healthPill: A list of backend.HealthPill objects.
+ * nodeInfo: Info on the associated node.
+ * healthPillId: A unique numeric ID assigned to this health pill.
  */
 function _addHealthPill(
     nodeGroupElement: SVGElement, healthPill: HealthPill,
-    nodeInfo: render.RenderNodeInfo) {
+    nodeInfo: render.RenderNodeInfo, healthPillId: number) {
   // Check if text already exists at location.
   d3.select(nodeGroupElement.parentNode as any).selectAll('.health-pill').remove();
 
@@ -585,7 +589,7 @@ function _addHealthPill(
     return;
   }
 
-  let lastHealthPillData = healthPill.value;
+  const lastHealthPillData = healthPill.value;
 
   // For now, we only visualize the 6 values that summarize counts of tensor
   // elements of various categories: -Inf, negative, 0, positive, Inf, and NaN.
@@ -614,7 +618,9 @@ function _addHealthPill(
   healthPillGroup.appendChild(healthPillDefs);
   let healthPillGradient =
       document.createElementNS(svgNamespace, 'linearGradient');
-  const healthPillGradientId = 'health-pill-gradient';
+
+  // Every element in a web page must have a unique ID.
+  const healthPillGradientId = 'health-pill-gradient-' + healthPillId;
   healthPillGradient.setAttribute('id', healthPillGradientId);
 
   let cumulativeCount = 0;
@@ -689,8 +695,10 @@ function _addHealthPill(
     }
 
     let statsSvg = document.createElementNS(svgNamespace, 'text');
-    const minString = humanizeHealthPillStat(numericStats.min, shouldRoundOnesDigit);
-    const maxString = humanizeHealthPillStat(numericStats.max, shouldRoundOnesDigit);
+    const minString =
+        humanizeHealthPillStat(numericStats.min, shouldRoundOnesDigit);
+    const maxString =
+        humanizeHealthPillStat(numericStats.max, shouldRoundOnesDigit);
     if (totalCount > 1) {
       statsSvg.textContent = minString + ' ~ ' + maxString;
     } else {
@@ -722,13 +730,20 @@ export function addHealthPills(
     return;
   }
 
+  // We generate a unique ID for each health pill because the ID of each element
+  // in a web page must be unique, and each health pill generates a gradient
+  // that its code later refers to.
+  let healthPillId = 1;
+
   let svgRootSelection = d3.select(svgRoot);
   svgRootSelection.selectAll('g.nodeshape')
       .each(function(nodeInfo: render.RenderNodeInfo) {
         // Only show health pill data for this node if it is available.
-        let healthPills = nodeNamesToHealthPills[nodeInfo.node.name];
-        let healthPill = healthPills ? healthPills[healthPillStepIndex] : null;
-        _addHealthPill((this as SVGElement), healthPill, nodeInfo);
+        const healthPills = nodeNamesToHealthPills[nodeInfo.node.name];
+        const healthPill =
+            healthPills ? healthPills[healthPillStepIndex] : null;
+        _addHealthPill(
+            (this as SVGElement), healthPill, nodeInfo, healthPillId++);
       });
 };
 
