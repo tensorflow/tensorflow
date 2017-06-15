@@ -36,6 +36,11 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import queue_runner
 
 try:
+  from itertools import zip_longest
+except ImportError:
+  from itertools import izip_longest as zip_longest
+
+try:
   # pylint: disable=g-import-not-at-top
   import pandas as pd
   HAS_PANDAS = True
@@ -44,6 +49,39 @@ except IOError:
   HAS_PANDAS = False
 except ImportError:
   HAS_PANDAS = False
+
+
+def _fill_array(arr, seq, fillvalue=0):
+  if arr.ndim == 1:
+    try:
+      len_ = len(seq)
+    except TypeError:
+      len_ = 0
+    arr[:len_] = seq
+    arr[len_:] = fillvalue
+  else:
+    for subarr, subseq in zip_longest(arr, seq, fillvalue=()):
+      _fill_array(subarr, subseq)
+
+
+def _pad_if_needed(batch_key_item):
+  shapes = [seq.shape[:-1] if len(seq.shape) > 0 else -1
+            for seq in batch_key_item]
+  if not all(shapes[0] == x for x in shapes):
+    raise ValueError("Array shapes must match.")
+
+  last_length = [seq.shape[-1] if len(seq.shape) > 0 else 0
+                 for seq in batch_key_item]
+  if all([x == last_length[0] for x in last_length]):
+    return batch_key_item
+
+  batch_size = len(batch_key_item)
+  max_sequence_length = max(last_length)
+  result_batch = np.zeros(
+    shape=[batch_size] + list(shapes[0]) + [max_sequence_length],
+    dtype=batch_key_item[0].dtype)
+  _fill_array(result_batch, batch_key_item)
+  return result_batch
 
 
 def _get_integer_indices_for_next_batch(
@@ -229,7 +267,8 @@ class _GeneratorFeedFn(object):
                batch_size,
                random_start=False,
                seed=None,
-               num_epochs=None):
+               num_epochs=None,
+               pad_data=False):
     first_sample = next(generator())
     if len(placeholders) != len(first_sample):
       raise ValueError("Expected {} placeholders; got {}.".format(
@@ -240,6 +279,7 @@ class _GeneratorFeedFn(object):
     self._iterator = generator()
     self._batch_size = batch_size
     self._num_epochs = num_epochs
+    self._pad_data = pad_data
     self._epoch = 0
     random.seed(seed)
 
@@ -264,7 +304,12 @@ class _GeneratorFeedFn(object):
         list_dict.setdefault(self._col_placeholders[index],
                              list()).append(data_row[key])
         list_dict_size += 1
-    feed_dict = {key: np.asarray(item) for key, item in list(list_dict.items())}
+    if self._pad_data:
+      feed_dict = {key: np.asarray(_pad_if_needed(item))
+                   for key, item in list(list_dict.items())}
+    else:
+      feed_dict = {key: np.asarray(item)
+                   for key, item in list(list_dict.items())}
     return feed_dict
 
 
@@ -276,7 +321,8 @@ def _enqueue_data(data,
                   seed=None,
                   name="enqueue_input",
                   enqueue_size=1,
-                  num_epochs=None):
+                  num_epochs=None,
+                  pad_data=False):
   """Creates a queue filled from a numpy array or pandas `DataFrame`.
 
     Returns a queue filled with the rows of the given (`OrderedDict` of) array
@@ -336,6 +382,10 @@ def _enqueue_data(data,
           "data must be either a numpy array or pandas DataFrame if pandas is "
           "installed; got {}".format(type(data).__name__))
 
+    if shuffle and pad_data:
+      raise NotImplementedError(
+        "for now, there is now way to pad and shuffle data at the same time")
+
     # TODO(jamieas): TensorBoard warnings for all warnings below once available.
 
     if num_threads > 1 and num_epochs is not None:
@@ -368,6 +418,13 @@ def _enqueue_data(data,
           dtypes=types,
           shapes=queue_shapes,
           seed=seed)
+    elif pad_data:
+      min_after_dequeue = 0  # just for the summary text
+      queue_shapes = list(map(
+        lambda x: tuple(list(x[:-1]) + [None]) if len(x) > 0 else x,
+        queue_shapes))
+      queue = data_flow_ops.PaddingFIFOQueue(
+        capacity, dtypes=types, shapes=queue_shapes)
     else:
       min_after_dequeue = 0  # just for the summary text
       queue = data_flow_ops.FIFOQueue(

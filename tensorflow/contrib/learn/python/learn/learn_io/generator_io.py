@@ -31,7 +31,8 @@ def generator_input_fn(x,
                        num_epochs=1,
                        shuffle=True,
                        queue_capacity=1000,
-                       num_threads=1):
+                       num_threads=1,
+                       pad_data=False):
   """Returns input function that would dicts of numpy arrays
        yielded from a generator.
 
@@ -117,7 +118,8 @@ def generator_input_fn(x,
         shuffle=shuffle,
         num_threads=num_threads,
         enqueue_size=batch_size,
-        num_epochs=num_epochs)
+        num_epochs=num_epochs,
+        pad_data=pad_data)
 
     features = (queue.dequeue_many(batch_size)
                 if num_epochs is None else queue.dequeue_up_to(batch_size))
