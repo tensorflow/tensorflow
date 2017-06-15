@@ -60,8 +60,8 @@ StatusOr<std::unique_ptr<Literal>> PackedLiteralReader::Read(
   int64 elements = ShapeUtil::ElementsIn(shape);
   LiteralUtil::Resize(elements, std::numeric_limits<float>::quiet_NaN(),
                       result.get());
-  tensorflow::protobuf::RepeatedField<float>* field = result->mutable_f32s();
-  char* data = tensorflow::bit_cast<char*>(field->mutable_data());
+  std::vector<float>* field = result->mutable_f32s();
+  char* data = tensorflow::bit_cast<char*>(field->data());
   uint64 bytes = elements * sizeof(float);
   tensorflow::StringPiece sp;
   auto s = file_->Read(offset_, bytes, &sp, data);

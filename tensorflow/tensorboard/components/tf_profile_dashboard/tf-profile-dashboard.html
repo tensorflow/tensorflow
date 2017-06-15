@@ -1,0 +1,222 @@
+<!--
+@license
+Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../tf-backend/tf-backend.html">
+<link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
+<link rel="import" href="../tf-graph-controls/tf-graph-controls.html">
+
+<!--
+tf-profile-dashboard displays profiling information for different tools.
+
+In the profile dashboard, a "run" is a profile run and "tag" is a tool name. A
+profile run can have multiple tools that present the performance profile as different visualizations
+(e.g. Catapult TraceViewer).
+-->
+
+<dom-module id="tf-profile-dashboard">
+<template>
+<tf-dashboard-layout>
+<div class="sidebar">
+  <div class="allcontrols">
+    <div class="sidebar-section">
+      <div class="title">Runs <span class="counter">([[_datasets.length]])</span></div>
+      <paper-dropdown-menu no-label-float no-animations noink class="run-dropdown">
+        <paper-menu id="select" class="dropdown-content" selected="{{selectedDataset}}">
+          <template is="dom-repeat" items="[[_datasets]]">
+            <paper-item>[[item.name]]</paper-item>
+          </template>
+        </paper-menu>
+      </paper-dropdown-menu>
+    </div>
+    <div class="sidebar-section">
+      <div class="title">Tools <span class="counter">([[_activeTools.length]])</span></div>
+      <paper-dropdown-menu no-label-float no-animations noink class="run-dropdown">
+        <paper-menu id="select" class="dropdown-content" selected="{{selectedTool}}">
+          <template is="dom-repeat" items="[[_activeTools]]">
+            <paper-item>[[item]]</paper-item>
+          </template>
+          <paper-item>None</paper-item>
+        </paper-menu>
+      </paper-dropdown-menu>
+    </div>
+    <div class="sidebar-section"></div>
+  </div>
+</div>
+<div class="center">
+  <template is="dom-if" if="[[_toolIsTraceViewer(_currentTool)]]">
+    <iframe
+      id="tv_iframe"
+      height="100%"
+      width="100%"
+      src="[[_traceDataUrl]]">
+    </iframe>
+  </template>
+</div>
+</tf-dashboard-layout>
+<style include="dashboard-style"></style>
+
+<style>
+  .center {
+    position: relative;
+    height: 100%;
+  }
+  iframe {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+  }
+</style>
+
+</template>
+<script>
+  "use strict";
+
+  import {DashboardBehavior} from "../tf-dashboard-common/dashboard-behavior";
+  import {ReloadBehavior} from "../tf-dashboard-common/reload-behavior";
+  import {BackendBehavior} from "../tf-backend/behavior";
+  import {getRouter} from '../tf-backend/router';
+
+  Polymer({
+    is: "tf-profile-dashboard",
+    factoryImpl: function(backend) {
+      this.backend = backend;
+    },
+    behaviors: [
+      DashboardBehavior("profile"),
+      ReloadBehavior("tf-profile-dashboard"),
+      BackendBehavior,
+    ],
+    properties: {
+      backend: Object,
+      _isAttached: Boolean,
+      // Whether this dashboard is initialized. This dashboard should only be
+      // initialized once.
+      _initialized: Boolean,
+      // The endpoint that serves trace viewer app.
+      traceViewerBaseUrl: {
+        type: String,
+        value: function() {
+          return getRouter().pluginRoute("profile", "/trace_viewer");
+        },
+      },
+      // The URL for the trace data being display.
+      _traceDataUrl: {
+        type: String,
+        value: "",
+      },
+      _datasets: {
+        type: Array,
+        observer: '_datasetsChanged'
+      },
+      _activeTools: {
+        type: Array,
+        computed: '_getActiveTools(selectedDataset, _datasets)'
+      },
+      selectedDataset: {
+        type: Number,
+        notify: true,
+        value: 0,
+        observer: '_selectedDatasetChanged'
+      },
+      _currentTool: {
+        type: String,
+        computed: '_getCurrentToolName(selectedTool, _activeTools)',
+        notify: true,
+      },
+      selectedTool: {
+        type: Number,
+        notify: true,
+        value: 0,
+      },
+    },
+    reload: function() {
+    },
+    ready: function() {
+    },
+    observers: [
+      '_maybeInitializeDashboard(backend, _isAttached)',
+      '_maybeUpdateTool(_datasets, selectedDataset, _currentTool)',
+    ],
+    attached: function() {
+      this.set('_isAttached', true);
+    },
+    detached: function() {
+      this.set('_isAttached', false);
+    },
+    _maybeInitializeDashboard: function(backend, isAttached) {
+      if (this._initialized || !backend || !isAttached) {
+        // Either this dashboard is already initialized ... or we are not yet
+        // ready to initialize.
+        return;
+      }
+      // Set this to true so we only initialize once.
+      this._initialized = true;
+      backend.profileTags().then((runToTool) => {
+        var datasets = _.map(runToTool, function(tools, run) {
+          return {
+            name: run,
+            activeTools: tools,
+          };
+        }, this);
+        this.set('_datasets', datasets);
+      });
+    },
+    _maybeUpdateTool: function(datasets, selectedDataset, currentTool) {
+      if (currentTool == "trace_viewer") {
+        var trace_data_url = (getRouter().pluginRunTagRoute('profile', '/data')(
+            'trace_viewer', datasets[selectedDataset].name));
+        // Make the trace data url relative to the root.
+        if (trace_data_url[0] != '/') {
+          trace_data_url = '/' + trace_data_url;
+        }
+        this._traceDataUrl = this.traceViewerBaseUrl + "?trace_data_url=" +
+                            encodeURIComponent(trace_data_url);
+        return;
+      }
+    },
+    _datasetsChanged: function(newDatasets, oldDatasets) {
+      if (oldDatasets != null || this.selected == null) {
+        // Select the first dataset by default.
+        this.set('selectedDataset', 0);
+      }
+    },
+    _selectedDatasetChanged: function(newDataset, oldDataset) {
+      if (this._datasets) {
+        // Display the first tool by default when switching to another run.
+        this.set('selectedTool', 0);
+      }
+    },
+    _getCurrentToolName: function(selectedToolIndex, activeTools) {
+      if (selectedToolIndex >= 0 && selectedToolIndex < activeTools.length) {
+        return activeTools[selectedToolIndex];
+      }
+      return null;
+    },
+    _getActiveTools: function(selectedDataset, datasets) {
+      if (datasets && selectedDataset < datasets.length) {
+        return datasets[selectedDataset].activeTools;
+      }
+      return [];
+    },
+    _toolIsTraceViewer: function(toolName) {
+      return toolName == 'trace_viewer';
+    },
+  });
+</script>
+</dom-module>

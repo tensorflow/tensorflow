@@ -308,6 +308,7 @@ from tensorflow.contrib.learn.python.learn.estimators.estimator import infer_rea
 from tensorflow.contrib.learn.python.learn.estimators.estimator import SKCompat
 from tensorflow.contrib.learn.python.learn.estimators.head import binary_svm_head
 from tensorflow.contrib.learn.python.learn.estimators.head import Head
+from tensorflow.contrib.learn.python.learn.estimators.head import loss_only_head
 from tensorflow.contrib.learn.python.learn.estimators.head import multi_class_head
 from tensorflow.contrib.learn.python.learn.estimators.head import multi_head
 from tensorflow.contrib.learn.python.learn.estimators.head import multi_label_head

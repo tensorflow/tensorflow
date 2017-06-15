@@ -197,14 +197,6 @@ Status GraphProperties::InferStatically() {
       output_properties.push_back(properties);
     }
     output_properties_[node->name()] = output_properties;
-
-    if (!node->assigned_device_name().empty()) {
-      device_names_[node->name()] = node->assigned_device_name();
-    } else if (!node->requested_device().empty()) {
-      device_names_[node->name()] = node->requested_device();
-    } else {
-      device_names_[node->name()] = "not set";
-    }
   }
 
   return Status::OK();
@@ -218,9 +210,13 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
   TF_RETURN_IF_ERROR(
       cluster->Run(item_.graph, item_.feed, item_.fetch, &metadata));
 
+  return InferFromCostGraph(metadata.cost_graph());
+}
+
+Status GraphProperties::InferFromCostGraph(const CostGraphDef& cost_graph) {
   std::unordered_map<string, const CostGraphDef::Node*> name_to_cost;
   std::unordered_map<string, const NodeDef*> name_to_node;  // Empty
-  for (auto& node : metadata.cost_graph().node()) {
+  for (auto& node : cost_graph.node()) {
     name_to_cost[node.name()] = &node;
 
     std::vector<OpInfo::TensorProperties> output_properties;
@@ -246,15 +242,12 @@ Status GraphProperties::InferDynamically(Cluster* cluster) {
         FindInputFeatures(node, name_to_cost, name_to_node);
 
     input_properties_[node.name()] = inputs;
-
-    const CostGraphDef::Node* cost_node = it->second;
-    device_names_[node.name()] = cost_node->device();
   }
   return Status::OK();
 }
 
-bool GraphProperties::HasInputProperties(const string& name) const {
-  return input_properties_.find(name) != input_properties_.end();
+bool GraphProperties::HasOutputProperties(const string& name) const {
+  return output_properties_.find(name) != output_properties_.end();
 }
 
 std::vector<OpInfo::TensorProperties> GraphProperties::GetInputProperties(
@@ -273,14 +266,6 @@ std::vector<OpInfo::TensorProperties> GraphProperties::GetOutputProperties(
     return it->second;
   }
   return std::vector<OpInfo::TensorProperties>();
-}
-
-string GraphProperties::GetDeviceName(const string& node_name) const {
-  auto it = device_names_.find(node_name);
-  if (it != device_names_.end()) {
-    return it->second;
-  }
-  return "";
 }
 
 }  // end namespace grappler

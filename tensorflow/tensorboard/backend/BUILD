@@ -1,13 +1,11 @@
 # Description:
 # TensorBoard, a dashboard for investigating TensorFlow
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "http_util",
@@ -63,7 +61,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":http_util",
-        ":process_graph",
         "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard/backend/event_processing:event_accumulator",
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",

@@ -34,7 +34,9 @@ ALL_LOSSES = [keras.losses.mean_squared_error,
               keras.losses.binary_crossentropy,
               keras.losses.kullback_leibler_divergence,
               keras.losses.poisson,
-              keras.losses.cosine_proximity]
+              keras.losses.cosine_proximity,
+              keras.losses.logcosh,
+              keras.losses.categorical_hinge]
 
 
 class KerasLossesTest(test.TestCase):
@@ -72,6 +74,14 @@ class KerasLossesTest(test.TestCase):
     config = keras.losses.serialize(fn)
     new_fn = keras.losses.deserialize(config)
     self.assertEqual(fn, new_fn)
+
+  def test_categorical_hinge(self):
+    y_pred = keras.backend.variable(np.array([[0.3, 0.2, 0.1],
+                                              [0.1, 0.2, 0.7]]))
+    y_true = keras.backend.variable(np.array([[0, 1, 0], [1, 0, 0]]))
+    expected_loss = ((0.3 - 0.2 + 1) + (0.7 - 0.1 + 1)) / 2.0
+    loss = keras.backend.eval(keras.losses.categorical_hinge(y_true, y_pred))
+    self.assertAllClose(expected_loss, np.mean(loss))
 
 
 if __name__ == '__main__':

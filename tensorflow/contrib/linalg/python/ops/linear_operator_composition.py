@@ -79,7 +79,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
   operator_56 = LinearOperatorFullMatrix(matrix_56)
 
   # Compose to create a [2, 3] batch of 4 x 6 operators.
-  opeartor_46 = LinearOperatorComposition([operator_45, operator_56])
+  operator_46 = LinearOperatorComposition([operator_45, operator_56])
 
   # Create a shape [2, 3, 6, 2] vector.
   x = tf.random_normal(shape=[2, 3, 6, 2])

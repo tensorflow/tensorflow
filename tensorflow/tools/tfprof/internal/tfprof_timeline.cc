@@ -114,34 +114,41 @@ string ChromeTraceFormatter::Format() {
   return trace_str;
 }
 
-void MemoryTracker::TrackNode(GraphNode* node) {
+void MemoryTracker::TrackNode(int64 step, const GraphNode* node) {
+  if (!node->Trackable(step)) {
+    return;
+  }
   Device& dev = devices_[node->node->canonical_device()];
-  int64 end_micros =
-      node->node->all_start_micros() + node->node->latest_end_rel_micros();
-  if (node->node->accelerator_persistent_bytes() != 0) {
+  int64 end_micros = node->node->latest_end_micros(step);
+  if (node->node->accelerator_persistent_bytes(step) != 0) {
     string tensor_name = strings::StrCat(node->name(), ":", -1);
-    dev.earliest_ref[tensor_name] = node->node->all_start_micros();
-    dev.tensor_size[tensor_name] = node->node->accelerator_persistent_bytes();
+    dev.earliest_ref[tensor_name] = node->node->all_start_micros(step);
+    dev.tensor_size[tensor_name] =
+        node->node->accelerator_persistent_bytes(step);
     // TODO(xpan): Need latest_ref?
   }
-  if (node->node->accelerator_temp_bytes()) {
+  if (node->node->accelerator_temp_bytes(step)) {
     string tensor_name = strings::StrCat(node->name(), ":", -2);
-    dev.earliest_ref[tensor_name] = node->node->all_start_micros();
+    dev.earliest_ref[tensor_name] = node->node->all_start_micros(step);
     dev.latest_ref[tensor_name] = end_micros;
-    dev.tensor_size[tensor_name] = node->node->accelerator_temp_bytes();
+    dev.tensor_size[tensor_name] = node->node->accelerator_temp_bytes(step);
   }
-  if (node->node->allocator_bytes_in_use() > 0) {
-    dev.allocator_stats[end_micros] = node->node->allocator_bytes_in_use();
+  if (node->node->allocator_bytes_in_use(step) > 0) {
+    dev.allocator_stats[end_micros] = node->node->allocator_bytes_in_use(step);
   }
 }
 
-void MemoryTracker::TrackNodeConnection(GraphNode* node, GraphNode* src) {
-  const auto& output_idx = node->node->output_idx().find(src->name());
-  if (output_idx == node->node->output_idx().end()) {
+void MemoryTracker::TrackNodeConnection(int64 step, const GraphNode* node,
+                                        const GraphNode* src) {
+  if (!node->Trackable(step) || !src->Trackable(step)) {
     return;
   }
-  const auto& output = src->node->output_bytes().find(output_idx->second);
-  if (output == src->node->output_bytes().end()) {
+  const auto& output_idx = node->node->src_output_idx().find(src->name());
+  if (output_idx == node->node->src_output_idx().end()) {
+    return;
+  }
+  const auto& output = src->node->output_bytes(step).find(output_idx->second);
+  if (output == src->node->output_bytes(step).end()) {
     return;
   }
   int64 output_bytes = output->second.first;
@@ -155,14 +162,13 @@ void MemoryTracker::TrackNodeConnection(GraphNode* node, GraphNode* src) {
   }
 
   src_dev.tensor_size[tensor_name] = output_bytes;
-  src_dev.earliest_ref[tensor_name] = src->node->all_start_micros();
+  src_dev.earliest_ref[tensor_name] = src->node->all_start_micros(step);
 
-  int64 src_end_micros =
-      src->node->all_start_micros() + src->node->latest_end_rel_micros();
+  int64 src_end_micros = src->node->latest_end_micros(step);
 
   if (src->node->canonical_device() != node->node->canonical_device()) {
     int64 transfer_micros =
-        (src_end_micros + node->node->all_start_micros()) / 2;
+        (src_end_micros + node->node->all_start_micros(step)) / 2;
     src_dev.latest_ref[tensor_name] =
         std::max(src_dev.latest_ref[tensor_name], transfer_micros);
 
@@ -171,51 +177,109 @@ void MemoryTracker::TrackNodeConnection(GraphNode* node, GraphNode* src) {
         strings::StrCat(tensor_name, node->node->canonical_device());
     dest_dev.tensor_size[dest_tensor_name] = output_bytes;
     dest_dev.earliest_ref[dest_tensor_name] = transfer_micros;
-    dest_dev.latest_ref[dest_tensor_name] = std::max(
-        dest_dev.latest_ref[dest_tensor_name],
-        node->node->all_start_micros() + node->node->latest_end_rel_micros());
+    dest_dev.latest_ref[dest_tensor_name] =
+        std::max(dest_dev.latest_ref[dest_tensor_name],
+                 node->node->latest_end_micros(step));
   } else {
     src_dev.latest_ref[tensor_name] = std::max(
-        src_dev.latest_ref[tensor_name],
-        node->node->all_start_micros() + node->node->latest_end_rel_micros());
+        src_dev.latest_ref[tensor_name], node->node->latest_end_micros(step));
   }
 }
 
-void Timeline::GenerateGraphTimeline(const GraphNode* gnode,
-                                     const MemoryTracker& memory_tracker) {
-  AddGraphNode(gnode);
+void Timeline::AllocateTimeNodes(GraphNode* gnode) {
+  if (gnode->Trackable(step_)) {
+    TrackNode(gnode);
+    const TFGraphNode* node = gnode->node;
+    for (const auto& kernel_execs : node->op_execs(step_)) {
+      const string& device = kernel_execs.first;
+      if (!IsCombinedGPUStream(device) && !IsCPUDevice(device)) {
+        continue;
+      }
+
+      if (process_.find(device) == process_.end()) {
+        int64 pid = AllocatePID();
+        process_[device].reset(new Process(device, pid));
+        chrome_formatter_.EmitPID(GetTimeDevName(device), pid);
+      }
+      Process* p = process_[device].get();
+
+      for (const auto& exec : kernel_execs.second) {
+        int64 start_micros = exec.first;
+        int64 exec_micros = exec.second;
+        // TODO(xpan): There might be start time duplication here.
+        if (tnodes_[device].find(start_micros) == tnodes_[device].end()) {
+          // TODO(xpan): Give each kernel call a unique_name.
+          tnodes_[device][start_micros].reset(
+              new TimeNode(p, gnode, start_micros, exec_micros));
+        }
+      }
+    }
+  }
+  for (GraphNode* n : gnode->show_children) {
+    AllocateTimeNodes(n);
+  }
+}
+
+void Timeline::GenerateGraphTimeline(const std::vector<GraphNode*>& gnodes) {
+  for (GraphNode* gnode : gnodes) {
+    AllocateTimeNodes(gnode);
+  }
+  for (auto& process : tnodes_) {
+    for (auto& tn : process.second) {
+      TimeNode* tnode = tn.second.get();
+      for (GraphNode* inp : tnode->node->children) {
+        if (!inp->account || !inp->Trackable(step_)) {
+          continue;
+        }
+        TrackNodeConnection(tnode->node, inp);
+        for (const auto& kernel_execs : inp->node->op_execs(step_)) {
+          if (process.first == kernel_execs.first) {
+            // Not interested in flow withthin the same device.
+            continue;
+          }
+          for (const auto& exec : kernel_execs.second) {
+            int64 start_micros = exec.first;
+            auto cprocess = tnodes_.find(kernel_execs.first);
+            if (cprocess == tnodes_.end()) continue;
+            auto ctn = cprocess->second.find(start_micros);
+            if (ctn == cprocess->second.end()) continue;
+            ctn->second->next_tnodes.push_back(tnode);
+          }
+        }
+      }
+    }
+  }
+
   AllocateLanes();
   fprintf(stdout, "generating trace file.\n");
-  // int64 flow_id = 1;
+  int64 flow_id = 1;
   for (const auto& process : alloc_nodes_) {
     for (const auto& lane : process.second) {
       for (const auto& node : lane.second) {
         TimeNode* tnode = node.second;
 
         Json::Value args(Json::objectValue);
-        args["name"] = Json::Value(tnode->name);
-        args["op"] = Json::Value(tnode->name);
+        args["name"] = Json::Value(tnode->name());
+        args["op"] = Json::Value(tnode->name());
         chrome_formatter_.EmitRegion(node.first, tnode->exec_micros,
                                      process.first, lane.first, "Op",
-                                     tnode->name, args);
+                                     tnode->name(), args);
         // Flow is a directed arrow pointing from src to dst.
         // TODO(xpan): Disable flow to reduce json file size for now. Need
         // to think of a better way to make flow interpretable.
-        /*
         for (TimeNode* next_tnode : node.second->next_tnodes) {
           chrome_formatter_.EmitFlowStart(
-              tnode->name + "_flow", tnode->start_micros + tnode->exec_micros,
+              tnode->name() + "_flow", tnode->start_micros + tnode->exec_micros,
               process.first, lane.first, flow_id);
           chrome_formatter_.EmitFlowEnd(
-              tnode->name + "_flow", next_tnode->start_micros,
+              tnode->name() + "_flow", next_tnode->start_micros,
               next_tnode->process->pid, next_tnode->tid, flow_id);
           flow_id += 1;
         }
-        */
       }
     }
   }
-  for (const auto& dev : memory_tracker.devices()) {
+  for (const auto& dev : mem_tracker_.devices()) {
     int64 pid = AllocatePID();
     chrome_formatter_.EmitPID(GetMemoryLaneName(dev.first), pid);
     const MemoryTracker::Device& device = dev.second;
@@ -257,51 +321,6 @@ void Timeline::OutputTimeline() {
           outfile_.c_str());
   fprintf(stdout, "\n******************************************************\n");
   fflush(stdout);
-}
-
-std::vector<TimeNode*> Timeline::AddGraphNode(const GraphNode* gnode) {
-  std::vector<TimeNode*> tnodes;
-  if (!gnode) return tnodes;
-
-  std::vector<TimeNode*> shown_cinputs;
-  for (GraphNode* schild : gnode->show_children) {
-    std::vector<TimeNode*> inputs = AddGraphNode(schild);
-    shown_cinputs.insert(shown_cinputs.end(), inputs.begin(), inputs.end());
-  }
-  if (!gnode->node->step_stats()) {
-    return shown_cinputs;
-  }
-
-  const TFGraphNode* node = gnode->node;
-  for (const auto& kernel_execs : node->op_execs()) {
-    const string& device = kernel_execs.first;
-    const std::vector<std::pair<int64, int64>>& execs = kernel_execs.second;
-
-    if (process_.find(device) == process_.end()) {
-      int64 pid = AllocatePID();
-      process_[device].reset(new Process(pid));
-      chrome_formatter_.EmitPID(GetTimeDevName(device), pid);
-    }
-    Process* p = process_[device].get();
-
-    for (const auto& exec : execs) {
-      int64 start_micros = exec.first;
-      int64 exec_micros = exec.second;
-      // TODO(xpan): There might be start time duplication here.
-      if (tnodes_[device].find(start_micros) == tnodes_[device].end()) {
-        // TODO(xpan): Give each kernel call a unique_name.
-        tnodes_[device][start_micros].reset(
-            new TimeNode(p, node->name(), start_micros, exec_micros));
-      }
-      TimeNode* tnode_ptr = tnodes_[device][start_micros].get();
-
-      for (int i = 0; i < shown_cinputs.size(); i++) {
-        shown_cinputs[i]->next_tnodes.push_back(tnode_ptr);
-      }
-      tnodes.push_back(tnode_ptr);
-    }
-  }
-  return tnodes;
 }
 
 void Timeline::AllocateLanes() {

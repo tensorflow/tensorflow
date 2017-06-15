@@ -1,0 +1,105 @@
+{
+  "traceEvents": [
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 826, "ph": "C",
+        "name": "counter", "args": {"value": 10}},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 826, "ph": "B",
+        "name": "A long name that doesnt fit but is exceedingly informative",
+        "args": {"name_false": false, "value_true": true}},
+    {"cat": "PERF", "pid": 22630, "ts": 835, "ph": "I", "s": "p",
+        "name": "ProcessWideEvent1", "args": {}},
+
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 827, "ph": "B",
+        "name": "Asub with a name that wont fit", "args": {}},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 828, "ph": "E",
+        "name": "Asub", "args": {}},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 829, "ph": "B",
+        "name": "Asub", "args": {}},
+    {"cat": "PREF", "pid": 22630, "tid": 22630, "dur": 15, "ts": 820, "ph": "X",
+        "name": "Long X type", "args": {}, "sf": 7, "esf": 8},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 832, "ph": "E",
+        "name": "Asub", "args": {}},
+    {"cat": "PREF", "pid": 22630, "tid": 22630, "dur": 2, "ts": 818, "ph": "X",
+        "name": "X1", "args": {}},
+    {"cat": "PREF", "pid": 22630, "tid": 22630, "dur": 2, "ts": 818, "ph": "X",
+        "name": "X same ts and dur as X1", "args": {}},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 832, "ph": "C",
+        "name": "counter", "args": {"value": 1}},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 833, "ph": "E",
+        "name": "", "args": {}},
+
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 835, "ph": "I",
+        "name": "ThreadLevelI1", "args": {}},
+
+    {"cat": "PERF", "ts": 880, "ph": "I", "s": "g", "name": "GlobalEvent1",
+        "args": {}},
+
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 837, "ph": "I",
+        "name": "ThreadLevelI2", "args": {}},
+
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 839, "ph": "C",
+        "name": "counter", "args": {"value": 5}},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 840, "ph": "B",
+        "name": "A not as long a name", "args": {}},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 848, "ph": "E",
+        "name": "A not as long a name", "args": {}},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 848, "ph": "C",
+        "name": "counter", "args": {"value": 1}},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 854, "ph": "C",
+        "name": "counter", "args": {"value": 10}},
+
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 850, "ph": "B",
+        "name": "B", "args": {}},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 854, "ph": "E",
+        "name": "B", "args": {}},
+
+    {"cat": "PERF", "pid": 22630, "tid": 22631, "ts": 827, "ph": "B",
+        "name": "A", "args": {}},
+    {"cat": "PERF", "pid": 22630, "tid": 22631, "ts": 835, "ph": "I",
+        "name": "ThreadLevelImmediate Three", "args": {}},
+    {"cat": "PERF", "pid": 22630, "tid": 22631, "ts": 845, "ph": "I",
+        "name": "ThreadLevelImmediate4", "args": {}},
+    {"cat": "PERF", "pid": 22630, "tid": 22631, "ts": 854, "ph": "E",
+        "name": "A", "args": {}},
+
+    {"cat": "PREF", "pid": 22630, "tid": 22630, "ts": 860, "ph": "B",
+        "name": "B/E over X", "args": {}},
+    {"cat": "PREF", "pid": 22630, "tid": 22630, "dur": 10, "ts": 860, "ph": "X",
+        "name": "X", "args": {}},
+    {"cat": "PREF", "pid": 22630, "tid": 22630, "ts": 860, "ph": "B",
+        "name": "B/E under X", "args": {}},
+    {"cat": "PREF", "pid": 22630, "tid": 22630, "ts": 870, "ph": "E",
+        "name": "B/E under X", "args": {}},
+    {"cat": "PREF", "pid": 22630, "tid": 22630, "ts": 870, "ph": "E",
+        "name": "B/E over X", "args": {}},
+
+    {"cat": "SAMPLE", "pid": 22630, "tid": 22631, "ts": 870, "ph": "P",
+        "name": "SampleA", "args": {}},
+    {"cat": "SAMPLE", "pid": 22630, "tid": 22631, "ts": 875, "ph": "P",
+        "name": "SampleB", "args": {}},
+    {"cat": "SAMPLE", "pid": 22630, "tid": 22631, "ts": 878, "ph": "P",
+        "name": "SampleC", "args": {}, "sf": 8},
+
+    {"cat": "__metadata", "pid": 22630, "tid": 22630, "ts": 0, "ph": "M",
+        "name": "thread_name", "args": {"name": "threadA"}},
+    {"cat": "__metadata", "pid": 22630, "tid": 22631, "ts": 0, "ph": "M",
+        "name": "thread_name", "args": {"name": "threadB"}},
+    {"cat": "__metadata", "pid": 22630, "tid": 22632, "ts": 0, "ph": "M",
+        "name": "thread_name", "args": {"name": "threadC"}}
+  ],
+  "stackFrames": {
+    "1": {
+      "category": "m1",
+      "name": "main"
+    },
+    "7": {
+      "category": "m2",
+      "name": "frame7",
+      "parent": "1"
+    },
+    "8": {
+      "category": "m2",
+      "name": "frame8",
+      "parent": "1"
+    }
+  }
+}

@@ -41,7 +41,7 @@ limitations under the License.
 using tensorflow::str_util::Split;
 
 void completion(const char* buf, linenoiseCompletions* lc) {
-  tensorflow::string buf_str = tensorflow::string(buf);
+  tensorflow::string buf_str = buf;
   if (buf_str.find(" ") == buf_str.npos) {
     for (const char* opt : tensorflow::tfprof::kCmds) {
       if (tensorflow::string(opt).find(buf_str) == 0) {
@@ -75,6 +75,7 @@ int main(int argc, char** argv) {
   tensorflow::int64 FLAGS_min_params = 0;
   tensorflow::int64 FLAGS_min_float_ops = 0;
   tensorflow::int64 FLAGS_min_occurrence = 0;
+  tensorflow::int64 FLAGS_step = -1;
   tensorflow::string FLAGS_order_by = "name";
   tensorflow::string FLAGS_account_type_regexes = ".*";
   tensorflow::string FLAGS_start_name_regexes = ".*";
@@ -92,7 +93,8 @@ int main(int argc, char** argv) {
       tensorflow::Flag("graph_path", &FLAGS_graph_path,
                        "GraphDef proto text file name"),
       tensorflow::Flag("run_meta_path", &FLAGS_run_meta_path,
-                       "RunMetadata proto binary file name"),
+                       "Comma-separated list of RunMetadata proto binary "
+                       "files. Each file is given step number 0,1,2,etc"),
       tensorflow::Flag("op_log_path", &FLAGS_op_log_path,
                        "tensorflow::tfprof::OpLog proto binary file name"),
       tensorflow::Flag("checkpoint_path", &FLAGS_checkpoint_path,
@@ -104,6 +106,8 @@ int main(int argc, char** argv) {
       tensorflow::Flag("min_float_ops", &FLAGS_min_float_ops, "min float ops"),
       tensorflow::Flag("min_occurrence", &FLAGS_min_occurrence,
                        "min occurrence"),
+      tensorflow::Flag("step", &FLAGS_step,
+                       "The stats of which step to use. By default average"),
       tensorflow::Flag("order_by", &FLAGS_order_by, "order by"),
       tensorflow::Flag("account_type_regexes", &FLAGS_start_name_regexes,
                        "start name regexes"),
@@ -181,18 +185,6 @@ int main(int argc, char** argv) {
   TF_CHECK_OK(tensorflow::tfprof::ReadGraphDef(tensorflow::Env::Default(),
                                                FLAGS_graph_path, graph.get()));
 
-  std::unique_ptr<tensorflow::RunMetadata> run_meta(
-      new tensorflow::RunMetadata());
-  if (!FLAGS_run_meta_path.empty()) {
-    s = ReadBinaryProto(tensorflow::Env::Default(), FLAGS_run_meta_path,
-                        run_meta.get());
-    if (!s.ok()) {
-      fprintf(stderr, "Failed to read run_meta_path: %s\n",
-              s.ToString().c_str());
-      return 1;
-    }
-  }
-
   std::unique_ptr<tensorflow::tfprof::OpLog> op_log(
       new tensorflow::tfprof::OpLog());
   if (!FLAGS_op_log_path.empty()) {
@@ -222,12 +214,27 @@ int main(int argc, char** argv) {
     TF_DeleteStatus(status);
   }
 
-  tensorflow::tfprof::TFStats tf_stat(std::move(graph), std::move(run_meta),
-                                      std::move(op_log),
-                                      std::move(ckpt_reader));
+  tensorflow::tfprof::TFStats tf_stat(
+      std::move(graph), nullptr, std::move(op_log), std::move(ckpt_reader));
+
+  std::vector<tensorflow::string> run_meta_files =
+      Split(FLAGS_run_meta_path, ',', tensorflow::str_util::SkipEmpty());
+  for (int i = 0; i < run_meta_files.size(); ++i) {
+    std::unique_ptr<tensorflow::RunMetadata> run_meta(
+        new tensorflow::RunMetadata());
+    s = ReadBinaryProto(tensorflow::Env::Default(), run_meta_files[i],
+                        run_meta.get());
+    if (!s.ok()) {
+      fprintf(stderr, "Failed to read run_meta_path %s. Status: %s\n",
+              run_meta_files[i].c_str(), s.ToString().c_str());
+      return 1;
+    }
+    tf_stat.ParseRunMeta(i, std::move(run_meta));
+  }
+
   tensorflow::tfprof::Options opts(
       FLAGS_max_depth, FLAGS_min_bytes, FLAGS_min_micros, FLAGS_min_params,
-      FLAGS_min_float_ops, FLAGS_min_occurrence, FLAGS_order_by,
+      FLAGS_min_float_ops, FLAGS_min_occurrence, FLAGS_step, FLAGS_order_by,
       account_type_regexes, start_name_regexes, trim_name_regexes,
       show_name_regexes, hide_name_regexes, FLAGS_account_displayed_op_only,
       select, output_type, output_options);
@@ -246,7 +253,7 @@ int main(int argc, char** argv) {
   linenoiseHistoryLoad(".tfprof_history.txt");
 
   for (char* line = nullptr; (line = linenoise("tfprof> ")) != nullptr;) {
-    tensorflow::string line_s = tensorflow::string(line);
+    tensorflow::string line_s = line;
     free(line);
 
     if (line_s.empty()) {

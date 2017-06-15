@@ -74,7 +74,8 @@ IrEmitter::IrEmitter(
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()) {
   ir_builder_.setFastMathFlags(llvm_ir::GetFastMathFlags(
-      /*fast_math_enabled=*/!hlo_module_config_.fast_math_disabled()));
+      /*fast_math_enabled=*/hlo_module_config_.debug_options()
+          .xla_enable_fast_math()));
 }
 
 StatusOr<llvm::Function*> IrEmitter::EmitComputation(
@@ -1365,7 +1366,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";
   // Check that all while-related buffers share an allocation slice.
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshape(
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
       [this, &xla_while](const Shape& /*subshape*/,
                          const ShapeIndex& index) -> Status {

@@ -50,7 +50,7 @@ TEST_F(ReshapeMoverTest, ReshapesWithDifferentInputShapesNotMoved) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       root_shape, HloOpcode::kAdd, reshape0, reshape1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -89,7 +89,7 @@ TEST_F(ReshapeMoverTest, 1ConstantAnd1ReshapesOnRngNotMoved) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       root_shape, HloOpcode::kAdd, reshape0, const1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -115,7 +115,7 @@ TEST_F(ReshapeMoverTest, ScalarReshapesNotMoved) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       root_shape, HloOpcode::kAdd, reshape0, reshape1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -142,7 +142,7 @@ TEST_F(ReshapeMoverTest, EquivalentReshapesMoved) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       root_shape, HloOpcode::kAdd, reshape0, reshape1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -197,7 +197,7 @@ TEST_F(ReshapeMoverTest, 1ConstantAnd2ReshapesMoved) {
       ShapeUtil::MakeShape(PRED, {2, 3}), HloOpcode::kSelect, const0, reshape1,
       reshape2));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -234,7 +234,7 @@ TEST_F(ReshapeMoverTest, 1ParameterAnd1ReshapeNotMoved) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       root_shape, HloOpcode::kAdd, reshape0, param1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -278,7 +278,7 @@ TEST_F(ReshapeMoverTest, 2TrivialConstantReshapeNotMoved) {
   builder.AddInstruction(HloInstruction::CreateTernary(
       root_shape, HloOpcode::kSelect, pred, reshape0, reshape1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -324,7 +324,7 @@ TEST_F(ReshapeMoverTest, 1NonTrivialReshapeMoved) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       root_shape, HloOpcode::kAdd, reshape0, const1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(computation->root_instruction(),
@@ -352,7 +352,7 @@ TEST_F(ReshapeMoverTest, EquivalentReshapesMovedAcrossFusion) {
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       root_shape, HloOpcode::kAdd, reshape0, reshape1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   auto fusion = computation->AddInstruction(HloInstruction::CreateFusion(
       add->shape(), HloInstruction::FusionKind::kLoop, add));
@@ -388,7 +388,7 @@ TEST_F(ReshapeMoverTest, EquivalentReshapesMovedAcrossSelect) {
   builder.AddInstruction(HloInstruction::CreateTernary(
       root_shape, HloOpcode::kSelect, reshape_pred, reshape0, reshape1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(
@@ -418,7 +418,7 @@ TEST_F(ReshapeMoverTest, ScalarReshapeNotMovedAcrossSelect) {
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
       root_shape, HloOpcode::kSelect, reshape_pred, param0, param1));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->root_instruction(),
               op::Select(op::Reshape(pred), param0, param1));
@@ -470,7 +470,7 @@ TEST_F(ReshapeMoverTest, ImplicitlyBroadcastReshapeIsNotMovedBug37787999) {
   auto multiply = builder.AddInstruction(HloInstruction::CreateBinary(
       constant->shape(), HloOpcode::kMultiply, constant, reshape));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
   EXPECT_THAT(computation->root_instruction(),
               op::Multiply(op::Constant(), op::Reshape(param0)));
@@ -519,7 +519,7 @@ TEST_F(ReshapeMoverTest, MultiplePasses) {
   builder.AddInstruction(HloInstruction::CreateBinary(shape3, HloOpcode::kAdd,
                                                       reshape2, reshape3));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(
@@ -536,3 +536,7 @@ TEST_F(ReshapeMoverTest, MultiplePasses) {
 
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

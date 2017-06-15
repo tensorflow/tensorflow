@@ -25,6 +25,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -111,6 +112,9 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
           use_resource=True)
 
       sess.run(variables.global_variables_initializer())
+      self.assertEqual(
+          resource_variable_ops.var_is_initialized_op(abc.handle).eval(),
+          True)
       print(sess.run(abc))
 
   def testInitFn(self):
@@ -150,6 +154,13 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable(1.0)
       variables.global_variables_initializer().run()
       v.assign(2.0).eval()
+      self.assertEqual(2.0, v.value().eval())
+
+  def testLoad(self):
+    with self.test_session():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      variables.global_variables_initializer().run()
+      v.load(2.0)
       self.assertEqual(2.0, v.value().eval())
 
   def testToFromProto(self):
@@ -255,6 +266,19 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable(2.0)
       v.initializer.run(feed_dict={v.initial_value: 3.0})
       self.assertEqual(3.0, v.value().eval())
+
+  def testControlFlowInitialization(self):
+    """Expects an error if an initializer is in a control-flow scope."""
+    def cond(i, _):
+      return i < 10
+
+    def body(i, _):
+      zero = array_ops.zeros([], dtype=dtypes.int32)
+      v = resource_variable_ops.ResourceVariable(initial_value=zero)
+      return (i + 1, v.read_value())
+
+    with self.assertRaisesRegexp(ValueError, "inside a control-flow"):
+      control_flow_ops.while_loop(cond, body, [0, 0])
 
 
 if __name__ == "__main__":

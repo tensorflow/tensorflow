@@ -56,6 +56,9 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"GetSessionHandleV2", NC_GET_SESSION_HANDLE},
         {"GetSessionTensor", NC_GET_SESSION_TENSOR},
         {"DeleteSessionTensor", NC_DELETE_SESSION_TENSOR},
+        {"Size", NC_METADATA},
+        {"Shape", NC_METADATA},
+        {"Rank", NC_METADATA},
     });
 
 #undef REF_CLASS
@@ -77,7 +80,7 @@ string Node::DebugString() const {
     strings::StrAppend(&ret, " sink}");
   } else {
     strings::StrAppend(&ret, " op device:");
-    strings::StrAppend(&ret, "{", assigned_device_name_, "}");
+    strings::StrAppend(&ret, "{", assigned_device_name(), "}");
     strings::StrAppend(&ret, " def:{", SummarizeNode(*this), "}}");
   }
   return ret;
@@ -88,7 +91,7 @@ Node::Node()
       cost_id_(-1),
       class_(NC_UNINITIALIZED),
       props_(nullptr),
-      assigned_device_name_() {}
+      assigned_device_name_index_(0) {}
 
 Node::~Node() {
   if (props_) {
@@ -124,7 +127,7 @@ void Node::Clear() {
     props_ = nullptr;
   }
 
-  assigned_device_name_.clear();
+  assigned_device_name_index_ = 0;
 }
 
 gtl::iterator_range<NeighborIter> Node::out_nodes() const {
@@ -240,6 +243,10 @@ Graph::Graph(const OpRegistryInterface* ops)
     : ops_(ops, FunctionDefLibrary()), arena_(8 << 10 /* 8kB */) {
   versions_.set_producer(TF_GRAPH_DEF_VERSION);
   versions_.set_min_consumer(TF_GRAPH_DEF_VERSION_MIN_CONSUMER);
+
+  // Initialize the name interning table for assigned_device_name.
+  device_names_.push_back("");
+  DCHECK_EQ(0, InternDeviceName(""));
 
   // Source and sink have no endpoints, just control edges.
   NodeDef def;
@@ -503,6 +510,7 @@ Node* Graph::AllocateNode(Node::Properties* props, const Node* cost_node) {
     node = free_nodes_.back();
     free_nodes_.pop_back();
   }
+  node->graph_ = this;
   const int id = nodes_.size();
   int cost_id = cost_node ? cost_node->cost_id() : id;
   node->Initialize(id, cost_id, props);
@@ -517,6 +525,28 @@ void Graph::ReleaseNode(Node* node) {
   free_nodes_.push_back(node);
   --num_nodes_;
   node->Clear();
+}
+
+// Ensures that 'device_name' is present in the device name table, and returns
+// the index of that device name. The index is stable, and can be used in
+// calls to Node::set_assigned_device_name_index().
+int Graph::InternDeviceName(const string& device_name) {
+  // Special case, very common.  Also, this allows us to use a single map
+  // lookup below, instead of two.  The 'if (index_cell > 0)' test below
+  // relies on this check.
+  if (device_name.empty()) {
+    return 0;
+  }
+
+  int& index_cell = device_names_map_[device_name];
+  if (index_cell > 0) {
+    return index_cell;
+  }
+
+  const int index = device_names_map_.size();
+  index_cell = index;
+  device_names_.push_back(device_name);
+  return index;
 }
 
 }  // namespace tensorflow

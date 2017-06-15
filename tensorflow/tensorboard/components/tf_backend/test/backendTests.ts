@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 import {Backend, convertBins, filterTags, getRuns, getTags, RunToTag, TYPES} from '../backend';
 import {RequestManager} from '../requestManager';
-import {Router, router} from '../router';
+import {createRouter, setRouter} from '../router';
 import {BAD_CHARACTERS, demoify, queryEncoder} from '../urlPathHelpers';
 
 describe('urlPathHelpers', () => {
@@ -46,10 +46,11 @@ describe('backend tests', () => {
   let backend: Backend;
   let rm: RequestManager;
   const base = 'data';
-  const demoRouter = router(base, true);
+  const demoRouter = createRouter(base, /*demoMode=*/true);
   beforeEach(() => {
     // Construct a demo Backend (third param is true)
-    backend = new Backend(demoRouter);
+    setRouter(demoRouter);
+    backend = new Backend();
     rm = new RequestManager();
   });
 
@@ -96,9 +97,6 @@ describe('backend tests', () => {
       assertIsDatum(image);
       chai.assert.isNumber(image.width);
       chai.assert.isNumber(image.height);
-      const nonDemoQuery = 'index=0&tag=im1&run=run1';
-      const expectedUrl = demoRouter.individualImage(nonDemoQuery, 10.0);
-      chai.assert.equal(image.url, expectedUrl);
       done();
     });
   });
@@ -108,15 +106,12 @@ describe('backend tests', () => {
       const audio = audioClips[0];
       assertIsDatum(audio);
       chai.assert.equal(audio.content_type, 'audio/wav');
-      const nonDemoQuery = 'index=0&tag=audio1&run=run1';
-      const expectedUrl = demoRouter.individualAudio(nonDemoQuery);
-      chai.assert.equal(audio.url, expectedUrl);
       done();
     });
   });
 
   it('trailing slash removed from base route', () => {
-    const r = router('foo/');
+    const r = createRouter('foo/');
     chai.assert.equal(r.runs(), 'foo/runs');
   });
 
@@ -137,15 +132,15 @@ describe('backend tests', () => {
       chai.assert.deepEqual(x, scalar);
       next();
     });
-    backend.imageRuns().then((x) => {
+    backend.imageTags().then((x) => {
       chai.assert.deepEqual(x, image);
       next();
     });
-    backend.audioRuns().then((x) => {
+    backend.audioTags().then((x) => {
       chai.assert.deepEqual(x, audio);
       next();
     });
-    backend.runMetadataRuns().then((x) => {
+    backend.runMetadataTags().then((x) => {
       chai.assert.deepEqual(x, runMetadata);
       next();
     });

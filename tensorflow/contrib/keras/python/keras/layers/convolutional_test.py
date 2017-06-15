@@ -114,16 +114,19 @@ class Conv2DTest(test.TestCase):
           continue
 
         with self.test_session(use_gpu=True):
-          testing_utils.layer_test(
-              keras.layers.Conv2D,
-              kwargs={
-                  'filters': filters,
-                  'kernel_size': kernel_size,
-                  'padding': padding,
-                  'strides': strides,
-                  'data_format': 'channels_first'
-              },
-              input_shape=(num_samples, stack_size, num_row, num_col))
+          # Only runs on GPU with CUDA, channels_first is not supported on CPU.
+          # TODO(b/62340061): Support channels_first on CPU.
+          if test.is_gpu_available(cuda_only=True):
+            testing_utils.layer_test(
+                keras.layers.Conv2D,
+                kwargs={
+                    'filters': filters,
+                    'kernel_size': kernel_size,
+                    'padding': padding,
+                    'strides': strides,
+                    'data_format': 'channels_first'
+                },
+                input_shape=(num_samples, stack_size, num_row, num_col))
 
   def test_convolution_2d_regularization(self):
     # regularizers

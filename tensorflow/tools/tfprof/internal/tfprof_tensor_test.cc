@@ -55,8 +55,8 @@ class TFProfTensorTest : public ::testing::Test {
 };
 
 TEST_F(TFProfTensorTest, Basics) {
-  Options opts(3, 0, 0, 0, 0, 0, "name", {"VariableV2"}, {".*"}, {""}, {".*"},
-               {""}, false, {"tensor_value"},  // show the tensor value.
+  Options opts(3, 0, 0, 0, 0, 0, -1, "name", {"VariableV2"}, {".*"}, {""},
+               {".*"}, {""}, false, {"tensor_value"},  // show the tensor value.
                "", {});
   const TFGraphNodeProto& root = tf_stats_->ShowGraphNode("scope", opts);
 

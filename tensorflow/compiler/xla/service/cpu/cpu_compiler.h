@@ -32,8 +32,6 @@ namespace cpu {
 // This class wraps the configurability options that LLVM exposes including: the
 // target triple, the target cpu and the target features.  It also includes the
 // desired linkage name for the computation entry point.
-// Note that the optimization level can be controlled by the
-// --xla_cpu_llvm_opt_level flag.
 class CpuAotCompilationOptions : public AotCompilationOptions {
  public:
   // Relocation models available for compilation.

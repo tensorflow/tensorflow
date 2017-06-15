@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/computation_tracker.h"
@@ -30,8 +31,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
-
-namespace se = ::perftools::gputools;
 
 namespace xla {
 
@@ -96,6 +95,8 @@ CompileOnlyService::CompileAheadOfTime(
         user_computation->ComputeProgramShape(versioned_handle.version));
 
     HloModuleConfig hlo_module_config(*program_shape);
+    hlo_module_config.set_debug_options(
+        legacy_flags::GetDebugOptionsFromFlags());
     auto* computation_layout =
         hlo_module_config.mutable_entry_computation_layout();
     if (flags->xla_hlo_profile) {

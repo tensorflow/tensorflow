@@ -45,6 +45,8 @@ See the @{$python/math_ops} guide.
 @@expm1
 @@log
 @@log1p
+@@sinh
+@@cosh
 @@ceil
 @@floor
 @@maximum
@@ -208,19 +210,25 @@ argmin.__doc__ = (gen_math_ops.arg_min.__doc__.replace("dimensions",
 def abs(x, name=None):
   r"""Computes the absolute value of a tensor.
 
-  Given a tensor of real numbers `x`, this operation returns a tensor
-  containing the absolute value of each element in `x`. For example, if x is
-  an input element and y is an output element, this operation computes
-  \\\\(y = |x|\\\\).
+  Given a tensor `x` of complex numbers, this operation returns a tensor of type
+  `float32` or `float64` that is the absolute value of each element in `x`. All
+  elements in `x` must be complex numbers of the form \\(a + bj\\). The
+  absolute value is computed as \\( \sqrt{a^2 + b^2}\\).  For example:
+  ```
+  # tensor 'x' is [[-2.25 + 4.75j], [-3.25 + 5.75j]]
+  tf.complex_abs(x) ==> [5.25594902, 6.60492229]
+  ```
 
   Args:
-    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`, or
-      `int64`.
+    x: A `Tensor` or `SparseTensor` of type `float32`, `float64`, `int32`,
+      `int64`, `complex64` or `complex128`.
     name: A name for the operation (optional).
 
   Returns:
     A `Tensor` or `SparseTensor` the same size and type as `x` with absolute
       values.
+    Note, for `complex64` or `complex128' input, the returned `Tensor` will be
+      of type `float32` or `float64`, respectively.
   """
   with ops.name_scope(name, "Abs", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):
@@ -494,7 +502,7 @@ def scalar_mul(scalar, x):
 def pow(x, y, name=None):
   r"""Computes the power of one value to another.
 
-  Given a tensor `x` and a tensor `y`, this operation computes \\\\(x^y\\\\) for
+  Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
   corresponding elements in `x` and `y`. For example:
 
   ```
@@ -1675,8 +1683,9 @@ def matmul(a,
            name=None):
   """Multiplies matrix `a` by matrix `b`, producing `a` * `b`.
 
-  The inputs must be matrices (or tensors of rank > 2, representing batches of
-  matrices), with matching inner dimensions, possibly after transposition.
+  The inputs must, following any transpositions, be tensors of rank >= 2 
+  where the inner 2 dimensions specify valid matrix multiplication arguments, 
+  and any further outer dimensions match.
 
   Both matrices must be of the same type. The supported types are:
   `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
@@ -2048,12 +2057,11 @@ def tanh(x, name=None):
 
   Args:
     x: A Tensor or SparseTensor with type `float`, `double`, `int32`,
-      `complex64`, `int64`, or `qint32`.
+      `complex64`, or `int64`.
     name: A name for the operation (optional).
 
   Returns:
-    A Tensor or SparseTensor respectively with the same type as `x` if
-    `x.dtype != qint32` otherwise the return type is `quint8`.
+    A Tensor or SparseTensor respectively with the same type as `x`.
   """
   with ops.name_scope(name, "Tanh", [x]) as name:
     if isinstance(x, sparse_tensor.SparseTensor):

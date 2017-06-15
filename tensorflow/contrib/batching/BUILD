@@ -21,13 +21,13 @@ cc_library(
     name = "batch_scheduler",
     hdrs = ["batch_scheduler.h"],
     deps = [
-        ":batch_scheduler_hdrs",
         "//tensorflow/core:lib",
     ],
 )
 
 cc_test(
     name = "batch_scheduler_test",
+    size = "small",
     srcs = [
         "batch_scheduler_test.cc",
     ],
@@ -54,7 +54,6 @@ cc_library(
     deps = [
         ":batch_scheduler",
         ":shared_batch_scheduler_hdrs",
-        "//tensorflow/contrib/batching/util:periodic_function",
         "//tensorflow/core:lib",
     ],
     alwayslink = 1,
@@ -62,6 +61,7 @@ cc_library(
 
 cc_test(
     name = "shared_batch_scheduler_test",
+    size = "small",
     srcs = [
         "shared_batch_scheduler_test.cc",
     ],
@@ -85,6 +85,7 @@ cc_library(
 
 cc_test(
     name = "basic_batch_scheduler_test",
+    size = "small",
     srcs = [
         "basic_batch_scheduler_test.cc",
     ],

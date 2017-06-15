@@ -790,7 +790,11 @@ bool MemoryUsageTracker::Check() const {
       live_size += AllocatedSize(buffer.id);
     }
   }
-  CHECK_EQ(live_size, memory_usage_);
+  CHECK(live_size == memory_usage_)
+      << "Live set size " << live_size << " is not same as memory usage "
+      << memory_usage_
+      << ". This could happen if some nodes defined in the "
+         "computation are not being used/executed.";
 
   return true;
 }
@@ -1168,9 +1172,7 @@ StatusOr<bool> HloRematerialization::Run(
       [&module_output_size, this](const Shape& subshape,
                                   const ShapeIndex& /*index*/) {
         module_output_size += size_function_(subshape);
-        return Status::OK();
-      })
-      .IgnoreError();
+      });
 
   const int64 adjusted_memory_limit_bytes =
       memory_limit_bytes - module_output_size;

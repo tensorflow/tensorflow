@@ -19,30 +19,34 @@ limitations under the License.
 // ccs.domain(runs);
 // ccs.getColor("train");
 // ccs.getColor("test1");
-import * as d3 from 'd3';  // from //third_party/javascript/typings/d3_v4
-import {palettes} from './palettes'
 
+import {palettes} from './palettes';
 
 export class ColorScale {
-  private palette: string[];
   private identifiers = d3.map();
 
   /**
    * Creates a color scale with optional custom palette.
-   *  @param {string[]} [palette=palettes.googleColorBlind] - The color
-   *                 palette you want as an Array of hex strings.
+   * @param {Array<string>} [palette=palettes.googleColorBlind] - The color
+   *     palette you want as an Array of hex strings.
    */
-  constructor(palette: string[] = palettes.googleColorBlindAssist) {
-    this.palette = palette;
-  }
+  constructor(
+      private readonly palette: string[] = palettes.googleColorBlindAssist) {}
 
   /**
    * Set the domain of strings.
-   * @param {string[]} strings - An array of possible strings to use as the
-   *                             domain for your scale.
+   * @param {Array<string>} strings - An array of possible strings to use as the
+   *     domain for your scale.
    */
   public domain(strings: string[]): this {
     this.identifiers = d3.map();
+
+    // TODO(wchargin): Remove this call to `sort` once we have only a
+    // singleton ColorScale, linked directly to the RunsStore, which
+    // will always give sorted output.
+    strings = strings.slice();
+    strings.sort();
+
     strings.forEach((s, i) => {
       this.identifiers.set(s, this.palette[i % this.palette.length]);
     });
@@ -73,13 +77,13 @@ Polymer({
       type: Object,
       readOnly: true,
       notify: true,
-      value: function() {
+      value() {
         return new ColorScale();
       },
     },
   },
   observers: ['updateColorScale(runs.*)'],
-  updateColorScale: function(runsChange) {
+  updateColorScale(runsChange) {
     this.outColorScale.domain(this.runs);
   },
 });

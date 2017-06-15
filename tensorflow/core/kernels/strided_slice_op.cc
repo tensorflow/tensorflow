@@ -389,6 +389,7 @@ class StridedSliceAssignOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")     \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
+                              .HostMemory("ref")                 \
                               .HostMemory("begin")               \
                               .HostMemory("end")                 \
                               .HostMemory("strides"),            \
@@ -430,6 +431,7 @@ REGISTER_STRIDED_SLICE(bfloat16);
   REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")     \
                               .Device(DEVICE_GPU)                \
                               .TypeConstraint<type>("T")         \
+                              .HostMemory("ref")                 \
                               .HostMemory("begin")               \
                               .HostMemory("end")                 \
                               .HostMemory("strides")             \
@@ -516,18 +518,15 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
   REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")      \
                               .Device(DEVICE_SYCL)                \
                               .TypeConstraint<type>("T")          \
+                              .HostMemory("ref")                  \
                               .HostMemory("begin")                \
                               .HostMemory("end")                  \
                               .HostMemory("strides")              \
                               .TypeConstraint<int32>("Index"),    \
                           StridedSliceAssignOp<SYCLDevice, type>)
 
-REGISTER_SYCL(float);
-REGISTER_SYCL(double);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);
 
-// A special GPU kernel for int32.
-// TODO(b/25387198): Also enable int32 in device memory. This kernel
-// registration requires all int32 inputs and outputs to be in host memory.
 REGISTER_KERNEL_BUILDER(Name("StridedSlice")
                             .Device(DEVICE_SYCL)
                             .TypeConstraint<int32>("T")

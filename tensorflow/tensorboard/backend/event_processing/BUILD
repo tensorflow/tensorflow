@@ -1,13 +1,11 @@
 # Description:
 # Event processing logic for TensorBoard
 
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
     name = "io_wrapper",
@@ -130,18 +128,6 @@ py_library(
     srcs = ["plugin_asset_util.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-py_test(
-    name = "plugin_asset_util_test",
-    size = "small",
-    srcs = ["plugin_asset_util_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":event_multiplexer",
-        ":plugin_asset_util",
         "//tensorflow:tensorflow_py",
     ],
 )

@@ -76,6 +76,7 @@ cc_library(
 
 cc_test(
     name = "stream_assignment_test",
+    size = "small",
     srcs = [
         "stream_assignment_test.cc",
     ],
@@ -86,7 +87,6 @@ cc_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:lib",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -259,9 +259,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_execution_profile",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:logical_buffer",
-        "//tensorflow/compiler/xla/service:pool",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service:transfer_manager",
         "//tensorflow/compiler/xla/service:tuple_points_to_analysis",
@@ -307,6 +305,7 @@ cc_library(
 
 cc_test(
     name = "convolution_folding_test",
+    size = "small",
     srcs = ["convolution_folding_test.cc"],
     deps = [
         ":convolution_folding",
@@ -315,7 +314,6 @@ cc_test(
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -333,12 +331,11 @@ cc_library(
 
 cc_test(
     name = "instruction_fusion_test",
+    size = "small",
     srcs = ["instruction_fusion_test.cc"],
     deps = [
         ":instruction_fusion",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -373,18 +370,14 @@ cc_library(
 
 cc_test(
     name = "fusion_merger_test",
+    size = "small",
     srcs = ["fusion_merger_test.cc"],
     deps = [
         ":fusion_merger",
         ":instruction_fusion",
-        "//tensorflow/compiler/xla:literal_util",
-        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test_helpers",
-        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -436,7 +429,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_constant_folding",
         "//tensorflow/compiler/xla/service:hlo_cse",
         "//tensorflow/compiler/xla/service:hlo_dce",
-        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:hlo_pass",
         "//tensorflow/compiler/xla/service:hlo_pass_pipeline",
         "//tensorflow/compiler/xla/service:hlo_proto",
@@ -486,6 +478,7 @@ cc_library(
 
 cc_test(
     name = "layout_assignment_test",
+    size = "small",
     srcs = ["layout_assignment_test.cc"],
     deps = [
         ":layout_assignment",
@@ -495,7 +488,6 @@ cc_test(
         "//tensorflow/compiler/xla/service:computation_layout",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -515,6 +507,7 @@ cc_library(
 
 cc_test(
     name = "hlo_schedule_test",
+    size = "small",
     srcs = [
         "hlo_schedule_test.cc",
     ],
@@ -525,7 +518,6 @@ cc_test(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core:test_main",
     ],
 )
 
@@ -546,6 +538,7 @@ cc_library(
 
 cc_test(
     name = "while_transformer_test",
+    size = "small",
     srcs = ["while_transformer_test.cc"],
     deps = [
         ":instruction_fusion",
@@ -554,7 +547,6 @@ cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core:test_main",
     ],
 )
 

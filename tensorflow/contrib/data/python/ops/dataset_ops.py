@@ -22,6 +22,7 @@ import abc
 import numpy as np
 
 from tensorflow.contrib.data.python.framework import function
+from tensorflow.contrib.data.python.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -38,7 +39,6 @@ from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import gfile
-from tensorflow.python.util import nest
 
 
 class Iterator(object):
@@ -537,9 +537,9 @@ class Dataset(object):
 
     # The `datasets` argument may contain an arbitrary number of
     # datasets.
-    Dataset.zip((a, b, c) == { (1, 4, (7, 8)),
-                               (2, 5, (9, 10)),
-                               (3, 6, (11, 12)) }
+    Dataset.zip((a, b, c)) == { (1, 4, (7, 8)),
+                                (2, 5, (9, 10)),
+                                (3, 6, (11, 12)) }
 
     # The number of elements in the resulting dataset is the same as
     # the size of the smallest dataset in `datasets`.
@@ -629,6 +629,7 @@ class Dataset(object):
     # structure of elements in the resulting dataset.
     a.enumerate(start=5) == { (5, 1), (6, 2), (7, 3) }
     b.enumerate() == { (0, (7, 8)), (1, (9, 10)), (2, (11, 12)) }
+    ```
 
     Args:
       start: A `tf.int64` scalar `tf.Tensor`, representing the start
@@ -655,6 +656,19 @@ class Dataset(object):
       A `Dataset`.
     """
     return ShuffleDataset(self, buffer_size, seed)
+
+  def cache(self, filename=""):
+    """Caches the elements in this dataset.
+
+    Args:
+      filename: A `tf.string` scalar `tf.Tensor`, representing the name of a
+        directory on the filesystem to use for caching tensors in this Dataset.
+        If a filename is not provided, the dataset will be cached in memory.
+
+    Returns:
+      A `Dataset`.
+    """
+    return CacheDataset(self, filename)
 
   def take(self, count):
     """Creates a `Dataset` with at most `count` elements from this dataset.
@@ -836,7 +850,8 @@ class Dataset(object):
     Returns:
       A `Dataset`.
     """
-    return self.flat_map(map_func=Dataset.from_tensor_slices)
+    return self.flat_map(
+      map_func=lambda *args: Dataset.from_tensor_slices(args))
 
   def filter(self, predicate):
     """Filters this dataset according to `predicate`.
@@ -1049,6 +1064,32 @@ class RangeDataset(Dataset):
   @property
   def output_types(self):
     return dtypes.int64
+
+
+class CacheDataset(Dataset):
+  """A `Dataset` that caches elements of its input."""
+
+  def __init__(self, input_dataset, filename):
+    """See `Dataset.cache()` for details."""
+    super(CacheDataset, self).__init__()
+    self._input_dataset = input_dataset
+    self._filename = ops.convert_to_tensor(
+        filename, dtype=dtypes.string, name="filename")
+
+  def make_dataset_resource(self):
+    return gen_dataset_ops.cache_dataset(
+        self._input_dataset.make_dataset_resource(),
+        filename=self._filename,
+        output_shapes=nest.flatten(self.output_shapes),
+        output_types=nest.flatten(self.output_types))
+
+  @property
+  def output_shapes(self):
+    return self._input_dataset.output_shapes
+
+  @property
+  def output_types(self):
+    return self._input_dataset.output_types
 
 
 class ShuffleDataset(Dataset):
@@ -1869,7 +1910,7 @@ def _parse_example(serialized, features):
       result.extend([val.indices, val.values, val.dense_shape])
     else:
       result.append(val)
-  return result
+  return tuple(result)
 
 
 def _get_file_names(file_pattern, randomize_input):

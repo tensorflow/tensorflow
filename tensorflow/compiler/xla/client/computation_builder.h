@@ -211,9 +211,11 @@ class ComputationBuilder {
   //
   // Note that "limit" means up-to-but-not-including; i.e. [start, limit) in 1D
   // range notation.
+  // The stride parameter determines the stride over the slice
   ComputationDataHandle Slice(const ComputationDataHandle& operand,
                               tensorflow::gtl::ArraySlice<int64> start_indices,
-                              tensorflow::gtl::ArraySlice<int64> limit_indices);
+                              tensorflow::gtl::ArraySlice<int64> limit_indices,
+                              tensorflow::gtl::ArraySlice<int64> stride);
 
   // Enqueues a slice operation onto the computation that slices the 'operand'
   // from dynamic start indices which are passed in 'start_indices'.
@@ -610,6 +612,48 @@ class ComputationBuilder {
   // whether a computation is a compile-time constant without evaluating the
   // computation.
   StatusOr<bool> IsConstant(const ComputationDataHandle& operand);
+
+  // Normalizes operand across spatial and batch dimensions for each feature.
+  //
+  // Returns a tuple (normalized, batch_mean, batch_var) where `normalized`
+  // is the normalized result and batch_mean and batch_var are the mean and
+  // variance, respectively, across batch for the operand.
+  ComputationDataHandle BatchNormTraining(const ComputationDataHandle& operand,
+                                          const ComputationDataHandle& scale,
+                                          const ComputationDataHandle& offset,
+                                          float epsilon, int64 feature_index);
+
+  // Normalizes operand across spatial and batch dimensions for each feature.
+  //
+  // `BatchNormInference` is equivalent to calling `BatchNormTraining` without
+  // computing `mean` and `variance` for each batch inside the operation. It
+  // uses the input `mean` and `variance` instead as estimated values. The
+  // purpose of this op is to reduce latency in inference, hence the name
+  // `BatchNormInference`.
+  //
+  // The output has the same shape as `operand`, and contains the normalized
+  // values for each batch.
+  ComputationDataHandle BatchNormInference(
+      const ComputationDataHandle& operand, const ComputationDataHandle& scale,
+      const ComputationDataHandle& offset, const ComputationDataHandle& mean,
+      const ComputationDataHandle& variance, float epsilon,
+      int64 feature_index);
+
+  // Calculates the gradients of a batch norm op.
+  //
+  // The inputs `batch_mean` and `batch_var` represent the mean and variance
+  // across the batch.
+  //
+  // Returns a tuple of three elements:
+  //   - grad_operand: Gradient with respect to input `operand`
+  //   - grad_offset: Gradient with respect to input `offset`
+  //   - grad_scale: Gradient with respect to input `scale`
+  ComputationDataHandle BatchNormGrad(const ComputationDataHandle& operand,
+                                      const ComputationDataHandle& scale,
+                                      const ComputationDataHandle& batch_mean,
+                                      const ComputationDataHandle& batch_var,
+                                      const ComputationDataHandle& grad_output,
+                                      float epsilon, int64 feature_index);
 
   // Computes the value of a constant indicated by a
   // ComputationDataHandle.

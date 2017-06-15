@@ -21,10 +21,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
 import gzip
 import json
-import numbers
 import os
 import shutil
 import socket
@@ -36,10 +34,8 @@ from six.moves import http_client
 import tensorflow as tf
 
 from werkzeug import serving
-from google.protobuf import text_format
 
-from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.tensorboard import tensorboard
+from tensorflow.tensorboard import main as tensorboard
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
 from tensorflow.tensorboard.plugins import base_plugin
@@ -86,8 +82,10 @@ class TensorboardServerTest(tf.test.TestCase):
   _only_use_meta_graph = False  # Server data contains only a GraphDef
 
   def setUp(self):
-    self.temp_dir = self._GenerateTestData()
-    multiplexer = event_multiplexer.EventMultiplexer(
+    self.logdir = self.get_temp_dir()
+
+    self._GenerateTestData(run_name='run1')
+    self._multiplexer = event_multiplexer.EventMultiplexer(
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
     plugins = [
@@ -95,7 +93,7 @@ class TensorboardServerTest(tf.test.TestCase):
         FakePlugin(plugin_name='bar', is_active_value=False, routes_mapping={})
     ]
     app = application.TensorBoardWSGIApp(
-        self.temp_dir, plugins, multiplexer, reload_interval=0)
+        self.logdir, plugins, self._multiplexer, reload_interval=0)
     try:
       self._server = serving.BaseWSGIServer('localhost', 0, app)
       # 0 to pick an unused port.
@@ -148,7 +146,7 @@ class TensorboardServerTest(tf.test.TestCase):
   def testLogdir(self):
     """Test the format of the data/logdir endpoint."""
     parsed_object = self._getJson('/data/logdir')
-    self.assertEqual(parsed_object, {'logdir': self.temp_dir})
+    self.assertEqual(parsed_object, {'logdir': self.logdir})
 
   def testPluginsListing(self):
     """Test the format of the data/plugins_listing endpoint."""
@@ -159,25 +157,61 @@ class TensorboardServerTest(tf.test.TestCase):
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""
     run_json = self._getJson('/data/runs')
+    self.assertEqual(run_json, ['run1'])
 
-    # Don't check the actual timestamp since it's time-dependent.
-    self.assertTrue(
-        isinstance(run_json['run1']['firstEventTimestamp'], numbers.Number))
-    del run_json['run1']['firstEventTimestamp']
-    self.assertEqual(
-        run_json,
-        {
-            'run1': {
-                'compressedHistograms': ['histogram'],
-                'images': ['image'],
-                'audio': ['audio'],
-                # if only_use_meta_graph, the graph is from the metagraph
-                'graph': True,
-                'meta_graph': self._only_use_meta_graph,
-                'run_metadata': ['test run'],
-                'tensors': [],
-            }
-        })
+  def testRunsAppendOnly(self):
+    """Test that new runs appear after old ones in /data/runs."""
+    # We use three runs: the 'run1' that we already created in our
+    # `setUp` method, plus runs with names lexicographically before and
+    # after it (so that just sorting by name doesn't have a chance of
+    # working).
+    fake_wall_times = {
+        'run1': 1234.0,
+        'avocado': 2345.0,
+        'zebra': 3456.0,
+        'mysterious': None,
+    }
+
+    stubs = tf.test.StubOutForTesting()
+    # pylint: disable=invalid-name
+    def FirstEventTimestamp_stub(multiplexer_self, run_name):
+      del multiplexer_self
+      matches = [candidate_name
+                 for candidate_name in fake_wall_times
+                 if run_name.endswith(candidate_name)]
+      self.assertEqual(len(matches), 1, '%s (%s)' % (matches, run_name))
+      wall_time = fake_wall_times[matches[0]]
+      if wall_time is None:
+        raise ValueError('No event timestamp could be found')
+      else:
+        return wall_time
+    # pylint: enable=invalid-name
+
+    stubs.SmartSet(self._multiplexer,
+                   'FirstEventTimestamp',
+                   FirstEventTimestamp_stub)
+
+    def add_run(run_name):
+      self._GenerateTestData(run_name)
+      self._multiplexer.AddRunsFromDirectory(self.logdir)
+      self._multiplexer.Reload()
+
+    # Add one run: it should come last.
+    add_run('avocado')
+    self.assertEqual(self._getJson('/data/runs'),
+                     ['run1', 'avocado'])
+
+    # Add another run: it should come last, too.
+    add_run('zebra')
+    self.assertEqual(self._getJson('/data/runs'),
+                     ['run1', 'avocado', 'zebra'])
+
+    # And maybe there's a run for which we somehow have no timestamp.
+    add_run('mysterious')
+    self.assertEqual(self._getJson('/data/runs'),
+                     ['run1', 'avocado', 'zebra', 'mysterious'])
+
+    stubs.UnsetAll()
 
   def testApplicationPaths_getCached(self):
     """Test the format of the /data/runs endpoint."""
@@ -195,11 +229,7 @@ class TensorboardServerTest(tf.test.TestCase):
 
   def testDataPaths_disableAllCaching(self):
     """Test the format of the /data/runs endpoint."""
-    for path in ('/data/runs', '/data/logdir',
-                 '/data/images?run=run1&tag=image',
-                 '/data/individualImage?run=run1&tag=image&index=0',
-                 '/data/audio?run=run1&tag=audio',
-                 '/data/run_metadata?run=run1&tag=test%20run'):
+    for path in ('/data/runs', '/data/logdir'):
       connection = http_client.HTTPConnection('localhost',
                                               self._server.server_address[1])
       connection.request('GET', path)
@@ -209,128 +239,21 @@ class TensorboardServerTest(tf.test.TestCase):
       response.read()
       connection.close()
 
-  def testImages(self):
-    """Test listing images and retrieving an individual image."""
-    image_json = self._getJson('/data/images?tag=image&run=run1')
-    image_query = image_json[0]['query']
-    # We don't care about the format of the image query.
-    del image_json[0]['query']
-    self.assertEqual(image_json, [{
-        'wall_time': 0,
-        'step': 0,
-        'height': 1,
-        'width': 1
-    }])
-    response = self._get('/data/individualImage?%s' % image_query)
-    self.assertEqual(response.status, 200)
-
-  def testAudio(self):
-    """Test listing audio and retrieving an individual audio clip."""
-    audio_json = self._getJson('/data/audio?tag=audio&run=run1')
-    audio_query = audio_json[0]['query']
-    # We don't care about the format of the audio query.
-    del audio_json[0]['query']
-    self.assertEqual(audio_json, [{
-        'wall_time': 0,
-        'step': 0,
-        'content_type': 'audio/wav'
-    }])
-    response = self._get('/data/individualAudio?%s' % audio_query)
-    self.assertEqual(response.status, 200)
-
-  def testGraph(self):
-    """Test retrieving the graph definition."""
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs')
-    self.assertEqual(response.status, 200)
-    graph_pbtxt = response.read()
-    # Parse the graph from pbtxt into a graph message.
-    graph = tf.GraphDef()
-    graph = text_format.Parse(graph_pbtxt, graph)
-    self.assertEqual(len(graph.node), 2)
-    self.assertEqual(graph.node[0].name, 'a')
-    self.assertEqual(graph.node[1].name, 'b')
-    # Make sure the second node has an attribute that was filtered out because
-    # it was too large and was added to the "too large" attributes list.
-    self.assertEqual(list(graph.node[1].attr.keys()), ['_very_large_attrs'])
-    self.assertEqual(graph.node[1].attr['_very_large_attrs'].list.s,
-                     [b'very_large_attr'])
-
-  def testAcceptGzip_compressesResponse(self):
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs',
-                         {'Accept-Encoding': 'gzip'})
-    self.assertEqual(response.status, 200)
-    self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
-    pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
-    graph = text_format.Parse(pbtxt, tf.GraphDef())
-    self.assertEqual(len(graph.node), 2)
-
-  def testAcceptAnyEncoding_compressesResponse(self):
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs',
-                         {'Accept-Encoding': '*'})
-    self.assertEqual(response.status, 200)
-    self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
-    pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
-    graph = text_format.Parse(pbtxt, tf.GraphDef())
-    self.assertEqual(len(graph.node), 2)
-
-  def testAcceptDoodleEncoding_doesNotCompressResponse(self):
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs',
-                         {'Accept-Encoding': 'doodle'})
-    self.assertEqual(response.status, 200)
-    self.assertIsNone(response.getheader('Content-Encoding'))
-    graph = text_format.Parse(response.read(), tf.GraphDef())
-    self.assertEqual(len(graph.node), 2)
-
-  def testAcceptGzip_doesNotCompressImage(self):
-    response = self._get('/data/individualImage?run=run1&tag=image&index=0',
-                         {'Accept-Encoding': 'gzip'})
-    self.assertEqual(response.status, 200)
-    self.assertEqual(response.getheader('Content-Encoding'), None)
-
-  def testRunMetadata(self):
-    """Test retrieving the run metadata information."""
-    response = self._get('/data/run_metadata?run=run1&tag=test%20run')
-    self.assertEqual(response.status, 200)
-    run_metadata_pbtxt = response.read()
-    # Parse from pbtxt into a message.
-    run_metadata = tf.RunMetadata()
-    text_format.Parse(run_metadata_pbtxt, run_metadata)
-    self.assertEqual(len(run_metadata.step_stats.dev_stats), 1)
-    self.assertEqual(run_metadata.step_stats.dev_stats[0].device, 'test device')
-
-  def _GenerateTestData(self):
+  def _GenerateTestData(self, run_name):
     """Generates the test data directory.
 
-    The test data has a single run named run1 which contains:
-     - a histogram [1]
-     - an image at timestamp and step 0
-     - a graph definition
+    The test data has a single run of the given name, containing:
+      - a graph definition and metagraph definition
 
-    [1]: Histograms no longer appear in `/runs`, but compressed
-    histograms do, and they use the same test data. Thus, histograms are
-    still here for now.
-
-    Returns:
-      temp_dir: The directory the test data is generated under.
+    Arguments:
+      run_name: the directory under self.logdir into which to write
+        events
     """
-    temp_dir = tempfile.mkdtemp(prefix=self.get_temp_dir())
-    self.addCleanup(shutil.rmtree, temp_dir)
-    run1_path = os.path.join(temp_dir, 'run1')
-    os.makedirs(run1_path)
-    writer = tf.summary.FileWriter(run1_path)
+    run_path = os.path.join(self.logdir, run_name)
+    os.makedirs(run_path)
 
-    histogram_value = tf.HistogramProto(
-        min=0,
-        max=2,
-        num=3,
-        sum=6,
-        sum_squares=5,
-        bucket_limit=[0, 1, 2],
-        bucket=[1, 1, 1])
+    writer = tf.summary.FileWriter(run_path)
+
     # Add a simple graph event.
     graph_def = tf.GraphDef()
     node1 = graph_def.node.add()
@@ -339,45 +262,15 @@ class TensorboardServerTest(tf.test.TestCase):
     node2.name = 'b'
     node2.attr['very_large_attr'].s = b'a' * 2048  # 2 KB attribute
 
-    meta_graph_def = meta_graph_pb2.MetaGraphDef(graph_def=graph_def)
+    meta_graph_def = tf.MetaGraphDef(graph_def=graph_def)
 
     if self._only_use_meta_graph:
       writer.add_meta_graph(meta_graph_def)
     else:
       writer.add_graph(graph_def)
 
-    # Add a simple run metadata event.
-    run_metadata = tf.RunMetadata()
-    device_stats = run_metadata.step_stats.dev_stats.add()
-    device_stats.device = 'test device'
-    writer.add_run_metadata(run_metadata, 'test run')
-
-    # 1x1 transparent GIF.
-    encoded_image = base64.b64decode(
-        'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7')
-    image_value = tf.Summary.Image(
-        height=1, width=1, colorspace=1, encoded_image_string=encoded_image)
-
-    audio_value = tf.Summary.Audio(
-        sample_rate=44100,
-        length_frames=22050,
-        num_channels=2,
-        encoded_audio_string=b'',
-        content_type='audio/wav')
-    writer.add_event(
-        tf.Event(
-            wall_time=0,
-            step=0,
-            summary=tf.Summary(value=[
-                tf.Summary.Value(tag='histogram', histo=histogram_value),
-                tf.Summary.Value(tag='image', image=image_value),
-                tf.Summary.Value(tag='audio', audio=audio_value)
-            ])))
-
     writer.flush()
     writer.close()
-
-    return temp_dir
 
 
 class TensorboardServerPluginNameTest(tf.test.TestCase):

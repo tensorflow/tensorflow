@@ -63,7 +63,19 @@ class ClassifierParseExampleSpec(test.TestCase):
     }
     self.assertDictEqual(expected_spec, parsing_spec)
 
-  def test_weight_column(self):
+  def test_weight_column_as_string(self):
+    parsing_spec = parsing_utils.classifier_parse_example_spec(
+        feature_columns=[fc.numeric_column('a')],
+        label_key='b',
+        weight_column='c')
+    expected_spec = {
+        'a': parsing_ops.FixedLenFeature((1,), dtype=dtypes.float32),
+        'b': parsing_ops.FixedLenFeature((1,), dtype=dtypes.int64),
+        'c': parsing_ops.FixedLenFeature((1,), dtype=dtypes.float32),
+    }
+    self.assertDictEqual(expected_spec, parsing_spec)
+
+  def test_weight_column_as_numeric_column(self):
     parsing_spec = parsing_utils.classifier_parse_example_spec(
         feature_columns=[fc.numeric_column('a')],
         label_key='b',
@@ -92,10 +104,11 @@ class ClassifierParseExampleSpec(test.TestCase):
   def test_weight_column_should_be_a_numeric_column(self):
     with self.assertRaisesRegexp(ValueError,
                                  'tf.feature_column.numeric_column'):
+      not_a_numeric_column = 3
       parsing_utils.classifier_parse_example_spec(
           feature_columns=[fc.numeric_column('a')],
           label_key='b',
-          weight_column='NotANumericColumn')
+          weight_column=not_a_numeric_column)
 
 
 if __name__ == '__main__':

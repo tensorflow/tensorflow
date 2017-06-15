@@ -233,7 +233,7 @@ class BasicRNNCell(RNNCell):
   """The most basic RNN cell.
 
   Args:
-    num_units: int, The number of units in the LSTM cell.
+    num_units: int, The number of units in the RNN cell.
     activation: Nonlinearity to use.  Default: `tanh`.
     reuse: (optional) Python boolean describing whether to reuse variables
      in an existing scope.  If not `True`, and the existing scope already has
@@ -606,7 +606,7 @@ class DropoutWrapper(RNNCell):
     """Create a cell with added input, state, and/or output dropout.
 
     If `variational_recurrent` is set to `True` (**NOT** the default behavior),
-    then the the same dropout mask is applied at every step, as described in:
+    then the same dropout mask is applied at every step, as described in:
 
     Y. Gal, Z Ghahramani.  "A Theoretically Grounded Application of Dropout in
     Recurrent Neural Networks".  https://arxiv.org/abs/1512.05287

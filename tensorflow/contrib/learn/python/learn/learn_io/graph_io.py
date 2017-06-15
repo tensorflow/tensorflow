@@ -72,7 +72,7 @@ def read_batch_examples(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.global_variables_initializer()` and run the op in a session.
+      `tf.local_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples. In order to have
       predicted and repeatable order of reading and enqueueing, such as in
@@ -139,7 +139,7 @@ def read_keyed_batch_examples(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.global_variables_initializer()` and run the op in a session.
+      `tf.local_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples. In order to have
       predicted and repeatable order of reading and enqueueing, such as in
@@ -213,7 +213,7 @@ def read_keyed_batch_examples_shared_queue(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.global_variables_initializer()` and run the op in a session.
+      `tf.local_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of
@@ -331,7 +331,7 @@ def _read_keyed_batch_examples_helper(file_pattern,
     num_epochs: Integer specifying the number of times to read through the
       dataset. If `None`, cycles through the dataset forever.
       NOTE - If specified, creates a variable that must be initialized, so call
-      `tf.global_variables_initializer()` and run the op in a session.
+      `tf.local_variables_initializer()` and run the op in a session.
     queue_capacity: Capacity for input queue.
     num_threads: The number of threads enqueuing examples.
     read_batch_size: An int or scalar `Tensor` specifying the number of

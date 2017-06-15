@@ -177,10 +177,11 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) {
           root->proto().total_exec_micros();
     }
 
-    attrs.push_back(strings::Printf("%30s", strings::Printf(
-        "%s (%.2f%%, %.2f%%)",
-        FormatTime(node->proto().exec_micros()).c_str(),
-        accu_pct, pct).c_str()).c_str());
+    attrs.push_back(strings::Printf(
+        "%30s", strings::Printf("%s (%.2f%%, %.2f%%)",
+                                FormatTime(node->proto().exec_micros()).c_str(),
+                                accu_pct, pct)
+                    .c_str()));
   }
 
   if (opts.select.find(kShown[2]) != opts.select.end()) {
@@ -192,10 +193,12 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) {
       pct = 100.0 * node->proto().parameters() /
           root->proto().total_parameters();
     }
-    attrs.push_back(strings::Printf("%30s", strings::Printf(
-        "%s params (%.2f%%, %.2f%%)",
-        FormatNumber(node->proto().parameters()).c_str(),
-        accu_pct, pct).c_str()).c_str());
+    attrs.push_back(strings::Printf(
+        "%30s",
+        strings::Printf("%s params (%.2f%%, %.2f%%)",
+                        FormatNumber(node->proto().parameters()).c_str(),
+                        accu_pct, pct)
+            .c_str()));
   }
 
   if (opts.select.find(kShown[3]) != opts.select.end()) {
@@ -230,8 +233,17 @@ string TFOp::FormatNode(OpNode* node, OpNode* root, const Options& opts) {
         strings::Printf("%d", node->proto().graph_nodes_size()).c_str()));
   }
 
-  return strings::Printf(
-      "%-25s%s\n", node->name().c_str(), str_util::Join(attrs, ", ").c_str());
+  string node_str = strings::Printf("%-25s%s\n", node->name().c_str(),
+                                    str_util::Join(attrs, ", ").c_str());
+
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    string input_shape_str = FormatInputShapes(node->proto());
+    if (!input_shape_str.empty()) {
+      node_str = strings::Printf("%s\n%s\n\n", node_str.c_str(),
+                                 input_shape_str.c_str());
+    }
+  }
+  return node_str;
 }
 }  // namespace tfprof
 }  // namespace tensorflow

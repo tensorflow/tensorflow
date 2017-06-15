@@ -53,14 +53,16 @@ string GetTraceString(const CodeDef::Trace& trace) {
 }  // namespace
 
 void TFCode::AddNode(TFGraphNode* node) {
-  if (!node->code()) {
+  if (node->code().traces_size() == 0) {
     return;
   }
   TFMultiGraphNode* pre_trace_node = nullptr;
-  for (int i = 0; i < node->code()->traces_size(); ++i) {
+  // TODO(xpan): Consider to release CodeDef after TFCode is built. It
+  // takes a lot of memory.
+  for (int i = 0; i < node->code().traces_size(); ++i) {
     // Unlike op name, which is globally unique, trace name is only unique
     // w.r.t. it's parent.
-    const string& trace = GetTraceString(node->code()->traces(i));
+    const string& trace = GetTraceString(node->code().traces(i));
     if (i == 0) {
       if (!trace_root_) {
         trace_root_.reset(new TFMultiGraphNode(trace));
@@ -72,7 +74,7 @@ void TFCode::AddNode(TFGraphNode* node) {
     pre_trace_node->AddChildren(trace);
     TFMultiGraphNode* trace_node = pre_trace_node->children().at(trace).get();
 
-    if (i == node->code()->traces_size() - 1) {
+    if (i == node->code().traces_size() - 1) {
       trace_node->AddGraphNode(node);
     }
     pre_trace_node = trace_node;
@@ -217,9 +219,7 @@ std::vector<CodeNode*> TFCode::Account(const std::vector<CodeNode*>& roots,
     node->ResetTotalStats();
     std::vector<CodeNode*> act_cnodes = Account(node->children, opts);
     node->account = ReAccount(node, opts);
-    // LOG(ERROR) << act_cnodes.size() << " " << node->account;
     if (node->account || !act_cnodes.empty()) {
-      // LOG(ERROR) << node->name();
       node->show_children.clear();
       node->ResetTotalStats();
       node->AddSelfToTotalStats();
@@ -280,6 +280,10 @@ string TFCode::FormatNode(CodeNode* node, const Options& opts, int64 indent) {
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     std::set<string> op_types = node->node->op_types();
     attrs.push_back(str_util::Join(op_types, "|"));
+  }
+
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    attrs.push_back(strings::Printf("%s N/A in code view", kShown[8]));
   }
 
   return strings::Printf("%s%s (%s)\n", string(indent, ' ').c_str(),

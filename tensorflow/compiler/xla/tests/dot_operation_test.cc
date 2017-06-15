@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/layout_util_flags.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/reference_util.h"
@@ -366,9 +367,9 @@ XLA_TEST_F(DotOperationTest, BatchMatMul) {
   std::vector<xla::ComputationDataHandle> out_slices;
   for (int i = 0; i < 4; ++i) {
     // Slice off individual matrices and reshape to 2D tensors.
-    auto x_slice = builder.Slice(x_flat, {i, 0, 0}, {i + 1, 2, 2});
+    auto x_slice = builder.Slice(x_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
     x_slice = builder.Reshape(x_slice, {0, 1, 2}, {2, 2});
-    auto y_slice = builder.Slice(y_flat, {i, 0, 0}, {i + 1, 2, 2});
+    auto y_slice = builder.Slice(y_flat, {i, 0, 0}, {i + 1, 2, 2}, {1, 1, 1});
     y_slice = builder.Reshape(y_slice, {0, 1, 2}, {2, 2});
 
     auto out = builder.Dot(x_slice, y_slice);
@@ -460,6 +461,7 @@ TEST_F(DotOperationTest, TransposeFolding) {
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
   xla::legacy_flags::AppendLayoutUtilFlags(&flag_list);
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuRuntimeFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);

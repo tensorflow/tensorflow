@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+import * as backend_backend from '../../tf-backend/backend';
+import {createRouter, setRouter} from '../../tf-backend/router';
+
 // TODO(dandelion): Fix me.
 declare function fixture(id: string): any;
 declare function stub(x, y: any): void;
@@ -22,8 +25,9 @@ describe('audio dashboard tests', () => {
   let reloadCount = 0;
   beforeEach(() => {
     audioDash = fixture('testElementFixture');
-    const router = TF.Backend.router('/data', true);
-    const backend = new TF.Backend.Backend(router);
+    const router = createRouter('/data', true);
+    setRouter(router);
+    const backend = new backend_backend.Backend();
     audioDash.backend = backend;
     stub('tf-audio-loader', {
       reload: () => { reloadCount++; },

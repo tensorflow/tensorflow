@@ -193,9 +193,11 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   // the result).  We also know how many bytes can be dereferenced in it.
   const llvm::Argument& temp_buffer = *std::prev(kernel->arg_end());
   int64 temp_buffer_arg_no = temp_buffer.getArgNo();
-  if (const BufferAllocation* allocation =
-          ir_emitter_context_->buffer_assignment().GetTempAllocation()) {
-    kernel->addDereferenceableAttr(temp_buffer_arg_no + 1, allocation->size());
+  int64 temp_allocation_total_size =
+      ir_emitter_context_->buffer_assignment().temp_allocation_total_size();
+  if (temp_allocation_total_size != 0) {
+    kernel->addDereferenceableAttr(temp_buffer_arg_no + 1,
+                                   temp_allocation_total_size);
   }
   kernel->addAttribute(temp_buffer_arg_no + 1, llvm::Attribute::NoAlias);
 
@@ -1631,6 +1633,7 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildKernelThunk(
 
   // Compute the input buffer indices.
   std::vector<BufferAllocation::Slice> io_buffers;
+  io_buffers.reserve(io_hlos.size());
   for (const HloInstruction* io_hlo : io_hlos) {
     io_buffers.push_back(GetAllocationSlice(*LatestNonGteAncestor(io_hlo)));
   }
@@ -1796,7 +1799,7 @@ namespace {
 Status CheckWhileBuffersShareAllocation(
     const HloInstruction* xla_while,
     const BufferAssignment& buffer_assignment) {
-  return ShapeUtil::ForEachSubshape(
+  return ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
       [&buffer_assignment, &xla_while](const Shape& /*subshape*/,
                                        const ShapeIndex& index) -> Status {
