@@ -155,6 +155,7 @@ sh_binary(
             "//tensorflow/contrib/specs:specs",
             "//tensorflow/contrib/tensor_forest:init_py",
             "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
+            "//tensorflow/contrib/predictor:predictor_pip",
             "//tensorflow/examples/tutorials/mnist:package",
             "//tensorflow/python:distributed_framework_test_lib",
             "//tensorflow/python:meta_graph_testdata",
