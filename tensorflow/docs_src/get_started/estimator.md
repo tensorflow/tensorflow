@@ -238,9 +238,9 @@ you'll use `training_set.data` and
 
 ## Construct a Deep Neural Network Classifier
 
-tf.estimator offers a variety of predefined models, called
-@{$python/estimator#estimator$`Estimator`s}, which you can
-use "out of the box" to run training and evaluation operations on your data.
+tf.estimator offers a variety of predefined models, called `Estimator`s, which
+you can use "out of the box" to run training and evaluation operations on your
+data.
 Here, you'll configure a Deep Neural Network Classifier model to fit the Iris
 data. Using tf.estimator, you can instantiate your
 @{tf.estimator.DNNClassifier} with just a couple lines of code:
@@ -397,9 +397,6 @@ The model thus predicts that the first sample is *Iris versicolor*, and the
 second sample is *Iris virginica*.
 
 ## Additional Resources
-
-*   For further reference materials on tf.contrib.learn, see the official
-    @{$python/estimator$API docs}.
 
 *   To learn more about using tf.estimator to create linear models, see
     @{$linear$Large-scale Linear Models with TensorFlow}.
