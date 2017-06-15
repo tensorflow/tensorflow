@@ -267,7 +267,7 @@ cc_library(
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/core/platform/default/build_config:cudnn_plugin",
-        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
+        "//tensorflow/core/platform/default/build_config:stream_executor_cuda",  # build_cleaner: keep
     ],
 )
 
@@ -376,7 +376,6 @@ cc_test(
         ":fusion_merger",
         ":instruction_fusion",
         "//tensorflow/compiler/xla:test_helpers",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
     ],
 )

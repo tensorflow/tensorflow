@@ -333,6 +333,7 @@ cc_library(
     copts = runtime_copts(),
     deps = [
         "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -404,6 +405,7 @@ cc_test(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -501,6 +503,7 @@ cc_library(
         "//tensorflow/compiler/xla/legacy_flags:cpu_runtime_flags",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -510,6 +513,7 @@ cc_test(
     srcs = ["conv_canonicalization_test.cc"],
     deps = [
         ":conv_canonicalization",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",

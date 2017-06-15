@@ -1595,10 +1595,8 @@ cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/core:lib",
     ],
 )
 
@@ -1800,7 +1798,6 @@ cc_library(
         ":hlo",
         ":hlo_proto",
         "//tensorflow/compiler/xla:status",
-        "//tensorflow/core:lib",
     ],
 )
 
