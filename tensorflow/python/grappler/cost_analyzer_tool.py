@@ -24,10 +24,11 @@ import sys
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.grappler import cost_analyzer
 from tensorflow.python.platform import app
+from tensorflow.python.platform import gfile
 
 
 def main(_):
-  with open(FLAGS.input) as input_file:
+  with gfile.GFile(FLAGS.input) as input_file:
     metagraph = meta_graph_pb2.MetaGraphDef()
     metagraph.ParseFromString(input_file.read())
 
