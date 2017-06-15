@@ -38,6 +38,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -3229,6 +3230,69 @@ class UnitNormTests(test.TestCase):
       with self.test_session():
         actual = norms.eval({image: placeholder_value})
         self.assertAllClose(expected, actual, 1e-4, 1e-4)
+
+
+class PoincareNormalizeTest(test.TestCase):
+
+  def _PoincareNormalize(self, x, dim, epsilon=1e-5):
+    if isinstance(dim, list):
+      norm = np.linalg.norm(x, axis=tuple(dim))
+      for d in dim:
+        norm = np.expand_dims(norm, d)
+      norm_x = ((1. - epsilon) * x) / norm
+    else:
+      norm = np.expand_dims(np.apply_along_axis(np.linalg.norm, dim, x), dim)
+      norm_x = ((1. - epsilon) * x) / norm
+    return np.where(norm > 1.0 - epsilon, norm_x, x)
+
+  def testPoincareNormalize(self):
+    x_shape = [20, 7, 3]
+    epsilon = 1e-5
+    tol = 1e-6
+    np.random.seed(1)
+    x_np = np.random.random_sample(x_shape).astype(np.float32)
+    for dim in range(len(x_shape)):
+      y_np = self._PoincareNormalize(x_np, dim, epsilon)
+      with self.test_session():
+        x_tf = constant_op.constant(x_np, name='x')
+        y_tf = _layers.poincare_normalize(x_tf, dim, epsilon)
+        y_tf_eval = y_tf.eval()
+        norm = np.linalg.norm(y_np, axis=dim)
+        self.assertLessEqual(norm.max(), 1. - epsilon + tol)
+        norm = np.linalg.norm(y_tf_eval, axis=dim)
+        self.assertLessEqual(norm.max(), 1. - epsilon + tol)
+        self.assertAllClose(y_np, y_tf_eval)
+
+  def testPoincareNormalizeDimArray(self):
+    x_shape = [20, 7, 3]
+    epsilon = 1e-5
+    tol = 1e-6
+    np.random.seed(1)
+    x_np = np.random.random_sample(x_shape).astype(np.float32)
+    dim = [1, 2]
+    y_np = self._PoincareNormalize(x_np, dim, epsilon)
+    with self.test_session():
+      x_tf = constant_op.constant(x_np, name='x')
+      y_tf = _layers.poincare_normalize(x_tf, dim, epsilon)
+      y_tf_eval = y_tf.eval()
+      norm = np.linalg.norm(y_np, axis=tuple(dim))
+      self.assertLess(norm.max(), 1. - epsilon + tol)
+      norm = np.linalg.norm(y_tf_eval, axis=tuple(dim))
+      self.assertLess(norm.max(), 1. - epsilon + tol)
+      self.assertAllClose(y_np, y_tf_eval, rtol=1e-6, atol=1e-6)
+
+  def testPoincareNormalizeGradient(self):
+    x_shape = [20, 7, 3]
+    np.random.seed(1)
+    x_np = np.random.random_sample(x_shape).astype(np.float64)
+    for dim in range(len(x_shape)):
+      with self.test_session():
+        x_tf = constant_op.constant(x_np, name='x')
+        y_tf = _layers.poincare_normalize(x_tf, dim)
+        err = gradient_checker.compute_gradient_error(x_tf, x_shape,
+                                                      y_tf, x_shape)
+      print('PoinCareNormalize gradient err = %g ' % err)
+      self.assertLess(err, 1e-4)
 
 
 # TODO(b/28426988): Add separate tests for non-legacy versions.
