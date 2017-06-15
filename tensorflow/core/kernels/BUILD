@@ -2232,6 +2232,7 @@ tf_cc_tests(
         "summary_audio_op_test.cc",
         "summary_image_op_test.cc",
         "summary_op_test.cc",
+        "summary_tensor_op_test.cc",
     ],
     deps = [
         ":logging",
@@ -4310,6 +4311,7 @@ filegroup(
         "quantized_mul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
+        "quantized_resize_bilinear_op.cc",
         "reference_gemm.h",
         "requantization_range_op.cc",
         "requantize.cc",
@@ -4424,6 +4426,7 @@ tf_kernel_library(
         "quantized_mul_op.cc",
         "quantized_pooling_ops.cc",
         "quantized_reshape_op.cc",
+        "quantized_resize_bilinear_op.cc",
         "requantization_range_op.cc",
         "requantize.cc",
         "reshape_op.h",
@@ -4437,6 +4440,7 @@ tf_kernel_library(
         ":concat_lib_hdrs",
         ":conv_ops",
         ":eigen_helpers",
+        ":image_resizer_state",
         ":ops_util",
         ":pooling_ops",
         "//tensorflow/core",
@@ -4642,6 +4646,72 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
+)
+
+tf_cc_test(
+    name = "quantized_resize_bilinear_op_test",
+    size = "small",
+    srcs = ["quantized_resize_bilinear_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":quantized_ops",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:image_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+# Android-only test for quantized resize bilinear.
+cc_binary(
+    name = "quantized_resize_bilinear_op_test_android_only",
+    testonly = 1,
+    srcs = ["quantized_resize_bilinear_op_test.cc"],
+    copts = tf_copts(),
+    linkopts = select({
+        "//tensorflow:android": [
+            "-lm",
+            "-llog",
+            "-pie",
+            "-std=c++11",
+        ],
+        "//conditions:default": [],
+    }),
+    linkstatic = 1,
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+    ] + select({
+        "//tensorflow:android": [
+            ":android_tensorflow_kernels",
+            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_test_lib",
+        ],
+        "//conditions:default": [
+            ":ops_testutil",
+            ":ops_util",
+            ":quantized_ops",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:direct_session",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:image_ops_op_lib",
+            "//tensorflow/core:protos_all_cc",
+            "//tensorflow/core:test",
+            "//tensorflow/core:test_main",
+            "//tensorflow/core:testlib",
+        ],
+    }),
 )
 
 tf_cc_test(

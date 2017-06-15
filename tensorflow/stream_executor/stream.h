@@ -1652,9 +1652,23 @@ class Stream {
   // Enqueue onto the stream a operation that transforms a tensor.
   // See DnnSupport::DoTransformTensor for more details.
   Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
-                              const DeviceMemory<float> &input_data,
+                              dnn::DataType input_type,
+                              const DeviceMemoryBase &input_data,
                               const dnn::BatchDescriptor &output_desc,
-                              DeviceMemory<float> *output_data);
+                              dnn::DataType output_type,
+                              DeviceMemoryBase *output_data);
+
+  // The templated version of the above ThenTransformTensor. Useful when the
+  // input and output types are statically known.
+  template <typename InElemT, typename OutElemT>
+  Stream &ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
+                              const DeviceMemory<InElemT> &input_data,
+                              const dnn::BatchDescriptor &output_desc,
+                              DeviceMemory<OutElemT> *output_data) {
+    return ThenTransformTensor(input_desc, dnn::ToDataType<InElemT>(),
+                               input_data, output_desc,
+                               dnn::ToDataType<OutElemT>(), output_data);
+  }
 
   // (Synchronously) block the host code waiting for the operations
   // entrained on the stream (enqueued to this point in program

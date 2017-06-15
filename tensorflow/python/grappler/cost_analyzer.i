@@ -53,6 +53,7 @@ string GenerateCostReport(const tensorflow::MetaGraphDef& metagraph) {
   int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
   int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
   tensorflow::grappler::SingleMachine cluster(timeout_s, num_cpu_cores, num_gpus);
+  TF_CHECK_OK(cluster.Provision());
 
   string suffix;
   tensorflow::grappler::CostAnalyzer analyzer(*item, &cluster, suffix);

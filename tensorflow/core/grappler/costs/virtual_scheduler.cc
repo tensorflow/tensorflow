@@ -561,6 +561,8 @@ Costs VirtualScheduler::Summary() const {
       persisent_ops.insert(node->op());
     }
     int64 max_memory_usage = persistent_memory_usage + state.max_memory_usage;
+    critical_path_costs.estimated_max_memory_per_device[name] =
+        max_memory_usage;
 
     VLOG(1) << "Device = " << name
             << ", num_nodes = " << state.nodes_executed.size()

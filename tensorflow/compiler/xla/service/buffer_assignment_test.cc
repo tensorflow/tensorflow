@@ -730,7 +730,7 @@ TEST_F(BufferAssignmentTest, ReuseNonOperandBuffer) {
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   auto broadcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
 
@@ -762,7 +762,7 @@ TEST_F(BufferAssignmentTest, NoReuseLiveBuffer) {
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   auto broadcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
   builder.AddInstruction(HloInstruction::CreateTuple({negate, broadcast}));
@@ -799,7 +799,7 @@ TEST_F(BufferAssignmentTest, NoReuseAliasedBuffer) {
   auto tuple_element = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(f32vec100_, tuple, 0));
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, tuple_element, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, tuple_element, {0}, {10}, {1}));
   auto broadcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
   builder.AddInstruction(HloInstruction::CreateTuple({tuple, broadcast}));
@@ -834,7 +834,7 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBuffer) {
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
   // Slice output is 10 elements.
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   // Broadcast output is 40 elements.
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::MakeShape(F32, {10, 4}), slice, {0}));
@@ -866,7 +866,7 @@ TEST_F(BufferAssignmentTest, ReuseOutputBufferIfExactlySized) {
   auto negate = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   // Broadcast output is 40 elements.
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::MakeShape(F32, {10, 10}), slice, {0}));
@@ -903,7 +903,7 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBufferInTuple) {
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
   // Slice output is 10 elements.
   auto slice = builder.AddInstruction(
-      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}));
+      HloInstruction::CreateSlice(f32vec10_, negate, {0}, {10}, {1}));
   // Broadcast output is 40 elements.
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::MakeShape(F32, {10, 4}), slice, {0}));
@@ -1460,16 +1460,17 @@ TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
   RunCopyInsertion(module.get());
   auto assignment = RunBufferAssignment(module.get());
 
-  // While instruction 'while0' has no predecessor while instructions with
-  // which to share allocations.
-
-  // While instruction 'while1' can share allocations with the following
-  // buffers:
-  // *) while0[2], while1[0]
-  // *) while0[1], while1[1]
+  // Verify 'input0' and read-only use while0{0} alias.
+  EXPECT_EQ(assignment->GetUniqueSlice(input0, {}).ConsumeValueOrDie(),
+            assignment->GetUniqueSlice(while0, {0}).ConsumeValueOrDie());
+  // Verify 'weights0' and read-only use while0{1} alias.
+  EXPECT_EQ(assignment->GetUniqueSlice(weights0, {}).ConsumeValueOrDie(),
+            assignment->GetUniqueSlice(while0, {1}).ConsumeValueOrDie());
+  // Verify 'while0{2}' and read-only use while1{0} alias.
   EXPECT_EQ(assignment->GetUniqueSlice(while0, {2}).ConsumeValueOrDie(),
             assignment->GetUniqueSlice(while1, {0}).ConsumeValueOrDie());
-  EXPECT_EQ(assignment->GetUniqueSlice(while0, {1}).ConsumeValueOrDie(),
+  // Verify 'weights1' and read-only use while1{1} alias.
+  EXPECT_EQ(assignment->GetUniqueSlice(weights1, {}).ConsumeValueOrDie(),
             assignment->GetUniqueSlice(while1, {1}).ConsumeValueOrDie());
 }
 

@@ -21,7 +21,7 @@ TF_VERSION="$1"
 SETTINGS_XML="$2"
 shift
 shift
-CMD="$@"
+CMD="$*"
 
 if [[ -z "${TF_VERSION}" ]]
 then

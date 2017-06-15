@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstddef>
 #include <deque>
 #include <mutex>
 #include <numeric>
@@ -27,13 +28,12 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
-
 namespace {
 
 class Buffer : public ResourceBase {
  public:
   // public types
-  typedef std::vector<Tensor> Tuple;
+  using Tuple = std::vector<Tensor>;
 
  private:
   // private variables
@@ -50,24 +50,20 @@ class Buffer : public ResourceBase {
 
   // If the buffer is configured for bounded capacity, notify
   // waiting inserters that space is now available
-  void notify_inserters_if_bounded(std::unique_lock<std::mutex> & l) {
-    if(IsBounded()) {
-      l.unlock();
+  void notify_inserters_if_bounded(std::unique_lock<std::mutex>* lock) {
+    if (IsBounded()) {
+      lock->unlock();
       full_cond_var_.notify_one();
     }
   }
 
   // Are there a limit number of elements or a memory limit
   // configued on this buffer?
-  bool IsBounded() {
-    return capacity_ > 0 || memory_limit_ > 0;
-  }
+  bool IsBounded() const { return capacity_ > 0 || memory_limit_ > 0; }
 
-  bool IsCapacityFull() {
-    return buf_.size() >= capacity_;
-  }
+  bool IsCapacityFull() const { return buf_.size() >= capacity_; }
 
-  bool WouldExceedMemoryLimit(std::size_t bytes) {
+  bool WouldExceedMemoryLimit(std::size_t bytes) const {
     return bytes + current_bytes_ > memory_limit_;
   }
 
@@ -81,14 +77,12 @@ class Buffer : public ResourceBase {
 
  public:
   // public methods
-  explicit Buffer(std::size_t capacity, std::size_t memory_limit) :
-      capacity_(capacity),
-      memory_limit_(memory_limit),
-      current_bytes_(0) {}
+  explicit Buffer(std::size_t capacity, std::size_t memory_limit)
+      : capacity_(capacity), memory_limit_(memory_limit), current_bytes_(0) {}
 
   // the Buffer takes ownership of the Tuple
   Status Put(Tuple* tuple) {
-    std::unique_lock<std::mutex> l(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
 
     std::size_t tuple_bytes = GetTupleBytes(*tuple);
 
@@ -102,7 +96,7 @@ class Buffer : public ResourceBase {
 
     // If buffer capacity is bounded wait until elements have been removed
     if(IsBounded()) {
-      full_cond_var_.wait(l, [tuple_bytes, this]() {
+      full_cond_var_.wait(lock, [tuple_bytes, this]() {
         // If there's a memory limit, check if there's space for insertion
         bool memory_limit_valid = memory_limit_ > 0 ?
             !WouldExceedMemoryLimit(tuple_bytes) : true;
@@ -120,7 +114,7 @@ class Buffer : public ResourceBase {
     // Store tuple
     buf_.push_back(std::move(*tuple));
 
-    l.unlock();
+    lock.unlock();
     // maybe possible to optimize by reducing
     // how often this signal is sent
     non_empty_cond_var_.notify_one();
@@ -130,12 +124,10 @@ class Buffer : public ResourceBase {
 
   // Get tuple at front of the buffer
   void Get(Tuple* tuple) {  // TODO(zhifengc): Support cancellation.
-    std::unique_lock<std::mutex> l(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
 
     // Wait for data if the buffer is empty
-    non_empty_cond_var_.wait(l, [this]() {
-      return !buf_.empty();
-    });
+    non_empty_cond_var_.wait(lock, [this]() { return !buf_.empty(); });
 
     // Move data into the output tuple
     *tuple = std::move(buf_.front());
@@ -144,20 +136,19 @@ class Buffer : public ResourceBase {
     // Update bytes in the Staging Area
     current_bytes_ -= GetTupleBytes(*tuple);
 
-    notify_inserters_if_bounded(l);
+    notify_inserters_if_bounded(&lock);
   }
 
   // Return tuple at index
   Status Peek(std::size_t index, Tuple* tuple) {
-    std::unique_lock<std::mutex> l(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
 
     // Wait if the requested index is not available
-    non_empty_cond_var_.wait(l, [index, this]() {
-      return index < this->buf_.size();
-    });
+    non_empty_cond_var_.wait(
+        lock, [index, this]() { return index < this->buf_.size(); });
 
     // Place tensors in the output tuple
-    for(const auto & tensor: buf_[index]) {
+    for (const auto& tensor : buf_[index]) {
       tuple->push_back(tensor);
     }
 
@@ -166,23 +157,22 @@ class Buffer : public ResourceBase {
 
   // Buffer size
   size_t Size() {
-    std::unique_lock<std::mutex> l(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
     return buf_.size();
   }
 
   void Clear() {
-    std::unique_lock<std::mutex> l(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
     buf_.clear();
     current_bytes_ = 0;
 
-    notify_inserters_if_bounded(l);
+    notify_inserters_if_bounded(&lock);
   }
 
   string DebugString() override {
-    std::unique_lock<std::mutex> l(mu_);
+    std::unique_lock<std::mutex> lock(mu_);
     return strings::StrCat("Staging size: ", buf_.size());
   }
-
 };
 
 Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {

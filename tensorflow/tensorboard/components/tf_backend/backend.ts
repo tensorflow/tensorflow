@@ -193,6 +193,17 @@ export class Backend {
   }
 
   /**
+   * Returns a promise showing the Run-to-Tag mapping for profile data.
+   */
+  public profileTags(): Promise<RunToTag> {
+    let url = getRouter().pluginRoute('profile', '/tags');
+    if (getRouter().isDemoMode()) {
+      url += '.json';
+    }
+    return this.requestManager.request(url);
+  }
+
+  /**
    * Return a promise showing list of runs that contain graphs.
    */
   public graphRuns(): Promise<string[]> {
@@ -335,6 +346,17 @@ export class Backend {
     let p: Promise<AudioMetadata[]>;
     p = this.requestManager.request(url);
     return p.then(map(this.createAudio.bind(this)));
+  }
+
+  /**
+   * Returns a promise containing profile data for given run and tag.
+   */
+  public profile(tag: string, run: string): Promise<string> {
+    let url = (getRouter().pluginRunTagRoute('profile', '/data')(tag, run));
+    if (getRouter().isDemoMode()) {
+      url += '.json';
+    }
+    return this.requestManager.request(url);
   }
 
   /**
