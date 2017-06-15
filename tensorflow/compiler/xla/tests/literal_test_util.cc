@@ -41,20 +41,25 @@ namespace xla {
 
 /* static */ void LiteralTestUtil::AssertEqualShapes(const Shape& expected,
                                                      const Shape& actual) {
-  ASSERT_EQ(ShapeUtil::Rank(expected), ShapeUtil::Rank(actual));
-  ASSERT_EQ(expected.element_type(), actual.element_type())
-      << PrimitiveType_Name(expected.element_type()) << " vs "
-      << PrimitiveType_Name(actual.element_type());
-  ASSERT_EQ(expected.dimensions_size(), actual.dimensions_size());
-  for (int i = 0; i < expected.dimensions_size(); ++i) {
-    ASSERT_EQ(expected.dimensions(i), actual.dimensions(i))
-        << "mismatch in dimension #" << i
-        << " expected: " << ShapeUtil::HumanString(expected)
-        << " actual: " << ShapeUtil::HumanString(actual);
-  }
-  ASSERT_EQ(expected.tuple_shapes_size(), actual.tuple_shapes_size());
-  for (int i = 0; i < expected.tuple_shapes_size(); ++i) {
-    AssertEqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
+  ASSERT_EQ(ShapeUtil::IsTuple(expected), ShapeUtil::IsTuple(actual));
+  if (ShapeUtil::IsTuple(expected)) {
+    ASSERT_EQ(ShapeUtil::TupleElementCount(expected),
+              ShapeUtil::TupleElementCount(actual));
+    for (int i = 0; i < expected.tuple_shapes_size(); ++i) {
+      AssertEqualShapes(expected.tuple_shapes(i), actual.tuple_shapes(i));
+    }
+  } else {
+    ASSERT_EQ(ShapeUtil::Rank(expected), ShapeUtil::Rank(actual));
+    ASSERT_EQ(expected.element_type(), actual.element_type())
+        << PrimitiveType_Name(expected.element_type()) << " vs "
+        << PrimitiveType_Name(actual.element_type());
+    ASSERT_EQ(expected.dimensions_size(), actual.dimensions_size());
+    for (int i = 0; i < expected.dimensions_size(); ++i) {
+      ASSERT_EQ(expected.dimensions(i), actual.dimensions(i))
+          << "mismatch in dimension #" << i
+          << " expected: " << ShapeUtil::HumanString(expected)
+          << " actual: " << ShapeUtil::HumanString(actual);
+    }
   }
 }
 

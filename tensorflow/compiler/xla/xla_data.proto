@@ -53,7 +53,8 @@ enum PrimitiveType {
   // computation; e.g. a computation that returns weights and biases may have a
   // signature that results in a tuple like (f32[784x2000], f32[2000])
   //
-  // Tuples are currently special in that they may only be rank 0.
+  // If a shape proto has the tuple element type, it may not have any entries
+  // in the dimensions field.
   TUPLE = 13;
 
   // An opaque type used for passing context specific data to a custom

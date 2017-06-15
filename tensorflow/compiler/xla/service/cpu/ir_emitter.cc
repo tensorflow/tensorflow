@@ -1970,7 +1970,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetAddressForOp(
     // For the root node, we write directly to the output buffer of the
     // function.
     llvm::Argument* retval = GetResultArgument();
-    if (!ShapeUtil::HasZeroElements(target_shape)) {
+    if (!ShapeUtil::IsNil(target_shape)) {
       llvm::AttrBuilder attr_builder;
       attr_builder.addAlignmentAttr(MinimumAlignmentForShape(target_shape));
       attr_builder.addDereferenceableAttr(ByteSizeOf(target_shape));

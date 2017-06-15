@@ -371,7 +371,7 @@ void SetTbaaForInstruction(llvm::Instruction* instruction, Shape shape,
   // Scalars do not have layout which makes it permissible to omit an explicit
   // layout.  To make sure that equivalent scalar shapes have the same TBAA,
   // remove the (meaningless) explicit layout if one is present.
-  if (ShapeUtil::Rank(shape) == 0) {
+  if (!ShapeUtil::IsArray(shape) || ShapeUtil::IsScalar(shape)) {
     LayoutUtil::ClearLayout(&shape);
   } else {
     CHECK(shape.has_layout());

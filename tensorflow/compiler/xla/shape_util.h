@@ -144,7 +144,8 @@ class ShapeUtil {
   static bool Equal(const Shape& lhs, const Shape& rhs);
 
   // Returns the rank (number of dimensions) of the given shape.
-  static int64 Rank(const Shape& shape) { return shape.dimensions_size(); }
+  // Precondition: !IsTuple(shape)
+  static int64 Rank(const Shape& shape);
 
   // Returns the number of dimensions for which the dimension is not (trivially)
   // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
