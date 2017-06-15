@@ -371,9 +371,8 @@ public class TensorFlowInferenceInterface {
   private void loadGraph(InputStream is, Graph g) throws IOException {
     final long startMs = System.currentTimeMillis();
 
-    if( VERSION.SDK_INT >= 18 ){
+    if (VERSION.SDK_INT >= 18) {
       Trace.beginSection("initializeTensorFlow");
-
       Trace.beginSection("readGraphDef");
     }
 
@@ -388,9 +387,8 @@ public class TensorFlowInferenceInterface {
               + graphDef.length);
     }
 
-    if( VERSION.SDK_INT >= 18 ) {
-      Trace.endSection();
-
+    if (VERSION.SDK_INT >= 18) {
+      Trace.endSection(); // readGraphDef.
       Trace.beginSection("importGraphDef");
     }
 
@@ -400,9 +398,8 @@ public class TensorFlowInferenceInterface {
       throw new IOException("Not a valid TensorFlow Graph serialization: " + e.getMessage());
     }
 
-    if( VERSION.SDK_INT >= 18 ) {
-      Trace.endSection();
-
+    if (VERSION.SDK_INT >= 18) {
+      Trace.endSection(); // importGraphDef.
       Trace.endSection(); // initializeTensorFlow.
     }
 
