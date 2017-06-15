@@ -22,7 +22,6 @@ limitations under the License.
 <link rel="import" href="../tf-dashboard-common/tf-dashboard.html">
 <link rel="import" href="../tf-dashboard-common/tf-option-selector.html">
 <link rel="import" href="../tf-dashboard-common/tf-panes-helper.html">
-<link rel="import" href="../tf-dashboard-common/tf-sidebar-helper.html">
 <link rel="import" href="../tf-runs-selector/tf-runs-selector.html">
 <link rel="import" href="../tf-imports/lodash.html">
 <link rel="import" href="../vz-line-chart/vz-line-chart.html">
@@ -47,11 +46,8 @@ charts are larger.
     <tf-dashboard-layout>
       <div class="sidebar">
         <div class="sidebar-section">
-          <tf-categorizer
-            id="categorizer"
-            tags="[[tags]]"
-            categories="{{_categories}}"
-          ></tf-categorizer>
+          <tf-categorizer tags="[[tags]]" categories="{{_categories}}">
+          </tf-categorizer>
           <div class="line-item">
             <paper-checkbox
             id="download-option"
@@ -99,10 +95,8 @@ charts are larger.
           </tf-option-selector>
         </div>
         <div class="sidebar-section">
-          <tf-runs-selector
-            id="runs-selector"
-            selected-runs="{{_selectedRuns}}"
-          ></tf-runs-selector>
+          <tf-runs-selector selected-runs="{{_selectedRuns}}">
+          </tf-runs-selector>
         </div>
       </div>
       <div class="center">
@@ -154,15 +148,6 @@ charts are larger.
         background: var(--tb-ui-light-accent);
       }
 
-      #categorizer {
-        flex-shrink: 0;
-      }
-
-      #runs-selector {
-        flex-shrink: 1;
-        flex-grow: 1;
-      }
-
       #tooltip-sorting {
         display: flex;
         font-size: 14px;
@@ -187,14 +172,6 @@ charts are larger.
       .sidebar-section {
         border-top: solid 1px rgba(0, 0, 0, 0.12);
         padding: 20px 0px 20px 30px;
-      }
-
-      /* TODO(wchargin): These styles also exist in dashboard-style, */
-      /* but don't apply due to the namespacing. :-( */
-      .sidebar {
-        display: flex;
-        flex-direction: column;
-        height: 100%;
       }
     </style>
   </template>

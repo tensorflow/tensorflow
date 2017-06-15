@@ -18,6 +18,7 @@ ts_web_library(
         "//tensorflow/tensorboard/components/tf_imports:d3",
         "//tensorflow/tensorboard/components/tf_imports:lodash",
         "//tensorflow/tensorboard/components/tf_imports:polymer",
+        "//tensorflow/tensorboard/components/tf_runs_selector",
         "@org_polymer_paper_dialog",
         "@org_polymer_paper_icon_button",
         "@org_polymer_paper_material",

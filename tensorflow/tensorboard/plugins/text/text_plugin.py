@@ -264,6 +264,8 @@ class TextPlugin(base_plugin.TBPlugin):
             run, name, 'tensors.json')
         tensors = json.loads(tensors_json)
         run_to_series[run] = tensors
+      else:
+        run_to_series[run] = []
     return run_to_series
 
   @wrappers.Request.application

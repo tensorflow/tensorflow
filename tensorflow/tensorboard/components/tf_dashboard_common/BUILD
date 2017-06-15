@@ -29,7 +29,6 @@ ts_web_library(
         "tf-regex-group.html",
         "tf-regex-group.ts",
         "tf-run-selector.html",
-        "tf-sidebar-helper.html",
     ],
     path = "/tf-dashboard-common",
     deps = [
