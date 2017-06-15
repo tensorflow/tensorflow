@@ -21,22 +21,28 @@ import android.app.Activity;
 import android.app.Fragment;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.Image;
 import android.media.Image.Plane;
+import android.media.ImageReader;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.HandlerThread;
+import android.os.Trace;
 import android.util.Size;
 import android.view.KeyEvent;
 import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
+
+import org.tensorflow.demo.env.ImageUtils;
 import org.tensorflow.demo.env.Logger;
 
 public abstract class CameraActivity extends Activity implements OnImageAvailableListener, Camera.PreviewCallback {
@@ -52,6 +58,19 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   private Handler handler;
   private HandlerThread handlerThread;
   private boolean useCamera2API;
+  protected Bitmap rgbFrameBitmap = null;
+  protected int[] rgbBytes = null;
+  protected int previewWidth = 0;
+  protected int previewHeight = 0;
+  protected Bitmap croppedBitmap = null;
+  protected static final boolean SAVE_PREVIEW_BITMAP = false;
+  protected long lastProcessingTimeMs;
+  protected Bitmap cropCopyBitmap;
+  protected ResultsView resultsView;
+  protected boolean computing = false;
+  protected Runnable postInferenceCallback;
+  protected byte[][] yuvBytes=new byte[3][];
+  protected int yRowStride;
 
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
@@ -66,6 +85,103 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     } else {
       requestPermission();
     }
+  }
+
+  /*
+ * Callback for android.hardware.Camera API
+ */
+  @Override
+  public void onPreviewFrame(final byte[] bytes, final Camera camera) {
+    if (computing) {
+      return;
+    }
+    computing = true;
+
+
+    Camera.Size previewSize = camera.getParameters().getPreviewSize();
+    yuvBytes[0]=bytes;
+    try {
+      // Initialize the storage bitmaps once when the resolution is known.
+      if (previewSize.width!=0 ||  previewSize.height!=0) {
+        previewHeight=previewSize.height;
+        previewWidth=previewSize.width;
+        rgbBytes = new int[previewWidth * previewHeight];
+        onPreviewSizeChosen(new Size(previewSize.width, previewSize.height), 90);
+        ImageUtils.convertYUV420SPToARGB8888(bytes, rgbBytes, previewWidth, previewHeight, false);
+
+      }
+
+    } catch (final Exception e) {
+      LOGGER.e(e, "Exception!");
+      return;
+    }
+
+    postInferenceCallback = new Runnable() {
+      @Override
+      public void run() {
+        camera.addCallbackBuffer(bytes);
+      }
+    };
+
+    processImageRGBbytes(new byte[bytes.length * 2/3]);
+  }
+
+  /*
+   * Callback for Camera2 API
+   */
+  @Override
+  public void onImageAvailable(final ImageReader reader) {
+    Image image = null;
+    rgbBytes = new int[previewWidth * previewHeight];
+
+
+    try {
+      image = reader.acquireLatestImage();
+
+      if (image == null) {
+        return;
+      }
+
+      if (computing) {
+        image.close();
+        return;
+      }
+      computing = true;
+
+      Trace.beginSection("imageAvailable");
+
+      final Plane[] planes = image.getPlanes();
+      fillBytes(planes, yuvBytes);
+
+      yRowStride = planes[0].getRowStride();
+      final int uvRowStride = planes[1].getRowStride();
+      final int uvPixelStride = planes[1].getPixelStride();
+      ImageUtils.convertYUV420ToARGB8888(
+              yuvBytes[0],
+              yuvBytes[1],
+              yuvBytes[2],
+              rgbBytes,
+              previewWidth,
+              previewHeight,
+              yRowStride,
+              uvRowStride,
+              uvPixelStride,
+              false);
+
+      image.close();
+
+    } catch (final Exception e) {
+      if (image != null) {
+        image.close();
+      }
+      LOGGER.e(e, "Exception!");
+      Trace.endSection();
+      return;
+    }
+
+    processImageRGBbytes(new byte[yuvBytes[0].length]);
+
+    Trace.endSection();
   }
 
   @Override
@@ -186,6 +302,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
         }
 
         useCamera2API = isHardwareLevelSupported(characteristics, CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+        LOGGER.i("Camera API lv2?: %s", useCamera2API);
         return cameraId;
       }
     } catch (CameraAccessException e) {
@@ -206,6 +323,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
                 @Override
                 public void onPreviewSizeChosen(final Size size, final int rotation) {
                   CameraActivity.this.onPreviewSizeChosen(size, rotation);
+
                 }
               },
               this,
@@ -269,6 +387,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     return super.onKeyDown(keyCode, event);
   }
 
+  protected abstract void processImageRGBbytes(byte[] luminance) ;
   protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
   protected abstract int getLayoutId();
   protected abstract Size getDesiredPreviewFrameSize();

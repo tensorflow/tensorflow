@@ -25,7 +25,6 @@ import android.graphics.Paint;
 import android.graphics.Paint.Style;
 import android.graphics.RectF;
 import android.graphics.Typeface;
-import android.hardware.Camera;
 import android.media.Image;
 import android.media.Image.Plane;
 import android.media.ImageReader;
@@ -116,7 +115,6 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private BorderedText borderedText;
 
   private long lastProcessingTimeMs;
-  private Runnable postInferenceCallback;
 
   @Override
   public void onPreviewSizeChosen(final Size size, final int rotation) {
@@ -127,6 +125,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     borderedText.setTypeface(Typeface.MONOSPACE);
 
     tracker = new MultiBoxTracker(getResources().getDisplayMetrics());
+
 
     if (USE_YOLO) {
       detector =
@@ -233,8 +232,65 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
   OverlayView trackingOverlay;
 
-  private void processImageRGBbytes() {
+  @Override
+  public void onImageAvailable(final ImageReader reader) {
+    Image image = null;
+
+    ++timestamp;
     final long currTimestamp = timestamp;
+
+    try {
+      image = reader.acquireLatestImage();
+
+      if (image == null) {
+        return;
+      }
+
+      Trace.beginSection("imageAvailable");
+
+      final Plane[] planes = image.getPlanes();
+      fillBytes(planes, yuvBytes);
+
+      tracker.onFrame(
+          previewWidth,
+          previewHeight,
+          planes[0].getRowStride(),
+          sensorOrientation,
+          yuvBytes[0],
+          timestamp);
+      trackingOverlay.postInvalidate();
+
+      // No mutex needed as this method is not reentrant.
+      if (computing) {
+        image.close();
+        return;
+      }
+      computing = true;
+
+      final int yRowStride = planes[0].getRowStride();
+      final int uvRowStride = planes[1].getRowStride();
+      final int uvPixelStride = planes[1].getPixelStride();
+      ImageUtils.convertYUV420ToARGB8888(
+              yuvBytes[0],
+              yuvBytes[1],
+              yuvBytes[2],
+              rgbBytes,
+              previewWidth,
+              previewHeight,
+              yRowStride,
+              uvRowStride,
+              uvPixelStride,
+              false);
+
+      image.close();
+    } catch (final Exception e) {
+      if (image != null) {
+        image.close();
+      }
+      LOGGER.e(e, "Exception!");
+      Trace.endSection();
+      return;
+    }
 
     rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
     final Canvas canvas = new Canvas(croppedBitmap);
@@ -244,6 +300,11 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     if (SAVE_PREVIEW_BITMAP) {
       ImageUtils.saveBitmap(croppedBitmap);
     }
+
+    if (luminance == null) {
+      luminance = new byte[yuvBytes[0].length];
+    }
+    System.arraycopy(yuvBytes[0], 0, luminance, 0, luminance.length);
 
     runInBackground(
         new Runnable() {
@@ -279,123 +340,13 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
             requestRender();
             computing = false;
-
-            if (postInferenceCallback != null) {
-              postInferenceCallback.run();
-            }
           }
         });
-  }
-
-  /*
-  * Callback for android.hardware.Camera API
-  */
-  @Override
-  public void onPreviewFrame(final byte[] bytes, final Camera camera) {
-    if (computing) {
-      return;
-    }
-    computing = true;
-
-    Camera.Size previewSize = camera.getParameters().getPreviewSize();
-    try {
-      // Initialize the storage bitmaps once when the resolution is known.
-      if (previewWidth != previewSize.width || previewHeight != previewSize.height) {
-        onPreviewSizeChosen(new Size(previewSize.width, previewSize.height), 90);
-      }
-
-      ImageUtils.convertYUV420SPToARGB8888(bytes, rgbBytes, previewWidth, previewHeight, false);
-    } catch (final Exception e) {
-      LOGGER.e(e, "Exception!");
-      return;
-    }
-
-    rgbFrameBitmap.setPixels(rgbBytes, 0, previewWidth, 0, 0, previewWidth, previewHeight);
-
-    if (luminance == null) {
-      luminance = new byte[bytes.length * 2/3];
-    }
-    System.arraycopy(bytes, 0, luminance, 0, luminance.length);
-
-    postInferenceCallback= new Runnable() {
-      @Override
-      public void run() {
-        camera.addCallbackBuffer(bytes);
-      }
-    };
-    processImageRGBbytes();
-  }
-
-  /*
-   * Callback for Camera2 API
-   */
-  @Override
-  public void onImageAvailable(final ImageReader reader) {
-    Image image = null;
-
-    ++timestamp;
-
-    try {
-      image = reader.acquireLatestImage();
-
-      if (image == null) {
-        return;
-      }
-
-      Trace.beginSection("imageAvailable");
-
-      final Plane[] planes = image.getPlanes();
-      fillBytes(planes, yuvBytes);
-
-      tracker.onFrame(
-          previewWidth,
-          previewHeight,
-          planes[0].getRowStride(),
-          sensorOrientation,
-          yuvBytes[0],
-          timestamp);
-      trackingOverlay.postInvalidate();
-
-      // No mutex needed as this method is not reentrant.
-      if (computing) {
-        image.close();
-        return;
-      }
-      computing = true;
-
-      final int yRowStride = planes[0].getRowStride();
-      final int uvRowStride = planes[1].getRowStride();
-      final int uvPixelStride = planes[1].getPixelStride();
-      ImageUtils.convertYUV420ToARGB8888(
-          yuvBytes[0],
-          yuvBytes[1],
-          yuvBytes[2],
-          rgbBytes,
-          previewWidth,
-          previewHeight,
-          yRowStride,
-          uvRowStride,
-          uvPixelStride,
-          false);
-
-      image.close();
-    } catch (final Exception e) {
-      if (image != null) {
-        image.close();
-      }
-      LOGGER.e(e, "Exception!");
-      Trace.endSection();
-    }
-
-    if (luminance == null) {
-      luminance = new byte[yuvBytes[0].length];
-    }
-    System.arraycopy(yuvBytes[0], 0, luminance, 0, luminance.length);
-
-    processImageRGBbytes();
 
     Trace.endSection();
   }
+
+  protected  void processImageRGBbytes(byte[] luminance) {}
 
   @Override
   protected int getLayoutId() {
