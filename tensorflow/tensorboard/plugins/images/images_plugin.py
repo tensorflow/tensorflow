@@ -44,8 +44,15 @@ class ImagesPlugin(base_plugin.TBPlugin):
 
   plugin_name = _PLUGIN_PREFIX_ROUTE
 
-  def get_plugin_apps(self, multiplexer, unused_logdir):
-    self._multiplexer = multiplexer
+  def __init__(self, context):
+    """Instantiates ImagesPlugin via TensorBoard core.
+
+    Args:
+      context: A base_plugin.TBContext instance.
+    """
+    self._multiplexer = context.multiplexer
+
+  def get_plugin_apps(self):
     return {
         '/images': self._serve_image_metadata,
         '/individualImage': self._serve_individual_image,
@@ -54,7 +61,7 @@ class ImagesPlugin(base_plugin.TBPlugin):
 
   def is_active(self):
     """The images plugin is active iff any run has at least one relevant tag."""
-    return any(self.index_impl().values())
+    return bool(self._multiplexer) and any(self._index_impl().values())
 
   def _index_impl(self):
     return {

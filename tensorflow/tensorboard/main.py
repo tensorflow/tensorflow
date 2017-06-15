@@ -102,7 +102,7 @@ def create_tb_app(plugins):
   """Read the flags, and create a TensorBoard WSGI application.
 
   Args:
-    plugins: A list of plugins for TensorBoard to initialize.
+    plugins: A list of constructor functions for TBPlugin subclasses.
 
   Raises:
     ValueError: if a logdir is not specified.
@@ -207,14 +207,14 @@ def main(unused_argv=None):
     return 0
   else:
     plugins = [
-        scalars_plugin.ScalarsPlugin(),
-        images_plugin.ImagesPlugin(),
-        audio_plugin.AudioPlugin(),
-        graphs_plugin.GraphsPlugin(),
-        distributions_plugin.DistributionsPlugin(),
-        histograms_plugin.HistogramsPlugin(),
-        projector_plugin.ProjectorPlugin(),
-        text_plugin.TextPlugin(),
+        scalars_plugin.ScalarsPlugin,
+        images_plugin.ImagesPlugin,
+        audio_plugin.AudioPlugin,
+        graphs_plugin.GraphsPlugin,
+        distributions_plugin.DistributionsPlugin,
+        histograms_plugin.HistogramsPlugin,
+        projector_plugin.ProjectorPlugin,
+        text_plugin.TextPlugin,
     ]
     tb = create_tb_app(plugins)
     run_simple_server(tb)

@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import csv
 import os.path
 
@@ -27,6 +28,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
 from tensorflow.tensorboard.plugins.scalars import scalars_plugin
 
 
@@ -47,8 +49,15 @@ class ScalarsPluginTest(tf.test.TestCase):
     multiplexer = event_multiplexer.EventMultiplexer()
     multiplexer.AddRunsFromDirectory(self.logdir)
     multiplexer.Reload()
-    self.plugin = scalars_plugin.ScalarsPlugin()
-    self.apps = self.plugin.get_plugin_apps(multiplexer, None)
+    context = base_plugin.TBContext(logdir=self.logdir, multiplexer=multiplexer)
+    self.plugin = scalars_plugin.ScalarsPlugin(context)
+
+  def testRoutesProvided(self):
+    """Tests that the plugin offers the correct routes."""
+    self.set_up_with_runs([self._RUN_WITH_SCALARS])
+    routes = self.plugin.get_plugin_apps()
+    self.assertIsInstance(routes['/scalars'], collections.Callable)
+    self.assertIsInstance(routes['/tags'], collections.Callable)
 
   def generate_run(self, run_name):
     if run_name == self._RUN_WITH_SCALARS:

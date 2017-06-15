@@ -33,6 +33,7 @@ from werkzeug import wrappers
 
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
 from tensorflow.tensorboard.plugins.audio import audio_plugin
 
 
@@ -82,11 +83,12 @@ class AudioPluginTest(tf.test.TestCase):
         "foo": foo_directory,
         "bar": bar_directory,
     })
-    plugin = audio_plugin.AudioPlugin()
+    context = base_plugin.TBContext(
+        logdir=self.log_dir, multiplexer=multiplexer)
+    self.plugin = audio_plugin.AudioPlugin(context)
     wsgi_app = application.TensorBoardWSGIApp(
-        self.log_dir, [plugin], multiplexer, reload_interval=0)
+        self.log_dir, [self.plugin], multiplexer, reload_interval=0)
     self.server = werkzeug_test.Client(wsgi_app, wrappers.BaseResponse)
-    self.routes = plugin.get_plugin_apps(multiplexer, self.log_dir)
 
   def tearDown(self):
     shutil.rmtree(self.log_dir, ignore_errors=True)
@@ -104,9 +106,10 @@ class AudioPluginTest(tf.test.TestCase):
 
   def testRoutesProvided(self):
     """Tests that the plugin offers the correct routes."""
-    self.assertIsInstance(self.routes["/audio"], collections.Callable)
-    self.assertIsInstance(self.routes["/individualAudio"], collections.Callable)
-    self.assertIsInstance(self.routes["/tags"], collections.Callable)
+    routes = self.plugin.get_plugin_apps()
+    self.assertIsInstance(routes["/audio"], collections.Callable)
+    self.assertIsInstance(routes["/individualAudio"], collections.Callable)
+    self.assertIsInstance(routes["/tags"], collections.Callable)
 
   def testAudioRoute(self):
     """Tests that the /audio routes returns with the correct data."""

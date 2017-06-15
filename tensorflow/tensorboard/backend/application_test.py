@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import gzip
 import json
 import os
@@ -44,7 +45,8 @@ from tensorflow.tensorboard.plugins import base_plugin
 class FakePlugin(base_plugin.TBPlugin):
   """A plugin with no functionality."""
 
-  def __init__(self, plugin_name, is_active_value, routes_mapping):
+  def __init__(self, unused_context, plugin_name, is_active_value,
+               routes_mapping):
     """Constructs a fake plugin.
 
     Args:
@@ -57,12 +59,8 @@ class FakePlugin(base_plugin.TBPlugin):
     self._is_active_value = is_active_value
     self._routes_mapping = routes_mapping
 
-  def get_plugin_apps(self, multiplexer, logdir):
+  def get_plugin_apps(self):
     """Returns a mapping from routes to handlers offered by this plugin.
-
-    Args:
-      multiplexer: The event multiplexer.
-      logdir: The path to the directory containing logs.
 
     Returns:
       A dictionary mapping from routes to handlers offered by this plugin.
@@ -89,8 +87,10 @@ class TensorboardServerTest(tf.test.TestCase):
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
     plugins = [
-        FakePlugin(plugin_name='foo', is_active_value=True, routes_mapping={}),
-        FakePlugin(plugin_name='bar', is_active_value=False, routes_mapping={})
+        FakePlugin(
+            None, plugin_name='foo', is_active_value=True, routes_mapping={}),
+        FakePlugin(
+            None, plugin_name='bar', is_active_value=False, routes_mapping={}),
     ]
     app = application.TensorBoardWSGIApp(
         self.logdir, plugins, self._multiplexer, reload_interval=0)
@@ -282,9 +282,12 @@ class TensorboardServerPluginNameTest(tf.test.TestCase):
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
     plugins = [
-        FakePlugin(plugin_name='foo', is_active_value=True, routes_mapping={}),
-        FakePlugin(plugin_name=name, is_active_value=True, routes_mapping={}),
-        FakePlugin(plugin_name='bar', is_active_value=False, routes_mapping={})
+        FakePlugin(
+            None, plugin_name='foo', is_active_value=True, routes_mapping={}),
+        FakePlugin(
+            None, plugin_name=name, is_active_value=True, routes_mapping={}),
+        FakePlugin(
+            None, plugin_name='bar', is_active_value=False, routes_mapping={}),
     ]
     if should_be_okay:
       application.TensorBoardWSGIApp(
@@ -320,6 +323,7 @@ class TensorboardServerPluginRouteTest(tf.test.TestCase):
         purge_orphaned_data=True)
     plugins = [
         FakePlugin(
+            None,
             plugin_name='foo',
             is_active_value=True,
             routes_mapping={route: lambda environ, start_response: None}),
@@ -420,11 +424,13 @@ class TensorBoardPluginsTest(tf.test.TestCase):
       pass
 
     plugins = [
-        FakePlugin(
+        functools.partial(
+            FakePlugin,
             plugin_name='foo',
             is_active_value=True,
             routes_mapping={'/foo_route': foo_handler}),
-        FakePlugin(
+        functools.partial(
+            FakePlugin,
             plugin_name='bar',
             is_active_value=True,
             routes_mapping={'/bar_route': bar_handler}),
@@ -494,7 +500,8 @@ class TensorBoardApplcationConstructionTest(tf.test.TestCase):
     with self.assertRaises(ValueError):
       # This plugin lacks a name.
       plugins = [
-          FakePlugin(plugin_name=None, is_active_value=True, routes_mapping={})
+          FakePlugin(
+              None, plugin_name=None, is_active_value=True, routes_mapping={}),
       ]
       application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
 
@@ -502,9 +509,9 @@ class TensorBoardApplcationConstructionTest(tf.test.TestCase):
     with self.assertRaises(ValueError):
       plugins = [
           FakePlugin(
-              plugin_name='foo', is_active_value=True, routes_mapping={}),
+              None, plugin_name='foo', is_active_value=True, routes_mapping={}),
           FakePlugin(
-              plugin_name='foo', is_active_value=True, routes_mapping={}),
+              None, plugin_name='foo', is_active_value=True, routes_mapping={}),
       ]
       application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
 

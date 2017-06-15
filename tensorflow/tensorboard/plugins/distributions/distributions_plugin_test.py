@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os.path
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -26,6 +27,7 @@ import tensorflow as tf
 
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
 from tensorflow.tensorboard.plugins.distributions import distributions_plugin
 
 
@@ -50,8 +52,15 @@ class DistributionsPluginTest(tf.test.TestCase):
     })
     multiplexer.AddRunsFromDirectory(self.logdir)
     multiplexer.Reload()
-    self.plugin = distributions_plugin.DistributionsPlugin()
-    self.apps = self.plugin.get_plugin_apps(multiplexer, None)
+    context = base_plugin.TBContext(logdir=self.logdir, multiplexer=multiplexer)
+    self.plugin = distributions_plugin.DistributionsPlugin(context)
+
+  def testRoutesProvided(self):
+    """Tests that the plugin offers the correct routes."""
+    self.set_up_with_runs([self._RUN_WITH_SCALARS])
+    routes = self.plugin.get_plugin_apps()
+    self.assertIsInstance(routes['/distributions'], collections.Callable)
+    self.assertIsInstance(routes['/tags'], collections.Callable)
 
   def generate_run(self, run_name):
     if run_name == self._RUN_WITH_DISTRIBUTION:

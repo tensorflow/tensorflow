@@ -32,8 +32,15 @@ class HistogramsPlugin(base_plugin.TBPlugin):
 
   plugin_name = _PLUGIN_PREFIX_ROUTE
 
-  def get_plugin_apps(self, multiplexer, unused_logdir):
-    self._multiplexer = multiplexer
+  def __init__(self, context):
+    """Instantiates HistogramsPlugin via TensorBoard core.
+
+    Args:
+      context: A base_plugin.TBContext instance.
+    """
+    self._multiplexer = context.multiplexer
+
+  def get_plugin_apps(self):
     return {
         '/histograms': self.histograms_route,
         '/tags': self.tags_route,
@@ -41,7 +48,7 @@ class HistogramsPlugin(base_plugin.TBPlugin):
 
   def is_active(self):
     """This plugin is active iff any run has at least one histograms tag."""
-    return any(self.index_impl().values())
+    return bool(self._multiplexer) and any(self.index_impl().values())
 
   def index_impl(self):
     return {

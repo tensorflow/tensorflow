@@ -29,7 +29,7 @@ from werkzeug import wrappers
 from google.protobuf import json_format
 from google.protobuf import text_format
 from tensorflow.tensorboard.backend.http_util import Respond
-from tensorflow.tensorboard.plugins.base_plugin import TBPlugin
+from tensorflow.tensorboard.plugins import base_plugin
 from tensorflow.tensorboard.plugins.projector import projector_config_pb2
 
 # The prefix of routes provided by this plugin.
@@ -207,25 +207,30 @@ def _rel_to_abs_asset_path(fpath, config_fpath):
   return fpath
 
 
-class ProjectorPlugin(TBPlugin):
+class ProjectorPlugin(base_plugin.TBPlugin):
   """Embedding projector."""
 
   plugin_name = _PLUGIN_PREFIX_ROUTE
 
-  def __init__(self):
+  def __init__(self, context):
+    """Instantiates ProjectorPlugin via TensorBoard core.
+
+    Args:
+      context: A base_plugin.TBContext instance.
+    """
+    self.multiplexer = context.multiplexer
+    self.logdir = context.logdir
     self._handlers = None
     self.readers = {}
     self.run_paths = None
-    self.logdir = None
     self._configs = None
     self.old_num_run_paths = None
-    self.multiplexer = None
     self.tensor_cache = LRUCache(_TENSOR_CACHE_CAPACITY)
+    self.run_paths = None
+    if self.multiplexer:
+      self.run_paths = self.multiplexer.RunPaths()
 
-  def get_plugin_apps(self, multiplexer, logdir):
-    self.multiplexer = multiplexer
-    self.run_paths = multiplexer.RunPaths()
-    self.logdir = logdir
+  def get_plugin_apps(self):
     self._handlers = {
         RUNS_ROUTE: self._serve_runs,
         CONFIG_ROUTE: self._serve_config,
@@ -244,7 +249,7 @@ class ProjectorPlugin(TBPlugin):
     Returns:
       A boolean. Whether this plugin is active.
     """
-    return bool(self.configs)
+    return bool(self.multiplexer and self.configs)
 
   @property
   def configs(self):

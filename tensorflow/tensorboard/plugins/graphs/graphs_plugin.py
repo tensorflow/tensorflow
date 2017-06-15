@@ -33,8 +33,15 @@ class GraphsPlugin(base_plugin.TBPlugin):
 
   plugin_name = _PLUGIN_PREFIX_ROUTE
 
-  def get_plugin_apps(self, multiplexer, unused_logdir):
-    self._multiplexer = multiplexer
+  def __init__(self, context):
+    """Instantiates GraphsPlugin via TensorBoard core.
+
+    Args:
+      context: A base_plugin.TBContext instance.
+    """
+    self._multiplexer = context.multiplexer
+
+  def get_plugin_apps(self):
     return {
         '/graph': self.graph_route,
         '/runs': self.runs_route,
@@ -44,7 +51,7 @@ class GraphsPlugin(base_plugin.TBPlugin):
 
   def is_active(self):
     """The graphs plugin is active iff any run has a graph."""
-    return bool(self.index_impl())
+    return bool(self._multiplexer and self.index_impl())
 
   def index_impl(self):
     """Returns a list of all runs that have a graph."""

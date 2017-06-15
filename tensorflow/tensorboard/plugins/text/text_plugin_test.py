@@ -19,12 +19,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os
 import textwrap
 import numpy as np
 import tensorflow as tf
 
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
 from tensorflow.tensorboard.plugins.text import text_plugin
 
 GEMS = ['garnet', 'amethyst', 'pearl', 'steven']
@@ -38,8 +40,13 @@ class TextPluginTest(tf.test.TestCase):
     multiplexer = event_multiplexer.EventMultiplexer()
     multiplexer.AddRunsFromDirectory(self.logdir)
     multiplexer.Reload()
-    self.plugin = text_plugin.TextPlugin()
-    self.apps = self.plugin.get_plugin_apps(multiplexer, None)
+    context = base_plugin.TBContext(logdir=self.logdir, multiplexer=multiplexer)
+    self.plugin = text_plugin.TextPlugin(context)
+
+  def testRoutesProvided(self):
+    routes = self.plugin.get_plugin_apps()
+    self.assertIsInstance(routes['/runs'], collections.Callable)
+    self.assertIsInstance(routes['/text'], collections.Callable)
 
   def assertConverted(self, actual, expected):
     expected_html = text_plugin.markdown_and_sanitize(expected)
@@ -386,9 +393,9 @@ class TextPluginTest(tf.test.TestCase):
     self.assertEqual(convert(d3), d3_expected)
 
   def testPluginIsActive(self):
-    plugin = text_plugin.TextPlugin()
     multiplexer = event_multiplexer.EventMultiplexer()
-    plugin.get_plugin_apps(event_multiplexer.EventMultiplexer(), None)
+    context = base_plugin.TBContext(logdir=None, multiplexer=multiplexer)
+    plugin = text_plugin.TextPlugin(context)
 
     # The plugin is inactive because text summaries are not available.
     self.assertFalse(plugin.is_active())

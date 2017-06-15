@@ -37,6 +37,7 @@ py_test(
         "//tensorflow:tensorflow_py",
         "//tensorflow/tensorboard/backend:application",
         "//tensorflow/tensorboard/backend/event_processing:event_multiplexer",
+        "//tensorflow/tensorboard/plugins:base_plugin",
         "//third_party/py/numpy",
         "@org_pocoo_werkzeug//:werkzeug",
     ],

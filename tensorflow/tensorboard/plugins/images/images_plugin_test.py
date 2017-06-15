@@ -33,6 +33,7 @@ from werkzeug import wrappers
 
 from tensorflow.tensorboard.backend import application
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
 from tensorflow.tensorboard.plugins.images import images_plugin
 
 
@@ -82,11 +83,13 @@ class ImagesPluginTest(tf.test.TestCase):
         "foo": foo_directory,
         "bar": bar_directory,
     })
-    plugin = images_plugin.ImagesPlugin()
+    context = base_plugin.TBContext(
+        logdir=self.log_dir, multiplexer=multiplexer)
+    plugin = images_plugin.ImagesPlugin(context)
     wsgi_app = application.TensorBoardWSGIApp(
         self.log_dir, [plugin], multiplexer, reload_interval=0)
     self.server = werkzeug_test.Client(wsgi_app, wrappers.BaseResponse)
-    self.routes = plugin.get_plugin_apps(multiplexer, self.log_dir)
+    self.routes = plugin.get_plugin_apps()
 
   def tearDown(self):
     shutil.rmtree(self.log_dir, ignore_errors=True)

@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import os.path
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -26,6 +27,7 @@ import tensorflow as tf
 
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
 from tensorflow.tensorboard.plugins.histograms import histograms_plugin
 
 
@@ -50,8 +52,8 @@ class HistogramsPluginTest(tf.test.TestCase):
     })
     multiplexer.AddRunsFromDirectory(self.logdir)
     multiplexer.Reload()
-    self.plugin = histograms_plugin.HistogramsPlugin()
-    self.apps = self.plugin.get_plugin_apps(multiplexer, None)
+    context = base_plugin.TBContext(logdir=self.logdir, multiplexer=multiplexer)
+    self.plugin = histograms_plugin.HistogramsPlugin(context)
 
   def generate_run(self, run_name):
     if run_name == self._RUN_WITH_HISTOGRAM:
@@ -77,6 +79,13 @@ class HistogramsPluginTest(tf.test.TestCase):
       s = sess.run(summ, feed_dict=feed_dict)
       writer.add_summary(s, global_step=step)
     writer.close()
+
+  def testRoutesProvided(self):
+    """Tests that the plugin offers the correct routes."""
+    self.set_up_with_runs([self._RUN_WITH_SCALARS])
+    routes = self.plugin.get_plugin_apps()
+    self.assertIsInstance(routes['/histograms'], collections.Callable)
+    self.assertIsInstance(routes['/tags'], collections.Callable)
 
   def test_index(self):
     self.set_up_with_runs([self._RUN_WITH_HISTOGRAM, self._RUN_WITH_SCALARS])

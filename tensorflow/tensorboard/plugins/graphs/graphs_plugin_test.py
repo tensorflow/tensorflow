@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import math
 import os.path
 
@@ -26,6 +27,7 @@ import tensorflow as tf
 
 from google.protobuf import text_format
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
 from tensorflow.tensorboard.plugins.graphs import graphs_plugin
 
 
@@ -74,8 +76,17 @@ class GraphsPluginTest(tf.test.TestCase):
     multiplexer = event_multiplexer.EventMultiplexer()
     multiplexer.AddRunsFromDirectory(self.logdir)
     multiplexer.Reload()
-    self.plugin = graphs_plugin.GraphsPlugin()
-    self.plugin.get_plugin_apps(multiplexer, None)
+    context = base_plugin.TBContext(logdir=self.logdir, multiplexer=multiplexer)
+    self.plugin = graphs_plugin.GraphsPlugin(context)
+
+  def testRoutesProvided(self):
+    """Tests that the plugin offers the correct routes."""
+    self.set_up_with_runs(with_graph=True, without_graph=False)
+    routes = self.plugin.get_plugin_apps()
+    self.assertIsInstance(routes['/graph'], collections.Callable)
+    self.assertIsInstance(routes['/runs'], collections.Callable)
+    self.assertIsInstance(routes['/run_metadata'], collections.Callable)
+    self.assertIsInstance(routes['/run_metadata_tags'], collections.Callable)
 
   def test_index(self):
     self.set_up_with_runs()

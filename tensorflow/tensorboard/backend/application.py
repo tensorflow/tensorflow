@@ -35,6 +35,7 @@ from werkzeug import wrappers
 from tensorflow.tensorboard.backend import http_util
 from tensorflow.tensorboard.backend.event_processing import event_accumulator
 from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
 
 
 DEFAULT_SIZE_GUIDANCE = {
@@ -71,7 +72,7 @@ def standard_tensorboard_wsgi(
     purge_orphaned_data: Whether to purge orphaned data.
     reload_interval: The interval at which the backend reloads more data in
         seconds.
-    plugins: A list of plugins for TensorBoard to initialize.
+    plugins: A list of constructor functions for TBPlugin subclasses.
 
   Returns:
     The new TensorBoard WSGI application.
@@ -79,7 +80,8 @@ def standard_tensorboard_wsgi(
   multiplexer = event_multiplexer.EventMultiplexer(
       size_guidance=DEFAULT_SIZE_GUIDANCE,
       purge_orphaned_data=purge_orphaned_data)
-
+  context = base_plugin.TBContext(logdir=logdir, multiplexer=multiplexer)
+  plugins = [constructor(context) for constructor in plugins]
   return TensorBoardWSGIApp(logdir, plugins, multiplexer, reload_interval)
 
 
@@ -100,7 +102,7 @@ class TensorBoardWSGIApp(object):
       logdir: the logdir spec that describes where data will be loaded.
         may be a directory, or comma,separated list of directories, or colons
         can be used to provide named directories
-      plugins: List of plugins that extend tensorboard.plugins.BasePlugin
+      plugins: A list of base_plugin.TBPlugin subclass instances.
       multiplexer: The EventMultiplexer with TensorBoard data to serve
       reload_interval: How often (in seconds) to reload the Multiplexer
 
@@ -151,7 +153,7 @@ class TensorBoardWSGIApp(object):
       plugin_names_encountered.add(plugin.plugin_name)
 
       try:
-        plugin_apps = plugin.get_plugin_apps(self._multiplexer, self._logdir)
+        plugin_apps = plugin.get_plugin_apps()
       except Exception as e:  # pylint: disable=broad-except
         tf.logging.warning('Plugin %s failed. Exception: %s',
                            plugin.plugin_name, str(e))

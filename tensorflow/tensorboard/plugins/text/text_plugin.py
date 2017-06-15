@@ -253,14 +253,22 @@ class TextPlugin(base_plugin.TBPlugin):
 
   plugin_name = _PLUGIN_PREFIX_ROUTE
 
+  def __init__(self, context):
+    """Instantiates TextPlugin via TensorBoard core.
+
+    Args:
+      context: A base_plugin.TBContext instance.
+    """
+    self._multiplexer = context.multiplexer
+
   def index_impl(self):
     run_to_series = {}
     name = 'tensorboard_text'
-    run_to_assets = self.multiplexer.PluginAssets(name)
+    run_to_assets = self._multiplexer.PluginAssets(name)
 
     for run, assets in run_to_assets.items():
       if 'tensors.json' in assets:
-        tensors_json = self.multiplexer.RetrievePluginAsset(
+        tensors_json = self._multiplexer.RetrievePluginAsset(
             run, name, 'tensors.json')
         tensors = json.loads(tensors_json)
         run_to_series[run] = tensors
@@ -275,7 +283,7 @@ class TextPlugin(base_plugin.TBPlugin):
 
   def text_impl(self, run, tag):
     try:
-      text_events = self.multiplexer.Tensors(run, tag)
+      text_events = self._multiplexer.Tensors(run, tag)
     except KeyError:
       text_events = []
     responses = [process_string_tensor_event(ev) for ev in text_events]
@@ -288,8 +296,7 @@ class TextPlugin(base_plugin.TBPlugin):
     response = self.text_impl(run, tag)
     return http_util.Respond(request, response, 'application/json')
 
-  def get_plugin_apps(self, multiplexer, unused_logdir):
-    self.multiplexer = multiplexer
+  def get_plugin_apps(self):
     return {
         RUNS_ROUTE: self.runs_route,
         TEXT_ROUTE: self.text_route,
@@ -303,4 +310,4 @@ class TextPlugin(base_plugin.TBPlugin):
     Returns:
       Whether this plugin is active.
     """
-    return bool(self.index_impl())
+    return bool(self._multiplexer and self.index_impl())
