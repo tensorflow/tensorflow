@@ -139,7 +139,7 @@ public:
       for (int64 i=0; i<comp->num_parameters(); i++) {
         HloInstruction* param = comp->parameter_instruction(i);
         poplar::Tensor in;
-        TF_ASSIGN_OR_RETURN(in, FindInstructionOutput(tensor_map, param, o));
+        TF_ASSIGN_OR_RETURN(in, FindInstructionOutput(tensor_map, param, 0));
 
         if (in == out) {
           output_map[o] = i;
