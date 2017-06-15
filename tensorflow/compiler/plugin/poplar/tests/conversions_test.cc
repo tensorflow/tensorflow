@@ -60,6 +60,23 @@ TEST_F(ConversionsTest, Int32ToInt64) {
   EXPECT_EQ(-9, d[19]);
 }
 
+TEST_F(ConversionsTest, GetConvertors) {
+  Shape s64 = ShapeUtil::MakeShape(S64, {2, 2});
+  Shape u64 = ShapeUtil::MakeShape(U64, {2, 2});
+  Shape s32 = ShapeUtil::MakeShape(S32, {2, 2});
+  Shape f16 = ShapeUtil::MakeShape(F16, {2, 2});
+
+  EXPECT_EQ(&ConvertInt64ToInt32, GetInputConversionFunction(s64));
+  EXPECT_EQ(&ConvertInt64ToInt32, GetInputConversionFunction(u64));
+  EXPECT_EQ(&ConvertInt32ToInt64, GetOutputConversionFunction(s64));
+  EXPECT_EQ(&ConvertInt32ToInt64, GetOutputConversionFunction(u64));
+
+  EXPECT_EQ(nullptr, GetInputConversionFunction(s32));
+  EXPECT_EQ(nullptr, GetInputConversionFunction(f16));
+  EXPECT_EQ(nullptr, GetOutputConversionFunction(s32));
+  EXPECT_EQ(nullptr, GetOutputConversionFunction(f16));
+
+}
 
 }
 }

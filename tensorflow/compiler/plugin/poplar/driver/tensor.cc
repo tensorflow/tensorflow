@@ -23,11 +23,15 @@ PoplarDataType(const xla::Shape& shape) {
       return std::string("short");
     case S32:
       return std::string("int");
+    case S64:
+      return std::string("int");
     case U8:
       return std::string("unsigned char");
     case U16:
       return std::string("unsigned short");
     case U32:
+      return std::string("unsigned int");
+    case U64:
       return std::string("unsigned int");
     case F16:
       return std::string("half");

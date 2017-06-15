@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
+#include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
-#include "tensorflow/compiler/plugin/poplar/stream_executor/executor.h"
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -31,8 +31,16 @@ namespace poplarplugin {
 
 class GraphCompileIoMapTest : public HloTestBase {
 public:
-  const std::map<int64, int64>& GetMap(PoplarExecutable* e) {
+  const sep::OutputMap& GetMap(PoplarExecutable* e) {
     return e->output_map_;
+  }
+
+  const sep::ConversionList& GetInputList(PoplarExecutable* e) {
+    return e->input_convertors_;
+  }
+
+  const sep::ConversionList& GetOutputList(PoplarExecutable* e) {
+    return e->output_convertors_;
   }
 };
 
@@ -141,6 +149,76 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(1, GetMap(e).size());
   EXPECT_EQ(1, GetMap(e).at(0));
+}
+
+TEST_F(GraphCompileIoMapTest, NoConversion) {
+  Shape image_shape = ShapeUtil::MakeShape(S32, {2, 2});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto in1 = builder.AddInstruction(
+          HloInstruction::CreateParameter(0, image_shape, "input1"));
+  auto in2 = builder.AddInstruction(
+          HloInstruction::CreateParameter(1, image_shape, "input2"));
+  auto add = builder.AddInstruction(
+          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+  builder.AddInstruction(
+          HloInstruction::CreateTuple({add}));
+
+  auto computation = builder.Build();
+
+
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  PoplarCompiler compiler;
+  auto hlo_dumper = [](const HloModule& module, const string& label) {};
+
+  std::unique_ptr<Executable> executable =
+          compiler.Compile(std::move(hlo_module),
+                           hlo_dumper,
+                           nullptr).ConsumeValueOrDie();
+
+  PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
+  EXPECT_EQ(2, GetInputList(e).size());
+  EXPECT_EQ(nullptr, GetInputList(e)[0]);
+  EXPECT_EQ(nullptr, GetInputList(e)[1]);
+  EXPECT_EQ(1, GetOutputList(e).size());
+  EXPECT_EQ(nullptr, GetOutputList(e)[0]);
+}
+
+TEST_F(GraphCompileIoMapTest, Int64Conversion) {
+  Shape image_shape = ShapeUtil::MakeShape(S64, {2, 2});
+
+  auto builder = HloComputation::Builder(TestName());
+  auto in1 = builder.AddInstruction(
+          HloInstruction::CreateParameter(0, image_shape, "input1"));
+  auto in2 = builder.AddInstruction(
+          HloInstruction::CreateParameter(1, image_shape, "input2"));
+  auto add = builder.AddInstruction(
+          HloInstruction::CreateBinary(image_shape, HloOpcode::kAdd, in1, in2));
+  builder.AddInstruction(
+          HloInstruction::CreateTuple({add}));
+
+  auto computation = builder.Build();
+
+
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  PoplarCompiler compiler;
+  auto hlo_dumper = [](const HloModule& module, const string& label) {};
+
+  std::unique_ptr<Executable> executable =
+          compiler.Compile(std::move(hlo_module),
+                           hlo_dumper,
+                           nullptr).ConsumeValueOrDie();
+
+  PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
+  EXPECT_EQ(2, GetInputList(e).size());
+  EXPECT_EQ(&ConvertInt64ToInt32, GetInputList(e)[0]);
+  EXPECT_EQ(&ConvertInt64ToInt32, GetInputList(e)[1]);
+  EXPECT_EQ(1, GetOutputList(e).size());
+  EXPECT_EQ(&ConvertInt32ToInt64, GetOutputList(e)[0]);
 }
 
 }

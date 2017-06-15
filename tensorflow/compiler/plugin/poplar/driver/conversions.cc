@@ -1,13 +1,4 @@
-#include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
-#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/core/util/bcast.h"
-
-#include <poplar/Engine.hpp>
-#include <popstd/ActivationMapping.hpp>
+#include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 
 namespace xla {
 namespace poplarplugin {
@@ -33,6 +24,26 @@ std::vector<char> ConvertInt32ToInt64(void* src, int64 size) {
     *dst64++ = *src32++;
   }
   return result;
+}
+
+sep::ConversionFn GetInputConversionFunction(const xla::Shape& shape) {
+  switch (shape.element_type()) {
+    case S64:
+    case U64:
+      return ConvertInt64ToInt32;
+    default:
+      return nullptr;
+  }
+}
+
+sep::ConversionFn GetOutputConversionFunction(const xla::Shape& shape) {
+  switch (shape.element_type()) {
+    case S64:
+    case U64:
+      return ConvertInt32ToInt64;
+    default:
+      return nullptr;
+  }
 }
 
 }

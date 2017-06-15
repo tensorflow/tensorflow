@@ -22,6 +22,7 @@ limitations under the License.
 #include <unistd.h>
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
+#include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
@@ -150,6 +151,16 @@ public:
     input_convertors.resize(comp->num_parameters());
     output_convertors.resize(num_outputs);
 
+    for (int64 i=0; i<comp->num_parameters(); i++) {
+      HloInstruction* param = comp->parameter_instruction(i);
+      input_convertors[i] = GetInputConversionFunction(param->shape());
+    }
+
+    for (int64 o=0; o<num_outputs; o++) {
+      output_convertors[o] = GetOutputConversionFunction(
+              ShapeUtil::GetTupleElementShape(inst->shape(), o));
+    }
+
     tensor_map.clear();
 
     return Status::OK();
@@ -159,8 +170,6 @@ public:
   sep::ConversionList input_convertors;
   sep::ConversionList output_convertors;
   bool all_outputs_are_parameters;
-
-
 };
 
 class CallTargetFinder : public DfsHloVisitorWithDefault {
