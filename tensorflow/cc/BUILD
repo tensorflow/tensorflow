@@ -484,6 +484,7 @@ cc_binary(
     linkopts = [
         "-lpthread",
         "-lm",
+        "-lrt",
     ],
     deps = [
         ":cc_ops",
