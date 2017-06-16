@@ -47,7 +47,7 @@ namespace poplarplugin {
 
 std::string GetCopyHandle(int64 i);
 
-typedef std::vector<char> (*ConversionFn)(void*, int64);
+typedef std::vector<char> (*ConversionFn)(const void*, int64);
 
 using Args = tensorflow::gtl::ArraySlice<DeviceMemoryBase>;
 using OutputMap = std::map<int64, int64>;

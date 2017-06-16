@@ -1,3 +1,4 @@
+#include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/stream_executor/lib/status.h"
@@ -87,6 +88,28 @@ AddConstantTensor(poplar::Graph&graph,
   }
 }
 
+static void
+Add64BitConstantTensor(poplar::Graph&graph,
+                  const xla::Literal &literal,
+                  const xla::Shape &shape,
+                  const std::string &type,
+                  poplar::Tensor& tensor) {
+  int64 num_elements(ShapeUtil::ElementsIn(literal.shape()));
+  std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
+  const void* data(static_cast<const void*>(LiteralUtil::InternalData(literal)));
+
+  std::vector<char> converted = ConvertInt64ToInt32(data, num_elements);
+  const int64* data64 = reinterpret_cast<const int64*>(converted.data());
+
+  if (num_elements == 0) {
+    tensor = graph.addConstantTensor(type, {0}, (int64)0);
+  } else if (num_elements == 1) {
+    tensor = graph.addConstantTensor(type, dim, data64[0]);
+  } else {
+    tensor = graph.addConstantTensor(type, dim, data64);
+  }
+}
+
 port::StatusOr<poplar::Tensor>
 AddConstantTensor(poplar::Graph& graph,
                   const std::string& name,
@@ -104,6 +127,10 @@ AddConstantTensor(poplar::Graph& graph,
     case S32:
     case U32:
       AddConstantTensor<int>(graph, literal, shape, type, tensor);
+      break;
+    case U64:
+    case S64:
+      Add64BitConstantTensor(graph, literal, shape, type, tensor);
       break;
     case F16:
       AddConstantTensor<poplar::IeeeHalf>(graph, literal, shape, type, tensor);
