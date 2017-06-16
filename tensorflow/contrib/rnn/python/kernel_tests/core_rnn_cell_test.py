@@ -47,7 +47,7 @@ linear = rnn_cell_impl._linear
 
 
 class RNNCellTest(test.TestCase):
-
+  """Tests rnn_cell_impl._linear function with two scenarios."""
   def testLinear(self):
     with self.test_session() as sess:
       with variable_scope.variable_scope(
@@ -140,6 +140,8 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(res[0], [[0.156736, 0.156736]])
 
   def testBasicLSTMCell(self):
+    """Tests that BasicLSTMCell have expected variables names
+    and the model returns expected results."""
     with self.test_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
@@ -232,6 +234,7 @@ class RNNCellTest(test.TestCase):
                     m.name: 0.1 * np.ones([batch_size, state_size])})
 
   def testBasicLSTMCellStateTupleType(self):
+    """Tests that tuple type state should work in BasicLSTMCell."""
     with self.test_session():
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
@@ -263,6 +266,7 @@ class RNNCellTest(test.TestCase):
         self.assertTrue(isinstance(out_m1, rnn_cell_impl.LSTMStateTuple))
 
   def testBasicLSTMCellWithStateTuple(self):
+    """Tests that BasicLSTMCell with state tuple returns expected results."""
     with self.test_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
@@ -295,6 +299,8 @@ class RNNCellTest(test.TestCase):
         self.assertAllClose(res[2], expected_mem1)
 
   def testLSTMCell(self):
+    """Tests that LSTMCell should have expected shapes
+    and different inputs should return different outputs and states."""
     with self.test_session() as sess:
       num_units = 8
       num_proj = 6
@@ -329,6 +335,7 @@ class RNNCellTest(test.TestCase):
               float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) > 1e-6)
 
   def testLSTMCellVariables(self):
+    """Tests that LSTMCell have proper variable names."""
     with self.test_session():
       num_units = 8
       num_proj = 6
@@ -738,6 +745,7 @@ class DropoutWrapperTest(test.TestCase):
 class SlimRNNCellTest(test.TestCase):
 
   def testBasicRNNCell(self):
+    """Tests that BasicRNNCell should return expected shape."""
     with self.test_session() as sess:
       with variable_scope.variable_scope(
           "root", initializer=init_ops.constant_initializer(0.5)):
