@@ -22,7 +22,7 @@ package org.tensorflow;
  * the {@link Operation} in a {@link Session}.
  *
  * <p>By implementing the {@link Input} interface, instances of this class could also be passed
- * directly in input to an operation wrapper when using the Java Ops API.
+ * directly in input to an operation.
  */
 public final class Output implements Input {
 
