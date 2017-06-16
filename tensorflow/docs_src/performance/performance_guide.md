@@ -123,6 +123,11 @@ format.
 The best practice is to build models that work with both `NCHW` and `NHWC` as it
 is common to train using `NCHW` on GPU, and then do inference with NHWC on CPU.
 
+There are edge cases where `NCHW` can be slower on GPU than `NHWC`. One
+[case](https://github.com/tensorflow/tensorflow/issues/7551#issuecomment-280421351)
+is using non-fused batch norm on WRN-16-4 without dropout. In that case using
+fused batch norm, which is also recommended, is the optimal solution.
+
 The very brief history of these two formats is that TensorFlow started by using
 `NHWC` because it was a little faster on CPUs. Then the TensorFlow team
 discovered that `NCHW` performs better when using the NVIDIA cuDNN library.  The
