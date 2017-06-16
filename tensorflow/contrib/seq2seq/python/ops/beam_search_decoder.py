@@ -301,11 +301,13 @@ class BeamSearchDecoder(decoder.Decoder):
         array_ops.zeros([self._batch_size], dtype=dtypes.int32),
         depth=self._beam_width, on_value=True,
         off_value=False, dtype=dtypes.bool)
-
-    log_prob_zeros = array_ops.zeros([self._batch_size, self._beam_width],  # shape(batch_sz, beam_sz)
-                                     dtype=nest.flatten(self._initial_cell_state)[0].dtype)
-    log_prob_neg_inf = array_ops.ones([self._batch_size, self._beam_width],  # shape(batch_sz, beam_sz)
-                                      dtype=nest.flatten(self._initial_cell_state)[0].dtype) * -float('inf')
+    
+    log_prob_zeros = array_ops.zeros([self._batch_size, self._beam_width],
+                                    dtype=nest.flatten(
+                                    self._initial_cell_state)[0].dtype)
+    log_prob_neg_inf = array_ops.ones([self._batch_size, self._beam_width],
+                                    dtype=nest.flatten(
+                                    self._initial_cell_state)[0].dtype) * -float('inf')
 
     log_probs = array_ops.where(log_prob_mask, log_prob_zeros, log_prob_neg_inf)
 
