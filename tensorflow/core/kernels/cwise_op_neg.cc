@@ -19,6 +19,16 @@ namespace tensorflow {
 REGISTER7(UnaryOp, CPU, "Neg", functor::neg, float, Eigen::half, double, int32,
           complex64, int64, complex128);
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER3(UnaryOp, SYCL, "Neg", functor::neg, float, double, int64);
+REGISTER_KERNEL_BUILDER(Name("Neg")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .TypeConstraint<int32>("T"),
+                        UnaryOp<CPUDevice, functor::neg<int32>>);
+#endif // TENSORFLOW_USE_SYCL
+
 #if GOOGLE_CUDA
 REGISTER6(UnaryOp, GPU, "Neg", functor::neg, float, Eigen::half, double, int64,
           complex64, complex128);
@@ -33,14 +43,4 @@ REGISTER_KERNEL_BUILDER(Name("Neg")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::neg<int32>>);
 #endif
-
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER3(UnaryOp, SYCL, "Neg", functor::neg, float, double, int64);
-REGISTER_KERNEL_BUILDER(Name("Neg")
-                            .Device(DEVICE_SYCL)
-                            .HostMemory("x")
-                            .HostMemory("y")
-                            .TypeConstraint<int32>("T"),
-                        UnaryOp<CPUDevice, functor::neg<int32>>);
-#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

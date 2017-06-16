@@ -19,14 +19,12 @@ namespace tensorflow {
 REGISTER5(UnaryOp, CPU, "Round", functor::round, Eigen::half, float, double,
           int32, int64);
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER2(UnaryOp, SYCL, "Round", functor::round, float, double);
+#endif
+
 #if GOOGLE_CUDA
 REGISTER5(UnaryOp, GPU, "Round", functor::round, Eigen::half, float, double,
           int32, int64);
-#endif
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Round", functor::round, float, double);
-namespace functor {
-DEFINE_UNARY2(round, float, double);
-}  // namespace functor
 #endif
 }  // namespace tensorflow
