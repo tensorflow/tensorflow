@@ -9,6 +9,8 @@ If you open a GitHub issue, here is our policy:
 
 **Here's why we have that policy**: TensorFlow developers respond to issues. We want to focus on work that benefits the whole community, e.g., fixing bugs and adding features. Support only helps individuals. GitHub also notifies thousands of people when issues are filed. We want them to see you communicating an interesting problem, rather than being redirected to Stack Overflow.
 
+TensorBoard issues should be filed at the TensorBoard repository: https://github.com/tensorflow/tensorboard
+
 ------------------------
 
 ### System information
