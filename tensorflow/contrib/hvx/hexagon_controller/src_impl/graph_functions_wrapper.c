@@ -52,21 +52,21 @@ static enum InceptionVersion s_inception_version = INCEPTION_V3;
 /////////////////////////////////////////////////
 // file local functions
 
-static const char *ConvertGraphInfoIdToName(unsigned int id) {
+static const char* ConvertGraphInfoIdToName(unsigned int id) {
   // TODO(satok): implement
   return "?";
 }
 
-static const char *ConvertGraphInfoIdToOpName(unsigned int id) {
+static const char* ConvertGraphInfoIdToOpName(unsigned int id) {
   // TODO(satok): implement
   return "?";
 }
 
 /////////////////////////////////////////////////
 // file local utilities
-static uint32_t FindMaxIdxWithExcludeList(
-    const float *data, uint32_t entries, const int exclude_size,
-    const int* exclude_idx) {
+static uint32_t FindMaxIdxWithExcludeList(const float* data, uint32_t entries,
+                                          const int exclude_size,
+                                          const int* exclude_idx) {
   int i;
   float maxval = data[0];
   int maxidx = 0;
@@ -94,7 +94,7 @@ static uint32_t FindMaxIdx(const float* data, uint32_t entries) {
 }
 
 void hexagon_controller_PrintMaxNIdx(const float* data, const uint32_t entries,
-                         const int n, int* out_ranking) {
+                                     const int n, int* out_ranking) {
   if (DUMP_OUTPUT) {
     for (int i = 0; i < entries; ++i) {
       TFMLOGD("%d: val = %f", i, data[i]);
@@ -123,9 +123,9 @@ static inline unsigned long long int GetCounter(hexagon_nn_perfinfo s) {
   return ret;
 }
 
-static int CompareCycle(const void *va, const void *vb) {
-  const hexagon_nn_perfinfo *a = va;
-  const hexagon_nn_perfinfo *b = vb;
+static int CompareCycle(const void* va, const void* vb) {
+  const hexagon_nn_perfinfo* a = va;
+  const hexagon_nn_perfinfo* b = vb;
   unsigned long long int acount = GetCounter(*a);
   unsigned long long int bcount = GetCounter(*b);
   if (acount < bcount) {
@@ -142,8 +142,6 @@ static int CompareCycle(const void *va, const void *vb) {
 
 uint32_t hexagon_controller_InstantiateGraph() {
   const uint32_t nn_id = hexagon_nn_init();
-  // set debug level to 99 for now
-  //hexagon_nn_set_debug_level(nn_id, 99);
   // TODO(satok): make this as argument
   hexagon_nn_set_debug_level(nn_id, 0);
   return nn_id;
@@ -170,7 +168,7 @@ bool hexagon_controller_ConstructGraph(uint32_t nn_id) {
   int err;
   if ((err = hexagon_nn_prepare(nn_id)) != 0) {
     TFMLOGE("Prepare failed! returned 0x%x\n", err);
-    hexagon_controller_PrintLog(nn_id);
+    DumpNNId(nn_id);
     return false;
   } else {
     TFMLOGD("Prepare success!\n");
@@ -178,7 +176,7 @@ bool hexagon_controller_ConstructGraph(uint32_t nn_id) {
   }
 }
 
-uint32_t hexagon_controller_SetupGraph(int version)  {
+uint32_t hexagon_controller_SetupGraph(int version) {
   const uint32_t nn_id = hexagon_controller_InstantiateGraph();
   hexagon_controller_InitGraph(version, nn_id);
   hexagon_controller_ConstructGraph(nn_id);
@@ -200,7 +198,7 @@ bool hexagon_controller_ExecuteGraphWithMultipleInOut(
     if (DBG_EXECUTION) {
       LogDHexagon("Execution failed!");
       TFMLOGE("execute got err: %d\n", err);
-      hexagon_controller_PrintLog(nn_id);
+      DumpNNId(nn_id);
     }
     return false;
   } else {
@@ -212,24 +210,15 @@ bool hexagon_controller_ExecuteGraphWithMultipleInOut(
 }
 
 bool hexagon_controller_ExecuteGraph(
-    const uint32_t nn_id,
-    const uint32_t batches,
-    const uint32_t height,
-    const uint32_t width,
-    const uint32_t depth,
-    uint8_t* int_data,
-    const uint32_t int_data_size,
-    uint32_t* out_batches,
-    uint32_t* out_height,
-    uint32_t* out_width,
-    uint32_t* out_depth,
-    uint8_t* out_vals,
-    const uint32_t output_val_byte_size,
-    uint32_t* out_data_byte_size) {
+    const uint32_t nn_id, const uint32_t batches, const uint32_t height,
+    const uint32_t width, const uint32_t depth, uint8_t* int_data,
+    const uint32_t int_data_size, uint32_t* out_batches, uint32_t* out_height,
+    uint32_t* out_width, uint32_t* out_depth, uint8_t* out_vals,
+    const uint32_t output_val_byte_size, uint32_t* out_data_byte_size) {
   if (DBG_EXECUTION) {
     TFMLOGD("Preparing to execute...");
-    TFMLOGD("Input: %d, %d, %d, %d, %d, %d",
-            batches, height, width, depth, int_data[0], int_data_size);
+    TFMLOGD("Input: %d, %d, %d, %d, %d, %d", batches, height, width, depth,
+            int_data[0], int_data_size);
     TFMLOGD("Output: %d, %p", output_val_byte_size, out_vals);
     LogDHexagon("Execute graph!");
   }
@@ -273,27 +262,21 @@ bool hexagon_controller_ExecuteInceptionDummyData(uint32_t nn_id) {
   const bool success = hexagon_controller_ExecuteGraph(
       nn_id, INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,
       INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH,
-      (uint8_t *)inception_dummy_int_data_299x299,
+      (uint8_t*)inception_dummy_int_data_299x299,
       INCEPTION_PARAM_HEIGHT_V3 * INCEPTION_PARAM_WIDTH_V3 *
-      INCEPTION_PARAM_DEPTH,
+          INCEPTION_PARAM_DEPTH,
       &out_batches, &out_height, &out_width, &out_depth,
-      (uint8_t *)s_output_values, sizeof(s_output_values),
-      &out_data_size);
+      (uint8_t*)s_output_values, sizeof(s_output_values), &out_data_size);
   if (success) {
     int out_ranking[OUT_RANKING_SIZE];
     hexagon_controller_PrintMaxNIdx(
-        s_output_values,
-        out_batches * out_height * out_width * out_depth,
+        s_output_values, out_batches * out_height * out_width * out_depth,
         OUT_RANKING_SIZE, out_ranking);
-    TFMLOGD("%d x %d x %d x %d, size = %d\n",
-            out_batches,
-            out_height,
-            out_width,
-            out_depth,
-            out_data_size);
-    TFMLOGD("max idx: %d\n", FindMaxIdx(
-        s_output_values,
-        out_batches * out_height * out_width * out_depth));
+    TFMLOGD("%d x %d x %d x %d, size = %d\n", out_batches, out_height,
+            out_width, out_depth, out_data_size);
+    TFMLOGD("max idx: %d\n",
+            FindMaxIdx(s_output_values,
+                       out_batches * out_height * out_width * out_depth));
     if (out_ranking[0] == 169 && out_ranking[1] == 7) {
       return true;
     } else {
@@ -317,25 +300,22 @@ void hexagon_controller_DumpPerf(uint32_t nn_id) {
     TFMLOGE("perf info failure");
     return;
   }
-  TFMLOGD("Total %d nodes.",n_nodes);
-  qsort(info,n_nodes,sizeof(info[0]), CompareCycle);
+  TFMLOGD("Total %d nodes.", n_nodes);
+  qsort(info, n_nodes, sizeof(info[0]), CompareCycle);
   for (i = 0; i < n_nodes; i++) {
     total_cycles += GetCounter(info[i]);
   }
-  TFMLOGD("Total %lld cycles.",total_cycles);
+  TFMLOGD("Total %lld cycles.", total_cycles);
   for (i = 0; i < n_nodes; i++) {
     counter = GetCounter(info[i]);
     cum_cycles += counter;
-    TFMLOGD("node,0x%x,%s,%s,executions,%d,cycles,%lld,%f %%,"
-            "cum_cycles,%lld,%f %%\n",
-           info[i].node_id,
-           ConvertGraphInfoIdToName(info[i].node_id),
-           ConvertGraphInfoIdToOpName(info[i].node_id),
-           info[i].executions,
-           counter,
-           100*((double)counter)/total_cycles,
-           cum_cycles,
-           100*((double)cum_cycles)/total_cycles);
+    TFMLOGD(
+        "node,0x%x,%s,%s,executions,%d,cycles,%lld,%f %%,"
+        "cum_cycles,%lld,%f %%\n",
+        info[i].node_id, ConvertGraphInfoIdToName(info[i].node_id),
+        ConvertGraphInfoIdToOpName(info[i].node_id), info[i].executions,
+        counter, 100 * ((double)counter) / total_cycles, cum_cycles,
+        100 * ((double)cum_cycles) / total_cycles);
   }
 #ifdef ENABLE_HVX_FULL_DEBUG
   DumpAllPerf(nn_id);
@@ -356,7 +336,7 @@ void hexagon_controller_DumpNodeName(uint32_t nn_id) {
     TFMLOGD("perf info failure");
     return;
   }
-  TFMLOGD("Total %d nodes.",node_count);
+  TFMLOGD("Total %d nodes.", node_count);
   qsort(info, node_count, sizeof(info[0]), CompareCycle);
   for (i = 0; i < node_count; i++) {
     total_cycles += GetCounter(info[i]);
@@ -365,19 +345,14 @@ void hexagon_controller_DumpNodeName(uint32_t nn_id) {
   for (i = 0; i < node_count; i++) {
     counter = GetCounter(info[i]);
     cum_cycles += counter;
-    TFMLOGD("node,0x%x,%s,%s,executions,%d,cycles,%lld,%f %%,"
-            "cum_cycles,%lld,%f %%",
-            info[i].node_id,
-            ConvertGraphInfoIdToName(info[i].node_id),
-            ConvertGraphInfoIdToOpName(info[i].node_id),
-            info[i].executions,
-            counter,
-            100*((double)counter)/total_cycles,
-            cum_cycles,
-            100*((double)cum_cycles)/total_cycles);
+    TFMLOGD(
+        "node,0x%x,%s,%s,executions,%d,cycles,%lld,%f %%,"
+        "cum_cycles,%lld,%f %%",
+        info[i].node_id, ConvertGraphInfoIdToName(info[i].node_id),
+        ConvertGraphInfoIdToOpName(info[i].node_id), info[i].executions,
+        counter, 100 * ((double)counter) / total_cycles, cum_cycles,
+        100 * ((double)cum_cycles) / total_cycles);
   }
 }
 
-void hexagon_controller_Teardown(uint32_t nn_id) {
-  hexagon_nn_teardown(nn_id);
-}
+void hexagon_controller_Teardown(uint32_t nn_id) { hexagon_nn_teardown(nn_id); }

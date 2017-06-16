@@ -142,8 +142,6 @@ void hexagon_controller_EnableDbgUseInceptionDummyData(bool enable);
 
 bool hexagon_controller_IsDbgUseInceptionDummyDataEnabled();
 
-void hexagon_controller_PrintLog(uint32_t nn_id);
-
 #ifdef __cplusplus
 }
 #endif  // __cplusplus

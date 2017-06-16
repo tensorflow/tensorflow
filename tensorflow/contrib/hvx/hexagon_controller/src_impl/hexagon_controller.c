@@ -24,7 +24,8 @@ limitations under the License.
 
 #include "adspmsgd.h"
 #include "dspCV.h"
-#include "rpcmem.h"    // helper API's for shared buffer allocation
+#include "node_data_float.h"
+#include "rpcmem.h"  // helper API's for shared buffer allocation
 #include "soc_interface.h"
 #include "tfm_log.h"
 
@@ -86,7 +87,8 @@ static bool SetInputTensorDef(int port, hexagon_nn_tensordef* tensordef) {
     TFMLOGE("Error exceeds input count.");
     return false;
   }
-  NodeDataFloat* input_node_data_buffer = &s_input_node_data_buffer[port];
+  struct NodeDataFloat* input_node_data_buffer =
+      &s_input_node_data_buffer[port];
   tensordef->batches = input_node_data_buffer->x;
   tensordef->height = input_node_data_buffer->y;
   tensordef->width = input_node_data_buffer->z;
@@ -142,19 +144,19 @@ void hexagon_controller_InitInputNodeDataToInceptionDummyData(int version) {
     }
     hexagon_controller_CopyByteNodeData(
         0, INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V1,
-        INCEPTION_PARAM_WIDTH_V1, INCEPTION_PARAM_DEPTH,
-        1, inception_dummy_int_data_224x224);
+        INCEPTION_PARAM_WIDTH_V1, INCEPTION_PARAM_DEPTH, 1,
+        inception_dummy_int_data_224x224);
   } else if (version == 3) {
     if (USE_FLOAT_DATA) {
       hexagon_controller_CopyByteNodeData(
           0, INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,
-          INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH,
-          sizeof(float), (uint8_t*)inception_dummy_float_data_299x299);
+          INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH, sizeof(float),
+          (uint8_t*)inception_dummy_float_data_299x299);
     } else {
       hexagon_controller_CopyByteNodeData(
           0, INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,
-          INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH,
-          1, inception_dummy_int_data_299x299);
+          INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH, 1,
+          inception_dummy_int_data_299x299);
     }
   }
 }
@@ -188,7 +190,7 @@ bool hexagon_controller_ExecuteGraphWithBuffer(uint32_t nn_id,
 
   if (!success) {
     TFMLOGE("Execution failed");
-    hexagon_controller_PrintLog(nn_id);
+    DumpNNId(nn_id);
     return false;
   } else if (!show_ranking) {
     return true;
@@ -217,9 +219,7 @@ bool hexagon_controller_ExecuteGraphWithBuffer(uint32_t nn_id,
   return true;
 }
 
-uint32_t hexagon_controller_GetTargetGraphId() {
-  return s_target_graph_id;
-}
+uint32_t hexagon_controller_GetTargetGraphId() { return s_target_graph_id; }
 
 void hexagon_controller_SetTargetGraphId(uint32_t graph_id) {
   s_target_graph_id = graph_id;
@@ -305,7 +305,8 @@ bool hexagon_controller_AllocateNodeDataBuffers(int input_size,
 }
 
 bool hexagon_controller_ReleaseInputNodeDataBuffersWithPort(int port) {
-  NodeDataFloat* input_node_data_buffer = &s_input_node_data_buffer[port];
+  struct NodeDataFloat* input_node_data_buffer =
+      &s_input_node_data_buffer[port];
   if (input_node_data_buffer->max_buf_byte_size == 0) {
     TFMLOGE("ERROR! input buffer has not been allocated yet!!");
     return false;
@@ -346,15 +347,14 @@ bool hexagon_controller_CopyByteNodeData(int port, int x, int y, int z, int d,
   int array_byte_size = x * y * z * d * type_byte_size;
   TFMLOGD("--- %d, %d, %d, %d, %d, %d", x, y, z, d, type_byte_size,
           array_byte_size);
-  NodeDataFloat* input_node_data_buffer = s_input_node_data_buffer[0];
+  struct NodeDataFloat* input_node_data_buffer = &s_input_node_data_buffer[0];
 
   if (input_node_data_buffer->max_buf_byte_size < array_byte_size) {
     TFMLOGE("ERROR! input buffer size is too small! %d < %d",
             input_node_data_buffer->max_buf_byte_size, array_byte_size);
     return false;
   }
-  memcpy(input_node_data_buffer->byte_array_data, array_data,
-         array_byte_size);
+  memcpy(input_node_data_buffer->byte_array_data, array_data, array_byte_size);
   input_node_data_buffer->array_byte_size = array_byte_size;
   input_node_data_buffer->x = x;
   input_node_data_buffer->y = y;
@@ -363,8 +363,9 @@ bool hexagon_controller_CopyByteNodeData(int port, int x, int y, int z, int d,
   return true;
 }
 
-int hexagon_controller_InitHexagonWithMaxAttributes(
-    int enable_dcvs, int bus_usage, int version) {
+int hexagon_controller_InitHexagonWithMaxAttributes(int enable_dcvs,
+                                                    int bus_usage,
+                                                    int version) {
   TFMLOGI("Init hexagon with max attributes (Controller version = %d)",
           HEXAGON_CONTROLLER_VERSION);
   const int MCPS = 1000;
@@ -373,17 +374,17 @@ int hexagon_controller_InitHexagonWithMaxAttributes(
   adspmsgd_start(0, RPCMEM_HEAP_DEFAULT, 4096);
 
   dspCV_Attribute attrib[] = {
-    // The below values will result in the maximum aDSP performance,
-    // at Turbo voltage.
-    // Slightly more MCPS than are available on current targets
-    {DSP_TOTAL_MCPS, MCPS},
-    // drive the clock to MAX on known targets
-    {DSP_MCPS_PER_THREAD, MCPS / 2},
-    // 12 GB/sec is slightly higher than the max realistic
-    // max BW on existing targets.
-    {PEAK_BUS_BANDWIDTH_MBPS, MBPS},
-    // This app is non-real time, and constantly reading/writing memory
-    {BUS_USAGE_PERCENT, bus_usage},
+      // The below values will result in the maximum aDSP performance,
+      // at Turbo voltage.
+      // Slightly more MCPS than are available on current targets
+      {DSP_TOTAL_MCPS, MCPS},
+      // drive the clock to MAX on known targets
+      {DSP_MCPS_PER_THREAD, MCPS / 2},
+      // 12 GB/sec is slightly higher than the max realistic
+      // max BW on existing targets.
+      {PEAK_BUS_BANDWIDTH_MBPS, MBPS},
+      // This app is non-real time, and constantly reading/writing memory
+      {BUS_USAGE_PERCENT, bus_usage},
   };
   int retval = 0;
   if (!enable_dcvs) {
@@ -414,9 +415,7 @@ int hexagon_controller_DeInitHexagon() {
   return retval;
 }
 
-void hexagon_controller_GrowMemorySize() {
-  hexagon_nn_config();
-}
+void hexagon_controller_GrowMemorySize() { hexagon_nn_config(); }
 
 struct NodeDataFloat* hexagon_controller_GetInputNodeDataBuffer(int port) {
   if (port >= GetInputNodeCount()) {
@@ -435,16 +434,17 @@ uint8_t* hexagon_controller_GetOutputNodeDataBuffer(int port,
 }
 
 // Append const node to the graph
-int hexagon_controller_AppendConstNode(
-    const char* const name, int graph_id, int node_id,
-    int batch, int height, int width, int depth,
-    const uint8_t* const data, int data_length) {
+int hexagon_controller_AppendConstNode(const char* const name, int graph_id,
+                                       int node_id, int batch, int height,
+                                       int width, int depth,
+                                       const uint8_t* const data,
+                                       int data_length) {
   if (DBG_SHOW_ID) {
-    TFMLOGV("---(CONST) %s, %d, %d, %d, %d, %d, %d",
-            name, node_id, batch, height, width, depth, data_length);
+    TFMLOGV("---(CONST) %s, %d, %d, %d, %d, %d, %d", name, node_id, batch,
+            height, width, depth, data_length);
   } else {
-    TFMLOGV("---(CONST) %s, %d, %d, %d, %d, %d",
-            name, batch, height, width, depth, data_length);
+    TFMLOGV("---(CONST) %s, %d, %d, %d, %d, %d", name, batch, height, width,
+            depth, data_length);
   }
   const int retval = hexagon_nn_append_const_node(
       graph_id, node_id, batch, height, width, depth, data, data_length);
@@ -456,11 +456,12 @@ int hexagon_controller_AppendConstNode(
 }
 
 // Append node to the graph
-int hexagon_controller_AppendNode(
-    const char* const name, int graph_id, int node_id, int ops_id,
-    int padding_id, const hexagon_nn_input* const inputs,
-    int inputs_count, const hexagon_nn_output* const outputs,
-    int outputs_count) {
+int hexagon_controller_AppendNode(const char* const name, int graph_id,
+                                  int node_id, int ops_id, int padding_id,
+                                  const hexagon_nn_input* const inputs,
+                                  int inputs_count,
+                                  const hexagon_nn_output* const outputs,
+                                  int outputs_count) {
   char input_param_buf[OUTPUT_PARAM_MAX_LINE_SIZE];
   memset(input_param_buf, 0, OUTPUT_PARAM_MAX_LINE_SIZE);
   int pos = 0;
@@ -470,8 +471,8 @@ int hexagon_controller_AppendNode(
       pos += snprintf(&input_param_buf[pos], 500, "(%d, %d), ",
                       inputs[i].src_id, inputs[i].output_idx);
     } else {
-      pos += snprintf(&input_param_buf[pos], 500, "(%d), ",
-                      inputs[i].output_idx);
+      pos +=
+          snprintf(&input_param_buf[pos], 500, "(%d), ", inputs[i].output_idx);
     }
   }
 
@@ -484,18 +485,16 @@ int hexagon_controller_AppendNode(
   }
 
   if (DBG_SHOW_ID) {
-    TFMLOGV("---(OP) %s, %d, %d, %d, %d, %d, %s, %s", name, node_id,
-            ops_id, padding_id, inputs_count, outputs_count, input_param_buf,
+    TFMLOGV("---(OP) %s, %d, %d, %d, %d, %d, %s, %s", name, node_id, ops_id,
+            padding_id, inputs_count, outputs_count, input_param_buf,
             output_param_buf);
   } else {
-    TFMLOGV("---(OP) %s, %d, %d, %d, %d, %s, %s", name,
-            ops_id, padding_id, inputs_count, outputs_count, input_param_buf,
-            output_param_buf);
+    TFMLOGV("---(OP) %s, %d, %d, %d, %d, %s, %s", name, ops_id, padding_id,
+            inputs_count, outputs_count, input_param_buf, output_param_buf);
   }
-  const int retval = hexagon_nn_append_node(
-      graph_id, node_id, ops_id, padding_id,
-      inputs, inputs_count,
-      outputs, outputs_count);
+  const int retval =
+      hexagon_nn_append_node(graph_id, node_id, ops_id, padding_id, inputs,
+                             inputs_count, outputs, outputs_count);
   if (retval != 0) {
     TFMLOGE("Failed to append const node %d", node_id);
     return retval;
@@ -509,12 +508,4 @@ void hexagon_controller_EnableDbgUseInceptionDummyData(bool enable) {
 
 bool hexagon_controller_IsDbgUseInceptionDummyDataEnabled() {
   return s_dbg_use_inception_dummy_data;
-}
-
-void hexagon_controller_PrintLog(uint32_t nn_id) {
-  unsigned char* buf = NULL;
-  posix_memalign((void**)&buf, 128, PRINT_BUFSIZE);
-  hexagon_nn_getlog(nn_id, buf, PRINT_BUFSIZE);
-  TFMLOGE("DUMP HEXAGON LOG: %s", buf);
-  free(buf);
 }

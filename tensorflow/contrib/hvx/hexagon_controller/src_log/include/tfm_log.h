@@ -74,4 +74,9 @@ static inline void LogDHexagon(const char* fmt, ...) {
   va_end(ap);
 }
 
+static inline void DumpNNId(uint32_t nn_id) {
+  // TODO(satok): Dump more information
+  TFMLOGI("NN Id = %d", nn_id);
+}
+
 #endif
