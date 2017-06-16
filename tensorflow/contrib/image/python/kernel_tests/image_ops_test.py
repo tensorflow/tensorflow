@@ -87,6 +87,22 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                               [22, 17, 12, 7, 2], [23, 18, 13, 8, 3],
                               [24, 19, 14, 9, 4]]])
 
+  def test_translate(self):
+    with self.test_session():
+      for dtype in _DTYPES:
+        image = constant_op.constant(
+            [[1, 0, 1, 0],
+             [0, 1, 0, 1],
+             [1, 0, 1, 0],
+             [0, 1, 0, 1]], dtype=dtype)
+         translation = constant_op.constant([-1, -1], dtypes.float32)
+         image_translated = image_ops.translate(image, translation)
+         self.assertAllEqual(image_transformed.eval(),
+                             [[1, 0, 1, 0],
+                              [0, 1, 0, 0],
+                              [1, 0, 1, 0],
+                              [0, 0, 0, 0]])
+
   def test_compose(self):
     with self.test_session():
       for dtype in _DTYPES:
@@ -246,4 +262,3 @@ class BipartiteMatchTest(test_util.TensorFlowTestCase):
 
 if __name__ == "__main__":
   googletest.main()
-

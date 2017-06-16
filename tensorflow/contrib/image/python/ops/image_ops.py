@@ -81,6 +81,48 @@ def rotate(images, angles, interpolation="NEAREST"):
     return output
 
 
+def translate(images, translations, interpolation="NEAREST"):
+  """Translate image(s) by the passed vectors(s).
+
+  Args:
+    images: A tensor of shape (num_images, num_rows, num_columns, num_channels)
+       (NHWC), (num_rows, num_columns, num_channels) (HWC), or
+       (num_rows, num_columns) (HW).
+    translations: A vector representing [dx, dy] or (if images has rank 4)
+        a vector of length num_images, with a [dx, dy] vector for each image in the batch.
+    interpolation: Interpolation mode. Supported values: "NEAREST", "BILINEAR".
+
+  Returns:
+    Image(s) with the same type and shape as `images`, translated by the given
+    vector(s). Empty space due to the translation will be filled with zeros.
+
+  Raises:
+    TypeError: If `image` is an invalid type.
+  """
+  image_or_images = ops.convert_to_tensor(images, name="images")
+  if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
+    raise TypeError("Invalid dtype %s." % image_or_images.dtype)
+  if len(image_or_images.get_shape()) == 2:
+    images = image_or_images[None, :, :, None]
+  elif len(image_or_images.get_shape()) == 3:
+    images = image_or_images[None, :, :, :]
+  elif len(image_or_images.get_shape()) == 4:
+    images = image_or_images
+  else:
+    raise TypeError("Images should have rank between 2 and 4.")
+
+  output = transform(
+      images,
+      translations_to_projective_transforms(translations),
+      interpolation=interpolation)
+  if len(image_or_images.get_shape()) == 2:
+    return output[0, :, :, 0]
+  elif len(image_or_images.get_shape()) == 3:
+    return output[0, :, :, :]
+  else:
+    return output
+
+
 def angles_to_projective_transforms(angles, image_height, image_width):
   """Returns projective transform(s) for the given angle(s).
 
@@ -118,6 +160,39 @@ def angles_to_projective_transforms(angles, image_height, image_width):
           math_ops.cos(angles)[:, None],
           y_offset[:, None],
           array_ops.zeros((num_angles, 2), dtypes.float32),
+      ],
+      axis=1)
+
+
+def translations_to_projective_transforms(translations):
+  """Returns projective transform(s) for the given translation(s).
+
+  Args:
+      translations: A 2-element list representing [dx, dy] or a vector of 2-element lists
+          representing [dx, dy] to translate for each image (for a batch of images)
+
+  Returns:
+      A tensor of shape (num_images, 8) projective transforms which can be given
+          to `tf.contrib.image.transform`.
+  """
+  translation_or_translations = ops.convert_to_tensor(
+      translations, name="translations", dtype=dtypes.float32)
+  if len(translation_or_translations.get_shape()) == 1:
+      translations = translation_or_translations[None]
+  elif len(translation_or_translations.get_shape()) == 2:
+      translations = translation_or_translations
+  else:
+      raise TypeError("Translations should have rank 1 or 2.")
+  num_translations = array_ops.shape(translations)[0]
+  return array_ops.concat(
+      values=[
+          array_ops.ones((num_translations, 1), dtypes.float32),
+          array_ops.zeros((num_translations, 1), dtypes.float32),
+          -translations[:, 0, None],
+          array_ops.zeros((num_translations, 1), dtypes.float32),
+          array_ops.ones((num_translations, 1), dtypes.float32),
+          -translations[:, 1, None],
+          array_ops.zeros((num_translations, 2), dtypes.float32),
       ],
       axis=1)
 
