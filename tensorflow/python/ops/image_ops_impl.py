@@ -52,7 +52,6 @@ ops.NotDifferentiable('SampleDistortedBoundingBox')
 # latent bugs here.
 ops.NotDifferentiable('ExtractGlimpse')
 ops.NotDifferentiable('NonMaxSuppression')
-ops.NotDifferentiable('NonMaxSuppressionV2')
 
 
 def _assert(cond, ex_type, msg):
