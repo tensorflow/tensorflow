@@ -29,6 +29,12 @@ VirtualCluster::VirtualCluster(
   devices_ = devices;
 }
 
+VirtualCluster::VirtualCluster(
+    const std::unordered_map<string, DeviceProperties>& devices,
+    OpLevelCostEstimator* node_estimator)
+    : Cluster(0), node_estimator_(node_estimator) {
+  devices_ = devices;
+}
 VirtualCluster::~VirtualCluster() {}
 
 Status VirtualCluster::Provision() { return Status::OK(); }

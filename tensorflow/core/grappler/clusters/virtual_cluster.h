@@ -30,6 +30,8 @@ namespace grappler {
 class VirtualCluster : public Cluster {
  public:
   VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices);
+  VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices,
+                 OpLevelCostEstimator* node_estimator);
 
   ~VirtualCluster() override;
 
