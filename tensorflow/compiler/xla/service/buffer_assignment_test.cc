@@ -1647,8 +1647,8 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
       input1,   weights1, one,     output1, tuple1, while1,  input0,
       weights0, zero,     output0, tuple0,  while0, root_add};
 
-  // If this CHECK fails, we constructed a bogus sequence above and
-  // this test itself is buggy.
+  // If this ASSERT_TRUE fails, we constructed a bogus sequence above
+  // and this test itself is buggy.
   ASSERT_TRUE(IsPostOrderTraversal(sequence_for_buffer_assigment));
 
   sequence[module->entry_computation()] =
