@@ -57,7 +57,7 @@ for additional containers, such as release candidates or nightly builds.
 Building TensorFlow Docker containers should be done through the
 [parameterized_docker_build.sh](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/docker/README.md)
 script. The raw Dockerfiles should not be used directly as they contain strings
-that are to be replaced by the script during the build.
+to be replaced by the script during the build.
 
 To use the script, specify the container type (`CPU` vs. `GPU`), the desired
 Python version (`PYTHON2` vs. `PYTHON3`) and whether the developer Docker image
