@@ -257,6 +257,10 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
+    name: "bitwise"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "bool"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }

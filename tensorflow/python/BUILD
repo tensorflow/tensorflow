@@ -47,6 +47,7 @@ py_library(
     deps = [
         ":tf_optimizer",
         ":array_ops",
+        ":bitwise_ops",
         ":check_ops",
         ":client",
         ":client_testlib",
@@ -1056,6 +1057,17 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "bitwise_ops_gen",
+    require_shape_functions = True,
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
+        "//tensorflow/compiler/tests:__pkg__",
+        "//tensorflow/contrib/quantization:__pkg__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "candidate_sampling_ops_gen",
     require_shape_functions = True,
     visibility = ["//learning/brain/python/ops:__pkg__"],
@@ -1264,6 +1276,17 @@ py_library(
 )
 
 py_library(
+    name = "bitwise_ops",
+    srcs = ["ops/bitwise_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":bitwise_ops_gen",
+        ":framework",
+        ":util",
+    ],
+)
+
+py_library(
     name = "sets",
     srcs = [
         "ops/sets.py",
@@ -1423,6 +1446,7 @@ py_library(
     deps = [
         ":array_grad",
         ":array_ops",
+        ":bitwise_ops",
         ":control_flow_grad",
         ":control_flow_ops",
         ":framework",
@@ -2124,6 +2148,18 @@ py_library(
     deps = [
         ":user_ops_gen",
         "@six_archive//:six",
+    ],
+)
+
+cuda_py_test(
+    name = "bitwise_ops_test",
+    size = "small",
+    srcs = ["ops/bitwise_ops_test.py"],
+    additional_deps = [
+        ":bitwise_ops",
+        ":constant_op",
+        ":dtypes",
+        ":framework_test_lib",
     ],
 )
 

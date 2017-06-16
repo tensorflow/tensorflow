@@ -2346,7 +2346,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cwise_op",
     prefix = "cwise_op",
-    deps = MATH_DEPS,
+    deps = MATH_DEPS + ["//tensorflow/core:bitwise_ops_op_lib"],
 )
 
 tf_kernel_library(
@@ -4162,6 +4162,9 @@ filegroup(
         "cwise_op_abs.cc",
         "cwise_op_add_1.cc",
         "cwise_op_add_2.cc",
+        "cwise_op_bitwise_and.cc",
+        "cwise_op_bitwise_or.cc",
+        "cwise_op_bitwise_xor.cc",
         "cwise_op_div.cc",
         "cwise_op_equal_to_1.cc",
         "cwise_op_equal_to_2.cc",
@@ -4170,6 +4173,7 @@ filegroup(
         "cwise_op_floor_div.cc",
         "cwise_op_greater.cc",
         "cwise_op_greater_equal.cc",
+        "cwise_op_invert.cc",
         "cwise_op_isfinite.cc",
         "cwise_op_less.cc",
         "cwise_op_log.cc",

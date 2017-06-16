@@ -138,6 +138,7 @@ tensorflow/core/kernels/cwise_op_logical_and.cc
 tensorflow/core/kernels/cwise_op_log.cc
 tensorflow/core/kernels/cwise_op_less.cc
 tensorflow/core/kernels/cwise_op_isfinite.cc
+tensorflow/core/kernels/cwise_op_invert.cc
 tensorflow/core/kernels/cwise_op_greater_equal.cc
 tensorflow/core/kernels/cwise_op_greater.cc
 tensorflow/core/kernels/cwise_op_floor_div.cc
@@ -146,6 +147,9 @@ tensorflow/core/kernels/cwise_op_exp.cc
 tensorflow/core/kernels/cwise_op_equal_to_2.cc
 tensorflow/core/kernels/cwise_op_equal_to_1.cc
 tensorflow/core/kernels/cwise_op_div.cc
+tensorflow/core/kernels/cwise_op_bitwise_xor.cc
+tensorflow/core/kernels/cwise_op_bitwise_or.cc
+tensorflow/core/kernels/cwise_op_bitwise_and.cc
 tensorflow/core/kernels/cwise_op_add_2.cc
 tensorflow/core/kernels/cwise_op_add_1.cc
 tensorflow/core/kernels/cwise_op_abs.cc

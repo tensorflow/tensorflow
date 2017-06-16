@@ -77,6 +77,7 @@ from tensorflow.python.ops.standard_ops import *
 from tensorflow.python.estimator import estimator_lib as estimator
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.layers import layers
+from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
@@ -209,6 +210,7 @@ _allowed_symbols.extend([
 # Export modules and constants.
 _allowed_symbols.extend([
     'app',
+    'bitwise',
     'compat',
     'errors',
     'estimator',
