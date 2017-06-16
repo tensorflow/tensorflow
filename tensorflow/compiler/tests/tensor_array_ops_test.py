@@ -573,13 +573,12 @@ class TensorArrayTest(xla_test.XLATestCase):
                            [2000.0, -2000.0]],
                           grad_vals[0])
 
-  # TODO(phawkins): implement TensorArrayClose
-  # def testCloseTensorArray(self):
-  #   with self.test_session() as session, self.test_scope():
-  #     ta = tensor_array_ops.TensorArray(
-  #         dtype=dtypes.float32, tensor_array_name="foo", size=3)
-  #     c1 = ta.close()
-  #     session.run(c1)
+  def testCloseTensorArray(self):
+    with self.test_session() as session, self.test_scope():
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32, tensor_array_name="foo", size=3)
+      c1 = ta.close()
+      session.run(c1)
 
   def testSizeTensorArray(self):
     with self.test_session(), self.test_scope():
@@ -588,17 +587,16 @@ class TensorArrayTest(xla_test.XLATestCase):
       s = ta.size()
       self.assertAllEqual(3, s.eval())
 
-  # TODO(phawkins): implement TensorArrayClose
-  # def testWriteCloseTensorArray(self):
-  #   with self.test_session(), self.test_scope():
-  #     ta = tensor_array_ops.TensorArray(
-  #         dtype=dtypes.float32,
-  #         tensor_array_name="foo",
-  #         size=3,
-  #         infer_shape=False)
-  #     w0 = ta.write(0, [[4.0, 5.0]])
-  #     w1 = w0.write(1, [3.0])
-  #     w1.close().run()  # Expected to run without problems
+  def testWriteCloseTensorArray(self):
+    with self.test_session(), self.test_scope():
+      ta = tensor_array_ops.TensorArray(
+          dtype=dtypes.float32,
+          tensor_array_name="foo",
+          size=3,
+          infer_shape=False)
+      w0 = ta.write(0, [[4.0, 5.0]])
+      w1 = w0.write(1, [3.0])
+      w1.close().run()  # Expected to run without problems
 
   # TODO(phawkins): implement while loops.
   # def _testWhileLoopWritePackGradients(self, dynamic_size, dtype):

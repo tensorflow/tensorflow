@@ -534,5 +534,19 @@ class TensorArrayGradOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("TensorArrayGradV3"), TensorArrayGradOp);
 
+class TensorArrayCloseOp : public XlaOpKernel {
+ public:
+  explicit TensorArrayCloseOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    // Do nothing; XLA handles resource management.
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(TensorArrayCloseOp);
+};
+
+REGISTER_XLA_OP(Name("TensorArrayCloseV3"), TensorArrayCloseOp);
+
 }  // anonymous namespace
 }  // namespace tensorflow
