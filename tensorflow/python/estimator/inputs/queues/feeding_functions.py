@@ -267,8 +267,7 @@ class _GeneratorFeedFn(object):
                batch_size,
                random_start=False,
                seed=None,
-               num_epochs=None,
-               pad_data=False):
+               num_epochs=None):
     first_sample = next(generator())
     if len(placeholders) != len(first_sample):
       raise ValueError("Expected {} placeholders; got {}.".format(
@@ -279,7 +278,6 @@ class _GeneratorFeedFn(object):
     self._iterator = generator()
     self._batch_size = batch_size
     self._num_epochs = num_epochs
-    self._pad_data = pad_data
     self._epoch = 0
     random.seed(seed)
 
@@ -304,12 +302,8 @@ class _GeneratorFeedFn(object):
         list_dict.setdefault(self._col_placeholders[index],
                              list()).append(data_row[key])
         list_dict_size += 1
-    if self._pad_data:
-      feed_dict = {key: np.asarray(_pad_if_needed(item))
-                   for key, item in list(list_dict.items())}
-    else:
-      feed_dict = {key: np.asarray(item)
-                   for key, item in list(list_dict.items())}
+    feed_dict = {key: np.asarray(_pad_if_needed(item))
+                 for key, item in list(list_dict.items())}
     return feed_dict
 
 
