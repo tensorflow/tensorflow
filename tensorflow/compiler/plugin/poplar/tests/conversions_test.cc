@@ -26,11 +26,11 @@ namespace {
 
 using ConversionsTest = HloTestBase;
 
-TEST_F(ConversionsTest, Int64ToInt32) {
+TEST_F(ConversionsTest, Int64ToInt32Input) {
   int64 src[] = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9
   };
-  std::vector<char> res = ConvertInt64ToInt32((void*)src, sizeof(src));
+  std::vector<char> res = ConvInt64ToInt32((void*)src, sizeof(src), 0);
 
   EXPECT_EQ(20 * sizeof(int32), res.size());
 
@@ -43,11 +43,45 @@ TEST_F(ConversionsTest, Int64ToInt32) {
   EXPECT_EQ(-9, d[19]);
 }
 
-TEST_F(ConversionsTest, Int32ToInt64) {
+TEST_F(ConversionsTest, Int32ToInt64Input) {
   int32 src[] = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9
   };
-  std::vector<char> res = ConvertInt32ToInt64((void*)src, sizeof(src));
+  std::vector<char> res = ConvInt32ToInt64((void*)src, sizeof(src), 0);
+
+  EXPECT_EQ(20 * sizeof(int64), res.size());
+
+  int64* d = reinterpret_cast<int64*>(res.data());
+  EXPECT_EQ(0, d[0]);
+  EXPECT_EQ(1, d[1]);
+  EXPECT_EQ(2, d[2]);
+  EXPECT_EQ(0, d[10]);
+  EXPECT_EQ(-1, d[11]);
+  EXPECT_EQ(-9, d[19]);
+}
+
+TEST_F(ConversionsTest, Int64ToInt32Output) {
+  int64 src[] = {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9
+  };
+  std::vector<char> res = ConvInt64ToInt32((void*)src, 0, sizeof(src) / 2);
+
+  EXPECT_EQ(20 * sizeof(int32), res.size());
+
+  int32* d = reinterpret_cast<int32*>(res.data());
+  EXPECT_EQ(0, d[0]);
+  EXPECT_EQ(1, d[1]);
+  EXPECT_EQ(2, d[2]);
+  EXPECT_EQ(0, d[10]);
+  EXPECT_EQ(-1, d[11]);
+  EXPECT_EQ(-9, d[19]);
+}
+
+TEST_F(ConversionsTest, Int32ToInt64Output) {
+  int32 src[] = {
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, -1, -2, -3, -4, -5, -6, -7, -8, -9
+  };
+  std::vector<char> res = ConvInt32ToInt64((void*)src, 0, sizeof(src) * 2);
 
   EXPECT_EQ(20 * sizeof(int64), res.size());
 
@@ -66,10 +100,10 @@ TEST_F(ConversionsTest, GetConvertors) {
   Shape s32 = ShapeUtil::MakeShape(S32, {2, 2});
   Shape f16 = ShapeUtil::MakeShape(F16, {2, 2});
 
-  EXPECT_EQ(&ConvertInt64ToInt32, GetInputConversionFunction(s64));
-  EXPECT_EQ(&ConvertInt64ToInt32, GetInputConversionFunction(u64));
-  EXPECT_EQ(&ConvertInt32ToInt64, GetOutputConversionFunction(s64));
-  EXPECT_EQ(&ConvertInt32ToInt64, GetOutputConversionFunction(u64));
+  EXPECT_EQ(&ConvInt64ToInt32, GetInputConversionFunction(s64));
+  EXPECT_EQ(&ConvInt64ToInt32, GetInputConversionFunction(u64));
+  EXPECT_EQ(&ConvInt32ToInt64, GetOutputConversionFunction(s64));
+  EXPECT_EQ(&ConvInt32ToInt64, GetOutputConversionFunction(u64));
 
   EXPECT_EQ(nullptr, GetInputConversionFunction(s32));
   EXPECT_EQ(nullptr, GetInputConversionFunction(f16));

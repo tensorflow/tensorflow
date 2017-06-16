@@ -156,9 +156,13 @@ public:
       input_convertors[i] = GetInputConversionFunction(param->shape());
     }
 
-    for (int64 o=0; o<num_outputs; o++) {
-      output_convertors[o] = GetOutputConversionFunction(
-              ShapeUtil::GetTupleElementShape(inst->shape(), o));
+    if (ShapeUtil::IsTuple(inst->shape())) {
+      for (int64 o=0; o<num_outputs; o++) {
+        output_convertors[o] = GetOutputConversionFunction(
+                ShapeUtil::GetTupleElementShape(inst->shape(), o));
+      }
+    } else {
+      output_convertors[0] = GetOutputConversionFunction(inst->shape());
     }
 
     tensor_map.clear();

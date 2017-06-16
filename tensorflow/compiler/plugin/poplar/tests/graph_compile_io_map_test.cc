@@ -215,10 +215,10 @@ TEST_F(GraphCompileIoMapTest, Int64Conversion) {
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(2, GetInputList(e).size());
-  EXPECT_EQ(&ConvertInt64ToInt32, GetInputList(e)[0]);
-  EXPECT_EQ(&ConvertInt64ToInt32, GetInputList(e)[1]);
+  EXPECT_EQ(&ConvInt64ToInt32, GetInputList(e)[0]);
+  EXPECT_EQ(&ConvInt64ToInt32, GetInputList(e)[1]);
   EXPECT_EQ(1, GetOutputList(e).size());
-  EXPECT_EQ(&ConvertInt32ToInt64, GetOutputList(e)[0]);
+  EXPECT_EQ(&ConvInt32ToInt64, GetOutputList(e)[0]);
 }
 
 }

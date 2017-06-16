@@ -307,8 +307,9 @@ PoplarExecutor::MoveDeviceToHost(TensorControl* tc) const {
   if (tc->on_device == true && tc->output_handle != -1) {
     void* buf(static_cast<void*>(tc->data));
     if (tc->output_convertor) {
-      buf = tc->output_convertor(buf, tc->size).data();
       current_engine_->readTensor(GetCopyHandle(tc->output_handle), buf);
+      std::vector<char> converted = tc->output_convertor(buf, 0, tc->size);
+      memcpy(buf, converted.data(), converted.size());
     } else {
       current_engine_->readTensor(GetCopyHandle(tc->output_handle), buf);
     }
@@ -369,8 +370,8 @@ PoplarExecutor::ExecuteEngine(poplar::Engine* engine,
         if (tc->on_device == false || tc->input_handle != a || engine_changed) {
           void *buf(static_cast<void *>(tc->data));
           if (input_convertors[a]) {
-            buf = input_convertors[a](buf, tc->size).data();
-            current_engine_->writeTensor(GetCopyHandle(a), buf);
+            std::vector<char> converted = input_convertors[a](buf, tc->size, 0);
+            current_engine_->writeTensor(GetCopyHandle(a), converted.data());
           } else {
             current_engine_->writeTensor(GetCopyHandle(a), buf);
           }

@@ -233,6 +233,15 @@ py_test(
     ],
 )
 
+py_test(
+    name = "64_bit_test",
+    size = "small",
+    srcs = ["tests/64_bit_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -246,6 +255,7 @@ test_suite(
         "f16_test",
         "graph_compile_io_map_test",
         "conversions_test",
+        "64_bit_test",
     ],
 )
 

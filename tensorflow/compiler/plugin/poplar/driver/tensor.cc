@@ -98,15 +98,17 @@ Add64BitConstantTensor(poplar::Graph&graph,
   std::vector <std::size_t> dim = PoplarShapeFromXlaShape(shape);
   const void* data(static_cast<const void*>(LiteralUtil::InternalData(literal)));
 
-  std::vector<char> converted = ConvertInt64ToInt32(data, num_elements);
-  const int64* data64 = reinterpret_cast<const int64*>(converted.data());
+  std::vector<char> converted =
+          ConvInt64ToInt32(data, num_elements * sizeof(int64), 0);
+
+  const int32* data32 = reinterpret_cast<const int32*>(converted.data());
 
   if (num_elements == 0) {
-    tensor = graph.addConstantTensor(type, {0}, (int64)0);
+    tensor = graph.addConstantTensor(type, {0}, (int32)0);
   } else if (num_elements == 1) {
-    tensor = graph.addConstantTensor(type, dim, data64[0]);
+    tensor = graph.addConstantTensor(type, dim, data32[0]);
   } else {
-    tensor = graph.addConstantTensor(type, dim, data64);
+    tensor = graph.addConstantTensor(type, dim, data32);
   }
 }
 
