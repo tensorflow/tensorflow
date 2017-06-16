@@ -18568,6 +18568,36 @@ op {
   summary: "Computes rectified linear gradients for a Relu operation."
 }
 op {
+  name: "RemoteFusedGraphExecute"
+  input_arg {
+    name: "inputs"
+    description: "Arbitrary number of tensors with arbitrary data types"
+    type_list_attr: "Tinputs"
+  }
+  output_arg {
+    name: "outputs"
+    description: "Arbitrary number of tensors with arbitrary data types"
+    type_list_attr: "Toutputs"
+  }
+  attr {
+    name: "Tinputs"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Toutputs"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "serialized_remote_fused_graph_execute_info"
+    type: "string"
+    description: "Serialized protocol buffer\nof RemoteFusedGraphExecuteInfo which contains graph specifications."
+  }
+  summary: "Execute a sub graph on a remote processor."
+  description: "The graph specifications(such as graph itself, input tensors and output names)\nare stored as a serialized protocol buffer of RemoteFusedGraphExecuteInfo\nas serialized_remote_fused_graph_execute_info.\nThe specifications will be passed to a dedicated registered\nremote fused graph executor.  The executor will send the graph specifications\nto a remote processor and execute that graph.  The execution results\nwill be passed to consumer nodes as outputs of this node."
+}
+op {
   name: "RepeatDataset"
   input_arg {
     name: "input_dataset"
