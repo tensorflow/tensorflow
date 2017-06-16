@@ -16,44 +16,31 @@ limitations under the License.
 package org.tensorflow;
 
 /**
- * A tensor that can be used as an operand for operation wrappers.
+ * Interface implemented by operands of a TensorFlow operation.
  *
- * <p>The {@code Input} interface is at the base of the Java Ops API by allowing any object that
- * wraps an input tensor to be passed as an operand to an operation.
- *
- * <pre>{@code
- * // Output implements Input.
- * Output image = ops.image().decodeJpeg(...).image();
- * ops.math().cast(image, DataType.FLOAT);
- *
- * // DecodeJpeg operation also implements Input, returning the image as its output.
- * ops.math().cast(ops.image().decodeJpeg(...), DataType.FLOAT);
- * }</pre>
- *
- * <p>Additionally, objects implementing {@code Iterable<Input>} can be passed in input to
- * operations handling a list of tensors as one of its operand.
+ * <p>Example usage:
  *
  * <pre>{@code
- * // List<Output> extends from Iterable<Input>
- * List<Output> outputs = ops.array().split(...).output();
- * ops.array().concat(0, outputs);
+ * // The "decodeJpeg" operation can be used as input to the "cast" operation
+ * Input decodeJpeg = ops.image().decodeJpeg(...);
+ * ops.math().cast(decodeJpeg, DataType.FLOAT);
  *
- * // Split implements Iterable<Input>, returning an iterator on the split tensors.
- * ops.arrays().concat(0, ops.array().split(...));
+ * // The output "y" of the "unique" operation can be used as input to the "cast" operation
+ * Output y = ops.array().unique(...).y();
+ * ops.math().cast(y, DataType.FLOAT);
+ *
+ * // The "split" operation can be used as input list to the "concat" operation
+ * Iterable<? extends Input> split = ops.array().split(...);
+ * ops.array().concat(0, split);
  * }</pre>
- *
- * <p>The handle of the tensor to be passed in input is encapsulated by an instance of {@code
- * Output}, which could be retrieved by calling {@link #asOutput()}. Therefore, the {@code Output}
- * class and the {@code Input} interface are complementary to represent a tensor being passed
- * between two nodes of the graph.
  */
 public interface Input {
 
   /**
    * Returns the symbolic handle of a tensor.
    *
-   * <p>This method is called by the Java Ops API to retrieve the symbolic handle of a tensor added
-   * in input to an operation.
+   * <p>Inputs to TensorFlow operations are outputs of another TensorFlow operation. This method is
+   * used to obtain a symbolic handle that represents the computation of the input.
    *
    * @see {@link OperationBuilder#addInput(Output)}.
    */
