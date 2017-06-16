@@ -120,6 +120,7 @@ message TensorForestParams {
   // --------- Parameters that can't change by definition --------------- //
   int32 num_trees = 6;
   int32 max_nodes = 7;
+  int32 num_features = 21;
 
   decision_trees.InequalityTest.Type inequality_test_type = 19;
 
