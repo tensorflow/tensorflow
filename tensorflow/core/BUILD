@@ -329,6 +329,7 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
+        ":protos_all_cc",
         "//tensorflow/core/platform/default/build_config:gtest",
     ] + tf_additional_test_deps(),
 )
@@ -422,6 +423,7 @@ cc_library(
     hdrs = ["util/overflow.h"],
     deps = [
         ":framework_lite",
+        ":lib",
     ],
 )
 
@@ -433,6 +435,7 @@ cc_library(
     deps = [
         ":framework",
         ":lib",
+        ":protos_all_cc",
     ],
 )
 
@@ -460,6 +463,10 @@ cc_library(
     name = "session_options",
     hdrs = ["public/session_options.h"],
     visibility = ["//visibility:public"],
+    deps = [
+        ":lib",
+        ":protos_all_cc",
+    ],
 )
 
 cc_library(
@@ -1130,7 +1137,6 @@ cc_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":proto_text",
         ":protos_all_cc",
         ":stream_executor",
     ],
@@ -1348,6 +1354,7 @@ cc_library(
     }),
     deps = [
         ":lib",
+        ":lib_internal",
         "//tensorflow/core/platform/default/build_config:gif",
     ],
 )
@@ -1370,6 +1377,7 @@ cc_library(
     }),
     deps = [
         ":lib",
+        ":lib_internal",
         "//tensorflow/core/platform/default/build_config:jpeg",
     ],
 )
@@ -1733,6 +1741,7 @@ cc_library(
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        ":core_cpu",
         ":core_cpu_internal",
         ":framework",
         ":lib",
@@ -1845,7 +1854,7 @@ cc_library(
         ":framework_internal",
         ":lib",
         ":lib_internal",
-        ":protos_all_cc",
+        ":proto_text",
         "//third_party/eigen3",
         "@local_config_sycl//sycl:sycl",
     ],
@@ -1866,7 +1875,10 @@ cc_library(
         "lib/random/philox_random_test_utils.h",
         "platform/snappy.h",
     ],
-    deps = [":lib_internal"],
+    deps = [
+        ":lib",
+        ":lib_internal",
+    ],
 )
 
 cc_library(
@@ -1892,6 +1904,7 @@ cc_library(
         ":framework",
         ":lib",
         ":lib_internal",
+        ":protos_all_cc",
     ],
 )
 
@@ -2833,7 +2846,6 @@ cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:example_parsing_ops",
-        "//tensorflow/core/kernels:ops_util",
     ],
 )
 

@@ -77,7 +77,6 @@ cc_test(
     srcs = ["virtual_cluster_test.cc"],
     deps = [
         ":virtual_cluster",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
