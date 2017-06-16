@@ -52,7 +52,8 @@ bazel build -c opt --copt=-march="broadwell" --config=cuda //tensorflow/tools/pi
     (pascal): 6.2, Titan X (maxwell): 5.2, and K80: 3.7.
 *   Install the latest CUDA platform and cuDNN libraries.
 *   Make sure to use a version of gcc that supports all of the optimizations of
-    the target CPU. The recommended minimum gcc version is 4.8.3.
+    the target CPU. The recommended minimum gcc version is 4.8.3.  On OS X upgrade
+    to the latest Xcode version and use the version of clang that comes with Xcode.
 *   TensorFlow checks on startup whether it has been compiled with the
     optimizations available on the CPU. If the optimizations are not included,
     TensorFlow will emit warnings, e.g. AVX, AVX2, and FMA instructions not
