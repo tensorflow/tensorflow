@@ -4,13 +4,7 @@ load("//third_party/gpus:cuda_configure.bzl", "cuda_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
-load("@io_bazel_rules_closure//closure:defs.bzl", "web_library_external")
 load("//third_party/py:python_configure.bzl", "python_configure")
-
-load("//third_party:polymer.bzl", "tensorboard_polymer_workspace")
-load("//third_party:python.bzl", "tensorboard_python_workspace")
-load("//third_party:js.bzl", "tensorboard_js_workspace")
-load("//third_party:typings.bzl", "tensorboard_typings_workspace")
 
 
 def _is_windows(repository_ctx):
@@ -149,12 +143,6 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   if path_prefix:
     print("path_prefix was specified to tf_workspace but is no longer used " +
           "and will be removed in the future.")
-
-  # TODO(dandelion): Take these out when TB exits TF
-  tensorboard_polymer_workspace()
-  tensorboard_python_workspace()
-  tensorboard_typings_workspace()
-  tensorboard_js_workspace()
 
   native.new_http_archive(
       name = "eigen_archive",
