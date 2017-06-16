@@ -202,8 +202,8 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
 
   // Apply variable updates, if any.
   VLOG(2) << "Applying variable updates";
-  for (int i = 0; i < kernel->variable_updates.size(); ++i) {
-    const XlaCompiler::VariableUpdate& write = kernel->variable_updates[i];
+  for (int i = 0; i < kernel->resource_updates.size(); ++i) {
+    const XlaCompiler::ResourceUpdate& write = kernel->resource_updates[i];
     OP_REQUIRES(ctx,
                 write.input_index >= 0 && write.input_index < ctx->num_inputs(),
                 errors::Internal("Invalid input index for variable write."));

@@ -335,7 +335,7 @@ class TensorArrayTest(xla_test.XLATestCase):
       r0_bad = gen_data_flow_ops._tensor_array_read_v3(
           handle=w0.handle, index=0, dtype=dtypes.float64, flow_in=w0.flow)
       with self.assertRaisesOpError(
-          "TensorArray dtype is float but Op requested dtype double."):
+          "TensorArray dtype is float but op has dtype double."):
         r0_bad.eval()
 
       # Test reading from a different index than the one we wrote to

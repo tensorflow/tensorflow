@@ -42,29 +42,38 @@ Status MakeXlaCompilerArgumentsFromInputs(
             << " shape: " << ctx->InputShape(i).DebugString();
     XlaCompiler::Argument& arg = (*args)[i];
     DataType type = ctx->input_type(i);
-    // When reading a variable input, use the type and shape of the variable's
+    // When reading a resource input, use the type and shape of the resource's
     // current value.
     if (type == DT_RESOURCE) {
-      XlaVariable* var;
-      TF_RETURN_IF_ERROR(ctx->GetVariableInput(i, &var));
+      XlaResource* resource;
+      TF_RETURN_IF_ERROR(ctx->GetResourceInput(i, &resource));
 
-      bool initialized = var->value.handle() > 0;
-      if (initialized) {
-        arg.kind = XlaCompiler::Argument::kVariable;
-        TF_RETURN_IF_ERROR(
-            ctx->GetVariableTypeAndShape(i, &arg.type, &arg.shape));
+      arg.initialized = resource->value.handle() > 0;
+      switch (resource->kind) {
+        case XlaResource::kVariable:
+          arg.kind = XlaCompiler::Argument::kVariable;
+          break;
+        case XlaResource::kTensorArray:
+          arg.kind = XlaCompiler::Argument::kTensorArray;
+          break;
+        case XlaResource::kInvalid:
+          CHECK(false);
+      }
+      arg.type = resource->type;
+      if (arg.initialized) {
+        auto shape = ctx->builder()->GetShape(resource->value);
+        TF_RETURN_IF_ERROR(shape.status());
+        arg.shape = XLAShapeToTensorShape(*shape.ValueOrDie());
       } else {
-        arg.kind = XlaCompiler::Argument::kUninitializedVariable;
-        arg.type = var->type;
         *has_uninitialized_vars = true;
       }
-      arg.tensor_array_size = var->tensor_array_size;
-      arg.name = var->name;
+      arg.tensor_array_size = resource->tensor_array_size;
+      arg.name = resource->name;
       // TODO(phawkins): propagate TensorArray gradients into loops.
-      VLOG(2) << "    variable " << var->name
+      VLOG(2) << "    resource " << resource->name
               << " type: " << DataTypeString(arg.type)
               << " shape: " << arg.shape.DebugString()
-              << " initialized: " << initialized;
+              << " initialized: " << arg.initialized;
 
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
@@ -86,7 +95,7 @@ XlaWhileOp::XlaWhileOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
 }
 
 void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
-  VLOG(1) << "WhileOp::Compute";
+  VLOG(1) << "WhileOp::Compile";
 
   std::vector<XlaCompiler::Argument> arguments;
   bool has_uninitialized_vars;
@@ -100,16 +109,16 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 
   VLOG(1) << "Compiling body";
 
-  // All resource variables that are inputs to the loop's body must also be
+  // All resource that are inputs to the loop's body must also be
   // present as loop body outputs; the signature of the loop's input and
   // output must match. We ensure this by asking the compiler to include the
-  // current values of all variables, even if they haven't been updated by the
+  // current values of all resources, even if they haven't been updated by the
   // computation.
   // TODO(phawkins): consider adding loop-invariant inputs to XLA's While()
   // operator.
   XlaCompiler::CompileOptions body_options;
   body_options.use_tuple_arg = use_tuple_arg;
-  body_options.return_updated_values_for_all_variables = true;
+  body_options.return_updated_values_for_all_resources = true;
   XlaCompiler::CompilationResult body;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(body_options, body_name_attr_,
                                                 arguments, &body));
@@ -118,26 +127,28 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   // we may not know the shape of a TensorArray if it is first written inside
   // the loop. Ideally we would require the user to provide a static shape,
   // but this is not always easy.
-  // So if uninitialized variables are used by the loop body, we compile the
+  // So if uninitialized resource are used by the loop body, we compile the
   // body function twice:
-  // 1) once with uninitialized variable inputs. We discard the computation
-  //    but we assume variable shapes reach a fixpoint after one iteration.
-  //    So we can use the output shapes of the variables as the "true" shapes.
+  // 1) once with uninitialized resource inputs. We discard the computation
+  //    but we assume resource shapes reach a fixpoint after one iteration.
+  //    So we can use the output shapes of the resource as the "true" shapes.
   // 2) again with the "correct" input shapes determined by (1).
   if (has_uninitialized_vars) {
-    // Initializes any uninitialized variables with zero values of the
+    // Initializes any uninitialized resource with zero values of the
     // shape determined by the first compilation.
-    for (int i = 0; i < body.variable_updates.size(); ++i) {
-      const XlaCompiler::VariableUpdate& update = body.variable_updates[i];
+    for (int i = 0; i < body.resource_updates.size(); ++i) {
+      const XlaCompiler::ResourceUpdate& update = body.resource_updates[i];
       XlaCompiler::Argument& arg = arguments[update.input_index];
-      if (arg.kind == XlaCompiler::Argument::kUninitializedVariable) {
-        arg.kind = XlaCompiler::Argument::kVariable;
+      if (!arg.initialized) {
+        arg.initialized = true;
         arg.shape = update.shape;
 
+        XlaResource* resource;
+        OP_REQUIRES_OK(ctx,
+                       ctx->GetResourceInput(update.input_index, &resource));
+
         xla::ComputationDataHandle zero = XlaHelpers::Zero(builder, arg.type);
-        auto value = builder->Broadcast(zero, update.shape.dim_sizes());
-        OP_REQUIRES_OK(
-            ctx, ctx->AssignVariable(update.input_index, arg.type, value));
+        resource->value = builder->Broadcast(zero, update.shape.dim_sizes());
       }
     }
     // Recompile the body with the "correct" shapes.
@@ -191,7 +202,9 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   for (int i = 0; i < num_inputs; ++i) {
     int input_num = body.input_mapping[i];
     if (ctx->input_type(input_num) == DT_RESOURCE) {
-      OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(input_num, &inputs[i]));
+      XlaResource* resource;
+      OP_REQUIRES_OK(ctx, ctx->GetResourceInput(input_num, &resource));
+      inputs[i] = resource->value;
     } else {
       inputs[i] = ctx->Input(i);
     }
@@ -225,16 +238,16 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   }
 
   // Updates the values of any resource variables modified by the loop.
-  for (int i = 0; i < body.variable_updates.size(); ++i) {
-    const XlaCompiler::VariableUpdate& update = body.variable_updates[i];
+  for (int i = 0; i < body.resource_updates.size(); ++i) {
+    const XlaCompiler::ResourceUpdate& update = body.resource_updates[i];
+    XlaResource* resource;
+    OP_REQUIRES_OK(ctx, ctx->GetResourceInput(update.input_index, &resource));
     if (update.modified) {
       int pos = body.outputs.size() + i;
-      OP_REQUIRES_OK(ctx, ctx->AssignVariable(update.input_index, update.type,
-                                              get_loop_output(pos)));
+      resource->value = get_loop_output(pos);
     }
     VLOG(2) << "Loop-carried variable: pos: " << update.input_index
-            << " name: " << ctx->VariableDebugString(update.input_index)
-            << " modified: " << update.modified
+            << " name: " << resource->name << " modified: " << update.modified
             << " type: " << DataTypeString(update.type)
             << " shape: " << update.shape.DebugString();
     // Copies the identity of the resource variable from input to output
