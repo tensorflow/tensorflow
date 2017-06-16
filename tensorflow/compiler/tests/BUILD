@@ -324,7 +324,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "reverse_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["reverse_ops_test.py"],
     deps = [
         ":xla_test",

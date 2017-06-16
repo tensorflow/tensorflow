@@ -65,7 +65,7 @@ tf_custom_op_py_library(
 
 cuda_py_tests(
     name = "rnn_cell_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/rnn_cell_test.py"],
     additional_deps = [
         ":rnn_py",
