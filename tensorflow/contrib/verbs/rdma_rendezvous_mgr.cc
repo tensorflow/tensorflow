@@ -102,10 +102,6 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
                     RdmaMessage::kTensorBufferStartIndex;
       bool can_memcpy = DataTypeCanUseMemcpy(rm.data_type_);
       if (can_memcpy) {
-        AllocatorAttributes host_alloc_attrs;
-        host_alloc_attrs.set_gpu_compatible(true);
-        host_alloc_attrs.set_on_host(true);
-
         if (dst_dev->tensorflow_gpu_device_info() &&
             (!recv_args.alloc_attrs.on_host())) {
           CHECK(recv_args.device_context)
@@ -115,13 +111,16 @@ void RdmaRemoteRendezvous::RecvFromRemoteAsync(
           Tensor copy(alloc, rm.data_type_, rm.tensor_shape_);
           memcpy(DMAHelper::base(&copy), input, rm.tensor_bytes_);
 
-          Allocator* dst_alloc = dst_dev->GetAllocator(host_alloc_attrs);
+          Allocator* dst_alloc = dst_dev->GetAllocator(recv_args.alloc_attrs);
           Tensor gpu_copy(dst_alloc, rm.data_type_, rm.tensor_shape_);
           s = VerbsUtil::CopyCPUTensorToGPUSync(&copy, recv_args.device_context,
                                                 dst_dev, &gpu_copy);
           CHECK(s.ok()) << "copy tensor to gpu sync";
           val = std::move(gpu_copy);
         } else {
+          AllocatorAttributes host_alloc_attrs;
+          host_alloc_attrs.set_gpu_compatible(true);
+          host_alloc_attrs.set_on_host(true);
           Allocator* alloc = dst_dev->GetAllocator(host_alloc_attrs);
           Tensor copy(alloc, rm.data_type_, rm.tensor_shape_);
           memcpy(DMAHelper::base(&copy), input, rm.tensor_bytes_);
