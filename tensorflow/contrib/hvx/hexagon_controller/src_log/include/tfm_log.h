@@ -33,6 +33,9 @@ static inline bool IsLogOn(int log_level) { return log_level >= s_log_level; }
 
 static inline void SetLogLevel(int log_level) { s_log_level = log_level; }
 
+// Do nothing
+static inline void SetExperimentalDebug() {}
+
 #define TFMLOGV(fmt, ...)                       \
   do {                                          \
     if (!IsLogOn(TFM_LOG_LEVEL_VERBOSE)) break; \
