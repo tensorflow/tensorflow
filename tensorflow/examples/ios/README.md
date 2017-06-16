@@ -20,9 +20,9 @@ mkdir -p ~/graphs
 curl -o ~/graphs/inception5h.zip \
  https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip \
  && unzip ~/graphs/inception5h.zip -d ~/graphs/inception5h
-cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/benchmark/data/
-cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/camera/data/
-cp ~/graphs/inception5h/* tensorflow/contrib/ios_examples/simple/data/
+cp ~/graphs/inception5h/* tensorflow/examples/ios/benchmark/data/
+cp ~/graphs/inception5h/* tensorflow/examples/ios/camera/data/
+cp ~/graphs/inception5h/* tensorflow/examples/ios/simple/data/
 ```
 
  - Change directory to one of the samples, download the TensorFlow-experimental
