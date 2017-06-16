@@ -1565,6 +1565,104 @@ TEST_F(BufferAssignmentTest, TwoCalls) {
   EXPECT_TRUE(BuffersDistinct({call1}, {call2}, *assignment));
 }
 
+static bool IsPostOrderTraversal(
+    const std::vector<const HloInstruction*>& sequence) {
+  tensorflow::gtl::FlatSet<const HloInstruction*> seen_so_far;
+  auto has_not_been_seen_yet = [&](const HloInstruction* instruction) {
+    return seen_so_far.count(instruction) == 0;
+  };
+
+  for (auto instruction : sequence) {
+    if (std::any_of(instruction->operands().begin(),
+                    instruction->operands().end(), has_not_been_seen_yet) ||
+        std::any_of(instruction->control_predecessors().begin(),
+                    instruction->control_predecessors().end(),
+                    has_not_been_seen_yet)) {
+      return false;  // Not a post order.
+    }
+    if (!seen_so_far.insert(instruction).second) {
+      return false;  // Not a "traversal".
+    }
+  }
+
+  return true;
+}
+
+TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
+  auto module = MakeUnique<HloModule>(TestName());
+  auto builder = HloComputation::Builder(TestName());
+
+  auto zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+
+  auto input0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, data_shape_, "input0"));
+  auto weights0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, data_shape_, "weights0"));
+  auto output0 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, zero, {1}));
+
+  auto input1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, data_shape_, "input1"));
+  auto weights1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(3, data_shape_, "weights1"));
+  auto output1 = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape_, one, {1}));
+
+  auto cond =
+      module->AddEmbeddedComputation(BuildWhileConditionComputation("cond"));
+  auto body = module->AddEmbeddedComputation(BuildWhileBodyComputation("body"));
+
+  auto tuple0 = builder.AddInstruction(
+      HloInstruction::CreateTuple({input0, weights0, output0}));
+  auto tuple1 = builder.AddInstruction(
+      HloInstruction::CreateTuple({input1, weights1, output1}));
+
+  auto while0 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond, body, tuple0));
+  auto while1 = builder.AddInstruction(
+      HloInstruction::CreateWhile(loop_state_shape_, cond, body, tuple1));
+
+  auto root_add = builder.AddInstruction(HloInstruction::CreateBinary(
+      while0->shape(), HloOpcode::kAdd, while0, while1));
+  module->AddEntryComputation(builder.Build());
+
+  RunCopyInsertion(module.get());
+
+  {
+    FlattenCallGraph flatten;
+    TF_ASSIGN_OR_ASSERT_OK(bool result, flatten.Run(module.get()));
+    EXPECT_TRUE(result);
+  }
+
+  auto sequence =
+      CreateMemoryMinimizingSequence(*module, ByteSizeOf).ConsumeValueOrDie();
+
+  // To trigger b/38494731, we want a specific Hlo sequence for the
+  // root computation, so we overwrite that entry with a manually
+  // crafted sequence.
+  std::vector<const HloInstruction*> sequence_for_buffer_assigment = {
+      input1,   weights1, one,     output1, tuple1, while1,  input0,
+      weights0, zero,     output0, tuple0,  while0, root_add};
+
+  // If this CHECK fails, we constructed a bogus sequence above and
+  // this test itself is buggy.
+  ASSERT_TRUE(IsPostOrderTraversal(sequence_for_buffer_assigment));
+
+  sequence[module->entry_computation()] =
+      std::move(sequence_for_buffer_assigment);
+
+  auto assignment = BufferAssigner::Run(module.get(),
+                                        MakeUnique<SequentialHloOrdering>(
+                                            module.get(), sequence),
+                                        ByteSizeOf, 1)
+                        .ConsumeValueOrDie();
+
+  EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
+}
+
 // Test buffer assignment for while nodes with multiple uses.
 // TODO(b/37245345): Fix buffer assignment for this case.
 TEST_F(WhileBufferAssignmentTest, DISABLED_TwoWhiles) {
