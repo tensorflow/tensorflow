@@ -4981,25 +4981,12 @@ tf_kernel_library(
     name = "remote_fused_graph_ops",
     prefix = "remote_fused_graph_execute_op",
     deps = [
-        ":remote_fused_graph_execute_op",
         ":remote_fused_graph_execute_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:remote_fused_graph_ops_op_lib",
-    ],
-)
-
-cc_library(
-    name = "remote_fused_graph_execute_op",
-    srcs = ["remote_fused_graph_execute_op.cc"],
-    deps = [
-        ":remote_fused_graph_execute_utils",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -5071,9 +5058,9 @@ tf_cc_test(
     deps = [
         ":ops_testutil",
         ":ops_util",
-        ":remote_fused_graph_execute_op",
         ":remote_fused_graph_execute_op_test_utils",
         ":remote_fused_graph_execute_utils",
+        ":remote_fused_graph_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",

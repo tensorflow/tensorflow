@@ -597,6 +597,7 @@ cc_library(
         ":no_op_op_lib",
         ":parsing_ops_op_lib",
         ":random_ops_op_lib",
+        ":remote_fused_graph_ops_op_lib",
         ":script_ops_op_lib",
         ":sdca_ops_op_lib",
         ":sendrecv_ops_op_lib",
