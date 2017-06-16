@@ -3698,6 +3698,102 @@ op {
   description: "Given a tensor `input`, this operation returns a tensor that has the same buffer\ndata as `input` with datatype `type`.\n\nIf the input datatype `T` is larger than the output datatype `type` then the\nshape changes from [...] to [..., sizeof(`T`)/sizeof(`type`)].\n\nIf `T` is smaller than `type`, the operator requires that the rightmost\ndimension be equal to sizeof(`type`)/sizeof(`T`). The shape then goes from\n[..., sizeof(`type`)/sizeof(`T`)] to [...].\n\n*NOTE*: Bitcast is implemented as a low-level cast, so machines with different\nendian orderings will give different results."
 }
 op {
+  name: "BitwiseAnd"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+      }
+    }
+  }
+  summary: "Elementwise computes the bitwise AND of `x` and `y`."
+  description: "The result will have those bits set, that are set in both `x` and `y`. The\ncomputation is performed on the underlying representations of `x` and `y`."
+  is_commutative: true
+}
+op {
+  name: "BitwiseOr"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+      }
+    }
+  }
+  summary: "Elementwise computes the bitwise OR of `x` and `y`."
+  description: "The result will have those bits set, that are set in `x`, `y` or both. The\ncomputation is performed on the underlying representations of `x` and `y`."
+  is_commutative: true
+}
+op {
+  name: "BitwiseXor"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+      }
+    }
+  }
+  summary: "Elementwise computes the bitwise XOR of `x` and `y`."
+  description: "The result will have those bits set, that are different in `x` and `y`. The\ncomputation is performed on the underlying representations of `x` and `y`."
+  is_commutative: true
+}
+op {
   name: "BroadcastArgs"
   input_arg {
     name: "s0"
@@ -9908,6 +10004,33 @@ op {
     version: 17
     explanation: "Use ReciprocalGrad"
   }
+}
+op {
+  name: "Invert"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_INT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_UINT8
+        type: DT_UINT16
+      }
+    }
+  }
+  summary: "Flips all bits elementwise."
+  description: "The result will have exactly those bits set, that are not set in `x`. The\ncomputation is performed on the underlying representation of x."
 }
 op {
   name: "InvertPermutation"
