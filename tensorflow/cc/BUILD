@@ -481,11 +481,23 @@ cc_binary(
     name = "tutorials_example_trainer",
     srcs = ["tutorials/example_trainer.cc"],
     copts = tf_copts(),
-    linkopts = [
-        "-lpthread",
-        "-lm",
-        "-lrt",
-    ],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//tensorflow:windows_msvc": [],
+        "//tensorflow:darwin": [
+            "-lm",
+            "-lpthread",
+        ],
+        "//tensorflow:ios": [
+            "-lm",
+            "-lpthread",
+        ],
+        "//conditions:default": [
+            "-lm",
+            "-lpthread",
+            "-lrt",
+        ],
+    }),
     deps = [
         ":cc_ops",
         "//tensorflow/core:core_cpu",
