@@ -123,8 +123,6 @@ def main(unused_argv):
 
   is_chief = (FLAGS.task_index == 0)
   if FLAGS.num_gpus > 0:
-    if FLAGS.num_gpus < num_workers:
-      raise ValueError("number of gpus is less than number of workers")
     # Avoid gpu allocation conflict: now allocate task_num -> #gpu 
     # for each worker in the corresponding machine
     gpu = (FLAGS.task_index % FLAGS.num_gpus)
