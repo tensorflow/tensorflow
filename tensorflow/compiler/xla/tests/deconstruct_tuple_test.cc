@@ -47,7 +47,8 @@ class DeconstructTupleTest : public ClientLibraryTestBase {
       tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
     Computation computation = builder->Build().ConsumeValueOrDie();
     auto global_data =
-        client_->Execute(computation, arguments).ConsumeValueOrDie();
+        client_->Execute(computation, arguments, &execution_options_)
+            .ConsumeValueOrDie();
     TF_CHECK_OK(client_->Transfer(*global_data).status());
     return global_data;
   }

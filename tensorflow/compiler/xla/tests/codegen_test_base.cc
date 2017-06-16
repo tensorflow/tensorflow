@@ -33,10 +33,12 @@ limitations under the License.
 
 namespace xla {
 
-std::unique_ptr<HloModule> CodegenTestBase::CreateNewModuleWithEmbeddedIr() {
+std::unique_ptr<HloModule> CodegenTestBase::CreateNewModuleWithEmbeddedIr(
+    bool ftz) {
   HloModuleConfig config;
   auto debug_options = legacy_flags::GetDebugOptionsFromFlags();
   debug_options.set_xla_embed_ir_in_executable(true);
+  debug_options.set_xla_gpu_ftz(ftz);
   config.set_debug_options(debug_options);
   return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
                                config);

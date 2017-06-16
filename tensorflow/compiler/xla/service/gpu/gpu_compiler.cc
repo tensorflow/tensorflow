@@ -23,7 +23,6 @@ limitations under the License.
 #include "external/llvm/include/llvm/IR/DiagnosticPrinter.h"
 #include "external/llvm/include/llvm/IR/LLVMContext.h"
 #include "external/llvm/include/llvm/IR/Module.h"
-#include "tensorflow/compiler/xla/legacy_flags/gpu_compiler_flags.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
@@ -95,11 +94,9 @@ constexpr int64 kMemoryAlignment = 256;
 // called in GpuCompiler's constructor, so can't return an error. But
 // GpuCompiler::Compile will return an error when the wanted libdevice file
 // doesn't exist in the folder this function returns.
-string GetLibdeviceDir() {
+string GetLibdeviceDir(const HloModuleConfig& config) {
   std::vector<string> potential_libdevice_dirs;
-  // Flag xla_cuda_data_dir specified by the user.
-  legacy_flags::GpuCompilerFlags* flags = legacy_flags::GetGpuCompilerFlags();
-  const string datadir = flags->xla_cuda_data_dir;
+  const string datadir = config.debug_options().xla_gpu_cuda_data_dir();
   if (!datadir.empty()) {
     potential_libdevice_dirs.push_back(datadir);
   }
@@ -230,8 +227,7 @@ void DumpPtxasInfo(const string& ptx) {
 }  // namespace
 
 GpuCompiler::GpuCompiler()
-    : libdevice_dir_(GetLibdeviceDir()),
-      pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
+    : pointer_size_(llvm::DataLayout(kDataLayout).getPointerSize()) {}
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
     std::unique_ptr<HloModule> module, HloDumper dump_hlo,
@@ -315,6 +311,10 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::Compile(
         << "Couldn't get compute capability for device; assuming sm_20.";
     cc_major = 2;
     cc_minor = 0;
+  }
+  if (libdevice_dir_.empty()) {
+    // Compute libdevice_dir_ just once and cache it in this member.
+    libdevice_dir_ = GetLibdeviceDir(module->config());
   }
   TF_ASSIGN_OR_RETURN(*ptx, CompileToPtx(&llvm_module, {cc_major, cc_minor},
                                          module->config(), libdevice_dir_));

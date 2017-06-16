@@ -70,7 +70,7 @@ void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
   builder.RngBernoulli(builder.ConstantR0<float>(p), shape);
 
   TF_ASSIGN_OR_ASSERT_OK(auto computation, builder.Build());
-  ExecutionOptions execution_options;
+  ExecutionOptions execution_options = execution_options_;
   execution_options.set_seed(42);
   TF_ASSIGN_OR_ASSERT_OK(
       auto actual,
@@ -179,7 +179,7 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
 
   TF_ASSIGN_OR_ASSERT_OK(auto computation, builder.Build());
 
-  ExecutionOptions execution_options;
+  ExecutionOptions execution_options = execution_options_;
   execution_options.set_seed(125);
   TF_ASSIGN_OR_ASSERT_OK(
       auto actual,
@@ -208,10 +208,10 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
     return builder.Build();
   };
 
-  ExecutionOptions execution_options1;
+  ExecutionOptions execution_options1 = execution_options_;
   execution_options1.set_seed(42);
 
-  ExecutionOptions execution_options2;
+  ExecutionOptions execution_options2 = execution_options_;
   execution_options2.set_seed(65);
 
   std::unique_ptr<Literal> result1;

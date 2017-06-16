@@ -587,7 +587,7 @@ TEST_F(WhileTest, WhileWithPrngScalarResult) {
   for (int i = 1; i < 4; ++i) {
     TF_ASSIGN_OR_ASSERT_OK(auto computation, while_loop(i));
 
-    ExecutionOptions execution_options;
+    ExecutionOptions execution_options = execution_options_;
     execution_options.set_seed(65);
     TF_ASSIGN_OR_ASSERT_OK(
         auto result,

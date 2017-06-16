@@ -30,6 +30,10 @@ struct DebugOptionsFlags {
   int32 xla_backend_optimization_level;
   bool xla_embed_ir_in_executable;
   string xla_dump_debug_json_to;
+
+  string xla_gpu_cuda_data_dir;
+  bool xla_gpu_ftz;
+
   string xla_backend_extra_options;
 };
 
@@ -46,9 +50,11 @@ void AllocateFlags() {
   flag_values->xla_generate_hlo_graph = "";
   flag_values->xla_disable_hlo_passes = "";
   flag_values->xla_enable_fast_math = true;
-  flag_values->xla_backend_optimization_level = 2;
+  flag_values->xla_backend_optimization_level = 3;
   flag_values->xla_embed_ir_in_executable = false;
   flag_values->xla_dump_debug_json_to = "";
+  flag_values->xla_gpu_cuda_data_dir = "./cuda_sdk_lib";
+  flag_values->xla_gpu_ftz = false;
   flag_values->xla_backend_extra_options = "";
 
   flag_objects = new std::vector<tensorflow::Flag>(
@@ -72,6 +78,14 @@ void AllocateFlags() {
        tensorflow::Flag("xla_embed_ir_in_executable",
                         &flag_values->xla_embed_ir_in_executable,
                         "Embed the compiler IR as a string in the executable."),
+       tensorflow::Flag("xla_gpu_cuda_data_dir",
+                        &flag_values->xla_gpu_cuda_data_dir,
+                        "If non-empty, speficies a local directory containing "
+                        "ptxas and nvvm libdevice files; otherwise we use "
+                        "those from runfile directories."),
+       tensorflow::Flag("xla_gpu_ftz", &flag_values->xla_gpu_ftz,
+                        "If true, flush-to-zero semantics are enabled in the "
+                        "code generated for GPUs."),
        tensorflow::Flag(
            "xla_dump_debug_json_to", &flag_values->xla_dump_debug_json_to,
            "Dump compilation artifacts as JSON into this directory."),
@@ -110,6 +124,8 @@ xla::DebugOptions GetDebugOptionsFromFlags() {
   options.set_xla_embed_ir_in_executable(
       flag_values->xla_embed_ir_in_executable);
   options.set_xla_dump_debug_json_to(flag_values->xla_dump_debug_json_to);
+  options.set_xla_gpu_cuda_data_dir(flag_values->xla_gpu_cuda_data_dir);
+  options.set_xla_gpu_ftz(flag_values->xla_gpu_ftz);
 
   std::vector<string> extra_options_parts =
       tensorflow::str_util::Split(flag_values->xla_backend_extra_options, ',');

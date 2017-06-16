@@ -115,30 +115,6 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_compiler_flags",
-    srcs = ["gpu_compiler_flags.cc"],
-    hdrs = ["gpu_compiler_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
-    name = "gpu_backend_lib_flags",
-    srcs = ["gpu_backend_lib_flags.cc"],
-    hdrs = ["gpu_backend_lib_flags.h"],
-    deps = [
-        ":parse_flags_from_env",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-    ],
-)
-
-cc_library(
     name = "stream_assignment_flags",
     srcs = ["stream_assignment_flags.cc"],
     hdrs = ["stream_assignment_flags.h"],

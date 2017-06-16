@@ -60,7 +60,8 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
 
   // Run it.
   std::unique_ptr<Literal> literal =
-      client_->ExecuteAndTransfer(replayed, /*arguments=*/{})
+      client_
+          ->ExecuteAndTransfer(replayed, /*arguments=*/{}, &execution_options_)
           .ConsumeValueOrDie();
 
   // Expect 4.
@@ -99,7 +100,8 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
   std::unique_ptr<Literal> literal =
       client_
           ->ExecuteAndTransfer(replayed,
-                               /*arguments=*/{x_data.get(), y_data.get()})
+                               /*arguments=*/{x_data.get(), y_data.get()},
+                               &execution_options_)
           .ConsumeValueOrDie();
 
   // Expect 5.
@@ -140,7 +142,8 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
 
   // Run it.
   std::unique_ptr<Literal> literal =
-      client_->ExecuteAndTransfer(replayed, /*arguments=*/{})
+      client_
+          ->ExecuteAndTransfer(replayed, /*arguments=*/{}, &execution_options_)
           .ConsumeValueOrDie();
 
   // Expect result.

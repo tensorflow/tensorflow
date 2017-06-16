@@ -466,7 +466,7 @@ XLA_TEST_F(ReshapeTest, R4Dim0MinorLayoutToR2Dim0MajorLayout) {
   });
 
   Computation computation = builder.Build().ConsumeValueOrDie();
-  ExecutionOptions execution_options;
+  ExecutionOptions execution_options = execution_options_;
   *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeShapeWithLayout(F32, {2, 8}, {1, 0});
   std::unique_ptr<Literal> actual =
@@ -625,7 +625,7 @@ XLA_TEST_F(ReshapeTest, NoopReshape) {
                   /*new_sizes=*/{7, 2, 3, 5});
   Computation computation = builder.Build().ConsumeValueOrDie();
 
-  ExecutionOptions execution_options;
+  ExecutionOptions execution_options = execution_options_;
   *execution_options.mutable_shape_with_output_layout() =
       ShapeUtil::MakeShapeWithLayout(F32, {7, 2, 3, 5}, {2, 3, 0, 1});
   std::unique_ptr<Literal> output_literal =

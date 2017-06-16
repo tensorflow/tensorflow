@@ -51,6 +51,12 @@ message DebugOptions {
   // Dump compilation artifacts as JSON into this directory.
   string xla_dump_debug_json_to = 6;
 
+  // Path to directory with cuda/ptx tools and libraries.
+  string xla_gpu_cuda_data_dir = 7;
+
+  // Enable flush-to-zero semantics in the GPU backend.
+  bool xla_gpu_ftz = 8;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;

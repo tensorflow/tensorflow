@@ -46,7 +46,7 @@ TEST_F(ClientTest, ExecuteWithLayout) {
       auto computation = b.Build();
       ASSERT_TRUE(computation.ok()) << computation.status();
 
-      ExecutionOptions execution_options;
+      ExecutionOptions execution_options = execution_options_;
       *execution_options.mutable_shape_with_output_layout() =
           ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
                                          execute_layout);
@@ -76,7 +76,7 @@ TEST_F(ClientTest, ExecuteWithTupleLayout) {
   auto computation = b.Build();
   ASSERT_TRUE(computation.ok()) << computation.status();
 
-  ExecutionOptions execution_options;
+  ExecutionOptions execution_options = execution_options_;
   // Create a result shape with one element column major and the other row
   // major.
   *execution_options.mutable_shape_with_output_layout() =

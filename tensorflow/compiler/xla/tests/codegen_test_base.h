@@ -30,7 +30,9 @@ class CodegenTestBase : public HloTestBase {
  protected:
   // Like HloTestBase::CreateNewModule, but also sets the "embed ir in
   // executable" flag to true, since this is needed for codegen tests.
-  std::unique_ptr<HloModule> CreateNewModuleWithEmbeddedIr();
+  // The optional ftz flags configures whether these modules have their ftz
+  // option turned on.
+  std::unique_ptr<HloModule> CreateNewModuleWithEmbeddedIr(bool ftz = false);
 
   // Returns the embedded LLVM IR from the given executable. Codegen tests must
   // override this method, but execution tests do not have to because they do

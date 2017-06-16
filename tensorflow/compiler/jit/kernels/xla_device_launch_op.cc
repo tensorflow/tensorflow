@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -149,6 +150,8 @@ void XlaDeviceLaunchOp::Compute(OpKernelContext* ctx) {
     xla::ExecutionOptions execution_options;
     *execution_options.mutable_shape_with_output_layout() =
         kernel->xla_output_shape;
+    *execution_options.mutable_debug_options() =
+        xla::legacy_flags::GetDebugOptionsFromFlags();
     Env* env = Env::Default();
     auto start_time = env->NowMicros();
     VLOG(1) << "Executing XLA Computation...";
