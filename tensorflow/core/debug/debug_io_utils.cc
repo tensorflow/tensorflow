@@ -26,11 +26,13 @@ limitations under the License.
 #pragma comment(lib,"Ws2_32.lib")
 #endif
 
+#include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/event.pb.h"
 
 #define GRPC_OSS_UNIMPLEMENTED_ERROR \
@@ -55,7 +57,32 @@ Event WrapTensorAsEvent(const DebugNodeKey& debug_node_key,
   // "DebugIdentity", the debug node_name in the Summary proto will be
   // "foo/node_a:0:DebugIdentity".
   summ_val->set_node_name(debug_node_key.debug_node_name);
-  summ_val->set_tag(debug_node_key.device_name);
+
+  // Tag by the node name. This allows TensorBoard to quickly fetch data per op.
+  summ_val->set_tag(debug_node_key.node_name);
+
+  // Store data within debugger metadata to be stored for each event.
+  third_party::tensorflow::core::debug::DebuggerEventMetadata metadata;
+  metadata.set_device(debug_node_key.device_name);
+  metadata.set_output_slot(debug_node_key.output_slot);
+
+  // Encode the data in JSON.
+  string json_output;
+  tensorflow::protobuf::util::JsonPrintOptions json_options;
+  json_options.always_print_primitive_fields = true;
+  auto status = tensorflow::protobuf::util::MessageToJsonString(
+      metadata, &json_output, json_options);
+  if (status.ok()) {
+    // Store summary metadata. Set the plugin to use this data as "debugger".
+    SummaryMetadata::PluginData* plugin_data =
+        summ_val->mutable_metadata()->add_plugin_data();
+    plugin_data->set_plugin_name("debugger");
+    plugin_data->set_content(json_output);
+  } else {
+    LOG(WARNING) << "Failed to convert DebuggerEventMetadata proto to JSON. "
+                 << "The debug_node_name is " << debug_node_key.debug_node_name
+                 << ".";
+  }
 
   if (tensor.dtype() == DT_STRING) {
     // Treat DT_STRING specially, so that tensor_util.MakeNdarray can convert

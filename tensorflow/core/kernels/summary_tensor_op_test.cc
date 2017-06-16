@@ -85,8 +85,15 @@ TEST_F(SummaryTensorOpV2Test, BasicPluginData) {
   ASSERT_EQ(0, out_tensor->dims());
   Summary summary;
   ParseProtoUnlimited(&summary, out_tensor->scalar<string>()());
-
   ASSERT_EQ(1, summary.value_size());
+
+  // Check the content of the tensor stored in the summary.
+  Tensor string_content_tensor;
+  CHECK(string_content_tensor.FromProto(summary.value(0).tensor()));
+  ASSERT_EQ("some string tensor content",
+            string_content_tensor.scalar<string>()());
+
+  // Check plugin-related data.
   ASSERT_EQ("tag_foo", summary.value(0).tag());
   ASSERT_EQ(2, summary.value(0).metadata().plugin_data_size());
   ASSERT_EQ("foo", summary.value(0).metadata().plugin_data(0).plugin_name());
