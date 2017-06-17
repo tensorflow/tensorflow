@@ -76,6 +76,7 @@ enum class HloOpcode {
   kPower,
   kRecv,
   kReduce,
+  kReducePrecision,
   kReduceWindow,
   kRemainder,
   kReshape,

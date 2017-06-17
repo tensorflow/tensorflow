@@ -116,6 +116,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "recv";
     case HloOpcode::kReduce:
       return "reduce";
+    case HloOpcode::kReducePrecision:
+      return "reduce-precision";
     case HloOpcode::kReduceWindow:
       return "reduce-window";
     case HloOpcode::kRemainder:

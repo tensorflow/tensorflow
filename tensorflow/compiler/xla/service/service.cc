@@ -1307,6 +1307,11 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
           computation->AddReduceInstruction(arg->reduce_request(), *to_apply);
       break;
     }
+    case OpRequest::kReducePrecisionRequest: {
+      handle_status = computation->AddReducePrecisionInstruction(
+          arg->reduce_precision_request());
+      break;
+    }
     case OpRequest::kReduceWindowRequest: {
       TF_ASSIGN_OR_RETURN(UserComputation * to_apply,
                           computation_tracker_.Resolve(

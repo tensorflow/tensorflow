@@ -171,6 +171,12 @@ class ShapeInference {
   static StatusOr<Shape> InferConvertShape(const Shape& operand_shape,
                                            PrimitiveType new_element_type);
 
+  // Helper that validates the input data type for a reduce-precision operation,
+  // and returns the result shape.
+  static StatusOr<Shape> InferReducePrecisionShape(const Shape& operand_shape,
+                                                   const int exponent_bits,
+                                                   const int mantissa_bits);
+
   // Helper that infers the shape produced by a pad operation based on the
   // padding configuration.
   static StatusOr<Shape> InferPadShape(const Shape& operand_shape,

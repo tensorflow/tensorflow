@@ -116,6 +116,10 @@ class UserComputation {
       const MapRequest& map_request,
       const UserComputation& to_apply_computation);
 
+  // Enqueues a reduce-precision instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddReducePrecisionInstruction(
+      const ReducePrecisionRequest& reduce_precision_request);
+
   // Enqueues a convolution instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddConvolveInstruction(
       const ConvolveRequest& convolve_request);

@@ -743,6 +743,12 @@ message VariadicOpRequest {
   repeated ComputationDataHandle operands = 3;
 }
 
+message ReducePrecisionRequest {
+  ComputationDataHandle operand = 1;
+  int32 exponent_bits = 2;
+  int32 mantissa_bits = 3;
+}
+
 message SendRequest {
   ComputationDataHandle operand = 1;
   ChannelHandle channel_handle = 2;
@@ -774,6 +780,7 @@ message OpRequest {
     MapRequest map_request = 15;
     PadRequest pad_request = 16;
     ParameterRequest parameter_request = 17;
+    ReducePrecisionRequest reduce_precision_request = 36;
     ReduceRequest reduce_request = 18;
     ReduceWindowRequest reduce_window_request = 19;
     ReshapeRequest reshape_request = 20;
@@ -791,7 +798,7 @@ message OpRequest {
     RecvRequest recv_request = 31;
     OutfeedRequest outfeed_request = 32;
     BatchNormTrainingRequest batch_norm_training_request = 35;
-    // Next: 36
+    // Next: 37
   }
 }
 

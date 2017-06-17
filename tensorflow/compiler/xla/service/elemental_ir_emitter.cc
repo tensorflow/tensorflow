@@ -385,6 +385,24 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfcInv(
   return EmitErfInv(prim_type, ir_builder_->CreateFSub(one, value));
 }
 
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitReducePrecision(
+    const HloInstruction* hlo, llvm::Value* x) const {
+  if (hlo->operand(0)->shape().element_type() != F32) {
+    return Unimplemented("reduce-precision only implemented for F32");
+  }
+  // As a preliminary implementation, we only implement this for the case
+  // where it is a no-op -- that is, where the exponent and mantissa bit
+  // counts are equal to the (IEEE f32) bit counts for the input values.
+  if (hlo->exponent_bits() != 8) {
+    return Unimplemented("reduce-precision requires 8 exponent bits");
+  }
+  if (hlo->mantissa_bits() != 23) {
+    return Unimplemented("reduce-precision requires 23 mantissa bits");
+  }
+
+  return x;
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value,
     bool is_signed) const {
@@ -741,6 +759,14 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                             operand_to_generator.at(hlo->operand(2))(
                                 ElementwiseSourceIndex(index, *hlo, 2)));
         return EmitFloatMin(max_value, EmitFloatMax(min_value, arg_value));
+      };
+    case HloOpcode::kReducePrecision:
+      return [this, hlo, &operand_to_generator](
+                 const IrArray::Index& index) -> StatusOr<llvm::Value*> {
+        TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
+                            operand_to_generator.at(hlo->operand(0))(
+                                ElementwiseSourceIndex(index, *hlo, 0)));
+        return EmitReducePrecision(hlo, operand_value);
       };
     case HloOpcode::kConcatenate:
       return [this, hlo, &operand_to_generator](

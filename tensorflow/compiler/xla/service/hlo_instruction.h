@@ -131,6 +131,13 @@ class HloInstruction {
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
+  // Creates a reduce-precision op, where operand is the data to reduce in
+  // precision, and exponent_bits and mantissa_bits describe the precision to
+  // reduce it to.
+  static std::unique_ptr<HloInstruction> CreateReducePrecision(
+      const Shape& shape, HloInstruction* operand, const int exponent_bits,
+      const int mantissa_bits);
+
   // Creates a cross replica sum op.
   static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
       const Shape& shape, HloInstruction* operand);
@@ -668,6 +675,22 @@ class HloInstruction {
     return dynamic_slice_sizes_;
   }
 
+  // Returns the number of exponent bits for a reduce-precision node.
+  //
+  // Precondition: opcode() == HloOpcode::kReducePrecision
+  int32 exponent_bits() const {
+    CHECK_EQ(HloOpcode::kReducePrecision, opcode_);
+    return exponent_bits_;
+  }
+
+  // Returns the number of mantissa bits for a reduce-precision node.
+  //
+  // Precondition: opcode() == HloOpcode::kReducePrecision
+  int32 mantissa_bits() const {
+    CHECK_EQ(HloOpcode::kReducePrecision, opcode_);
+    return mantissa_bits_;
+  }
+
   // Returns data on the window in a windowed operation such as
   // convolution.
   const Window& window() const {
@@ -863,6 +886,10 @@ class HloInstruction {
   // Describes the [begin, end) index range for a slice.
   std::vector<int64> slice_starts_;
   std::vector<int64> slice_limits_;
+
+  // The bit sizes for a reduce-precision operation.
+  int32 exponent_bits_;
+  int32 mantissa_bits_;
 
   // Describes the [start, start + size) range size for a dynamic slice
   // ('start' is specified dynamically in the second operand of the operation).

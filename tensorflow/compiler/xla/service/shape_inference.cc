@@ -298,6 +298,30 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   return ShapeUtil::ChangeElementType(operand_shape, new_element_type);
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferReducePrecisionShape(
+    const Shape& operand_shape, const int exponent_bits,
+    const int mantissa_bits) {
+  if (!ShapeUtil::ElementIsFloating(operand_shape)) {
+    return InvalidArgument(
+        "expected element type in shape to be floating point for "
+        "ReducePrecision operation; got %s",
+        PrimitiveType_Name(operand_shape.element_type()).c_str());
+  }
+  if (exponent_bits < 1) {
+    // One exponent bit is necessary to distinguish 0 from infinity.  Having
+    // no exponent bits doesn't produce a sensible number, so we require at
+    // least one.
+    return InvalidArgument("expected exponent_bits >= 1; got %d",
+                           exponent_bits);
+  }
+  if (mantissa_bits < 0) {
+    // A number with no mantissa bits is still meaningful, however.
+    return InvalidArgument("expected non-negative mantissa_bits; got %d",
+                           mantissa_bits);
+  }
+  return operand_shape;
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferPadShape(
     const Shape& operand_shape, const Shape& padding_value_shape,
     const PaddingConfig& padding_config) {

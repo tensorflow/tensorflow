@@ -318,6 +318,11 @@ string InstructionSequenceGraph(
         StrAppend(&name, "<br/>",
                   "custom_call_target=", instruction->custom_call_target());
         break;
+      case HloOpcode::kReducePrecision:
+        // Make ReducePrecision ops a bit more visible, since typically they
+        // will be inserted as modifications to an existing graph.
+        color = kDarkRed;
+        break;
     }
 
     // Create instruction node with appropriate label, shape, and color.

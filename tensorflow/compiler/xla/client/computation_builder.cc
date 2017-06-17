@@ -1514,6 +1514,28 @@ ComputationDataHandle ComputationBuilder::SelectAndScatterWithGeneralPadding(
   return ParseOpResponse(s, &response);
 }
 
+ComputationDataHandle ComputationBuilder::ReducePrecision(
+    const ComputationDataHandle& operand, const int exponent_bits,
+    const int mantissa_bits) {
+  if (!first_error_.ok() || !PrepareComputation().ok()) {
+    return ComputationDataHandle();
+  }
+
+  ReducePrecisionRequest request;
+  *request.mutable_operand() = operand;
+  request.set_exponent_bits(exponent_bits);
+  request.set_mantissa_bits(mantissa_bits);
+  OpRequest op_request;
+  *op_request.mutable_computation() = computation_.handle();
+  *op_request.mutable_reduce_precision_request() = request;
+  AddOpMetadata(&op_request);
+  OpResponse response;
+
+  VLOG(2) << "making reduce-precision request";
+  Status s = client_->stub()->Op(&op_request, &response);
+  return ParseOpResponse(s, &response);
+}
+
 void ComputationBuilder::Send(const ComputationDataHandle& operand,
                               const ChannelHandle& handle) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {

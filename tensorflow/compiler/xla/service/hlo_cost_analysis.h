@@ -58,6 +58,8 @@ class HloCostAnalysis : public DfsHloVisitor {
                        HloInstruction* lhs, HloInstruction* rhs) override;
   Status HandleClamp(HloInstruction* clamp, HloInstruction* min,
                      HloInstruction* arg, HloInstruction* max) override;
+  Status HandleReducePrecision(HloInstruction* hlo,
+                               HloInstruction* operand) override;
   Status HandleConcatenate(
       HloInstruction* concatenate,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;

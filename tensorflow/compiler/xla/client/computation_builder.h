@@ -598,6 +598,11 @@ class ComputationBuilder {
                               const Computation& body,
                               const ComputationDataHandle& init);
 
+  // Enqueues a ReducePrecision node onto the computation.
+  ComputationDataHandle ReducePrecision(const ComputationDataHandle& operand,
+                                        const int exponent_bits,
+                                        const int mantissa_bits);
+
   // Enqueues a Send node onto the computation, to send the given operand to
   // a Recv instruction that shares the same channel handle.
   void Send(const ComputationDataHandle& operand, const ChannelHandle& handle);

@@ -100,6 +100,11 @@ Status HloCostAnalysis::HandleClamp(HloInstruction* clamp,
   return HandleElementwiseOp(clamp);
 }
 
+Status HloCostAnalysis::HandleReducePrecision(HloInstruction* hlo,
+                                              HloInstruction* operand) {
+  return HandleElementwiseOp(hlo);
+}
+
 Status HloCostAnalysis::HandleParameter(HloInstruction* parameter) {
   current_bytes_accessed_ = 0;
   return Status::OK();

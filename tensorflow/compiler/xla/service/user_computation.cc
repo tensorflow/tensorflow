@@ -881,6 +881,34 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvertInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddReducePrecisionInstruction(
+    const ReducePrecisionRequest& reduce_precision_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(reduce_precision_request.operand()));
+
+  TF_ASSIGN_OR_RETURN(
+      Shape new_shape,
+      ShapeInference::InferReducePrecisionShape(
+          operand->output_shape(), reduce_precision_request.exponent_bits(),
+          reduce_precision_request.mantissa_bits()));
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = new_shape;
+  *request.mutable_request()->mutable_reduce_precision_request() =
+      reduce_precision_request;
+
+  VLOG(1) << "AddReducePrecisionInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << reduce_precision_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddConvolveInstruction(
     const ConvolveRequest& convolve_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -2180,6 +2208,13 @@ static void ForEachOperand(
       break;
     }
 
+    case OpRequest::kReducePrecisionRequest: {
+      const ReducePrecisionRequest& reduce_precision_request =
+          request.request().reduce_precision_request();
+      apply(reduce_precision_request.operand());
+      break;
+    }
+
     case OpRequest::kTraceRequest: {
       const TraceRequest& trace_request = request.request().trace_request();
       apply(trace_request.operand());
@@ -2764,6 +2799,18 @@ void ComputationLowerer::Visit(
       }
       hlo_instruction = add_instruction(HloInstruction::CreateBinary(
           request.output_shape(), hlo_opcode, lhs, rhs));
+      break;
+    }
+
+    case OpRequest::kReducePrecisionRequest: {
+      const ReducePrecisionRequest& reduce_precision_request =
+          request.request().reduce_precision_request();
+      HloInstruction* operand =
+          lookup_instruction(reduce_precision_request.operand());
+      auto exponent_bits = reduce_precision_request.exponent_bits();
+      auto mantissa_bits = reduce_precision_request.mantissa_bits();
+      hlo_instruction = add_instruction(HloInstruction::CreateReducePrecision(
+          request.output_shape(), operand, exponent_bits, mantissa_bits));
       break;
     }
 

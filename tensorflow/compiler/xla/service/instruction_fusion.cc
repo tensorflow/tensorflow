@@ -65,6 +65,7 @@ namespace xla {
     case HloOpcode::kNegate:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kSelect:

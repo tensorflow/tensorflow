@@ -228,6 +228,19 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
 }
 
 /* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateReducePrecision(const Shape& shape,
+                                      HloInstruction* operand,
+                                      const int exponent_bits,
+                                      const int mantissa_bits) {
+  auto instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kReducePrecision, shape));
+  instruction->AppendOperand(operand);
+  instruction->exponent_bits_ = exponent_bits;
+  instruction->mantissa_bits_ = mantissa_bits;
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
 HloInstruction::CreateCrossReplicaSum(const Shape& shape,
                                       HloInstruction* operand) {
   auto instruction =
@@ -796,6 +809,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kConvert:
       CHECK_EQ(new_operands.size(), 1);
       return CreateConvert(shape, new_operands[0]);
+    case HloOpcode::kReducePrecision:
+      CHECK_EQ(new_operands.size(), 1);
+      return CreateReducePrecision(shape, new_operands[0], exponent_bits_,
+                                   mantissa_bits_);
     case HloOpcode::kConvolution:
       CHECK_EQ(new_operands.size(), 2);
       return CreateConvolve(shape, new_operands[0], new_operands[1], *window_,
@@ -1170,6 +1187,11 @@ bool HloInstruction::Identical(
     // converted into.
     case HloOpcode::kConvert:
       return shape().element_type() == other.shape().element_type();
+
+    // A reduce-precision operation is determined by the bit sizes.
+    case HloOpcode::kReducePrecision:
+      return exponent_bits() == other.exponent_bits() &&
+             mantissa_bits() == other.mantissa_bits();
 
     // Convolution has a window and dimensions.
     case HloOpcode::kConvolution:
@@ -1855,6 +1877,8 @@ Status HloInstruction::Visit(DfsHloVisitor* visitor) {
       return visitor->HandleTranspose(this);
     case HloOpcode::kReverse:
       return visitor->HandleReverse(this, operands_[0]);
+    case HloOpcode::kReducePrecision:
+      return visitor->HandleReducePrecision(this, operands_[0]);
     case HloOpcode::kSlice:
       return visitor->HandleSlice(this, operands_[0]);
     case HloOpcode::kDynamicSlice:
@@ -2106,6 +2130,7 @@ bool HloInstruction::IsElementwise() const {
     case HloOpcode::kLog:
     case HloOpcode::kLogicalNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kReducePrecision:
     case HloOpcode::kSign:
     case HloOpcode::kTanh:
       return true;

@@ -171,6 +171,11 @@ class DfsHloVisitor {
                                  HloInstruction* lhs, HloInstruction* rhs) {
     return HandleElementwiseBinary(logical_or, HloOpcode::kLogicalOr, lhs, rhs);
   }
+  virtual Status HandleReducePrecision(HloInstruction* reduce_precision,
+                                       HloInstruction* operand) {
+    return HandleElementwiseUnary(reduce_precision, HloOpcode::kReducePrecision,
+                                  operand);
+  }
 
   virtual Status HandleInfeed(HloInstruction* infeed) = 0;
   virtual Status HandleOutfeed(HloInstruction* outfeed) = 0;

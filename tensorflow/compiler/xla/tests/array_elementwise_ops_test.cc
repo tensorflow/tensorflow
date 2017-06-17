@@ -1864,6 +1864,29 @@ INSTANTIATE_TEST_CASE_P(ArrayElementwiseOpTestParamCount,
                         ArrayElementwiseOpTestParamCount,
                         ::testing::Values(127, 128, 129, 17 * 4096));
 
+XLA_TEST_F(ArrayElementwiseOpTest, ReducePrecisionNoOpF32) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({-2.5f, 25.5f});
+  auto reduce_precision = builder.ReducePrecision(a, 8, 23);
+
+  ComputeAndCompareR1<float>(&builder, {-2.5f, 25.5f}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ReducePrecisionNoOpParamF32) {
+  ComputationBuilder builder(client_, TestName());
+
+  std::vector<float> a_values = {-2.5f, 25.5f};
+
+  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR1<float>({a_values});
+  std::unique_ptr<GlobalData> a_data =
+      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
+  auto a_param = builder.Parameter(0, a_literal->shape(), "a_param");
+
+  auto reduce_precision = builder.ReducePrecision(a_param, 8, 23);
+
+  ComputeAndCompareR1<float>(&builder, {-2.5f, 25.5f}, {a_data.get()});
+}
+
 }  // namespace
 }  // namespace xla
 
