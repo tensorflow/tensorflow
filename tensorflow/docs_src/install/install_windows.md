@@ -74,7 +74,7 @@ Use that package at your own risk.
 If the following version of Python is not installed on your machine,
 install it now:
 
-  * [Python 3.5.x from python.org](https://www.python.org/downloads/release/python-352/)
+  * [Python 3.5.x 64-bit from python.org](https://www.python.org/downloads/release/python-352/)
 
 TensorFlow only supports version 3.5.x of Python on Windows.
 Note that Python 3.5.x comes with the pip3 package manager, which is the
