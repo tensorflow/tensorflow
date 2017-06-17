@@ -15,11 +15,19 @@ limitations under the License.
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
-#include "tensorflow/core/kernels/tile_ops_impl.h"
+#include "tensorflow/core/kernels/tile_functor.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
+
+// Forward declarations  that will be defined in tile_functor_cpu.cc
+namespace internal {
+template <Device, int64>
+void TileSimple(const Device& device, Tensor* out, const Tensor& in,
+                const gtl::ArraySlice<int32>& multiples_array);
+
+}  // end namespace internal
 
 namespace {
 

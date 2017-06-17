@@ -555,6 +555,7 @@ cc_library(
         ":split_v_op",
         ":strided_slice_op",
         ":tile_ops",
+        ":tile_functor",
         ":transpose_op",
         ":unique_op",
         ":unpack_op",
@@ -723,21 +724,42 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tile_ops",
     prefix = "tile_ops",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [":tile_functor"],
+)
+
+tf_kernel_library(
+    name = "tile_functor",
+    srcs = ["tile_functor_cpu.cc"],
+    hdrs = ["tile_functor.h"],
+    gpu_srcs = [
+        "tile_functor_gpu.cu.cc",
+        "tile_functor.h",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+    alwayslink = 0,
 )
 
 tf_cc_test(
-    name = "tile_util_test",
+    name = "tile_op_test",
     size = "small",
-    srcs = ["tile_util_test.cc"],
+    srcs = ["tile_op_test.cc"],
     deps = [
-        ":tile_ops",
         ":ops_testutil",
         ":ops_util",
+        ":tile_functor",
+        ":tile_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:tensor_testutil",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -4154,6 +4176,7 @@ filegroup(
         "tensor_array.h",
         "tile_ops_cpu_impl.h",
         "tile_ops_impl.h",
+        "tile_functor.h",
         "training_op_helpers.h",
         "training_ops.h",
         "transpose_functor.h",
@@ -4293,6 +4316,7 @@ filegroup(
         "tile_ops_cpu_impl_5.cc",
         "tile_ops_cpu_impl_6.cc",
         "tile_ops_cpu_impl_7.cc",
+        "tile_functor_cpu.cc",
         "topk_op.cc",
         "training_op_helpers.cc",
         "training_ops.cc",

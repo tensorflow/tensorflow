@@ -12,60 +12,77 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_CPU_IMPL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_CPU_IMPL_H_
 
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/tile_ops_impl.h"
+#include "tensorflow/core/kernels/tile_functor.h"
+#include <iostream>
 
 namespace tensorflow {
+
+namespace internal {
+
+template <typename Device, typename T>
+void TileSimple(const Device& device, Tensor* out, const Tensor& in) {
+  const int ndims = in.dims();
+  const int64 nelem = out->NumElements();
+  gtl::InlinedVector<int64, 8> in_strides(ndims);
+  ComputeStride(in.shape(), in_strides.data());
+  gtl::InlinedVector<int64, 8> out_strides(ndims);
+  ComputeStride(out->shape(), out_strides.data());
+  const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
+  T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
+
+  for (int64 o_idx = 0; o_idx < nelem; ++o_idx) {
+    int64 i_idx = 0;
+    int64 t = o_idx;
+    for (int i = 0; i < ndims; ++i) {
+      i_idx += t / out_strides[i] % in.dim_size(i) * in_strides[i];
+      t %= out_strides[i];
+    }
+    q[o_idx] = p[i_idx];
+  }
+}
+
+}  // end namespace internal
 
 namespace functor {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-// Register functors used for TileGradientOp.
-#define DEFINE_DIM(T, NDIM)                     \
-  template struct TileGrad<CPUDevice, T, NDIM>; \
-  template struct ReduceAndReshape<CPUDevice, T, NDIM, 1>;
-#define DEFINE_TYPE(T) DEFINE_DIM(T, CPU_PROVIDED_IXDIM)
-
-TF_CALL_float(DEFINE_TYPE);
-TF_CALL_double(DEFINE_TYPE);
-TF_CALL_int16(DEFINE_TYPE);
-TF_CALL_int32(DEFINE_TYPE);
-TF_CALL_int64(DEFINE_TYPE);
-TF_CALL_half(DEFINE_TYPE);
-TF_CALL_complex64(DEFINE_TYPE);
-TF_CALL_complex128(DEFINE_TYPE);
-
-#undef DEFINE_DIM
-#undef DEFINE_TYPE
-
-#ifdef TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-
-// Register functors used for TileGradientOp.
-#define DEFINE_DIM(T, NDIM)                      \
-  template struct TileGrad<SYCLDevice, T, NDIM>; \
-  template struct ReduceAndReshape<SYCLDevice, T, NDIM, 1>;
-#define DEFINE_TYPE(T) DEFINE_DIM(T, CPU_PROVIDED_IXDIM)
+// Register functors used for Tile functor.
+#define DEFINE_TYPE(T) template struct Tile<CPUDevice, T>;
 
 TF_CALL_bool(DEFINE_TYPE);
 TF_CALL_float(DEFINE_TYPE);
 TF_CALL_double(DEFINE_TYPE);
 TF_CALL_uint8(DEFINE_TYPE);
-TF_CALL_int16(DEFINE_TYPE);
 TF_CALL_int32(DEFINE_TYPE);
+TF_CALL_int16(DEFINE_TYPE);
+TF_CALL_int64(DEFINE_TYPE);
+TF_CALL_half(DEFINE_TYPE);
+TF_CALL_complex64(DEFINE_TYPE);
+TF_CALL_complex128(DEFINE_TYPE);
+TF_CALL_string(DEFINE_TYPE);
+
+#undef DEFINE_TYPE
+
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+
+#define DEFINE_TYPE(T) template struct Tile<SYCLDevice, T>;
+
+TF_CALL_bool(DEFINE_TYPE);
+TF_CALL_float(DEFINE_TYPE);
+TF_CALL_double(DEFINE_TYPE);
+TF_CALL_uint8(DEFINE_TYPE);
+TF_CALL_int32(DEFINE_TYPE);
+TF_CALL_int16(DEFINE_TYPE);
 TF_CALL_int64(DEFINE_TYPE);
 
-#undef DEFINE_DIM
 #undef DEFINE_TYPE
 #endif // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
 }  // end namespace tensorflow
-
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_CPU_IMPL_H_
