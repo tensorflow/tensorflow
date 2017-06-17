@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace internal {
 
 template <typename Device, typename T>
-void TileSimple(const Device& device, Tensor* out, const Tensor& in) {
+void TileSimple(const Device& d, Tensor* out, const Tensor& in) {
   const int ndims = in.dims();
   const int64 nelem = out->NumElements();
   gtl::InlinedVector<int64, 8> in_strides(ndims);

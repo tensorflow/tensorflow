@@ -43,7 +43,7 @@ namespace internal {
 
 // Device-specific naive implementation for tile.
 template <typename Device, typename T>
-void TileSimple(const Device& device, Tensor* out, const Tensor& in);
+void TileSimple(const Device& d, Tensor* out, const Tensor& in);
 
 template <typename Device, typename T, int NDIM>
 void TileUsingEigen(const Device& d, Tensor* out, const Tensor& in,

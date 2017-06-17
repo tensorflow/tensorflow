@@ -43,7 +43,7 @@ __global__ void TileKernel(int nthreads, const T* src, const int32* buf,
 }
 
 template <typename Device, typename T>
-void TileSimple(const Device& device, Tensor* out, const Tensor& in) {
+void TileSimple(const Device& d, Tensor* out, const Tensor& in) {
   // Ensures we can use 32-bit index.
   const int64 in_nelem = in.NumElements();
   CHECK_LT(in_nelem, kint32max) << "Tensor too large to transpose on GPU";
@@ -70,7 +70,7 @@ void TileSimple(const Device& device, Tensor* out, const Tensor& in) {
   const T* p = reinterpret_cast<const T*>(in.tensor_data().data());
   T* q = reinterpret_cast<T*>(const_cast<char*>((out->tensor_data().data())));
   CudaLaunchConfig cfg = GetCudaLaunchConfig(out_nelem, d);
-  TransposeKernel<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
+  TileKernel<<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
       cfg.virtual_thread_count, p, reinterpret_cast<const int32*>(dev_buf),
       ndims, q);
   // Safe to deallocate immediately after the kernel launch.
@@ -86,17 +86,14 @@ typedef Eigen::GpuDevice GPUDevice;
 // Register functors used for TileOp.
 #define DEFINE_TYPE(T) template struct Tile<GPUDevice, T>;
 
-TF_CALL_bool(DEFINE_TYPE);
+TF_CALL_int16(DEFINE_TYPE);
+TF_CALL_int32(DEFINE_TYPE);
+TF_CALL_int64(DEFINE_TYPE);
 TF_CALL_float(DEFINE_TYPE);
 TF_CALL_double(DEFINE_TYPE);
-TF_CALL_uint8(DEFINE_TYPE);
-TF_CALL_int32(DEFINE_TYPE);
-TF_CALL_int16(DEFINE_TYPE);
-TF_CALL_int64(DEFINE_TYPE);
 TF_CALL_half(DEFINE_TYPE);
 TF_CALL_complex64(DEFINE_TYPE);
 TF_CALL_complex128(DEFINE_TYPE);
-TF_CALL_string(DEFINE_TYPE);
 
 #undef DEFINE_TYPE
 
