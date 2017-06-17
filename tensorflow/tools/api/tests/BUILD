@@ -13,6 +13,7 @@ exports_files([
 
 py_test(
     name = "api_compatibility_test",
+    size = "small",
     srcs = ["api_compatibility_test.py"],
     data = [
         "//tensorflow/tools/api/golden:api_golden",

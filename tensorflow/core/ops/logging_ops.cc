@@ -65,6 +65,24 @@ summarize: Only print this many entries of each tensor.
 // Operators that deal with SummaryProtos (encoded as DT_STRING tensors) as
 // inputs or outputs in various ways.
 
+REGISTER_OP("TensorSummaryV2")
+    .Input("tag: string")
+    .Input("tensor: T")
+    // This serialized summary metadata field describes a summary value,
+    // specifically which plugins may use that summary.
+    .Input("serialized_summary_metadata: string")
+    .Output("summary: string")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Outputs a `Summary` protocol buffer with a tensor and per-plugin data.
+
+tag: A string attached to this summary. Used for organization in TensorBoard.
+tensor: A tensor to serialize.
+serialized_summary_metadata: A serialized SummaryMetadata proto. Contains plugin
+  data.
+)doc");
+
 REGISTER_OP("TensorSummary")
     .Input("tensor: T")
     .Output("summary: string")
@@ -75,6 +93,10 @@ REGISTER_OP("TensorSummary")
     .SetShapeFn(shape_inference::ScalarShape)
     .Doc(R"doc(
 Outputs a `Summary` protocol buffer with a tensor.
+
+This op is being phased out in favor of TensorSummaryV2, which lets callers pass
+a tag as well as a serialized SummaryMetadata proto string that contains
+plugin-specific data. We will keep this op to maintain backwards compatibility.
 
 tensor: A tensor to serialize.
 description: A json-encoded SummaryDescription proto.

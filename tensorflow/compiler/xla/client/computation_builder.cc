@@ -256,7 +256,8 @@ void ComputationBuilder::CheckSameShape(const ComputationDataHandle& lhs,
 ComputationDataHandle ComputationBuilder::Slice(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> start_indices,
-    tensorflow::gtl::ArraySlice<int64> limit_indices) {
+    tensorflow::gtl::ArraySlice<int64> limit_indices,
+    tensorflow::gtl::ArraySlice<int64> stride) {
   if (!first_error_.ok() || !PrepareComputation().ok()) {
     return ComputationDataHandle();
   }
@@ -268,6 +269,9 @@ ComputationDataHandle ComputationBuilder::Slice(
   }
   for (int64 index : limit_indices) {
     request.add_limit_indices(index);
+  }
+  for (int64 index : stride) {
+    request.add_stride(index);
   }
   OpRequest op_request;
   *op_request.mutable_computation() = computation_.handle();
@@ -1499,8 +1503,8 @@ void ComputationBuilder::Send(const ComputationDataHandle& operand,
   OpResponse response;
 
   VLOG(2) << "making send request";
-  tensorflow::Status s = client_->stub()->Op(&op_request, &response);
-  VLOG(2) << "done with request";
+  Status s = client_->stub()->Op(&op_request, &response);
+  VLOG(2) << "done with op request";
 
   if (!s.ok()) {
     NoteError(s);
@@ -1524,9 +1528,7 @@ ComputationDataHandle ComputationBuilder::Recv(const Shape& shape,
   OpResponse response;
 
   VLOG(2) << "making recv request";
-  tensorflow::Status s = client_->stub()->Op(&op_request, &response);
-  VLOG(2) << "done with request";
-
+  Status s = client_->stub()->Op(&op_request, &response);
   return ParseOpResponse(s, &response);
 }
 

@@ -120,7 +120,7 @@ class _TriLPlusVDVTLightweightOperatorPD(object):
 
     Doesn't actually do the sqrt! Named as such to agree with API.
 
-    To compute (M + V D V.T), we use the the Woodbury matrix identity:
+    To compute (M + V D V.T), we use the Woodbury matrix identity:
       inv(M + V D V.T) = inv(M) - inv(M) V inv(C) V.T inv(M)
     where,
       C = inv(D) + V.T inv(M) V.
@@ -166,7 +166,7 @@ class _TriLPlusVDVTLightweightOperatorPD(object):
   def _woodbury_sandwiched_term(self):
     """Computes the sandwiched term in the Woodbury identity.
 
-    Computes the "`C`" in the the identity:
+    Computes the "`C`" in the identity:
        inv(M + V D V.T) = inv(M) - inv(M) V inv(C) V.T inv(M)
     where,
        C = inv(D) + V.T inv(M) V.

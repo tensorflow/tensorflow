@@ -707,6 +707,11 @@ class BinaryOpTest(test.TestCase):
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
 
+  def testUint8Basic(self):
+    x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint8)
+    y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.uint8)
+    self._compareBoth(x, y, np.add, math_ops.add)
+
   def testInt8Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int8)
     y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.int8)

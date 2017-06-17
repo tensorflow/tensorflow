@@ -249,22 +249,17 @@ class HloDataflowAnalysis {
  public:
   // Run dataflow analysis on the given module. Parameters:
   //
-  //   ssa_form : If true then new values are defined at merge points in the XLA
-  //     graph. Abusing nomenclature somewhat, we call these "phi values".
-  //     Merge points exist at While instructions (formed by the init value and
-  //     loop backedge), and subcomputations which are called via kCall from
-  //     more than one callsite. The SSA form is minimal in that a new phi value
-  //     is defined only if the merge point is reachable by multiple different
-  //     values. The SSA form is also in loop-closed form in that no values
-  //     defined inside of a loop (while body) is used outside of the loop. In
-  //     SSA form every location in the HLO graph (instruction and ShapeIndex)
-  //     has a single unique value (a unique reaching definition).
+  //   ssa_form : If true then new values are defined at the merge points of
+  //     kWhile instructions. Abusing nomenclature somewhat, we call these "phi
+  //     values".  The merge is formed by the init value and loop backedge. The
+  //     SSA form is minimal in that a new phi value is defined only if the
+  //     merge point is reachable by multiple different values. The SSA form is
+  //     also in loop-closed form in that no values defined inside of a loop
+  //     (while body) is used outside of the loop.
   //
   //     If ssa_form is false, then merge points do not define new
   //     values. Rather, the HloValueSet for the merge point contains the union
-  //     of the merged HloValues. Therefore a location in the HLO graph
-  //     (instruction and ShapeIndex) may have more than one value (multiple
-  //     reaching definitions).
+  //     of the merged HloValues.
   //
   //   bitcast_defines_value : If true then the Bitcast HLO instruction defines
   //     a new HLO value in the analysis. If false then Bitcast forwards the
@@ -320,7 +315,7 @@ class HloDataflowAnalysis {
   // Return a vector of all HloValues stabily sorted by HloValue::Id. This
   // vector is lazily computed. Mutating operations on HloDataflowAnalysis may
   // invalidate the underlying vector requiring recomputation.
-  std::vector<const HloValue*>& values() const;
+  const std::vector<const HloValue*>& values() const;
 
   string ToString() const;
 

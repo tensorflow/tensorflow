@@ -1,0 +1,27 @@
+{
+  "traceEvents": [
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 826, "ph": "C",
+        "name": "counter", "args": {"value": 10}},
+    {"cat": "PERF", "pid": 22630, "tid": 22630, "ts": 826, "ph": "B",
+        "name": "A long name that doesnt fit but is exceedingly informative",
+        "args": {"name_false": false, "value_true": true}},
+    {"cat": "PERF", "pid": 22630, "ts": 835, "ph": "I", "s": "p",
+        "name": "ProcessWideEvent1", "args": {}}
+  ],
+  "stackFrames": {
+    "1": {
+      "category": "m1",
+      "name": "main"
+    },
+    "7": {
+      "category": "m2",
+      "name": "frame7",
+      "parent": "1"
+    },
+    "8": {
+      "category": "m2",
+      "name": "frame8",
+      "parent": "1"
+    }
+  }
+}

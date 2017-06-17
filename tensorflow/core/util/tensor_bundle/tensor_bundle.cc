@@ -757,6 +757,24 @@ Status BundleReader::Lookup(StringPiece key, Tensor* val) {
   }
 }
 
+Status BundleReader::ReadCurrent(Tensor* val) {
+  CHECK(val != nullptr);
+  BundleEntryProto entry;
+  TF_RETURN_IF_ERROR(ParseEntryProto(iter_->key(), iter_->value(), &entry));
+  if (!TensorShape::IsValid(entry.shape())) {
+    return errors::DataLoss("Invaid tensor shape: ", iter_->key(), " ",
+                            ProtoShortDebugString(entry.shape()));
+  }
+
+  if (entry.slices().empty()) {
+    return GetValue(entry, val);
+  } else {
+    return GetSliceValue(
+        iter_->key(), entry,
+        /* a full slice */ TensorSlice(TensorShape(entry.shape()).dims()), val);
+  }
+}
+
 Status BundleReader::LookupTensorSlices(StringPiece key,
                                         std::vector<TensorSlice>* slices) {
   slices->clear();

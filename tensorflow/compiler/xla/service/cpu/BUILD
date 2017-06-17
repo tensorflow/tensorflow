@@ -414,6 +414,7 @@ cc_test(
 
 cc_test(
     name = "infeed_manager_test",
+    size = "small",
     srcs = ["infeed_manager_test.cc"],
     deps = [
         ":cpu_runtime",
@@ -506,6 +507,7 @@ cc_library(
 
 cc_test(
     name = "conv_canonicalization_test",
+    size = "small",
     srcs = ["conv_canonicalization_test.cc"],
     deps = [
         ":conv_canonicalization",
@@ -513,7 +515,6 @@ cc_test(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/core:test_main",
     ],
 )
 

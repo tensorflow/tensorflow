@@ -181,6 +181,42 @@ resized_images: 4-D with shape
 )doc");
 
 // --------------------------------------------------------------------------
+REGISTER_OP("QuantizedResizeBilinear")
+    .Input("images: T")
+    .Input("size: int32")
+    .Input("min: float")
+    .Input("max: float")
+    .Output("resized_images: T")
+    .Output("out_min: float")
+    .Output("out_max: float")
+    .Attr("T: {quint8, qint32, float}")
+    .Attr("align_corners: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(ResizeShapeFn(c));
+      ShapeHandle min_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &min_shape));
+      ShapeHandle max_shape;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &max_shape));
+      c->set_output(1, c->MakeShape({}));
+      c->set_output(2, c->MakeShape({}));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Resize quantized `images` to `size` using quantized bilinear interpolation.
+
+Input images and output images must be quantized types.
+
+images: 4-D with shape `[batch, height, width, channels]`.
+size:= A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
+  new size for the images.
+align_corners: If true, rescale input by (new_height - 1) / (height - 1), which
+  exactly aligns the 4 corners of images and resized images. If false, rescale
+  by new_height / height. Treat similarly the width dimension.
+resized_images: 4-D with shape
+  `[batch, new_height, new_width, channels]`.
+)doc");
+
+// --------------------------------------------------------------------------
 REGISTER_OP("ResizeBilinearGrad")
     .Input("grads: float")
     .Input("original_image: T")

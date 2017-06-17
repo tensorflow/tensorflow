@@ -166,6 +166,19 @@ string ToVlogString(dnn::DepthToSpaceLayout depth_to_space_layout) {
   return "unknown DepthToSpaceLayout";
 }
 
+string ToVlogString(dnn::DataType data_type) {
+  switch (data_type) {
+    case dnn::DataType::kFloat:
+      return "dnn::DataType::kFloat";
+    case dnn::DataType::kDouble:
+      return "dnn::DataType::kDouble";
+    case dnn::DataType::kHalf:
+      return "dnn::DataType::kHalf";
+    case dnn::DataType::kInt8:
+      return "dnn::DataType::kInt8";
+  }
+}
+
 // Used together with PARAM to VLOG calls made to the stream. Intended
 // to be used like this:
 //
@@ -4390,15 +4403,18 @@ Stream &Stream::ThenRnnBackward(
 }
 
 Stream &Stream::ThenTransformTensor(const dnn::BatchDescriptor &input_desc,
-                                    const DeviceMemory<float> &input_data,
+                                    dnn::DataType input_type,
+                                    const DeviceMemoryBase &input_data,
                                     const dnn::BatchDescriptor &output_desc,
-                                    DeviceMemory<float> *output_data) {
-  VLOG_CALL(PARAM(input_desc), PARAM(input_data), PARAM(output_desc),
-            PARAM(output_data));
+                                    dnn::DataType output_type,
+                                    DeviceMemoryBase *output_data) {
+  VLOG_CALL(PARAM(input_desc), PARAM(input_type), PARAM(input_data),
+            PARAM(output_desc), PARAM(output_type), PARAM(output_data));
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      CheckError(dnn->DoTransformTensor(this, input_desc, input_data,
-                                        output_desc, output_data));
+      CheckError(dnn->DoTransformTensor(this, input_desc, input_type,
+                                        input_data, output_desc, output_type,
+                                        output_data));
     } else {
       SetErrorAndLogNoDnnSupport();
     }

@@ -24,11 +24,12 @@ namespace {
 // See documentation in ../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
-class TensorSliceDatasetOp : public OpKernel {
+class TensorSliceDatasetOp : public DatasetOpKernel {
  public:
-  explicit TensorSliceDatasetOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit TensorSliceDatasetOp(OpKernelConstruction* ctx)
+      : DatasetOpKernel(ctx) {}
 
-  void Compute(OpKernelContext* ctx) override {
+  void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     // Create a new TensorDatasetOp::Dataset, insert it in the step
     // container, and return it as the output.
     OpInputList inputs;
@@ -49,13 +50,7 @@ class TensorSliceDatasetOp : public OpKernel {
           errors::InvalidArgument(
               "All components must have the same size in the 0th dimension"));
     }
-    DatasetBase* dataset = new Dataset(std::move(components));
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
-    ResourceHandle handle = MakeResourceHandle<DatasetBase>(
-        ctx, ctx->step_container()->name(), name());
-    OP_REQUIRES_OK(ctx, CreateResource(ctx, handle, dataset));
-    output->flat<ResourceHandle>()(0) = handle;
+    *output = new Dataset(std::move(components));
   }
 
  private:

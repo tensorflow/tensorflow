@@ -1,4 +1,4 @@
-# tfprof: A Profiling Tool for TensorFlow Models
+# tfprof: TensorFlow Profiler and Beyond
 
 # Full Document in tensorflow/tools/tfprof/README.md
 

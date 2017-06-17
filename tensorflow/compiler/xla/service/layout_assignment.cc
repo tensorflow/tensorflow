@@ -1265,6 +1265,9 @@ Status LayoutAssignment::AssignLayouts(const LayoutConstraints& constraints,
       TF_RETURN_IF_ERROR(SetFusionLayouts(instruction));
     }
 
+    // Execute extra verification step once the layout has been finalized.
+    TF_RETURN_IF_ERROR(Verify(instruction));
+
     // Verify all layouts in the shape have been set.
     TF_RET_CHECK(LayoutUtil::HasLayout(instruction->shape()));
   }

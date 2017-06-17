@@ -184,6 +184,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "ftrl_test",
+    size = "small",
+    srcs = ["ftrl_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "function_test",
     size = "small",
     srcs = ["function_test.py"],
@@ -509,8 +523,12 @@ cuda_py_test(
 # --dump_graph_dir, and the config file was written by hand.
 #
 # Run the following to build a minimal benchmark of the computation on Android:
-# $ bazel build -c opt --config=android_arm \
-#       third_party/tensorflow/compiler/tests:lstm_layer_inference_benchmark
+# $ bazel build -c opt --cxxopt='-std=c++11' --linkopt='-lm' \
+#   --cpu=armeabi-v7a \
+#   --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
+#   --crosstool_top=//external:android/crosstool \
+#   //tensorflow/compiler/tests:lstm_layer_inference_benchmark
+
 #
 # Currently the resulting binary size is ~190KB
 tf_library(

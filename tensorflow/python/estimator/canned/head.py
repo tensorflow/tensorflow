@@ -26,6 +26,7 @@ from tensorflow.python.estimator import model_fn
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export_output
+from tensorflow.python.feature_column import feature_column as feature_column_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -41,6 +42,9 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import signature_constants
+
+_DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
 
 
 class _Head(object):
@@ -278,7 +282,7 @@ def _recall_at_threshold(labels, predictions, weights, threshold, name=None):
 
 
 def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
-                                                      weight_feature_key=None,
+                                                      weight_column=None,
                                                       label_vocabulary=None):
   """Creates a '_Head' for multi class classification.
 
@@ -287,7 +291,8 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
   Args:
     n_classes: Number of classes, must be greater than 2 (for 2 classes, use
       `_BinaryLogisticHeadWithSigmoidCrossEntropyLoss`).
-    weight_feature_key: A string defining feature column name representing
+    weight_column: A string or a `_NumericColumn` created by
+      `tf.feature_column.numeric_column` defining feature column representing
       weights. It is used to down weight or boost examples during training. It
       will be multiplied by the loss of the example.
     label_vocabulary: A list of strings represents possible label values. If it
@@ -307,18 +312,18 @@ def _multi_class_head_with_softmax_cross_entropy_loss(n_classes,
     raise ValueError('label_vocabulary should be a list. Given type: {}'.format(
         type(label_vocabulary)))
 
-  return _MultiClassHeadWithSoftmaxCrossEntropyLoss(
-      n_classes, weight_feature_key, label_vocabulary)
+  return _MultiClassHeadWithSoftmaxCrossEntropyLoss(n_classes, weight_column,
+                                                    label_vocabulary)
 
 
 class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
   """See `_multi_class_head_with_softmax_cross_entropy_loss`."""
 
-  def __init__(self, n_classes, weight_feature_key=None, label_vocabulary=None):
+  def __init__(self, n_classes, weight_column=None, label_vocabulary=None):
     if (n_classes is None) or (n_classes <= 2):
       raise ValueError('n_classes must be > 2: %s.' % n_classes)
     self._n_classes = n_classes
-    self._weight_feature_key = weight_feature_key
+    self._weight_column = weight_column
     self._label_vocabulary = label_vocabulary
 
   @property
@@ -417,10 +422,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
           labels=label_ids, logits=logits, reduction=losses.Reduction.NONE)
       # Restore the squeezed dim, so unweighted_loss matches the weights shape.
       unweighted_loss = array_ops.expand_dims(unweighted_loss, axis=(1,))
-      weights = (
-          1. if (self._weight_feature_key is None) else
-          features[self._weight_feature_key])
-      weights = _maybe_expand_dim(math_ops.to_float(weights, name='weights'))
+      weights = _weights(features, self._weight_column)
       training_loss = losses.compute_weighted_loss(
           unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:
@@ -453,7 +455,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
 
 
 def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
-    weight_feature_key=None, thresholds=None, label_vocabulary=None):
+    weight_column=None, thresholds=None, label_vocabulary=None):
   """Creates a `Head` for single label binary classification.
 
   This head uses `sigmoid_cross_entropy_with_logits` loss.
@@ -461,7 +463,8 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
   This head expects to be fed float labels of shape `(batch_size, 1)`.
 
   Args:
-    weight_feature_key: A string defining feature column name representing
+    weight_column: A string or a `_NumericColumn` created by
+      `tf.feature_column.numeric_column` defining feature column representing
       weights. It is used to down weight or boost examples during training. It
       will be multiplied by the loss of the example.
     thresholds: Iterable of floats in the range `(0, 1)`. For binary
@@ -491,7 +494,7 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
     if (threshold <= 0.0) or (threshold >= 1.0):
       raise ValueError('thresholds not in (0, 1): %s.' % (thresholds,))
   return _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(
-      weight_feature_key=weight_feature_key,
+      weight_column=weight_column,
       thresholds=thresholds,
       label_vocabulary=label_vocabulary)
 
@@ -499,11 +502,9 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
 class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
   """See `_binary_logistic_head_with_sigmoid_cross_entropy_loss`."""
 
-  def __init__(self,
-               weight_feature_key=None,
-               thresholds=None,
+  def __init__(self, weight_column=None, thresholds=None,
                label_vocabulary=None):
-    self._weight_feature_key = weight_feature_key
+    self._weight_column = weight_column
     self._thresholds = thresholds
     self._label_vocabulary = label_vocabulary
 
@@ -605,13 +606,25 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
           pred_keys.CLASSES: classes,
       }
       if mode == model_fn.ModeKeys.PREDICT:
+        batch_size = array_ops.shape(logistic)[0]
+        export_class_list = self._label_vocabulary
+        if not export_class_list:
+          export_class_list = string_ops.as_string([0, 1])
+        export_output_classes = array_ops.tile(
+            input=array_ops.expand_dims(input=export_class_list, axis=0),
+            multiples=[batch_size, 1])
+        classifier_output = export_output.ClassificationOutput(
+            scores=scores,
+            # `ClassificationOutput` requires string classes.
+            classes=export_output_classes)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
             export_outputs={
-                '':
-                    export_output.ClassificationOutput(
-                        scores=scores, classes=classes)
+                '': classifier_output,  # to be same as other heads.
+                'classification': classifier_output,  # to be called by name.
+                _DEFAULT_SERVING_KEY: classifier_output,  # default
+                'regression': export_output.RegressionOutput(value=logistic)
             })
 
       # Eval.
@@ -624,10 +637,7 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
       labels = _assert_range(labels, 2)
       unweighted_loss = nn.sigmoid_cross_entropy_with_logits(
           labels=labels, logits=logits, name='loss')
-      weights = (
-          1. if (self._weight_feature_key is None) else
-          features[self._weight_feature_key])
-      weights = _maybe_expand_dim(math_ops.to_float(weights, name='weights'))
+      weights = _weights(features, self._weight_column)
       training_loss = losses.compute_weighted_loss(
           unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:
@@ -660,13 +670,13 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
           train_op=train_op_fn(training_loss))
 
 
-def _regression_head_with_mean_squared_error_loss(
-    weight_feature_key=None,
-    label_dimension=1):
+def _regression_head_with_mean_squared_error_loss(weight_column=None,
+                                                  label_dimension=1):
   """Creates a `_Head` for regression using the mean squared loss.
 
   Args:
-    weight_feature_key: A string defining feature column name representing
+    weight_column: A string or a `_NumericColumn` created by
+      `tf.feature_column.numeric_column` defining feature column representing
       weights. It is used to down weight or boost examples during training. It
       will be multiplied by the loss of the example.
     label_dimension: Number of regression labels per example. This is the size
@@ -677,33 +687,18 @@ def _regression_head_with_mean_squared_error_loss(
     An instance of `_Head` for linear regression.
   """
   return _RegressionHeadWithMeanSquaredErrorLoss(
-      weight_feature_key=weight_feature_key,
-      label_dimension=label_dimension)
+      weight_column=weight_column, label_dimension=label_dimension)
 
 
 class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
   """`Head` for regression using the mean squared loss."""
 
-  def __init__(self,
-               label_dimension,
-               weight_feature_key=None):
-    """`Head` for regression.
-
-    Args:
-      label_dimension: Number of regression labels per example. This is the
-        size of the last dimension of the labels `Tensor` (typically, this has
-        shape `[batch_size, label_dimension]`).
-      weight_feature_key: A string defining feature column name representing
-        weights. It is used to down weight or boost examples during training. It
-        will be multiplied by the loss of the example.
-
-    Raises:
-      ValueError: if `label_dimension` < 1.
-    """
+  def __init__(self, label_dimension, weight_column=None):
+    """`Head` for regression."""
     if label_dimension < 1:
       raise ValueError('Invalid label_dimension %s.' % label_dimension)
     self._logits_dimension = label_dimension
-    self._weight_feature_key = weight_feature_key
+    self._weight_column = weight_column
 
   @property
   def logits_dimension(self):
@@ -731,10 +726,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
                              self._logits_dimension)
       unweighted_loss = losses.mean_squared_error(
           labels=labels, predictions=logits, reduction=losses.Reduction.NONE)
-      weights = (
-          1. if (self._weight_feature_key is None) else
-          features[self._weight_feature_key])
-      weights = _maybe_expand_dim(math_ops.to_float(weights, name='weights'))
+      weights = _weights(features, self._weight_column)
       training_loss = losses.compute_weighted_loss(
           unweighted_loss, weights=weights, reduction=losses.Reduction.SUM)
       if mode == model_fn.ModeKeys.EVAL:
@@ -774,3 +766,21 @@ def _assert_range(labels, n_classes):
       labels, message='Label IDs must >= 0')
   with ops.control_dependencies((assert_less, assert_greater)):
     return array_ops.identity(labels)
+
+
+def _weights(features, weight_column):
+  """Fetches weights from features."""
+  if weight_column is None:
+    return 1.
+  if isinstance(weight_column, six.string_types):
+    weight_column = feature_column_lib.numeric_column(key=weight_column)
+  if not isinstance(weight_column, feature_column_lib._NumericColumn):  # pylint: disable=protected-access
+    raise TypeError('Weight column must be either a string or _NumericColumn. '
+                    'Given type: {}.'.format(type(weight_column)))
+  weights = weight_column._get_dense_tensor(  # pylint: disable=protected-access
+      feature_column_lib._LazyBuilder(features))  # pylint: disable=protected-access
+  if not (weights.dtype.is_floating or weights.dtype.is_integer):
+    raise ValueError('Weight column should be castable to float. '
+                     'Given dtype: {}'.format(weights.dtype))
+  weights = _maybe_expand_dim(math_ops.to_float(weights, name='weights'))
+  return weights

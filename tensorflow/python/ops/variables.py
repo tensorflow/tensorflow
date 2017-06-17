@@ -33,8 +33,7 @@ from tensorflow.python.util.deprecation import deprecated
 
 
 class Variable(object):
-  """See the @{$variables$Variables How To} for a high
-  level overview.
+  """See the @{$variables$Variables How To} for a high level overview.
 
   A variable maintains state in the graph across calls to `run()`. You add a
   variable to the graph by constructing an instance of the class `Variable`.

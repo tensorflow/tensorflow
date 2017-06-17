@@ -1,7 +1,7 @@
-package(default_visibility = ["//tensorflow:internal"])
+package(default_visibility = ["//tensorflow/tensorboard:internal"])
 
-load("//tensorflow/tensorboard:defs.bzl", "tensorboard_webcomponent_library")
-load("//tensorflow/tensorboard:web.bzl", "ts_web_library")
+load("//tensorflow/tensorboard/defs:defs.bzl", "tensorboard_webcomponent_library")
+load("//tensorflow/tensorboard/defs:web.bzl", "ts_web_library")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -12,6 +12,7 @@ ts_web_library(
         "behavior.ts",
         "requestManager.ts",
         "router.ts",
+        "runsStore.ts",
         "tf-backend.html",
         "urlPathHelpers.ts",
     ],

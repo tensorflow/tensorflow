@@ -358,23 +358,13 @@ TEST_P(HloDataflowAnalysisTest, ComputationCalledTwiceWithDifferentArguments) {
   EXPECT_FALSE(analysis.ValueIsDefinedAt(call1));
   EXPECT_FALSE(analysis.ValueIsDefinedAt(call2));
 
-  if (ssa_form) {
-    // Argument 0 has different values at the two calls, and argument 1 has the
-    // same value, so only argument 0 should have a phi value.
-    EXPECT_TRUE(analysis.ValueIsDefinedAt(subparam0));
-    EXPECT_TRUE(analysis.GetValueDefinedAt(subparam0).is_phi());
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(subparam0));
 
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(subparam1));
-  } else {
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(subparam0));
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(subparam1));
-
-    EXPECT_THAT(HloValuesAt(subparam0),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                     analysis.GetValueDefinedAt(add)));
-    EXPECT_THAT(HloValuesAt(subparam1),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant2)));
-  }
+  EXPECT_THAT(HloValuesAt(subparam0),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
+                                   analysis.GetValueDefinedAt(add)));
+  EXPECT_THAT(HloValuesAt(subparam1),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant2)));
 
   EXPECT_TRUE(analysis.GetValueDefinedAt(add).live_out_of_module());
 }
@@ -889,34 +879,34 @@ TEST_P(HloDataflowAnalysisTest, TupleSelect) {
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select34));
   EXPECT_TRUE(analysis.ValueIsDefinedAt(select1234));
 
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(select11, /*index=*/{0}));
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(select12, /*index=*/{0}));
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(select34, /*index=*/{0}));
-    EXPECT_FALSE(analysis.ValueIsDefinedAt(select1234, /*index=*/{0}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(select11, /*index=*/{0}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(select12, /*index=*/{0}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(select34, /*index=*/{0}));
+  EXPECT_FALSE(analysis.ValueIsDefinedAt(select1234, /*index=*/{0}));
 
-    EXPECT_THAT(HloValuesAt(select11, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1)));
-    EXPECT_THAT(HloValuesAt(select12, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                     analysis.GetValueDefinedAt(constant2)));
-    EXPECT_THAT(HloValuesAt(select34, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant3),
-                                     analysis.GetValueDefinedAt(constant4)));
-    EXPECT_THAT(HloValuesAt(select1234, /*index=*/{0}),
-                UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
-                                     analysis.GetValueDefinedAt(constant2),
-                                     analysis.GetValueDefinedAt(constant3),
-                                     analysis.GetValueDefinedAt(constant4)));
+  EXPECT_THAT(HloValuesAt(select11, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant1)));
+  EXPECT_THAT(HloValuesAt(select12, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
+                                   analysis.GetValueDefinedAt(constant2)));
+  EXPECT_THAT(HloValuesAt(select34, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant3),
+                                   analysis.GetValueDefinedAt(constant4)));
+  EXPECT_THAT(HloValuesAt(select1234, /*index=*/{0}),
+              UnorderedElementsAre(analysis.GetValueDefinedAt(constant1),
+                                   analysis.GetValueDefinedAt(constant2),
+                                   analysis.GetValueDefinedAt(constant3),
+                                   analysis.GetValueDefinedAt(constant4)));
 
-    EXPECT_THAT(
-        analysis.GetValueDefinedAt(constant1).uses(),
-        UnorderedElementsAre(HloUse{tuple1, 0, {}}, HloUse{select11, 1, {0}},
-                             HloUse{select11, 2, {0}}, HloUse{select12, 1, {0}},
-                             HloUse{select1234, 1, {0}}));
-    EXPECT_THAT(
-        analysis.GetValueDefinedAt(constant2).uses(),
-        UnorderedElementsAre(HloUse{tuple2, 0, {}}, HloUse{select12, 2, {0}},
-                             HloUse{select1234, 1, {0}}));
+  EXPECT_THAT(
+      analysis.GetValueDefinedAt(constant1).uses(),
+      UnorderedElementsAre(HloUse{tuple1, 0, {}}, HloUse{select11, 1, {0}},
+                           HloUse{select11, 2, {0}}, HloUse{select12, 1, {0}},
+                           HloUse{select1234, 1, {0}}));
+  EXPECT_THAT(
+      analysis.GetValueDefinedAt(constant2).uses(),
+      UnorderedElementsAre(HloUse{tuple2, 0, {}}, HloUse{select12, 2, {0}},
+                           HloUse{select1234, 1, {0}}));
 }
 
 TEST_P(HloDataflowAnalysisTest, NestedTupleSelect) {

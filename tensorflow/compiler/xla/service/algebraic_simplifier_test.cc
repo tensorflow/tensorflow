@@ -19,7 +19,6 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -33,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/platform/test.h"
 
 namespace op = xla::testing::opcode_matchers;
 
@@ -524,7 +522,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveEmptyConcatenateOperands) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({})));
   HloInstruction* empty_slice =
       builder.AddInstruction(HloInstruction::CreateSlice(
-          ShapeUtil::MakeShape(F32, {0}), param1, {42}, {42}));
+          ShapeUtil::MakeShape(F32, {0}), param1, {42}, {42}, {1}));
   Shape result_shape = ShapeUtil::MakeShape(F32, {3 * kParamLength});
   builder.AddInstruction(HloInstruction::CreateConcatenate(
       result_shape, {empty_literal, param0, param0, empty_slice, param1}, 0));
@@ -555,7 +553,7 @@ TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
       HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({})));
   HloInstruction* empty_slice =
       builder.AddInstruction(HloInstruction::CreateSlice(
-          ShapeUtil::MakeShape(F32, {0}), param0, {42}, {42}));
+          ShapeUtil::MakeShape(F32, {0}), param0, {42}, {42}, {1}));
   Shape result_shape = ShapeUtil::MakeShape(F32, {0});
   builder.AddInstruction(HloInstruction::CreateConcatenate(
       result_shape, {empty_literal, empty_slice}, 0));
@@ -571,6 +569,29 @@ TEST_F(AlgebraicSimplifierTest, OnlyEmptyConcatenateOperands) {
   ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
 
   EXPECT_EQ(computation->root_instruction(), empty_literal);
+}
+
+// Test that concat with a scalar broadcast becomes a pad.
+TEST_F(AlgebraicSimplifierTest, ConcatenateOfBroadcastBecomesPad) {
+  Shape r1f32 = ShapeUtil::MakeShape(F32, {100});
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+  HloComputation::Builder builder(TestName());
+  HloInstruction* param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r1f32, "param0"));
+  HloInstruction* param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32, "param1"));
+  HloInstruction* broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(r1f32, param1, {}));
+  builder.AddInstruction(HloInstruction::CreateConcatenate(
+      param0->shape(), {broadcast, param0}, 0));
+
+  auto module = CreateNewModule();
+  auto computation = module->AddEntryComputation(builder.Build());
+
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(computation->root_instruction(), op::Pad(param0, param1));
 }
 
 // Test that a simplification which changes layouts is not performed if layout
@@ -1113,7 +1134,7 @@ TEST_F(AlgebraicSimplifierTest, RemoveNoopSlice) {
           0, ShapeUtil::MakeShape(F32, {dim0, dim1}), "param"));
   builder.AddInstruction(HloInstruction::CreateSlice(
       ShapeUtil::MakeShape(F32, {dim0, dim1}), param, /*start_indices=*/{0, 0},
-      /*limit_indices=*/{dim0, dim1}));
+      /*limit_indices=*/{dim0, dim1}, /*slices=*/{1, 1}));
 
   HloModule module(TestName());
   HloComputation* computation = module.AddEntryComputation(builder.Build());
@@ -1518,7 +1539,7 @@ TEST_F(AlgebraicSimplifierTest, ScalarBroadcastToSlice) {
 
   Shape slice_shape = ShapeUtil::MakeShape(F32, {2, 2, 3, 3});
   HloInstruction* slice = builder.AddInstruction(HloInstruction::CreateSlice(
-      slice_shape, broadcast, {0, 1, 2, 3}, {2, 3, 5, 6}));
+      slice_shape, broadcast, {0, 1, 2, 3}, {2, 3, 5, 6}, {1, 1, 1, 1}));
 
   HloModule module(TestName());
   auto computation = module.AddEntryComputation(builder.Build());
@@ -1711,18 +1732,5 @@ TEST_F(AlgebraicSimplifierTest, IteratorInvalidation) {
 }  // namespace xla
 
 int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
 }

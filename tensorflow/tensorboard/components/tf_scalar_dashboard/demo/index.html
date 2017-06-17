@@ -46,7 +46,7 @@ limitations under the License.
       </template>
       <script>
         import {Backend} from "../tf-backend/backend";
-        import {router} from "../tf-backend/router";
+        import {createRouter, setRouter} from "../tf-backend/router";
 
         Polymer({
           is: "scalar-dash-demo",
@@ -54,9 +54,12 @@ limitations under the License.
             backend: {
               type: Object,
               value: function() {
-                var router = new router("/data", true);
-                return new Backend(router);
+                return new Backend();
               },
+            },
+            created: function() {
+              var router = createRouter("/data", true);
+              setRouter(router);
             },
           },
         });

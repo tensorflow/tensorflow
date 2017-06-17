@@ -754,6 +754,66 @@ void Literal::EachCellAsString(
 }
 
 namespace {
+template <PrimitiveType primitive_src_type, PrimitiveType primitive_dest_type>
+std::unique_ptr<Literal> ConvertIfTypesMatch(const Literal& src_literal) {
+  CHECK_EQ(primitive_src_type, src_literal.shape().element_type());
+  return LiteralUtil::Convert<
+      typename primitive_util::PrimitiveTypeToNative<primitive_src_type>::type,
+      typename primitive_util::PrimitiveTypeToNative<
+          primitive_dest_type>::type>(src_literal);
+}
+
+template <PrimitiveType primitive_src_type>
+StatusOr<std::unique_ptr<Literal>> ConvertIfDestTypeMatches(
+    const Literal& src_literal, PrimitiveType primitive_dest_type) {
+  switch (primitive_dest_type) {
+#define CONVERT_IF_TYPES_MATCH(type) \
+  case (type):                       \
+    return ConvertIfTypesMatch<primitive_src_type, (type)>(src_literal);
+    CONVERT_IF_TYPES_MATCH(PRED)
+    CONVERT_IF_TYPES_MATCH(S8)
+    CONVERT_IF_TYPES_MATCH(S32)
+    CONVERT_IF_TYPES_MATCH(S64)
+    CONVERT_IF_TYPES_MATCH(U8)
+    CONVERT_IF_TYPES_MATCH(U32)
+    CONVERT_IF_TYPES_MATCH(U64)
+    CONVERT_IF_TYPES_MATCH(F32)
+    CONVERT_IF_TYPES_MATCH(F64)
+#undef CONVERT_IF_TYPES_MATCH
+    // Other types are not yet supported.
+    default:
+      return tensorflow::errors::InvalidArgument(
+          "Unimplemented: ConvertIfDestTypeMatches for type " +
+          PrimitiveType_Name(src_literal.shape().element_type()));
+  }
+}
+}
+
+StatusOr<std::unique_ptr<Literal>> LiteralUtil::ConvertIfSrcTypeMatches(
+    const Literal& src_literal, PrimitiveType primitive_dest_type) {
+  switch (src_literal.shape().element_type()) {
+#define CONVERT_IF_DEST_TYPE_MATCHES(type) \
+  case (type):                             \
+    return ConvertIfDestTypeMatches<(type)>(src_literal, primitive_dest_type);
+    CONVERT_IF_DEST_TYPE_MATCHES(PRED)
+    CONVERT_IF_DEST_TYPE_MATCHES(S8)
+    CONVERT_IF_DEST_TYPE_MATCHES(S32)
+    CONVERT_IF_DEST_TYPE_MATCHES(S64)
+    CONVERT_IF_DEST_TYPE_MATCHES(U8)
+    CONVERT_IF_DEST_TYPE_MATCHES(U32)
+    CONVERT_IF_DEST_TYPE_MATCHES(U64)
+    CONVERT_IF_DEST_TYPE_MATCHES(F32)
+    CONVERT_IF_DEST_TYPE_MATCHES(F64)
+#undef CONVERT_IF_DEST_TYPE_MATCHES
+    // Other types are not yet supported.
+    default:
+      return tensorflow::errors::InvalidArgument(
+          "Unimplemented: ConvertIfSrcTypeMatches for type " +
+          PrimitiveType_Name(src_literal.shape().element_type()));
+  }
+}
+
+namespace {
 
 // Helper function which compares whether the elements of literal1 are equal to
 // the elements of literal2. Recursively iterates through the entire
@@ -1123,11 +1183,7 @@ void Literal::Resize<double>(int64 num_elements, double value) {
 template <>
 void Literal::Resize<half>(int64 num_elements, half value) {
   CHECK_EQ(ShapeUtil::ElementsIn(shape()), num_elements);
-  mutable_f16s()->resize(num_elements * sizeof(half));
-  auto data = GetMutableArraySlice<half>();
-  for (int i = 0; i < num_elements; i++) {
-    data[i] = value;
-  }
+  mutable_f16s()->resize(num_elements, value);
 }
 
 template <typename RepeatedFieldT, typename NativeT>
@@ -1170,7 +1226,7 @@ LiteralProto Literal::ToProto() const {
     case F16:
       *proto.mutable_f16s() =
           string(reinterpret_cast<const char*>(f16s_.data()),
-                 f16s_.size() / sizeof(half));
+                 f16s_.size() * sizeof(half));
       break;
     case F32:
       CopyToRepeatedField(proto.mutable_f32s(), f32s());
@@ -1226,7 +1282,7 @@ void Literal::CopyFromProto(const LiteralProto& literal_proto) {
       const string& s(literal_proto.f16s());
       CHECK_EQ(0, s.size() % sizeof(half));
       f16s_ = std::vector<half>(s.size() / sizeof(half));
-      memcpy(f16s_.data(), s.data(), s.size() / sizeof(half));
+      memcpy(f16s_.data(), s.data(), s.size());
       break;
     }
     case F32:
