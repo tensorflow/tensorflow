@@ -49,6 +49,7 @@ See the @{$python/math_ops} guide.
 @@cosh
 @@asinh
 @@acosh
+@@atanh
 @@ceil
 @@floor
 @@maximum

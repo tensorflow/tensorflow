@@ -129,6 +129,7 @@ class MathBuiltinUnaryTest(test.TestCase):
     self._compare(data, np.square, math_ops.square, use_gpu)
     self._compare(data, np.tan, math_ops.tan, use_gpu)
     self._compare(data, np.tanh, math_ops.tanh, use_gpu)
+    self._compare(data, np.arctanh, math_ops.atanh, use_gpu)
 
   def testTypes(self):
     for dtype in [np.float32]:

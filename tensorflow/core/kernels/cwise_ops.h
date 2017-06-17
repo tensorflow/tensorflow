@@ -65,6 +65,17 @@ struct functor_traits<scalar_acosh_op<T>> {
   enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
 };
 
+template<typename T> struct scalar_atanh_op {
+  EIGEN_EMPTY_STRUCT_CTOR(scalar_atanh_op)
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a) const {
+    return std::atanh(a);
+  }
+};
+template<typename T>
+struct functor_traits<scalar_atanh_op<T>> {
+  enum { Cost = 5 * NumTraits<T>::MulCost, PacketAccess = false };
+};
+
 // TODO(rmlarsen): This is a workaround for upstream change
 // https://bitbucket.org/eigen/eigen/commits/f339468d04d0f87caeb6cab9aef568627e9f6ea9
 // that renamed scalar_binary_pow_op to scalar_pow_op and deleted the unary
@@ -519,6 +530,9 @@ struct asinh : base<T, Eigen::internal::scalar_asinh_op<T> > {};
 
 template <typename T>
 struct acosh : base<T, Eigen::internal::scalar_acosh_op<T> > {};
+
+template <typename T>
+struct atanh : base<T, Eigen::internal::scalar_atanh_op<T> > {};
 
 template <typename T>
 struct lgamma : base<T, Eigen::internal::scalar_lgamma_op<T> > {};

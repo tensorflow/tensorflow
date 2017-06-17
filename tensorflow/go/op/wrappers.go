@@ -14363,6 +14363,21 @@ func Acosh(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// Computes inverse hyperbolic tangent of x element-wise.
+func Atanh(scope *Scope, x tf.Output) (y tf.Output) {
+  if scope.Err() != nil {
+    return
+  }
+  opspec := tf.OpSpec{
+    Type: "Atanh",
+    Input: []tf.Input{
+      x,
+    },
+  }
+  op := scope.AddOperation(opspec)
+  return op.Output(0)
+}
+
 // AvgPool3DGradAttr is an optional argument to AvgPool3DGrad.
 type AvgPool3DGradAttr func(optionalAttr)
 
