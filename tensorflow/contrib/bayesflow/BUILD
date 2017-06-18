@@ -16,7 +16,6 @@ py_library(
     srcs = ["__init__.py"] + glob(["python/ops/*.py"]),
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -26,6 +25,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/ops/distributions",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
