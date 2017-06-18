@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_TILE_IMPL_OPS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 

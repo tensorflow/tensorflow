@@ -42,7 +42,7 @@ class TileOpTest : public OpsTestBase {
   void MakeOp(DataType data_type) {
     TF_ASSERT_OK(NodeDefBuilder("tile", "Tile")
                      .Input(FakeInput(data_type))
-                     .Input(FakeInput())
+                     .Input(FakeInput(data_type))
                      .Attr("T", data_type)
                      .Finalize(node_def()));
     TF_ASSERT_OK(InitOp());

@@ -83,7 +83,7 @@ namespace functor {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-// Register functors used for TileOp.
+// Register functors used for Tile functor.
 #define DEFINE_TYPE(T) template struct Tile<GPUDevice, T>;
 
 TF_CALL_int16(DEFINE_TYPE);
