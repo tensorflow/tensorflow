@@ -49,7 +49,7 @@ TEST_F(AutoParallelTest, SimpleParallel) {
   var_def.set_variable_name("var");
   var_def.set_initializer_name("assign");
   var_def.set_snapshot_name("identity");
-  item.variables.push_back(var_def);
+  item.variable_def.push_back(var_def);
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   AutoParallel parallel(2);

@@ -97,7 +97,7 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
     VLOG(2) << "Variable: " << var->name();
   }
 
-  for (const auto& var : item.variables) {
+  for (const auto& var : item.variable_def) {
     variables_.insert(std::make_pair(var.variable_name(), var));
   }
 
@@ -172,12 +172,10 @@ Status AutoParallel::Initialize(const GrapplerItem& item) {
     dont_replicate_nodes.insert(variable->name());
     VariableDef var = variables_[strings::StrCat(variable->name(), ":0")];
     if (!var.initializer_name().empty()) {
-      dont_replicate_nodes.insert(
-        var.initializer_name().substr(0, var.initializer_name().size() - 2));
+      dont_replicate_nodes.insert(NodeName(var.initializer_name()));
     }
     if (!var.snapshot_name().empty()) {
-      dont_replicate_nodes.insert(
-        var.snapshot_name().substr(0, var.snapshot_name().size() - 2));
+      dont_replicate_nodes.insert(NodeName(var.initializer_name()));
     }
   }
 

@@ -50,7 +50,7 @@ struct GrapplerItem {
   std::vector<QueueRunnerDef> queue_runners;
 
   // Variables of this model.
-  std::vector<VariableDef> variables;
+  std::vector<VariableDef> variable_def;
 
   // Return the set of node evaluated during a regular train/inference step.
   std::vector<const NodeDef*> MainOpsFanin() const;
