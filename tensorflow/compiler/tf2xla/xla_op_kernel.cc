@@ -38,7 +38,8 @@ xla::ComputationBuilder* XlaOpKernelContext::builder() const {
 static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor) {
   const XlaExpression* expression =
       reinterpret_cast<const XlaExpression*>(tensor.tensor_data().data());
-  CHECK(expression->handle().handle() != 0 || expression->variable_id() >= 0);
+  CHECK(expression->handle().handle() != 0 ||
+        expression->variable() != nullptr);
   VLOG(1) << "Fetched T" << expression->handle().handle();
   return expression;
 }
@@ -251,11 +252,8 @@ Status XlaOpKernelContext::ReadVariableInput(
     int index, xla::ComputationDataHandle* value) {
   const Tensor& tensor = context_->input(index);
   const XlaExpression* expression = CastExpressionFromTensor(tensor);
-  int variable_id = expression->variable_id();
-
-  XlaContext::Variable* variable;
-  XlaContext& context = XlaContext::Get(this);
-  TF_RETURN_IF_ERROR(context.GetVariable(variable_id, &variable));
+  XlaVariable* variable = expression->variable();
+  TF_RET_CHECK(variable != nullptr);
   if (variable->value.handle() == 0) {
     return errors::InvalidArgument("Read of uninitialized variable ",
                                    variable->name);
@@ -267,11 +265,8 @@ Status XlaOpKernelContext::ReadVariableInput(
 string XlaOpKernelContext::VariableDebugString(int index) {
   const Tensor& tensor = context_->input(index);
   const XlaExpression* expression = CastExpressionFromTensor(tensor);
-  int variable_id = expression->variable_id();
-
-  XlaContext::Variable* variable;
-  XlaContext& context = XlaContext::Get(this);
-  if (!context.GetVariable(variable_id, &variable).ok()) {
+  XlaVariable* variable = expression->variable();
+  if (!variable) {
     return "<invalid variable ID>";
   }
   return variable->name;
@@ -281,11 +276,8 @@ Status XlaOpKernelContext::GetVariableTypeAndShape(int index, DataType* type,
                                                    TensorShape* shape) const {
   const Tensor& tensor = context_->input(index);
   const XlaExpression* expression = CastExpressionFromTensor(tensor);
-  int variable_id = expression->variable_id();
-
-  XlaContext::Variable* variable;
-  XlaContext& context = XlaContext::Get(this);
-  TF_RETURN_IF_ERROR(context.GetVariable(variable_id, &variable));
+  XlaVariable* variable = expression->variable();
+  TF_RET_CHECK(variable != nullptr);
   if (variable->value.handle() == 0) {
     return errors::InvalidArgument("Read of uninitialized variable ",
                                    variable->name);
@@ -345,25 +337,33 @@ void XlaOpKernelContext::SetConstantOutput(int index, const Tensor& constant) {
   expression->set_constant_value(constant);
 }
 
-void XlaOpKernelContext::SetVariableOutput(int index, int variable_id) {
+void XlaOpKernelContext::SetVariableOutput(int index, XlaVariable* variable) {
   Tensor* output = nullptr;
   // The shape of the output tensor is the shape of the variable resource
   // (i.e., a scalar), not the shape of the variable's value.
   OP_REQUIRES_OK(context_,
                  context_->allocate_output(index, TensorShape(), &output));
   XlaExpression* expression = CastExpressionFromUninitializedTensor(output);
-  expression->set_variable_id(variable_id);
+  expression->set_variable(variable);
+}
+
+Status XlaOpKernelContext::GetVariableInput(int index, XlaVariable** variable) {
+  const XlaExpression* expression =
+      CastExpressionFromTensor(context_->input(index));
+  TF_RET_CHECK(expression->variable() != nullptr);
+  *variable = expression->variable();
+  return Status::OK();
 }
 
 Status XlaOpKernelContext::AssignVariable(
     int index, DataType type, const xla::ComputationDataHandle& handle) {
+  TF_RET_CHECK(handle.handle() != 0);
   SetOpHasSideEffects();
 
   const XlaExpression* expression =
       CastExpressionFromTensor(context_->input(index));
-  XlaContext& context = XlaContext::Get(this);
-  XlaContext::Variable* variable;
-  TF_RETURN_IF_ERROR(context.GetVariable(expression->variable_id(), &variable));
+  XlaVariable* variable = expression->variable();
+  TF_RET_CHECK(variable != nullptr);
   if (!((variable->type == DT_INVALID && type != DT_INVALID) ||
         (variable->type == type))) {
     return errors::InvalidArgument(
@@ -379,8 +379,8 @@ void XlaOpKernelContext::SetOpHasSideEffects() {
   XlaContext::Get(context_).AddSideEffects();
 }
 
-const XlaCompiler::Options& XlaOpKernelContext::GetCompilerOptions() const {
-  return XlaContext::Get(context_).compiler()->options();
+XlaCompiler* XlaOpKernelContext::compiler() const {
+  return XlaContext::Get(context_).compiler();
 }
 
 void XlaOpKernelContext::CtxFailure(Status s) { context_->CtxFailure(s); }

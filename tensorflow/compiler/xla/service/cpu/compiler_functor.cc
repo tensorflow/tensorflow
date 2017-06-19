@@ -81,11 +81,16 @@ operator()(llvm::Module& module) const {
 
   // Run optimization passes on module.
   function_passes.doInitialization();
+
+  CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
+
   for (auto func = module.begin(); func != module.end(); ++func) {
     function_passes.run(*func);
   }
   function_passes.doFinalization();
   module_passes.run(module);
+
+  CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
 
   // Buffer for holding machine code prior to constructing the ObjectFile.
   llvm::SmallVector<char, 0> stream_buffer;
@@ -192,8 +197,6 @@ void CompilerFunctor::AddOptimizationPasses(
   module_passes->add(createTargetTransformInfoWrapperPass(
       target_machine_->getTargetIRAnalysis()));
 
-  module_passes->add(llvm::createVerifierPass());
-
   llvm::PassManagerBuilder builder;
   builder.OptLevel = opt_level_;
   builder.SizeLevel = 0;
@@ -212,8 +215,6 @@ void CompilerFunctor::AddOptimizationPasses(
 
   builder.populateFunctionPassManager(*function_passes);
   builder.populateModulePassManager(*module_passes);
-
-  module_passes->add(llvm::createVerifierPass());
 }
 
 }  // namespace cpu

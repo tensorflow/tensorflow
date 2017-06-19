@@ -42,6 +42,7 @@ module tf.graph.scene {
       CONTAINER: 'edges',
       GROUP: 'edge',
       LINE: 'edgeline',
+      REFERENCE_EDGE: 'referenceedge',
       REF_LINE: 'refline',
       STRUCTURAL: 'structural'
     },
@@ -80,13 +81,22 @@ module tf.graph.scene {
    * backend.ts.
    */
   export interface HealthPill {
+    device_name: string;
     node_name: string;
     output_slot: number;
+    dtype: string;
+    shape: number[];
     value: number[];
     wall_time: number;
     step: number;
   }
-  ;
+
+  interface HealthPillNumericStats {
+    min: number;
+    max: number;
+    mean: number;
+    stddev: number;
+  }
 
   /**
    * Encapsulates how to render a single entry in a health pill. Each entry
@@ -104,7 +114,7 @@ module tf.graph.scene {
     },
     {
       background_color: '#FF8D00',
-      label: '- ∞',
+      label: '-∞',
     },
     {
       background_color: '#EAEAEA',
@@ -120,7 +130,7 @@ module tf.graph.scene {
     },
     {
       background_color: '#003ED4',
-      label: '+ ∞',
+      label: '+∞',
     },
   ];
 
@@ -151,19 +161,21 @@ module tf.graph.scene {
             svgRect.width / sceneSize.width, svgRect.height / sceneSize.height,
             2);
     let params = layout.PARAMS.graph;
-    let zoomEvent =
-        d3zoom.scale(scale)
-            .on('zoomend.fitted',
-                () => {
-                  // Remove the listener for the zoomend event,
-                  // so we don't get called at the end of regular zoom events,
-                  // just those that fit the graph to screen.
-                  d3zoom.on('zoomend.fitted', null);
-                  callback();
-                })
-            .translate([params.padding.paddingLeft, params.padding.paddingTop])
-            .event;
-    d3.select(zoomG).transition().duration(500).call(zoomEvent);
+    const transform = d3.zoomIdentity
+        .scale(scale)
+        .translate(params.padding.paddingLeft, params.padding.paddingTop);
+
+    d3.select(svg)
+        .transition()
+        .duration(500)
+        .call(d3zoom.transform, transform)
+        .on('end.fitted', () => {
+          // Remove the listener for the zoomend event,
+          // so we don't get called at the end of regular zoom events,
+          // just those that fit the graph to screen.
+          d3zoom.on('end.fitted', null);
+          callback();
+        });
 };
 
 /**
@@ -184,7 +196,7 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
   if (!node) {
     return false;
   }
-  let translate = d3zoom.translate();
+
   // Check if the selected node is off-screen in either
   // X or Y dimension in either direction.
   let nodeBox = node.getBBox();
@@ -203,18 +215,22 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
   let svgRect = svg.getBoundingClientRect();
   if (isOutsideOfBounds(pointTL.x, pointBR.x, svgRect.width) ||
       isOutsideOfBounds(pointTL.y, pointBR.y, svgRect.height)) {
-    // Determine the amount to transform the graph in both X and Y
-    // dimensions in order to center the selected node. This takes into
-    // acount the position of the node, the size of the svg scene, the
-    // amount the scene has been scaled by through zooming, and any previous
-    // transform already performed by this logic.
+    // Determine the amount to translate the graph in both X and Y dimensions in
+    // order to center the selected node. This takes into account the position
+    // of the node, the size of the svg scene, the amount the scene has been
+    // scaled by through zooming, and any previous transforms already performed
+    // by this logic.
     let centerX = (pointTL.x + pointBR.x) / 2;
     let centerY = (pointTL.y + pointBR.y) / 2;
     let dx = ((svgRect.width / 2) - centerX);
     let dy = ((svgRect.height / 2) - centerY);
-    let zoomEvent = d3zoom.translate([translate[0] + dx, translate[1] + dy])
-        .event;
-    d3.select(zoomG).transition().duration(500).call(zoomEvent);
+
+    // We translate by this amount. We divide the X and Y translations by the
+    // scale to undo how translateBy scales the translations (in d3 v4).
+    const svgTransform = d3.zoomTransform(svg);
+    d3.select(svg).transition().duration(500).call(
+        d3zoom.translateBy, dx / svgTransform.k, dy / svgTransform.k);
+
     return true;
   }
   return false;
@@ -232,7 +248,7 @@ export function panToNode(nodeName: String, svg, zoomG, d3zoom): boolean {
  * @return selection of the element
  */
 export function selectOrCreateChild(
-    container, tagName: string, className?: string | string[], before?) {
+    container, tagName: string, className?: string | string[], before?): d3.Selection<any, any, any, any> {
   let child = selectChild(container, tagName, className);
   if (!child.empty()) {
     return child;
@@ -269,7 +285,7 @@ export function selectOrCreateChild(
  * @return selection of the element, or an empty selection
  */
 export function selectChild(
-    container, tagName: string, className?: string | string[]) {
+    container, tagName: string, className?: string | string[]): d3.Selection<any, any, any, any> {
   let children = container.node().childNodes;
   for (let i = 0; i < children.length; i++) {
     let child = children[i];
@@ -325,7 +341,7 @@ export function selectChild(
 export function buildGroup(container,
     renderNode: render.RenderGroupNodeInfo,
     sceneElement,
-    sceneClass: string) {
+    sceneClass: string): d3.Selection<any, any, any, any> {
   sceneClass = sceneClass || Class.Scene.GROUP;
   let isNewSceneGroup = selectChild(container, 'g', sceneClass).empty();
   let sceneGroup = selectOrCreateChild(container, 'g', sceneClass);
@@ -451,12 +467,11 @@ export function translate(selection, x0: number, y0: number) {
  */
 export function positionRect(rect, cx: number, cy: number, width: number,
     height: number) {
-  rect.transition().attr({
-    x: cx - width / 2,
-    y: cy - height / 2,
-    width: width,
-    height: height
-  });
+  rect.transition()
+    .attr('x', cx - width / 2)
+    .attr('y', cy - height / 2)
+    .attr('width', width)
+    .attr('height', height);
 };
 
 /**
@@ -497,12 +512,11 @@ export function positionButton(button, renderNode: render.RenderNodeInfo) {
  */
 export function positionEllipse(ellipse, cx: number, cy: number,
     width: number, height: number) {
-  ellipse.transition().attr({
-    cx: cx,
-    cy: cy,
-    rx: width / 2,
-    ry: height / 2
-  });
+  ellipse.transition()
+    .attr('cx', cx)
+    .attr('cy', cy)
+    .attr('rx', width / 2)
+    .attr('ry', height / 2);
 };
 
 /**
@@ -523,13 +537,49 @@ export function humanizeHealthPillStat(stat, shouldRoundOnesDigit) {
 }
 
 /**
+ * Get text content describing a health pill.
+ */
+function _getHealthPillTextContent(healthPill: HealthPill,
+                                   totalCount: number,
+                                   elementsBreakdown: number[],
+                                   numericStats: HealthPillNumericStats) {
+  let text = 'Device: ' + healthPill.device_name + '\n';
+  text += 'dtype: ' + healthPill.dtype + '\n';
+
+  let shapeStr = '(scalar)';
+  if (healthPill.shape.length > 0) {
+    shapeStr = '(' + healthPill.shape.join(',') + ')';
+  }
+  text += '\nshape: ' + shapeStr + '\n\n';
+
+  text += '#(elements): ' + totalCount + '\n';
+  const breakdownItems = [];
+  for (let i = 0; i < elementsBreakdown.length; i++) {
+    if (elementsBreakdown[i] > 0) {
+      breakdownItems.push(
+          '#(' + healthPillEntries[i].label + '): ' + elementsBreakdown[i]);
+    }
+  }
+  text += breakdownItems.join(', ') + '\n\n';
+
+  // In some cases (e.g., size-0 tensors; all elements are nan or inf) the
+  // min/max and mean/stddev stats are meaningless.
+  if (numericStats.max >= numericStats.min) {
+    text += 'min: ' + numericStats.min + ', max: ' + numericStats.max + '\n';
+    text += 'mean: ' + numericStats.mean + ', stddev: ' + numericStats.stddev;
+  }
+
+  return text;
+}
+
+/**
  * Renders a health pill for an op atop a node.
  */
 function _addHealthPill(
     nodeGroupElement: SVGElement, healthPill: HealthPill,
     nodeInfo: render.RenderNodeInfo) {
   // Check if text already exists at location.
-  d3.select(nodeGroupElement.parentNode).selectAll('.health-pill').remove();
+  d3.select(nodeGroupElement.parentNode as any).selectAll('.health-pill').remove();
 
   if (!nodeInfo || !healthPill) {
     return;
@@ -539,8 +589,14 @@ function _addHealthPill(
 
   // For now, we only visualize the 6 values that summarize counts of tensor
   // elements of various categories: -Inf, negative, 0, positive, Inf, and NaN.
-  let lastHealthPillOverview = lastHealthPillData.slice(2, 8);
+  const lastHealthPillElementsBreakdown = lastHealthPillData.slice(2, 8);
   let totalCount = lastHealthPillData[1];
+  const numericStats: HealthPillNumericStats = {
+      min: lastHealthPillData[8],
+      max: lastHealthPillData[9],
+      mean: lastHealthPillData[10],
+      stddev: Math.sqrt(lastHealthPillData[11])
+  };
 
   let healthPillWidth = 60;
   let healthPillHeight = 10;
@@ -560,15 +616,15 @@ function _addHealthPill(
       document.createElementNS(svgNamespace, 'linearGradient');
   const healthPillGradientId = 'health-pill-gradient';
   healthPillGradient.setAttribute('id', healthPillGradientId);
-  let titleOnHoverTextEntries = [];
+
   let cumulativeCount = 0;
   let previousOffset = '0%';
-  for (let i = 0; i < lastHealthPillOverview.length; i++) {
-    if (!lastHealthPillOverview[i]) {
+  for (let i = 0; i < lastHealthPillElementsBreakdown.length; i++) {
+    if (!lastHealthPillElementsBreakdown[i]) {
       // Exclude empty categories.
       continue;
     }
-    cumulativeCount += lastHealthPillOverview[i];
+    cumulativeCount += lastHealthPillElementsBreakdown[i];
 
     // Create a color interval using 2 stop elements.
     let stopElement0 = document.createElementNS(svgNamespace, 'stop');
@@ -584,10 +640,6 @@ function _addHealthPill(
         'stop-color', healthPillEntries[i].background_color);
     healthPillGradient.appendChild(stopElement1);
     previousOffset = percent;
-
-    // Include this number in the title that appears on hover.
-    titleOnHoverTextEntries.push(
-        healthPillEntries[i].label + ': ' + lastHealthPillOverview[i]);
   }
   healthPillDefs.appendChild(healthPillGradient);
 
@@ -600,8 +652,10 @@ function _addHealthPill(
 
   // Show a title with specific counts on hover.
   let titleSvg = document.createElementNS(svgNamespace, 'title');
-  titleSvg.textContent = titleOnHoverTextEntries.join(', ');
+  titleSvg.textContent = _getHealthPillTextContent(
+      healthPill, totalCount, lastHealthPillElementsBreakdown, numericStats);
   healthPillGroup.appendChild(titleSvg);
+  // TODO(cais): Make the tooltip content prettier.
 
   // Center this health pill just right above the node for the op.
   let healthPillX = nodeInfo.x - healthPillWidth / 2;
@@ -611,8 +665,9 @@ function _addHealthPill(
     healthPillY += nodeInfo.labelOffset;
   }
 
-  if (lastHealthPillOverview[2] || lastHealthPillOverview[3] ||
-      lastHealthPillOverview[4]) {
+  if (lastHealthPillElementsBreakdown[2] ||
+      lastHealthPillElementsBreakdown[3] ||
+      lastHealthPillElementsBreakdown[4]) {
     // At least 1 "non-Inf and non-NaN" value exists (a -, 0, or + value). Show
     // stats on tensor values.
 
@@ -634,11 +689,13 @@ function _addHealthPill(
     }
 
     let statsSvg = document.createElementNS(svgNamespace, 'text');
-    const minString =
-        humanizeHealthPillStat(lastHealthPillData[8], shouldRoundOnesDigit);
-    const maxString =
-        humanizeHealthPillStat(lastHealthPillData[9], shouldRoundOnesDigit);
-    statsSvg.textContent = minString + ' ~ ' + maxString;
+    const minString = humanizeHealthPillStat(numericStats.min, shouldRoundOnesDigit);
+    const maxString = humanizeHealthPillStat(numericStats.max, shouldRoundOnesDigit);
+    if (totalCount > 1) {
+      statsSvg.textContent = minString + ' ~ ' + maxString;
+    } else {
+      statsSvg.textContent = minString;
+    }
     statsSvg.classList.add('health-pill-stats');
     statsSvg.setAttribute('x', String(healthPillWidth / 2));
     statsSvg.setAttribute('y', '-2');
@@ -671,7 +728,7 @@ export function addHealthPills(
         // Only show health pill data for this node if it is available.
         let healthPills = nodeNamesToHealthPills[nodeInfo.node.name];
         let healthPill = healthPills ? healthPills[healthPillStepIndex] : null;
-        _addHealthPill(this, healthPill, nodeInfo);
+        _addHealthPill((this as SVGElement), healthPill, nodeInfo);
       });
 };
 

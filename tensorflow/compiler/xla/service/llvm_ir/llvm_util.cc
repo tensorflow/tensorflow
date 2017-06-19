@@ -449,24 +449,23 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
 }
 
-llvm::FastMathFlags GetFastMathFlags(const HloModuleConfig& config) {
+llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled) {
   llvm::FastMathFlags flags;
-  if (!config.fast_math_disabled()) {
+  if (fast_math_enabled) {
     // UnsafeAlgebra implies NoInfs, NoNaNs, NoSignedZeros, and AllowReciprocal.
     flags.setUnsafeAlgebra();
   }
   return flags;
 }
 
-void SetTargetOptions(const HloModuleConfig& config,
+void SetTargetOptions(bool fast_math_enabled,
                       llvm::TargetOptions* target_options) {
-  bool fast = !config.fast_math_disabled();
   // In LLVM backend flags, UnsafeFPMath does not explicitly imply
   // NoInfs, etc.
-  target_options->UnsafeFPMath = fast;
-  target_options->NoInfsFPMath = fast;
-  target_options->NoNaNsFPMath = fast;
-  target_options->NoSignedZerosFPMath = fast;
+  target_options->UnsafeFPMath = fast_math_enabled;
+  target_options->NoInfsFPMath = fast_math_enabled;
+  target_options->NoNaNsFPMath = fast_math_enabled;
+  target_options->NoSignedZerosFPMath = fast_math_enabled;
 }
 
 }  // namespace llvm_ir

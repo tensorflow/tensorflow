@@ -20,8 +20,8 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb_text.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb_text.h"
 #include "tensorflow/core/framework/versions.h"
@@ -238,6 +238,33 @@ bool IsFullSlice(const TensorSlice& slice_spec,
   }
 }
 
+Status CorruptFileError(const Status& in_status, const string& filename,
+                        const string& detail) {
+  if (in_status.ok()) {
+    return errors::Internal("Unable to read file (", filename,
+                            "). Perhaps the file is corrupt or was produced by "
+                            "a newer version of TensorFlow with format changes "
+                            "(",
+                            detail, ")");
+  }
+  return Status(
+      in_status.code(),
+      strings::StrCat("Unable to read file (", filename,
+                      "). Perhaps the file is corrupt or was produced by a "
+                      "newer version of TensorFlow with format changes (",
+                      detail, "): ", in_status.error_message()));
+}
+
+table::Options TableBuilderOptions() {
+  table::Options o;
+  // Compressed tables cannot be read by TensorFlow releases prior to 1.1.
+  // To smoothen the transition, compressed writes are disabled for now
+  // (version 1.2) with the intention that they will be enabled again at
+  // some point (perhaps the 1.3 release?).
+  o.compression = table::kNoCompression;
+  return o;
+}
+
 }  // namespace
 
 BundleWriter::BundleWriter(Env* env, StringPiece prefix)
@@ -425,7 +452,7 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
 
   table::Table* table = nullptr;
   TF_RETURN_IF_ERROR(
-      table::Table::Open(table::Options(), file.get(), file_size, &table));
+      table::Table::Open(TableBuilderOptions(), file.get(), file_size, &table));
   std::unique_ptr<table::Table> table_deleter(table);
   std::unique_ptr<table::Iterator> iter(table->NewIterator());
 
@@ -433,11 +460,13 @@ static Status MergeOneBundle(Env* env, StringPiece prefix,
   // Process header.
   {
     iter->Seek(kHeaderEntryKey);
-    CHECK(iter->Valid()) << "File: " << filename
-                         << ", iterator status: " << iter->status();
+    if (!iter->Valid()) {
+      return CorruptFileError(iter->status(), filename,
+                              "failed to seek to header entry");
+    }
     BundleHeaderProto header;
-    TF_CHECK_OK(ParseEntryProto(iter->key(), iter->value(), &header));
-    CHECK_GE(header.num_shards(), 0);
+    Status s = ParseEntryProto(iter->key(), iter->value(), &header);
+    if (!s.ok()) return CorruptFileError(s, filename, "unable to parse header");
 
     merge_state->num_shards += header.num_shards();
     if (!merge_state->seen_first_bundle) {
@@ -536,7 +565,7 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   TF_RETURN_IF_ERROR(
       env->NewWritableFile(MetaFilename(merged_prefix), &merged_metadata));
   {
-    table::TableBuilder builder(table::Options(), merged_metadata.get());
+    table::TableBuilder builder(TableBuilderOptions(), merged_metadata.get());
     // Header entry.
     BundleHeaderProto header;
     header.set_num_shards(merge.num_shards);
@@ -584,10 +613,17 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
 
   // Reads "num_shards_" from the first entry.
   iter_->Seek(kHeaderEntryKey);
-  CHECK(iter_->Valid()) << "File: " << filename
-                        << ", iterator status: " << iter_->status();
+  if (!iter_->Valid()) {
+    status_ = CorruptFileError(iter_->status(), filename,
+                               "failed to seek to header entry");
+    return;
+  }
   BundleHeaderProto header;
-  TF_CHECK_OK(ParseEntryProto(iter_->key(), iter_->value(), &header));
+  status_ = ParseEntryProto(iter_->key(), iter_->value(), &header);
+  if (!status_.ok()) {
+    status_ = CorruptFileError(status_, filename, "unable to parse header");
+    return;
+  }
   num_shards_ = header.num_shards();
   if ((header.endianness() == BundleHeaderProto::BIG && port::kLittleEndian) ||
       (header.endianness() == BundleHeaderProto::LITTLE &&
@@ -604,6 +640,12 @@ BundleReader::~BundleReader() {
   delete metadata_;
   delete iter_;
   delete table_;
+  // InputBuffer does not own the underlying RandomAccessFile.
+  for (auto pair : data_) {
+    if (pair.second->file() != nullptr) {
+      delete pair.second->file();
+    }
+  }
   gtl::STLDeleteValues(&data_);
   gtl::STLDeleteValues(&tensor_slices_);
 }
@@ -658,14 +700,16 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     }
   }
 
-  // Open the data file if not opened it.
-  std::unique_ptr<RandomAccessFile> file = nullptr;
-  std::unique_ptr<io::InputBuffer> buffered_file(data_[entry.shard_id()]);
+  // Open the data file if it has not been opened.
+  io::InputBuffer* buffered_file = data_[entry.shard_id()];
   if (buffered_file == nullptr) {
+    std::unique_ptr<RandomAccessFile> file = nullptr;
     TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(
         DataFilename(prefix_, entry.shard_id(), num_shards_), &file));
-    buffered_file.reset(
-        new io::InputBuffer(file.get(), 256 << 10 /* 256KB buffer */));
+    buffered_file =
+        new io::InputBuffer(file.release(), 256 << 10 /* 256KB buffer */);
+    // The InputBuffer and RandomAccessFile objects are both released in dtor.
+    data_[entry.shard_id()] = buffered_file;
   }
   CHECK(buffered_file != nullptr);
 
@@ -684,7 +728,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     // Relies on io::InputBuffer's buffering, because we issue many neighboring
     // reads for a single string tensor.
     TF_RETURN_IF_ERROR(ReadStringTensor(
-        buffered_file.get(), ret->NumElements(), entry.offset(), entry.size(),
+        buffered_file, ret->NumElements(), entry.offset(), entry.size(),
         GetStringBackingBuffer(*ret), &actual_crc32c));
   }
   if (crc32c::Unmask(entry.crc32c()) != actual_crc32c) {
@@ -709,6 +753,24 @@ Status BundleReader::Lookup(StringPiece key, Tensor* val) {
   } else {
     return GetSliceValue(
         key, entry,
+        /* a full slice */ TensorSlice(TensorShape(entry.shape()).dims()), val);
+  }
+}
+
+Status BundleReader::ReadCurrent(Tensor* val) {
+  CHECK(val != nullptr);
+  BundleEntryProto entry;
+  TF_RETURN_IF_ERROR(ParseEntryProto(iter_->key(), iter_->value(), &entry));
+  if (!TensorShape::IsValid(entry.shape())) {
+    return errors::DataLoss("Invaid tensor shape: ", iter_->key(), " ",
+                            ProtoShortDebugString(entry.shape()));
+  }
+
+  if (entry.slices().empty()) {
+    return GetValue(entry, val);
+  } else {
+    return GetSliceValue(
+        iter_->key(), entry,
         /* a full slice */ TensorSlice(TensorShape(entry.shape()).dims()), val);
   }
 }

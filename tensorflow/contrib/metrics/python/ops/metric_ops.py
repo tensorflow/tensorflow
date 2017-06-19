@@ -208,9 +208,10 @@ def streaming_true_negatives(predictions, labels, weights=None,
   with variable_scope.variable_scope(
       name, 'true_negatives', (predictions, labels, weights)):
 
-    predictions = math_ops.cast(predictions, dtype=dtypes.bool)
-    labels = math_ops.cast(labels, dtype=dtypes.bool)
-    predictions.get_shape().assert_is_compatible_with(labels.get_shape())
+    predictions, labels, weights = _remove_squeezable_dimensions(
+        predictions=math_ops.cast(predictions, dtype=dtypes.bool),
+        labels=math_ops.cast(labels, dtype=dtypes.bool),
+        weights=weights)
     is_true_negative = math_ops.logical_and(math_ops.equal(labels, False),
                                             math_ops.equal(predictions, False))
     return _count_condition(is_true_negative, weights, metrics_collections,
@@ -731,6 +732,102 @@ def streaming_true_negatives_at_thresholds(
   values, update_ops = _streaming_confusion_matrix_at_thresholds(
       predictions, labels, thresholds, weights=weights, includes=('tn',))
   return values['tn'], update_ops['tn']
+
+
+def streaming_curve_points(labels=None,
+                           predictions=None,
+                           weights=None,
+                           num_thresholds=200,
+                           metrics_collections=None,
+                           updates_collections=None,
+                           curve='ROC',
+                           name=None):
+  """Computes curve (ROC or PR) values for a prespecified number of points.
+
+  The `streaming_curve_points` function creates four local variables,
+  `true_positives`, `true_negatives`, `false_positives` and `false_negatives`
+  that are used to compute the curve values. To discretize the curve, a linearly
+  spaced set of thresholds is used to compute pairs of recall and precision
+  values.
+
+  For best results, `predictions` should be distributed approximately uniformly
+  in the range [0, 1] and not peaked around 0 or 1.
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: A `Tensor` whose shape matches `predictions`. Will be cast to
+      `bool`.
+    predictions: A floating point `Tensor` of arbitrary shape and whose values
+      are in the range `[0, 1]`.
+    weights: Optional `Tensor` whose rank is either 0, or the same rank as
+      `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
+      be either `1`, or the same as the corresponding `labels` dimension).
+    num_thresholds: The number of thresholds to use when discretizing the roc
+      curve.
+    metrics_collections: An optional list of collections that `auc` should be
+      added to.
+    updates_collections: An optional list of collections that `update_op` should
+      be added to.
+    curve: Specifies the name of the curve to be computed, 'ROC' [default] or
+      'PR' for the Precision-Recall-curve.
+    name: An optional variable_scope name.
+
+  Returns:
+    points: A `Tensor` with shape [num_thresholds, 2] that contains points of
+      the curve.
+    update_op: An operation that increments the `true_positives`,
+      `true_negatives`, `false_positives` and `false_negatives` variables.
+
+  Raises:
+    ValueError: If `predictions` and `labels` have mismatched shapes, or if
+      `weights` is not `None` and its shape doesn't match `predictions`, or if
+      either `metrics_collections` or `updates_collections` are not a list or
+      tuple.
+  """
+  with variable_scope.variable_scope(name, 'curve_points', (labels, predictions,
+                                                            weights)):
+    if curve != 'ROC' and curve != 'PR':
+      raise ValueError('curve must be either ROC or PR, %s unknown' % (curve))
+    kepsilon = 1e-7  # to account for floating point imprecisions
+    thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
+                  for i in range(num_thresholds - 2)]
+    thresholds = [0.0 - kepsilon] + thresholds + [1.0 + kepsilon]
+
+    values, update_ops = _streaming_confusion_matrix_at_thresholds(
+        labels=labels,
+        predictions=predictions,
+        thresholds=thresholds,
+        weights=weights)
+
+    # Add epsilons to avoid dividing by 0.
+    epsilon = 1.0e-6
+
+    def compute_points(tp, fn, tn, fp):
+      """Computes the roc-auc or pr-auc based on confusion counts."""
+      rec = math_ops.div(tp + epsilon, tp + fn + epsilon)
+      if curve == 'ROC':
+        fp_rate = math_ops.div(fp, fp + tn + epsilon)
+        return fp_rate, rec
+      else:  # curve == 'PR'.
+        prec = math_ops.div(tp + epsilon, tp + fp + epsilon)
+        return rec, prec
+
+    xs, ys = compute_points(values['tp'], values['fn'], values['tn'],
+                            values['fp'])
+    points = array_ops.stack([xs, ys], axis=1)
+    update_op = control_flow_ops.group(*update_ops.values())
+
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, points)
+
+    if updates_collections:
+      ops.add_to_collections(updates_collections, update_op)
+
+    return points, update_op
 
 
 def streaming_auc(predictions, labels, weights=None, num_thresholds=200,
@@ -1329,6 +1426,87 @@ def streaming_sparse_precision_at_top_k(top_k_predictions,
       name, default_name,
       (top_k_predictions, labels, weights)) as name_scope:
     return metrics_impl._sparse_precision_at_top_k(  # pylint: disable=protected-access
+        labels=labels,
+        predictions_idx=top_k_predictions,
+        class_id=class_id,
+        weights=weights,
+        metrics_collections=metrics_collections,
+        updates_collections=updates_collections,
+        name=name_scope)
+
+
+def sparse_recall_at_top_k(labels,
+                           top_k_predictions,
+                           class_id=None,
+                           weights=None,
+                           metrics_collections=None,
+                           updates_collections=None,
+                           name=None):
+  """Computes recall@k of top-k predictions with respect to sparse labels.
+
+  If `class_id` is specified, we calculate recall by considering only the
+      entries in the batch for which `class_id` is in the label, and computing
+      the fraction of them for which `class_id` is in the top-k `predictions`.
+  If `class_id` is not specified, we'll calculate recall as how often on
+      average a class among the labels of a batch entry is in the top-k
+      `predictions`.
+
+  `sparse_recall_at_top_k` creates two local variables, `true_positive_at_<k>`
+  and `false_negative_at_<k>`, that are used to compute the recall_at_k
+  frequency. This frequency is ultimately returned as `recall_at_<k>`: an
+  idempotent operation that simply divides `true_positive_at_<k>` by total
+  (`true_positive_at_<k>` + `false_negative_at_<k>`).
+
+  For estimation of the metric over a stream of data, the function creates an
+  `update_op` operation that updates these variables and returns the
+  `recall_at_<k>`. Set operations applied to `top_k` and `labels` calculate the
+  true positives and false negatives weighted by `weights`. Then `update_op`
+  increments `true_positive_at_<k>` and `false_negative_at_<k>` using these
+  values.
+
+  If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
+
+  Args:
+    labels: `int64` `Tensor` or `SparseTensor` with shape
+      [D1, ... DN, num_labels], where N >= 1 and num_labels is the number of
+      target classes for the associated prediction. Commonly, N=1 and `labels`
+      has shape [batch_size, num_labels]. [D1, ... DN] must match
+      `top_k_predictions`. Values should be in range [0, num_classes), where
+      num_classes is the last dimension of `predictions`. Values outside this
+      range always count towards `false_negative_at_<k>`.
+    top_k_predictions: Integer `Tensor` with shape [D1, ... DN, k] where
+      N >= 1. Commonly, N=1 and top_k_predictions has shape [batch size, k].
+      The final dimension contains the indices of top-k labels. [D1, ... DN]
+      must match `labels`.
+    class_id: Integer class ID for which we want binary metrics. This should be
+      in range [0, num_classes), where num_classes is the last dimension of
+      `predictions`. If class_id is outside this range, the method returns NAN.
+    weights: `Tensor` whose rank is either 0, or n-1, where n is the rank of
+      `labels`. If the latter, it must be broadcastable to `labels` (i.e., all
+      dimensions must be either `1`, or the same as the corresponding `labels`
+      dimension).
+    metrics_collections: An optional list of collections that values should
+      be added to.
+    updates_collections: An optional list of collections that updates should
+      be added to.
+    name: Name of new update operation, and namespace for other dependent ops.
+
+  Returns:
+    recall: Scalar `float64` `Tensor` with the value of `true_positives` divided
+      by the sum of `true_positives` and `false_negatives`.
+    update_op: `Operation` that increments `true_positives` and
+      `false_negatives` variables appropriately, and whose value matches
+      `recall`.
+
+  Raises:
+    ValueError: If `weights` is not `None` and its shape doesn't match
+    `predictions`, or if either `metrics_collections` or `updates_collections`
+    are not a list or tuple.
+  """
+  default_name = _at_k_name('recall', class_id=class_id)
+  with ops.name_scope(name, default_name, (top_k_predictions, labels,
+                                           weights)) as name_scope:
+    return metrics_impl._sparse_recall_at_top_k(  # pylint: disable=protected-access
         labels=labels,
         predictions_idx=top_k_predictions,
         class_id=class_id,
@@ -2288,8 +2466,10 @@ def _remove_squeezable_dimensions(predictions, labels, weights):
 __all__ = [
     'aggregate_metric_map',
     'aggregate_metrics',
+    'sparse_recall_at_top_k',
     'streaming_accuracy',
     'streaming_auc',
+    'streaming_curve_points',
     'streaming_false_negatives',
     'streaming_false_negatives_at_thresholds',
     'streaming_false_positives',
@@ -2310,7 +2490,9 @@ __all__ = [
     'streaming_root_mean_squared_error',
     'streaming_sensitivity_at_specificity',
     'streaming_sparse_average_precision_at_k',
+    'streaming_sparse_average_precision_at_top_k',
     'streaming_sparse_precision_at_k',
+    'streaming_sparse_precision_at_top_k',
     'streaming_sparse_recall_at_k',
     'streaming_specificity_at_sensitivity',
     'streaming_true_negatives',

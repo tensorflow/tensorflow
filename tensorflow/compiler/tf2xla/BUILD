@@ -45,12 +45,12 @@ cc_library(
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -92,6 +92,7 @@ cc_library(
 
 cc_test(
     name = "xla_compiler_test",
+    size = "small",
     srcs = ["xla_compiler_test.cc"],
     deps = [
         ":xla_compiler",
@@ -113,6 +114,7 @@ cc_test(
 
 cc_test(
     name = "str_util_test",
+    size = "small",
     srcs = [
         "str_util_test.cc",
     ],
@@ -126,6 +128,7 @@ cc_test(
 
 cc_test(
     name = "literal_util_test",
+    size = "small",
     srcs = [
         "literal_util_test.cc",
     ],

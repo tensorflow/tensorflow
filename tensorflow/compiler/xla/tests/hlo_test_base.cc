@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/legacy_flags/hlo_test_base_flags.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_layout.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace se = ::perftools::gputools;
@@ -55,6 +56,8 @@ struct HloTestBase::EigenThreadPoolWrapper {
 
 HloTestBase::HloTestBase()
     : backend_(Backend::CreateDefaultBackend().ConsumeValueOrDie()) {
+  // TODO(b/62411181): get rid of this flag entirely when the usual debug flags
+  // are piped to all HLO tests.
   test_hlo_dumper_ = [](const HloModule& module, const string& label) {
     legacy_flags::HloTestBaseFlags* flags = legacy_flags::GetHloTestBaseFlags();
     if (flags->xla_hlo_test_generate_hlo_graph) {
@@ -74,30 +77,21 @@ HloTestBase::~HloTestBase() {
   }
 }
 
+std::unique_ptr<HloModule> HloTestBase::CreateNewModule() {
+  HloModuleConfig config;
+  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  return MakeUnique<HloModule>(TestName(), VersionedComputationHandle(),
+                               config);
+}
+
 StatusOr<perftools::gputools::DeviceMemoryBase> HloTestBase::Execute(
     std::unique_ptr<HloModule> module,
     tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
         arguments,
     Shape* result_shape) {
-  auto module_config = MakeUnique<HloModuleConfig>(
-      module->entry_computation()->ComputeProgramShape());
-  return Execute(std::move(module), std::move(module_config), arguments,
-                 result_shape);
-}
-
-StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
-    Shape* result_shape) {
-  VLOG(3) << "module_config layout "
-          << LayoutUtil::HumanString(module_config->entry_computation_layout()
-                                         .result_layout()
-                                         .layout());
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
-      backend_->compiler()->Compile(std::move(hlo_module),
-                                    std::move(module_config), test_hlo_dumper_,
+      backend_->compiler()->Compile(std::move(module), test_hlo_dumper_,
                                     backend_->default_stream_executor()));
 
   se::Stream stream(backend_->default_stream_executor());
@@ -111,8 +105,9 @@ StatusOr<se::DeviceMemoryBase> HloTestBase::Execute(
       backend_->eigen_intra_op_thread_pool_device());
 
   HloExecutionProfile hlo_execution_profile;
-  ServiceExecutableRunOptions service_run_options(run_options,
-                                                  backend_->StreamBorrower());
+  ServiceExecutableRunOptions service_run_options(
+      run_options, backend_->StreamBorrower(),
+      backend_->inter_op_thread_pool());
   TF_ASSIGN_OR_RETURN(
       se::DeviceMemoryBase result,
       executable->ExecuteOnStream(&service_run_options, arguments,
@@ -179,20 +174,26 @@ std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
   return TransferFromDevice(result_shape, device_base);
 }
 
-std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
-    std::unique_ptr<HloModule> module,
-    std::unique_ptr<HloModuleConfig> module_config,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
-  Shape result_shape;
-  se::DeviceMemoryBase device_base =
-      Execute(std::move(module), std::move(module_config), arguments,
-              &result_shape)
-          .ValueOrDie();
-  return TransferFromDevice(result_shape, device_base);
+/* static */
+string HloTestBase::TestName() {
+  return ::testing::UnitTest::GetInstance()->current_test_info()->name();
 }
 
-string HloTestBase::TestName() const {
-  return ::testing::UnitTest::GetInstance()->current_test_info()->name();
+int ParseDebugOptionsFlagsAndRunTests(int argc, char** argv) {
+  std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  if (!parse_result) {
+    LOG(ERROR) << "\n" << usage;
+    return 2;
+  }
+  ::testing::InitGoogleTest(&argc, argv);
+  if (argc > 1) {
+    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
+    return 2;
+  }
+  return RUN_ALL_TESTS();
 }
 
 }  // namespace xla

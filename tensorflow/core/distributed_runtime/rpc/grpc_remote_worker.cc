@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_remote_worker.h"
 
+#include <utility>
+
 #include "grpc++/grpc++.h"
 
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -37,7 +39,7 @@ class GrpcRemoteWorker : public WorkerInterface {
   explicit GrpcRemoteWorker(SharedGrpcChannelPtr channel,
                             ::grpc::CompletionQueue* completion_queue,
                             WorkerCacheLogger* logger)
-      : channel_(channel),
+      : channel_(std::move(channel)),
         cq_(completion_queue),
         getstatus_(Method(GrpcWorkerMethod::kGetStatus)),
         createworkersession_(Method(GrpcWorkerMethod::kCreateWorkerSession)),
@@ -171,7 +173,7 @@ class GrpcRemoteWorker : public WorkerInterface {
     }
 
     IssueRequest(req_copy ? req_copy : request, response, recvtensor_,
-                 std::move(*cb_to_use), call_opts);
+                 *cb_to_use, call_opts);
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
@@ -272,7 +274,7 @@ class GrpcRemoteWorker : public WorkerInterface {
 WorkerInterface* NewGrpcRemoteWorker(SharedGrpcChannelPtr channel,
                                      ::grpc::CompletionQueue* completion_queue,
                                      WorkerCacheLogger* logger) {
-  return new GrpcRemoteWorker(channel, completion_queue, logger);
+  return new GrpcRemoteWorker(std::move(channel), completion_queue, logger);
 }
 
 }  // namespace tensorflow

@@ -23,10 +23,27 @@ import tempfile
 
 import numpy as np
 
+from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
+
+
+class DeviceNamePathConversionTest(test_util.TensorFlowTestCase):
+
+  def testDeviceNameToDevicePath(self):
+    self.assertEqual(
+        debug_data.METADATA_FILE_PREFIX + debug_data.DEVICE_TAG +
+        ",job_ps,replica_1,task_2,cpu_0",
+        debug_data.device_name_to_device_path("/job:ps/replica:1/task:2/cpu:0"))
+
+  def testDevicePathToDeviceName(self):
+    self.assertEqual(
+        "/job:ps/replica:1/task:2/cpu:0",
+        debug_data.device_path_to_device_name(
+            debug_data.METADATA_FILE_PREFIX + debug_data.DEVICE_TAG +
+            ",job_ps,replica_1,task_2,cpu_0"))
 
 
 class ParseNodeOrTensorNameTest(test_util.TensorFlowTestCase):
@@ -163,7 +180,10 @@ class DebugTensorDatumTest(test_util.TensorFlowTestCase):
 
   def testDebugDatum(self):
     dump_root = "/tmp/tfdbg_1"
-    debug_dump_rel_path = "ns1/ns2/node_a_1_2_DebugIdentity_1472563253536385"
+    debug_dump_rel_path = (
+        debug_data.METADATA_FILE_PREFIX + debug_data.DEVICE_TAG +
+        ",job_localhost,replica_0,task_0,cpu_0" +
+        "/ns1/ns2/node_a_1_2_DebugIdentity_1472563253536385")
 
     datum = debug_data.DebugTensorDatum(dump_root, debug_dump_rel_path)
 
@@ -175,16 +195,18 @@ class DebugTensorDatumTest(test_util.TensorFlowTestCase):
     self.assertEqual("ns1/ns2/node_a_1:2:DebugIdentity", datum.watch_key)
     self.assertEqual(
         os.path.join(dump_root, debug_dump_rel_path), datum.file_path)
-    self.assertEqual("{DebugTensorDatum: %s:%d @ %s @ %d}" % (datum.node_name,
-                                                              datum.output_slot,
-                                                              datum.debug_op,
-                                                              datum.timestamp),
-                     str(datum))
-    self.assertEqual("{DebugTensorDatum: %s:%d @ %s @ %d}" % (datum.node_name,
-                                                              datum.output_slot,
-                                                              datum.debug_op,
-                                                              datum.timestamp),
-                     repr(datum))
+    self.assertEqual(
+        "{DebugTensorDatum (/job:localhost/replica:0/task:0/cpu:0) "
+        "%s:%d @ %s @ %d}" % (datum.node_name,
+                              datum.output_slot,
+                              datum.debug_op,
+                              datum.timestamp), str(datum))
+    self.assertEqual(
+        "{DebugTensorDatum (/job:localhost/replica:0/task:0/cpu:0) "
+        "%s:%d @ %s @ %d}" % (datum.node_name,
+                              datum.output_slot,
+                              datum.debug_op,
+                              datum.timestamp), repr(datum))
 
   def testDumpSizeBytesIsNoneForNonexistentFilePath(self):
     dump_root = "/tmp/tfdbg_1"
@@ -204,17 +226,112 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
     # Tear down temporary dump directory.
     shutil.rmtree(self._dump_root)
 
+  def _makeDataDirWithMultipleDevicesAndDuplicateNodeNames(self):
+    cpu_0_dir = os.path.join(
+        self._dump_root,
+        debug_data.METADATA_FILE_PREFIX + debug_data.DEVICE_TAG +
+        ",job_localhost,replica_0,task_0,cpu_0")
+    gpu_0_dir = os.path.join(
+        self._dump_root,
+        debug_data.METADATA_FILE_PREFIX + debug_data.DEVICE_TAG +
+        ",job_localhost,replica_0,task_0,gpu_0")
+    gpu_1_dir = os.path.join(
+        self._dump_root,
+        debug_data.METADATA_FILE_PREFIX + debug_data.DEVICE_TAG +
+        ",job_localhost,replica_0,task_0,gpu_1")
+    os.makedirs(cpu_0_dir)
+    os.makedirs(gpu_0_dir)
+    os.makedirs(gpu_1_dir)
+    open(os.path.join(
+        cpu_0_dir, "node_foo_1_2_DebugIdentity_1472563253536386"), "wb")
+    open(os.path.join(
+        gpu_0_dir, "node_foo_1_2_DebugIdentity_1472563253536385"), "wb")
+    open(os.path.join(
+        gpu_1_dir, "node_foo_1_2_DebugIdentity_1472563253536387"), "wb")
+
   def testDebugDumpDir_nonexistentDumpRoot(self):
     with self.assertRaisesRegexp(IOError, "does not exist"):
       debug_data.DebugDumpDir(tempfile.mktemp() + "_foo")
 
   def testDebugDumpDir_invalidFileNamingPattern(self):
     # File name with too few underscores should lead to an exception.
-    open(os.path.join(self._dump_root, "node1_DebugIdentity_1234"), "wb")
+    device_dir = os.path.join(
+        self._dump_root,
+        debug_data.METADATA_FILE_PREFIX + debug_data.DEVICE_TAG +
+        ",job_localhost,replica_0,task_0,cpu_0")
+    os.makedirs(device_dir)
+    open(os.path.join(device_dir, "node1_DebugIdentity_1234"), "wb")
 
     with self.assertRaisesRegexp(ValueError,
                                  "does not conform to the naming pattern"):
       debug_data.DebugDumpDir(self._dump_root)
+
+  def testDebugDumpDir_validDuplicateNodeNamesWithMultipleDevices(self):
+    self._makeDataDirWithMultipleDevicesAndDuplicateNodeNames()
+
+    graph_cpu_0 = graph_pb2.GraphDef()
+    node = graph_cpu_0.node.add()
+    node.name = "node_foo_1"
+    node.op = "FooOp"
+    node.device = "/job:localhost/replica:0/task:0/cpu:0"
+    graph_gpu_0 = graph_pb2.GraphDef()
+    node = graph_gpu_0.node.add()
+    node.name = "node_foo_1"
+    node.op = "FooOp"
+    node.device = "/job:localhost/replica:0/task:0/gpu:0"
+    graph_gpu_1 = graph_pb2.GraphDef()
+    node = graph_gpu_1.node.add()
+    node.name = "node_foo_1"
+    node.op = "FooOp"
+    node.device = "/job:localhost/replica:0/task:0/gpu:1"
+
+    dump_dir = debug_data.DebugDumpDir(
+        self._dump_root,
+        partition_graphs=[graph_cpu_0, graph_gpu_0, graph_gpu_1])
+
+    self.assertItemsEqual(
+        ["/job:localhost/replica:0/task:0/cpu:0",
+         "/job:localhost/replica:0/task:0/gpu:0",
+         "/job:localhost/replica:0/task:0/gpu:1"], dump_dir.devices())
+    self.assertEqual(1472563253536385, dump_dir.t0)
+    self.assertEqual(3, dump_dir.size)
+
+    with self.assertRaisesRegexp(
+        ValueError, r"Invalid device name: "):
+      dump_dir.nodes("/job:localhost/replica:0/task:0/gpu:2")
+    self.assertItemsEqual(["node_foo_1", "node_foo_1", "node_foo_1"],
+                          dump_dir.nodes())
+    self.assertItemsEqual(
+        ["node_foo_1"],
+        dump_dir.nodes(device_name="/job:localhost/replica:0/task:0/cpu:0"))
+
+  def testDuplicateNodeNamesInGraphDefOfSingleDeviceRaisesException(self):
+    self._makeDataDirWithMultipleDevicesAndDuplicateNodeNames()
+    graph_cpu_0 = graph_pb2.GraphDef()
+    node = graph_cpu_0.node.add()
+    node.name = "node_foo_1"
+    node.op = "FooOp"
+    node.device = "/job:localhost/replica:0/task:0/cpu:0"
+    graph_gpu_0 = graph_pb2.GraphDef()
+    node = graph_gpu_0.node.add()
+    node.name = "node_foo_1"
+    node.op = "FooOp"
+    node.device = "/job:localhost/replica:0/task:0/gpu:0"
+    graph_gpu_1 = graph_pb2.GraphDef()
+    node = graph_gpu_1.node.add()
+    node.name = "node_foo_1"
+    node.op = "FooOp"
+    node.device = "/job:localhost/replica:0/task:0/gpu:1"
+    node = graph_gpu_1.node.add()  # Here is the duplicate.
+    node.name = "node_foo_1"
+    node.op = "FooOp"
+    node.device = "/job:localhost/replica:0/task:0/gpu:1"
+
+    with self.assertRaisesRegexp(
+        ValueError, r"Duplicate node name on device "):
+      debug_data.DebugDumpDir(
+          self._dump_root,
+          partition_graphs=[graph_cpu_0, graph_gpu_0, graph_gpu_1])
 
   def testDebugDumpDir_emptyDumpDir(self):
     dump_dir = debug_data.DebugDumpDir(self._dump_root)

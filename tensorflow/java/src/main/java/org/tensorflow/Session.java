@@ -120,10 +120,15 @@ public final class Session implements AutoCloseable {
     /**
      * Avoid evaluating {@code operation} and substitute {@code t} for the value it produces.
      *
-     * <p>This method is a shorthand for {@code feed(operation, 0, t)}.
+     * @param operation Is either the string name of the operation, in which case this method is a
+     *     shorthand for {@code feed(operation, 0)}, or it is a string of the form
+     *     <tt>operation_name:output_index</tt> , in which case this method acts like {@code
+     *     feed(operation_name, output_index)}. These colon-separated names are commonly used in the
+     *     {@code SignatureDef} protocol buffer messages that are included in {@link
+     *     SavedModelBundle#metaGraphDef()}.
      */
     public Runner feed(String operation, Tensor t) {
-      return feed(operation, 0, t);
+      return feed(parseOutput(operation), t);
     }
 
     /**
@@ -155,10 +160,15 @@ public final class Session implements AutoCloseable {
     /**
      * Make {@link #run()} return the output of {@code operation}.
      *
-     * <p>This method is a shorthand for {@code fetch(operation, 0)}
+     * @param operation Is either the string name of the operation, in which case this method is a
+     *     shorthand for {@code fetch(operation, 0)}, or it is a string of the form
+     *     <tt>operation_name:output_index</tt> , in which case this method acts like {@code
+     *     fetch(operation_name, output_index)}. These colon-separated names are commonly used in
+     *     the {@code SignatureDef} protocol buffer messages that are included in {@link
+     *     SavedModelBundle#metaGraphDef()}.
      */
     public Runner fetch(String operation) {
-      return fetch(operation, 0);
+      return fetch(parseOutput(operation));
     }
 
     /**
@@ -343,6 +353,20 @@ public final class Session implements AutoCloseable {
         throw new IllegalArgumentException("No Operation named [" + opName + "] in the Graph");
       }
       return op;
+    }
+
+    private Output parseOutput(String opName) {
+      int colon = opName.lastIndexOf(':');
+      if (colon == -1 || colon == opName.length() - 1) {
+        return new Output(operationByName(opName), 0);
+      }
+      try {
+        String op = opName.substring(0, colon);
+        int index = Integer.parseInt(opName.substring(colon + 1));
+        return new Output(operationByName(op), index);
+      } catch (NumberFormatException e) {
+        return new Output(operationByName(opName), 0);
+      }
     }
 
     private ArrayList<Output> inputs = new ArrayList<Output>();

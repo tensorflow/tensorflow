@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
@@ -58,6 +59,8 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     // Slice at dimension boundaries, but with sizes that cause indices to wrap.
     RunR1<IndexT>({0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {6}, {4},
                   {6.0, 7.0, 0.0, 1.0});
+    // Zero element slice.
+    RunR1<IndexT>({0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0}, {2}, {0}, {});
   }
 
   template <typename IndexT>
@@ -75,6 +78,12 @@ class DynamicSliceTest : public ClientLibraryTestBase {
     RunR2<IndexT>({{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}},
                   {1, 1}, {3, 3},
                   {{5.0f, 6.0f, 4.0f}, {8.0f, 9.0f, 7.0f}, {2.0f, 3.0f, 1.0f}});
+    // Zero element slice: 2x0.
+    RunR2<IndexT>({{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}},
+                  {0, 0}, {2, 0}, {{}, {}});
+    // Zero element slice: 0x2.
+    RunR2<IndexT>({{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}},
+                  {0, 0}, {0, 2}, Array2D<float>(0, 2));
   }
 
   template <typename IndexT>
@@ -109,7 +118,7 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT>
   void RunR1(const std::vector<float>& input_values,
              const std::vector<IndexT> slice_starts,
-             const std::vector<int64> slice_sizes,
+             const std::vector<int64>& slice_sizes,
              const std::vector<float>& expected_values) {
     ComputationBuilder builder(client_, TestName());
     // Initialize and transfer dynamic slice start indices parameter.
@@ -127,7 +136,7 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT>
   void RunR2(const Array2D<float>& input_values,
              const std::vector<IndexT> slice_starts,
-             const std::vector<int64> slice_sizes,
+             const std::vector<int64>& slice_sizes,
              const Array2D<float>& expected_values) {
     ComputationBuilder builder(client_, TestName());
     // Initialize and transfer dynamic slice start indices parameter.
@@ -145,7 +154,7 @@ class DynamicSliceTest : public ClientLibraryTestBase {
   template <typename IndexT>
   void RunR3(const Array3D<float>& input_values,
              const std::vector<IndexT> slice_starts,
-             const std::vector<int64> slice_sizes,
+             const std::vector<int64>& slice_sizes,
              const Array3D<float>& expected_values) {
     ComputationBuilder builder(client_, TestName());
     // Initialize and transfer dynamic slice start indices parameter.
@@ -200,6 +209,10 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
     RunR1<IndexT>({0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0},
                   {8.0, 9.0, 10.0}, {6},
                   {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 8.0, 9.0});
+    // Zero-sized update.
+    RunR1<IndexT>({0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0},
+                  {}, {2},
+                  {0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0});
     // clang-format on
   }
 
@@ -226,6 +239,11 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
         {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}},
         {{10.0f, 11.0f}}, {2, 2},
         {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}, {7.0f, 8.0f, 10.0f}});
+    // Zero-sized update.
+    RunR2<IndexT>(
+        {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}},
+        {{}}, {2, 1},
+        {{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}});
     // clang-format on
   }
 
@@ -502,6 +520,7 @@ BENCHMARK(BM_DynamicSlice);
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

@@ -200,6 +200,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.expm1, math_ops.expm1)
     self._compareBoth(z, np.log, math_ops.log)
     self._compareBoth(z, np.log1p, math_ops.log1p)
+    self._compareBoth(x, np.sinh, math_ops.sinh)
+    self._compareBoth(x, np.cosh, math_ops.cosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
     self._compareBoth(x, self._log_sigmoid, math_ops.log_sigmoid)
@@ -245,6 +247,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.expm1, math_ops.expm1)
     self._compareBoth(x, np.log, math_ops.log)
     self._compareBoth(x, np.log1p, math_ops.log1p)
+    self._compareBoth(x, np.sinh, math_ops.sinh)
+    self._compareBoth(x, np.cosh, math_ops.cosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
     self._compareBoth(x, np.sign, math_ops.sign)
@@ -285,6 +289,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(x, np.expm1, math_ops.expm1)
     self._compareBoth(z, np.log, math_ops.log)
     self._compareBoth(z, np.log1p, math_ops.log1p)
+    self._compareBoth(x, np.sinh, math_ops.sinh)
+    self._compareBoth(x, np.cosh, math_ops.cosh)
     self._compareBoth(x, np.tanh, math_ops.tanh)
     self._compareBoth(x, self._sigmoid, math_ops.sigmoid)
     self._compareBoth(y, np.sign, math_ops.sign)
@@ -389,6 +395,8 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.expm1, math_ops.expm1)
     self._compareCpu(y, np.log, math_ops.log)
     self._compareCpu(y, np.log1p, math_ops.log1p)
+    self._compareCpu(x, np.sinh, math_ops.sinh)
+    self._compareCpu(x, np.cosh, math_ops.cosh)
     self._compareCpu(x, np.tanh, math_ops.tanh)
     self._compareCpu(x, self._sigmoid, math_ops.sigmoid)
     self._compareCpu(x, np.sin, math_ops.sin)
@@ -423,6 +431,8 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.expm1, math_ops.expm1)
     self._compareCpu(y, np.log, math_ops.log)
     self._compareCpu(y, np.log1p, math_ops.log1p)
+    self._compareCpu(x, np.sinh, math_ops.sinh)
+    self._compareCpu(x, np.cosh, math_ops.cosh)
     self._compareCpu(x, np.tanh, math_ops.tanh)
     self._compareCpu(x, self._sigmoid, math_ops.sigmoid)
     self._compareCpu(x, np.sin, math_ops.sin)
@@ -696,6 +706,11 @@ class BinaryOpTest(test.TestCase):
                         math_ops.igammac)
     except ImportError as e:
       tf_logging.warn("Cannot test special functions: %s" % str(e))
+
+  def testUint8Basic(self):
+    x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.uint8)
+    y = np.arange(1, 7, 1).reshape(1, 3, 2).astype(np.uint8)
+    self._compareBoth(x, y, np.add, math_ops.add)
 
   def testInt8Basic(self):
     x = np.arange(1, 13, 2).reshape(1, 3, 2).astype(np.int8)
@@ -1106,15 +1121,17 @@ class BinaryOpTest(test.TestCase):
 
   def testAtan2SpecialValues(self):
     x1l, x2l = zip((+0.0, +0.0), (+0.0, -0.0), (-0.0, +0.0), (-0.0, -0.0),
-                    (1.2345, float('inf')), (1.2345, -float('inf')),
-                    (-4.321, float('inf')), (-4.125, -float('inf')),
-                    (float('inf'), float('inf')), (float('inf'), -float('inf')),
-                    (-float('inf'), float('inf')), (-float('inf'), -float('inf')))
+                   (1.2345, float("inf")), (1.2345, -float("inf")),
+                   (-4.321, float("inf")), (-4.125, -float("inf")),
+                   (float("inf"), float("inf")), (float("inf"), -float("inf")),
+                   (-float("inf"), float("inf")), (-float("inf"),
+                                                   -float("inf")))
     for dtype in np.float32, np.float64:
       x1 = np.array(x1l).astype(dtype)
       x2 = np.array(x2l).astype(dtype)
       self._compareCpu(x1, x2, np.arctan2, math_ops.atan2)
       self._compareGpu(x1, x2, np.arctan2, math_ops.atan2)
+
 
 class ComparisonOpTest(test.TestCase):
 

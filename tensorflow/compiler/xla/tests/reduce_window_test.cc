@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -43,7 +44,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
  public:
   ReduceWindowTest() : builder_(client_, TestName()) {}
 
-  void ReduceWindowAdd(ComputationDataHandle input,
+  void ReduceWindowAdd(const ComputationDataHandle& input,
                        tensorflow::gtl::ArraySlice<int64> window_dimensions,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
@@ -52,7 +53,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
                           window_dimensions, window_strides, padding);
   }
 
-  void ReduceWindowMax(ComputationDataHandle input,
+  void ReduceWindowMax(const ComputationDataHandle& input,
                        tensorflow::gtl::ArraySlice<int64> window_dimensions,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
@@ -61,7 +62,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
         CreateScalarMax(), window_dimensions, window_strides, padding);
   }
 
-  void ReduceWindowMin(ComputationDataHandle input,
+  void ReduceWindowMin(const ComputationDataHandle& input,
                        tensorflow::gtl::ArraySlice<int64> window_dimensions,
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
@@ -182,6 +183,7 @@ TEST_F(ReduceWindowTest, DISABLED_AmongMajor2DimsMediumSizeLargePadding) {
 
   ComputeAndCompareR4<float>(&builder_, *result, {}, ErrorSpec(1e-3, 1e-3));
 }
+
 // TODO(b/31809540): Implement minor dim reduction to reduce num of reshapes.
 TEST_F(ReduceWindowTest, ReduceR4AmongXYMinorSmall) {
   Array4D<float> input_array(2, 2, 4, 16);
@@ -368,6 +370,16 @@ TEST_F(ReduceWindowTest, Add2x2In2x2Disjoint) {
   ComputeAndCompareR2<float>(&builder_, expected, {}, ErrorSpec(0.0001));
 }
 
+TEST_F(ReduceWindowTest, Add1x2In2x2Same) {
+  Array2D<float> input_array({{1.0f, 2.0f}, {3.0f, 4.0f}});
+  auto input = builder_.ConstantR2FromArray2D<float>(input_array);
+  ReduceWindowAdd(input, {1, 2}, {1, 1}, Padding::kSame);
+  Array2D<float> expected({
+      {3.0f, 2.0f}, {7.0f, 4.0f},
+  });
+  ComputeAndCompareR2<float>(&builder_, expected, {}, ErrorSpec(0.0001));
+}
+
 XLA_TEST_F(ReduceWindowTest, Add1x1x2In2x1x2) {
   Array3D<float> input_array(2, 1, 2);
   input_array(0, 0, 0) = 1000;
@@ -463,6 +475,7 @@ XLA_TEST_F(ReduceWindowTest, NonstandardReduceFunction) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

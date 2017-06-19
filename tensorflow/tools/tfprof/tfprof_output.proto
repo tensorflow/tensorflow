@@ -14,7 +14,8 @@ message TFProfTensorProto {
   repeated string value_str = 4;
 }
 
-message TFProfNode {
+// A node in TensorFlow graph. Used by scope/graph view.
+message TFGraphNodeProto {
   // op name.
   optional string name = 1;
   // tensor value restored from checkpoint.
@@ -27,23 +28,59 @@ message TFProfNode {
   optional int64 parameters = 4;
   // Number of float operations.
   optional int64 float_ops = 13;
-  // Number of inputs to the op.
-  optional int64 inputs = 5;
   // Device the op is assigned to.
-  optional string device = 10;
+  // Since an op can fire multiple kernel calls, there can be multiple devices.
+  repeated string devices = 10;
 
-  // The following are the aggregated stats from all accounted descendants and
-  // the op itself. The actual descendants depend on the data structure used
+  // The following are the aggregated stats from all accounted children and
+  // the node itself. The actual children depend on the data structure used
   // (scope, graph).
   optional int64 total_exec_micros = 6;
   optional int64 total_requested_bytes = 7;
   optional int64 total_parameters = 8;
   optional int64 total_float_ops = 14;
-  optional int64 total_inputs = 9;
 
   // shape information, if available.
+  // TODO(xpan): Why is this repeated?
   repeated TensorShapeProto shapes = 11;
+
+  map<int32, TensorShapeProto> input_shapes = 16;
+
   // Descendants of the graph. The actual descendants depend on the data
   // structure used (scope, graph).
-  repeated TFProfNode children = 12;
+  repeated TFGraphNodeProto children = 12;
+}
+
+// A node that groups multiple TFGraphNodeProto.
+// Depending on the 'view', the semantics of the TFmultiGraphNodeProto
+// is different:
+// code view: A node groups all TensorFlow graph nodes created by the
+//            Python code.
+// op view:   A node groups all TensorFlow graph nodes that are of type
+//            of the op (e.g. MatMul, Conv2D).
+message TFMultiGraphNodeProto {
+  // Name of the node.
+  optional string name = 1;
+
+  // code execution time.
+  optional int64 exec_micros = 2;
+  // Total requested bytes by the code.
+  optional int64 requested_bytes = 3;
+  // Number of parameters if available.
+  optional int64 parameters = 4;
+  // Number of float operations.
+  optional int64 float_ops = 5;
+
+  // The following are the aggregated stats from descendants.
+  // The actual descendants depend on the data structure used.
+  optional int64 total_exec_micros = 6;
+  optional int64 total_requested_bytes = 7;
+  optional int64 total_parameters = 8;
+  optional int64 total_float_ops = 9;
+
+  // TensorFlow graph nodes contained by the TFMultiGraphNodeProto.
+  repeated TFGraphNodeProto graph_nodes = 10;
+  // Descendants of the node. The actual descendants depend on the data
+  // structure used.
+  repeated TFMultiGraphNodeProto children = 11;
 }

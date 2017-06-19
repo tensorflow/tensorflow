@@ -68,6 +68,9 @@ Status BackwardsConstAnalysis(const Graph& g,
       {"Range", "limit"},
       {"Range", "delta"},
       {"Reshape", "shape"},
+      {"ResourceStridedSliceAssign", "begin"},
+      {"ResourceStridedSliceAssign", "end"},
+      {"ResourceStridedSliceAssign", "strides"},
       {"Reverse", "dims"},
       {"ReverseV2", "axis"},
       {"Slice", "begin"},
@@ -86,6 +89,8 @@ Status BackwardsConstAnalysis(const Graph& g,
       {"StridedSliceGrad", "end"},
       {"StridedSliceGrad", "strides"},
       {"Sum", "reduction_indices"},
+      {"TensorArrayV3", "size"},
+      {"TensorArraySplitV3", "lengths"},
       {"Tile", "multiples"},
       {"Transpose", "perm"}};
 
@@ -108,7 +113,7 @@ Status BackwardsConstAnalysis(const Graph& g,
     if (must_be_const.find(node) != must_be_const.end()) {
       if (node->type_string() == "_Arg") {
         int index;
-        status = GetNodeAttr(node->def(), "index", &index);
+        status = GetNodeAttr(node->attrs(), "index", &index);
         if (!status.ok()) return;
         compile_time_const_args->at(index) = true;
         return;
@@ -124,8 +129,8 @@ Status BackwardsConstAnalysis(const Graph& g,
     if (range.first == range.second) return;
 
     NameRangeMap input_name_ranges;
-    status = NameRangesForNode(node->def(), node->op_def(), &input_name_ranges,
-                               nullptr);
+    status =
+        NameRangesForNode(*node, node->op_def(), &input_name_ranges, nullptr);
     if (!status.ok()) return;
 
     for (auto it = range.first; it != range.second; ++it) {

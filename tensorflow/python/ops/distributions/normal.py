@@ -70,14 +70,14 @@ class Normal(distribution.Distribution):
 
   ```python
   # Define a single scalar Normal distribution.
-  dist = tf.contrib.distributions.Normal(loc=0., scale=3.)
+  dist = tf.distributions.Normal(loc=0., scale=3.)
 
   # Evaluate the cdf at 1, returning a scalar.
   dist.cdf(1.)
 
   # Define a batch of two scalar valued Normals.
   # The first has mean 1 and standard deviation 11, the second 2 and 22.
-  dist = tf.contrib.distributions.Normal(loc=[1, 2.], scale=[11, 22.])
+  dist = tf.distributions.Normal(loc=[1, 2.], scale=[11, 22.])
 
   # Evaluate the pdf of the first distribution on 0, and the second on 1.5,
   # returning a length two tensor.
@@ -92,7 +92,7 @@ class Normal(distribution.Distribution):
   ```python
   # Define a batch of two scalar valued Normals.
   # Both have mean 1, but different standard deviations.
-  dist = tf.contrib.distributions.Normal(loc=1., scale=[11, 22.])
+  dist = tf.distributions.Normal(loc=1., scale=[11, 22.])
 
   # Evaluate the pdf of both distributions on the same point, 3.0,
   # returning a length 2 tensor.

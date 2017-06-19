@@ -17,10 +17,11 @@ limitations under the License.
 
 <link rel="import" href="../polymer/polymer.html">
 <link rel="import" href="../paper-toggle-button/paper-toggle-button.html">
-<link rel="import" href="../tf-storage/tf-storage.html">
+<link rel="import" href="../tf-imports/d3.html">
+<link rel="import" href="../tf-imports/lodash.html">
+<link rel="import" href="../vz-sorting/vz-sorting.html">
 <link rel="import" href="tf-regex-group.html">
 <link rel="import" href="tensorboard-color.html">
-<link rel="import" href="../vz-sorting/vz-sorting.html">
 
 <!--
 `tf-categorizer` turns an array of tags into an array of categories
@@ -58,39 +59,5 @@ categories are exclusive.
       }
     </style>
   </template>
-  <script src="categorizer.js"></script>
-  <script>
-    Polymer({
-      is: "tf-categorizer",
-      properties: {
-        regexes: {type: Array},
-        tags: {type: Array},
-        categoriesAreExclusive: {type: Boolean, value: true},
-        fallbackCategorizer: {
-          type: String,
-          value: "TopLevelNamespaceCategorizer",
-        },
-        categorizer: {
-          type: Object,
-          computed: "computeCategorization(regexes.*, categoriesAreExclusive, fallbackCategorizer)",
-        },
-        categories: {type: Array, value: function() {return [];}, notify: true, readOnly: true},
-      },
-      observers: ['recategorize(tags.*, categorizer)'],
-      computeCategorization: function(regexes, categoriesAreExclusive, fallbackCategorizer) {
-        var categorizationStrategy = {
-          categoryDefinitions: regexes.base,
-          categoriesAreExclusive: categoriesAreExclusive,
-          fallbackCategorizer: fallbackCategorizer,
-        };
-        return Categorizer.categorizer(categorizationStrategy);
-      },
-      recategorize: function() {
-        this.debounce("tf-categorizer-recategorize", function (){
-          var categories = this.categorizer(this.tags);
-          this._setCategories(categories);
-        })
-      },
-    });
-  </script>
+  <script src="tf-categorizer.js"></script>
 </dom-module>

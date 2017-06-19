@@ -54,7 +54,7 @@ class HloCostAnalysisTest : public ::testing::Test {
   HloCostAnalysisTest()
       : client_(ClientLibrary::LocalClientOrDie()),
         // Accessing service instance is required for the unit tests to enable
-        // whitebox acccesses to the user computation built from the client,
+        // whitebox accesses to the user computation built from the client,
         // as shown in the BuildHloGraph functions below.
         service_(static_cast<Service*>(ClientLibrary::GetXlaService(
             static_cast<LocalClient*>(client_)->platform()))),
@@ -127,7 +127,8 @@ class HloCostAnalysisTest : public ::testing::Test {
     VersionedComputationHandle versioned_handle =
         user_computation->GetVersionedHandle();
     return std::move(
-        computation_tracker_.BuildHloModule(versioned_handle).ValueOrDie());
+        computation_tracker_.BuildHloModule(versioned_handle, HloModuleConfig())
+            .ValueOrDie());
   }
 
   Client* client_;

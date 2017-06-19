@@ -12,34 +12,38 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-declare function stub(el: string, obj: any): void;
-declare function fixture(id: string): void;
 
-describe(
-    'audio dashboard tests', function() {
-      var audioDash;
-      var reloadCount = 0;
-      beforeEach(function() {
-        audioDash = fixture('testElementFixture');
-        var router = TF.Backend.router('data', true);
-        var backend = new TF.Backend.Backend(router);
-        audioDash.backend = backend;
-        stub('tf-audio-loader', {
-          reload: function() { reloadCount++; },
-        });
-      });
+import * as backend_backend from '../../tf-backend/backend';
+import {createRouter, setRouter} from '../../tf-backend/router';
 
-      it('calling reload on dashboard reloads the audio-loaders',
-         function(done) {
-           audioDash.backendReload().then(() => {
-             reloadCount = 0;
-             var loaders = [].slice.call(
-                 audioDash.getElementsByTagName('tf-audio-loader'));
-             audioDash.frontendReload();
-             setTimeout(function() {
-               chai.assert.isAbove(reloadCount, 3);
-               done();
-             });
-           });
-         });
+// TODO(dandelion): Fix me.
+declare function fixture(id: string): any;
+declare function stub(x, y: any): void;
+
+describe('audio dashboard tests', () => {
+  let audioDash;
+  let reloadCount = 0;
+  beforeEach(() => {
+    audioDash = fixture('testElementFixture');
+    const router = createRouter('/data', true);
+    setRouter(router);
+    const backend = new backend_backend.Backend();
+    audioDash.backend = backend;
+    stub('tf-audio-loader', {
+      reload: () => { reloadCount++; },
     });
+  });
+
+  it('calling reload on dashboard reloads the audio-loaders', (done) => {
+    audioDash.backendReload().then(() => {
+      reloadCount = 0;
+      const loaders =
+          [].slice.call(audioDash.getElementsByTagName('tf-audio-loader'));
+      audioDash.frontendReload();
+      setTimeout(() => {
+        chai.assert.isTrue(reloadCount >= 2);
+        done();
+      });
+    });
+  });
+});

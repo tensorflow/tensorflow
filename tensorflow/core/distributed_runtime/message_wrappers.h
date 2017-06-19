@@ -17,8 +17,12 @@ limitations under the License.
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/cost_graph.pb.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
@@ -223,6 +227,10 @@ class RunGraphRequestWrapper {
  public:
   virtual ~RunGraphRequestWrapper() {}
 
+  // The session handle used to register the graph. If empty, a single global
+  // namespace is used.
+  virtual const string& session_handle() const = 0;
+
   // REQUIRED: graph_handle must be returned by a RegisterGraph call
   // to the same WorkerService.
   virtual const string& graph_handle() const = 0;
@@ -262,6 +270,7 @@ class RunGraphRequestWrapper {
 // See `RunGraphRequestWrapper` above for a description of the fields.
 class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
  public:
+  virtual void set_session_handle(const string& handle) = 0;
   virtual void set_graph_handle(const string& handle) = 0;
   virtual void set_step_id(int64 step_id) = 0;
   virtual ExecutorOpts* mutable_exec_opts() = 0;
@@ -280,6 +289,7 @@ class MutableRunGraphRequestWrapper : public RunGraphRequestWrapper {
 class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
  public:
   // RunGraphRequestWrapper methods.
+  const string& session_handle() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
@@ -293,6 +303,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   const RunGraphRequest& ToProto() const override;
 
   // MutableRunGraphRequestWrapper methods.
+  void set_session_handle(const string& handle) override;
   void set_graph_handle(const string& handle) override;
   void set_step_id(int64 step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
@@ -304,6 +315,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
   void set_is_last_partial_run(bool is_last_partial_run) override;
 
  private:
+  string session_handle_;
   string graph_handle_;
   int64 step_id_;
   ExecutorOpts exec_opts_;
@@ -325,6 +337,7 @@ class InMemoryRunGraphRequest : public MutableRunGraphRequestWrapper {
 class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
  public:
   // RunGraphRequestWrapper methods.
+  const string& session_handle() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;
@@ -338,6 +351,7 @@ class MutableProtoRunGraphRequest : public MutableRunGraphRequestWrapper {
   const RunGraphRequest& ToProto() const override;
 
   // MutableRunGraphRequestWrapper methods.
+  void set_session_handle(const string& handle) override;
   void set_graph_handle(const string& handle) override;
   void set_step_id(int64 step_id) override;
   ExecutorOpts* mutable_exec_opts() override;
@@ -357,6 +371,7 @@ class ProtoRunGraphRequest : public RunGraphRequestWrapper {
   ProtoRunGraphRequest(const RunGraphRequest* request);
 
   // RunGraphRequestWrapper methods.
+  const string& session_handle() const override;
   const string& graph_handle() const override;
   int64 step_id() const override;
   const ExecutorOpts& exec_opts() const override;

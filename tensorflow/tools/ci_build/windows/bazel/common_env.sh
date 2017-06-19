@@ -30,10 +30,11 @@ export TMPDIR="C:/tmp"
 mkdir -p "$TMPDIR"
 
 # Set bash path
-export BAZEL_SH="C:/tools/msys64/usr/bin/bash"
+export BAZEL_SH=${BAZEL_SH:-"C:/tools/msys64/usr/bin/bash"}
 
 # Set Python path for ./configure
 export PYTHON_BIN_PATH="C:/Program Files/Anaconda3/python"
+export PYTHON_LIB_PATH="C:/Program Files/Anaconda3/lib/site-packages"
 
 # Set Python path for cc_configure.bzl
 export BAZEL_PYTHON="C:/Program Files/Anaconda3/python"
@@ -54,4 +55,4 @@ export PATH="/c/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0/extras/CUPT
 export PATH="/c/tools/cuda/bin:$PATH"
 
 # Set the common build options on Windows
-export BUILD_OPTS='--cpu=x64_windows_msvc --host_cpu=x64_windows_msvc --copt=-w --host_copt=-w --verbose_failures --experimental_ui'
+export BUILD_OPTS='--copt=-w --host_copt=-w --verbose_failures --experimental_ui'

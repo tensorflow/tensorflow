@@ -82,7 +82,7 @@ tf_custom_op_py_library(
 
 cuda_py_test(
     name = "cudnn_rnn_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/cudnn_rnn_ops_test.py"],
     additional_deps = [
         ":cudnn_rnn_py",
@@ -126,6 +126,9 @@ cuda_py_test(
     ],
     tags = [
         "manual",
+        "noasan",  # http://b/62067814
+        "nomsan",
+        "notsan",
         "requires_cudnn5",
     ],
 )

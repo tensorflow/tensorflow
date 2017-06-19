@@ -156,13 +156,13 @@ export class DataPanel extends DataPanelPolymer {
               return !stats.tooManyUniqueValues || stats.isNumeric;
             })
             .map(stats => {
-              let map: (v: string|number) => string;
+              let map;
               let items: {label: string, count: number}[];
               let thresholds: ColorLegendThreshold[];
               let isCategorical =
                   this.forceCategoricalColoring || !stats.tooManyUniqueValues;
               if (isCategorical) {
-                let scale = d3.scale.category20();
+                const scale = d3.scaleOrdinal(d3.schemeCategory20);
                 let range = scale.range();
                 // Re-order the range.
                 let newRange = range.map((color, i) => {
@@ -177,7 +177,7 @@ export class DataPanel extends DataPanelPolymer {
                   {color: '#ffffdd', value: stats.min},
                   {color: '#1f2d86', value: stats.max}
                 ];
-                map = d3.scale.linear<string>()
+                map = d3.scaleLinear<string, string>()
                           .domain(thresholds.map(t => t.value))
                           .range(thresholds.map(t => t.color));
               }

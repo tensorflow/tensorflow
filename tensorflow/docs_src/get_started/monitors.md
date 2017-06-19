@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
 Copy the above code into a file, and download the corresponding
 [training](http://download.tensorflow.org/data/iris_training.csv) and
-@{tf.test} data sets to the same
+[test](http://download.tensorflow.org/data/iris_test.csv) data sets to the same
 directory.
 
 In the following sections, you'll progressively make updates to the above code

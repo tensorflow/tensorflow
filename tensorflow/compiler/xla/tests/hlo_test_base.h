@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -45,18 +44,15 @@ class HloTestBase : public ::testing::Test {
 
   ~HloTestBase() override;
 
+  // Creates a new HLO module for a test. The module created will have
+  // TestName() for its name; it will also automatically populate its debug
+  // options from command-line flags. It's recommended to use this method to
+  // create all HloModules for tests.
+  std::unique_ptr<HloModule> CreateNewModule();
+
   // Executes the given module and returns a global data handle.
   StatusOr<perftools::gputools::DeviceMemoryBase> Execute(
       std::unique_ptr<HloModule> module,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      Shape* result_shape);
-
-  // Variation of Execute which takes a custom module_config instead of creating
-  // a default one.
-  StatusOr<perftools::gputools::DeviceMemoryBase> Execute(
-      std::unique_ptr<HloModule> module,
-      std::unique_ptr<HloModuleConfig> module_config,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
       Shape* result_shape);
@@ -65,7 +61,7 @@ class HloTestBase : public ::testing::Test {
   perftools::gputools::DeviceMemoryBase TransferToDevice(
       const Literal& literal);
 
-  // Transfers the array refered to by the given handle from the device and
+  // Transfers the array referred to by the given handle from the device and
   // returns as a Literal.
   std::unique_ptr<Literal> TransferFromDevice(
       const Shape& shape, perftools::gputools::DeviceMemoryBase device_base);
@@ -76,15 +72,35 @@ class HloTestBase : public ::testing::Test {
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments);
 
-  // Variation of ExecuteAndTransfer which takes a custom module_config instead
-  // of creating a default one.
-  std::unique_ptr<Literal> ExecuteAndTransfer(
-      std::unique_ptr<HloModule> module,
-      std::unique_ptr<HloModuleConfig> module_config,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments);
+  // Convenience method to force the layout of a given parameter in a module.
+  // The layout of parameter number 'param_no' in the 'module' is set to
+  // 'layout'.
+  void ForceParameterLayout(HloModule* module, int64 param_no,
+                            const Layout& layout) {
+    ASSERT_LT(param_no,
+              module->mutable_entry_computation_layout()->parameter_count());
+    module->mutable_entry_computation_layout()
+        ->mutable_parameter_layout(param_no)
+        ->ResetLayout(layout);
+  }
 
-  string TestName() const;
+  // Convenience method to force the layout of the computation result in a
+  // module. The result layout of 'module' is set to 'layout'.
+  void ForceResultLayout(HloModule* module, const Layout& layout) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->ResetLayout(layout);
+  }
+
+  // Convenience method to clear the layout of the computation result in
+  // 'module'.
+  void ForceClearResultLayout(HloModule* module) {
+    module->mutable_entry_computation_layout()
+        ->mutable_result_layout()
+        ->Clear();
+  }
+
+  static string TestName();
 
   std::unique_ptr<Backend> backend_;
 
@@ -98,6 +114,11 @@ class HloTestBase : public ::testing::Test {
 
   std::unique_ptr<EigenThreadPoolWrapper> thread_pool_wrapper_;
 };
+
+// Convenience function that parses XLA debug options flags from argc/argv,
+// calls InitGoogleTest and then calls and returns RUN_ALL_TESTS. Intended to be
+// invoked from a test main() function.
+int ParseDebugOptionsFlagsAndRunTests(int argc, char** argv);
 
 }  // namespace xla
 

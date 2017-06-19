@@ -85,7 +85,7 @@ class RandomFourierFeatureMapperTest(TensorFlowTestCase):
       mapped_x = rffm.map(x)
       mapped_x_copy = rffm.map(x)
       # Two different evaluations of tensors output by map on the same input
-      # are identical because the same paramaters are used for the mappings.
+      # are identical because the same parameters are used for the mappings.
       self.assertAllClose(mapped_x.eval(), mapped_x_copy.eval(), atol=0.001)
 
   def testTwoMapperObjects(self):

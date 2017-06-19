@@ -33,10 +33,9 @@ limitations under the License.
 namespace xla {
 
 string BufferAlias::ToString() const {
-  return tensorflow::strings::StrCat("BufferAlias(",
-                                     instruction_->FullyQualifiedName(), "[",
-                                     tensorflow::str_util::Join(index_, ","),
-                                     "] => ", buffer_->ToString(), ")");
+  return tensorflow::strings::StrCat(
+      "BufferAlias(", instruction_->FullyQualifiedName(), "[",
+      tensorflow::str_util::Join(index_, ","), "])");
 }
 
 std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias) {
@@ -46,29 +45,27 @@ std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias) {
 
 bool PointsToSet::IsAmbiguous() const {
   bool ambiguous = false;
-  TF_CHECK_OK(ForEachElement(
-      [&ambiguous](const ShapeIndex& /*index*/, bool /*is_leaf*/,
+  ForEachElement(
+      [&ambiguous](const ShapeIndex& /*index*/,
                    const std::vector<const LogicalBuffer*>& points_to) {
         ambiguous |= points_to.size() > 1;
-        return Status::OK();
-      }));
+      });
   return ambiguous;
 }
 
 bool PointsToSet::IsDistinct() const {
   bool distinct = true;
   std::set<const LogicalBuffer*> all_points_to;
-  TF_CHECK_OK(ForEachElement([&distinct, &all_points_to](
-      const ShapeIndex& /*index*/, bool /*is_leaf*/,
-      const std::vector<const LogicalBuffer*>& points_to) {
+  ForEachElement([&distinct, &all_points_to](
+                     const ShapeIndex& /*index*/,
+                     const std::vector<const LogicalBuffer*>& points_to) {
     for (auto& buffer : points_to) {
       if (all_points_to.count(buffer) != 0) {
         distinct = false;
       }
       all_points_to.insert(buffer);
     }
-    return Status::OK();
-  }));
+  });
   return distinct;
 }
 
@@ -81,27 +78,24 @@ size_t PointsToSet::size() const {
 tensorflow::gtl::FlatSet<const LogicalBuffer*> PointsToSet::CreateFlattenedSet()
     const {
   tensorflow::gtl::FlatSet<const LogicalBuffer*> flat_set;
-  TF_CHECK_OK(ForEachElement(
-      [&flat_set](const ShapeIndex& /*index*/, bool /*is_leaf*/,
-                  const std::vector<const LogicalBuffer*>& buffers) {
-        flat_set.insert(buffers.begin(), buffers.end());
-        return Status::OK();
-      }));
+  ForEachElement([&flat_set](const ShapeIndex& /*index*/,
+                             const std::vector<const LogicalBuffer*>& buffers) {
+    flat_set.insert(buffers.begin(), buffers.end());
+  });
   return flat_set;
 }
 
 bool PointsToSet::ContainsBuffer(const LogicalBuffer& buffer) const {
   bool found = false;
-  TF_CHECK_OK(ForEachElement([&found, &buffer](
-      const ShapeIndex& /*index*/, bool /*is_leaf*/,
-      const std::vector<const LogicalBuffer*>& pointed_to_buffers) {
+  ForEachElement([&found, &buffer](const ShapeIndex& /*index*/,
+                                   const std::vector<const LogicalBuffer*>&
+                                       pointed_to_buffers) {
     if (!found &&
         std::find(pointed_to_buffers.begin(), pointed_to_buffers.end(),
                   &buffer) != pointed_to_buffers.end()) {
       found = true;
     }
-    return Status::OK();
-  }));
+  });
   return found;
 }
 
@@ -131,12 +125,16 @@ void PointsToSet::add_tuple_source(const ShapeIndex& index,
 }
 
 /* static */ StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
-TuplePointsToAnalysis::Run(const HloModule* module,
-                           const bool include_loop_fusion_instructions) {
+TuplePointsToAnalysis::Run(const HloModule* module, Colorer colorer) {
   std::unique_ptr<TuplePointsToAnalysis> analysis(
-      new TuplePointsToAnalysis(module, include_loop_fusion_instructions));
+      new TuplePointsToAnalysis(module, std::move(colorer)));
   TF_RETURN_IF_ERROR(analysis->Analyze());
   return std::move(analysis);
+}
+
+/* static */ StatusOr<std::unique_ptr<TuplePointsToAnalysis>>
+TuplePointsToAnalysis::Run(const HloModule* module) {
+  return Run(module, DefaultColorer());
 }
 
 Status TuplePointsToAnalysis::Analyze() {
@@ -145,17 +143,14 @@ Status TuplePointsToAnalysis::Analyze() {
     TF_RETURN_IF_ERROR(computation->Accept(this));
     TF_RETURN_IF_ERROR(
         PopulateDefinedBuffersAndAliases(computation->instructions()));
-    if (include_loop_fusion_instructions_) {
-      // Run points-to analysis on loop fusion instructions in 'computation'.
-      for (auto& instruction : computation->instructions()) {
-        if (instruction->opcode() != HloOpcode::kFusion ||
-            instruction->fusion_kind() != HloInstruction::FusionKind::kLoop) {
-          continue;
-        }
-        TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
-        TF_RETURN_IF_ERROR(PopulateDefinedBuffersAndAliases(
-            instruction->fused_instructions()));
+    // Run points-to analysis on fusion instructions in 'computation'.
+    for (auto& instruction : computation->instructions()) {
+      if (instruction->opcode() != HloOpcode::kFusion) {
+        continue;
       }
+      TF_RETURN_IF_ERROR(instruction->fused_expression_root()->Accept(this));
+      TF_RETURN_IF_ERROR(
+          PopulateDefinedBuffersAndAliases(instruction->fused_instructions()));
     }
   }
 
@@ -171,17 +166,17 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
         instruction.get(), &instruction_defined_buffers_[instruction.get()]));
 
     const PointsToSet& points_to_set = GetPointsToSet(instruction.get());
-    TF_RETURN_IF_ERROR(points_to_set.ForEachElement([this, &instruction](
-        const ShapeIndex& index, bool /*is_leaf*/,
-        const std::vector<const LogicalBuffer*>& pointed_to_buffers) {
-      for (const LogicalBuffer* buffer : pointed_to_buffers) {
-        if (buffer_aliases_.count(buffer) == 0) {
-          buffer_aliases_.insert({buffer, std::vector<BufferAlias>()});
-        }
-        buffer_aliases_[buffer].emplace_back(*buffer, instruction.get(), index);
-      }
-      return Status::OK();
-    }));
+    points_to_set.ForEachElement(
+        [this, &instruction](
+            const ShapeIndex& index,
+            const std::vector<const LogicalBuffer*>& pointed_to_buffers) {
+          for (const LogicalBuffer* buffer : pointed_to_buffers) {
+            if (buffer_aliases_.count(buffer) == 0) {
+              buffer_aliases_.insert({buffer, std::vector<BufferAlias>()});
+            }
+            buffer_aliases_[buffer].emplace_back(instruction.get(), index);
+          }
+        });
   }
   return Status::OK();
 }
@@ -189,8 +184,8 @@ Status TuplePointsToAnalysis::PopulateDefinedBuffersAndAliases(
 const LogicalBuffer& TuplePointsToAnalysis::NewLogicalBuffer(
     HloInstruction* instruction, const ShapeIndex& index) {
   CHECK_EQ(logical_buffers_.size(), next_buffer_id_);
-  logical_buffers_.push_back(
-      MakeUnique<LogicalBuffer>(instruction, index, next_buffer_id_));
+  logical_buffers_.push_back(MakeUnique<LogicalBuffer>(
+      instruction, index, next_buffer_id_, colorer_(instruction, index)));
   ++next_buffer_id_;
   return *logical_buffers_.back();
 }
@@ -200,13 +195,12 @@ Status TuplePointsToAnalysis::DefaultAction(HloInstruction* hlo_instruction) {
   // contains a single element LogicalBuffer(hlo_instruction, i). This indicates
   // that this instruction is the source of all buffers in its own output.
   PointsToSet& points_to_set = CreateEmptyPointsToSet(hlo_instruction);
-  TF_RETURN_IF_ERROR(points_to_set.ForEachMutableElement(
-      [this, hlo_instruction](const ShapeIndex& index, bool /*is_leaf*/,
+  points_to_set.ForEachMutableElement(
+      [this, hlo_instruction](const ShapeIndex& index,
                               std::vector<const LogicalBuffer*>* buffers) {
         const LogicalBuffer& buffer = NewLogicalBuffer(hlo_instruction, index);
         buffers->push_back(&buffer);
-        return Status::OK();
-      }));
+      });
 
   if (ShapeUtil::IsTuple(hlo_instruction->shape())) {
     // If the hlo instruction is a tuple-shaped, then trivially the instruction
@@ -228,24 +222,23 @@ Status TuplePointsToAnalysis::HandleGetTupleElement(
 
   // Copy the points-to set (and tuple sources) at index {element_index} of the
   // operand to the points-to set for this GetTupleElement instruction.
-  TF_RETURN_IF_ERROR(points_to_set.ForEachMutableElement([&, this](
-      const ShapeIndex& target_index, bool /*is_leaf*/,
-      std::vector<const LogicalBuffer*>* points_to) {
-    // Construct an index into the operand by prepending element_index to the
-    // index for the GetTupleElement instruction's points-to set.
-    ShapeIndex src_index;
-    src_index.push_back(element_index);
-    for (auto element : target_index) {
-      src_index.push_back(element);
-    }
+  points_to_set.ForEachMutableElement(
+      [&, this](const ShapeIndex& target_index,
+                std::vector<const LogicalBuffer*>* points_to) {
+        // Construct an index into the operand by prepending element_index to
+        // the index for the GetTupleElement instruction's points-to set.
+        ShapeIndex src_index;
+        src_index.push_back(element_index);
+        for (auto element : target_index) {
+          src_index.push_back(element);
+        }
 
-    *points_to = operand_points_to_set.element(src_index);
-    for (HloInstruction* tuple :
-         operand_points_to_set.tuple_sources(src_index)) {
-      points_to_set.add_tuple_source(target_index, tuple);
-    }
-    return Status::OK();
-  }));
+        *points_to = operand_points_to_set.element(src_index);
+        for (HloInstruction* tuple :
+             operand_points_to_set.tuple_sources(src_index)) {
+          points_to_set.add_tuple_source(target_index, tuple);
+        }
+      });
 
   return Status::OK();
 }
@@ -286,9 +279,9 @@ Status TuplePointsToAnalysis::HandleTuple(
 
     // Copy the points-to set (and tuple sources) of the operand into the
     // respective subtree of the tuple instructions points-to set.
-    TF_RETURN_IF_ERROR(operand_points_to_set.ForEachElement(
+    operand_points_to_set.ForEachElement(
         [&points_to_set, &operand_points_to_set, i](
-            const ShapeIndex& src_index, bool /*is_leaf*/,
+            const ShapeIndex& src_index,
             const std::vector<const LogicalBuffer*>& points_to) {
           ShapeIndex target_index;
           target_index.push_back(i);
@@ -302,8 +295,7 @@ Status TuplePointsToAnalysis::HandleTuple(
                operand_points_to_set.tuple_sources(src_index)) {
             points_to_set.add_tuple_source(target_index, tuple);
           }
-          return Status::OK();
-        }));
+        });
   }
 
   points_to_set.add_tuple_source({}, tuple);
@@ -324,9 +316,8 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
   // add in elements of the on_false points-to set (tuple sources).
   PointsToSet& points_to_set = CreateCopiedPointsToSet(select, on_true);
   const PointsToSet& false_points_to_set = *FindOrDie(points_to_, on_false);
-  TF_RETURN_IF_ERROR(points_to_set.ForEachMutableElement(
-      [&](const ShapeIndex& index, bool /*is_leaf*/,
-          std::vector<const LogicalBuffer*>* buffers) {
+  points_to_set.ForEachMutableElement(
+      [&](const ShapeIndex& index, std::vector<const LogicalBuffer*>* buffers) {
         for (const LogicalBuffer* false_buffer :
              false_points_to_set.element(index)) {
           points_to_set.AddPointedToBuffer(*false_buffer, index);
@@ -335,8 +326,7 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
         for (HloInstruction* tuple : false_points_to_set.tuple_sources(index)) {
           points_to_set.add_tuple_source(index, tuple);
         }
-        return Status::OK();
-      }));
+      });
 
   // Select creates a new (top-level) buffer to store its result, so its
   // respective element in the points-to set should contain only itself.
@@ -344,12 +334,6 @@ Status TuplePointsToAnalysis::HandleSelect(HloInstruction* select,
   points_to_set.AddPointedToBuffer(NewLogicalBuffer(select, /*index=*/{}),
                                    /*index=*/{});
   return Status::OK();
-}
-
-Status TuplePointsToAnalysis::HandleFusion(HloInstruction* fusion) {
-  return ShapeUtil::IsTuple(fusion->shape())
-             ? Unimplemented("HandleFusion with tuple output")
-             : DefaultAction(fusion);
 }
 
 const PointsToSet& TuplePointsToAnalysis::GetPointsToSet(
@@ -428,28 +412,29 @@ TuplePointsToAnalysis::GetBuffersDefinedByInstruction(
 Status TuplePointsToAnalysis::GatherBuffersDefinedByInstruction(
     const HloInstruction* instruction,
     std::vector<const LogicalBuffer*>* buffers) {
-  return GetPointsToSet(instruction)
-      .ForEachElement([this, buffers, instruction](
-          const ShapeIndex& index, bool /*is_leaf*/,
-          const std::vector<const LogicalBuffer*>& source_buffers) {
-        // Add buffers which 'instruction' is the source of.
-        CHECK(!source_buffers.empty());
-        if (source_buffers.size() == 1 &&
-            source_buffers[0]->instruction() == instruction) {
-          // If this instruction is the source of this buffer the
-          // indices must match.
-          DCHECK(source_buffers[0]->index() == index);
-          buffers->push_back(source_buffers[0]);
-        } else {
-          // If the points-to set includes more than one buffer then
-          // necessarily this instruction did not produce the
-          // buffer.
-          for (const LogicalBuffer* source_buffer : source_buffers) {
-            DCHECK(source_buffer->instruction() != instruction);
-          }
-        }
-        return Status::OK();
-      });
+  GetPointsToSet(instruction)
+      .ForEachElement(
+          [this, buffers, instruction](
+              const ShapeIndex& index,
+              const std::vector<const LogicalBuffer*>& source_buffers) {
+            // Add buffers which 'instruction' is the source of.
+            CHECK(!source_buffers.empty());
+            if (source_buffers.size() == 1 &&
+                source_buffers[0]->instruction() == instruction) {
+              // If this instruction is the source of this buffer the
+              // indices must match.
+              DCHECK(source_buffers[0]->index() == index);
+              buffers->push_back(source_buffers[0]);
+            } else {
+              // If the points-to set includes more than one buffer then
+              // necessarily this instruction did not produce the
+              // buffer.
+              for (const LogicalBuffer* source_buffer : source_buffers) {
+                DCHECK(source_buffer->instruction() != instruction);
+              }
+            }
+          });
+  return Status::OK();
 }
 
 PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(
@@ -458,16 +443,14 @@ PointsToSet& TuplePointsToAnalysis::CreateCopiedPointsToSet(
   // from src PointsToSet.
   PointsToSet& dst_points_to_set = CreateEmptyPointsToSet(instruction);
   const PointsToSet& src_points_to_set = GetPointsToSet(src);
-  TF_CHECK_OK(dst_points_to_set.ForEachMutableElement(
+  dst_points_to_set.ForEachMutableElement(
       [this, &dst_points_to_set, &src_points_to_set](
-          const ShapeIndex& index, bool /*is_leaf*/,
-          std::vector<const LogicalBuffer*>* buffers) {
+          const ShapeIndex& index, std::vector<const LogicalBuffer*>* buffers) {
         *buffers = src_points_to_set.element(index);
         for (auto& tuple_source : src_points_to_set.tuple_sources(index)) {
           dst_points_to_set.add_tuple_source(index, tuple_source);
         }
-        return Status::OK();
-      }));
+      });
   return *FindOrDie(points_to_, instruction);
 }
 
@@ -482,9 +465,7 @@ string TuplePointsToAnalysis::ToString() const {
     for (const HloInstruction* instruction :
          computation->MakeInstructionPostOrder()) {
       InstructionToString(instruction, &output);
-      if (include_loop_fusion_instructions_ &&
-          instruction->opcode() == HloOpcode::kFusion &&
-          instruction->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+      if (instruction->opcode() == HloOpcode::kFusion) {
         for (auto& fused : instruction->fused_instructions()) {
           InstructionToString(fused.get(), &output);
         }
@@ -510,9 +491,10 @@ void TuplePointsToAnalysis::InstructionToString(
   tensorflow::strings::StrAppend(output, prefix, "  instruction ",
                                  instruction->ToShortString(), ":\n");
   const PointsToSet& points_to_set = GetPointsToSet(instruction);
-  TF_CHECK_OK(points_to_set.ForEachElement([&prefix, &output](
-      const ShapeIndex& index, bool /*is_leaf*/,
-      const std::vector<const LogicalBuffer*>& points_to) {
+  points_to_set.ForEachElement([&prefix, &output](
+                                   const ShapeIndex& index,
+                                   const std::vector<const LogicalBuffer*>&
+                                       points_to) {
     tensorflow::strings::StrAppend(
         output, prefix, "    {", tensorflow::str_util::Join(index, ","), "}: ",
         tensorflow::str_util::Join(
@@ -521,8 +503,7 @@ void TuplePointsToAnalysis::InstructionToString(
               out->append(source->ToString());
             }),
         "\n");
-    return Status::OK();
-  }));
+  });
 }
 
 }  // namespace xla

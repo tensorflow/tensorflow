@@ -22,6 +22,7 @@ import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
 import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/protobuf/device_properties.proto";
 
 // Description of an operation as well as the parameters expected to impact its
 // performance.
@@ -32,7 +33,7 @@ message OpInfo {
   // Custom parameters impacting the behavior of the op.
   map<string, AttrValue> attr = 2;
 
-  // Input types, shapes and values if known.
+  // Input data types, shapes and values if known.
   message TensorProperties {
     DataType dtype = 1;
     TensorShapeProto shape = 2;
@@ -40,37 +41,10 @@ message OpInfo {
   };
   repeated TensorProperties inputs = 3;
 
+  // Optional description of the op outputs
+  repeated TensorProperties outputs = 5;
+
   // Device on which the operation is run.
-  message DeviceProperties {
-    // Device type (CPU, GPU, ...)
-    string type = 1;
-    // Vendor (Intel, nvidia, ...)
-    string vendor = 2;
-    // Model (Haswell, K40, ...)
-    string model = 3;
-    // Core Frequency in Mhz
-    int64 frequency = 4;
-    // Number of cores
-    int64 num_cores = 5;
-    // Version of the tools and libraries used with this device (e.g. gcc 4.9,
-    // cudnn 5.1)
-    map<string, string> environment = 6;
-    // Number of registers per core.
-    int64 num_registers = 7;
-    // L1 cache size in bytes
-    int64 l1_cache_size = 8;
-    // L2 cache size in bytes
-    int64 l2_cache_size = 9;
-    // L3 cache size in bytes
-    int64 l3_cache_size = 10;
-    // Shared memory size per multiprocessor in bytes. This field is
-    // applicable to GPUs only.
-    int64 shared_memory_size_per_multiprocessor = 11;
-    // Memory size in bytes
-    int64 memory_size = 12;
-    // Memory bandwidth in KB/s
-    int64 bandwidth = 13;
-  }
   DeviceProperties device = 4;
 }
 

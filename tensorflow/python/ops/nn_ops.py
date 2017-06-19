@@ -964,8 +964,12 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
     ValueError: If input/output depth does not match `filters`' shape, or if
       padding is other than `'VALID'` or `'SAME'`.
   """
-  return convolution(input=value, filter=filters, padding=padding,
-                     dilation_rate=np.broadcast_to(rate, (2, )), name=name)
+  return convolution(
+      input=value,
+      filter=filters,
+      padding=padding,
+      dilation_rate=np.broadcast_to(rate, (2,)),
+      name=name)
 
 
 def conv2d_transpose(value,
@@ -1231,8 +1235,8 @@ def conv3d_transpose(value,
     axis = 1 if data_format == "NCDHW" else 4
     if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[4]):
       raise ValueError("input channels does not match filter's input channels, "
-                       "{} != {}".format(value.get_shape()[axis], filter.get_shape(
-                       )[4]))
+                       "{} != {}".format(value.get_shape()[axis],
+                                         filter.get_shape()[4]))
 
     output_shape_ = ops.convert_to_tensor(output_shape, name="output_shape")
     if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(5)):
@@ -1320,7 +1324,7 @@ def crelu(features, name=None):
   Concatenates a ReLU which selects only the positive part of the activation
   with a ReLU which selects only the *negative* part of the activation.
   Note that as a result this non-linearity doubles the depth of the activations.
-  Source: https://arxiv.org/abs/1603.05201
+  Source: [Understanding and Improving Convolutional Neural Networks via Concatenated Rectified Linear Units. W. Shang, et al.](https://arxiv.org/abs/1603.05201) 
 
   Args:
     features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
@@ -1338,6 +1342,7 @@ def crelu(features, name=None):
 
 def relu6(features, name=None):
   """Computes Rectified Linear 6: `min(max(features, 0), 6)`.
+  Source: [Convolutional Deep Belief Networks on CIFAR-10. A. Krizhevsky](http://www.cs.utoronto.ca/~kriz/conv-cifar10-aug2010.pdf)
 
   Args:
     features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
@@ -1529,8 +1534,9 @@ def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
   on `logits` internally for efficiency.  Do not call this op with the
   output of `softmax`, as it will produce incorrect results.
 
-  `logits` and `labels` must have the same shape `[batch_size, num_classes]`
-  and the same dtype (either `float16`, `float32`, or `float64`).
+  `logits` and `labels` must have the same shape, e.g.
+  `[batch_size, num_classes]` and the same dtype (either `float16`, `float32`,
+  or `float64`).
 
   **Note that to avoid confusion, it is required to pass only named arguments to
   this function.**

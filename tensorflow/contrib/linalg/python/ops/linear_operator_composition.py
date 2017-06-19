@@ -63,11 +63,11 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
   operator.shape
   ==> [2, 2]
 
-  operator.log_determinant()
+  operator.log_abs_determinant()
   ==> scalar Tensor
 
   x = ... Shape [2, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 4] Tensor
 
   # Create a [2, 3] batch of 4 x 5 linear operators.
@@ -79,11 +79,11 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
   operator_56 = LinearOperatorFullMatrix(matrix_56)
 
   # Compose to create a [2, 3] batch of 4 x 6 operators.
-  opeartor_46 = LinearOperatorComposition([operator_45, operator_56])
+  operator_46 = LinearOperatorComposition([operator_45, operator_56])
 
   # Create a shape [2, 3, 6, 2] vector.
   x = tf.random_normal(shape=[2, 3, 6, 2])
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [2, 3, 4, 2] Tensor
   ```
 
@@ -96,7 +96,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
   #### Matrix property hints
 
   This `LinearOperator` is initialized with boolean flags of the form `is_X`,
-  for `X = non_singular, self_adjoint, positive_definite`.
+  for `X = non_singular, self_adjoint, positive_definite, square`.
   These have the following meaning
   * If `is_X == True`, callers should expect the operator to have the
     property `X`.  This is a promise that should be fulfilled, but is *not* a
@@ -112,12 +112,13 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
+               is_square=None,
                name=None):
     r"""Initialize a `LinearOperatorComposition`.
 
     `LinearOperatorComposition` is initialized with a list of operators
-    `[op_1,...,op_J]`.  For the `apply` method to be well defined, the
-    composition `op_i.apply(op_{i+1}(x))` must be defined.  Other methods have
+    `[op_1,...,op_J]`.  For the `matmul` method to be well defined, the
+    composition `op_i.matmul(op_{i+1}(x))` must be defined.  Other methods have
     similar constraints.
 
     Args:
@@ -132,6 +133,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
         self-adjoint to be positive-definite.  See:
         https://en.wikipedia.org/wiki/Positive-definite_matrix\
             #Extension_for_non_symmetric_matrices
+      is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.  Default is the individual
         operators names joined with `_o_`.
 
@@ -177,6 +179,7 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
+          is_square=is_square,
           name=name)
 
   @property
@@ -225,19 +228,19 @@ class LinearOperatorComposition(linear_operator.LinearOperator):
 
     return array_ops.concat((batch_shape, matrix_shape), 0)
 
-  def _apply(self, x, adjoint=False, adjoint_arg=False):
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
     # If self.operators = [A, B], and not adjoint, then
-    # apply_order_list = [B, A].
-    # As a result, we return A.apply(B.apply(x))
+    # matmul_order_list = [B, A].
+    # As a result, we return A.matmul(B.matmul(x))
     if adjoint:
-      apply_order_list = self.operators
+      matmul_order_list = self.operators
     else:
-      apply_order_list = list(reversed(self.operators))
+      matmul_order_list = list(reversed(self.operators))
 
-    result = apply_order_list[0].apply(
+    result = matmul_order_list[0].matmul(
         x, adjoint=adjoint, adjoint_arg=adjoint_arg)
-    for operator in apply_order_list[1:]:
-      result = operator.apply(result, adjoint=adjoint)
+    for operator in matmul_order_list[1:]:
+      result = operator.matmul(result, adjoint=adjoint)
     return result
 
   def _determinant(self):

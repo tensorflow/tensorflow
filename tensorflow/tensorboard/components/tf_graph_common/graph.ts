@@ -723,7 +723,7 @@ export class MetaedgeImpl implements Metaedge {
       number {
     let opNode = <OpNode> h.node(edge.v);
     if (opNode.outputShapes == null) {
-      // No shape information. Asssume a single number. This gives
+      // No shape information. Assume a single number. This gives
       // a lower bound for the total size.
       return 1;
     }

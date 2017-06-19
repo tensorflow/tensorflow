@@ -9,7 +9,6 @@ exports_files(["LICENSE"])
 
 # For platform specific build config
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 tf_proto_library(
     name = "protos_all",
@@ -44,7 +43,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:lib",
-        "//tensorflow/tensorboard/plugins/projector:projector_plugin",
         "//tensorflow/tensorboard/plugins/projector:protos_all_py",
     ],
 )

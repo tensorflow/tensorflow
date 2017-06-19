@@ -89,9 +89,9 @@ class HloCostAnalysis : public DfsHloVisitor {
                           tensorflow::gtl::ArraySlice<HloInstruction*> operands,
                           tensorflow::StringPiece custom_call_target) override;
   Status HandleSlice(HloInstruction* slice, HloInstruction* operand) override;
-  Status HandleDynamicSlice(
-      HloInstruction* slice,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
+                            HloInstruction* operand,
+                            HloInstruction* start_indices) override;
   Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
                                   HloInstruction* operand,
                                   HloInstruction* update,
@@ -133,7 +133,7 @@ class HloCostAnalysis : public DfsHloVisitor {
   int64 bytes_accessed() const { return bytes_accessed_; }
 
  private:
-  // An FMA counts as two floating point operations in these analyses.
+  // An FMA counts as two floating point operations in these analyzes.
   static constexpr int64 kFmaFlops = 2;
 
   // Utility function to handle all element-wise operations.

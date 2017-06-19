@@ -32,6 +32,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.summary import summary
 from tensorflow.python.ops.control_flow_ops import with_dependencies
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training.session_run_hook import SessionRunArgs
 

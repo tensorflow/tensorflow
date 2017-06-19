@@ -70,6 +70,28 @@ public final class Operation {
     }
   }
 
+  /**
+   * Returns the size of the list of Tensors produced by this operation.
+   *
+   * <p>An Operation has multiple named outputs, each of which produces either
+   * a single tensor or a list of tensors. This method returns the size of
+   * the list of tensors for a specific named output of the operation.
+   *
+   * @param name identifier of the list of tensors (of which there may
+   *        be many) produced by this operation.
+   * @return the size of the list of Tensors produced by this named output.
+   * @throws IllegalArgumentException if this operation has no output
+   *         with the provided name.
+   */
+  public int outputListLength(final String name) {
+    Graph.Reference r = graph.ref();
+    try {
+      return outputListLength(unsafeNativeHandle, name);
+    } finally {
+      r.close();
+    }
+  }
+
   /** Returns a symbolic handle to one of the tensors produced by this operation. */
   public Output output(int idx) {
     return new Output(this, idx);
@@ -107,6 +129,8 @@ public final class Operation {
   private static native String type(long handle);
 
   private static native int numOutputs(long handle);
+
+  private static native int outputListLength(long handle, String name);
 
   private static native long[] shape(long graphHandle, long opHandle, int output);
 

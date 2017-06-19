@@ -1,6 +1,6 @@
 # TensorFlow Linear Model Tutorial
 
-In this tutorial, we will use the TF.Learn API in TensorFlow to solve a binary
+In this tutorial, we will use the tf.contrib.learn API in TensorFlow to solve a binary
 classification problem: Given census data about a person such as age, gender,
 education and occupation (the features), we will try to predict whether or not
 the person earns more than 50,000 dollars a year (the target label). We will
@@ -16,23 +16,20 @@ To try the code for this tutorial:
 
 2.  Download [the tutorial code](https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py).
 
-3.  Install the pandas data analysis library. tf.learn doesn't require pandas, but it does support it, and this tutorial uses pandas. To install pandas:
-    1. Get `pip`:
+3.  Install the pandas data analysis library. tf.contrib.learn doesn't require pandas, but it does support it, and this tutorial uses pandas. To install pandas:
 
-       ```shell
-       # Ubuntu/Linux 64-bit
-       $ sudo apt-get install python-pip python-dev
+    a. Get `pip`:
 
-       # Mac OS X
-       $ sudo easy_install pip
-       $ sudo easy_install --upgrade six
-       ```
+        # Ubuntu/Linux 64-bit
+        $ sudo apt-get install python-pip python-dev
 
-    2. Use `pip` to install pandas:
+        # Mac OS X
+        $ sudo easy_install pip
+        $ sudo easy_install --upgrade six
 
-       ```shell
-       $ sudo pip install pandas
-       ```
+    b. Use `pip` to install pandas:
+
+        $ sudo pip install pandas
 
     If you have trouble installing pandas, consult the
     [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
@@ -41,9 +38,7 @@ To try the code for this tutorial:
 4. Execute the tutorial code with the following command to train the linear
 model described in this tutorial:
 
-   ```shell
-   $ python wide_n_deep_tutorial.py --model_type=wide
-   ```
+        $ python wide_n_deep_tutorial.py --model_type=wide
 
 Read on to find out how this code builds its linear model.
 
@@ -61,8 +56,8 @@ import tempfile
 import urllib
 train_file = tempfile.NamedTemporaryFile()
 test_file = tempfile.NamedTemporaryFile()
-urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
-urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
+urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
+urllib.urlretrieve("https://archive.ics.uci.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
 ```
 
 Once the CSV files are downloaded, let's read them into
@@ -141,9 +136,9 @@ Here's a list of columns available in the Census Income dataset:
 
 ## Converting Data into Tensors
 
-When building a TF.Learn model, the input data is specified by means of an Input
+When building a tf.contrib.learn model, the input data is specified by means of an Input
 Builder function. This builder function will not be called until it is later
-passed to TF.Learn methods such as `fit` and `evaluate`. The purpose of this
+passed to tf.contrib.learn methods such as `fit` and `evaluate`. The purpose of this
 function is to construct the input data, which is represented in the form of
 @{tf.Tensor}s
 or
@@ -216,7 +211,7 @@ to predict the target label.
 ### Base Categorical Feature Columns
 
 To define a feature column for a categorical feature, we can create a
-`SparseColumn` using the TF.Learn API. If you know the set of all possible
+`SparseColumn` using the tf.contrib.learn API. If you know the set of all possible
 feature values of a column and there are only a few of them, you can use
 `sparse_column_with_keys`. Each key in the list will get assigned an
 auto-incremental ID starting from 0. For example, for the `gender` column we can
@@ -366,7 +361,7 @@ in `model_dir`.
 ## Training and Evaluating Our Model
 
 After adding all the features to the model, now let's look at how to actually
-train the model. Training a model is just a one-liner using the TF.Learn API:
+train the model. Training a model is just a one-liner using the tf.contrib.learn API:
 
 ```python
 m.fit(input_fn=train_input_fn, steps=200)
@@ -472,4 +467,4 @@ value would be high.
 
 If you're interested in learning more, check out our @{$wide_and_deep$Wide & Deep Learning Tutorial} where we'll show you how to combine
 the strengths of linear models and deep neural networks by jointly training them
-using the TF.Learn API.
+using the tf.contrib.learn API.

@@ -254,7 +254,7 @@ def checkpoints_iterator(checkpoint_dir,
         logging.info('Timed-out waiting for a checkpoint.')
         return
       if timeout_fn():
-        # The timeout_fn indicated that we are truely done.
+        # The timeout_fn indicated that we are truly done.
         return
       else:
         # The timeout_fn indicated that more checkpoints may come.
@@ -370,7 +370,7 @@ def evaluate_repeatedly(checkpoint_dir,
 
   One may also consider using a `tf.contrib.training.SummaryAtEndHook` to record
   summaries after the `eval_ops` have run. If `eval_ops` is `None`, the
-  summaries run immedietly after the model checkpoint has been restored.
+  summaries run immediately after the model checkpoint has been restored.
 
   Note that `evaluate_once` creates a local variable used to track the number of
   evaluations run via `tf.contrib.training.get_or_create_eval_step`.

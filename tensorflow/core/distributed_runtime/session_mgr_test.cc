@@ -27,8 +27,6 @@ class SessionMgrTest : public ::testing::Test {
   SessionMgrTest()
       : mgr_(&env_, "/job:mnist/replica:0/task:0",
              std::unique_ptr<WorkerCacheInterface>(),
-             std::unique_ptr<RendezvousMgrInterface>(new RpcRendezvousMgr(
-                 &env_, "/job:mnist/replica:0/task:0", nullptr)),
              factory_),
         legacy_session_(mgr_.WorkerSessionForSession("novel_session_id")) {}
 
@@ -48,88 +46,17 @@ TEST_F(SessionMgrTest, CreateSessionSimple) {
   TF_EXPECT_OK(mgr_.CreateSession(session_handle, server_def));
   WorkerSession* session = mgr_.WorkerSessionForSession(session_handle);
   EXPECT_NE(nullptr, session) << "Session for " << session_handle << "was null";
-
+  EXPECT_NE(mgr_.LegacySession(), session);
   TF_EXPECT_OK(mgr_.DeleteSession(session_handle));
 }
 
-TEST_F(SessionMgrTest, AssociateGraphWithSession) {
+TEST_F(SessionMgrTest, LegacySession) {
   ServerDef server_def;
-  string session_handle = "test_session_handle";
-  TF_EXPECT_OK(mgr_.CreateSession(session_handle, server_def));
+  string session_handle = "";
   WorkerSession* session = mgr_.WorkerSessionForSession(session_handle);
-  ASSERT_NE(nullptr, session) << "Session for " << session_handle << "was null";
-
-  string graph_handle = "test_graph_handle";
-  mgr_.AssociateGraphWithSession(session_handle, graph_handle);
-  WorkerSession* graph_session = mgr_.WorkerSessionForGraphHandle(graph_handle);
-  ASSERT_EQ(session, graph_session);
+  EXPECT_EQ(mgr_.LegacySession(), session);
 
   TF_EXPECT_OK(mgr_.DeleteSession(session_handle));
-}
-
-TEST_F(SessionMgrTest, AssociateStepWithGraph) {
-  ServerDef server_def;
-  string session_handle = "test_session_handle";
-  TF_EXPECT_OK(mgr_.CreateSession(session_handle, server_def));
-  WorkerSession* session = mgr_.WorkerSessionForSession(session_handle);
-  ASSERT_NE(nullptr, session) << "Session for " << session_handle << "was null";
-
-  string graph_handle = "test_graph_handle";
-  mgr_.AssociateGraphWithSession(session_handle, graph_handle);
-  WorkerSession* graph_session = mgr_.WorkerSessionForGraphHandle(graph_handle);
-  ASSERT_EQ(session, graph_session);
-
-  int64 step_id = 1234567890L;
-  mgr_.AssociateStepIdWithGraph(graph_handle, step_id);
-  WorkerSession* step_session = mgr_.WorkerSessionForStepId(step_id);
-  ASSERT_EQ(session, step_session);
-  ASSERT_EQ(graph_session, step_session);
-
-  TF_EXPECT_OK(mgr_.DeleteSession(session_handle));
-}
-
-TEST_F(SessionMgrTest, AssociateGraphWithSession_MissingSession) {
-  string session_handle = "test_session_handle";
-  string graph_handle = "test_graph_handle";
-  mgr_.AssociateGraphWithSession(session_handle, graph_handle);
-  WorkerSession* graph_session = mgr_.WorkerSessionForGraphHandle(graph_handle);
-  ASSERT_EQ(legacy_session_, graph_session);
-}
-
-TEST_F(SessionMgrTest, AssociateStepWithGraph_MissingGraph) {
-  ServerDef server_def;
-  string session_handle = "test_session_handle";
-  TF_EXPECT_OK(mgr_.CreateSession(session_handle, server_def));
-  WorkerSession* session = mgr_.WorkerSessionForSession(session_handle);
-  ASSERT_NE(nullptr, session) << "Session for " << session_handle << "was null";
-
-  string graph_handle = "test_graph_handle";
-  int64 step_id = 1234567890L;
-  mgr_.AssociateStepIdWithGraph(graph_handle, step_id);
-  WorkerSession* step_session = mgr_.WorkerSessionForStepId(step_id);
-  ASSERT_EQ(legacy_session_, step_session);
-}
-
-TEST_F(SessionMgrTest, AssociateStepWithGraph_MissingSession) {
-  string session_handle = "test_session_handle";
-  string graph_handle = "test_graph_handle";
-  mgr_.AssociateGraphWithSession(session_handle, graph_handle);
-  WorkerSession* graph_session = mgr_.WorkerSessionForGraphHandle(graph_handle);
-  ASSERT_EQ(legacy_session_, graph_session);
-
-  int64 step_id = 1234567890L;
-  mgr_.AssociateStepIdWithGraph(graph_handle, step_id);
-  WorkerSession* step_session = mgr_.WorkerSessionForStepId(step_id);
-  ASSERT_EQ(legacy_session_, step_session);
-}
-
-TEST_F(SessionMgrTest, AssociateStepWithGraph_MissingSessionAndGraph) {
-  string session_handle = "test_session_handle";
-  string graph_handle = "test_graph_handle";
-  int64 step_id = 1234567890L;
-  mgr_.AssociateStepIdWithGraph(graph_handle, step_id);
-  WorkerSession* step_session = mgr_.WorkerSessionForStepId(step_id);
-  ASSERT_EQ(legacy_session_, step_session);
 }
 
 TEST_F(SessionMgrTest, WorkerNameFromServerDef) {

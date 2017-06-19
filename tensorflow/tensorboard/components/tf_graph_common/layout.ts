@@ -103,7 +103,9 @@ export const PARAMS = {
       width: 60,
       maxLabelWidth: 52,
       /** A scale for the node's height based on number of nodes inside */
-      height: d3.scale.linear().domain([1, 200]).range([15, 60]).clamp(true),
+      // Hack - set this as an any type to avoid issues in exporting a type
+      // from an external module.
+      height: (d3 as any).scaleLinear().domain([1, 200]).range([15, 60]).clamp(true),
       /** The radius of the circle denoting the expand button. */
       expandButtonRadius: 3
     },
@@ -604,7 +606,7 @@ function layoutAnnotation(renderNodeInfo: render.RenderNodeInfo): void {
           inboxHeight / 2);
   inTouchHeight = inTouchHeight < 0 ? 0 : inTouchHeight;
 
-  let inY = d3.scale.linear()
+  let inY = d3.scaleLinear()
     .domain([0, inAnnotations.length - 1])
     .range([-inTouchHeight, inTouchHeight]);
 
@@ -633,7 +635,7 @@ function layoutAnnotation(renderNodeInfo: render.RenderNodeInfo): void {
       Math.min(renderNodeInfo.height / 2 - renderNodeInfo.radius,
           outboxHeight / 2);
   outTouchHeight = outTouchHeight < 0 ? 0 : outTouchHeight;
-  let outY = d3.scale.linear()
+  let outY = d3.scaleLinear()
     .domain([0, outAnnotations.length - 1])
     .range([-outTouchHeight, outTouchHeight]);
 

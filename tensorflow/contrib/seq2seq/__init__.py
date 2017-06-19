@@ -16,36 +16,6 @@
 """Ops for building neural network seq2seq decoders and losses.
 
 See the @{$python/contrib.seq2seq} guide.
-
-@@Decoder
-@@dynamic_decode
-
-@@BasicDecoderOutput
-@@BasicDecoder
-
-@@BeamSearchDecoderOutput
-@@BeamSearchDecoderState
-@@BeamSearchDecoder
-@@FinalBeamSearchDecoderOutput
-
-@@Helper
-@@CustomHelper
-@@GreedyEmbeddingHelper
-@@ScheduledEmbeddingTrainingHelper
-@@ScheduledOutputTrainingHelper
-@@TrainingHelper
-
-@@BahdanauAttention
-@@LuongAttention
-
-@@hardmax
-
-@@AttentionWrapperState
-@@AttentionWrapper
-
-@@gather_tree
-
-@@tile_batch
 """
 
 from __future__ import absolute_import
@@ -63,6 +33,31 @@ from tensorflow.contrib.seq2seq.python.ops.loss import *
 from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,widcard-import,line-too-long
 
-_allowed_symbols = ["sequence_loss"]
+_allowed_symbols = [
+    "sequence_loss",
+    "Decoder",
+    "dynamic_decode",
+    "BasicDecoder",
+    "BasicDecoderOutput",
+    "BeamSearchDecoder",
+    "BeamSearchDecoderOutput",
+    "BeamSearchDecoderState",
+    "Helper",
+    "CustomHelper",
+    "FinalBeamSearchDecoderOutput",
+    "gather_tree",
+    "GreedyEmbeddingHelper",
+    "SampleEmbeddingHelper",
+    "ScheduledEmbeddingTrainingHelper",
+    "ScheduledOutputTrainingHelper",
+    "TrainingHelper",
+    "BahdanauAttention",
+    "LuongAttention",
+    "hardmax",
+    "AttentionWrapperState",
+    "AttentionWrapper",
+    "AttentionMechanism",
+    "tile_batch"]
+
 
 remove_undocumented(__name__, _allowed_symbols)

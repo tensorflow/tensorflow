@@ -125,7 +125,7 @@ export class DataSet {
    * This keeps a list of all current projections so you can easily test to see
    * if it's been calculated already.
    */
-  projections = d3.set();
+  projections: {[projection: string]: boolean} = {};
   nearest: knn.NearestEntry[][];
   nearestK: number;
   tSNEIteration: number = 0;
@@ -241,7 +241,7 @@ export class DataSet {
 
   /** Projects the dataset onto a given vector and caches the result. */
   projectLinear(dir: vector.Vector, label: string) {
-    this.projections.add(label);
+    this.projections[label] = true;
     this.points.forEach(dataPoint => {
       dataPoint.projections[label] = vector.dot(dataPoint.vector, dir);
     });
@@ -249,7 +249,7 @@ export class DataSet {
 
   /** Projects the dataset along the top 10 principal components. */
   projectPCA(): Promise<void> {
-    if (this.projections.has('pca-0')) {
+    if (this.projections['pca-0'] != null) {
       return Promise.resolve<void>(null);
     }
     return util.runAsyncTask('Computing PCA...', () => {
@@ -290,7 +290,7 @@ export class DataSet {
       });
       for (let d = 0; d < NUM_PCA_COMPONENTS; d++) {
         let label = 'pca-' + d;
-        this.projections.add(label);
+        this.projections[label] = true;
         for (let i = 0; i < pcaVectors.length; i++) {
           let pointIndex = this.shuffledDataIndices[i];
           this.points[pointIndex].projections[label] = pcaVectors[i][d];

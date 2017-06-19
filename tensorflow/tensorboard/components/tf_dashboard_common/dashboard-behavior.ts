@@ -13,28 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-module TF.Dashboard {
-  /**
-   * A behavior that TensorBoard dashboards must implement. This behavior serves
-   * the purpose of an interface.
-   */
-  export function DashboardBehavior(dashboardName) {
-    return {
-      properties: {
-        name: {
-          type: String,
-          value: dashboardName,
-          readOnly: true,
-        },
+/**
+ * A behavior that TensorBoard dashboards must implement. This behavior serves
+ * the purpose of an interface.
+ *
+ * @polymerBehavior
+ */
+export function DashboardBehavior(dashboardName) {
+  return {
+    properties: {
+      name: {
+        type: String,
+        value: dashboardName,
+        readOnly: true,
       },
-      // This method is called when the dashboard reloads, either when the
-      // dashboard is first visited, periodically reloaded, or manually reloaded
-      // via the user clicking the button. Note that dashboard custom elements
-      // that use TF.Dashboard.ReloadBehavior already implement a reload method.
-      reload() {
-        throw Error(
-            'The ' + dashboardName + ' dashboard does not implement reload.');
-      },
-    };
-  }
+    },
+    // This method is called when the dashboard reloads, either when the
+    // dashboard is first visited, periodically reloaded, or manually reloaded
+    // via the user clicking the button. Note that dashboard custom elements
+    // that use TF.Dashboard.ReloadBehavior already implement a reload method.
+    reload() {
+      throw Error(
+          'The ' + dashboardName + ' dashboard does not implement reload.');
+    },
+  };
 }

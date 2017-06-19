@@ -23,10 +23,13 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "tensorflow/compiler/xla/service/heap_simulator.h"
+#include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
+#include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -56,11 +59,12 @@ class BufferAllocation {
   using Index = int64;
 
   BufferAllocation(Index index, int64 size, bool is_thread_local,
-                   bool is_reusable)
+                   bool is_reusable, LogicalBuffer::Color color)
       : index_(index),
         size_(size),
         is_thread_local_(is_thread_local),
-        is_reusable_(is_reusable) {}
+        is_reusable_(is_reusable),
+        color_(color) {}
   ~BufferAllocation() {}
 
   // Returns the index of this allocation.
@@ -94,6 +98,10 @@ class BufferAllocation {
   // Returns the size of the allocation. Necessarily this must be at least as
   // large as any LogicalBuffer assigned to this allocation.
   int64 size() const { return size_; }
+
+  // Returns the color of the allocation. Only logical buffers with a matching
+  // color can reside in this allocation.
+  LogicalBuffer::Color color() const { return color_; }
 
   struct OffsetSize {
     int64 offset = 0;
@@ -158,6 +166,7 @@ class BufferAllocation {
   Slice GetSlice(const LogicalBuffer& buffer) const;
 
   string ToString() const;
+  BufferAllocationProto ToProto() const;
 
   // Whether the buffer is a parameter to or live out of the entry computation.
   bool IsInputOrOutput() const {
@@ -214,6 +223,9 @@ class BufferAllocation {
   // Whether this buffer is usable by more than one logical buffer.
   bool is_reusable_;
 
+  // Color of the allocation.
+  LogicalBuffer::Color color_;
+
   // Whether this allocation holds an entry computation parameter. Entry
   // computation parameters are special be cause they have lifetimes which may
   // outlast the computation.
@@ -247,10 +259,10 @@ class BufferAssignment {
     return allocations_;
   }
 
-  // Returns the single allocation holding all temporary buffers.  Returns
-  // nullptr if there are no temporary buffers, or if the assignment uses more
-  // than one allocation to hold temporary buffers.
-  const BufferAllocation* GetTempAllocation() const { return temp_allocation_; }
+  // Returns the total size allocation holding all temporary buffers.
+  int64 temp_allocation_total_size() const {
+    return temp_allocation_total_size_;
+  }
 
   // Returns whether the given buffer has been assigned an allocation.
   bool HasAllocation(const LogicalBuffer& buffer) const;
@@ -308,7 +320,11 @@ class BufferAssignment {
     return liveness_->points_to_analysis();
   }
 
+  // Returns the BufferLiveness object used to construct this assignment.
+  const BufferLiveness& liveness() const { return *liveness_; }
+
   string ToString() const;
+  BufferAssignmentProto ToProto() const;
 
   // Statistics for the assignment.  Values initialized to -1 are not always
   // collected; fragmentation is only collected for instructions that have a
@@ -335,15 +351,18 @@ class BufferAssignment {
 
   explicit BufferAssignment(const HloModule* module,
                             std::unique_ptr<BufferLiveness> liveness,
-                            int64 alignment)
+                            int64 alignment,
+                            LogicalBuffer::SizeFunction buffer_size)
       : module_(module),
         liveness_(std::move(liveness)),
-        alignment_(alignment) {}
+        alignment_(alignment),
+        buffer_size_(std::move(buffer_size)) {}
 
   // Creates and returns a new BufferAllocation, with no assigned
   // LogicalBuffers. Ownership is maintained internally.
   BufferAllocation* NewEmptyAllocation(int64 size, bool is_thread_local,
-                                       bool is_reusable);
+                                       bool is_reusable,
+                                       LogicalBuffer::Color color);
 
   // Helper that calls NewEmptyAllocation and AddAssignment in one call,
   // creating an allocation containing a single LogicalBuffer.
@@ -354,8 +373,8 @@ class BufferAssignment {
   void AddAssignment(BufferAllocation* allocation, const LogicalBuffer& buffer,
                      int64 offset, int64 size);
 
-  // Returns the BufferLiveness object used to construct this assignment.
-  const BufferLiveness& liveness() { return *liveness_; }
+  // Returns the HloModule used to construct this assignment.
+  const HloModule& module() const { return *module_; }
 
   // Convenience function which returns the PointsToSet for the given
   // instruction. Extracted from the liveness object.
@@ -369,13 +388,13 @@ class BufferAssignment {
   void CombineTempAllocations();
 
   // Computes stats for the assignment, to be retrieved by GetStats.
-  Status ComputeSummaryStats(const LogicalBuffer::SizeFunction& buffer_size);
+  Status ComputeSummaryStats();
 
   // The vector of buffer allocations. Indexed by BufferAllocation::Index.
   std::vector<BufferAllocation> allocations_;
 
-  // The single allocation holding all temporary buffers.
-  BufferAllocation* temp_allocation_ = nullptr;
+  // The total size of all temporary buffers.
+  int64 temp_allocation_total_size_ = 0;
 
   // Maps Buffers to the index of the BufferAllocation which holds the buffer.
   tensorflow::gtl::FlatMap<const LogicalBuffer*, BufferAllocation::Index>
@@ -385,7 +404,11 @@ class BufferAssignment {
   const std::unique_ptr<BufferLiveness> liveness_;
   const int64 alignment_;
 
+  // Function which returns the buffer size for a given logical buffer (shape).
+  LogicalBuffer::SizeFunction buffer_size_;
+
   Stats stats_;
+  std::vector<HeapSimulatorTrace> heap_simulator_traces_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssignment);
 };
@@ -395,46 +418,60 @@ class BufferAssigner {
  public:
   // Build and return a BufferAssignment for the given module. The given
   // HloOrdering is used to determine buffer liveness. buffer_size is a function
-  // which returns the size of a LogicalBuffer. Alignment is the the minimum
-  // alignment of any buffer. If hlos_to_allocate is not null then only
-  // instructions in this vector are considered for buffer assignment. If
-  // hlos_to_allocate is null then all instructions are considered.
+  // which returns the size of a LogicalBuffer. Alignment is the minimum
+  // alignment of any buffer. allow_input_output_aliasing specifies whether
+  // input buffer are allowed to be reused as outbut buffers by the client code.
   static StatusOr<std::unique_ptr<BufferAssignment>> Run(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
       LogicalBuffer::SizeFunction buffer_size, int64 alignment,
-      const std::vector<const HloInstruction*>* hlos_to_allocate = nullptr);
+      bool allow_input_output_aliasing = false,
+      TuplePointsToAnalysis::Colorer colorer =
+          TuplePointsToAnalysis::DefaultColorer());
 
  private:
-  explicit BufferAssigner(LogicalBuffer::SizeFunction buffer_size,
-                          int64 alignment)
-      : buffer_size_(std::move(buffer_size)), alignment_(alignment) {}
+  BufferAssigner(int64 alignment, bool allow_input_output_aliasing,
+                 TuplePointsToAnalysis::Colorer colorer)
+      : alignment_(alignment),
+        allow_input_output_aliasing_(allow_input_output_aliasing),
+        colorer_(colorer) {}
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
   StatusOr<std::unique_ptr<BufferAssignment>> CreateAssignment(
       const HloModule* module, std::unique_ptr<HloOrdering> hlo_ordering,
-      const std::vector<const HloInstruction*>* hlos_to_allocate = nullptr);
+      LogicalBuffer::SizeFunction buffer_size);
 
   // Assigns buffers to the instructions in the given computation. "assignment"
   // is modified to reflect the new buffer assignments. If is_thread_local is
   // true, then all assigned buffers have the is_thread_local flag set to
-  // true. If hlos_to_allocate is not null it indicates which HLOs to include in
-  // buffer assignment. If null, all instructions in the computation are
-  // included.
+  // true.
   Status AssignBuffersForComputation(
       const HloComputation* computation, bool is_thread_local,
-      const tensorflow::gtl::FlatSet<const HloInstruction*>* hlos_to_allocate,
       const tensorflow::gtl::FlatSet<const LogicalBuffer*>& colocated_buffers,
       const tensorflow::gtl::FlatSet<BufferAllocation::Index>&
           colocated_allocations,
+      tensorflow::gtl::FlatMap<const HloComputation*,
+                               tensorflow::gtl::FlatSet<const LogicalBuffer*>>*
+          buffers_to_assign_sequentially,
       BufferAssignment* assignment);
 
-  // Assigns 'buffers_to_assign' assuming the HLO instructions will be executed
-  // in the given 'sequential_order'.
+  // Assigns 'buffers_to_assign_sequentially' using heap simulation, assuming
+  // the HLO instructions will be executed in the sequential order given by
+  // assignment->liveness().hlo_ordering().SequentialOrder. If
+  // 'run_whole_module_heap_simulation' is true, the heap simulation will be run
+  // assuming all global computations are sequentially ordered.
   Status AssignBuffersWithSequentialOrdering(
-      const std::vector<const HloInstruction*>& sequential_order,
-      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& buffers_to_assign,
-      const HloComputation& computation, BufferAssignment* assignment);
+      const tensorflow::gtl::FlatMap<
+          const HloComputation*,
+          tensorflow::gtl::FlatSet<const LogicalBuffer*>>&
+          buffers_to_assign_sequentially,
+      bool run_whole_module_heap_simulation, BufferAssignment* assignment);
+
+  // Uses the results of the heap simulator to create a single allocation, with
+  // LogicalBuffers packed to specific offsets.
+  void AssignBuffersFromHeapSimulator(const HeapSimulator::Result& result,
+                                      BufferAssignment* assignment,
+                                      LogicalBuffer::Color color);
 
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.
@@ -453,6 +490,7 @@ class BufferAssigner {
   // which should be colocated in the same buffer allocation.
   void BuildColocatedBufferSets(
       const HloModule* module, const BufferLiveness& buffer_liveness,
+      const LogicalBuffer::SizeFunction& buffer_size,
       std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
   // For each buffer set in 'colocated_buffer_sets', assigns all buffers in the
@@ -475,15 +513,26 @@ class BufferAssigner {
       const std::vector<const LogicalBuffer*>& colocated_set,
       const LogicalBuffer* while_init_buffer, const HloInstruction* while_hlo,
       const HloComputation& computation, const BufferLiveness& buffer_liveness,
+      const LogicalBuffer::SizeFunction& buffer_size,
       std::vector<ColocatedBufferSet>* colocated_buffer_sets);
 
-  const HloModule* module_;
-
-  // Function which returns the buffer size for a given logical buffer (shape).
-  LogicalBuffer::SizeFunction buffer_size_;
+  // Split a set of buffers into several sets, each of which contains buffers
+  // colored with the same color.
+  tensorflow::gtl::FlatMap<LogicalBuffer::Color,
+                           tensorflow::gtl::FlatSet<const LogicalBuffer*>,
+                           LogicalBuffer::Color::Hasher>
+  SplitBuffersByColor(
+      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& buffers);
 
   // Minimum alignment of any buffer.
   int64 alignment_;
+
+  // If true, buffer assignments assumes that input parameter buffers and output
+  // buffers can be shared if their sizes match.
+  bool allow_input_output_aliasing_;
+
+  // Functor used to assign colors to newly allocated logical buffers.
+  TuplePointsToAnalysis::Colorer colorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };

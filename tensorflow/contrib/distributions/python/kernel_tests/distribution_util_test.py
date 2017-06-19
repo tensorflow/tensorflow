@@ -24,9 +24,11 @@ import numpy as np
 from scipy import special
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.linalg.python.ops import linear_operator_diag
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -126,6 +128,80 @@ class AssertCloseTest(test.TestCase):
         with ops.control_dependencies(
             [distribution_util.assert_integer_form(w)]):
           array_ops.identity(w).eval(feed_dict=feed_dict)
+
+
+class ShapesFromLocAndScaleTest(test.TestCase):
+
+  def test_static_loc_static_scale_non_matching_event_size_raises(self):
+    loc = constant_op.constant(np.zeros((2, 4)))
+    scale = linear_operator_diag.LinearOperatorDiag(np.ones((5, 1, 3)))
+    with self.assertRaisesRegexp(ValueError, "could not be broadcast"):
+      distribution_util.shapes_from_loc_and_scale(loc, scale)
+
+  def test_static_loc_static_scale(self):
+    loc = constant_op.constant(np.zeros((2, 3)))
+    scale = linear_operator_diag.LinearOperatorDiag(np.ones((5, 1, 3)))
+    batch_shape, event_shape = distribution_util.shapes_from_loc_and_scale(
+        loc, scale)
+
+    self.assertEqual(tensor_shape.TensorShape([5, 2]), batch_shape)
+    self.assertEqual(tensor_shape.TensorShape([3]), event_shape)
+
+  def test_static_loc_dynamic_scale(self):
+    loc = constant_op.constant(np.zeros((2, 3)))
+    diag = array_ops.placeholder(dtypes.float64)
+    scale = linear_operator_diag.LinearOperatorDiag(diag)
+    with self.test_session() as sess:
+      batch_shape, event_shape = sess.run(
+          distribution_util.shapes_from_loc_and_scale(loc, scale),
+          feed_dict={diag: np.ones((5, 1, 3))})
+      self.assertAllEqual([5, 2], batch_shape)
+      self.assertAllEqual([3], event_shape)
+
+  def test_dynamic_loc_static_scale(self):
+    loc = array_ops.placeholder(dtypes.float64)
+    diag = constant_op.constant(np.ones((5, 2, 3)))
+    scale = linear_operator_diag.LinearOperatorDiag(diag)
+    with self.test_session():
+      batch_shape, event_shape = distribution_util.shapes_from_loc_and_scale(
+          loc, scale)
+      # batch_shape depends on both args, and so is dynamic.  Since loc did not
+      # have static shape, we inferred event shape entirely from scale, and this
+      # is available statically.
+      self.assertAllEqual(
+          [5, 2], batch_shape.eval(feed_dict={loc: np.zeros((2, 3))}))
+      self.assertAllEqual([3], event_shape)
+
+  def test_dynamic_loc_dynamic_scale(self):
+    loc = array_ops.placeholder(dtypes.float64)
+    diag = array_ops.placeholder(dtypes.float64)
+    scale = linear_operator_diag.LinearOperatorDiag(diag)
+    with self.test_session() as sess:
+      batch_shape, event_shape = sess.run(
+          distribution_util.shapes_from_loc_and_scale(loc, scale),
+          feed_dict={diag: np.ones((5, 2, 3)), loc: np.zeros((2, 3))})
+      self.assertAllEqual([5, 2], batch_shape)
+      self.assertAllEqual([3], event_shape)
+
+  def test_none_loc_static_scale(self):
+    loc = None
+    scale = linear_operator_diag.LinearOperatorDiag(np.ones((5, 1, 3)))
+    batch_shape, event_shape = distribution_util.shapes_from_loc_and_scale(
+        loc, scale)
+
+    self.assertEqual(tensor_shape.TensorShape([5, 1]), batch_shape)
+    self.assertEqual(tensor_shape.TensorShape([3]), event_shape)
+
+  def test_none_loc_dynamic_scale(self):
+    loc = None
+    diag = array_ops.placeholder(dtypes.float64)
+    scale = linear_operator_diag.LinearOperatorDiag(diag)
+    with self.test_session() as sess:
+      batch_shape, event_shape = sess.run(
+          distribution_util.shapes_from_loc_and_scale(loc, scale),
+          feed_dict={diag: np.ones((5, 1, 3))})
+      self.assertAllEqual([5, 1], batch_shape)
+      self.assertAllEqual([3], event_shape)
 
 
 class GetLogitsAndProbsTest(test.TestCase):

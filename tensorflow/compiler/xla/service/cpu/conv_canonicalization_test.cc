@@ -81,7 +81,7 @@ TEST_F(ConvCanonicalizationTest, NonCanonicalToCanonical) {
           F32, {kOutputFeatureCount, kBatchSize, output_size, output_size}),
       input, kernel, conv_window_, dnums));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
 
@@ -135,7 +135,7 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
           F32, {kBatchSize, output_size, output_size, kOutputFeatureCount}),
       input, kernel, conv_window_, dnums));
 
-  auto module = MakeUnique<HloModule>(TestName());
+  auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
 
   ConvCanonicalization conv_canonicalization;
@@ -144,3 +144,7 @@ TEST_F(ConvCanonicalizationTest, CanonicalStaysTheSame) {
 
 }  // namespace cpu
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

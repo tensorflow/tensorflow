@@ -56,5 +56,25 @@ void Cluster::DisableDetailedStats(bool disable) {
   }
 }
 
+void Cluster::DisableOptimizer(bool disable) {
+  OptimizerOptions* options =
+      options_.config.mutable_graph_options()->mutable_optimizer_options();
+  if (disable) {
+    options->set_opt_level(OptimizerOptions::L0);
+  } else {
+    options->set_opt_level(OptimizerOptions::L1);
+  }
+}
+
+const std::vector<string> Cluster::GetDeviceNames() const {
+  std::vector<string> device_names;
+  device_names.reserve(devices_.size());
+  for (const auto& device : devices_) {
+    device_names.push_back(device.first);
+  }
+  std::sort(device_names.begin(), device_names.end());
+  return device_names;
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

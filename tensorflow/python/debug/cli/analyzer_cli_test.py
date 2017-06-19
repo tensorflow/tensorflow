@@ -498,7 +498,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
     cls._is_gpu_available = test.is_gpu_available()
     if cls._is_gpu_available:
-      cls._main_device = "/job:localhost/replica:0/task:0/gpu:0"
+      gpu_name = test_util.gpu_device_name()
+      cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 
@@ -1461,7 +1462,8 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
 
     cls._is_gpu_available = test.is_gpu_available()
     if cls._is_gpu_available:
-      cls._main_device = "/job:localhost/replica:0/task:0/gpu:0"
+      gpu_name = test_util.gpu_device_name()
+      cls._main_device = "/job:localhost/replica:0/task:0" + gpu_name
     else:
       cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
 

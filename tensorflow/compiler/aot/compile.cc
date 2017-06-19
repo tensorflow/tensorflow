@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -200,17 +200,17 @@ Status RewriteAndPruneGraph(Graph* graph, const Config& config,
   for (const Fetch& fetch : config.fetch()) {
     missing_fetches.insert(TensorIdToString(fetch.id()));
   }
-  for (const Node* n : graph->nodes()) {
+  for (const Node* n : graph->op_nodes()) {
     if (n->type_string() == kArgOp) {
       string feed_id;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), kFeedIdAttr, &feed_id));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFeedIdAttr, &feed_id));
       if (missing_feeds.erase(feed_id) == 0) {
         return errors::Aborted(kArgOp,
                                " node found with unknown feed id: ", feed_id);
       }
     } else if (n->type_string() == kRetvalOp) {
       string fetch_id;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), kFetchIdAttr, &fetch_id));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), kFetchIdAttr, &fetch_id));
       if (missing_fetches.erase(fetch_id) == 0) {
         return errors::Aborted(kRetvalOp,
                                " node found with unknown fetch id: ", fetch_id);
@@ -234,7 +234,7 @@ Status CollectArgNodes(const Graph& graph, std::vector<Node*>* arg_nodes) {
   for (Node* n : graph.nodes()) {
     if (n->type_string() == kArgOp) {
       int index;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->def(), "index", &index));
+      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       auto insert_result = indexed_arg_nodes.insert({index, n});
       if (!insert_result.second) {
         const Node* dup = insert_result.first->second;
@@ -264,9 +264,9 @@ Status CreateXlaArgs(const Graph& graph,
   for (const Node* node : arg_nodes) {
     XlaCompiler::Argument arg;
     arg.kind = XlaCompiler::Argument::kParameter;
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), "T", &arg.type));
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kShapeAttr, &arg.shape));
-    TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), kDebugNameAttr, &arg.name));
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), "T", &arg.type));
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kShapeAttr, &arg.shape));
+    TF_RETURN_IF_ERROR(GetNodeAttr(node->attrs(), kDebugNameAttr, &arg.name));
     xla_args->push_back(arg);
   }
   return Status::OK();
@@ -274,7 +274,8 @@ Status CreateXlaArgs(const Graph& graph,
 
 // Converts the TensorFlow graph into an XLA computation, by executing the
 // graph symbolically, with each op building up the XLA HLO.
-Status ConvertGraphToXla(xla::LocalClient* client, std::unique_ptr<Graph> graph,
+Status ConvertGraphToXla(xla::CompileOnlyClient* client,
+                         std::unique_ptr<Graph> graph,
                          xla::Computation* computation, bool* has_context_arg) {
   // Create a device and context to convert the graph into an XLA computation.
   XlaOpRegistry::RegisterCompilationKernels();
@@ -288,18 +289,19 @@ Status ConvertGraphToXla(xla::LocalClient* client, std::unique_ptr<Graph> graph,
   // Compile the graph into an XLA computation.
   XlaCompiler::Options compiler_options;
   compiler_options.client = client;
-  compiler_options.device_type = DeviceType(DEVICE_CPU_XLA_JIT);
+  DeviceType device_type(DEVICE_CPU_XLA_JIT);
+  compiler_options.device_type = &device_type;
+  compiler_options.flib_def = &graph->flib_def();
+  compiler_options.graph_def_version = graph->versions().producer();
   compiler_options.allow_cpu_custom_calls = true;
   XlaCompiler compiler(compiler_options);
 
-  std::unique_ptr<FunctionLibraryRuntime> flib_run(NewFunctionLibraryRuntime(
-      compiler.device_mgr(), Env::Default(), compiler.device(),
-      graph->versions().producer(), &graph->flib_def(), OptimizerOptions()));
   XlaCompiler::CompilationResult result;
-  TF_RETURN_IF_ERROR(compiler.CompileGraph("tfcompile", std::move(graph),
-                                           flib_run.get(), xla_args, &result));
+  TF_RETURN_IF_ERROR(compiler.CompileGraph(XlaCompiler::CompileOptions(),
+                                           "tfcompile", std::move(graph),
+                                           xla_args, &result));
   *has_context_arg = result.requires_runtime_context;
-  *computation = std::move(result.computation);
+  *computation = std::move(*result.computation);
 
   int num_const_results = 0;
   for (int i = 0; i < result.outputs.size(); ++i) {
@@ -333,7 +335,8 @@ Status ConvertGraphToXla(xla::LocalClient* client, std::unique_ptr<Graph> graph,
 }
 
 // Compiles the XLA computation into executable code.
-Status CompileXla(xla::LocalClient* client, const xla::Computation& computation,
+Status CompileXla(xla::CompileOnlyClient* client,
+                  const xla::Computation& computation,
                   const xla::cpu::CpuAotCompilationOptions& aot_opts,
                   CompileResult* compile_result) {
   // Retrieves arg and result layouts from the computation.
@@ -347,10 +350,11 @@ Status CompileXla(xla::LocalClient* client, const xla::Computation& computation,
   compile_result->program_shape = *pshape_or.ValueOrDie();
   xla::ProgramShape* pshape = &compile_result->program_shape;
   std::vector<const xla::Shape*> arg_layouts;
+  arg_layouts.reserve(pshape->parameters_size());
   for (int i = 0; i < pshape->parameters_size(); ++i) {
     arg_layouts.push_back(pshape->mutable_parameters(i));
   }
-  xla::LocalClient::AheadOfTimeComputationInstance instance;
+  xla::CompileOnlyClient::AotComputationInstance instance;
   instance.computation = &computation;
   instance.argument_layouts = std::move(arg_layouts);
   instance.result_layout = &pshape->result();
@@ -365,7 +369,7 @@ Status CompileXla(xla::LocalClient* client, const xla::Computation& computation,
           std::move(aot_or.ValueOrDie().back()));
   compile_result->entry_point = aot_opts.entry_point_name();
   compile_result->pointer_size =
-      xla::LocalClient::PointerSizeForTriple(aot_opts.triple());
+      xla::CompileOnlyClient::PointerSizeForTriple(aot_opts.triple());
   return Status::OK();
 }
 
@@ -394,8 +398,9 @@ Status CompileGraph(std::unique_ptr<Graph> graph, const MainFlags& flags,
   namespace gpu = perftools::gputools;
   gpu::Platform* cpu_platform =
       gpu::MultiPlatformManager::PlatformWithName("Host").ValueOrDie();
-  xla::LocalClient* client =
-      xla::ClientLibrary::GetOrCreateLocalClient(cpu_platform).ValueOrDie();
+  xla::CompileOnlyClient* client =
+      xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
+          .ValueOrDie();
   xla::Computation computation;
   TF_RETURN_IF_ERROR(ConvertGraphToXla(client, std::move(graph), &computation,
                                        &compile_result->has_context_arg));

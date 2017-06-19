@@ -10,6 +10,7 @@ import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/protobuf/debug.proto";
+import "tensorflow/core/protobuf/cluster.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
 
 message GPUOptions {
@@ -259,6 +260,11 @@ message ConfigProto {
 
   // Options that apply when this session uses the distributed runtime.
   RPCOptions rpc_options = 13;
+
+  // Optional list of all workers to use in this session.
+  ClusterDef cluster_def = 14;
+
+  // Next: 15
 };
 
 // Options for a single Run() call.

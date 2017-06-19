@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -67,22 +68,19 @@ static void DumpHloGraphForDebug(const std::vector<XlaCompiler::Argument>& args,
 
   // Compiles the graph.
   XlaCompiler::Options options;
-  options.device_type = DeviceType("XLA_CPU_JIT");
+  DeviceType device_type("XLA_CPU_JIT");
+  options.device_type = &device_type;
   options.client = client;
+  options.flib_def = flib_def.get();
   compiler.reset(new XlaCompiler(options));
-
-  flr.reset(NewFunctionLibraryRuntime(compiler->device_mgr(), /*env=*/nullptr,
-                                      compiler->device(), TF_GRAPH_DEF_VERSION,
-                                      flib_def.get(), OptimizerOptions(),
-                                      /*custom_kernel_creator=*/nullptr));
 
   // Compile graph
   XlaCompiler::CompilationResult result;
-  TF_CHECK_OK(compiler->CompileGraph("dump", std::move(graph), flr.get(), args,
-                                     &result));
+  TF_CHECK_OK(compiler->CompileGraph(XlaCompiler::CompileOptions(), "dump",
+                                     std::move(graph), args, &result));
 
   // Convert to hlo
-  xla::Computation& computation = result.computation;
+  xla::Computation& computation = *result.computation;
 
   xla::Service* service(
       static_cast<xla::Service*>(xla::ClientLibrary::GetXlaService(
@@ -96,8 +94,10 @@ static void DumpHloGraphForDebug(const std::vector<XlaCompiler::Argument>& args,
   auto user_computation = user_computation_status.ConsumeValueOrDie();
   xla::VersionedComputationHandle versioned_handle =
       user_computation->GetVersionedHandle();
-  std::unique_ptr<xla::HloModule> hlo_module = std::move(
-      computation_tracker.BuildHloModule(versioned_handle).ValueOrDie());
+  std::unique_ptr<xla::HloModule> hlo_module =
+      std::move(computation_tracker
+                    .BuildHloModule(versioned_handle, xla::HloModuleConfig())
+                    .ValueOrDie());
   VLOG(1) << "--- DUMP HLO ---";
   VLOG(1) << hlo_module->ToString();
 }

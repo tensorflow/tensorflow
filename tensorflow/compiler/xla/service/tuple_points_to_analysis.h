@@ -117,27 +117,21 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
 // value.
 class BufferAlias {
  public:
-  BufferAlias(const LogicalBuffer& buffer, HloInstruction* instruction,
-              const ShapeIndex& index)
-      : buffer_(&buffer), instruction_(instruction), index_(index) {}
-
-  // Return the logical buffer aliased at the instruction and index.
-  const LogicalBuffer& buffer() const { return *buffer_; }
+  BufferAlias(HloInstruction* instruction, const ShapeIndex& index)
+      : instruction_(instruction), index_(index) {}
 
   // Return the instruction/index of the subshape.
   HloInstruction* instruction() const { return instruction_; }
   const ShapeIndex& index() const { return index_; }
 
   bool operator==(const BufferAlias& other) const {
-    return buffer_ == other.buffer_ && instruction_ == other.instruction_ &&
-           index_ == other.index_;
+    return instruction_ == other.instruction_ && index_ == other.index_;
   }
   bool operator!=(const BufferAlias& other) const { return !(*this == other); }
 
   string ToString() const;
 
  private:
-  const LogicalBuffer* buffer_;
   HloInstruction* instruction_;
   const ShapeIndex index_;
 };
@@ -148,12 +142,17 @@ std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias);
 // the potential sources of each buffer in each instruction's output.
 class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
  public:
-  // Runs points-to analysis on 'module'. If 'include_loop_fusion_instructions'
-  // is true, includes fused instructions from each loop fusion instruction
-  // in 'module' in the points-to analysis.
+  using Colorer = std::function<LogicalBuffer::Color(
+      const HloInstruction* instruction, const ShapeIndex& index)>;
+
+  // Runs points-to analysis on 'module' with the provided buffer color
+  // assigner.
   static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
-      const HloModule* module,
-      const bool include_loop_fusion_instructions = false);
+      const HloModule* module, Colorer colorer);
+
+  // Runs points-to analysis on 'module' with the default color assigner.
+  static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
+      const HloModule* module);
 
   // Return the points-to set of an instruction. This describes the potential
   // sources of each buffer in the instruction's output.
@@ -210,18 +209,22 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
                                HloInstruction* operand) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
-  Status HandleFusion(HloInstruction* fusion) override;
   Status HandleSelect(HloInstruction* select, HloInstruction* pred,
                       HloInstruction* on_true,
                       HloInstruction* on_false) override;
 
   string ToString() const;
 
+  static Colorer DefaultColorer() {
+    return [](const HloInstruction* instruction, const ShapeIndex& index) {
+      return LogicalBuffer::Color(0);
+    };
+  }
+
  private:
   explicit TuplePointsToAnalysis(const HloModule* module,
-                                 const bool include_loop_fusion_instructions)
-      : module_(module),
-        include_loop_fusion_instructions_(include_loop_fusion_instructions) {}
+                                 Colorer colorer = DefaultColorer())
+      : module_(module), colorer_(colorer) {}
 
   // Perform the analysis. Should be called immediately after constructing the
   // object and before calling GetPointsToSet.
@@ -261,9 +264,6 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
   // The module this analysis is performed on.
   const HloModule* module_;
 
-  // Whether to run points-to analysis on loop fusion instructions in 'module_'.
-  const bool include_loop_fusion_instructions_;
-
   // A map containing a PointsToSet for every HLO instruction.
   tensorflow::gtl::FlatMap<const HloInstruction*, std::unique_ptr<PointsToSet>>
       points_to_;
@@ -282,6 +282,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // The ID of the next logical buffer created.
   LogicalBuffer::Id next_buffer_id_ = 0;
+
+  // Used to color the created logical buffers.
+  Colorer colorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TuplePointsToAnalysis);
 };

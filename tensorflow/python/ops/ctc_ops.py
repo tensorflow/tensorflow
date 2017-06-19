@@ -30,16 +30,15 @@ from tensorflow.python.ops.nn_grad import _BroadcastMul
 # pylint: disable=protected-access, invalid-name
 def ctc_loss(labels, inputs, sequence_length,
              preprocess_collapse_repeated=False,
-             ctc_merge_repeated=True, time_major=True):
+             ctc_merge_repeated=True,
+             ignore_longer_outputs_than_inputs=False, time_major=True):
   """Computes the CTC (Connectionist Temporal Classification) Loss.
 
   This op implements the CTC loss as presented in the article:
 
-  A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
-  Connectionist Temporal Classification: Labelling Unsegmented Sequence Data
-  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA, pp. 369-376.
-
-  http://www.cs.toronto.edu/~graves/icml_2006.pdf
+  [A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
+  Connectionist Temporal Classification: Labeling Unsegmented Sequence Data
+  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA, pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
 
   Input requirements:
 
@@ -96,6 +95,11 @@ def ctc_loss(labels, inputs, sequence_length,
 
     Untested.  Very likely will not learn to output repeated classes.
 
+  The `ignore_longer_outputs_than_inputs` option allows to specify the behavior
+  of the CTCLoss when dealing with sequences that have longer outputs than
+  inputs. If true, the CTCLoss will simply return zero gradient for those
+  items, otherwise an InvalidArgument error is returned, stopping training.
+
   Args:
     labels: An `int32` `SparseTensor`.
       `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
@@ -113,6 +117,8 @@ def ctc_loss(labels, inputs, sequence_length,
     preprocess_collapse_repeated: Boolean.  Default: False.
       If True, repeated labels are collapsed prior to the CTC calculation.
     ctc_merge_repeated: Boolean.  Default: True.
+    ignore_longer_outputs_than_inputs: Boolean. Default: False.
+      If True, sequences with longer outputs than inputs will be ignored.
     time_major: The shape format of the `inputs` Tensors.
       If True, these `Tensors` must be shaped `[max_time, batch_size, num_classes]`.
       If False, these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
@@ -142,7 +148,8 @@ def ctc_loss(labels, inputs, sequence_length,
       labels.values,
       sequence_length,
       preprocess_collapse_repeated=preprocess_collapse_repeated,
-      ctc_merge_repeated=ctc_merge_repeated)
+      ctc_merge_repeated=ctc_merge_repeated,
+      ignore_longer_outputs_than_inputs=ignore_longer_outputs_than_inputs)
 
   return loss
 
@@ -207,7 +214,8 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
       `decoded.shape`: Shape vector, size `(2)`.
         The shape values are: `[batch_size, max_decoded_length]`
     neg_sum_logits: A `float` matrix `(batch_size x 1)` containing, for the
-        sequence found, the negative of the sum of the greatest logit at each timeframe.
+        sequence found, the negative of the sum of the greatest logit at each
+        timeframe.
   """
   outputs = gen_ctc_ops._ctc_greedy_decoder(
       inputs, sequence_length, merge_repeated=merge_repeated)

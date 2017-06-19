@@ -27,6 +27,7 @@ import numpy as np
 
 from tensorflow.contrib.layers.python.layers import feature_column as fc
 from tensorflow.contrib.layers.python.layers import feature_column_ops
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
@@ -173,7 +174,7 @@ class FeatureColumnTest(test.TestCase):
     for i in range(len(b1_value)):
       self.assertAllClose(b1_value[i], b2_value[i])
 
-    # Test the case when a shared_embedding_name is explictly specified.
+    # Test the case when a shared_embedding_name is explicitly specified.
     d = fc.shared_embedding_columns(
         [a1, a2],
         dimension=4,
@@ -441,7 +442,7 @@ class FeatureColumnTest(test.TestCase):
     sparse_tensor = sparse_tensor_lib.SparseTensor(
         values=[2.0, 5.0], indices=[[0, 0], [2, 0]], dense_shape=[3, 1])
     with self.assertRaisesRegexp(
-        ValueError, "Calling an abstract method."):
+        ValueError, "Set is_sparse to False"):
       real_valued_column._to_dnn_input_layer(sparse_tensor)
 
   def testRealValuedColumnDeepCopy(self):
@@ -697,11 +698,6 @@ class FeatureColumnTest(test.TestCase):
                                                 "str_id_weights_column")
     real_valued_col1 = fc.real_valued_column("real_valued_column1")
     real_valued_col2 = fc.real_valued_column("real_valued_column2", 5)
-    real_valued_col3 = fc._real_valued_var_len_column(
-        "real_valued_column3", is_sparse=True)
-    real_valued_col4 = fc._real_valued_var_len_column(
-        "real_valued_column4", dtype=dtypes.int64, default_value=0,
-        is_sparse=False)
     bucketized_col1 = fc.bucketized_column(
         fc.real_valued_column("real_valued_column_for_bucketization1"), [0, 4])
     bucketized_col2 = fc.bucketized_column(
@@ -717,8 +713,8 @@ class FeatureColumnTest(test.TestCase):
     feature_columns = set([
         sparse_col, embedding_col, weighted_id_col, int32_sparse_id_col,
         int64_sparse_id_col, real_valued_col1, real_valued_col2,
-        real_valued_col3, real_valued_col4, bucketized_col1, bucketized_col2,
-        cross_col, one_hot_col, scattered_embedding_col
+        bucketized_col1, bucketized_col2, cross_col, one_hot_col,
+        scattered_embedding_col
     ])
     expected_config = {
         "sparse_column":
@@ -739,11 +735,6 @@ class FeatureColumnTest(test.TestCase):
         "real_valued_column2":
             parsing_ops.FixedLenFeature(
                 [5], dtype=dtypes.float32),
-        "real_valued_column3":
-            parsing_ops.VarLenFeature(dtype=dtypes.float32),
-        "real_valued_column4":
-            parsing_ops.FixedLenSequenceFeature(
-                [], dtype=dtypes.int64, allow_missing=True, default_value=0),
         "real_valued_column_for_bucketization1":
             parsing_ops.FixedLenFeature(
                 [1], dtype=dtypes.float32),
@@ -763,12 +754,33 @@ class FeatureColumnTest(test.TestCase):
     config = fc.create_feature_spec_for_parsing(feature_columns)
     self.assertDictEqual(expected_config, config)
 
+    # Tests that contrib feature columns work with core library:
+    config_core = fc_core.make_parse_example_spec(feature_columns)
+    self.assertDictEqual(expected_config, config_core)
+
     # Test that the same config is parsed out if we pass a dictionary.
     feature_columns_dict = {
         str(i): val
         for i, val in enumerate(feature_columns)
     }
     config = fc.create_feature_spec_for_parsing(feature_columns_dict)
+    self.assertDictEqual(expected_config, config)
+
+  def testCreateFeatureSpec_ExperimentalColumns(self):
+    real_valued_col0 = fc._real_valued_var_len_column(
+        "real_valued_column0", is_sparse=True)
+    real_valued_col1 = fc._real_valued_var_len_column(
+        "real_valued_column1", dtype=dtypes.int64, default_value=0,
+        is_sparse=False)
+    feature_columns = set([real_valued_col0, real_valued_col1])
+    expected_config = {
+        "real_valued_column0": parsing_ops.VarLenFeature(dtype=dtypes.float32),
+        "real_valued_column1":
+            parsing_ops.FixedLenSequenceFeature(
+                [], dtype=dtypes.int64, allow_missing=True, default_value=0),
+    }
+
+    config = fc.create_feature_spec_for_parsing(feature_columns)
     self.assertDictEqual(expected_config, config)
 
   def testCreateFeatureSpec_RealValuedColumnWithDefaultValue(self):

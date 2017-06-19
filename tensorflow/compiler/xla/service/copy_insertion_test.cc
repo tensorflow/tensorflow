@@ -44,13 +44,20 @@ class CopyInsertionTest : public HloTestBase {
     EXPECT_IS_OK(copy_insertion.Run(module).status());
 
     // Verify the points to set of the root of the computation after copy
-    // insertion contains no constants or parameters.
+    // insertion contains no constants or parameters, and is distinct and
+    // non-ambiguous.
     auto points_to_analysis =
         TuplePointsToAnalysis::Run(module).ConsumeValueOrDie();
+    const auto& points_to = points_to_analysis->GetPointsToSet(
+        module->entry_computation()->root_instruction());
+    EXPECT_TRUE(points_to.IsDistinct());
+    EXPECT_TRUE(!points_to.IsAmbiguous());
+
     tensorflow::gtl::FlatSet<const LogicalBuffer*> maybe_live_out_buffers =
         points_to_analysis
             ->GetPointsToSet(module->entry_computation()->root_instruction())
             .CreateFlattenedSet();
+
     for (const LogicalBuffer* buffer : maybe_live_out_buffers) {
       EXPECT_NE(buffer->instruction()->opcode(), HloOpcode::kConstant);
       EXPECT_NE(buffer->instruction()->opcode(), HloOpcode::kParameter);
@@ -67,13 +74,13 @@ TEST_F(CopyInsertionTest, SingleParameter) {
 
   EXPECT_THAT(x->users(), UnorderedElementsAre(tuple));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
-  HloInstruction* old_root = module.entry_computation()->root_instruction();
-  InsertCopies(&module);
+  HloInstruction* old_root = module->entry_computation()->root_instruction();
+  InsertCopies(module.get());
 
-  EXPECT_THAT(module.entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Copy(old_root->operand(0))));
 }
 
@@ -86,13 +93,13 @@ TEST_F(CopyInsertionTest, SingleConstant) {
 
   EXPECT_THAT(constant->users(), UnorderedElementsAre(tuple));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
-  HloInstruction* old_root = module.entry_computation()->root_instruction();
-  InsertCopies(&module);
+  HloInstruction* old_root = module->entry_computation()->root_instruction();
+  InsertCopies(module.get());
 
-  EXPECT_THAT(module.entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Copy(old_root->operand(0))));
 }
 
@@ -117,13 +124,13 @@ TEST_F(CopyInsertionTest, MultipleConstantsAndParameters) {
 
   builder.AddInstruction(HloInstruction::CreateTuple({constant2, x, add}));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
-  HloInstruction* old_root = module.entry_computation()->root_instruction();
-  InsertCopies(&module);
+  HloInstruction* old_root = module->entry_computation()->root_instruction();
+  InsertCopies(module.get());
 
-  EXPECT_THAT(module.entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Copy(old_root->operand(0)),
                         op::Copy(old_root->operand(1)), old_root->operand(2)));
 }
@@ -153,13 +160,13 @@ TEST_F(CopyInsertionTest, AmbiguousPointsToSet) {
   EXPECT_THAT(constant2->users(), UnorderedElementsAre(tuple1, tuple2));
   EXPECT_THAT(constant3->users(), UnorderedElementsAre(tuple2));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
-  HloInstruction* old_root = module.entry_computation()->root_instruction();
-  InsertCopies(&module);
+  HloInstruction* old_root = module->entry_computation()->root_instruction();
+  InsertCopies(module.get());
 
-  EXPECT_THAT(module.entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Copy(op::GetTupleElement(old_root)),
                         op::Copy(op::GetTupleElement(old_root))));
 }
@@ -173,15 +180,15 @@ TEST_F(CopyInsertionTest, BitcastParameter) {
   HloInstruction* bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(F32, {2, 2}), HloOpcode::kBitcast, x));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(x->users(), UnorderedElementsAre(bitcast));
 
-  HloInstruction* old_root = module.entry_computation()->root_instruction();
-  InsertCopies(&module);
+  HloInstruction* old_root = module->entry_computation()->root_instruction();
+  InsertCopies(module.get());
 
-  EXPECT_THAT(module.entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Copy(old_root));
 }
 
@@ -195,15 +202,15 @@ TEST_F(CopyInsertionTest, BitcastConstant) {
   HloInstruction* bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(F32, {2, 2}), HloOpcode::kBitcast, constant));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(constant->users(), UnorderedElementsAre(bitcast));
 
-  HloInstruction* old_root = module.entry_computation()->root_instruction();
-  InsertCopies(&module);
+  HloInstruction* old_root = module->entry_computation()->root_instruction();
+  InsertCopies(module.get());
 
-  EXPECT_THAT(module.entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Copy(old_root));
 }
 
@@ -216,15 +223,15 @@ TEST_F(CopyInsertionTest, BitcastTupleElementParameter) {
       ShapeUtil::MakeShape(F32, {2, 2}), HloOpcode::kBitcast, x));
   builder.AddInstruction(HloInstruction::CreateTuple({bitcast}));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
   EXPECT_THAT(x->users(), UnorderedElementsAre(bitcast));
 
-  HloInstruction* old_root = module.entry_computation()->root_instruction();
-  InsertCopies(&module);
+  HloInstruction* old_root = module->entry_computation()->root_instruction();
+  InsertCopies(module.get());
 
-  EXPECT_THAT(module.entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Copy(old_root->operand(0))));
 }
 
@@ -243,15 +250,15 @@ TEST_F(CopyInsertionTest, NestedTupleParameter) {
            ShapeUtil::MakeShape(F32, {42})}),
       "param0"));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(HloOpcode::kParameter,
-            module.entry_computation()->root_instruction()->opcode());
+            module->entry_computation()->root_instruction()->opcode());
 
-  HloInstruction* old_root = module.entry_computation()->root_instruction();
-  InsertCopies(&module);
-  HloInstruction* new_root = module.entry_computation()->root_instruction();
+  HloInstruction* old_root = module->entry_computation()->root_instruction();
+  InsertCopies(module.get());
+  HloInstruction* new_root = module->entry_computation()->root_instruction();
   EXPECT_NE(old_root, new_root);
 
   EXPECT_THAT(
@@ -282,15 +289,15 @@ TEST_F(CopyInsertionTest, ElementOfNestedTupleParameter) {
   auto gte = builder.AddInstruction(HloInstruction::CreateGetTupleElement(
       ShapeUtil::GetSubshape(param->shape(), {0}), param, 0));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(gte, module.entry_computation()->root_instruction());
+  EXPECT_EQ(gte, module->entry_computation()->root_instruction());
 
-  HloInstruction* old_root = module.entry_computation()->root_instruction();
-  InsertCopies(&module);
+  HloInstruction* old_root = module->entry_computation()->root_instruction();
+  InsertCopies(module.get());
 
-  EXPECT_THAT(module.entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Tuple(op::Copy(op::GetTupleElement(old_root)),
                         op::Copy(op::GetTupleElement(old_root))));
 }
@@ -318,21 +325,21 @@ TEST_F(CopyInsertionTest, AmbiguousTopLevelRoot) {
       builder.AddInstruction(HloInstruction::CreateGetTupleElement(
           ShapeUtil::GetSubshape(select->shape(), {0}), select, 0));
 
-  HloModule module(TestName());
-  module.AddEntryComputation(builder.Build());
+  auto module = CreateNewModule();
+  module->AddEntryComputation(builder.Build());
 
-  EXPECT_EQ(gte, module.entry_computation()->root_instruction());
+  EXPECT_EQ(gte, module->entry_computation()->root_instruction());
 
-  HloInstruction* old_root = module.entry_computation()->root_instruction();
-  InsertCopies(&module);
+  HloInstruction* old_root = module->entry_computation()->root_instruction();
+  InsertCopies(module.get());
 
-  EXPECT_THAT(module.entry_computation()->root_instruction(),
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
               op::Copy(old_root));
 }
 
 class WhileCopyInsertionTest : public CopyInsertionTest {
  protected:
-  WhileCopyInsertionTest() : module_(TestName()) {}
+  WhileCopyInsertionTest() : module_(CreateNewModule()) {}
 
   // Builds a While condition computation which reads the induction variable
   // from the tuple parameter, and returns a predicate indicating whether this
@@ -390,6 +397,47 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     return builder.Build();
   }
 
+  // Builds a While body computation with two output tuple elements dependent on
+  // both input tuple elements.
+  //
+  // EX: Body({in0, in1, in2})
+  //   out0 = Add(in0, 1)
+  //   out1 = in1
+  //   out2 = in2
+  //   Tuple(out0, out1, out2)
+  std::unique_ptr<HloComputation> BuildDependentBodyComputation2() {
+    auto builder = HloComputation::Builder(TestName() + ".Body");
+
+    const Shape& loop_state_shape = ShapeUtil::MakeTupleShape(
+        {induction_variable_shape_, data_shape_, data_shape_});
+
+    auto loop_state = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, loop_state_shape, "loop_state"));
+
+    // Update the induction variable GTE(0).
+    auto induction_variable =
+        builder.AddInstruction(HloInstruction::CreateGetTupleElement(
+            induction_variable_shape_, loop_state, 0));
+    auto inc = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+
+    // add0 = Add(in0, 1)
+    auto add0 = builder.AddInstruction(HloInstruction::CreateBinary(
+        induction_variable->shape(), HloOpcode::kAdd, induction_variable, inc));
+    // data1 = GTE(1).
+    HloInstruction* data1 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 1));
+
+    // data2 = GTE(2).
+    HloInstruction* data2 = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 2));
+
+    // Create output Tuple.
+    builder.AddInstruction(HloInstruction::CreateTuple({add0, data1, data2}));
+
+    return builder.Build();
+  }
+
   // Builds a While body computation with read-only tuple element 0.
   // EX:
   // Body({in0, in1})
@@ -408,6 +456,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     // Update data GTE(1).
     auto data = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(data_shape_, loop_state, 1));
+
     // Use 'induction_variable' in computation with no path to output tuple.
     auto update = builder.AddInstruction(
         HloInstruction::CreateBroadcast(data_shape_, induction_variable, {8}));
@@ -431,6 +480,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     // Create param instruction to access loop state.
     const Shape& loop_state_shape =
         nested ? nested_loop_state_shape_ : loop_state_shape_;
+
     auto loop_state = builder.AddInstruction(
         HloInstruction::CreateParameter(0, loop_state_shape, "loop_state"));
     // Update the induction variable GTE(0).
@@ -537,7 +587,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
           HloInstruction::CreateTuple({induction_var_init, inner_init}));
       auto while_hlo = builder.AddInstruction(HloInstruction::CreateWhile(
           loop_state_shape_, condition, body, loop_state_init));
-      module_.AddEntryComputation(builder.Build());
+      module_->AddEntryComputation(builder.Build());
       return while_hlo;
     }
 
@@ -545,7 +595,7 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
         HloInstruction::CreateTuple({induction_var_init, data_init}));
     auto while_hlo = builder.AddInstruction(HloInstruction::CreateWhile(
         loop_state_shape_, condition, body, loop_state_init));
-    module_.AddEntryComputation(builder.Build());
+    module_->AddEntryComputation(builder.Build());
     return while_hlo;
   }
 
@@ -629,18 +679,18 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
     auto induction_var_init = builder->AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
     auto condition =
-        module_.AddEmbeddedComputation(BuildConditionComputation(nested));
-    auto body =
-        module_.AddEmbeddedComputation(BuildIndependentBodyComputation(nested));
+        module_->AddEmbeddedComputation(BuildConditionComputation(nested));
+    auto body = module_->AddEmbeddedComputation(
+        BuildIndependentBodyComputation(nested));
     auto loop_state_init = builder->AddInstruction(
         HloInstruction::CreateTuple({induction_var_init, data_init}));
     auto while_hlo = builder->AddInstruction(HloInstruction::CreateWhile(
         loop_state_shape, condition, body, loop_state_init));
-    module_.AddEntryComputation(builder->Build());
+    module_->AddEntryComputation(builder->Build());
     return while_hlo;
   }
 
-  HloModule module_;
+  std::unique_ptr<HloModule> module_;
   Shape induction_variable_shape_ = ShapeUtil::MakeShape(S32, {});
   Shape data_shape_ = ShapeUtil::MakeShape(F32, {8});
   Shape loop_state_shape_ =
@@ -662,13 +712,14 @@ class WhileCopyInsertionTest : public CopyInsertionTest {
 // CopyInsertion pass should not generate any copies.
 //
 TEST_F(WhileCopyInsertionTest, IndependentTupleElements) {
-  auto condition = module_.AddEmbeddedComputation(BuildConditionComputation());
-  auto body = module_.AddEmbeddedComputation(BuildIndependentBodyComputation());
+  auto condition = module_->AddEmbeddedComputation(BuildConditionComputation());
+  auto body =
+      module_->AddEmbeddedComputation(BuildIndependentBodyComputation());
   auto while_hlo = BuildWhileInstruction(condition, body);
 
   const HloInstruction* old_init = while_hlo->operand(0);
   HloInstruction* old_root = body->root_instruction();
-  InsertCopies(&module_);
+  InsertCopies(module_.get());
   HloInstruction* new_root = body->root_instruction();
   const HloInstruction* new_init = while_hlo->operand(0);
 
@@ -692,13 +743,13 @@ TEST_F(WhileCopyInsertionTest, IndependentTupleElements) {
 //     Tuple(Copy(out0), out1)
 //
 TEST_F(WhileCopyInsertionTest, DependentTupleElements) {
-  auto condition = module_.AddEmbeddedComputation(BuildConditionComputation());
-  auto body = module_.AddEmbeddedComputation(BuildDependentBodyComputation());
+  auto condition = module_->AddEmbeddedComputation(BuildConditionComputation());
+  auto body = module_->AddEmbeddedComputation(BuildDependentBodyComputation());
   auto while_hlo = BuildWhileInstruction(condition, body);
 
   const HloInstruction* old_init = while_hlo->operand(0);
   HloInstruction* old_root = body->root_instruction();
-  InsertCopies(&module_);
+  InsertCopies(module_.get());
   HloInstruction* new_root = body->root_instruction();
   const HloInstruction* new_init = while_hlo->operand(0);
 
@@ -723,14 +774,14 @@ TEST_F(WhileCopyInsertionTest, DependentTupleElements) {
 //
 // CopyInsertion pass should not generate any copies for the while body.
 TEST_F(WhileCopyInsertionTest, DependentTupleElements_OneReadOnly) {
-  auto condition = module_.AddEmbeddedComputation(BuildConditionComputation());
-  auto body = module_.AddEmbeddedComputation(
+  auto condition = module_->AddEmbeddedComputation(BuildConditionComputation());
+  auto body = module_->AddEmbeddedComputation(
       BuildDependentBodyOneReadOnlyComputation());
   auto while_hlo = BuildWhileInstruction(condition, body);
 
   const HloInstruction* old_init = while_hlo->operand(0);
   HloInstruction* old_root = body->root_instruction();
-  InsertCopies(&module_);
+  InsertCopies(module_.get());
   HloInstruction* new_root = body->root_instruction();
   const HloInstruction* new_init = while_hlo->operand(0);
 
@@ -746,11 +797,13 @@ TEST_F(WhileCopyInsertionTest, DependentTupleElements_OneReadOnly) {
 // Same as above, but with two while loops, sharing entry parameters.
 TEST_F(WhileCopyInsertionTest,
        DependentTupleElements_OneReadOnly_TwoLoops_EntryParams) {
-  auto condition1 = module_.AddEmbeddedComputation(BuildConditionComputation());
-  auto condition2 = module_.AddEmbeddedComputation(BuildConditionComputation());
-  auto body1 = module_.AddEmbeddedComputation(
+  auto condition1 =
+      module_->AddEmbeddedComputation(BuildConditionComputation());
+  auto condition2 =
+      module_->AddEmbeddedComputation(BuildConditionComputation());
+  auto body1 = module_->AddEmbeddedComputation(
       BuildDependentBodyOneReadOnlyComputation());
-  auto body2 = module_.AddEmbeddedComputation(
+  auto body2 = module_->AddEmbeddedComputation(
       BuildDependentBodyOneReadOnlyComputation());
 
   auto builder = HloComputation::Builder(TestName() + ".While");
@@ -765,15 +818,14 @@ TEST_F(WhileCopyInsertionTest,
       loop_state_shape_, condition1, body1, loop_init));
   auto while_hlo2 = builder.AddInstruction(HloInstruction::CreateWhile(
       loop_state_shape_, condition2, body2, loop_init));
-  module_.AddEntryComputation(builder.Build());
+  module_->AddEntryComputation(builder.Build());
 
-  InsertCopies(&module_);
+  InsertCopies(module_.get());
 
-  // Both while loops share a single copy of iter_param, since index 0 is
-  // read-only in the body.
+  // Both while loops alias iter_param, since index 0 is read-only in the body.
   EXPECT_EQ(while_hlo1->operand(0)->operand(0),
             while_hlo2->operand(0)->operand(0));
-  EXPECT_THAT(while_hlo1->operand(0)->operand(0), op::Copy(iter_param));
+  EXPECT_EQ(while_hlo1->operand(0)->operand(0), iter_param);
 
   // Each while loop gets its own copy of data_param, since index 1 is not
   // read-only in the body.
@@ -786,11 +838,13 @@ TEST_F(WhileCopyInsertionTest,
 // Same as above, but with two while loops, sharing non-parameters.
 TEST_F(WhileCopyInsertionTest,
        DependentTupleElements_OneReadOnly_TwoLoops_NonParams) {
-  auto condition1 = module_.AddEmbeddedComputation(BuildConditionComputation());
-  auto condition2 = module_.AddEmbeddedComputation(BuildConditionComputation());
-  auto body1 = module_.AddEmbeddedComputation(
+  auto condition1 =
+      module_->AddEmbeddedComputation(BuildConditionComputation());
+  auto condition2 =
+      module_->AddEmbeddedComputation(BuildConditionComputation());
+  auto body1 = module_->AddEmbeddedComputation(
       BuildDependentBodyOneReadOnlyComputation());
-  auto body2 = module_.AddEmbeddedComputation(
+  auto body2 = module_->AddEmbeddedComputation(
       BuildDependentBodyOneReadOnlyComputation());
 
   auto builder = HloComputation::Builder(TestName() + ".While");
@@ -810,9 +864,9 @@ TEST_F(WhileCopyInsertionTest,
       loop_state_shape_, condition1, body1, loop_init));
   auto while_hlo2 = builder.AddInstruction(HloInstruction::CreateWhile(
       loop_state_shape_, condition2, body2, loop_init));
-  module_.AddEntryComputation(builder.Build());
+  module_->AddEntryComputation(builder.Build());
 
-  InsertCopies(&module_);
+  InsertCopies(module_.get());
 
   // No copies of iter_value are necessary, since index 0 is read-only in both
   // while bodies.
@@ -858,12 +912,12 @@ TEST_F(WhileCopyInsertionTest,
 //
 TEST_F(WhileCopyInsertionTest, NestedTupleElements) {
   auto condition =
-      module_.AddEmbeddedComputation(BuildConditionComputation(true));
-  auto body = module_.AddEmbeddedComputation(BuildNestedBodyComputation());
+      module_->AddEmbeddedComputation(BuildConditionComputation(true));
+  auto body = module_->AddEmbeddedComputation(BuildNestedBodyComputation());
   BuildWhileInstruction(condition, body, true);
 
   HloInstruction* old_root = body->root_instruction();
-  InsertCopies(&module_);
+  InsertCopies(module_.get());
 
   EXPECT_THAT(body->root_instruction(),
               op::Tuple(old_root->operand(0),
@@ -880,7 +934,7 @@ TEST_F(WhileCopyInsertionTest, NestedTupleElements) {
 TEST_F(WhileCopyInsertionTest, InitPointsToConstant) {
   auto while_hlo = BuildWhileInstruction_InitPointsToConstant();
   auto old_init = while_hlo->operand(0);
-  InsertCopies(&module_);
+  InsertCopies(module_.get());
 
   EXPECT_THAT(while_hlo->operand(0), op::Tuple(op::Copy(old_init->operand(0)),
                                                op::Copy(old_init->operand(1))));
@@ -895,7 +949,7 @@ TEST_F(WhileCopyInsertionTest, InitPointsToConstant) {
 TEST_F(WhileCopyInsertionTest, InitPointsToParameter) {
   auto while_hlo = BuildWhileInstruction_InitPointsToParameter();
   auto old_init = while_hlo->operand(0);
-  InsertCopies(&module_);
+  InsertCopies(module_.get());
 
   EXPECT_THAT(while_hlo->operand(0), op::Tuple(op::Copy(old_init->operand(0)),
                                                op::Copy(old_init->operand(1))));
@@ -928,7 +982,7 @@ TEST_F(WhileCopyInsertionTest, InitPointsToParameter) {
 TEST_F(WhileCopyInsertionTest, InitPointsToAmbiguous) {
   auto while_hlo = BuildWhileInstruction_InitPointsToAmbiguous();
   auto old_init = while_hlo->operand(0);
-  InsertCopies(&module_);
+  InsertCopies(module_.get());
 
   EXPECT_THAT(
       while_hlo->operand(0),
@@ -964,7 +1018,7 @@ TEST_F(WhileCopyInsertionTest, InitPointsToAmbiguous) {
 TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinct) {
   auto while_hlo = BuildWhileInstruction_InitPointsToNonDistinct();
   auto old_init = while_hlo->operand(0);
-  InsertCopies(&module_);
+  InsertCopies(module_.get());
 
   EXPECT_THAT(while_hlo->operand(0),
               op::Tuple(op::Copy(old_init->operand(0)),
@@ -972,7 +1026,8 @@ TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinct) {
                                   op::Copy(old_init->operand(1)->operand(0)))));
 }
 
-// Tests while init instruction buffer which interfers with while result buffer.
+// Tests while init instruction buffer which interferes with while result
+// buffer.
 //
 //     init_data = Broadcast(...)
 //     add_unrelated = Add(init_data) // takes a reference to cause interference
@@ -983,11 +1038,96 @@ TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinct) {
 TEST_F(WhileCopyInsertionTest, InitPointsToInterfering) {
   auto while_hlo = BuildWhileInstruction_InitPointsToInterfering();
   auto old_init = while_hlo->operand(0);
-  InsertCopies(&module_);
+  InsertCopies(module_.get());
 
   EXPECT_THAT(while_hlo->operand(0), op::Tuple(op::Copy(old_init->operand(0)),
                                                op::Copy(old_init->operand(1))));
 }
 
+// Tests while init instruction buffer which has a non-distinct points-to set:
+//
+//     init = Tuple(Parameter(S32, {}), Parameter(F32, {8},
+//                  Parameter(F32, {8})))
+//
+// where the second and third parameters are identical *and* the tuple shared
+// by another while instruction..
+//
+// Verifies that the resulting point-to set is distinct in the resulting Tuple
+// (non-identical Copys). In other words, verifies that copy sharing does not
+// insert identical copies to the resulting tuple.
+TEST_F(WhileCopyInsertionTest, InitPointsToNonDistinctUsedByTwoWhileLoops) {
+  auto condition1 =
+      module_->AddEmbeddedComputation(BuildConditionComputation());
+  auto condition2 =
+      module_->AddEmbeddedComputation(BuildConditionComputation());
+  // Loop body that outputs tuple comprises two elements dependent on the init
+  // tuple.
+  auto body1 =
+      module_->AddEmbeddedComputation(BuildDependentBodyComputation2());
+  auto body2 =
+      module_->AddEmbeddedComputation(BuildDependentBodyComputation2());
+
+  auto builder = HloComputation::Builder(TestName() + ".While");
+
+  auto iter_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, induction_variable_shape_, "iter"));
+  auto data_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, data_shape_, "data"));
+
+  // Loop init tuple contains two identical parameter buffers.
+  auto loop_init = builder.AddInstruction(
+      HloInstruction::CreateTuple({iter_param, data_param, data_param}));
+
+  const Shape& loop_state_shape = ShapeUtil::MakeTupleShape(
+      {induction_variable_shape_, data_shape_, data_shape_});
+
+  // Two while loops shares the same loop init tuple.
+  auto while_hlo1 = builder.AddInstruction(HloInstruction::CreateWhile(
+      loop_state_shape, condition1, body1, loop_init));
+  auto while_hlo2 = builder.AddInstruction(HloInstruction::CreateWhile(
+      loop_state_shape, condition2, body2, loop_init));
+
+  module_->AddEntryComputation(builder.Build());
+
+  auto points_to_analysis =
+      TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
+
+  // Asserts that the init tuples before copy insertion is non-distinct.
+  ASSERT_FALSE(
+      points_to_analysis->GetPointsToSet(while_hlo1->operand(0)).IsDistinct());
+  ASSERT_FALSE(
+      points_to_analysis->GetPointsToSet(while_hlo2->operand(0)).IsDistinct());
+
+  auto old_init1 = while_hlo1->operand(0);
+  auto old_init2 = while_hlo2->operand(0);
+
+  InsertCopies(module_.get());
+
+  EXPECT_THAT(while_hlo1->operand(0),
+              op::Tuple(op::Copy(old_init1->operand(0)),
+                        op::Copy(old_init1->operand(1)),
+                        op::Copy(old_init1->operand(2))));
+
+  EXPECT_THAT(while_hlo2->operand(0),
+              op::Tuple(op::Copy(old_init2->operand(0)),
+                        op::Copy(old_init2->operand(1)),
+                        op::Copy(old_init2->operand(2))));
+
+  // Verifies the init tuples after copy insertion is distinct.
+  points_to_analysis =
+      TuplePointsToAnalysis::Run(module_.get()).ConsumeValueOrDie();
+  const auto& points_to1 =
+      points_to_analysis->GetPointsToSet(while_hlo1->operand(0));
+  EXPECT_TRUE(points_to1.IsDistinct());
+
+  const auto& points_to2 =
+      points_to_analysis->GetPointsToSet(while_hlo2->operand(0));
+  EXPECT_TRUE(points_to2.IsDistinct());
+}
+
 }  // namespace
 }  // namespace xla
+
+int main(int argc, char** argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

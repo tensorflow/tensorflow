@@ -136,9 +136,9 @@ Status HloCostAnalysis::HandleSlice(HloInstruction* slice,
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleDynamicSlice(
-    HloInstruction* slice,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status HloCostAnalysis::HandleDynamicSlice(HloInstruction* dynamic_slice,
+                                           HloInstruction* operand,
+                                           HloInstruction* start_indices) {
   return Status::OK();
 }
 

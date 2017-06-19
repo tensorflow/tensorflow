@@ -137,6 +137,28 @@ TEST_F(HloTfGraphBuilderTest, GreaterThanOrEqualTo) {
   EXPECT_EQ(graph_def.node(2).op(), "HloGreaterThanOrEqualTo");
 }
 
+TEST_F(HloTfGraphBuilderTest, IncorparateTfOpsStructure) {
+  auto builder = HloComputation::Builder("GE");
+  auto param_1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, r0f32_, "param0"));
+  auto param_2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, r0f32_, "param1"));
+  auto ge = builder.AddInstruction(
+      HloInstruction::CreateBinary(r0f32_, HloOpcode::kGe, param_1, param_2));
+  OpMetadata metadata;
+  metadata.set_op_name("x/y");
+  metadata.set_op_type("Y");
+  ge->set_metadata(metadata);
+  TF_CHECK_OK(generator_.AddComputation(*builder.Build()));
+  GraphDef graph_def = generator_.GetGraphDef();
+  EXPECT_EQ(graph_def.node_size(), 3);
+  EXPECT_EQ(graph_def.node(0).name(), "GE/param0.0");
+  EXPECT_EQ(graph_def.node(1).name(), "GE/param1.1");
+  EXPECT_EQ(graph_def.node(2).input_size(), 2);
+  EXPECT_EQ(graph_def.node(2).name(), "GE/x/y/greater-than-or-equal-to");
+  EXPECT_EQ(graph_def.node(2).op(), "HloGreaterThanOrEqualTo");
+}
+
 TEST_F(HloTfGraphBuilderTest, EmbeddedComputationsDiamond) {
   // Create computations with a diamond-shaped callgraph.
   auto negate_computation = CreateNegateComputation();
@@ -160,3 +182,7 @@ TEST_F(HloTfGraphBuilderTest, EmbeddedComputationsDiamond) {
 }  // namespace
 }  // namespace hlo_graph_dumper
 }  // namespace xla
+
+int main(int argc, char **argv) {
+  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
+}

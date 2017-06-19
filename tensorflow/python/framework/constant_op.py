@@ -107,6 +107,14 @@ def constant(value, dtype=None, shape=None, name="Const", verify_shape=False):
   return const_tensor
 
 
+def is_constant(tensor_or_op):
+  if isinstance(tensor_or_op, ops.Tensor):
+    op = tensor_or_op.op
+  else:
+    op = tensor_or_op
+  return op.type == "Const"
+
+
 def _constant_tensor_conversion_function(v, dtype=None, name=None,
                                          as_ref=False):
   _ = as_ref

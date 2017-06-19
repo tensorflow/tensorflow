@@ -64,6 +64,39 @@ class XlaCompilationDevice : public LocalDevice {
   std::unique_ptr<XlaCompilationAllocator> allocator_;
 };
 
+struct XlaVariable {
+  // If this variable is visible externally, what was its argument number?
+  int arg_num = -1;
+
+  // A descriptive name for the variable, used in error messages.
+  string name;
+
+  // Current type and value of the variable. Uninitialized variables are
+  // represented by a default (zero) handle and type DT_INVALID.
+  // While the type of a variable is notionally fixed during execution, when
+  // a variable is first initialized we do not yet know its type, so we keep
+  // track of its type dynamically.
+  DataType type = DT_INVALID;
+  xla::ComputationDataHandle value;
+
+  // Value of the variable at computation entry. Used to detect which
+  // variables have new values that need to be written back.
+  xla::ComputationDataHandle initial_value;
+
+  // We treat TensorArrays as a Variable with some extra metadata.
+
+  // 'tensor_array_size' stores the expected size of the TensorArray. We need
+  // to store this since sometimes TensorArrays must be initialized lazily since
+  // we do not know the element shape at construction time.
+  int64 tensor_array_size = -1;
+
+  // 'tensor_array_gradient' is a map from TensorArrayGradV3 'source' attributes
+  // to an XlaVariable containing the gradient TensorArrays. We store a pointer
+  // here since there should only be one gradient TensorArray per 'source'
+  // string, irrespective of the number of calls to TensorArrayGrad.
+  std::unordered_map<string, XlaVariable*> tensor_array_gradient;
+};
+
 // A XlaExpression wraps an XLA computation. Each Tensor on an
 // XlaCompilationDevice contains an XlaExpression, and the shape of the Tensor
 // matches the shape of the subcomputation in the ComputationDataHandle. Each
@@ -82,8 +115,8 @@ class XlaExpression {
   bool has_constant_value() const { return has_constant_value_; }
   const Tensor& constant_value() const { return constant_value_; }
 
-  void set_variable_id(int id);
-  int variable_id() const { return variable_id_; }
+  void set_variable(XlaVariable* variable) { variable_ = variable; }
+  XlaVariable* variable() const { return variable_; }
 
  private:
   // The XLA handle of the expression's computation.
@@ -95,7 +128,7 @@ class XlaExpression {
   bool has_constant_value_ = false;
   Tensor constant_value_;
 
-  int variable_id_ = -1;
+  XlaVariable* variable_ = nullptr;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaExpression);
 };

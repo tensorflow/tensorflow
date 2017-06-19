@@ -31,6 +31,8 @@ namespace tensorflow {
 
 const char* const DEVICE_CPU_XLA_JIT = "XLA_CPU_JIT";
 const char* const DEVICE_GPU_XLA_JIT = "XLA_GPU_JIT";
+const char* const DEVICE_XLA_CPU = "XLA_CPU";
+const char* const DEVICE_XLA_GPU = "XLA_GPU";
 
 // Is platform 'id' supported by XLA?
 static bool IsPlatformSupported(perftools::gputools::Platform::Id id) {

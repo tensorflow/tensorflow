@@ -116,6 +116,23 @@ bool HloOrdering::ExecutesBefore(const HloInstruction* a,
   return ExecutesBeforeInSameComputation(a_ancestor, b_ancestor);
 }
 
+HloOrderingProto HloOrdering::ToProto() const {
+  HloOrderingProto proto;
+  for (const auto& computation : module_->computations()) {
+    const std::vector<const HloInstruction*>* sequence =
+        SequentialOrder(*computation);
+    if (sequence != nullptr) {
+      HloOrderingProto::SequentialComputation* proto_computation =
+          proto.add_sequential_computations();
+      proto_computation->set_computation_name(computation->name());
+      for (const HloInstruction* instruction : *sequence) {
+        *proto_computation->add_instruction_names() = instruction->name();
+      }
+    }
+  }
+  return proto;
+}
+
 PredecessorHloOrdering::PredecessorHloOrdering(const HloModule* module)
     : HloOrdering(module) {}
 
@@ -221,23 +238,6 @@ string SequentialHloOrdering::ToString() const {
   return tensorflow::str_util::Join(pieces, "\n");
 }
 
-namespace {
-StatusOr<int64> MinimumMemoryForSequence(
-    const HloComputation& computation,
-    const std::vector<const HloInstruction*>& sequence,
-    const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
-  // The absolute minimum memory required for a given sequence of instructions
-  // is determined by the sequence of Alloc and Free calls on a simulated heap,
-  // ignoring fragmentation.
-  TF_ASSIGN_OR_RETURN(
-      HeapSimulator::Result result,
-      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), sequence,
-                         computation, points_to_analysis, size_function));
-  return result.heap_size;
-}
-}  // namespace
-
 StatusOr<int64> MinimumMemoryForSequence(
     const SequentialHloOrdering::HloModuleSequence& module_sequence,
     const LogicalBuffer::SizeFunction& size_function) {
@@ -249,17 +249,16 @@ StatusOr<int64> MinimumMemoryForSequence(
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(module));
 
-  int64 total_memory = 0;
-  for (const auto& pair : module_sequence) {
-    const HloComputation* computation = pair.first;
-    const std::vector<const HloInstruction*>& sequence = pair.second;
-    TF_ASSIGN_OR_RETURN(
-        const int64 memory,
-        MinimumMemoryForSequence(*computation, sequence, *points_to_analysis,
-                                 size_function));
-    total_memory += memory;
-  }
-  return total_memory;
+  // The absolute minimum memory required for a given sequence of instructions
+  // is determined by the sequence of Alloc and Free calls on a simulated heap,
+  // ignoring fragmentation. We run the heap simulation on the whole module,
+  // rather than summing each computation, since it gives us a better lower
+  // bound, by minimizing the liveness of sub-computations.
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), *module,
+                         module_sequence, *points_to_analysis, size_function));
+  return result.heap_size;
 }
 
 namespace {
@@ -361,7 +360,7 @@ class ListScheduler {
     return freed_bytes;
   }
 
-  // Construct the scheduling priority of the given instruciton.
+  // Construct the scheduling priority of the given instruction.
   Priority GetPriority(const HloInstruction* instruction) {
     return {BytesFreedIfScheduled(instruction), instruction->user_count()};
   }
@@ -516,6 +515,18 @@ StatusOr<std::vector<const HloInstruction*>> RunDFSMemoryScheduler(
   return sequence;
 }
 
+StatusOr<int64> MinimumMemoryForComputation(
+    const HloComputation& computation,
+    const std::vector<const HloInstruction*>& sequence,
+    const TuplePointsToAnalysis& points_to_analysis,
+    const LogicalBuffer::SizeFunction& size_function) {
+  TF_ASSIGN_OR_RETURN(
+      HeapSimulator::Result result,
+      HeapSimulator::Run(MakeUnique<NoFragmentationStatsHeap>(), computation,
+                         sequence, points_to_analysis, size_function));
+  return result.heap_size;
+}
+
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
@@ -523,13 +534,17 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
   // We try both a list-scheduler based ordering and a DFS based ordering, and
   // choose whichever returns a lower min-memory, not accounting for
   // fragmentation.
+  //
+  // Note that this is just a heuristic. One obvious inaccuracy is that the
+  // memory required for sub-computations might be different when considered
+  // within the caller's context. But it's good enough for now.
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> list_sequence,
       ListScheduler::Run(computation, points_to_analysis, size_function));
   TF_ASSIGN_OR_RETURN(
       const int64 list_memory,
-      MinimumMemoryForSequence(computation, list_sequence, points_to_analysis,
-                               size_function));
+      MinimumMemoryForComputation(computation, list_sequence,
+                                  points_to_analysis, size_function));
   VLOG(2) << "Min-memory list sequence: " << list_memory << " bytes";
 
   TF_ASSIGN_OR_RETURN(
@@ -537,8 +552,8 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
       RunDFSMemoryScheduler(computation, points_to_analysis, size_function));
   TF_ASSIGN_OR_RETURN(
       const int64 dfs_memory,
-      MinimumMemoryForSequence(computation, dfs_sequence, points_to_analysis,
-                               size_function));
+      MinimumMemoryForComputation(computation, dfs_sequence, points_to_analysis,
+                                  size_function));
   VLOG(2) << "Min-memory dfs sequence: " << dfs_memory << " bytes";
 
   if (list_memory <= dfs_memory) {

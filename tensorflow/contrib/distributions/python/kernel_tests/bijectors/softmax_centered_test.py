@@ -20,9 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.distributions.python.ops.bijectors.bijector_test_util import assert_bijective_and_finite
 from tensorflow.contrib.distributions.python.ops.bijectors.softmax_centered import SoftmaxCentered
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops.distributions.bijector_test_util import assert_bijective_and_finite
 from tensorflow.python.platform import test
 
 

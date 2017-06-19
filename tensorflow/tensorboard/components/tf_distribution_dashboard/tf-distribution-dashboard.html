@@ -101,15 +101,19 @@ contains vz-distribution-charts embedded inside tf-panes-helper's.
   </template>
 
   <script>
-    TF.Dashboard.TfDistributionDashboard = Polymer({
+    import {DashboardBehavior} from "../tf-dashboard-common/dashboard-behavior";
+    import {ReloadBehavior} from "../tf-dashboard-common/reload-behavior";
+    import {BackendBehavior} from "../tf-backend/behavior";
+
+    Polymer({
       is: "tf-distribution-dashboard",
       factoryImpl: function(backend) {
         this.backend = backend;
       },
       behaviors: [
-        TF.Dashboard.DashboardBehavior("distributions"),
-        TF.Dashboard.ReloadBehavior("tf-chart-scaffold"),
-        TF.Backend.Behavior,
+        DashboardBehavior("distributions"),
+        ReloadBehavior("tf-chart-scaffold"),
+        BackendBehavior,
       ],
       properties: {
         backend: Object,
@@ -117,7 +121,10 @@ contains vz-distribution-charts embedded inside tf-panes-helper's.
           type: String,
           value: "step"
         },
-        dataType: {value: "compressedHistogram"},
+        dataType: {
+          type: Object,
+          value: "compressedHistogram",
+        },
       },
     });
   </script>

@@ -96,9 +96,9 @@ def main():
 
   # Classify two new flower samples.
   def new_samples():
-    return np.array(
+    return tf.constant(
       [[6.4, 3.2, 4.5, 1.5],
-       [5.8, 3.1, 5.0, 1.7]], dtype=np.float32)
+       [5.8, 3.1, 5.0, 1.7]], dtype=tf.float32)
 
   predictions = list(classifier.predict(input_fn=new_samples))
 
@@ -278,7 +278,7 @@ Then, the code creates a `DNNClassifier` model using the following arguments:
 
 The `tf.contrib.learn` API uses input functions, which create the TensorFlow
 operations that generate data for the model. In this case, the data is small
-enough that it can be stored in @{tf.constant TensorFlow constants}. The
+enough that it can be stored in @{tf.constant$TensorFlow constants}. The
 following code produces the simplest possible input pipeline:
 
 ```python

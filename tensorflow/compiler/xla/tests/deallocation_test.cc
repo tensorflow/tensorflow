@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -52,7 +53,7 @@ TEST_F(DeallocationTest, DeallocateScalar) {
   builder.ConstantR0<float>(42.0);
   auto global_data = ExecuteAndCheckTransfer(&builder, {});
 
-  // A result can be transfered an arbitrary number of times.  Add an extra
+  // A result can be transferred an arbitrary number of times.  Add an extra
   // transfer here so we're not just testing that a second call to Transfer
   // fails.
   ASSERT_IS_OK(client_->Transfer(*global_data).status());
@@ -141,6 +142,7 @@ XLA_TEST_F(DeallocationTest, DeallocateNestedTuple) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

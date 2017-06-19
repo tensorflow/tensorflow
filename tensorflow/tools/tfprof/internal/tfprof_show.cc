@@ -18,154 +18,32 @@ limitations under the License.
 #include <memory>
 #include <set>
 
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace tensorflow {
 namespace tfprof {
-ShowNode::ShowNode(TFNode* node) : node(node), account(true) {
-  mutable_proto()->set_name(name());
-  if (!node->device().empty()) {
-    mutable_proto()->set_device(node->device());
-  }
-  mutable_proto()->set_exec_micros(node->kernel_compute_micros());
-  mutable_proto()->set_requested_bytes(node->requested_byptes());
-  mutable_proto()->set_float_ops(node->float_ops());
 
-  if (!node->shape().empty()) {
-    int64 params = 1;
-    bool complete_shape = true;
-    for (int64 d : node->shape()) {
-      // Sometimes parameters could be <0 when a dim is unknown.
-      if (d < 0) {
-        complete_shape = false;
-        break;
-      }
-      params *= d;
-    }
-    if (complete_shape) {
-      mutable_proto()->set_parameters(proto_.parameters() + params);
-    } else {
-      fprintf(stderr, "Incomplete shape.");
-    }
-  }
-}
-
-string ShowNode::Format(const Options& opts) {
-  if (opts.select.empty()) {
-    return name();
-  }
-  return strings::Printf("%s (%s)", name().c_str(), FormatMeta(opts).c_str());
-}
-
-string ShowNode::FormatMeta(const Options& opts) {
-  std::vector<string> info;
-  if (opts.select.find(kShown[2]) != opts.select.end()) {
-    const string shape = FormatShapes(node->shape());
-    if (!shape.empty()) {
-      info.push_back(shape);
-    }
-    string params = FormatNumber(proto().total_parameters()) + " params";
-    if (account) {
-      params = FormatNumber(proto().parameters()) + "/" + params;
-    } else {
-      params = "--/" + params;
-    }
-    info.push_back(params);
-  }
-  if (opts.select.find(kShown[3]) != opts.select.end()) {
-    string fops = FormatNumber(proto().total_float_ops()) + " flops";
-    if (account) {
-      fops = FormatNumber(proto().float_ops()) + "/" + fops;
-    } else {
-      fops = "--/" + fops;
-    }
-    info.push_back(fops);
-  }
-  if (opts.select.find(kShown[0]) != opts.select.end()) {
-    string memory = FormatMemory(proto().total_requested_bytes());
-    if (account) {
-      memory = FormatMemory(proto().requested_bytes()) + "/" + memory;
-
-    } else {
-      memory = "--/" + memory;
-    }
-    info.push_back(memory);
-  }
-  if (opts.select.find(kShown[1]) != opts.select.end()) {
-    string time = FormatTime(proto().total_exec_micros());
-    if (account) {
-      time = FormatTime(proto().exec_micros()) + "/" + time;
-    } else {
-      time = "--/" + time;
-    }
-    info.push_back(time);
-  }
-  if (opts.select.find(kShown[6]) != opts.select.end()) {
-    if (!proto().device().empty()) {
-      info.push_back(proto().device());
-    }
-  }
-  if (opts.select.find(kShown[7]) != opts.select.end()) {
-    std::set<string> op_types = node->op_types();
-    // Device is considered a type.
-    if (!proto().device().empty()) {
-      op_types.insert(proto().device());
-    }
-    info.push_back(str_util::Join(op_types, "|"));
-  }
-  return str_util::Join(info, ", ");
-}
-
-TFProfNode* ShowNode::mutable_proto() { return &proto_; }
-
-const TFProfNode& ShowNode::proto() const { return proto_; }
-
-void ShowNode::AggregateTotalStats(ShowNode* node) {
-  TFProfNode* node_pb = node->mutable_proto();
-  mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
-                                         node_pb->total_exec_micros());
-  mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
-                                             node_pb->total_requested_bytes());
-  mutable_proto()->set_total_parameters(proto().total_parameters() +
-                                        node_pb->total_parameters());
-  mutable_proto()->set_total_float_ops(proto().total_float_ops() +
-                                       node_pb->total_float_ops());
-}
-
-void ShowNode::AddSelfToTotalStats() {
-  mutable_proto()->set_total_exec_micros(proto().total_exec_micros() +
-                                         proto().exec_micros());
-  mutable_proto()->set_total_requested_bytes(proto().total_requested_bytes() +
-                                             proto().requested_bytes());
-  mutable_proto()->set_total_parameters(proto().total_parameters() +
-                                        proto().parameters());
-  mutable_proto()->set_total_float_ops(proto().total_float_ops() +
-                                       proto().float_ops());
-}
-
-void ShowNode::ResetTotalStats() {
-  mutable_proto()->set_total_exec_micros(0);
-  mutable_proto()->set_total_requested_bytes(0);
-  mutable_proto()->set_total_parameters(0);
-  mutable_proto()->set_total_float_ops(0);
-}
-
-const TFProfNode& TFShow::Show(const Options& opts) {
-  const ShowNode* root = ShowInternal(opts);
-  if (opts.dump_to_file.empty()) {
-    printf("%s", root->formatted_str.c_str());
-    fflush(stdout);
-  } else {
-    Status s = WriteStringToFile(Env::Default(), opts.dump_to_file,
-                                 root->formatted_str);
+const TFGraphNodeProto& TFShow::Show(const Options& opts) {
+  if (opts.output_type == kOutput[0]) {
+    Timeline timeline(opts.step, opts.output_options.at(kTimelineOpts[0]));
+    return ShowInternal(opts, &timeline)->proto();
+  } else if (opts.output_type == kOutput[2]) {
+    const ShowNode* root = ShowInternal(opts, nullptr);
+    Status s =
+        WriteStringToFile(Env::Default(), opts.output_options.at(kFileOpts[0]),
+                          root->formatted_str);
     if (!s.ok()) {
       fprintf(stderr, "%s\n", s.ToString().c_str());
     }
+    return root->proto();
+  } else {
+    const ShowNode* root = ShowInternal(opts, nullptr);
+    printf("%s", root->formatted_str.c_str());
+    fflush(stdout);
+    return root->proto();
   }
-  return root->proto();
 }
 
 bool TFShow::LookUpCheckPoint(const string& name,
@@ -190,8 +68,6 @@ bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
   // Always show kTFProfRoot.
   if (node->name() == kTFProfRoot) return true;
 
-  if (!node->account) return false;
-
   if (node->proto().requested_bytes() < opts.min_bytes ||
       node->proto().exec_micros() < opts.min_micros ||
       node->proto().parameters() < opts.min_params ||
@@ -201,20 +77,6 @@ bool TFShow::ShouldShow(ShowNode* node, const Options& opts, int depth) {
   }
 
   bool show = false;
-  if (opts.device_regexes.size() == 1 && opts.device_regexes[0] == ".*") {
-    show = true;
-  } else {
-    for (const string& regex : opts.device_regexes) {
-      if (RE2::FullMatch(node->proto().device(), regex)) {
-        show = true;
-        break;
-      }
-    }
-  }
-  // Don't show if device_regexes don't cover it.
-  if (!show) return false;
-
-  show = false;
   if (opts.show_name_regexes.size() == 1 && opts.show_name_regexes[0] == ".*") {
     show = true;
   } else {
@@ -243,7 +105,8 @@ bool TFShow::ShouldTrim(ShowNode* node, const std::vector<string>& regexes) {
   return false;
 }
 
-bool TFShow::ShouldAccount(ShowNode* node, const Options& opts) {
+bool TFShow::ReAccount(ShowNode* node, const Options& opts) {
+  node->ReInit(opts.step);
   if (opts.account_type_regexes.size() == 1 &&
       opts.account_type_regexes[0] == ".*") {
     return true;
@@ -254,12 +117,104 @@ bool TFShow::ShouldAccount(ShowNode* node, const Options& opts) {
         return true;
       }
     }
-    if (RE2::FullMatch(node->proto().device(), regex)) {
-      return true;
+  }
+  return false;
+}
+
+string TFShow::FormatNode(ShowNode* node, const Options& opts) {
+  std::vector<string> info;
+  if (opts.select.find(kShown[2]) != opts.select.end()) {
+    const string shape = FormatShapes(node->node->shape());
+    if (!shape.empty()) {
+      info.push_back(shape);
+    }
+    string params = FormatNumber(node->proto().total_parameters()) + " params";
+    if (node->account) {
+      params = FormatNumber(node->proto().parameters()) + "/" + params;
+    } else {
+      params = "--/" + params;
+    }
+    info.push_back(params);
+  }
+  if (opts.select.find(kShown[3]) != opts.select.end()) {
+    string fops = FormatNumber(node->proto().total_float_ops()) + " flops";
+    if (node->account) {
+      fops = FormatNumber(node->proto().float_ops()) + "/" + fops;
+    } else {
+      fops = "--/" + fops;
+    }
+    info.push_back(fops);
+  }
+  if (opts.select.find(kShown[0]) != opts.select.end()) {
+    string memory = FormatMemory(node->proto().total_requested_bytes());
+    if (node->account) {
+      memory = FormatMemory(node->proto().requested_bytes()) + "/" + memory;
+
+    } else {
+      memory = "--/" + memory;
+    }
+    info.push_back(memory);
+  }
+  if (opts.select.find(kShown[1]) != opts.select.end()) {
+    string time = FormatTime(node->proto().total_exec_micros());
+    if (node->account) {
+      time = FormatTime(node->proto().exec_micros()) + "/" + time;
+    } else {
+      time = "--/" + time;
+    }
+    info.push_back(time);
+  }
+  if (opts.select.find(kShown[5]) != opts.select.end()) {
+    if (node->proto().devices_size() > 0) {
+      info.push_back(str_util::Join(node->proto().devices(), "|"));
     }
   }
+  if (opts.select.find(kShown[6]) != opts.select.end()) {
+    const std::set<string>& op_types = node->node->op_types();
+    info.push_back(str_util::Join(op_types, "|"));
+  }
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    std::vector<string> shape_vec;
+    for (const auto& s : node->node->input_shapes()) {
+      if (s.second.empty()) {
+        shape_vec.push_back(strings::Printf("%d:unknown", s.first));
+      } else {
+        shape_vec.push_back(strings::Printf(
+            "%d:%s", s.first, str_util::Join(s.second, "x").c_str()));
+      }
+    }
+    info.push_back(str_util::Join(shape_vec, "|"));
+  }
 
-  return false;
+  return strings::Printf("%s (%s)", node->name().c_str(),
+                         str_util::Join(info, ", ").c_str());
+}
+
+string TFShow::FormatLegend(const Options& opts) {
+  std::vector<string> legends;
+  if (opts.select.find(kShown[2]) != opts.select.end()) {
+    legends.push_back("# parameters");
+  }
+  if (opts.select.find(kShown[3]) != opts.select.end()) {
+    legends.push_back("# float_ops");
+  }
+  if (opts.select.find(kShown[0]) != opts.select.end()) {
+    legends.push_back("output bytes");
+  }
+  if (opts.select.find(kShown[1]) != opts.select.end()) {
+    legends.push_back("execution time");
+  }
+  if (opts.select.find(kShown[5]) != opts.select.end()) {
+    legends.push_back("assigned devices");
+  }
+  if (opts.select.find(kShown[6]) != opts.select.end()) {
+    legends.push_back("op types");
+  }
+  if (opts.select.find(kShown[8]) != opts.select.end()) {
+    legends.push_back("input shapes");
+  }
+  return strings::Printf("node name | %s\n",
+                         str_util::Join(legends, " | ").c_str());
 }
 
 }  // namespace tfprof

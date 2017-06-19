@@ -76,7 +76,8 @@ class TFProfTensor {
           CHECK(strings::safe_strto64(sstream.str().c_str(), &int64_val));
           dim->add_value_int64(int64_val);
           formatted_str_ += strings::Printf(
-              "%lld ", dim->value_int64(dim->value_int64_size() - 1));
+              "%lld ", static_cast<int64>(
+                           dim->value_int64(dim->value_int64_size() - 1)));
         } else if (typeid(values[nstart]) == typeid(string)) {
           dim->add_value_str(sstream.str());
           formatted_str_ =

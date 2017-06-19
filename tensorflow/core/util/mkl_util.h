@@ -23,7 +23,7 @@ limitations under the License.
 #include "third_party/mkl/include/mkl_dnn.h"
 #include "third_party/mkl/include/mkl_dnn_types.h"
 #include "third_party/mkl/include/mkl_service.h"
-
+#include "third_party/mkl/include/mkl_trans.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -542,8 +542,8 @@ inline int64 GetMklTensorDim(const MklShape& mkl_shape, char dimension) {
   return mkl_shape.dim_size(index);
 }
 
-inline void CopyMklTensorInToOut(OpKernelContext* context, int idx_in,
-                                 int idx_out) {
+inline void CopyMklTensorInToOut(OpKernelContext* context,
+                                 int idx_in, int idx_out) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
@@ -563,8 +563,9 @@ inline void CopyMklTensorInToOut(OpKernelContext* context, int idx_in,
   context->set_output(idx_meta_out, meta_output);
 }
 
-inline void CopyTFTensorInToOut(OpKernelContext* context, int idx_in,
-                                int idx_out, const TensorShape& shape) {
+inline void CopyTfTensorInToOutWithShape(OpKernelContext* context,
+                                         int idx_in, int idx_out,
+                                         const TensorShape& shape) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
@@ -578,6 +579,77 @@ inline void CopyTFTensorInToOut(OpKernelContext* context, int idx_in,
   // TODO(intel_tf): alternatively, call forward_input_to_output_with_shape(...)
   CHECK(output.CopyFrom(data, shape));
   context->set_output(idx_data_out, output);
+}
+
+inline void FowardTfTensorInToOut(OpKernelContext* context,
+                                  int idx_in, int idx_out) {
+  int num_inputs = context->num_inputs();
+  int num_outputs = context->num_outputs();
+  int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
+  int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
+
+  MklShape mkl_shape_output;
+  mkl_shape_output.SetMklTensor(false);
+  AllocateOutputSetMklShape(context, idx_out, mkl_shape_output);
+  if (IsRefType(context->input_dtype(idx_data_in))) {
+    context->forward_ref_input_to_ref_output(idx_data_in, idx_data_out);
+  } else {
+    context->set_output(idx_data_out, context->input(idx_data_in));
+  }
+}
+
+inline void ForwarMklTensorInToOut(OpKernelContext* context,
+                                   int idx_in, int idx_out) {
+  int num_inputs = context->num_inputs();
+  int num_outputs = context->num_outputs();
+  int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
+  int idx_meta_in = GetTensorMetaDataIndex(idx_in, num_inputs);
+  int idx_data_out = GetTensorDataIndex(idx_out, num_outputs);
+  int idx_meta_out = GetTensorMetaDataIndex(idx_out, num_outputs);
+
+  if (IsRefType(context->input_dtype(idx_data_in))) {
+    context->forward_ref_input_to_ref_output(idx_data_in, idx_data_out);
+    context->forward_ref_input_to_ref_output(idx_meta_in, idx_meta_out);
+  } else {
+    context->set_output(idx_data_out, context->input(idx_data_in));
+    context->set_output(idx_meta_out, context->input(idx_meta_in));
+  }
+}
+
+  // TODO(intel_tf): Remove this routine when faster MKL layout conversion is
+  // out. 
+inline void MklNHWCToNCHW(const Tensor& input, Tensor** output) {
+  const float* buf_in = input.flat<float>().data();
+  float* buf_out = (*output)->flat<float>().data();
+
+  int64 N = input.dim_size(0);
+  int64 H = input.dim_size(1);
+  int64 W = input.dim_size(2);
+  int64 C = input.dim_size(3);
+  int64 stride_n = H*W*C;
+# pragma omp parallel for num_threads(16)
+  for (int64 n = 0; n < N; ++n) {
+    mkl_somatcopy('R', 'T', H*W, C, 1, buf_in + n*stride_n, C,
+        buf_out + n*stride_n, H*W);
+  }
+}
+
+  // TODO(intel_tf): Remove this routine when faster MKL layout conversion is
+  // out. 
+inline void MklNCHWToNHWC(const Tensor& input, Tensor** output) {
+  const float* buf_in = input.flat<float>().data();
+  float* buf_out = (*output)->flat<float>().data();
+
+  int64 N = (*output)->dim_size(0);
+  int64 H = (*output)->dim_size(1);
+  int64 W = (*output)->dim_size(2);
+  int64 C = (*output)->dim_size(3);
+  int64 stride_n = H*W*C;
+# pragma omp parallel for num_threads(16)
+  for (int64 n = 0; n < N; ++n) {
+    mkl_somatcopy('R', 'T', C, H*W, 1, buf_in + n*stride_n, H*W,
+        buf_out + n*stride_n, C);
+  }
 }
 
 namespace mkl_op_registry {

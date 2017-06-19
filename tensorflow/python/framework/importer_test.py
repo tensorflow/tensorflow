@@ -600,6 +600,88 @@ class ImportGraphDefTest(test.TestCase):
             value { list { s: 'loc:@imported_graph/A' } }
           } }""", b.graph.as_graph_def())
 
+  def testColocationWithDeviceFn(self):
+    original_graph_def = self._MakeGraphDef("""
+          node { name: 'A' op: 'None' attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }
+          node { name: 'B' op: 'None'  attr {
+            key: '_class'
+            value { list { s: 'loc:@A' } }
+          } }""")
+
+    # A device function that places "A" on one device and "B" on
+    # another device.  Because B is colocated with A, we test that B's
+    # device function is overridden by A.
+    def CustomDeviceFn(op):
+      if "A" in op.name:
+        return "/device:A:0"
+      else:
+        return "/device:B:0"
+
+    with ops.Graph().as_default():
+      with ops.device(CustomDeviceFn):
+        b, = importer.import_graph_def(
+            original_graph_def, return_elements=["B"], name="imported_graph")
+
+      self.assertProtoEqualsVersion("""
+          node { name: 'imported_graph/A' op: 'None' device: "/device:A:0"
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
+                }
+          }
+          node { name: 'imported_graph/B' op: 'None' device: "/device:A:0"
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
+          } }""", b.graph.as_graph_def())
+
+    # Test a scenario where 'A' doesn't get a device; 'A' should
+    # not have a device, but during runtime will get colocated with
+    # 'B' because of the colocation attribute.
+    def BDeviceFn(op):
+      if "B" in op.name:
+        return "/device:B:0"
+      return ""
+
+    with ops.Graph().as_default():
+      with ops.device(BDeviceFn):
+        b, = importer.import_graph_def(
+            original_graph_def, return_elements=["B"], name="imported_graph")
+
+      self.assertProtoEqualsVersion("""
+          node { name: 'imported_graph/A' op: 'None'
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
+                }
+          }
+          node { name: 'imported_graph/B' op: 'None'
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
+          } }""", b.graph.as_graph_def())
+
+    # Only A gets a device, so B inherits it implicitly.
+    def ADeviceFn(op):
+      if "A" in op.name:
+        return "/device:A:0"
+      return ""
+
+    with ops.Graph().as_default():
+      with ops.device(ADeviceFn):
+        b, = importer.import_graph_def(
+            original_graph_def, return_elements=["B"], name="imported_graph")
+
+      self.assertProtoEqualsVersion("""
+          node { name: 'imported_graph/A' op: 'None' device: "/device:A:0"
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
+                }
+          }
+          node { name: 'imported_graph/B' op: 'None' device: "/device:A:0"
+                attr {
+                  key: '_class' value { list { s: 'loc:@imported_graph/A' } }
+          } }""", b.graph.as_graph_def())
+
   def testNamePrefixColocationAttrsMultipleImport(self):
     original_graph_def = self._MakeGraphDef("""
           node { name: 'A' op: 'None' }
@@ -685,6 +767,17 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual("return_elements must be a list of strings.",
                        str(e.exception))
 
+  def testDuplicateOperationNames(self):
+    with ops.Graph().as_default():
+      with self.assertRaises(ValueError) as e:
+        importer.import_graph_def(
+            self._MakeGraphDef("""
+            node { name: 'A' op: 'Oi' }
+            node { name: 'B' op: 'Oi' }
+            node { name: 'A' op: 'Oi' }
+            """))
+      self.assertEqual("Duplicate name 'A' in GraphDef.", str(e.exception))
+
   def testWithExtensionAndAttr(self):
     with ops.Graph().as_default() as g:
       c = constant_op.constant(5.0, dtype=dtypes.float32, name="c")
@@ -741,17 +834,18 @@ class ImportGraphDefTest(test.TestCase):
   def testWithDeviceFunctionDependingOnInputs(self):
     with ops.Graph().as_default() as g:
       with ops.device("/job:ps"):
-        v = variables.Variable(1.0)
-      unused_assign_op = v.assign(2.0)
-      unused_assign_2_op = v.assign(3.0)
-      unused_add_t = v + v
+        v1 = constant_op.constant(1.0)
+        v2 = constant_op.constant(1.0)
+      _ = v1 + v2
+      _ = v1 - v2
+      _ = array_ops.identity(v1)
     gdef = g.as_graph_def()
 
     # We'll use the following device function to observe ops with two inputs.
     ops_with_two_inputs = []
 
     def InputCounter(op):
-      if any(in_t.dtype._is_ref_dtype for in_t in op.inputs):  # pylint: disable=protected-access
+      if len(op.inputs) == 2:
         ops_with_two_inputs.append(op)
       return ""
 
@@ -759,8 +853,8 @@ class ImportGraphDefTest(test.TestCase):
       with ops.device(InputCounter):
         importer.import_graph_def(gdef)
 
-    # We expect to see the initializer, two assign operations, and the add op.
-    self.assertEqual(4, len(ops_with_two_inputs))
+    # We expect to see the add and subtract, but not identity.
+    self.assertEqual(2, len(ops_with_two_inputs))
 
   def testGradient(self):
     with ops.Graph().as_default() as g:
@@ -1003,6 +1097,35 @@ class ImportGraphDefTest(test.TestCase):
     with self.test_session():
       z_val = z.eval()
       self.assertEqual(z_val, -2.0)
+
+  def testImportGraphWithFunctionTwice(self):
+    g = ops.Graph()
+    with g.as_default():
+      @function.Defun()
+      def Add2(x, y):
+        return math_ops.add(x, y)
+
+      x = array_ops.placeholder(dtype=dtypes.float32, name="x")
+      y = array_ops.placeholder(dtype=dtypes.float32, name="y")
+      _ = Add2(x, y, name="z")  # pylint: disable=unexpected-keyword-arg
+
+    gdef = g.as_graph_def()
+
+    x = random_ops.random_uniform(dtype=dtypes.float32, shape=())
+    y = random_ops.random_uniform(dtype=dtypes.float32, shape=())
+    input_map = {"x:0": x, "y:0": y}
+
+    with ops.name_scope("first"):
+      z1 = importer.import_graph_def(gdef, return_elements=["z:0"],
+                                     input_map=input_map)[0]
+
+    with ops.name_scope("second"):
+      z2 = importer.import_graph_def(gdef, return_elements=["z:0"],
+                                     input_map=input_map)[0]
+
+    with self.test_session() as sess:
+      z1_val, z2_val = sess.run((z1, z2))
+      self.assertAllEqual(z1_val, z2_val)
 
 
 if __name__ == "__main__":

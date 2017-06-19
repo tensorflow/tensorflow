@@ -73,7 +73,7 @@ def cnn_model(features, target):
 
   # Apply regular WX + B and classification.
   logits = tf.contrib.layers.fully_connected(pool2, 15, activation_fn=None)
-  loss = tf.contrib.losses.softmax_cross_entropy(logits, target)
+  loss = tf.losses.softmax_cross_entropy(target, logits)
 
   train_op = tf.contrib.layers.optimize_loss(
       loss,
@@ -105,14 +105,11 @@ def main(unused_argv):
   print('Total words: %d' % n_words)
 
   # Build model
-  classifier = learn.Estimator(model_fn=cnn_model)
+  classifier = learn.SKCompat(learn.Estimator(model_fn=cnn_model))
 
   # Train and predict
   classifier.fit(x_train, y_train, steps=100)
-  y_predicted = [
-      p['class'] for p in classifier.predict(
-          x_test, as_iterable=True)
-  ]
+  y_predicted = classifier.predict(x_test)['class']
   score = metrics.accuracy_score(y_test, y_predicted)
   print('Accuracy: {0:f}'.format(score))
 

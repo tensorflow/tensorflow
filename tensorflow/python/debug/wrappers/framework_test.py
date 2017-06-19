@@ -34,6 +34,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+# Import resource_variable_ops for the variables-to-tensor implicit conversion.
+from tensorflow.python.ops import resource_variable_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
@@ -213,7 +215,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
       wrapper_sess.partial_run_setup(self._p)
 
   def testInteractiveSessionInit(self):
-    """The wrapper should work also on other subclassses of session.Session."""
+    """The wrapper should work also on other subclasses of session.Session."""
 
     TestDebugWrapperSession(
         session.InteractiveSession(), self._dump_root, self._observer)
@@ -383,18 +385,6 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
     self.assertItemsEqual(
         ["a_init", "b_init"],
         [datum.node_name for datum in dump.dumped_tensor_data])
-
-  def testUsingNonDirectSessionRaisesNotImplementedError(self):
-    # TODO(cais): Remove this test once tfdbg is integrated with GrpcSession.
-    fake_non_direct_session = session.Session()
-    fake_non_direct_session._target = "foo"
-
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        r"Non-DirectSession support is not available from TensorFlow Debugger "
-        r"yet \(sess_str=foo\)"):
-      TestDebugWrapperSession(
-          fake_non_direct_session, self._dump_root, self._observer)
 
 
 if __name__ == "__main__":

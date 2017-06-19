@@ -1,6 +1,7 @@
 path: "tensorflow.train.SecondOrStepTimer"
 tf_class {
   is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks.SecondOrStepTimer\'>"
+  is_instance: "<class \'tensorflow.python.training.basic_session_run_hooks._HookTimer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
@@ -8,6 +9,10 @@ tf_class {
   }
   member_method {
     name: "last_triggered_step"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

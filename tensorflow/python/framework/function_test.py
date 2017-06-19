@@ -39,6 +39,7 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -324,6 +325,48 @@ class FunctionTest(test.TestCase):
                                    "assertion"):
         _ = MyFn(100.0).eval()
 
+  def testControlFlowStrictness(self):
+    """Inlined functions must not execute in a untaken control flow branch."""
+
+    @function.Defun(dtypes.int32)
+    def AssertFail(x):
+      # Assertion that always fails and does not have a data dependency on `x`.
+      assert_false = control_flow_ops.Assert(False, [42])
+      with ops.control_dependencies([assert_false]):
+        return array_ops.identity(x)
+
+    with ops.device("CPU"):
+      pred = array_ops.placeholder(dtypes.bool)
+      x = array_ops.placeholder(dtypes.int32)
+      cond = control_flow_ops.cond(pred, lambda: x + 1, lambda: AssertFail(x))
+      # pylint: disable=unnecessary-lambda
+      loop = control_flow_ops.while_loop(lambda y: pred,
+                                         lambda y: AssertFail(y), [x])
+      # pylint: enable=unnecessary-lambda
+
+    # Enables inlining.
+    config = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
+        optimizer_options=config_pb2.OptimizerOptions(
+            opt_level=config_pb2.OptimizerOptions.L0,
+            do_common_subexpression_elimination=True,
+            do_function_inlining=True,
+            do_constant_folding=True)))
+
+    with session.Session(config=config) as sess:
+      # Since the 'False' branch is not taken, the assertion should not fire.
+      self.assertEqual(4, sess.run(cond, {pred: True, x: 3}))
+
+      # The assertion should still fire if the False branch is taken.
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   "assertion"):
+        sess.run(cond, {pred: False, x: 3})
+
+      # Similarly for loops.
+      self.assertEqual(3, sess.run(loop, {pred: False, x: 3}))
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   "assertion"):
+        sess.run(loop, {pred: True, x: 3})
+
   def testVar(self):
 
     @function.Defun(dtypes.float32)
@@ -341,7 +384,7 @@ class FunctionTest(test.TestCase):
 
   def testResourceVarAsImplicitInput(self):
     g = ops.Graph()
-    with g.as_default():
+    with g.as_default(), ops.device("cpu:0"):
       v = variable_scope.get_variable(
           "var", (4, 4), dtypes.float32, use_resource=True)
 
@@ -774,6 +817,22 @@ class FunctionTest(test.TestCase):
                             feed_dict={input_op: np.linspace(1, 10, 10)})
       self.assertAllEqual(out1, np.linspace(2, 11, 10))
       self.assertAllEqual(out2, np.linspace(2, 11, 10))
+
+  def testTwoInputsSameOp(self):
+    g = ops.Graph()
+    with g.as_default():
+      m = array_ops.placeholder(dtypes.float32)
+      s, u, v = linalg_ops.svd(m)
+      ss = math_ops.reduce_sum(s)
+      uu = math_ops.reduce_sum(u)
+      vv = math_ops.reduce_sum(v)
+      result = ss + uu + vv
+    f = function._graph_to_function_def(
+        g,
+        g.get_operations()[1:],  # skip the placeholder
+        [s, u, v],
+        [result])
+    self.assertEqual(len(f.signature.input_arg), 3)
 
 
 class FunctionsFromProtos(test.TestCase):

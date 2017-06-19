@@ -1,0 +1,75 @@
+<!doctype html>
+<!--
+@license
+Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<html>
+  <head>
+    <script src="../../webcomponentsjs/webcomponents-lite.min.js"></script>
+    <link rel="import" href="../../iron-demo-helpers/demo-snippet.html">
+    <link rel="import" href="../tf-profile-dashboard.html">
+    <title>Profile Dashboard Demo</title>
+    <style>
+      #container{
+        height: 800px;
+        border: 2px solid grey;
+      }
+      html, body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        font-family: "RobotoDraft","Roboto",sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <demo-snippet>
+      <template>
+        <dom-module id="profile-dash-demo">
+          <template>
+            <tf-profile-dashboard
+              backend="[[_backend]]",
+              trace-viewer-base-url="../../tf-trace-viewer/demo.html">
+            </tf-profile-dashboard>
+          </template>
+          <script>
+            import {Backend} from "../../tf-backend/backend";
+            import {createRouter, setRouter} from "../../tf-backend/router";
+
+            Polymer({
+              is: "profile-dash-demo",
+              properties: {
+                _backend: {
+                  type: Object,
+                  value: function() {
+                    return new Backend();
+                  },
+                },
+              },
+              created: function() {
+                var router = createRouter("data", true);
+                setRouter(router);
+              },
+            });
+          </script>
+        </dom-module>
+        <div id="container">
+          <profile-dash-demo></profile-dash-demo>
+        </div>
+      </template>
+    </demo-snippet>
+  </body>
+</html>

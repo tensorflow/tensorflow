@@ -73,6 +73,29 @@ public final class OperationBuilder {
     return this;
   }
 
+  /**
+   * Ensure that the operation does not execute before the control operation does.
+   *
+   * <p>A control input is an Operation that must be executed before running the operation currently
+   * being built.
+   *
+   * <p>For example, an Assert operation may be added as a control input for this operation. The
+   * Assert now behaves as a pre-condition that will always verify itself before running the
+   * operation.
+   *
+   * @param control operation that must be executed before running this operation.
+   * @return the OperationBuilder instance for chaining.
+   */
+  public OperationBuilder addControlInput(Operation control) {
+    Graph.Reference r = graph.ref();
+    try {
+      addControlInput(unsafeNativeHandle, control.getUnsafeNativeHandle());
+    } finally {
+      r.close();
+    }
+    return this;
+  }
+
   public OperationBuilder addInputList(Output[] inputs) {
     Graph.Reference r = graph.ref();
     try {
@@ -243,6 +266,8 @@ public final class OperationBuilder {
   private static native void addInput(long handle, long opHandle, int index);
 
   private static native void addInputList(long handle, long[] opHandles, int[] indices);
+
+  private static native void addControlInput(long handle, long opHandle);
 
   private static native void setDevice(long handle, String device);
 

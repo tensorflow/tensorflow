@@ -47,10 +47,10 @@ class DenseTest(test.TestCase):
 
     # Test auto-naming
     dense = core_layers.Dense(2, activation=nn_ops.relu)
-    dense.apply(np.random.randn(0, 2))
+    dense.apply(random_ops.random_uniform((5, 2)))
     self.assertEqual(dense.name, 'dense_1')
     dense = core_layers.Dense(2, activation=nn_ops.relu)
-    dense.apply(np.random.randn(0, 2))
+    dense.apply(random_ops.random_uniform((5, 2)))
     self.assertEqual(dense.name, 'dense_2')
 
   def testCall(self):
@@ -335,6 +335,18 @@ class DropoutTest(test.TestCase):
       np_output = sess.run(dropped, feed_dict={training: True})
       self.assertAlmostEqual(0., np_output.min())
       np_output = sess.run(dropped, feed_dict={training: False})
+      self.assertAllClose(np.ones((5, 5)), np_output)
+
+  def testDynamicRate(self):
+    with self.test_session() as sess:
+      rate = array_ops.placeholder(dtype='float32', name='rate')
+      dp = core_layers.Dropout(rate, name='dropout')
+      inputs = array_ops.ones((5, 5))
+      dropped = dp.apply(inputs, training=True)
+      sess.run(variables.global_variables_initializer())
+      np_output = sess.run(dropped, feed_dict={rate: 0.5})
+      self.assertAlmostEqual(0., np_output.min())
+      np_output = sess.run(dropped, feed_dict={rate: 0.0})
       self.assertAllClose(np.ones((5, 5)), np_output)
 
 

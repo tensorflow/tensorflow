@@ -36,19 +36,19 @@ class GraphProperties {
 
   Status InferStatically();
   Status InferDynamically(Cluster* cluster);
+  Status InferFromCostGraph(const CostGraphDef& cost_graph);
 
+  bool HasOutputProperties(const string& name) const;
   std::vector<OpInfo::TensorProperties> GetInputProperties(
       const string& node_name) const;
   std::vector<OpInfo::TensorProperties> GetOutputProperties(
       const string& node_name) const;
-  string GetDeviceName(const string& node_name) const;
 
  private:
   // Inputs
   GrapplerItem item_;
   std::map<string, std::vector<OpInfo::TensorProperties>> input_properties_;
   std::map<string, std::vector<OpInfo::TensorProperties>> output_properties_;
-  std::map<string, string> device_names_;
 };
 
 }  // end namespace grappler

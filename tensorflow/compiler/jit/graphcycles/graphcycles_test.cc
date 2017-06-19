@@ -230,7 +230,7 @@ TEST(GraphCycles, RandomizedTest) {
           int new_node = graph_cycles.NewNode();
           ASSERT_NE(-1, new_node);
           VLOG(1) << "adding node " << new_node;
-          ASSERT_EQ(0, graph_cycles.GetNodeData(new_node));
+          ASSERT_EQ(nullptr, graph_cycles.GetNodeData(new_node));
           graph_cycles.SetNodeData(
               new_node, reinterpret_cast<void *>(
                             static_cast<intptr_t>(new_node + kDataOffset)));
@@ -243,7 +243,7 @@ TEST(GraphCycles, RandomizedTest) {
         break;
 
       case 1:  // Remove a node
-        if (nodes.size() > 0) {
+        if (!nodes.empty()) {
           int node_index = RandomNode(&rnd, &nodes);
           int node = nodes[node_index];
           nodes[node_index] = nodes.back();
@@ -263,7 +263,7 @@ TEST(GraphCycles, RandomizedTest) {
         break;
 
       case 2:  // Add an edge
-        if (nodes.size() > 0) {
+        if (!nodes.empty()) {
           int from = RandomNode(&rnd, &nodes);
           int to = RandomNode(&rnd, &nodes);
           if (EdgeIndex(&edges, nodes[from], nodes[to]) == -1) {
@@ -282,7 +282,7 @@ TEST(GraphCycles, RandomizedTest) {
         break;
 
       case 3:  // Remove an edge
-        if (edges.size() > 0) {
+        if (!edges.empty()) {
           int i = RandomEdge(&rnd, &edges);
           int from = edges[i].from;
           int to = edges[i].to;
@@ -296,7 +296,7 @@ TEST(GraphCycles, RandomizedTest) {
         break;
 
       case 4:  // Check a path
-        if (nodes.size() > 0) {
+        if (!nodes.empty()) {
           int from = RandomNode(&rnd, &nodes);
           int to = RandomNode(&rnd, &nodes);
           int32 path[2 * kMaxNodes];
@@ -343,7 +343,7 @@ TEST(GraphCycles, RandomizedTest) {
         ASSERT_NE(-1, new_node);
         VLOG(1) << "adding node " << new_node;
         ASSERT_GE(new_node, 0);
-        ASSERT_EQ(0, graph_cycles.GetNodeData(new_node));
+        ASSERT_EQ(nullptr, graph_cycles.GetNodeData(new_node));
         graph_cycles.SetNodeData(
             new_node, reinterpret_cast<void *>(
                           static_cast<intptr_t>(new_node + kDataOffset)));

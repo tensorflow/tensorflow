@@ -20,6 +20,7 @@ cc_library(
 
 cc_test(
     name = "runtime_test",
+    size = "small",
     srcs = ["runtime_test.cc"],
     deps = [
         ":runtime",
@@ -73,7 +74,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/core:core_cpu",
@@ -88,6 +89,7 @@ cc_library(
 
 cc_test(
     name = "codegen_test",
+    size = "small",
     srcs = ["codegen_test.cc"],
     data = ["codegen_test_h.golden"],
     deps = [
@@ -101,6 +103,7 @@ cc_test(
 
 cc_test(
     name = "tfcompile_util_test",
+    size = "small",
     srcs = ["tfcompile_util_test.cc"],
     deps = [
         ":tfcompile_lib",
@@ -123,9 +126,16 @@ cc_library(
     deps = [
         ":tfcompile_lib",
         ":tfcompile_proto",
+        "//tensorflow/compiler/xla/legacy_flags:alias_analysis_flags",
+        "//tensorflow/compiler/xla/legacy_flags:buffer_assignment_flags",
         "//tensorflow/compiler/xla/legacy_flags:compiler_functor_flags",
         "//tensorflow/compiler/xla/legacy_flags:cpu_compiler_flags",
         "//tensorflow/compiler/xla/legacy_flags:cpu_runtime_flags",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+        "//tensorflow/compiler/xla/legacy_flags:hlo_graph_dumper_flags",
+        "//tensorflow/compiler/xla/legacy_flags:llvm_util_flags",
+        "//tensorflow/compiler/xla/legacy_flags:service_flags",
+        "//tensorflow/compiler/xla/legacy_flags:util_flags",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",

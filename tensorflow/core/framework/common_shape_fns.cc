@@ -746,6 +746,7 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
     }
     // Build result of <rank> different unknown dims.
     std::vector<DimensionHandle> dims;
+    dims.reserve(rank);
     for (int i = 0; i < rank; ++i) dims.push_back(c->UnknownDim());
     c->set_output(0, c->MakeShape(dims));
     return Status::OK();

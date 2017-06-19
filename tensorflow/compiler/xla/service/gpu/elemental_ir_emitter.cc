@@ -113,7 +113,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitMathCall(
     tensorflow::gtl::ArraySlice<llvm::Value*> operands,
     tensorflow::gtl::ArraySlice<PrimitiveType> input_types,
     PrimitiveType output_type) const {
-  // Binary math functions tranform are of type [T] -> T.
+  // Binary math functions transform are of type [T] -> T.
   for (PrimitiveType input_type : input_types) {
     if (output_type != input_type) {
       return Unimplemented("Input type ≠ output type: %s ≠ %s",
@@ -175,7 +175,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPowerOp(
     return make_sqrt();
   }
 
-  if (!hlo_module_config_.fast_math_disabled() &&
+  if (hlo_module_config_.debug_options().xla_enable_fast_math() &&
       IsFPLiteralWithValue(rhs, -.5)) {
     VLOG(10) << "emitting pow(A, -.5) as 1/sqrt(A): " << op->ToString();
     // LLVM's NVPTX backend knows how to transform 1/sqrt(A) into the NVPTX

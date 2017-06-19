@@ -108,6 +108,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
         "@six_archive//:six",
     ],
 )
@@ -181,6 +182,7 @@ py_test(
 
 py_test(
     name = "optimizers_test",
+    size = "small",
     srcs = ["python/layers/optimizers_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -236,6 +238,7 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/feature_column",
         "//third_party/py/numpy",
     ],
 )
@@ -303,6 +306,7 @@ py_test(
 py_test(
     name = "embedding_ops_test",
     size = "small",
+    timeout = "moderate",
     srcs = ["python/layers/embedding_ops_test.py"],
     srcs_version = "PY2AND3",
     deps = [

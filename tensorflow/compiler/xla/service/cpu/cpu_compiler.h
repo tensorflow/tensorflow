@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
@@ -33,8 +32,6 @@ namespace cpu {
 // This class wraps the configurability options that LLVM exposes including: the
 // target triple, the target cpu and the target features.  It also includes the
 // desired linkage name for the computation entry point.
-// Note that the optimization level can be controlled by the
-// --xla_cpu_llvm_opt_level flag.
 class CpuAotCompilationOptions : public AotCompilationOptions {
  public:
   // Relocation models available for compilation.
@@ -113,25 +110,21 @@ class CpuCompiler : public Compiler {
   ~CpuCompiler() override {}
 
   StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> hlo_module,
-      std::unique_ptr<HloModuleConfig> module_config, HloDumper dump_hlo,
+      std::unique_ptr<HloModule> module, HloDumper dump_hlo,
       perftools::gputools::StreamExecutor* stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> hlo_module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-      HloDumper dump_hlo,
+      std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlo,
       std::vector<perftools::gputools::StreamExecutor*> stream_exec) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(
-      std::vector<std::unique_ptr<HloModule>> module,
-      std::vector<std::unique_ptr<HloModuleConfig>> module_config,
-      HloDumper dump_hlo, const AotCompilationOptions& options) override;
+  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
+                     HloDumper dump_hlo,
+                     const AotCompilationOptions& options) override;
 
   perftools::gputools::Platform::Id PlatformId() const override;
 
-  int64 ShapeSizeBytes(const Shape& shape) const override;
+  HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override;
 
  private:
   // Initialize the LLVM target.
@@ -139,8 +132,7 @@ class CpuCompiler : public Compiler {
 
   // Runs the HLO passes which are necessary for both optimizations and
   // correctness.
-  Status RunHloPasses(HloModule* hlo_module, HloModuleConfig* module_config,
-                      HloDumper dump_hlo);
+  Status RunHloPasses(HloModule* hlo_module, HloDumper dump_hlo);
 
   TF_DISALLOW_COPY_AND_ASSIGN(CpuCompiler);
 };

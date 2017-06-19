@@ -51,6 +51,7 @@ string RunInferShapes(const string& op_name, const string& ins,
   ShapeInferenceTestOp op(op_name);
   const int num_inputs = 1 + std::count(ins.begin(), ins.end(), ';');
   std::vector<NodeDefBuilder::NodeOut> src_list;
+  src_list.reserve(num_inputs);
   for (int i = 0; i < num_inputs; ++i) src_list.emplace_back("a", 0, DT_FLOAT);
   NodeDef node_def;
   TF_CHECK_OK(NodeDefBuilder("dummy", op_name)
@@ -93,10 +94,11 @@ TEST(ShapeInferenceTestutilTest, Failures) {
             RunInferShapes(op, "[1];[2];[1]", "e", fn_copy_input_0));
   EXPECT_CONTAINS(RunInferShapes(op, "[1];[2];[1]", "[1];[2]", fn_copy_input_0),
                   "wrong number of outputs");
-  EXPECT_EQ("Op type not registered 'NoSuchOp'",
-            ShapeInferenceTestutil::InferShapes(
-                ShapeInferenceTestOp("NoSuchOp"), "", "")
-                .error_message());
+  auto error_message = ShapeInferenceTestutil::InferShapes(
+                           ShapeInferenceTestOp("NoSuchOp"), "", "")
+                           .error_message();
+  EXPECT_TRUE(StringPiece(error_message)
+                  .starts_with("Op type not registered 'NoSuchOp'"));
 
   // Wrong shape error messages.
   EXPECT_CONTAINS(RunInferShapes(op, "[1];[2];[1]", "?", fn_copy_input_0),

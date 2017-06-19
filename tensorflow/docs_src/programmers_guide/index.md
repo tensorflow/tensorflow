@@ -24,13 +24,11 @@ days:
     session.
 
 TensorFlow provides a debugger named `tfdbg`, which is documented in the
-following two guides:
+following guide:
 
-  * @{$debugger$TensorFlow Debugger (tfdbg) Command-Line-Interface Tutorial: MNIST},
-    which walks you through the use of `tfdbg` within an application written
-    in the low-level TensorFlow API.
-  * @{$tfdbg-tflearn$How to Use TensorFlow Debugger (tfdbg) with tf.contrib.learn},
-    which demonstrates how to use `tfdbg` within the Estimators API.
+  * @{$debugger$Debugging TensorFlow Programs},
+    which walks you through the use of `tfdbg` within an application. It covers
+    using `tfdbg` with both the low-level TensorFlow API and the Estimator API.
 
 A `MetaGraph` consists of both a computational graph and its associated
 metadata.  A `MetaGraph` contains the information required to continue
@@ -38,6 +36,11 @@ training, perform evaluation, or run inference on a previously
 trained graph.  The following guide details `MetaGraph` objects:
 
   * @{$meta_graph$Exporting and Importing a MetaGraph}.
+
+`SavedModel` is the universal serialization format for Tensorflow models. TensorFlow provides SavedModel CLI (command-line interface) as a tool to inspect and execute a MetaGraph in a SavedModel. The detailed usages and examples are
+documented in the following guide:
+
+  * @{$saved_model_cli$SavedModel CLI (Command-Line Interface)}.
 
 To learn about the TensorFlow versioning scheme, consult the following two
 guides:
