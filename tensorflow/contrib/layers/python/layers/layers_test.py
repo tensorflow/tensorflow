@@ -47,8 +47,8 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
-from tensorflow.python.platform import test
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.platform import test
 
 
 class AvgPool2DTest(test.TestCase):
