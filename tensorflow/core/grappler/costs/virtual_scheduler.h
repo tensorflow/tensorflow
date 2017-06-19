@@ -127,7 +127,7 @@ class ReadyNodeManager {
   ReadyNodeManager() {}
   virtual ~ReadyNodeManager() {}
   virtual void AddNode(const NodeDef* node) = 0;
-  virtual const NodeDef* GetCurrNode() const = 0;
+  virtual const NodeDef* GetCurrNode() = 0;
   virtual void RemoveCurrNode() = 0;
   virtual bool Empty() const = 0;
 };
@@ -137,12 +137,46 @@ class FIFOManager : public ReadyNodeManager {
   FIFOManager() : ReadyNodeManager() {}
   ~FIFOManager() override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
-  const NodeDef* GetCurrNode() const override { return nodes_.front(); }
+  const NodeDef* GetCurrNode() override { return nodes_.front(); }
   void RemoveCurrNode() override { nodes_.pop_front(); }
   bool Empty() const override { return nodes_.empty(); }
 
  private:
   std::list<const NodeDef*> nodes_;
+};
+
+// The LIFOManager schedules nodes by returning the last one added to the
+// scheduler. A node is executed and then its ready outputs are newly added to
+// the scheduler, so the LIFOManager will return outputs to a node following
+// that node's execution.
+class LIFOManager : public ReadyNodeManager {
+ public:
+  LIFOManager() : ReadyNodeManager() {}
+  ~LIFOManager() override {}
+  void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
+  const NodeDef* GetCurrNode() override {
+    curr_pos_ = nodes_.end();
+    curr_pos_--;
+    return nodes_.back();
+  }
+  void RemoveCurrNode() override {
+    if (curr_pos_ != nodes_.end()) {
+      nodes_.erase(curr_pos_);
+    } else if (!nodes_.empty()) {
+      nodes_.pop_back();
+    }
+    curr_pos_ = nodes_.end();
+    curr_pos_--;
+  }
+  bool Empty() const override { return nodes_.empty(); }
+
+ private:
+  std::list<const NodeDef*> nodes_;
+  // Keep track of the current node being executed by saving its position.
+  // Necessary because nodes may be added to the end of the list while a node is
+  // executing, and we want to remove the correct node (the one that is
+  // executing) rather than the new ones being added.
+  std::list<const NodeDef*>::iterator curr_pos_ = nodes_.end();
 };
 
 // A wrapper struct to OpInfo proto.

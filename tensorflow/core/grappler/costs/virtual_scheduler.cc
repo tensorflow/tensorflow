@@ -58,8 +58,10 @@ Costs CombineCosts(const Costs& left, const Costs& right) {
 VirtualScheduler::VirtualScheduler(const GrapplerItem* grappler_item,
                                    const bool use_static_shapes,
                                    Cluster* cluster)
-    :  // TODO(dyoon): Use a better way than FIFO.
-      ready_nodes_(new FIFOManager()),
+    :  // Use LIFO instead of FIFO. LIFO allows an output node of an node to
+       // follow it in execution, saving addition memory time from having to
+       // write and read.
+      ready_nodes_(new LIFOManager()),
       graph_costs_(Costs::ZeroCosts()),
       graph_properties_(*grappler_item),
       cluster_(cluster),

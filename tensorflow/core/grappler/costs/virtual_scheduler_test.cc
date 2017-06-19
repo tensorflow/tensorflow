@@ -38,6 +38,8 @@ class TestVirtualScheduler : public VirtualScheduler {
 
 class VirtualSchedulerTest : public ::testing::Test {
  protected:
+  NodeDef node1_, node2_, node3_, node4_, node5_, node6_;
+
   const string kCPU0 = "/job:localhost/replica:0/task:0/cpu:0";
 
   DeviceProperties GetDummyCPUDevice() {
@@ -53,6 +55,14 @@ class VirtualSchedulerTest : public ::testing::Test {
   }
 
   void SetUp() override {
+    // Initializes nodes for manager
+    node1_.set_name("Node1");
+    node2_.set_name("Node2");
+    node3_.set_name("Node3");
+    node4_.set_name("Node4");
+    node5_.set_name("Node5");
+    node6_.set_name("Node6");
+
     // Initializes cluster_ and placer_.
     std::unordered_map<string, DeviceProperties> devices;
 
@@ -118,18 +128,21 @@ class VirtualSchedulerTest : public ::testing::Test {
 
   void CreateGrapplerItemWithMatmulChain() {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope().WithDevice(kCPU0);
+    // Add control dependencies to ensure tests do not rely on specific
+    // manager and the order remains consistent for the test.
     auto a = tensorflow::ops::RandomUniform(s.WithOpName("a"), {3200, 3200},
                                             DT_FLOAT);
-    auto b = tensorflow::ops::RandomUniform(s.WithOpName("b"), {3200, 3200},
-                                            DT_FLOAT);
-    auto c = tensorflow::ops::RandomUniform(s.WithOpName("c"), {3200, 3200},
-                                            DT_FLOAT);
-    auto d = tensorflow::ops::RandomUniform(s.WithOpName("d"), {3200, 3200},
-                                            DT_FLOAT);
-    auto e = tensorflow::ops::RandomUniform(s.WithOpName("e"), {3200, 3200},
-                                            DT_FLOAT);
+    auto b = tensorflow::ops::RandomUniform(
+        s.WithOpName("b").WithControlDependencies(a), {3200, 3200}, DT_FLOAT);
+    auto c = tensorflow::ops::RandomUniform(
+        s.WithOpName("c").WithControlDependencies(b), {3200, 3200}, DT_FLOAT);
+    auto d = tensorflow::ops::RandomUniform(
+        s.WithOpName("d").WithControlDependencies(c), {3200, 3200}, DT_FLOAT);
+    auto e = tensorflow::ops::RandomUniform(
+        s.WithOpName("e").WithControlDependencies(d), {3200, 3200}, DT_FLOAT);
 
-    auto ab = tensorflow::ops::MatMul(s.WithOpName("ab"), a, b);
+    auto ab = tensorflow::ops::MatMul(
+        s.WithOpName("ab").WithControlDependencies(e), a, b);
     auto abc = tensorflow::ops::MatMul(s.WithOpName("abc"), ab, c);
     auto abcd = tensorflow::ops::MatMul(s.WithOpName("abcd"), abc, d);
     auto abcde = tensorflow::ops::MatMul(s.WithOpName("abcde"), abcd, e);
@@ -373,6 +386,160 @@ class VirtualSchedulerTest : public ::testing::Test {
   const int kernel_ = 3;
   const int depth_out_ = 16;
 };
+
+// Test that FIFOManager correctly returns the current node with only 1 node.
+TEST_F(VirtualSchedulerTest, GetSingleNodeFIFOManager) {
+  // Init.
+  FIFOManager manager = FIFOManager();
+
+  // Add the node to FIFOManager.
+  manager.AddNode(&node1_);
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+}
+
+// Test that FIFOManager removes the only node contained within.
+TEST_F(VirtualSchedulerTest, RemoveSingleNodeFIFOManager) {
+  // Init.
+  FIFOManager manager = FIFOManager();
+
+  // Add the node to FIFOManager.
+  manager.AddNode(&node1_);
+
+  // Remove the only node in FIFOManager.
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+// Test that FIFOManager can remove multiple nodes and returns the current node
+// in the right order
+TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleFIFOManager) {
+  // Init.
+  FIFOManager manager = FIFOManager();
+
+  // Add the nodes to FIFOManager.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Keep checking current node while removing nodes from manager.
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+// Test that FIFOManager can remove multiple nodes and add more nodes, still
+// returning the current node in the right order
+TEST_F(VirtualSchedulerTest, AddAndRemoveMultipleFIFOManager) {
+  // Init.
+  FIFOManager manager = FIFOManager();
+
+  // Add the nodes to FIFOManager.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Keep checking current node as nodes are removed and added.
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.AddNode(&node5_);
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.AddNode(&node6_);
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node5", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+// Test that LIFOManager correctly returns the current node with only 1 node.
+TEST_F(VirtualSchedulerTest, GetSingleNodeLIFOManager) {
+  // Init.
+  LIFOManager manager = LIFOManager();
+
+  // Add the node to LIFOManager.
+  manager.AddNode(&node1_);
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+}
+
+// Test that LIFOManager removes the only node contained within.
+TEST_F(VirtualSchedulerTest, RemoveSingleNodeLIFOManager) {
+  // Init.
+  LIFOManager manager = LIFOManager();
+
+  // Add the node to LIFOManager.
+  manager.AddNode(&node1_);
+
+  // Remove the only node in LIFOManager.
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+// Test that LIFOManager can remove multiple nodes and returns the current node
+// in the right order
+TEST_F(VirtualSchedulerTest, GetAndRemoveMultipleLIFOManager) {
+  // Init.
+  LIFOManager manager = LIFOManager();
+
+  // Add the nodes to LIFOManager.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Keep checking current node while removing nodes from manager.
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
+
+// Test that LIFOManager can remove multiple nodes (must be removing the current
+// node) and add more nodes, still returning the current node in the right order
+TEST_F(VirtualSchedulerTest, AddAndRemoveMultipleLIFOManager) {
+  // Init.
+  LIFOManager manager = LIFOManager();
+
+  // Add the nodes to LIFOManager.
+  manager.AddNode(&node1_);
+  manager.AddNode(&node2_);
+  manager.AddNode(&node3_);
+  manager.AddNode(&node4_);
+
+  // Keep checking current node as nodes are removed and added.
+  EXPECT_EQ("Node4", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node3", manager.GetCurrNode()->name());
+  manager.AddNode(&node5_);
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node5", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node2", manager.GetCurrNode()->name());
+  manager.AddNode(&node6_);
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node6", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_EQ("Node1", manager.GetCurrNode()->name());
+  manager.RemoveCurrNode();
+  EXPECT_TRUE(manager.Empty());
+}
 
 // Create small graph, run predict costs on it, make sure the costs from the
 // summary match the hand-calculated costs.
