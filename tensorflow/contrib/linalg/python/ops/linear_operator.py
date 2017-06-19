@@ -893,6 +893,23 @@ class LinearOperator(object):
     with self._name_scope(name):
       return self._diag_part()
 
+  def _trace(self):
+    return math_ops.reduce_sum(self.diag_part(), axis=-1)
+
+  def trace(self, name="trace"):
+    """Trace of the linear operator, equal to sum of `self.diag_part()`.
+
+    If the operator is square, this is also the sum of the eigenvalues.
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      Shape `[B1,...,Bb]` `Tensor` of same `dtype` as `self`.
+    """
+    with self._name_scope(name):
+      return self._trace()
+
   def _add_to_tensor(self, x):
     # Override if a more efficient implementation is available.
     return self._get_cached_dense_matrix() + x
