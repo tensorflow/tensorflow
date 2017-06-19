@@ -17,6 +17,7 @@ package org.tensorflow.contrib.android;
 
 import android.content.res.AssetManager;
 import android.os.Trace;
+import android.os.Build.VERSION;
 import android.text.TextUtils;
 import android.util.Log;
 import java.io.FileInputStream;
@@ -370,9 +371,11 @@ public class TensorFlowInferenceInterface {
   private void loadGraph(InputStream is, Graph g) throws IOException {
     final long startMs = System.currentTimeMillis();
 
-    Trace.beginSection("initializeTensorFlow");
+    if (VERSION.SDK_INT >= 18) {
+      Trace.beginSection("initializeTensorFlow");
+      Trace.beginSection("readGraphDef");
+    }
 
-    Trace.beginSection("readGraphDef");
     // TODO(ashankar): Can we somehow mmap the contents instead of copying them?
     byte[] graphDef = new byte[is.available()];
     final int numBytesRead = is.read(graphDef);
@@ -383,17 +386,22 @@ public class TensorFlowInferenceInterface {
               + " of the graph, expected to read "
               + graphDef.length);
     }
-    Trace.endSection();
 
-    Trace.beginSection("importGraphDef");
+    if (VERSION.SDK_INT >= 18) {
+      Trace.endSection(); // readGraphDef.
+      Trace.beginSection("importGraphDef");
+    }
+
     try {
       g.importGraphDef(graphDef);
     } catch (IllegalArgumentException e) {
       throw new IOException("Not a valid TensorFlow Graph serialization: " + e.getMessage());
     }
-    Trace.endSection();
 
-    Trace.endSection(); // initializeTensorFlow.
+    if (VERSION.SDK_INT >= 18) {
+      Trace.endSection(); // importGraphDef.
+      Trace.endSection(); // initializeTensorFlow.
+    }
 
     final long endMs = System.currentTimeMillis();
     Log.i(
