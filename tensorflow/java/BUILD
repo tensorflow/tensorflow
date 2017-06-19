@@ -162,6 +162,45 @@ java_test(
     ],
 )
 
+java_test(
+    name = "AbstractSingleOpTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/AbstractSingleOpTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.AbstractSingleOpTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "OperationHelperTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/OperationHelperTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.OperationHelperTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+java_test(
+    name = "InputsTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/InputsTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.InputsTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
 filegroup(
     name = "libtensorflow_jni",
     srcs = select({
