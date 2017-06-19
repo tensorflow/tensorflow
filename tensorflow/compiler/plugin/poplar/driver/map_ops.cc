@@ -154,17 +154,17 @@ CreateWhileOp(poplar::Graph &graph,
   main_seq.add(poplar::program::Copy(init, body_input));
 
   // Body
-  body_visitor->second.sequence.add(poplar::program::Copy(body_output,
-                                                          body_input));
-  body_visitor->second.sequence.add(poplar::program::Copy(body_output,
-                                                          cond_input));
-  
-  // Condition
-  std::vector<poplar::Tensor> condition_inputs(1, body_output);
+  poplar::program::Sequence body_seq;
+  body_seq.add(body_visitor->second.sequence);
+  body_seq.add(poplar::program::Copy(body_output, body_input));
+  body_seq.add(poplar::program::Copy(body_output, cond_input));
 
-  poplar::program::RepeatWhileTrue repeat_while_true(
-          condition_visitor->second.sequence,
-          body_visitor->second.sequence);
+  // Condition
+  poplar::program::Sequence cond_seq;
+  cond_seq.add(condition_visitor->second.sequence);
+  // TODO - add logical reduction with 'true/false' return from Compute
+
+  poplar::program::RepeatWhileTrue repeat_while_true(cond_seq, body_seq);
 
   main_seq.add(repeat_while_true);
 
