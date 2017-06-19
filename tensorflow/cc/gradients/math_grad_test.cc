@@ -484,7 +484,7 @@ TEST_F(CWiseUnaryGradTest, Atanh) {
 
 TEST_F(CWiseUnaryGradTest, Atanh_Complex) {
   auto x_fn = [this](const int i) {
-    return CRV({{1, 0}, {0, 1}, {2, -1}, {1, 2}, {3, 4}});
+    return CRV({{0.1, 0}, {0, 0.1}, {0.2, -0.1}, {0.1, 0.2}, {0.3, 0.4}});
   };
   auto dy_fn = [this](const complex64& x) {
     return x + CRV({{-2, 2}, {-3, 3}, {1, -4}});
