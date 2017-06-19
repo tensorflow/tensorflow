@@ -163,36 +163,36 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
     llvm::Constant* value;
     switch (shape.element_type()) {
       case PRED:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<bool>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<bool>(*multi_index));
         break;
       case U8:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<uint8>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<uint8>(*multi_index));
         break;
       case S32:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<int32>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<int32>(*multi_index));
         break;
       case U32:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<uint32>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<uint32>(*multi_index));
         break;
       case S64:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<int64>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<int64>(*multi_index));
         break;
       case U64:
-        value = llvm::ConstantInt::get(
-            ir_element_type, LiteralUtil::Get<uint64>(literal, *multi_index));
+        value = llvm::ConstantInt::get(ir_element_type,
+                                       literal.Get<uint64>(*multi_index));
         break;
       case F32:
-        value = llvm::ConstantFP::get(
-            ir_element_type, LiteralUtil::Get<float>(literal, *multi_index));
+        value = llvm::ConstantFP::get(ir_element_type,
+                                      literal.Get<float>(*multi_index));
         break;
       case F64:
-        value = llvm::ConstantFP::get(
-            ir_element_type, LiteralUtil::Get<double>(literal, *multi_index));
+        value = llvm::ConstantFP::get(ir_element_type,
+                                      literal.Get<double>(*multi_index));
         break;
       default:
         LOG(FATAL) << "unsupported type " << shape.element_type();

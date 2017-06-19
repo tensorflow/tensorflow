@@ -92,10 +92,10 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
 
   // Run it.
   std::unique_ptr<GlobalData> x_data =
-      client_->TransferToServer(*LiteralUtil::CreateR0<int32>(2))
+      client_->TransferToServer(*Literal::CreateR0<int32>(2))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> y_data =
-      client_->TransferToServer(*LiteralUtil::CreateR0<int32>(3))
+      client_->TransferToServer(*Literal::CreateR0<int32>(3))
           .ConsumeValueOrDie();
   std::unique_ptr<Literal> literal =
       client_

@@ -182,8 +182,8 @@ TEST_F(PadTest, Pad4DFloatArrayMinorFirstSmall) {
 
   const float pad_value = -5.123f;
   Array4D<float> input_array(1, 1, 2, 3, {1, 2, 3, 4, 5, 6});
-  auto input = LiteralUtil::CreateR4FromArray4D<float>(input_array);
-  input = LiteralUtil::Relayout(*input, layout);
+  auto input = Literal::CreateR4FromArray4D<float>(input_array);
+  input = input->Relayout(layout);
 
   b.Pad(b.ConstantLiteral(*input), b.ConstantR0(pad_value), padding_config);
 
@@ -227,8 +227,8 @@ XLA_TEST_F(PadTest, Pad4DFloatArrayMinorFirstNonTrivialMinorDimensions) {
   input_array(0, 0, 0, 0) = 1.0f;
   input_array(0, 24, 6, 6) = 2.0f;
   input_array(0, 17, 2, 5) = 3.0f;
-  auto input = LiteralUtil::CreateR4FromArray4D<float>(input_array);
-  input = LiteralUtil::Relayout(*input, layout);
+  auto input = Literal::CreateR4FromArray4D<float>(input_array);
+  input = input->Relayout(layout);
 
   b.Pad(b.ConstantLiteral(*input), b.ConstantR0(pad_value), padding_config);
 
@@ -307,7 +307,7 @@ XLA_TEST_F(PadTest, Large2DPad) {
 
   auto ones = MakeUnique<Array2D<float>>(4, 4);
   ones->Fill(1.0f);
-  auto input_literal = LiteralUtil::CreateR2FromArray2D<float>(*ones);
+  auto input_literal = Literal::CreateR2FromArray2D<float>(*ones);
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -333,7 +333,7 @@ XLA_TEST_F(PadTest, AllTypes2DPad) {
 
   auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(0.0f);
-  auto input_literal = LiteralUtil::CreateR2FromArray2D<float>(*operand);
+  auto input_literal = Literal::CreateR2FromArray2D<float>(*operand);
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 
@@ -364,7 +364,7 @@ XLA_TEST_F(PadTest, High2DPad) {
 
   auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
-  auto input_literal = LiteralUtil::CreateR2FromArray2D<float>(*operand);
+  auto input_literal = Literal::CreateR2FromArray2D<float>(*operand);
   auto expected = ReferenceUtil::PadArray2D(*operand, padding_config, 2.718f);
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -396,7 +396,7 @@ XLA_TEST_F(PadTest, NegativePadding2D) {
 
   auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
-  auto input_literal = LiteralUtil::CreateR2FromArray2D<float>(*operand);
+  auto input_literal = Literal::CreateR2FromArray2D<float>(*operand);
   auto expected = ReferenceUtil::PadArray2D(*operand, padding_config, 2.718f);
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -428,7 +428,7 @@ XLA_TEST_F(PadTest, NegativeAndInteriorPadding2D) {
 
   auto operand = MakeUnique<Array2D<float>>(in_rows, in_cols);
   operand->FillUnique(1.0f);
-  auto input_literal = LiteralUtil::CreateR2FromArray2D<float>(*operand);
+  auto input_literal = Literal::CreateR2FromArray2D<float>(*operand);
   auto expected = ReferenceUtil::PadArray2D(*operand, padding_config, 2.718f);
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
@@ -452,7 +452,7 @@ XLA_TEST_F(PadTest, ReducePad) {
 
   auto ones = MakeUnique<Array4D<float>>(2, 2, 2, 2);
   ones->Fill(1.0);
-  auto input_literal = LiteralUtil::CreateR4FromArray4D<float>(*ones);
+  auto input_literal = Literal::CreateR4FromArray4D<float>(*ones);
   std::unique_ptr<GlobalData> input_data =
       client_->TransferToServer(*input_literal).ConsumeValueOrDie();
 

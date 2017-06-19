@@ -101,7 +101,7 @@ TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
 
   auto builder_c = HloComputation::Builder("C");
   HloInstruction* c = builder_c.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   HloComputation* computation_c =
       module->AddEmbeddedComputation(builder_c.Build());
 

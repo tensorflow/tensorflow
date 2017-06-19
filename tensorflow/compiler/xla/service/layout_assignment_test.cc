@@ -230,7 +230,7 @@ TEST_F(LayoutAssignmentTest, TupleSelect) {
       HloInstruction::CreateTuple({constant0, constant1}));
 
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
 
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
       tuple0->shape(), HloOpcode::kSelect, pred, tuple0, tuple1));
@@ -264,7 +264,7 @@ TEST_F(LayoutAssignmentTest, ConflictingLayoutTuple) {
   // tuple and assigning the layouts of the copied arrays as needed.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}})));
   auto inner_tuple =
       builder.AddInstruction(HloInstruction::CreateTuple({constant}));
   auto nested_tuple = builder.AddInstruction(

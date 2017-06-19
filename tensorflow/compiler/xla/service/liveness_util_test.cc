@@ -85,9 +85,9 @@ TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({2})));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
+      Literal::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
           data_shape, gte1, update, starts));
@@ -180,9 +180,9 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(Literal::CreateR1<int32>({2})));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
+      Literal::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
           data_shape, gte1, update, starts));
@@ -234,15 +234,15 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
 
   auto a = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
+      Literal::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
   auto b = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+      Literal::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
 
   auto dot = builder.AddInstruction(
       HloInstruction::CreateBinary(data_shape, HloOpcode::kDot, a, b));
 
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto add_operand = builder.AddInstruction(
       HloInstruction::CreateBroadcast(data_shape, one, {1}));
 
@@ -264,9 +264,9 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedTransposeDotAdd) {
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
 
   auto a = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
+      Literal::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
   auto b = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+      Literal::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
   auto b_t = builder.AddInstruction(
       HloInstruction::CreateTranspose(data_shape, b, {1, 0}));
 
@@ -274,7 +274,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedTransposeDotAdd) {
       HloInstruction::CreateBinary(data_shape, HloOpcode::kDot, a, b_t));
 
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto add_operand = builder.AddInstruction(
       HloInstruction::CreateBroadcast(data_shape, one, {1}));
 
@@ -300,7 +300,7 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
   Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
 
   auto one = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto operand = builder.AddInstruction(
       HloInstruction::CreateBroadcast(data_shape, one, {1}));
 
@@ -308,7 +308,7 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
       HloInstruction::CreateReverse(data_shape, operand, {0, 1}));
 
   auto two = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+      Literal::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
 
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(data_shape, HloOpcode::kAdd, reverse, two));

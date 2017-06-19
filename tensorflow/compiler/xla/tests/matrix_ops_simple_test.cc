@@ -87,8 +87,8 @@ TEST_F(MatOpsSimpleTest, ExpTwoByTwoValues) {
   builder.Exp(data);
 
   std::unique_ptr<Literal> expected =
-      LiteralUtil::CreateR2<float>({{2.71828, 1.00000},    // row 0
-                                    {0.36788, 1.64872}});  // row 1
+      Literal::CreateR2<float>({{2.71828, 1.00000},    // row 0
+                                {0.36788, 1.64872}});  // row 1
 
   ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
 }
@@ -115,8 +115,8 @@ TEST_F(MatOpsSimpleTest, MapTwoByTwo) {
   auto map = builder.Map({data}, add_half);
 
   std::unique_ptr<Literal> expected =
-      LiteralUtil::CreateR2<float>({{1.5, 0.5},     // row 0
-                                    {-0.5, 1.0}});  // row 1
+      Literal::CreateR2<float>({{1.5, 0.5},     // row 0
+                                {-0.5, 1.0}});  // row 1
   ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-5));
 }
 
@@ -133,8 +133,8 @@ TEST_F(MatOpsSimpleTest, MaxTwoByTwoValues) {
   auto max = builder.Max(lhs, rhs);
 
   std::unique_ptr<Literal> expected =
-      LiteralUtil::CreateR2<float>({{7.0, 6.0},     // row 0
-                                    {3.0, -4.0}});  // row 1
+      Literal::CreateR2<float>({{7.0, 6.0},     // row 0
+                                {3.0, -4.0}});  // row 1
   ComputeAndCompareLiteral(&builder, *expected, {}, ErrorSpec(1e-6));
 }
 
@@ -180,14 +180,12 @@ TEST_P(MatOpsDotAddTest, Dot_Add_2x2_2x2) {
 
   TF_ASSIGN_OR_ASSERT_OK(
       auto lhs_handle,
-      client_->TransferToServer(
-          *LiteralUtil::CreateR2FromArray2DWithLayout<float>(
-              lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
+      client_->TransferToServer(*Literal::CreateR2FromArray2DWithLayout<float>(
+          lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
   TF_ASSIGN_OR_ASSERT_OK(
       auto rhs_handle,
-      client_->TransferToServer(
-          *LiteralUtil::CreateR2FromArray2DWithLayout<float>(
-              rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
+      client_->TransferToServer(*Literal::CreateR2FromArray2DWithLayout<float>(
+          rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
 
   ComputationBuilder builder(client_, TestName());
   auto lhs_arg = builder.Parameter(0, lhs_shape, "lhs");

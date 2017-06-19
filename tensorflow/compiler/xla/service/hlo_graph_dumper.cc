@@ -335,8 +335,7 @@ string InstructionSequenceGraph(
         ShapeUtil::IsEffectiveScalar(instruction->shape())) {
       auto elem_idx = IndexUtil::LinearIndexToMultidimensionalIndex(
           instruction->shape(), /*linear_index=*/0);
-      StrAppend(&label, " = {",
-                LiteralUtil::GetAsString(instruction->literal(), elem_idx),
+      StrAppend(&label, " = {", instruction->literal().GetAsString(elem_idx),
                 "}");
     }
 

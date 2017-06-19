@@ -113,14 +113,14 @@ string ClientLibraryTestBase::ExecuteToString(
   if (!result.ok()) {
     return result.status().ToString();
   } else {
-    return LiteralUtil::ToString(*result.ValueOrDie());
+    return result.ValueOrDie()->ToString();
   }
 }
 
 void ClientLibraryTestBase::ComputeAndCompareR1(
     ComputationBuilder* builder, const tensorflow::core::Bitmap& expected,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR1(expected);
+  std::unique_ptr<Literal> expected_literal = Literal::CreateR1(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments);
 }
@@ -179,10 +179,10 @@ void ClientLibraryTestBase::ComputeAndCompareR1U8(
   auto actual = actual_status.ConsumeValueOrDie();
 
   // Turn the expected value into a literal.
-  std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR1U8(expected);
+  std::unique_ptr<Literal> expected_literal = Literal::CreateR1U8(expected);
 
-  VLOG(1) << "expected: " << LiteralUtil::ToString(*expected_literal);
-  VLOG(1) << "actual:   " << LiteralUtil::ToString(*actual);
+  VLOG(1) << "expected: " << expected_literal->ToString();
+  VLOG(1) << "actual:   " << actual->ToString();
 
   EXPECT_EQ(expected, actual->u8s_string());
 }

@@ -211,9 +211,9 @@ TEST_F(ScalarComputationsTest, MulThreeScalarsS32) {
 
 TEST_F(ScalarComputationsTest, MulThreeScalarsF32Params) {
   ComputationBuilder builder(client_, TestName());
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR0<float>(2.1f);
-  std::unique_ptr<Literal> b_literal = LiteralUtil::CreateR0<float>(5.5f);
-  std::unique_ptr<Literal> c_literal = LiteralUtil::CreateR0<float>(0.5f);
+  std::unique_ptr<Literal> a_literal = Literal::CreateR0<float>(2.1f);
+  std::unique_ptr<Literal> b_literal = Literal::CreateR0<float>(5.5f);
+  std::unique_ptr<Literal> c_literal = Literal::CreateR0<float>(0.5f);
 
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(*a_literal).ConsumeValueOrDie();
@@ -360,8 +360,8 @@ TEST_F(ScalarComputationsTest, DivU32s) {
   for (uint32 divisor : vals) {
     if (divisor != 0) {
       for (uint32 dividend : vals) {
-        auto dividend_literal = LiteralUtil::CreateR0<uint32>(dividend);
-        auto divisor_literal = LiteralUtil::CreateR0<uint32>(divisor);
+        auto dividend_literal = Literal::CreateR0<uint32>(dividend);
+        auto divisor_literal = Literal::CreateR0<uint32>(divisor);
         TF_ASSIGN_OR_ASSERT_OK(auto dividend_data,
                                client_->TransferToServer(*dividend_literal));
         TF_ASSIGN_OR_ASSERT_OK(auto divisor_data,
@@ -372,8 +372,7 @@ TEST_F(ScalarComputationsTest, DivU32s) {
                                      {dividend_data.get(), divisor_data.get()},
                                      &execution_options_)
                 .ConsumeValueOrDie();
-        auto expected_literal =
-            LiteralUtil::CreateR0<uint32>(dividend / divisor);
+        auto expected_literal = Literal::CreateR0<uint32>(dividend / divisor);
         LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
       }
     }
@@ -402,8 +401,8 @@ TEST_F(ScalarComputationsTest, RemU32s) {
   for (uint32 divisor : vals) {
     if (divisor != 0) {
       for (uint32 dividend : vals) {
-        auto dividend_literal = LiteralUtil::CreateR0<uint32>(dividend);
-        auto divisor_literal = LiteralUtil::CreateR0<uint32>(divisor);
+        auto dividend_literal = Literal::CreateR0<uint32>(dividend);
+        auto divisor_literal = Literal::CreateR0<uint32>(divisor);
         TF_ASSIGN_OR_ASSERT_OK(auto dividend_data,
                                client_->TransferToServer(*dividend_literal));
         TF_ASSIGN_OR_ASSERT_OK(auto divisor_data,
@@ -414,8 +413,7 @@ TEST_F(ScalarComputationsTest, RemU32s) {
                                      {dividend_data.get(), divisor_data.get()},
                                      &execution_options_)
                 .ConsumeValueOrDie();
-        auto expected_literal =
-            LiteralUtil::CreateR0<uint32>(dividend % divisor);
+        auto expected_literal = Literal::CreateR0<uint32>(dividend % divisor);
         LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
       }
     }
@@ -427,7 +425,7 @@ TEST_F(ScalarComputationsTest, RemainderTwoScalarsNonConstDividendS32) {
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(S32, {}), "x");
   builder.Rem(x, builder.ConstantR0<int32>(80000));
 
-  std::unique_ptr<Literal> literal = LiteralUtil::CreateR0<int32>(87919);
+  std::unique_ptr<Literal> literal = Literal::CreateR0<int32>(87919);
   TF_ASSIGN_OR_ASSERT_OK(auto input_data, client_->TransferToServer(*literal));
   ComputeAndCompareR0<int32>(&builder, 7919, {input_data.get()});
 }
@@ -763,7 +761,7 @@ TEST_F(ScalarComputationsTest, ComplicatedArithmeticExpressionS32) {
 
 TEST_F(ScalarComputationsTest, SqrtF320) {
   ComputationBuilder builder(client_, TestName());
-  Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F32);
+  Literal zero_literal = Literal::Zero(PrimitiveType::F32);
 
   std::unique_ptr<GlobalData> zero_data =
       client_->TransferToServer(zero_literal).ConsumeValueOrDie();

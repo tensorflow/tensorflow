@@ -85,7 +85,7 @@ class ComputeConstantTest : public ::testing::Test {
                                          ComputationBuilder* builder) {
     TF_ASSIGN_OR_RETURN(auto literal,
                         ComputeConstantLiteral(client, operand, builder));
-    return LiteralUtil::Get<Scalar>(*literal, {});
+    return literal->Get<Scalar>({});
   }
 
   bool IsConstant(const ComputationDataHandle& operand,
@@ -210,7 +210,7 @@ TEST_F(ComputeConstantTest, NonScalarAdd) {
     auto computed = ComputeConstantLiteral(client, computation, &b);
     ASSERT_TRUE(computed.ok()) << computed.status();
     std::unique_ptr<Literal> expected_literal =
-        LiteralUtil::CreateR1<int32>({4, 6});
+        Literal::CreateR1<int32>({4, 6});
     LiteralTestUtil::ExpectEqual(*expected_literal, *computed.ValueOrDie());
   }
 }
@@ -224,7 +224,7 @@ TEST_F(ComputeConstantTest, IntegerDivide) {
 
     auto computed = ComputeConstantLiteral(client, computation, &b);
     ASSERT_TRUE(computed.ok()) << computed.status();
-    std::unique_ptr<Literal> expected_literal = LiteralUtil::CreateR0<int32>(5);
+    std::unique_ptr<Literal> expected_literal = Literal::CreateR0<int32>(5);
     LiteralTestUtil::ExpectEqual(*expected_literal, *computed.ValueOrDie());
   }
 }

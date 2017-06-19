@@ -157,13 +157,13 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
     b_values.push_back(2 * i / static_cast<float>(count + 2));
   }
 
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR1<float>({a_values});
+  std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({a_values});
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(*a_literal).ConsumeValueOrDie();
   auto a_constant = builder.ConstantR1<float>(a_values);
   auto a_param = builder.Parameter(0, a_literal->shape(), "a_param");
 
-  std::unique_ptr<Literal> b_literal = LiteralUtil::CreateR1<float>({b_values});
+  std::unique_ptr<Literal> b_literal = Literal::CreateR1<float>({b_values});
   std::unique_ptr<GlobalData> b_data =
       client_->TransferToServer(*b_literal).ConsumeValueOrDie();
   auto b_constant = builder.Parameter(1, a_literal->shape(), "b_param");
@@ -803,7 +803,7 @@ TEST_F(ArrayElementwiseOpTest, PowSpecialF32) {
   std::vector<float> values = {1.0f, 2.0f, 3.2f, -4.0f};
   std::vector<float> exponents = {0.0f, 1.0f, 2.0f, 0.5f, -1.0f, -0.5f};
 
-  std::unique_ptr<Literal> param_literal = LiteralUtil::CreateR1<float>(values);
+  std::unique_ptr<Literal> param_literal = Literal::CreateR1<float>(values);
   std::unique_ptr<GlobalData> param_data =
       client_->TransferToServer(*param_literal).ConsumeValueOrDie();
 
@@ -1240,12 +1240,12 @@ TEST_F(ArrayElementwiseOpTest, AddTwoParametersF32s) {
   ComputationBuilder builder(client_, TestName());
 
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
+      Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   std::unique_ptr<Literal> param1_literal =
-      LiteralUtil::CreateR1<float>({7.2f, 2.3f, 3.4f, 5.6f});
+      Literal::CreateR1<float>({7.2f, 2.3f, 3.4f, 5.6f});
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
 
@@ -1262,12 +1262,12 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersZeroElementF32s) {
   ComputationBuilder builder(client_, TestName());
 
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR3FromArray3D<float>(Array3D<float>(0, 7, 0));
+      Literal::CreateR3FromArray3D<float>(Array3D<float>(0, 7, 0));
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
   std::unique_ptr<Literal> param1_literal =
-      LiteralUtil::CreateR3FromArray3D<float>(Array3D<float>(0, 7, 0));
+      Literal::CreateR3FromArray3D<float>(Array3D<float>(0, 7, 0));
   std::unique_ptr<GlobalData> param1_data =
       client_->TransferToServer(*param1_literal).ConsumeValueOrDie();
 
@@ -1284,7 +1284,7 @@ TEST_F(ArrayElementwiseOpTest, AddParameterToConstantF32s) {
   ComputationBuilder builder(client_, TestName());
 
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
+      Literal::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
 
@@ -1455,9 +1455,9 @@ XLA_TEST_F(ArrayElementwiseOpTest, Compare1DTo2DS32Eq) {
   auto cmp_dim_1 = builder.Eq(v, m, /*broadcast_dimensions=*/{0});
   auto result = builder.Tuple({cmp_dim_0, cmp_dim_1});
 
-  auto expected = LiteralUtil::MakeTuple(
-      {LiteralUtil::CreateR2<bool>({{true, true}, {true, false}}).get(),
-       LiteralUtil::CreateR2<bool>({{true, false}, {false, false}}).get()});
+  auto expected = Literal::MakeTuple(
+      {Literal::CreateR2<bool>({{true, true}, {true, false}}).get(),
+       Literal::CreateR2<bool>({{true, false}, {false, false}}).get()});
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
 
@@ -1810,7 +1810,7 @@ TEST_F(ArrayElementwiseOpTest, R4_16x16x2x2_Plus_R1_16) {
   std::iota(r1.begin(), r1.end(), 1.0);
 
   ComputationBuilder builder(client_, TestName());
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR4FromArray4D(r4);
+  std::unique_ptr<Literal> a_literal = Literal::CreateR4FromArray4D(r4);
   *a_literal->mutable_shape()->mutable_layout() =
       LayoutUtil::MakeLayout({0, 1, 2, 3});
   auto a = builder.ConstantLiteral(*a_literal);
@@ -1846,8 +1846,8 @@ TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
 // broadcast.
 TEST_F(ArrayElementwiseOpTest, ImplictBroadcastInFusedExpressions) {
   ComputationBuilder builder(client_, TestName());
-  auto x_literal = LiteralUtil::CreateR1<float>({1, 2, 3});
-  auto y_literal = LiteralUtil::CreateR1<float>({4, 5});
+  auto x_literal = Literal::CreateR1<float>({1, 2, 3});
+  auto y_literal = Literal::CreateR1<float>({4, 5});
   auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
   auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
 
@@ -1877,7 +1877,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, ReducePrecisionNoOpParamF32) {
 
   std::vector<float> a_values = {-2.5f, 25.5f};
 
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR1<float>({a_values});
+  std::unique_ptr<Literal> a_literal = Literal::CreateR1<float>({a_values});
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(*a_literal).ConsumeValueOrDie();
   auto a_param = builder.Parameter(0, a_literal->shape(), "a_param");

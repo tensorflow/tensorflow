@@ -50,7 +50,7 @@ class CompilationCacheTest : public ClientLibraryTestBase {
                                  /*execution_options=*/&execution_options_,
                                  &execution_profile)
             .ConsumeValueOrDie();
-    LiteralTestUtil::ExpectNear(*LiteralUtil::CreateR0<float>(expected_result),
+    LiteralTestUtil::ExpectNear(*Literal::CreateR0<float>(expected_result),
                                 *result, error_spec_);
     EXPECT_EQ(expect_cache_hit, execution_profile.compilation_cache_hit());
   }
@@ -67,7 +67,7 @@ class CompilationCacheTest : public ClientLibraryTestBase {
                            .ConsumeValueOrDie();
     std::unique_ptr<Literal> result =
         client_->Transfer(*data_handle).ConsumeValueOrDie();
-    LiteralTestUtil::ExpectNear(*LiteralUtil::CreateR2<float>(expected_result),
+    LiteralTestUtil::ExpectNear(*Literal::CreateR2<float>(expected_result),
                                 *result, error_spec_);
     EXPECT_EQ(expect_cache_hit, execution_profile.compilation_cache_hit());
   }
@@ -87,13 +87,13 @@ XLA_TEST_F(CompilationCacheTest, ComputationCalledMultipleTimes) {
 
 XLA_TEST_F(CompilationCacheTest, ComputationCalledWithDifferentParameters) {
   std::unique_ptr<GlobalData> data_42 =
-      client_->TransferToServer(*LiteralUtil::CreateR0<float>(42.0f))
+      client_->TransferToServer(*Literal::CreateR0<float>(42.0f))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> data_123 =
-      client_->TransferToServer(*LiteralUtil::CreateR0<float>(123.0f))
+      client_->TransferToServer(*Literal::CreateR0<float>(123.0f))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> data_456 =
-      client_->TransferToServer(*LiteralUtil::CreateR0<float>(456.0f))
+      client_->TransferToServer(*Literal::CreateR0<float>(456.0f))
           .ConsumeValueOrDie();
 
   ComputationBuilder builder(client_, TestName());

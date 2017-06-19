@@ -57,11 +57,10 @@ void PrngTest::UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims) {
   SetSeed(42);
   auto actual = ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
   EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
-  LiteralUtil::EachCell<T>(*actual,
-                           [=](tensorflow::gtl::ArraySlice<int64>, T value) {
-                             EXPECT_LE(a, value);
-                             EXPECT_LT(value, b);
-                           });
+  actual->EachCell<T>([=](tensorflow::gtl::ArraySlice<int64>, T value) {
+    EXPECT_LE(a, value);
+    EXPECT_LT(value, b);
+  });
 }
 
 void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
@@ -78,8 +77,8 @@ void PrngTest::BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims) {
                                   &execution_options));
   EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
   int32 sum = 0;
-  LiteralUtil::EachCell<uint32>(
-      *actual, [&sum](tensorflow::gtl::ArraySlice<int64>, uint32 value) {
+  actual->EachCell<uint32>(
+      [&sum](tensorflow::gtl::ArraySlice<int64>, uint32 value) {
         EXPECT_TRUE(value == 0 || value == 1);
         sum += value;
       });
@@ -123,10 +122,8 @@ double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count) {
   SetSeed(42);
   auto actual = ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
   std::vector<int32> counts(range_size, 0);
-  LiteralUtil::EachCell<int32>(
-      *actual, [&counts](tensorflow::gtl::ArraySlice<int64>, int32 value) {
-        ++counts[value];
-      });
+  actual->EachCell<int32>([&counts](tensorflow::gtl::ArraySlice<int64>,
+                                    int32 value) { ++counts[value]; });
   int64 sum = 0;
   for (int32 i = 0; i < range_size; ++i) {
     sum += Square(static_cast<int64>(counts[i] - expected_count));
@@ -169,7 +166,7 @@ XLA_TEST_F(PrngTest, MapUsingRng) {
 
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({2.2f, 5.3f, 4.4f, 5.5f});
+      Literal::CreateR1<float>({2.2f, 5.3f, 4.4f, 5.5f});
   TF_ASSIGN_OR_ASSERT_OK(std::unique_ptr<GlobalData> param0_data,
                          client_->TransferToServer(*param0_literal));
 

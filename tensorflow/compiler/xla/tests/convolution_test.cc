@@ -114,10 +114,10 @@ TEST_F(ConvolutionTest, Convolve_1x1x1x2_1x1x1x2_Valid) {
       ReferenceUtil::ConvArray4D(input, filter, {1, 1}, Padding::kValid);
 
   auto input_literal =
-      client_->TransferToServer(*LiteralUtil::CreateR4FromArray4D(input))
+      client_->TransferToServer(*Literal::CreateR4FromArray4D(input))
           .ConsumeValueOrDie();
   auto filter_literal =
-      client_->TransferToServer(*LiteralUtil::CreateR4FromArray4D(filter))
+      client_->TransferToServer(*Literal::CreateR4FromArray4D(filter))
           .ConsumeValueOrDie();
 
   ComputeAndCompareR4<float>(&builder, *aexpected,
@@ -157,10 +157,10 @@ TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x2x2_Valid) {
       ReferenceUtil::ConvArray4D(input, filter, {1, 1}, Padding::kValid);
 
   auto input_literal =
-      client_->TransferToServer(*LiteralUtil::CreateR4FromArray4D(input))
+      client_->TransferToServer(*Literal::CreateR4FromArray4D(input))
           .ConsumeValueOrDie();
   auto filter_literal =
-      client_->TransferToServer(*LiteralUtil::CreateR4FromArray4D(filter))
+      client_->TransferToServer(*Literal::CreateR4FromArray4D(filter))
           .ConsumeValueOrDie();
 
   ComputeAndCompareR4<float>(&builder, *aexpected,
@@ -200,10 +200,10 @@ TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x2x2_Same) {
       ReferenceUtil::ConvArray4D(input, filter, {1, 1}, Padding::kSame);
 
   auto input_literal =
-      client_->TransferToServer(*LiteralUtil::CreateR4FromArray4D(input))
+      client_->TransferToServer(*Literal::CreateR4FromArray4D(input))
           .ConsumeValueOrDie();
   auto filter_literal =
-      client_->TransferToServer(*LiteralUtil::CreateR4FromArray4D(filter))
+      client_->TransferToServer(*Literal::CreateR4FromArray4D(filter))
           .ConsumeValueOrDie();
 
   ComputeAndCompareR4<float>(&builder, *aexpected,
@@ -245,10 +245,10 @@ TEST_F(ConvolutionTest, Convolve_1x1x4x4_1x1x3x3_Same) {
       ReferenceUtil::ConvArray4D(input, filter, {1, 1}, Padding::kSame);
 
   auto input_literal =
-      client_->TransferToServer(*LiteralUtil::CreateR4FromArray4D(input))
+      client_->TransferToServer(*Literal::CreateR4FromArray4D(input))
           .ConsumeValueOrDie();
   auto filter_literal =
-      client_->TransferToServer(*LiteralUtil::CreateR4FromArray4D(filter))
+      client_->TransferToServer(*Literal::CreateR4FromArray4D(filter))
           .ConsumeValueOrDie();
 
   ComputeAndCompareR4<float>(&builder, *aexpected,
@@ -272,10 +272,10 @@ XLA_TEST_F(ConvolutionTest, Convolve1D_1x2x5_1x2x2_Valid) {
   Array3D<float> expected({{{510, 610, 710, 810}}});
 
   auto input_literal =
-      client_->TransferToServer(*LiteralUtil::CreateR3FromArray3D(input))
+      client_->TransferToServer(*Literal::CreateR3FromArray3D(input))
           .ConsumeValueOrDie();
   auto filter_literal =
-      client_->TransferToServer(*LiteralUtil::CreateR3FromArray3D(filter))
+      client_->TransferToServer(*Literal::CreateR3FromArray3D(filter))
           .ConsumeValueOrDie();
 
   ComputeAndCompareR3<float>(&builder, expected,
@@ -312,21 +312,18 @@ XLA_TEST_F(ConvolutionTest, Convolve3D_1x4x2x3x3_2x2x2x3x3_Valid) {
 
   std::vector<float> input_elems(ShapeUtil::ElementsIn(input_shape));
   std::iota(input_elems.begin(), input_elems.end(), 1.0f);
-  auto input_r1 = LiteralUtil::CreateR1<float>(input_elems);
-  auto input_r5 =
-      LiteralUtil::Reshape(*input_r1, input_dims).ConsumeValueOrDie();
+  auto input_r1 = Literal::CreateR1<float>(input_elems);
+  auto input_r5 = input_r1->Reshape(input_dims).ConsumeValueOrDie();
 
   std::vector<float> filter_elems(ShapeUtil::ElementsIn(filter_shape));
   std::iota(filter_elems.begin(), filter_elems.end(), 1.0f);
-  auto filter_r1 = LiteralUtil::CreateR1<float>(filter_elems);
-  auto filter_r5 =
-      LiteralUtil::Reshape(*filter_r1, filter_dims).ConsumeValueOrDie();
+  auto filter_r1 = Literal::CreateR1<float>(filter_elems);
+  auto filter_r5 = filter_r1->Reshape(filter_dims).ConsumeValueOrDie();
 
-  auto expected_r1 = LiteralUtil::CreateR1<float>(
+  auto expected_r1 = Literal::CreateR1<float>(
       {19554, 19962, 20370, 22110, 22590, 23070, 34890, 35730, 36570, 37446,
        38358, 39270, 50226, 51498, 52770, 52782, 54126, 55470});
-  auto expected_r5 =
-      LiteralUtil::Reshape(*expected_r1, {1, 3, 1, 2, 3}).ConsumeValueOrDie();
+  auto expected_r5 = expected_r1->Reshape({1, 3, 1, 2, 3}).ConsumeValueOrDie();
 
   auto input_literal = client_->TransferToServer(*input_r5).ConsumeValueOrDie();
   auto filter_literal =

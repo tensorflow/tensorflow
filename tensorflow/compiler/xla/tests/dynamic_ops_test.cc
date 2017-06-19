@@ -388,8 +388,8 @@ class DynamicUpdateSliceTest : public ClientLibraryTestBase {
   template <typename NativeT>
   void DumpArray(const string& name, const Array3D<NativeT> values) {
     std::unique_ptr<Literal> literal =
-        LiteralUtil::CreateR3FromArray3D<NativeT>(values);
-    LOG(INFO) << name << ":" << LiteralUtil::ToString(*literal);
+        Literal::CreateR3FromArray3D<NativeT>(values);
+    LOG(INFO) << name << ":" << literal->ToString();
   }
 };
 
@@ -469,7 +469,7 @@ void BM_DynamicSlice(int num_iters) {
   ComputationBuilder builder(client, "DynamicSlice");
 
   // Create input as a constant: shape [1, 2, 3, 4]
-  auto input_literal = LiteralUtil::CreateR4(
+  auto input_literal = Literal::CreateR4(
       {{{{1, 2, 3, 4}, {5, 6, 7, 8}, {9, 10, 11, 12}},
         {{13, 14, 15, 16}, {17, 18, 19, 20}, {21, 22, 23, 24}}}});
   auto input = builder.ConstantLiteral(*input_literal);
@@ -487,7 +487,7 @@ void BM_DynamicSlice(int num_iters) {
                                                            &allocator, 0)
                     .ConsumeValueOrDie();
 
-  auto start_indices_literal = LiteralUtil::CreateR1<int32>({0, 1, 2, 3});
+  auto start_indices_literal = Literal::CreateR1<int32>({0, 1, 2, 3});
   ASSERT_IS_OK(transfer_manager->TransferLiteralToDevice(
       executors[device_ordinal], *start_indices_literal,
       buffer->mutable_buffer({})));

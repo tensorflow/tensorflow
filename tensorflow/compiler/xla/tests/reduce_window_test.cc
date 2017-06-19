@@ -57,7 +57,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
     builder_.ReduceWindow(
-        input, builder_.ConstantLiteral(LiteralUtil::MinValue(F32)),
+        input, builder_.ConstantLiteral(Literal::MinValue(F32)),
         CreateScalarMax(), window_dimensions, window_strides, padding);
   }
 
@@ -66,7 +66,7 @@ class ReduceWindowTest : public ClientLibraryTestBase {
                        tensorflow::gtl::ArraySlice<int64> window_strides,
                        Padding padding) {
     builder_.ReduceWindow(input,
-                          builder_.ConstantLiteral(LiteralUtil::MaxValue(F32)),
+                          builder_.ConstantLiteral(Literal::MaxValue(F32)),
                           CreateScalarMinComputation(F32, &builder_),
                           window_dimensions, window_strides, padding);
   }

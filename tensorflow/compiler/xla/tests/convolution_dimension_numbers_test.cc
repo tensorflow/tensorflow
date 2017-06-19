@@ -62,8 +62,7 @@ XLA_TEST_F(ConvolutionDimensionNumbersTest,
   auto weight_array = MakeUnique<Array4D<float>>(4, 3, 1, 1);
   weight_array->FillWithMultiples(0.2);
   auto weight_data =
-      client_
-          ->TransferToServer(*LiteralUtil::CreateR4FromArray4D(*weight_array))
+      client_->TransferToServer(*Literal::CreateR4FromArray4D(*weight_array))
           .ConsumeValueOrDie();
 
   ComputationBuilder builder(client_, TestName());

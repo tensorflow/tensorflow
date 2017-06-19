@@ -239,11 +239,11 @@ TEST_F(WhileTest, WhileWithTupleResult) {
   VLOG(2) << "while = " << ShapeUtil::HumanString(
                                *builder.GetShape(result).ConsumeValueOrDie());
 
-  auto expected_counter = LiteralUtil::CreateR0<int32>(5);
-  auto expected_data = LiteralUtil::CreateR1<float>(
+  auto expected_counter = Literal::CreateR0<int32>(5);
+  auto expected_data = Literal::CreateR1<float>(
       {5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f, 5.0f});
   auto expected =
-      LiteralUtil::MakeTuple({expected_counter.get(), expected_data.get()});
+      Literal::MakeTuple({expected_counter.get(), expected_data.get()});
   VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
   ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
 }
@@ -524,11 +524,11 @@ XLA_TEST_F(WhileTest, WhileWithDynamicUpdateSlice) {
           << ShapeUtil::HumanString(
                  *builder.GetShape(result).ConsumeValueOrDie());
 
-  auto expected_counter = LiteralUtil::CreateR0<int32>(5);
-  auto expected_data = LiteralUtil::CreateR1<float>(
+  auto expected_counter = Literal::CreateR0<int32>(5);
+  auto expected_data = Literal::CreateR1<float>(
       {1.0f, 1.0f, 2.0f, 2.0f, 3.0f, 3.0f, 4.0f, 4.0f, 5.0f, 5.0f});
   auto expected =
-      LiteralUtil::MakeTuple({expected_counter.get(), expected_data.get()});
+      Literal::MakeTuple({expected_counter.get(), expected_data.get()});
   VLOG(2) << "expected = " << ShapeUtil::HumanString(expected->shape());
   ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.0001));
 }

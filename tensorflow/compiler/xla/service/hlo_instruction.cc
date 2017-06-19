@@ -870,7 +870,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       return CreateWhile(shape, while_condition(), while_body(),
                          new_operands[0]);
     case HloOpcode::kConstant:
-      return CreateConstant(LiteralUtil::CloneToUnique(*literal_));
+      return CreateConstant(literal_->CloneToUnique());
     case HloOpcode::kFusion:
       return CloneFusionWithNewOperands(shape, new_operands);
     case HloOpcode::kParameter:
@@ -1181,7 +1181,7 @@ bool HloInstruction::Identical(
 
     // A constant is defined by the value in the literal.
     case HloOpcode::kConstant:
-      return LiteralUtil::Equal(literal(), other.literal());
+      return literal().Equal(other.literal());
 
     // A convert result is determined by the primitive type that the operand is
     // converted into.
@@ -1482,9 +1482,9 @@ string HloInstruction::ToString(bool compact_operands,
   if (opcode() == HloOpcode::kConstant) {
     // For constants, show the actual value in place of an empty operand list.
     if (ShapeUtil::ElementsIn(shape()) <= 10) {
-      // LiteralUtil::ToString emits multidimensional arrays over multiple
+      // Literal::ToString emits multidimensional arrays over multiple
       // lines. Compact this into one line by stripping out white space.
-      string tmp = LiteralUtil::ToString(literal());
+      string tmp = literal().ToString();
       std::replace(tmp.begin(), tmp.end(), '\n', ' ');
       std::vector<string> v = tensorflow::str_util::Split(tmp, ' ');
       bool first = true;

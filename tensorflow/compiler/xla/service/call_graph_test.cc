@@ -81,7 +81,7 @@ class CallGraphTest : public HloTestBase {
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     HloInstruction* zero = builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0f)));
+        HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
     builder.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, param0, zero));
     return builder.Build();

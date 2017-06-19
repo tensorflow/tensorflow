@@ -55,7 +55,7 @@ class CpuTransferManagerTest : public ::testing::Test {
 TEST_F(CpuTransferManagerTest, TransferR0U32ToDevice) {
   std::vector<uint8> storage(sizeof(uint32), '\x00');
   se::DeviceMemoryBase memptr(storage.data(), storage.size());
-  std::unique_ptr<Literal> literal = LiteralUtil::CreateR0<uint32>(42);
+  std::unique_ptr<Literal> literal = Literal::CreateR0<uint32>(42);
   TF_CHECK_OK(transfer_manager_.TransferLiteralToDevice(stream_exec_, *literal,
                                                         &memptr));
 
@@ -66,7 +66,7 @@ TEST_F(CpuTransferManagerTest, TransferR1F32ToDevice) {
   std::vector<uint8> storage(4 * sizeof(float), '\x00');
   se::DeviceMemoryBase memptr(storage.data(), storage.size());
   std::unique_ptr<Literal> literal =
-      LiteralUtil::CreateR1<float>({1.25f, 2.5f, -17.0f, -20.125f});
+      Literal::CreateR1<float>({1.25f, 2.5f, -17.0f, -20.125f});
   TF_CHECK_OK(transfer_manager_.TransferLiteralToDevice(stream_exec_, *literal,
                                                         &memptr));
 
@@ -80,7 +80,7 @@ TEST_F(CpuTransferManagerTest, TransferR1U8ToDevice) {
   std::vector<uint8> storage(16, '\x00');
   se::DeviceMemoryBase memptr(storage.data(), storage.size());
   const char* str = "0123456789abcdef";
-  std::unique_ptr<Literal> literal = LiteralUtil::CreateR1U8(str);
+  std::unique_ptr<Literal> literal = Literal::CreateR1U8(str);
   TF_CHECK_OK(transfer_manager_.TransferLiteralToDevice(stream_exec_, *literal,
                                                         &memptr));
 

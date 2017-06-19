@@ -173,7 +173,7 @@ TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
   ComputationBuilder builder(client_, TestName());
   std::unique_ptr<Literal> param0_literal =
-      LiteralUtil::CreateR1<float>({3.14f, -100.25f});
+      Literal::CreateR1<float>({3.14f, -100.25f});
   std::unique_ptr<GlobalData> param0_data =
       client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
   auto p = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2}), "param0");

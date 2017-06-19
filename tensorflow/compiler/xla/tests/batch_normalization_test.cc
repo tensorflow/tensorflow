@@ -47,7 +47,7 @@ class BatchNormalizationTest : public ClientLibraryTestBase {
         {5.0f, 4.4f},   // p2
     });
     input_array_.FillWithPZ(pz);
-    input_literal_ = *LiteralUtil::CreateR4FromArray4D(input_array_);
+    input_literal_ = *Literal::CreateR4FromArray4D(input_array_);
     CHECK_EQ(kSamples, input_array_.planes());
     CHECK_EQ(kZ, input_array_.depth());
     CHECK_EQ(kY, input_array_.height());

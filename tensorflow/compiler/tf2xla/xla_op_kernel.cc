@@ -144,9 +144,9 @@ static Status LiteralToInt64Scalar(const xla::Literal& literal, int64* out) {
     return errors::InvalidArgument("value is not a scalar");
   }
   if (literal.shape().element_type() == xla::S32) {
-    *out = xla::LiteralUtil::Get<int32>(literal, {});
+    *out = literal.Get<int32>({});
   } else if (literal.shape().element_type() == xla::S64) {
-    *out = xla::LiteralUtil::Get<int64>(literal, {});
+    *out = literal.Get<int64>({});
   } else {
     return errors::InvalidArgument("value must be either int32 or int64");
   }
@@ -168,11 +168,11 @@ static Status LiteralToInt64Vector(const xla::Literal& literal,
   int64 size = xla::ShapeUtil::ElementsIn(literal.shape());
   if (literal.shape().element_type() == xla::S32) {
     for (int64 i = 0; i < size; ++i) {
-      out->push_back(xla::LiteralUtil::Get<int32>(literal, {i}));
+      out->push_back(literal.Get<int32>({i}));
     }
   } else if (literal.shape().element_type() == xla::S64) {
     for (int64 i = 0; i < size; ++i) {
-      out->push_back(xla::LiteralUtil::Get<int64>(literal, {i}));
+      out->push_back(literal.Get<int64>({i}));
     }
   } else {
     return errors::InvalidArgument("value must be either int32 or int64");

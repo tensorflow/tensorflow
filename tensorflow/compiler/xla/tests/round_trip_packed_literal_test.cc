@@ -65,8 +65,8 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR1F32Length2) {
       reader.Read(ShapeUtil::MakeShape(F32, {2})).ConsumeValueOrDie();
   EXPECT_TRUE(reader.IsExhausted());
 
-  EXPECT_EQ(42.0, LiteralUtil::Get<float>(*actual, {0}));
-  EXPECT_EQ(24.0, LiteralUtil::Get<float>(*actual, {1}));
+  EXPECT_EQ(42.0, actual->Get<float>({0}));
+  EXPECT_EQ(24.0, actual->Get<float>({1}));
 }
 
 TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
@@ -95,10 +95,10 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim0Minor) {
           .ConsumeValueOrDie();
   EXPECT_TRUE(reader.IsExhausted());
 
-  EXPECT_EQ(42.0f, LiteralUtil::Get<float>(*actual, {0, 0}));
-  EXPECT_EQ(24.0f, LiteralUtil::Get<float>(*actual, {0, 1}));
-  EXPECT_EQ(64.0f, LiteralUtil::Get<float>(*actual, {1, 0}));
-  EXPECT_EQ(46.0f, LiteralUtil::Get<float>(*actual, {1, 1}));
+  EXPECT_EQ(42.0f, actual->Get<float>({0, 0}));
+  EXPECT_EQ(24.0f, actual->Get<float>({0, 1}));
+  EXPECT_EQ(64.0f, actual->Get<float>({1, 0}));
+  EXPECT_EQ(46.0f, actual->Get<float>({1, 1}));
 
   std::unique_ptr<Literal> round_tripped = RoundTripToServer(*actual);
   LiteralTestUtil::ExpectEqual(*round_tripped, *actual);
@@ -130,10 +130,10 @@ TEST_F(RoundTripPackedLiteralTest, RoundTripsR2F32Size2x2Dim1Minor) {
           .ConsumeValueOrDie();
   EXPECT_TRUE(reader.IsExhausted());
 
-  EXPECT_EQ(42.0f, LiteralUtil::Get<float>(*actual, {0, 0}));
-  EXPECT_EQ(24.0f, LiteralUtil::Get<float>(*actual, {1, 0}));
-  EXPECT_EQ(64.0f, LiteralUtil::Get<float>(*actual, {0, 1}));
-  EXPECT_EQ(46.0f, LiteralUtil::Get<float>(*actual, {1, 1}));
+  EXPECT_EQ(42.0f, actual->Get<float>({0, 0}));
+  EXPECT_EQ(24.0f, actual->Get<float>({1, 0}));
+  EXPECT_EQ(64.0f, actual->Get<float>({0, 1}));
+  EXPECT_EQ(46.0f, actual->Get<float>({1, 1}));
 
   std::unique_ptr<Literal> round_tripped = RoundTripToServer(*actual);
   LiteralTestUtil::ExpectEqual(*round_tripped, *actual);

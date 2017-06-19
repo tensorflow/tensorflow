@@ -113,8 +113,7 @@ GpuTransferManager::TransferLiteralToInfeedInternal(
                          ShapeUtil::HumanString(literal.shape()).c_str());
   }
 
-  return TransferBufferToInfeedInternal(executor, size,
-                                        LiteralUtil::InternalData(literal));
+  return TransferBufferToInfeedInternal(executor, size, literal.InternalData());
 }
 
 StatusOr<gpu::InfeedBuffer*> GpuTransferManager::TransferBufferToInfeedInternal(

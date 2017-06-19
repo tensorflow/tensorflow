@@ -81,8 +81,7 @@ Status CpuTransferManager::TransferLiteralToInfeed(se::StreamExecutor* executor,
                          ShapeUtil::HumanString(literal.shape()).c_str(), size);
   }
 
-  return TransferBufferToInfeed(executor, size,
-                                LiteralUtil::InternalData(literal));
+  return TransferBufferToInfeed(executor, size, literal.InternalData());
 }
 
 Status CpuTransferManager::TransferBufferToInfeed(se::StreamExecutor* executor,
