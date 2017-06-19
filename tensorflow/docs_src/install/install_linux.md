@@ -172,7 +172,7 @@ Take the following steps to install TensorFlow with Virtualenv:
      virtualenv environment:
 
      <pre>(tensorflow)$ <b>pip install --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.2.0-cp34-cp34m-linux_x86_64.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.2.0-cp27-none-linux_x86_64.whl</b></pre>
 
 If you encounter installation problems, see
 [Common Installation Problems](#common_installation_problems).
@@ -277,7 +277,7 @@ take the following steps:
 
      <pre>
      $ <b>sudo pip install --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.2.0-cp34-cp34m-linux_x86_64.whl</b>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.2.0-cp27-none-linux_x86_64.whl</b>
      </pre>
 
      If this step fails, see
@@ -464,7 +464,7 @@ Take the following steps to install TensorFlow in an Anaconda environment:
 
      <pre>
      (tensorflow)$ <b>pip install --ignore-installed --upgrade \
-     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.2.0-cp34-cp34m-linux_x86_64.whl</b></pre>
+     https://storage.googleapis.com/tensorflow/linux/cpu/tensorflow-1.2.0-cp27-none-linux_x86_64.whl</b></pre>
 
 
 <a name="ValidateYourInstallation"></a>
