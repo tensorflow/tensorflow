@@ -344,7 +344,7 @@ class LuongAttention(_BaseAttentionMechanism):
       #   [batch_size, 1, depth] . [batch_size, depth, max_time]
       # resulting in an output shape of:
       #   [batch_time, 1, max_time].
-      # we then squeee out the center singleton dimension.
+      # we then squeeze out the center singleton dimension.
       score = math_ops.matmul(query, self.keys, transpose_b=True)
       score = array_ops.squeeze(score, [1])
 
