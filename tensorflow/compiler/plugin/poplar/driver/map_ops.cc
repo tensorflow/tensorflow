@@ -52,6 +52,25 @@ IsComputationParallelMap(HloComputation* computation) {
   return tester._is_ok;
 }
 
+static port::StatusOr<poplar::program::Program>
+AddAllTrueReduction(poplar::Graph &graph,
+                    const poplar::Tensor& in) {
+
+  poplar::Tensor in_flat = in.flatten();
+
+  auto cs = graph.addComputeSet("AddTrueReduction");
+
+  const unsigned long N = in_flat.dim(0);
+  const auto &device_info = graph.getDevice().getDeviceInfo();
+
+  for (unsigned i = 0; i < N; ++i) {
+    auto v = graph.addVertex(cs, "AllTrue", {{"a", in_flat.slice(i, i+1)}});
+    graph.setTileMapping(v, (i / device_info.numWorkerContexts) % device_info.getNumTiles());
+  }
+
+  return poplar::program::Execute(cs);
+}
+
 port::StatusOr<poplar::program::Program>
 CreateParallelMap(poplar::Graph &graph,
                   CompilerResources& res,
@@ -146,6 +165,7 @@ CreateWhileOp(poplar::Graph &graph,
   poplar::Tensor body_input = body_visitor->second.inputs()[0];
   poplar::Tensor body_output = body_visitor->second.outputs()[0];
   poplar::Tensor cond_input = condition_visitor->second.inputs()[0];
+  poplar::Tensor cond_output = condition_visitor->second.outputs()[0];
 
   poplar::Tensor init;
   TF_ASSIGN_OR_RETURN(init, FindInstructionInput(tensor_map, inst, 0, 0));
@@ -162,7 +182,10 @@ CreateWhileOp(poplar::Graph &graph,
   // Condition
   poplar::program::Sequence cond_seq;
   cond_seq.add(condition_visitor->second.sequence);
-  // TODO - add logical reduction with 'true/false' return from Compute
+
+  poplar::program::Program reduction;
+  TF_ASSIGN_OR_RETURN(reduction, AddAllTrueReduction(graph, cond_output));
+  cond_seq.add(reduction);
 
   poplar::program::RepeatWhileTrue repeat_while_true(cond_seq, body_seq);
 
