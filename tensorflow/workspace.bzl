@@ -7,11 +7,6 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "filegroup_external")
 load("@io_bazel_rules_closure//closure:defs.bzl", "web_library_external")
 load("//third_party/py:python_configure.bzl", "python_configure")
 
-load("//third_party:polymer.bzl", "tensorboard_polymer_workspace")
-load("//third_party:python.bzl", "tensorboard_python_workspace")
-load("//third_party:js.bzl", "tensorboard_js_workspace")
-load("//third_party:typings.bzl", "tensorboard_typings_workspace")
-
 
 def _is_windows(repository_ctx):
   """Returns true if the host operating system is windows."""
