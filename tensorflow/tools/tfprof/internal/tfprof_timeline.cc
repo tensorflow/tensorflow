@@ -192,9 +192,6 @@ void Timeline::AllocateTimeNodes(GraphNode* gnode) {
     const TFGraphNode* node = gnode->node;
     for (const auto& kernel_execs : node->op_execs(step_)) {
       const string& device = kernel_execs.first;
-      if (!IsCombinedGPUStream(device) && !IsCPUDevice(device)) {
-        continue;
-      }
 
       if (process_.find(device) == process_.end()) {
         int64 pid = AllocatePID();
