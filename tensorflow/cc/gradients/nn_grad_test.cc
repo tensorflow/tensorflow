@@ -57,6 +57,13 @@ TEST_F(NNGradTest, SoftmaxGrad) {
   RunTest(x, shape, y, shape);
 }
 
+TEST_F(NNGradTest, LogSoftmaxGrad) {
+  TensorShape shape({32, 10});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  auto y = LogSoftmax(scope_, x);
+  RunTest(x, shape, y, shape);
+}
+
 TEST_F(NNGradTest, ReluGrad) {
   TensorShape shape({5, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
