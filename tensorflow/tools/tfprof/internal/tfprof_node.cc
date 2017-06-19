@@ -70,9 +70,8 @@ void ExecStep::AddTimeStats(const string& dev, const NodeExecStats& step_stat) {
       accelerator_execs_[dev].push_back(pair);
       op_execs_[dev].push_back(pair);
     } else if (CountAsCPUTime(dev)) {
-      if (!cpu_execs_.empty()) {
-        fprintf(stderr, "Multiple CPU execution of 1 op, please file bug.\n");
-      }
+      // TODO(xpan): A while-loop can has multiple nodes sharing the
+      // same name. They shouldn't be counted in one node.
       cpu_execs_[dev].push_back(pair);
       op_execs_[dev].push_back(pair);
     }
