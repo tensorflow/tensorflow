@@ -25,7 +25,6 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
-#include "tensorflow/core/kernels/tile_functor.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -47,6 +46,12 @@ typedef Eigen::SyclDevice SYCLDevice;
 
 // Forward declarations of functors that will be defined in tile_ops_impl.h
 namespace functor {
+template <typename Device, typename T>
+struct Tile {
+  void operator()(const Device& d, Tensor* out, const Tensor& in,
+                  const gtl::ArraySlice<int32> broadcast_array) const;
+};
+
 template <typename Device, typename T, int NDIM>
 struct TileGrad {
   void operator()(const Device& d, typename TTypes<T, NDIM>::Tensor out,
