@@ -1047,10 +1047,12 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
     // to be unique and stable after optimization rewrites. Therefore,
     // we use "n<node id>" instead.
     for (const Edge* e : inputs) {
-      const string srcname = NewName(e->src(), pretty);
       if (e == nullptr) {
         ndef->add_input("unknown");
-      } else if (!e->src()->IsOp()) {
+        continue;
+      }
+      const string srcname = NewName(e->src(), pretty);
+      if (!e->src()->IsOp()) {
       } else if (e->IsControlEdge()) {
         ndef->add_input(strings::StrCat("^", srcname));
       } else if (e->src_output() == 0) {

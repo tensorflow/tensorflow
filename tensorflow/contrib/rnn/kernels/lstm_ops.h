@@ -279,9 +279,6 @@ struct LSTMBlockCellBprop : public LSTMBlockCell {
           cs_prev_grad +
           di * wci.reshape(p_shape).broadcast(p_broadcast_shape) +
           df * wcf.reshape(p_shape).broadcast(p_broadcast_shape);
-    }
-
-    if (use_peephole) {
       wci_grad.device(d) = (di * cs_prev).sum(Eigen::array<int, 1>({0}));
       wcf_grad.device(d) = (df * cs_prev).sum(Eigen::array<int, 1>({0}));
       wco_grad.device(d) = (do_ * cs).sum(Eigen::array<int, 1>({0}));
