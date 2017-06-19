@@ -283,15 +283,26 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
     return false;
   }
 
+  // We can only fold nodes if all their inputs are known statically, except in
+  // the case of a merge node that propagate the first inputs that becomes
+  // available, and therefore only requires a single constant input to be
+  // foldable.
+  bool has_constant_input = false;
+  const bool is_merge = IsMerge(node);
   for (const auto& input : node.input()) {
     if (IsControlInput(input)) {
       continue;
     }
     bool is_const = IsConstant(*node_map_->GetNode(input));
-    if (!is_const) {
+    if (!is_const && !is_merge) {
       return false;
     }
+    has_constant_input |= is_const;
   }
+  if (is_merge) {
+    return has_constant_input;
+  }
+
   return true;
 }
 
@@ -387,6 +398,82 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
 }
 
 Status ConstantFolding::FoldNode(const NodeDef& node, GraphDef* output) {
+  if (IsMerge(node)) {
+    // Merge nodes are special, in the sense that they execute as soon as one of
+    // their input is ready. We can therefore fold a merge node iff it has at
+    // least one constant input without control dependency.
+    // We still need to ensure that the nodes in the fanin of the merge node are
+    // scheduled. We'll therefore add a control dependency from the merge node
+    // to the folded constant. We end up with:
+    //  * the merge node and its inputs are preserved as is
+    //  * a new constant node C1, driven by the merge node through a control
+    //  dependency, initialized to the value of the folded input
+    //  * a new constant node C2, driven by the merge node through a control
+    //  dependency, initialized to the index of the folded input
+    //  * the fanout of the merge nodes is rewired to be driven by either C1 or
+    //  C2.
+    for (int input_index = 0; input_index < node.input_size(); ++input_index) {
+      const auto& input = node.input(input_index);
+      if (IsControlInput(input)) {
+        // Try the next input.
+        continue;
+      }
+      NodeDef* input_node = node_map_->GetNode(input);
+      if (!IsConstant(*input_node)) {
+        continue;
+      }
+      bool valid_input = true;
+      for (const string& fanin_of_input : input_node->input()) {
+        if (IsControlInput(fanin_of_input)) {
+          valid_input = false;
+          break;
+        }
+      }
+      if (!valid_input) {
+        // Try the next input
+        continue;
+      }
+      NodeDef* const_out = output->add_node();
+      *const_out = *input_node;
+      const_out->set_name(
+          AddPrefixToNodeName(node.name(), kConstantFoldingConst));
+      *const_out->add_input() = AsControlDependency(node);
+      node_map_->AddNode(const_out->name(), const_out);
+
+      NodeDef* const_index = output->add_node();
+      const_index->set_op("Const");
+      Tensor index(DT_INT32, TensorShape({}));
+      index.flat<int32>()(0) = input_index;
+      (*const_index->mutable_attr())["dtype"].set_type(DT_INT32);
+      index.AsProtoTensorContent(
+          (*const_index->mutable_attr())["value"].mutable_tensor());
+      const_index->set_name(AddPrefixToNodeName(
+          strings::StrCat(node.name(), "_index"), kConstantFoldingConst));
+      *const_index->add_input() = AsControlDependency(node);
+      node_map_->AddNode(const_index->name(), const_index);
+
+      auto outputs = node_map_->GetOutputs(node.name());
+      for (auto& output : outputs) {
+        for (int i = 0; i < output->input_size(); i++) {
+          int position;
+          string node_name = ParseNodeName(output->input(i), &position);
+          if (node_name == node.name()) {
+            if (position == 0) {
+              *output->mutable_input(i) = const_out->name();
+            } else if (position == 1) {
+              *output->mutable_input(i) = const_index->name();
+            } else {
+              // This is a control dependency (or an invalid edge since the
+              // merge node has only 2 inputs): preserve them.
+            }
+          }
+        }
+      }
+      return Status::OK();
+    }
+    return Status::OK();
+  }
+
   std::vector<NodeDef> const_nodes;
   TF_RETURN_IF_ERROR(EvaluateOneFoldable(node, &const_nodes));
 
