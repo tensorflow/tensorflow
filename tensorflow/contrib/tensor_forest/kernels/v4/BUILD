@@ -25,7 +25,6 @@ cc_library(
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_cc",
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
     ],
 )
 
@@ -56,7 +55,6 @@ cc_library(
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_extensions_cc",
         "//tensorflow/contrib/tensor_forest:tree_utils",
         "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
     ],
 )
 
@@ -80,6 +78,7 @@ cc_library(
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_cc",
         "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
     ],
 )
 
@@ -143,7 +142,6 @@ cc_library(
         "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_cc",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
     ],
 )
 

@@ -1422,7 +1422,6 @@ cc_library(
         ":call_graph",
         ":flatten_call_graph",
         ":hlo",
-        ":hlo_cost_analysis",
         ":hlo_dce",
         ":hlo_ordering",
         ":liveness_util",
