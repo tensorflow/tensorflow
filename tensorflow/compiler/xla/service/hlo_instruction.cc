@@ -2413,4 +2413,9 @@ void HloInstruction::UniquifyName(NameUniquer* name_uniquer) {
   name_ = name_uniquer->GetUniqueName(name_);
 }
 
+void HloInstruction::set_outer_dimension_partitions(
+    const std::vector<int64>& outer_dimension_partitions) {
+  outer_dimension_partitions_ = outer_dimension_partitions;
+}
+
 }  // namespace xla

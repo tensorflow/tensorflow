@@ -155,6 +155,10 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   module_config->set_has_hybrid_result(has_hybrid_result);
   module_config->set_replica_count(execute_backend_->replica_count());
   module_config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
+  if (execute_backend_->eigen_intra_op_thread_pool() != nullptr) {
+    module_config->set_intra_op_parallelism_threads(
+        execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
+  }
   legacy_flags::ServiceFlags* flags = legacy_flags::GetServiceFlags();
   if (flags->xla_hlo_profile) {
     module_config->enable_hlo_profiling(true);

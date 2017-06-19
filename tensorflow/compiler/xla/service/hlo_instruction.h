@@ -812,6 +812,17 @@ class HloInstruction {
     parent_fusion_instruction_ = fusion_instruction;
   }
 
+  // Get/Set the number of partitions per outer dimension (in order, starting
+  // with outer-most dimension first). Currently used by the parallel cpu
+  // backend to partition HLOs into parallel tasks.
+  // TODO(b/62783254) Replace these methods with a more general way to
+  // annotate HLOs with backend-specific information.
+  const std::vector<int64>& outer_dimension_partitions() const {
+    return outer_dimension_partitions_;
+  }
+  void set_outer_dimension_partitions(
+      const std::vector<int64>& outer_dimension_partitions);
+
  private:
   enum class UseKind { kNoUse, kReuse, kUsePermutingElements, kUse };
 
@@ -984,6 +995,10 @@ class HloInstruction {
 
   // Metadata for debugging.
   OpMetadata metadata_;
+
+  // The number of partitions per outer dimension (listed in order from
+  // outer-most dimension first).
+  std::vector<int64> outer_dimension_partitions_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };

@@ -34,11 +34,18 @@ const char* const DEVICE_GPU_XLA_JIT = "XLA_GPU_JIT";
 const char* const DEVICE_XLA_CPU = "XLA_CPU";
 const char* const DEVICE_XLA_GPU = "XLA_GPU";
 
-// Is platform 'id' supported by XLA?
-static bool IsPlatformSupported(perftools::gputools::Platform::Id id) {
-  auto platform = perftools::gputools::MultiPlatformManager::PlatformWithId(id);
-  if (!platform.ok()) return false;
-  return xla::ClientLibrary::GetOrCreateLocalClient(platform.ValueOrDie()).ok();
+static Status LaunchOpHasKernelForDevice(const DeviceType& device_type) {
+  const OpDef* op_def;
+  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef("_XlaLaunch", &op_def));
+  NodeDef node_def;
+  node_def.set_name("_XlaLaunch-op");
+  node_def.set_op("_XlaLaunch");
+  string kernel_class_name;
+  TF_RETURN_IF_ERROR(FindKernelDef(device_type, node_def, /*KernelDef*/ nullptr,
+                                   &kernel_class_name));
+  VLOG(1) << "LaunchOpHasKernelForDevice"
+          << " kernel_class_name: " << kernel_class_name;
+  return Status::OK();
 }
 
 XlaOpRegistry::XlaOpRegistry() = default;
@@ -75,7 +82,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   // GetCompilationDevice is called.
   static void* registration_init = [&registry]() {
     mutex_lock lock(registry.mutex_);
-    if (IsPlatformSupported(perftools::gputools::host::kHostPlatformId)) {
+    if (LaunchOpHasKernelForDevice(DeviceType(DEVICE_CPU)).ok()) {
       DeviceRegistration& registration =
           registry.compilation_devices_[DEVICE_CPU];
       registration.compilation_device_name = DEVICE_CPU_XLA_JIT;
@@ -83,7 +90,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
       registration.enable_jit_by_default = false;
       registration.compile_resource_ops = false;
     }
-    if (IsPlatformSupported(perftools::gputools::cuda::kCudaPlatformId)) {
+    if (LaunchOpHasKernelForDevice(DeviceType(DEVICE_GPU)).ok()) {
       DeviceRegistration& registration =
           registry.compilation_devices_[DEVICE_GPU];
       registration.compilation_device_name = DEVICE_GPU_XLA_JIT;

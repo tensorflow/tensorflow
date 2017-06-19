@@ -20,6 +20,9 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/compiler/xla/array2d.h"
+#include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/client/computation.h"
+#include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -28,7 +31,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -36,9 +41,12 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
 
 using tensorflow::gtl::ArraySlice;
+
+namespace se = ::perftools::gputools;
 
 namespace xla {
 namespace {
@@ -566,6 +574,61 @@ XLA_TEST_F(FusionTest, Clamp2D) {
   TestElementwise2D<float, 3>(HloOpcode::kClamp);
 }
 
+void BM_ParallelFusion(int num_iters) {
+  // Simple element-wise computation to benchmark parallel task partitioning.
+  tensorflow::testing::StopTiming();
+
+  se::Platform* platform = PlatformUtil::GetDefaultPlatform().ValueOrDie();
+  auto executors = PlatformUtil::GetStreamExecutors(platform).ValueOrDie();
+  StreamExecutorMemoryAllocator allocator(platform, executors);
+
+  const int64 intra_op_parallelism_threads = 16;
+  xla::LocalClientOptions client_options;
+  client_options.set_platform(platform);
+  client_options.set_intra_op_parallelism_threads(intra_op_parallelism_threads);
+  auto client =
+      ClientLibrary::GetOrCreateLocalClient(client_options).ValueOrDie();
+
+  const int64 dim_size = 1024;
+  // Create a simple fusable elementwise computation.
+  ComputationBuilder builder(client, "ParallelFusion");
+  Shape input_shape = ShapeUtil::MakeShape(F32, {dim_size, dim_size});
+  auto input0 = builder.Broadcast(builder.ConstantR0<float>(1.5f),
+                                  AsInt64Slice(input_shape.dimensions()));
+  auto input1 = builder.Broadcast(builder.ConstantR0<float>(2.0f),
+                                  AsInt64Slice(input_shape.dimensions()));
+  auto input2 = builder.Broadcast(builder.ConstantR0<float>(3.0f),
+                                  AsInt64Slice(input_shape.dimensions()));
+  auto x = builder.Mul(input0, input1);
+  auto y = builder.Add(x, input2);
+  auto computation = builder.Build().ConsumeValueOrDie();
+
+  std::unique_ptr<LocalExecutable> executable =
+      client->Compile(computation, {}, ExecutableBuildOptions())
+          .ConsumeValueOrDie();
+
+  // Run some warm-up executions.
+  ExecutableRunOptions options;
+  options.set_allocator(&allocator);
+  const int kWarmups = 2;
+  for (int i = 0; i < kWarmups; ++i) {
+    auto result = executable->Run({}, options);
+    ASSERT_TRUE(result.ok());
+  }
+
+  // Run benchmark.
+  tensorflow::testing::BytesProcessed(static_cast<int64>(num_iters) * dim_size *
+                                      dim_size * sizeof(float));
+  tensorflow::testing::UseRealTime();
+  tensorflow::testing::StartTiming();
+  for (int i = 0; i < num_iters; ++i) {
+    auto result = executable->Run({}, options);
+    ASSERT_TRUE(result.ok());
+  }
+}
+
+BENCHMARK(BM_ParallelFusion);
+
 }  // namespace
 }  // namespace xla
 
@@ -583,5 +646,6 @@ int main(int argc, char** argv) {
     LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
     return 2;
   }
+  tensorflow::testing::RunBenchmarks();
   return RUN_ALL_TESTS();
 }

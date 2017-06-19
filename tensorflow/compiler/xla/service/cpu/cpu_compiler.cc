@@ -284,8 +284,13 @@ Status CpuCompiler::RunHloPasses(HloModule* module, HloDumper dump_hlo) {
       /*enable_dot_simplification=*/false);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
   // Outline ops in the entry computation into calls to subcomputations.
+  const int max_parallelism =
+      module->config().intra_op_parallelism_threads() > 0
+          ? module->config().intra_op_parallelism_threads()
+          : tensorflow::port::NumSchedulableCPUs();
   if (CpuParallelBackendRequested(module->config())) {
-    pipeline.AddPass<ParallelizationPreparation>();
+    pipeline.AddPass<ParallelizationPreparation>(max_parallelism,
+                                                 ShapeSizeBytesFunction());
   }
   // Copy insertion should be performed immediately before IR emission to avoid
   // inserting unnecessary copies (later pass adds an instruction which
@@ -298,7 +303,8 @@ Status CpuCompiler::RunHloPasses(HloModule* module, HloDumper dump_hlo) {
   if (CpuParallelBackendRequested(module->config())) {
     // Re-run the outlining, in case any copies were inserted into the entry
     // computation.
-    pipeline.AddPass<ParallelizationPreparation>();
+    pipeline.AddPass<ParallelizationPreparation>(max_parallelism,
+                                                 ShapeSizeBytesFunction());
   }
   pipeline.AddPass<HloDCE>();
   pipeline.AddPass<FlattenCallGraph>();
@@ -425,6 +431,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
 
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
                          &hlo_to_profile_idx);
+
     std::unique_ptr<std::map<HloInstruction*, string>> function_names(
         new std::map<HloInstruction*, string>());
     for (auto embedded_computation :
@@ -496,6 +503,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::Compile(
     // before a caller computation.
     IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
                          &hlo_to_profile_idx);
+
     for (auto embedded_computation :
          computation->MakeEmbeddedComputationsList()) {
       TF_RETURN_IF_ERROR(
