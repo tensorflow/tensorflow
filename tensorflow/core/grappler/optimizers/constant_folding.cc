@@ -293,8 +293,14 @@ bool ConstantFolding::IsFoldable(const NodeDef& node) const {
     if (IsControlInput(input)) {
       continue;
     }
-    bool is_const = IsConstant(*node_map_->GetNode(input));
+    const NodeDef* input_node = node_map_->GetNode(input);
+    bool is_const = IsConstant(*input_node);
     if (!is_const && !is_merge) {
+      return false;
+    }
+    // Don't fold strings constants for now since this causes problems with
+    // checkpointing.
+    if (is_const && input_node->attr().at("dtype").type() == DT_STRING) {
       return false;
     }
     has_constant_input |= is_const;
