@@ -20,7 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -45,10 +45,8 @@ Client* GetOrCreateLocalClientOrDie(se::Platform* platform) {
 }  // namespace
 
 ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
-    : client_(GetOrCreateLocalClientOrDie(platform)) {
-  *(execution_options_.mutable_debug_options()) =
-      legacy_flags::GetDebugOptionsFromFlags();
-
+    : client_(GetOrCreateLocalClientOrDie(platform)),
+      execution_options_(CreateDefaultExecutionOptions()) {
   // Disabling constant_folding so that tests (usually written using Constants)
   // will exercise the intended code paths, instead of being constant folded.
   //
@@ -72,12 +70,9 @@ StatusOr<std::unique_ptr<GlobalData>> ClientLibraryTestBase::Execute(
 }
 
 StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
-    ComputationBuilder* builder,
+    const Computation& computation,
     tensorflow::gtl::ArraySlice<GlobalData*> arguments,
     const Shape* shape_with_output_layout) {
-  // Build the computation, as a convenience.
-  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
-
   ExecutionOptions execution_options = execution_options_;
   if (shape_with_output_layout != nullptr) {
     *execution_options.mutable_shape_with_output_layout() =
@@ -85,6 +80,15 @@ StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
   }
   return client_->ExecuteAndTransfer(computation, arguments,
                                      &execution_options);
+}
+
+StatusOr<std::unique_ptr<Literal>> ClientLibraryTestBase::ExecuteAndTransfer(
+    ComputationBuilder* builder,
+    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+    const Shape* shape_with_output_layout) {
+  // Build the computation, as a convenience.
+  TF_ASSIGN_OR_RETURN(auto computation, builder->Build());
+  return ExecuteAndTransfer(computation, arguments, shape_with_output_layout);
 }
 
 std::unique_ptr<GlobalData> ClientLibraryTestBase::ExecuteOrDie(

@@ -66,12 +66,18 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   // TODO(b/25566808): Add helper that populates a literal from a testdata file.
 
-  // Convenience methods for building and running a computation from a builder.
+  // Convenience methods for building and running a computation with the member
+  // execution options. Modify execution_options_ in your test if you want to
+  // customize the options.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
       ComputationBuilder* builder,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments);
   StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
       ComputationBuilder* builder,
+      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      const Shape* shape_with_output_layout = nullptr);
+  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
+      const Computation& computation,
       tensorflow::gtl::ArraySlice<GlobalData*> arguments,
       const Shape* shape_with_output_layout = nullptr);
 

@@ -47,6 +47,21 @@ xla_proto_library(
 )
 
 cc_library(
+    name = "execution_options_util",
+    srcs = [
+        "execution_options_util.cc",
+    ],
+    hdrs = [
+        "execution_options_util.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":xla_proto",
+        "//tensorflow/compiler/xla/legacy_flags:debug_options_flags",
+    ],
+)
+
+cc_library(
     name = "test",
     testonly = 1,
     hdrs = ["test.h"],

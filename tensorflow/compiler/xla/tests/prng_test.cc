@@ -243,9 +243,11 @@ XLA_TEST_F(PrngTest, PassInGlobalRngSeed) {
         client_->ExecuteAndTransfer(computation, /*arguments=*/{},
                                     &execution_options2));
     TF_ASSIGN_OR_ASSERT_OK(
-        result5, client_->ExecuteAndTransfer(computation, /*arguments=*/{}));
+        result5, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options_));
     TF_ASSIGN_OR_ASSERT_OK(
-        result6, client_->ExecuteAndTransfer(computation, /*arguments=*/{}));
+        result6, client_->ExecuteAndTransfer(computation, /*arguments=*/{},
+                                             &execution_options_));
   }
 
   LiteralTestUtil::ExpectEqual(*result1, *result2);

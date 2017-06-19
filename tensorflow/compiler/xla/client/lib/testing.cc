@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/computation.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -38,7 +39,7 @@ std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
               AsInt64Slice(shape.dimensions()));
   Computation computation = b.Build().ConsumeValueOrDie();
 
-  ExecutionOptions execution_options;
+  auto execution_options = CreateDefaultExecutionOptions();
   *execution_options.mutable_shape_with_output_layout() = shape;
   return client->Execute(computation, /*arguments=*/{}, &execution_options)
       .ConsumeValueOrDie();
