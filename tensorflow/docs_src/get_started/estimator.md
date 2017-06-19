@@ -64,7 +64,7 @@ def main():
       features_dtype=np.float32)
 
   # Specify that all features have real-value data
-  feature_columns = [tf.feature_column.numeric_column("", shape=[4])]
+  feature_columns = [tf.feature_column.numeric_column("x", shape=[4])]
 
   # Build 3 layer DNN with 10, 20, 10 units respectively.
   classifier = tf.estimator.DNNClassifier(feature_columns=feature_columns,
@@ -72,35 +72,37 @@ def main():
                                           n_classes=3,
                                           model_dir="/tmp/iris_model")
   # Define the training inputs
-  def get_train_inputs():
-    x = tf.constant(training_set.data)
-    y = tf.constant(training_set.target)
-
-    return x, y
+  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={"x": np.array(training_set.data)},
+      y=np.array(training_set.target),
+      num_epochs=None,
+      shuffle=True)
 
   # Train model.
-  classifier.train(input_fn=get_train_inputs, steps=2000)
+  classifier.train(input_fn=train_input_fn, steps=2000)
 
   # Define the test inputs
-  def get_test_inputs():
-    x = tf.constant(test_set.data)
-    y = tf.constant(test_set.target)
-
-    return x, y
+  test_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={"x": np.array(test_set.data)},
+      y=np.array(test_set.target),
+      num_epochs=1,
+      shuffle=False)
 
   # Evaluate accuracy.
-  accuracy_score = classifier.evaluate(input_fn=get_test_inputs,
-                                       steps=1)["accuracy"]
+  accuracy_score = classifier.evaluate(input_fn=test_input_fn)["accuracy"]
 
   print("\nTest Accuracy: {0:f}\n".format(accuracy_score))
 
   # Classify two new flower samples.
-  def new_samples():
-    return np.array(
+  new_samples = np.array(
       [[6.4, 3.2, 4.5, 1.5],
        [5.8, 3.1, 5.0, 1.7]], dtype=np.float32)
+  predict_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={"x": new_samples},
+      num_epochs=1,
+      shuffle=False)
 
-  predictions = list(classifier.predict(input_fn=new_samples))
+  predictions = list(classifier.predict(input_fn=predict_input_fn))
   predicted_classes = [p["classes"] for p in predictions]
 
   print(
@@ -247,7 +249,7 @@ data. Using tf.estimator, you can instantiate your
 
 ```python
 # Specify that all features have real-value data
-feature_columns = [tf.feature_column.numeric_column("", shape=[4])]
+feature_columns = [tf.feature_column.numeric_column("x", shape=[4])]
 
 # Build 3 layer DNN with 10, 20, 10 units respectively.
 classifier = tf.estimator.DNNClassifier(feature_columns=feature_columns,
@@ -278,29 +280,28 @@ Then, the code creates a `DNNClassifier` model using the following arguments:
 ## Describe the training input pipeline {#train-input}
 
 The `tf.estimator` API uses input functions, which create the TensorFlow
-operations that generate data for the model. In this case, the data is small
-enough that it can be stored in @{tf.constant$TensorFlow constants}. The
-following code produces the simplest possible input pipeline:
+operations that generate data for the model.
+We can use `tf.estimator.inputs.numpy_input_fn` to produce the input pipeline:
 
 ```python
 # Define the training inputs
-def get_train_inputs():
-  x = tf.constant(training_set.data)
-  y = tf.constant(training_set.target)
-
-  return x, y
+train_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": np.array(training_set.data)},
+    y=np.array(training_set.target),
+    num_epochs=None,
+    shuffle=True)
 ```
 
 ## Fit the DNNClassifier to the Iris Training Data {#fit-dnnclassifier}
 
 Now that you've configured your DNN `classifier` model, you can fit it to the
 Iris training data using the @{tf.estimator.Estimator.train$`train`} method.
-Pass `get_train_inputs` as the `input_fn`, and the number of steps to train
+Pass `train_input_fn` as the `input_fn`, and the number of steps to train
 (here, 2000):
 
 ```python
 # Train model.
-classifier.train(input_fn=get_train_inputs, steps=2000)
+classifier.train(input_fn=train_input_fn, steps=2000)
 ```
 
 The state of the model is preserved in the `classifier`, which means you can
@@ -308,8 +309,8 @@ train iteratively if you like. For example, the above is equivalent to the
 following:
 
 ```python
-classifier.train(input_fn=get_train_inputs, steps=1000)
-classifier.train(input_fn=get_train_inputs, steps=1000)
+classifier.train(input_fn=train_input_fn, steps=1000)
+classifier.train(input_fn=train_input_fn, steps=1000)
 ```
 
 However, if you're looking to track the model while it trains, you'll likely
@@ -324,30 +325,28 @@ You've trained your `DNNClassifier` model on the Iris training data; now, you
 can check its accuracy on the Iris test data using the
 @{tf.estimator.Estimator.evaluate$`evaluate`} method. Like `train`,
 `evaluate` takes an input function that builds its input pipeline. `evaluate`
-returns a `dict` with the evaluation results. The following code passes the Iris
-test data&mdash;`test_set.data` and `test_set.target`&mdash;to `evaluate` and
-prints the `accuracy` from the results:
+returns a `dict`s with the evaluation results. The following code passes the
+Iris test data&mdash;`test_set.data` and `test_set.target`&mdash;to `evaluate`
+and prints the `accuracy` from the results:
 
 ```python
 # Define the test inputs
-def get_test_inputs():
-  x = tf.constant(test_set.data)
-  y = tf.constant(test_set.target)
-
-  return x, y
+test_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": np.array(test_set.data)},
+    y=np.array(test_set.target),
+    num_epochs=1,
+    shuffle=False)
 
 # Evaluate accuracy.
-accuracy_score = classifier.evaluate(input_fn=get_test_inputs,
-                                     steps=1)["accuracy"]
+accuracy_score = classifier.evaluate(input_fn=test_input_fn)["accuracy"]
 
 print("\nTest Accuracy: {0:f}\n".format(accuracy_score))
 ```
 
-Note: The `steps` argument to `evaluate` is important here.
-@{tf.estimator.Estimator.evaluate$`evaluate`} normally runs until it reaches
-the end of the input. This is perfect for evaluating over a set of files, but
-the constants being used here will never throw the `OutOfRangeError` or
-`StopIteration` that it is expecting.
+Note: The `num_epochs=1` argument to `numpy_input_fn` is important here.
+`test_input_fn` will iterate over the data once, and then raise
+`OutOfRangeError`. This error signals the classifier to stop evaluating, so it
+will evaluate over the input once.
 
 When you run the full script, it will print something close to:
 
@@ -369,17 +368,20 @@ Sepal Length | Sepal Width | Petal Length | Petal Width
 5.8          | 3.1         | 5.0          | 1.7
 
 You can predict their species using the `predict()` method. `predict` returns a
-generator, which can easily be converted to a list. The following code retrieves
-and prints the class predictions:
+generator of dicts, which can easily be converted to a list. The following code
+retrieves and prints the class predictions:
 
 ```python
 # Classify two new flower samples.
-def new_samples():
-  return np.array(
+new_samples = np.array(
     [[6.4, 3.2, 4.5, 1.5],
      [5.8, 3.1, 5.0, 1.7]], dtype=np.float32)
+predict_input_fn = tf.estimator.inputs.numpy_input_fn(
+    x={"x": new_samples},
+    num_epochs=1,
+    shuffle=False)
 
-predictions = list(classifier.predict(input_fn=new_samples))
+predictions = list(classifier.predict(input_fn=predict_input_fn))
 predicted_classes = [p["classes"] for p in predictions]
 
 print(
