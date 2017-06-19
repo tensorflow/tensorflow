@@ -1905,7 +1905,6 @@ Status UserComputation::CheckParametersAreContiguous(
     }
   }
 
-  auto program_shape = MakeUnique<ProgramShape>();
   for (int64 i = 0; i < parameter_requests.size(); ++i) {
     auto it = parameter_requests.find(i);
     if (it == parameter_requests.end()) {
