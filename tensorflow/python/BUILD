@@ -3904,6 +3904,7 @@ py_binary(
     deps = [
         ":cost_analyzer",
         ":framework_for_generated_wrappers",
+        ":tf_optimizer",
         "//tensorflow/core:protos_all_py",
     ],
 )
