@@ -86,6 +86,15 @@ Status EluGradHelper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("Elu", EluGradHelper);
 
+Status SeluGradHelper(const Scope& scope, const Operation& op,
+                      const std::vector<Output>& grad_inputs,
+                      std::vector<Output>* grad_outputs) {
+  auto dx = internal::SeluGrad(scope, grad_inputs[0], op.output(0));
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("Selu", SeluGradHelper);
+
 }  // anonymous namespace
 }  // namespace ops
 }  // namespace tensorflow

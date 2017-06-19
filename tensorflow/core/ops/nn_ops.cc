@@ -1779,6 +1779,33 @@ backprops: The gradients: `gradients * (outputs + 1)` if outputs < 0,
 `gradients` otherwise.
 )doc");
 
+REGISTER_OP("Selu")
+    .Input("features: T")
+    .Output("activations: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+Computes scaled exponential linear: `scale * alpha * (exp(features) - 1)`
+if < 0, `scale * features` otherwise.
+
+See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+)doc");
+
+REGISTER_OP("SeluGrad")
+    .Input("gradients: T")
+    .Input("outputs: T")
+    .Output("backprops: T")
+    .Attr("T: {half, float, double}")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+Computes gradients for the scaled exponential linear (Selu) operation.
+
+gradients: The backpropagated gradients to the corresponding Selu operation.
+outputs: The outputs of the corresponding Selu operation.
+backprops: The gradients: `gradients * (outputs + scale * alpha)`
+if outputs < 0, `scale * gradients` otherwise.
+)doc");
+
 REGISTER_OP("Softplus")
     .Input("features: T")
     .Output("activations: T")

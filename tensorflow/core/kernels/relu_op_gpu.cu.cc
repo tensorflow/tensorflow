@@ -35,7 +35,9 @@ typedef Eigen::GpuDevice GPUDevice;
   template struct functor::Relu6<GPUDevice, T>;     \
   template struct functor::Relu6Grad<GPUDevice, T>; \
   template struct functor::Elu<GPUDevice, T>;       \
-  template struct functor::EluGrad<GPUDevice, T>;
+  template struct functor::EluGrad<GPUDevice, T>;   \
+  template struct functor::Selu<GPUDevice, T>;      \
+  template struct functor::SeluGrad<GPUDevice, T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 

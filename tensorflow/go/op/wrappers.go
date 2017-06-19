@@ -16252,6 +16252,28 @@ func DestroyResourceOp(scope *Scope, resource tf.Output, optional ...DestroyReso
 	return scope.AddOperation(opspec)
 }
 
+// Computes gradients for the scaled exponential linear (Selu) operation.
+//
+// Arguments:
+//	gradients: The backpropagated gradients to the corresponding Selu operation.
+//	outputs: The outputs of the corresponding Selu operation.
+//
+// Returns The gradients: `gradients * (outputs + scale * alpha)` if outputs < 0,
+// `scale * gradients` otherwise.
+func SeluGrad(scope *Scope, gradients tf.Output, outputs tf.Output) (backprops tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SeluGrad",
+		Input: []tf.Input{
+			gradients, outputs,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Converts each string in the input Tensor to its hash mod by a number of buckets.
 //
 // The hash function is deterministic on the content of the string within the
@@ -20484,6 +20506,24 @@ func Elu(scope *Scope, features tf.Output) (activations tf.Output) {
 	}
 	opspec := tf.OpSpec{
 		Type: "Elu",
+		Input: []tf.Input{
+			features,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes scaled exponential linear: `1.758099 * (exp(features) - 1)` if < 0,
+// `1.050701 * features` otherwise.
+//
+// See [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+func Selu(scope *Scope, features tf.Output) (activations tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Selu",
 		Input: []tf.Input{
 			features,
 		},
