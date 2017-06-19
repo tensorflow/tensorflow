@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 
+#include <atomic>
 #include <memory>
 
 #include "tensorflow/cc/training/queue_runner.h"
@@ -31,11 +32,20 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+static std::atomic<bool> already_created(false);
+
 SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
     : Cluster(timeout_s),
       num_gpus_(num_gpus),
       expected_init_time_s_(0),
       closing_(false) {
+  // This is really ugly: to avoid leaking variables, we need to reset the tf
+  // session every time we're done processing a grappler item. However,
+  // variables are global, and therefore we can't have more than 1 session alive
+  // at a time. This check detects when more that one cluster is created.
+  CHECK(!already_created);
+  already_created = true;
+
   VLOG(1) << "Number of CPU cores: " << num_cpu_cores
           << " Number of GPUs: " << num_gpus;
   thread_pool_.reset(new thread::ThreadPool(
@@ -64,6 +74,9 @@ SingleMachine::~SingleMachine() {
   thread_pool_.reset();
 
   Reset(options_, {}).IgnoreError();
+
+  CHECK(already_created);
+  already_created = false;
 }
 
 Status SingleMachine::Provision() {
