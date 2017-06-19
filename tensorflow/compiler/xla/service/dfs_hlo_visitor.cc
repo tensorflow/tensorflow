@@ -24,16 +24,13 @@ limitations under the License.
 namespace xla {
 
 Status DfsHloVisitor::HandleElementwiseUnary(HloInstruction* hlo,
-                                             HloOpcode opcode,
-                                             HloInstruction* operand) {
+                                             HloOpcode opcode) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseUnary: %s",
                        HloOpcodeString(opcode).c_str());
 }
 
 Status DfsHloVisitor::HandleElementwiseBinary(HloInstruction* hlo,
-                                              HloOpcode opcode,
-                                              HloInstruction* lhs,
-                                              HloInstruction* rhs) {
+                                              HloOpcode opcode) {
   return Unimplemented("DfsHloVisitor::HandleElementwiseBinary: %s",
                        HloOpcodeString(opcode).c_str());
 }

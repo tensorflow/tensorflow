@@ -75,15 +75,12 @@ Status HloCostAnalysis::HandleElementwiseOp(HloInstruction* hlo_instruction) {
 }
 
 Status HloCostAnalysis::HandleElementwiseUnary(HloInstruction* hlo,
-                                               HloOpcode opcode,
-                                               HloInstruction* operand) {
+                                               HloOpcode opcode) {
   return HandleElementwiseOp(hlo);
 }
 
 Status HloCostAnalysis::HandleElementwiseBinary(HloInstruction* hlo,
-                                                HloOpcode opcode,
-                                                HloInstruction* lhs,
-                                                HloInstruction* rhs) {
+                                                HloOpcode opcode) {
   return HandleElementwiseOp(hlo);
 }
 
