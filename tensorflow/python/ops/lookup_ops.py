@@ -988,9 +988,9 @@ def index_table_from_tensor(vocabulary_list,
   Sample Usages:
 
   ```python
-  vocabulary_list = t.constant(["emerson", "lake", "palmer")
+  vocabulary_list = tf.constant(["emerson", "lake", "palmer"])
   table = tf.contrib.lookup.index_table_from_tensor(
-      vocabulary_list=vocabulary_list, num_oov_buckets=1, default_value=-1)
+      mapping=vocabulary_list, num_oov_buckets=1, default_value=-1)
   features = tf.constant(["emerson", "lake", "and", "palmer"])
   ids = table.lookup(features)
   ...
@@ -1160,7 +1160,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
   Sample Usages:
 
   ```python
-  vocabulary_list = t.constant(["emerson", "lake", "palmer")
+  vocabulary_list = tf.constant(["emerson", "lake", "palmer"])
   indices = tf.constant([1, 5], tf.int64)
   table = tf.contrib.lookup.index_to_string_table_from_tensor(
       vocabulary_list, default_value="UNKNOWN")
