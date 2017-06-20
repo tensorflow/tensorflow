@@ -25,6 +25,7 @@ from tensorflow.contrib.distributions.python.ops import mvn_diag as mvn_diag_lib
 from tensorflow.contrib.distributions.python.ops import mvn_full_covariance as mvn_full_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -572,6 +573,88 @@ class MonteCarloCsiszarFDivergenceTest(test.TestCase):
 
       self.assertAllClose(approx_kl_self_normalized_, exact_kl_,
                           rtol=0.05, atol=0.)
+
+  def test_score_trick(self):
+
+    with self.test_session() as sess:
+      d = 5  # Dimension
+      num_draws = int(1e5)
+      seed = 1
+
+      p = mvn_full_lib.MultivariateNormalFullCovariance(
+          covariance_matrix=self._tridiag(d, diag_value=1, offdiag_value=0.5))
+
+      # Variance is very high when approximating Forward KL, so we make
+      # scale_diag larger than in test_kl_reverse_multidim. This ensures q
+      # "covers" p and thus Var_q[p/q] is smaller.
+      s = array_ops.constant(1.)
+      q = mvn_diag_lib.MultivariateNormalDiag(
+          scale_diag=array_ops.tile([s], [d]))
+
+      approx_kl = cd.monte_carlo_csiszar_f_divergence(
+          f=cd.kl_reverse,
+          p=p,
+          q=q,
+          num_draws=num_draws,
+          seed=seed)
+
+      approx_kl_self_normalized = cd.monte_carlo_csiszar_f_divergence(
+          f=lambda logu: cd.kl_reverse(logu, self_normalized=True),
+          p=p,
+          q=q,
+          num_draws=num_draws,
+          seed=seed)
+
+      approx_kl_score_trick = cd.monte_carlo_csiszar_f_divergence(
+          f=cd.kl_reverse,
+          p=p,
+          q=q,
+          num_draws=num_draws,
+          use_reparametrization=False,
+          seed=seed)
+
+      approx_kl_self_normalized_score_trick = (
+          cd.monte_carlo_csiszar_f_divergence(
+              f=lambda logu: cd.kl_reverse(logu, self_normalized=True),
+              p=p,
+              q=q,
+              num_draws=num_draws,
+              use_reparametrization=False,
+              seed=seed))
+
+      exact_kl = kullback_leibler.kl_divergence(q, p)
+
+      grad = lambda fs: gradients_impl.gradients(fs, s)[0]
+
+      [
+          approx_kl_,
+          approx_kl_self_normalized_,
+          approx_kl_score_trick_,
+          approx_kl_self_normalized_score_trick_,
+          exact_kl_,
+      ] = sess.run([
+          grad(approx_kl),
+          grad(approx_kl_self_normalized),
+          grad(approx_kl_score_trick),
+          grad(approx_kl_self_normalized_score_trick),
+          grad(exact_kl),
+      ])
+
+      self.assertAllClose(
+          approx_kl_, exact_kl_,
+          rtol=0.06, atol=0.)
+
+      self.assertAllClose(
+          approx_kl_self_normalized_, exact_kl_,
+          rtol=0.05, atol=0.)
+
+      self.assertAllClose(
+          approx_kl_score_trick_, exact_kl_,
+          rtol=0.06, atol=0.)
+
+      self.assertAllClose(
+          approx_kl_self_normalized_score_trick_, exact_kl_,
+          rtol=0.05, atol=0.)
 
 
 if __name__ == '__main__':
