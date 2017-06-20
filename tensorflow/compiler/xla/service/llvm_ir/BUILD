@@ -29,7 +29,6 @@ cc_library(
         ":ir_array",
         ":llvm_util",
         "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/legacy_flags:alias_analysis_flags",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:logical_buffer",
