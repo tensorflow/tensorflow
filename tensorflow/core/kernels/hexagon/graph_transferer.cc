@@ -349,7 +349,8 @@ Status GraphTransferer::TransformGraphToAddAggregatedInputNode(
   CHECK_NOTNULL(input_node);
 
   bool refined;
-  TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(input_node, &refined));
+  TF_RETURN_IF_ERROR(
+      shape_refiner->UpdateNode(input_node, false /* relax */, &refined));
 
   shape_inference::InferenceContext* context =
       shape_refiner->GetContext(input_node);
@@ -393,7 +394,8 @@ Status GraphTransferer::TransformGraphToAddAggregatedInputNode(
     }
     original_input_nodes[i] = original_input_node;
 
-    TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(created_node, &refined));
+    TF_RETURN_IF_ERROR(
+        shape_refiner->UpdateNode(created_node, false /* relax */, &refined));
 
     shape_inference::InferenceContext* context =
         shape_refiner->GetContext(created_node);

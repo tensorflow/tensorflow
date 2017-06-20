@@ -24,6 +24,9 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+namespace grappler {
+class GraphProperties;
+}
 
 // ShapeRefiner performs shape inference for TensorFlow Graphs.  It is
 // responsible for instantiating InferenceContext objects for each
@@ -57,8 +60,13 @@ class ShapeRefiner {
 
   // Update the input shapes of node in case the shapes of the fan-ins of 'node'
   // have themselves been modified (For example, in case of incremental shape
-  // refinement). Sets refined to true if any of the node shape has changed.
-  Status UpdateNode(const Node* node, bool* refined);
+  // refinement). If 'relax' is true, a new shape with the broadest set of
+  // information will be set as the new input (see InferenceContext::RelaxInput
+  // for full details and examples). Sets refined to true if any shapes have
+  // changed (in their string representations). Note that shapes may have been
+  // updated to newer versions (but with identical string representations) even
+  // if <*refined> is set to false.
+  Status UpdateNode(const Node* node, bool relax, bool* refined);
 
   // Returns the InferenceContext for 'node', if present.
   shape_inference::InferenceContext* GetContext(const Node* node) const {
@@ -78,6 +86,22 @@ class ShapeRefiner {
   }
 
  private:
+  friend class ShapeRefinerTest;
+  friend class ::tensorflow::grappler::GraphProperties;
+
+  // Returns true if the ranks and all dimensions of <s0> and <s1> are either
+  // equal in value or both unknown.
+  static bool SameDefinedShape(shape_inference::InferenceContext* c,
+                               shape_inference::ShapeHandle s0,
+                               shape_inference::ShapeHandle s1);
+
+  // Returns true if the shapes and types stored in <*existing> are identical in
+  // value to the shapes and types in <*updated>.
+  static bool IsUpdatedShapesOrTypes(
+      shape_inference::InferenceContext* c,
+      const std::vector<shape_inference::ShapeAndType>& existing,
+      const std::vector<shape_inference::ShapeAndType>& updated);
+
   // Tries to infer tensor output based on the input shapes of the node. In some
   // cases, the shapes of the inputs are sufficient for inferring the contents
   // of the output tensor. For example, a Shape op with fully defined input
