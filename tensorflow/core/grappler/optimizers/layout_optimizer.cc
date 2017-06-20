@@ -1158,7 +1158,7 @@ Status LayoutOptimizer::InferOutputShapes(GrapplerItem* item) {
     for (const auto& tensor_property : tensor_properties) {
       *attr_output_shape.mutable_list()->add_shape() = tensor_property.shape();
     }
-    node->mutable_attr()->insert({"_output_shapes", attr_output_shape});
+    (*node->mutable_attr())["_output_shapes"] = attr_output_shape;
   }
   return Status::OK();
 }
