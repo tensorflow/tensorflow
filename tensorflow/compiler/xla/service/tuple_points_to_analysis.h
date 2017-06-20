@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -65,7 +66,7 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
 
   // Creates a set containing the union of all LogicalBuffers contained in the
   // PointsToSet.
-  std::set<const LogicalBuffer*> CreateFlattenedSet() const;
+  tensorflow::gtl::FlatSet<const LogicalBuffer*> CreateFlattenedSet() const;
 
   // Returns true if the given buffer is in the points-to set at the given
   // index.
@@ -116,27 +117,21 @@ class PointsToSet : public ShapeTree<std::vector<const LogicalBuffer*>> {
 // value.
 class BufferAlias {
  public:
-  BufferAlias(const LogicalBuffer& buffer, HloInstruction* instruction,
-              const ShapeIndex& index)
-      : buffer_(&buffer), instruction_(instruction), index_(index) {}
-
-  // Return the logical buffer aliased at the instruction and index.
-  const LogicalBuffer& buffer() const { return *buffer_; }
+  BufferAlias(HloInstruction* instruction, const ShapeIndex& index)
+      : instruction_(instruction), index_(index) {}
 
   // Return the instruction/index of the subshape.
   HloInstruction* instruction() const { return instruction_; }
   const ShapeIndex& index() const { return index_; }
 
   bool operator==(const BufferAlias& other) const {
-    return buffer_ == other.buffer_ && instruction_ == other.instruction_ &&
-           index_ == other.index_;
+    return instruction_ == other.instruction_ && index_ == other.index_;
   }
   bool operator!=(const BufferAlias& other) const { return !(*this == other); }
 
   string ToString() const;
 
  private:
-  const LogicalBuffer* buffer_;
   HloInstruction* instruction_;
   const ShapeIndex index_;
 };
@@ -147,6 +142,15 @@ std::ostream& operator<<(std::ostream& out, const BufferAlias& buffer_alias);
 // the potential sources of each buffer in each instruction's output.
 class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
  public:
+  using Colorer = std::function<LogicalBuffer::Color(
+      const HloInstruction* instruction, const ShapeIndex& index)>;
+
+  // Runs points-to analysis on 'module' with the provided buffer color
+  // assigner.
+  static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
+      const HloModule* module, Colorer colorer);
+
+  // Runs points-to analysis on 'module' with the default color assigner.
   static StatusOr<std::unique_ptr<TuplePointsToAnalysis>> Run(
       const HloModule* module);
 
@@ -185,7 +189,7 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
       const HloInstruction* instruction) const;
 
   // Returns true if the given instruction defines a buffer at the given index.
-  bool InstructionDefinesBufferAtIndex(HloInstruction* instruction,
+  bool InstructionDefinesBufferAtIndex(const HloInstruction* instruction,
                                        const ShapeIndex& index) const;
 
   // Returns an OK status if the given buffer is defined by instruction
@@ -205,19 +209,33 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
                                HloInstruction* operand) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleCopy(HloInstruction* copy, HloInstruction* operand) override;
-  Status HandleFusion(HloInstruction* fusion) override;
   Status HandleSelect(HloInstruction* select, HloInstruction* pred,
                       HloInstruction* on_true,
                       HloInstruction* on_false) override;
 
   string ToString() const;
 
+  static Colorer DefaultColorer() {
+    return [](const HloInstruction* instruction, const ShapeIndex& index) {
+      return LogicalBuffer::Color(0);
+    };
+  }
+
  private:
-  explicit TuplePointsToAnalysis(const HloModule* module) : module_(module) {}
+  explicit TuplePointsToAnalysis(const HloModule* module,
+                                 Colorer colorer = DefaultColorer())
+      : module_(module), colorer_(colorer) {}
 
   // Perform the analysis. Should be called immediately after constructing the
   // object and before calling GetPointsToSet.
   Status Analyze();
+
+  // Populates instruction-defined buffers and aliases for each instruction
+  // in 'instructions'. The parameter 'instructions' is passed in a form
+  // common to how both HloComputation, and fusion instructions maintain a
+  // list of instructions.
+  Status PopulateDefinedBuffersAndAliases(
+      const std::list<std::unique_ptr<HloInstruction>>& instructions);
 
   // Create a new logical buffer and return a reference to it. The newly created
   // buffer is stored in an internal vector of LogicalBuffers and can be
@@ -239,6 +257,10 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
       const HloInstruction* instruction,
       std::vector<const LogicalBuffer*>* buffers);
 
+  // Print points-to set for 'instruction' to 'output'.
+  void InstructionToString(const HloInstruction* instruction,
+                           string* output) const;
+
   // The module this analysis is performed on.
   const HloModule* module_;
 
@@ -247,10 +269,11 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
       points_to_;
 
   // A map containing the LogicalBuffers defined by each HLO instruction.
-  std::unordered_map<const HloInstruction*, std::vector<const LogicalBuffer*>>
+  tensorflow::gtl::FlatMap<const HloInstruction*,
+                           std::vector<const LogicalBuffer*>>
       instruction_defined_buffers_;
 
-  std::unordered_map<const LogicalBuffer*, std::vector<BufferAlias>>
+  tensorflow::gtl::FlatMap<const LogicalBuffer*, std::vector<BufferAlias>>
       buffer_aliases_;
 
   // All logical buffers in the module, indexed by LogicalBuffer::Id. Keep as
@@ -259,6 +282,9 @@ class TuplePointsToAnalysis : public DfsHloVisitorWithDefault {
 
   // The ID of the next logical buffer created.
   LogicalBuffer::Id next_buffer_id_ = 0;
+
+  // Used to color the created logical buffers.
+  Colorer colorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(TuplePointsToAnalysis);
 };

@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.rnn.python.ops import core_rnn as contrib_rnn
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import variable_scope as vs
@@ -106,7 +105,7 @@ def stack_bidirectional_rnn(cells_fw,
         initial_state_bw = initial_states_bw[i]
 
       with vs.variable_scope("cell_%d" % i) as cell_scope:
-        prev_layer, state_fw, state_bw = contrib_rnn.static_bidirectional_rnn(
+        prev_layer, state_fw, state_bw = rnn.static_bidirectional_rnn(
             cell_fw,
             cell_bw,
             prev_layer,
@@ -128,6 +127,7 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
                                     initial_states_bw=None,
                                     dtype=None,
                                     sequence_length=None,
+                                    parallel_iterations=None,
                                     scope=None):
   """Creates a dynamic bidirectional recurrent neural network.
 
@@ -143,8 +143,8 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
       to be used for forward direction.
     cells_bw: List of instances of RNNCell, one per layer,
       to be used for backward direction.
-    inputs: A length T list of inputs, each a tensor of shape
-      [batch_size, input_size], or a nested tuple of such elements.
+    inputs: The RNN inputs. this must be a tensor of shape:
+      `[batch_size, max_time, ...]`, or a nested tuple of such elements.
     initial_states_fw: (optional) A list of the initial states (one per layer)
       for the forward RNN.
       Each tensor must has an appropriate type and shape
@@ -155,6 +155,11 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
       either of the initial states are not provided.
     sequence_length: (optional) An int32/int64 vector, size `[batch_size]`,
       containing the actual lengths for each of the sequences.
+    parallel_iterations: (Default: 32).  The number of iterations to run in
+      parallel.  Those operations which do not have any temporal dependency
+      and can be run in parallel, will be.  This parameter trades off
+      time for space.  Values >> 1 use more memory but take less time,
+      while smaller values use less memory but computations take longer.
     scope: VariableScope for the created subgraph; defaults to None.
 
   Returns:
@@ -169,7 +174,7 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
 
   Raises:
     TypeError: If `cell_fw` or `cell_bw` is not an instance of `RNNCell`.
-    ValueError: If inputs is `None`, not a list or an empty list.
+    ValueError: If inputs is `None`.
   """
   if not cells_fw:
     raise ValueError("Must specify at least one fw cell for BidirectionalRNN.")
@@ -211,6 +216,7 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
             initial_state_fw=initial_state_fw,
             initial_state_bw=initial_state_bw,
             sequence_length=sequence_length,
+            parallel_iterations=parallel_iterations,
             dtype=dtype)
         # Concat the outputs to create the new input.
         prev_layer = array_ops.concat(outputs, 2)

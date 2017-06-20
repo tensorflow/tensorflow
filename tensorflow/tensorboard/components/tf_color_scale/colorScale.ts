@@ -15,49 +15,75 @@ limitations under the License.
 
 // Example usage:
 // runs = ["train", "test", "test1", "test2"]
-// ccs = new TF.ColorScale();
+// ccs = new ColorScale();
 // ccs.domain(runs);
 // ccs.getColor("train");
 // ccs.getColor("test1");
 
-module TF {
-  export class ColorScale {
-    private palette: string[];
-    private identifiers = d3.map();
+import {palettes} from './palettes';
 
-    /**
-     * Creates a color scale with optional custom palette.
-     *  @param {string[]} [palette=TF.palettes.googleColorBlind] - The color
-     *                 palette you want as an Array of hex strings.
-     */
-    constructor(palette: string[] = TF.palettes.googleColorBlindAssist) {
-      this.palette = palette;
-    }
+export class ColorScale {
+  private identifiers = d3.map();
 
-    /**
-     * Set the domain of strings.
-     * @param {string[]} strings - An array of possible strings to use as the
-     *                             domain for your scale.
-     */
-    public domain(strings: string[]): this {
-      this.identifiers = d3.map();
-      strings.forEach((s, i) => {
-        this.identifiers.set(s, this.palette[i % this.palette.length]);
-      });
-      return this;
-    }
+  /**
+   * Creates a color scale with optional custom palette.
+   * @param {Array<string>} [palette=palettes.googleColorBlind] - The color
+   *     palette you want as an Array of hex strings.
+   */
+  constructor(
+      private readonly palette: string[] = palettes.googleColorBlindAssist) {}
 
-    /**
-     * Use the color scale to transform an element in the domain into a color.
-     * @param {string} The input string to map to a color.
-     * @return {string} The color corresponding to that input string.
-     * @throws Will error if input string is not in the scale's domain.
-     */
-    public scale(s: string): string {
-      if (!this.identifiers.has(s)) {
-        throw new Error('String was not in the domain.');
-      }
-      return this.identifiers.get(s) as string;
+  /**
+   * Set the domain of strings.
+   * @param {Array<string>} strings - An array of possible strings to use as the
+   *     domain for your scale.
+   */
+  public domain(strings: string[]): this {
+    this.identifiers = d3.map();
+
+    // TODO(wchargin): Remove this call to `sort` once we have only a
+    // singleton ColorScale, linked directly to the RunsStore, which
+    // will always give sorted output.
+    strings = strings.slice();
+    strings.sort();
+
+    strings.forEach((s, i) => {
+      this.identifiers.set(s, this.palette[i % this.palette.length]);
+    });
+    return this;
+  }
+
+  /**
+   * Use the color scale to transform an element in the domain into a color.
+   * @param {string} The input string to map to a color.
+   * @return {string} The color corresponding to that input string.
+   * @throws Will error if input string is not in the scale's domain.
+   */
+  public scale(s: string): string {
+    if (!this.identifiers.has(s)) {
+      throw new Error('String was not in the domain.');
     }
+    return this.identifiers.get(s) as string;
   }
 }
+
+Polymer({
+  is: 'tf-color-scale',
+  properties: {
+    runs: {
+      type: Array,
+    },
+    outColorScale: {
+      type: Object,
+      readOnly: true,
+      notify: true,
+      value() {
+        return new ColorScale();
+      },
+    },
+  },
+  observers: ['updateColorScale(runs.*)'],
+  updateColorScale(runsChange) {
+    this.outColorScale.domain(this.runs);
+  },
+});

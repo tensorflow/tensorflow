@@ -45,9 +45,10 @@ struct FastParseExampleConfig {
     DataType dtype;
     // These 2 fields correspond exactly to dense_shapes and dense_defaults in
     // ParseExample op.
-    // Documentation is avaliable in: tensorflow/core/ops/parsing_ops.cc
+    // Documentation is available in: tensorflow/core/ops/parsing_ops.cc
     PartialTensorShape shape;
     Tensor default_value;
+    bool variable_length;
     std::size_t elements_per_stride;
   };
 
@@ -61,7 +62,7 @@ struct FastParseExampleConfig {
 };
 
 // This is exactly the output of TF's ParseExample Op.
-// Documentation is avaliable in: tensorflow/core/ops/parsing_ops.cc
+// Documentation is available in: tensorflow/core/ops/parsing_ops.cc
 struct Result {
   std::vector<Tensor> sparse_indices;
   std::vector<Tensor> sparse_values;

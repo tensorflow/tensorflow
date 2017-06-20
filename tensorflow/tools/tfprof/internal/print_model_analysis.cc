@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/tools/tfprof/internal/advisor/tfprof_advisor.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_options.h"
 #include "tensorflow/tools/tfprof/internal/tfprof_stats.h"
 #include "tensorflow/tools/tfprof/tfprof_log.pb.h"
@@ -30,6 +31,89 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tfprof {
+namespace {
+TFStats* tf_stat = nullptr;
+
+string RunProfile(const string& command, const string& options,
+                  TFStats* tf_stats) {
+  Options opts;
+  tensorflow::Status s = Options::FromProtoStr(options, &opts);
+  if (!s.ok()) {
+    fprintf(stderr, "%s\n", s.ToString().c_str());
+    return "";
+  }
+
+  if (opts.output_type == kOutput[1]) {
+    printf("\n=========================Options=============================\n");
+    printf("%s", opts.ToString().c_str());
+    printf("\n==================Model Analysis Report======================\n");
+    string ret = "";
+    if (command == kCmds[2] || command == kCmds[3]) {
+      ret = tf_stats->ShowMultiGraphNode(command, opts).SerializeAsString();
+    } else if (command == kCmds[0] || command == kCmds[1]) {
+      ret = tf_stats->ShowGraphNode(command, opts).SerializeAsString();
+    } else {
+      fprintf(stderr, "Unknown command: %s\n", command.c_str());
+    }
+    printf("\n======================End of Report==========================\n");
+    fflush(stdout);
+    return ret;
+  }
+  if (command == kCmds[2] || command == kCmds[3]) {
+    return tf_stats->ShowMultiGraphNode(command, opts).SerializeAsString();
+  } else if (command == kCmds[0] || command == kCmds[1]) {
+    return tf_stats->ShowGraphNode(command, opts).SerializeAsString();
+  } else {
+    fprintf(stderr, "Unknown command: %s\n", command.c_str());
+    return "";
+  }
+}
+}  // namespace
+
+bool NewProfiler(const string* graph, const string* op_log) {
+  CHECK(!tf_stat) << "Currently only 1 living tfprof profiler is allowed";
+  CHECK(graph) << "graph mustn't be null";
+  std::unique_ptr<GraphDef> graph_ptr(new GraphDef());
+  graph_ptr->ParseFromString(*graph);
+
+  std::unique_ptr<OpLog> op_log_ptr;
+  if (op_log && !op_log->empty()) {
+    op_log_ptr.reset(new OpLog());
+    op_log_ptr->ParseFromString(*op_log);
+  }
+  tf_stat = new TFStats(std::move(graph_ptr), nullptr, std::move(op_log_ptr),
+                        nullptr);
+  return true;
+}
+
+void DeleteProfiler() {
+  delete tf_stat;
+  tf_stat = nullptr;
+}
+
+void AddStep(int64 step, const string* run_meta, const string* op_log) {
+  CHECK(tf_stat);
+  CHECK(run_meta && !run_meta->empty());
+  // TODO(xpan): Better error handling.
+  std::unique_ptr<RunMetadata> run_meta_ptr(new RunMetadata());
+  run_meta_ptr->ParseFromString(*run_meta);
+  tf_stat->ParseRunMeta(step, std::move(run_meta_ptr));
+
+  std::unique_ptr<OpLog> op_log_ptr;
+  if (op_log && !op_log->empty()) {
+    op_log_ptr.reset(new OpLog());
+    op_log_ptr->ParseFromString(*op_log);
+  }
+  tf_stat->ParseOpLog(std::move(op_log_ptr));
+}
+
+string Profile(const string* command, const string* options) {
+  CHECK(tf_stat);
+  CHECK(command) << "command mustn't be null";
+  CHECK(options) << "options mustn't be null";
+  return RunProfile(*command, *options, tf_stat);
+}
+
 string PrintModelAnalysis(const string* graph, const string* run_meta,
                           const string* op_log, const string* command,
                           const string* options) {
@@ -40,34 +124,27 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
   graph_ptr->ParseFromString(*graph);
 
   std::unique_ptr<RunMetadata> run_meta_ptr;
-  if (run_meta) {
+  if (run_meta && !run_meta->empty()) {
     run_meta_ptr.reset(new RunMetadata());
     run_meta_ptr->ParseFromString(*run_meta);
   }
 
   std::unique_ptr<OpLog> op_log_ptr;
-  if (op_log) {
+  if (op_log && !op_log->empty()) {
     op_log_ptr.reset(new OpLog());
     op_log_ptr->ParseFromString(*op_log);
   }
 
+  // TODO(xpan): Maybe need to init the checkpoint reader?
   std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader;
 
   TFStats tf_stats(std::move(graph_ptr), std::move(run_meta_ptr),
                    std::move(op_log_ptr), std::move(ckpt_reader));
 
-  Options opts = Options::FromProtoStr(*options);
-
-  if (opts.dump_to_file.empty()) {
-    printf("\n=========================Options=============================\n");
-    printf("%s", opts.ToString().c_str());
-    printf("\n==================Model Analysis Report======================\n");
-    TFProfNode root(tf_stats.PrintGraph(*command, opts));
-    printf("\n======================End of Report==========================\n");
-    fflush(stdout);
-    return root.SerializeAsString();
-  }
-  return tf_stats.PrintGraph(*command, opts).SerializeAsString();
+  return RunProfile(*command, *options, &tf_stats);
 }
+
+void Advise() { Advisor(tf_stat).Advise(); }
+
 }  // namespace tfprof
 }  // namespace tensorflow

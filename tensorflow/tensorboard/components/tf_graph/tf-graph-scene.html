@@ -276,6 +276,12 @@ limitations under the License.
   display: none;
 }
 
+/* Reference Edge */
+::content .edge > path.edgeline.referenceedge {
+  stroke: #FFB74D;
+  opacity: 1;
+}
+
 /* --- Series Nodes --- */
 
 /* Hide the rect for a series' annotation. */
@@ -322,7 +328,7 @@ limitations under the License.
 /* --- Annotation --- */
 
 /* only applied for annotations that are not summary or constant.
-(.summary, .constant gets overriden below) */
+(.summary, .constant gets overridden below) */
 ::content .annotation > .annotation-node > * {
   stroke-width: 0.5;
   stroke-dasharray: 1, 1;
@@ -436,8 +442,12 @@ limitations under the License.
   fill: #666;
 }
 
-::content .ref-arrowhead {
+::content .dataflow-arrowhead {
   fill: #bbb;
+}
+
+::content .reference-arrowhead {
+  fill: #FFB74D;
 }
 
 ::content .edge .control-dep {
@@ -479,6 +489,17 @@ limitations under the License.
   display: none;
 }
 
+::content .health-pill-stats {
+  font-size: 4px;
+  text-anchor: middle;
+}
+
+::content .health-pill rect {
+  filter: url(#health-pill-shadow);
+  rx: 3;
+  ry: 3;
+}
+
 .titleContainer {
   position: relative;
   top: 20px;
@@ -505,23 +526,42 @@ limitations under the License.
 <svg id="svg">
   <defs>
 
-    <!-- Arrow heads for edge paths of different predefined sizes. -->
-    <path id="ref-arrowhead-path" d="M 10,0 L 0,5 L 10,10 C 7,7 7,3 10,0"/>
-    <marker class="ref-arrowhead" id="ref-arrowhead-small" viewBox="0 0 10 10" markerWidth="10" markerHeight="10"
-      refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-      <use xlink:href="#ref-arrowhead-path" />
+    <!-- Arrow heads for reference edge paths of different predefined sizes per color. -->
+    <path id="reference-arrowhead-path" d="M 0,0 L 10,5 L 0,10 C 3,7 3,3 0,0"/>
+    <marker class="reference-arrowhead" id="reference-arrowhead-small" viewBox="0 0 10 10" markerWidth="5" markerHeight="5"
+      refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#reference-arrowhead-path" />
     </marker>
-    <marker class="ref-arrowhead" id="ref-arrowhead-medium" viewBox="0 0 10 10" markerWidth="13" markerHeight="13"
-        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-      <use xlink:href="#ref-arrowhead-path" />
+    <marker class="reference-arrowhead" id="reference-arrowhead-medium" viewBox="0 0 10 10" markerWidth="13" markerHeight="13"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#reference-arrowhead-path" />
     </marker>
-    <marker class="ref-arrowhead" id="ref-arrowhead-large" viewBox="0 0 10 10" markerWidth="16" markerHeight="16"
-        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-      <use xlink:href="#ref-arrowhead-path" />
+    <marker class="reference-arrowhead" id="reference-arrowhead-large" viewBox="0 0 10 10" markerWidth="16" markerHeight="16"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#reference-arrowhead-path" />
     </marker>
-    <marker class="ref-arrowhead" id="ref-arrowhead-xlarge" viewBox="0 0 10 10" markerWidth="20" markerHeight="20"
-        refX="8" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-      <use xlink:href="#ref-arrowhead-path" />
+    <marker class="reference-arrowhead" id="reference-arrowhead-xlarge" viewBox="0 0 10 10" markerWidth="20" markerHeight="20"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#reference-arrowhead-path" />
+    </marker>
+
+    <!-- Arrow heads for dataflow edge paths of different predefined sizes per color. -->
+    <path id="dataflow-arrowhead-path" d="M 0,0 L 10,5 L 0,10 C 3,7 3,3 0,0"/>
+    <marker class="dataflow-arrowhead" id="dataflow-arrowhead-small" viewBox="0 0 10 10" markerWidth="5" markerHeight="5"
+      refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#dataflow-arrowhead-path" />
+    </marker>
+    <marker class="dataflow-arrowhead" id="dataflow-arrowhead-medium" viewBox="0 0 10 10" markerWidth="13" markerHeight="13"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#dataflow-arrowhead-path" />
+    </marker>
+    <marker class="dataflow-arrowhead" id="dataflow-arrowhead-large" viewBox="0 0 10 10" markerWidth="16" markerHeight="16"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#dataflow-arrowhead-path" />
+    </marker>
+    <marker class="dataflow-arrowhead" id="dataflow-arrowhead-xlarge" viewBox="0 0 10 10" markerWidth="20" markerHeight="20"
+        refX="2" refY="5" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+      <use xlink:href="#dataflow-arrowhead-path" />
     </marker>
 
     <!-- Arrow head for annotation edge paths. -->
@@ -581,6 +621,18 @@ limitations under the License.
     <pattern id="ellipseHatch" patternTransform="rotate(45 0 0)" width="2" height="2" patternUnits="userSpaceOnUse">
       <line x1="0" y1="0" x2="0" y2="2" style="stroke-width: 1"/>
     </pattern>
+
+    <!-- A shadow for health pills. -->
+    <filter id="health-pill-shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="0.8"/>
+      <feOffset dx="0" dy="0" result="offsetblur"/>
+      <feFlood flood-color="#000000"/>
+      <feComposite in2="offsetblur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
   </defs>
   <!-- Make a large rectangle that fills the svg space so that
   zoom events get captured on safari -->
@@ -596,6 +648,18 @@ Polymer({
     renderHierarchy: Object,
     name: String,
     colorBy: String,
+
+    // For each render hierarchy, we only fit it to the viewport once (when the scene is attached to
+    // the DOM). We do not fit the hierarchy again (unless the user clicks the reset button). For
+    // instance, if the user enters a certain view in the graph, switches to another dashboard, and
+    // returns to the graph dashboard, the user expects the previous view. These properties enable
+    // that behavior.
+
+    /** Whether the scene has fit the current render hierarchy (to the viewport) at least once. */
+    _hasRenderHierarchyBeenFitOnce: Boolean,
+    /** Whether this scene element is currently attached to a parent element. */
+    _isAttached: Boolean,
+
     /** @type {d3_zoom} d3 zoom object */
     _zoom: Object,
     highlightedNode: {
@@ -614,12 +678,12 @@ Polymer({
     },
     /** Keeps track of the starting coordinates of a graph zoom/pan */
     _zoomStartCoords: {
-      type: Array,
+      type: Object,
       value: null
     },
     /** Keeps track of the current coordinates of a graph zoom/pan */
-    _zoomCoords: {
-      type: Array,
+    _zoomTransform: {
+      type: Object,
       value: null
     },
     /** Maximum distance of a zoom event for it to be interpreted as a click */
@@ -692,11 +756,19 @@ Polymer({
       type: Number,
       value: 18
     },
-    progress: Object
+    progress: Object,
+    // A mapping between node name to the tf.graph.scene.HealthPill to render.
+    nodeNamesToHealthPills: Object,
+    // The step of health pills to show throughout the graph.
+    healthPillStepIndex: Number,
   },
   observers: [
     '_colorByChanged(colorBy)',
-    '_buildAndFit(renderHierarchy)'
+    '_renderHierarchyChanged(renderHierarchy)',
+    // Animation and fitting must come after the observer for the hierarchy changing because we must
+    // first build the render hierarchy.
+    '_animateAndFit(_isAttached, renderHierarchy)',
+    '_updateHealthPills(nodeNamesToHealthPills, healthPillStepIndex)',
   ],
   getNode: function(nodeName) {
     return this.renderHierarchy.getRenderNodeByName(nodeName);
@@ -739,12 +811,13 @@ Polymer({
     }.bind(this));
     // Update the minimap again when the graph is done animating.
     setTimeout(function() {
+      this._updateHealthPills(this.nodeNamesToHealthPills, this.healthPillStepIndex);
       this.minimap.update();
     }.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
   ready: function() {
-    this._zoom = d3.behavior.zoom()
-      .on('zoomend', function() {
+    this._zoom = d3.zoom()
+      .on('end', function() {
         if (this._zoomStartCoords) {
           // Calculate the total distance dragged during the zoom event.
           // If it is sufficiently small, then fire an event indicating
@@ -753,8 +826,8 @@ Polymer({
           // is ignored (as this mouse click was part of a zooming, and should
           // not be used to indicate an actual click on the graph).
           var dragDistance = Math.sqrt(
-            Math.pow(this._zoomStartCoords[0] - this._zoomCoords[0], 2) +
-            Math.pow(this._zoomStartCoords[1] - this._zoomCoords[1], 2));
+            Math.pow(this._zoomStartCoords.x - this._zoomTransform.x, 2) +
+            Math.pow(this._zoomStartCoords.y - this._zoomTransform.y, 2));
           if (dragDistance < this._maxZoomDistanceForClick) {
             this._fireEnableClick();
           } else {
@@ -764,8 +837,8 @@ Polymer({
         this._zoomStartCoords = null;
       }.bind(this))
       .on('zoom', function() {
-        // Store the coordinates of the zoom event
-        this._zoomCoords = d3.event.translate;
+        // Store the coordinates of the zoom event.
+        this._zoomTransform = d3.event.transform;
 
         // If this is the first zoom event after a zoom-end, then
         // store the coordinates as the start coordinates as well,
@@ -774,15 +847,13 @@ Polymer({
         // event on mouse-down, even if there has been no dragging
         // done to translate the graph around.
         if (!this._zoomStartCoords) {
-          this._zoomStartCoords = this._zoomCoords.slice();
+          this._zoomStartCoords = this._zoomTransform;
           this.fire('disable-click');
         }
         this._zoomed = true;
-        d3.select(this.$.root).attr('transform',
-                    'translate(' + d3.event.translate + ')' +
-                    'scale(' + d3.event.scale + ')');
+        d3.select(this.$.root).attr('transform', d3.event.transform);
         // Notify the minimap.
-        this.minimap.zoom(d3.event.translate, d3.event.scale);
+        this.minimap.zoom(d3.event.transform);
       }.bind(this));
     d3.select(this.$.svg).call(this._zoom)
       .on('dblclick.zoom', null);
@@ -797,9 +868,24 @@ Polymer({
         tf.graph.layout.PARAMS.minimap.size,
         tf.graph.layout.PARAMS.subscene.meta.labelHeight);
   },
-  _buildAndFit: function(renderHierarchy) {
+  attached: function() {
+    this.set('_isAttached', true);
+  },
+  detached: function() {
+    this.set('_isAttached', false);
+  },
+  _renderHierarchyChanged: function(renderHierarchy) {
+    this._hasRenderHierarchyBeenFitOnce = false;
     this._resetState();
     this._build(renderHierarchy);
+  },
+  _animateAndFit: function(isAttached, renderHierarchy) {
+    if (this._hasRenderHierarchyBeenFitOnce || !isAttached) {
+      // Do not animate and fit if the scene has already fitted this render hierarchy once. Or if
+      // the graph dashboard is not attached (in which case the scene lacks DOM info for fitting).
+      return;
+    }
+
     // Fit to screen after the graph is done animating.
     setTimeout(this.fit.bind(this), tf.graph.layout.PARAMS.animation.duration);
   },
@@ -808,14 +894,14 @@ Polymer({
     var titleStyle = mainGraphTitleElement.style;
     var auxTitleStyle = this.getElementsByClassName('auxTitle')[0].style;
     var core = d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
-      tf.graph.scene.Class.Scene.CORE)[0][0];
+      tf.graph.scene.Class.Scene.CORE).node();
     // Only show labels if the graph is fully loaded.
     if (showLabels && core && this.progress && this.progress.value === 100) {
       var aux =
         d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
-          tf.graph.scene.Class.Scene.INEXTRACT)[0][0] ||
+          tf.graph.scene.Class.Scene.INEXTRACT).node() ||
         d3.select("." + tf.graph.scene.Class.Scene.GROUP + ">." +
-          tf.graph.scene.Class.Scene.OUTEXTRACT)[0][0];
+          tf.graph.scene.Class.Scene.OUTEXTRACT).node();
       var coreX = core.getCTM().e;
       var auxX = aux ? aux.getCTM().e : null;
       titleStyle.display = 'inline';
@@ -852,6 +938,7 @@ Polymer({
     }
   },
   fit: function() {
+    this._hasRenderHierarchyBeenFitOnce = true;
     tf.graph.scene.fit(this.$.svg, this.$.root, this._zoom, function() {
       this._zoomed = false;
     }.bind(this));
@@ -883,10 +970,14 @@ Polymer({
     delete this._nodeGroupIndex[n];
   },
   addEdgeGroup: function(n, selection) {
-    this._edgeGroupIndex[e] = selection;
+    this._edgeGroupIndex[n] = selection;
   },
   getEdgeGroup: function(e) {
     return this._edgeGroupIndex[e];
+  },
+  _updateHealthPills: function(nodeNamesToHealthPills, healthPillStepIndex) {
+    tf.graph.scene.addHealthPills(
+        this.$.svg, nodeNamesToHealthPills, healthPillStepIndex);
   },
   /**
    * Update node and annotation node of the given name.

@@ -111,7 +111,8 @@ def main(_):
 
   hooks = None
   if FLAGS.debug:
-    debug_hook = tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type)
+    debug_hook = tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type,
+                                            dump_root=FLAGS.dump_root)
     debug_hook.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
     hooks = [debug_hook]
 
@@ -186,5 +187,10 @@ if __name__ == "__main__":
       const=True,
       default=False,
       help="Use debugger to track down bad values during training")
+  parser.add_argument(
+      "--dump_root",
+      type=str,
+      default="",
+      help="Optional custom root directory for temporary debug dump data")
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

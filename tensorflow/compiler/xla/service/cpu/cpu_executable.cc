@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
@@ -53,11 +52,9 @@ namespace cpu {
 CpuExecutable::CpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<BufferAssignment> assignment,
-    std::unique_ptr<HloModule> hlo_module,
-    std::unique_ptr<HloModuleConfig> module_config,
-    const string& entry_function_name,
+    std::unique_ptr<HloModule> hlo_module, const string& entry_function_name,
     std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx)
-    : Executable(std::move(hlo_module), std::move(module_config)),
+    : Executable(std::move(hlo_module), CpuExecutable::ShapeSizeBytes),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)),
       hlo_to_profile_idx_(std::move(hlo_to_profile_idx)) {
@@ -135,10 +132,9 @@ Status CpuExecutable::AllocateBuffers(
     TF_ANNOTATE_MEMORY_IS_INITIALIZED((*buffers)[i].opaque(), buffer_size);
   }
 
-  TF_ASSIGN_OR_RETURN(const BufferAllocation* result_allocation,
-                      assignment_->GetUniqueTopLevelOutputAllocation());
-
-  VLOG(3) << "result index: " << result_allocation->index();
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                      assignment_->GetUniqueTopLevelOutputSlice());
+  VLOG(3) << "result index: " << result_slice.index();
 
   return Status::OK();
 }
@@ -193,9 +189,9 @@ Status CpuExecutable::ExecuteComputeFunction(
   for (auto& buffer : buffers) {
     buffer_pointers.push_back(const_cast<void*>(buffer.opaque()));
   }
-  TF_ASSIGN_OR_RETURN(const BufferAllocation* result_allocation,
-                      assignment_->GetUniqueTopLevelOutputAllocation());
-  void* result_buffer = buffer_pointers[result_allocation->index()];
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                      assignment_->GetUniqueTopLevelOutputSlice());
+  void* result_buffer = buffer_pointers[result_slice.index()];
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "Executing compute function:";
     VLOG(3) << tensorflow::strings::Printf(
@@ -231,7 +227,8 @@ Status CpuExecutable::ExecuteComputeFunction(
   }
 
   if (hlo_execution_profile != nullptr) {
-    hlo_execution_profile->set_total_cycles_executed(profile_counters.back());
+    hlo_execution_profile->set_total_cycles_executed(
+        *module().entry_computation(), profile_counters.back());
 
     for (auto hlo_prof_idx : hlo_to_profile_idx_) {
       const HloInstruction* hlo = hlo_prof_idx.first;
@@ -243,24 +240,24 @@ Status CpuExecutable::ExecuteComputeFunction(
 }
 
 StatusOr<perftools::gputools::DeviceMemoryBase> CpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   se::Stream* stream = run_options->stream();
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
+
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
-
-  TF_RETURN_IF_ERROR(ExecuteComputeFunction(run_options, arguments, buffers,
-                                            hlo_execution_profile));
+  TF_RETURN_IF_ERROR(ExecuteComputeFunction(
+      &run_options->run_options(), arguments, buffers, hlo_execution_profile));
 
   // Mark the buffers that are actually live (used in the output) when the
   // computation finishes executing.
   std::unordered_set<const void*> marked_addresses;
-  TF_ASSIGN_OR_RETURN(const BufferAllocation* result_allocation,
-                      assignment_->GetUniqueTopLevelOutputAllocation());
-  se::DeviceMemoryBase top_level_output = buffers[result_allocation->index()];
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice result_slice,
+                      assignment_->GetUniqueTopLevelOutputSlice());
+  se::DeviceMemoryBase top_level_output = buffers[result_slice.index()];
   MarkLiveAddressesInOutput(top_level_output.opaque(), result_shape(),
                             &marked_addresses);
 
@@ -275,10 +272,9 @@ StatusOr<perftools::gputools::DeviceMemoryBase> CpuExecutable::ExecuteOnStream(
   // Computation is done - deallocate temp buffers. Keep those marked live
   // because they are referenced by the output of the computation and are needed
   // by the service. They will be deallocated by the service.
-  for (auto i = 0; i < buffers.size(); ++i) {
-    auto alloc = buffers[i];
-    if (marked_addresses.count(alloc.opaque()) == 0 &&
-        alloc.opaque() != nullptr) {
+  for (size_t i = 0; i < buffers.size(); ++i) {
+    se::DeviceMemoryBase alloc = buffers[i];
+    if (marked_addresses.count(alloc.opaque()) == 0 && !alloc.is_null()) {
       VLOG(3) << "CpuExecutable deallocating buffer #" << i << " ["
               << alloc.opaque() << "]";
       TF_RETURN_IF_ERROR(memory_allocator->Deallocate(
@@ -290,37 +286,35 @@ StatusOr<perftools::gputools::DeviceMemoryBase> CpuExecutable::ExecuteOnStream(
 }
 
 StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  se::Stream* stream = run_options->stream();
-  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   if (GetRootPointsToSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
   }
+
+  se::Stream* stream = run_options->stream();
+  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<ShapedBuffer> result_buffer,
-      ShapedBuffer::MakeShapedBuffer(
-          module_config().entry_computation_layout().result_shape(),
-          stream->parent()->platform(), stream->parent()->device_ordinal()));
-
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<ShapedBuffer> result_buffer,
+                      ShapedBuffer::MakeShapedBuffer(
+                          result_shape(), stream->parent()->platform(),
+                          stream->parent()->device_ordinal()));
   TF_RETURN_IF_ERROR(AllocateBuffers(
       memory_allocator, stream->parent()->device_ordinal(), &buffers));
-
-  TF_RETURN_IF_ERROR(ExecuteComputeFunction(run_options, arguments, buffers,
-                                            hlo_execution_profile));
+  TF_RETURN_IF_ERROR(ExecuteComputeFunction(
+      &run_options->run_options(), arguments, buffers, hlo_execution_profile));
 
   // Copy DeviceMemoryBase values which contain the array(s) of the result into
   // the respective location in ShapedBuffer which is returned to the caller.
   std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
   TF_RETURN_IF_ERROR(
       result_buffer->mutable_shape_index_to_buffer_entry()
-          ->ForEachMutableElement(
+          ->ForEachMutableElementWithStatus(
               [&buffers, &buffers_in_result, &result_buffer, this](
-                  const ShapeIndex& index, bool is_leaf, size_t* buffer_entry) {
-                if (is_leaf) {
+                  const ShapeIndex& index, size_t* buffer_entry) {
+                if (ShapeUtil::IsLeafIndex(result_buffer->shape(), index)) {
                   const std::vector<const LogicalBuffer*>& sources =
                       this->GetRootPointsToSet().element(index);
                   // The points to set is unambiguous so the set should be a
@@ -334,24 +328,24 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
 
                   // The source instruction should have a non-parameter buffer
                   // assigned.
-                  TF_ASSIGN_OR_RETURN(const BufferAllocation* allocation,
-                                      this->assignment_->GetUniqueAllocation(
+                  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
+                                      this->assignment_->GetUniqueSlice(
                                           src, buffer_source->index()));
-                  CHECK(!allocation->is_entry_computation_parameter());
+                  CHECK(!slice.allocation()->is_entry_computation_parameter());
 
-                  CHECK(!buffers[allocation->index()].is_null() ||
-                        buffers[allocation->index()].size() == 0);
-                  result_buffer->mutable_buffers()->push_back(
-                      buffers[allocation->index()]);
-                  *buffer_entry = result_buffer->mutable_buffers()->size() - 1;
-                  buffers_in_result[allocation->index()] = true;
+                  const BufferAllocation::Index buffer_index = slice.index();
+                  const se::DeviceMemoryBase& buffer = buffers[buffer_index];
+                  CHECK(!buffer.is_null() || buffer.size() == 0);
+                  *buffer_entry = result_buffer->mutable_buffers()->size();
+                  result_buffer->mutable_buffers()->push_back(buffer);
+                  buffers_in_result[buffer_index] = true;
                 }
                 return Status::OK();
               }));
 
   // Free all buffers not in the result.
-  for (auto i = 0; i < buffers.size(); ++i) {
-    auto alloc = buffers[i];
+  for (size_t i = 0; i < buffers.size(); ++i) {
+    se::DeviceMemoryBase alloc = buffers[i];
     if (!buffers_in_result[i] && !alloc.is_null()) {
       VLOG(3) << "CpuExecutable deallocating buffer #" << i << " ["
               << alloc.opaque() << "]";
@@ -363,109 +357,21 @@ StatusOr<std::unique_ptr<ShapedBuffer>> CpuExecutable::ExecuteOnStream(
   return std::move(result_buffer);
 }
 
-Status CpuExecutable::ExecuteOnStream(
-    const ExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    ShapedBuffer* result_buffer, HloExecutionProfile* hlo_execution_profile) {
-  se::Stream* stream = run_options->stream();
-  DeviceMemoryAllocator* memory_allocator = run_options->allocator();
-  // Every array element in the result of the computation must be unambiguously
-  // produced by a single instruction.
-  // This ensures that the buffers inside result_buffer can be assigned without
-  // conflict to the respective instructions because there is a one-to-one
-  // correspondence between hlo instructions and array buffers in the result.
-  if (GetRootPointsToSet().IsAmbiguous()) {
-    return Unimplemented(
-        "Points-to set of root instruction is ambiguous or not distinct");
-  }
-  std::vector<se::DeviceMemoryBase> buffers(assignment_->Allocations().size());
-  DCHECK(ShapeUtil::Compatible(result_buffer->shape(), result_shape()));
-
-  // If two tuple elements point to the same buffer, one of the results in the
-  // result buffer is considered the canonical location while the other result
-  // points to it (instead of, say, making a copy of the result).
-  // buffer_index_to_shape_index maps a buffer index to its canonical location
-  // in the result buffer.
-  std::unordered_map<BufferAllocation::Index, size_t>
-      buffer_index_to_shape_index;
-
-  // Copy values from result_buffer to the index in "buffers". These buffers
-  // will not be allocated in the call to AllocateBuffers.
-  std::vector<bool> buffers_in_result(assignment_->Allocations().size(), false);
-  TF_RETURN_IF_ERROR(
-      result_buffer->mutable_shape_index_to_buffer_entry()
-          ->ForEachMutableElement(
-              [&buffers, &buffers_in_result, &buffer_index_to_shape_index,
-               result_buffer, this](const ShapeIndex& index, bool is_leaf,
-                                    size_t* buffer_entry) {
-                if (is_leaf) {
-                  const std::vector<const LogicalBuffer*>& sources =
-                      this->GetRootPointsToSet().element(index);
-                  // The points to set is unambiguous so the set should be a
-                  // singleton.
-                  CHECK_EQ(1, sources.size());
-                  const LogicalBuffer* buffer_source = sources[0];
-                  HloInstruction* src = buffer_source->instruction();
-
-                  // The source for this result buffer can be a nested buffer
-                  // such as a tuple element.
-
-                  // The source instruction should have a non-parameter buffer
-                  // assigned.
-                  TF_ASSIGN_OR_RETURN(const BufferAllocation* allocation,
-                                      this->assignment_->GetUniqueAllocation(
-                                          src, buffer_source->index()));
-                  CHECK(!allocation->is_entry_computation_parameter());
-
-                  auto insert_result = buffer_index_to_shape_index.emplace(
-                      allocation->index(), *buffer_entry);
-                  if (insert_result.second) {
-                    // The points-to set is distinct so this buffer should not
-                    // have
-                    // been assigned in a previous invocation of this lambda.
-                    perftools::gputools::DeviceMemoryBase memory_base =
-                        result_buffer->buffer(index);
-                    CHECK(buffers[allocation->index()].is_null());
-                    CHECK(!memory_base.is_null());
-                    buffers[allocation->index()] = memory_base;
-                    buffers_in_result[allocation->index()] = true;
-                  } else {
-                    // Record the fact that this tuple element is identical to
-                    // some
-                    // prior result.
-                    *buffer_entry = insert_result.first->second;
-                  }
-                }
-                return Status::OK();
-              }));
-
-  TF_RETURN_IF_ERROR(AllocateBuffers(
-      memory_allocator, stream->parent()->device_ordinal(), &buffers));
-
-  TF_RETURN_IF_ERROR(ExecuteComputeFunction(run_options, arguments, buffers,
-                                            hlo_execution_profile));
-
-  // Free all buffers not in the result.
-  for (auto i = 0; i < buffers.size(); ++i) {
-    auto alloc = buffers[i];
-    if (!buffers_in_result[i] && !alloc.is_null()) {
-      VLOG(3) << "CpuExecutable deallocating buffer #" << i << " ["
-              << alloc.opaque() << "]";
-      TF_RETURN_IF_ERROR(memory_allocator->Deallocate(
-          stream->parent()->device_ordinal(), &alloc));
-    }
-  }
-
-  return Status::OK();
-}
-
 StatusOr<perftools::gputools::DeviceMemoryBase>
 CpuExecutable::ExecuteAsyncOnStream(
-    const ExecutableRunOptions* run_options,
+    const ServiceExecutableRunOptions* run_options,
     tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.
   return Unimplemented(
       "Asynchronous execution on stream is not yet supported on CPU.");
+}
+
+/*static*/ int64 CpuExecutable::ShapeSizeBytes(const Shape& shape) {
+  // On the cpu, opaques are pointers.
+  if (ShapeUtil::IsOpaque(shape)) {
+    return sizeof(void*);
+  }
+  return ShapeUtil::ByteSizeOf(shape, sizeof(void*));
 }
 
 const PointsToSet& CpuExecutable::GetRootPointsToSet() const {

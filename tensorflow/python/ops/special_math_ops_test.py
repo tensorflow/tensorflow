@@ -32,40 +32,52 @@ from tensorflow.python.platform import test
 
 
 class LBetaTest(test.TestCase):
-  _use_gpu = False
 
   def test_one_dimensional_arg(self):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       self.assertAllClose(1, math_ops.exp(special_math_ops.lbeta(x_one)).eval())
       self.assertAllClose(
           0.5, math_ops.exp(special_math_ops.lbeta(x_one_half)).eval())
       self.assertEqual([], special_math_ops.lbeta(x_one).get_shape())
 
-  def test_one_dimensional_arg_dynamic_alloc(self):
+  def test_one_dimensional_arg_dynamic(self):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
     x_one_half = [2, 1.]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
       self.assertAllClose(1, beta_ph.eval(feed_dict={ph: x_one}))
       self.assertAllClose(0.5, beta_ph.eval(feed_dict={ph: x_one_half}))
 
+  def test_four_dimensional_arg_with_partial_shape_dynamic(self):
+    x_ = np.ones((3, 2, 3, 4))
+    # Gamma(1) = 0! = 1
+    # Gamma(1 + 1 + 1 + 1) = Gamma(4) = 3! = 6
+    # ==> Beta([1, 1, 1, 1])
+    #     = Gamma(1) * Gamma(1) * Gamma(1) * Gamma(1) / Gamma(1 + 1 + 1 + 1)
+    #     = 1 / 6
+    expected_beta_x = 1 / 6 * np.ones((3, 2, 3))
+    with self.test_session(use_gpu=True):
+      x_ph = array_ops.placeholder(dtypes.float32, [3, 2, 3, None])
+      beta_ph = math_ops.exp(special_math_ops.lbeta(x_ph))
+      self.assertAllClose(expected_beta_x, beta_ph.eval(feed_dict={x_ph: x_}))
+
   def test_two_dimensional_arg(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       self.assertAllClose(
           [0.5, 0.5], math_ops.exp(special_math_ops.lbeta(x_one_half)).eval())
       self.assertEqual((2,), special_math_ops.lbeta(x_one_half).get_shape())
 
-  def test_two_dimensional_arg_dynamic_alloc(self):
+  def test_two_dimensional_arg_dynamic(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       ph = array_ops.placeholder(dtypes.float32)
       beta_ph = math_ops.exp(special_math_ops.lbeta(ph))
       self.assertAllClose([0.5, 0.5], beta_ph.eval(feed_dict={ph: x_one_half}))
@@ -73,7 +85,7 @@ class LBetaTest(test.TestCase):
   def test_two_dimensional_proper_shape(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       self.assertAllClose(
           [0.5, 0.5], math_ops.exp(special_math_ops.lbeta(x_one_half)).eval())
       self.assertEqual(
@@ -83,7 +95,7 @@ class LBetaTest(test.TestCase):
           special_math_ops.lbeta(x_one_half).get_shape())
 
   def test_complicated_shape(self):
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       x = ops.convert_to_tensor(np.random.rand(3, 2, 2))
       self.assertAllEqual(
           (3, 2), array_ops.shape(special_math_ops.lbeta(x)).eval())
@@ -96,40 +108,42 @@ class LBetaTest(test.TestCase):
     # as the answer, always.
     x_a = [5.5]
     x_b = [0.1]
-    with self.test_session(use_gpu=self._use_gpu):
+    with self.test_session(use_gpu=True):
       self.assertAllClose(1, math_ops.exp(special_math_ops.lbeta(x_a)).eval())
       self.assertAllClose(1, math_ops.exp(special_math_ops.lbeta(x_b)).eval())
       self.assertEqual((), special_math_ops.lbeta(x_a).get_shape())
 
-  def test_empty_rank2_or_greater_input_gives_empty_output(self):
-    with self.test_session(use_gpu=self._use_gpu):
-      self.assertAllEqual([], special_math_ops.lbeta([[]]).eval())
-      self.assertEqual((0,), special_math_ops.lbeta([[]]).get_shape())
-      self.assertAllEqual([[]], special_math_ops.lbeta([[[]]]).eval())
-      self.assertEqual((1, 0), special_math_ops.lbeta([[[]]]).get_shape())
+  def test_empty_rank1_returns_negative_infinity(self):
+    with self.test_session(use_gpu=True):
+      x = constant_op.constant([], shape=[0])
+      lbeta_x = special_math_ops.lbeta(x)
+      expected_result = constant_op.constant(-np.inf, shape=())
 
-  def test_empty_rank2_or_greater_input_gives_empty_output_dynamic_alloc(self):
-    with self.test_session(use_gpu=self._use_gpu):
-      ph = array_ops.placeholder(dtypes.float32)
-      self.assertAllEqual(
-          [], special_math_ops.lbeta(ph).eval(feed_dict={ph: [[]]}))
-      self.assertAllEqual(
-          [[]], special_math_ops.lbeta(ph).eval(feed_dict={ph: [[[]]]}))
+      self.assertAllEqual(expected_result.eval(), lbeta_x.eval())
+      self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
 
-  def test_empty_rank1_input_raises_value_error(self):
-    with self.test_session(use_gpu=self._use_gpu):
-      with self.assertRaisesRegexp(ValueError, 'rank'):
-        special_math_ops.lbeta([])
+  def test_empty_rank2_with_zero_last_dim_returns_negative_infinity(self):
+    with self.test_session(use_gpu=True):
+      event_size = 0
+      for batch_size in [0, 1, 2]:
+        x = constant_op.constant([], shape=[batch_size, event_size])
+        lbeta_x = special_math_ops.lbeta(x)
+        expected_result = constant_op.constant(-np.inf, shape=[batch_size])
 
-  def test_empty_rank1_dynamic_alloc_input_raises_op_error(self):
-    with self.test_session(use_gpu=self._use_gpu):
-      ph = array_ops.placeholder(dtypes.float32)
-      with self.assertRaisesOpError('rank'):
-        special_math_ops.lbeta(ph).eval(feed_dict={ph: []})
+        self.assertAllEqual(expected_result.eval(), lbeta_x.eval())
+        self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
 
+  def test_empty_rank2_with_zero_batch_dim_returns_empty(self):
+    with self.test_session(use_gpu=True):
+      batch_size = 0
+      for event_size in [0, 1, 2]:
+        x = constant_op.constant([], shape=[batch_size, event_size])
+        lbeta_x = special_math_ops.lbeta(x)
 
-class LBetaTestGpu(LBetaTest):
-  _use_gpu = True
+        expected_result = constant_op.constant([], shape=[batch_size])
+
+        self.assertAllEqual(expected_result.eval(), lbeta_x.eval())
+        self.assertEqual(expected_result.get_shape(), lbeta_x.get_shape())
 
 
 class EinsumTest(test.TestCase):
@@ -250,7 +264,7 @@ class EinsumTest(test.TestCase):
     input_tensors = [constant_op.constant(val) for val in input_vals]
     output_tensor = special_math_ops.einsum(axes, *input_tensors)
 
-    with self.test_session():
+    with self.test_session(use_gpu=True):
       output_value = output_tensor.eval()
 
     correct_value = np.einsum(axes, *input_vals)
@@ -318,7 +332,19 @@ class EinsumTest(test.TestCase):
             m1: [3, 2],
         }
         np.testing.assert_almost_equal(
-            [[7]], sess.run(out, feed_dict=feed_dict))
+           [[7]], sess.run(out, feed_dict=feed_dict))
+
+    with ops.Graph().as_default():
+      m0 = array_ops.placeholder(dtypes.int32, shape=(None, 2, None, 2))
+      m1 = array_ops.placeholder(dtypes.int32, shape=(None, 2))
+      out = special_math_ops.einsum('ijkl,ij->ikl', m0, m1)
+      with session.Session() as sess:
+        feed_dict = {
+            m0: [[[[1, 2]], [[2, 1]]]],
+            m1: [[3, 2]],
+        }
+        np.testing.assert_almost_equal(
+            [[[7, 8]]], sess.run(out, feed_dict=feed_dict))
 
 
 if __name__ == '__main__':

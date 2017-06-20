@@ -54,22 +54,6 @@ class DType(object):
 
   The `tf.as_dtype()` function converts numpy types and string type
   names to a `DType` object.
-
-  @@is_compatible_with
-  @@name
-  @@base_dtype
-  @@real_dtype
-  @@is_bool
-  @@is_floating
-  @@is_complex
-  @@is_integer
-  @@is_quantized
-  @@is_unsigned
-
-  @@as_numpy_dtype
-  @@as_datatype_enum
-
-  @@limits
   """
 
   def __init__(self, type_enum):
@@ -286,6 +270,9 @@ class DType(object):
     """Returns the string name for this `DType`."""
     return _TYPE_TO_STRING[self._type_enum]
 
+  def __int__(self):
+    return self._type_enum
+
   def __str__(self):
     return "<dtype: %r>" % self.name
 
@@ -473,6 +460,9 @@ _np_quint8 = np.dtype([("quint8", np.uint8, 1)])
 _np_qint16 = np.dtype([("qint16", np.int16, 1)])
 _np_quint16 = np.dtype([("quint16", np.uint16, 1)])
 _np_qint32 = np.dtype([("qint32", np.int32, 1)])
+
+# Custom struct dtype for directly-fed ResourceHandles of supported type(s).
+np_resource = np.dtype([("resource", np.ubyte, 1)])
 
 # Standard mappings between types_pb2.DataType values and numpy.dtypes.
 _NP_TO_TF = frozenset([

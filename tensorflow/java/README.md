@@ -1,21 +1,27 @@
 # TensorFlow for Java
 
-Java bindings for TensorFlow.
-
-> *WARNING*: The TensorFlow Java API is incomplete and experimental and can
-> change without notice. Progress can be followed in
-> [issue #5](https://github.com/tensorflow/tensorflow/issues/5).
+> *WARNING*: The TensorFlow Java API is not currently covered by the TensorFlow
+> [API stability guarantees](https://www.tensorflow.org/programmers_guide/version_semantics).
 >
-> Till then, for using TensorFlow on Android refer to
+> For using TensorFlow on Android refer instead to
 > [contrib/android](https://www.tensorflow.org/code/tensorflow/contrib/android),
 > [makefile](https://www.tensorflow.org/code/tensorflow/contrib/makefile#android)
-> and/or the [Android camera
-> demo](https://www.tensorflow.org/code/tensorflow/examples/android).
+> and/or the [Android demo](https://www.tensorflow.org/code/tensorflow/examples/android).
 
-## Requirements
+## Quickstart
 
--   [bazel](https://www.bazel.build/versions/master/docs/install.html)
--   Environment to build TensorFlow from source code
+-   Refer to [Installing TensorFlow for Java](https://www.tensorflow.org/install/install_java)
+-   [Javadoc](https://www.tensorflow.org/api_docs/java/reference/org/tensorflow/package-summary)
+-   [![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.tensorflow/tensorflow/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.tensorflow/tensorflow)
+
+## Building from source
+
+If the quickstart instructions above do not work out, the TensorFlow Java and
+native libraries will need to be built from source.
+
+1.  Install [bazel](https://www.bazel.build/versions/master/docs/install.html)
+
+2.  Setup the environment to build TensorFlow from source code
     ([Linux](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-linux)
     or [Mac OS
     X](https://www.tensorflow.org/versions/master/get_started/os_setup.html#prepare-environment-for-mac-os-x)).
@@ -30,26 +36,51 @@ Java bindings for TensorFlow.
     brew install swig
     ```
 
-## Installation
+3.  [Configure](https://www.tensorflow.org/install/install_sources#configure_the_installation)
+    (e.g., enable GPU support) and build:
 
-Configure and build the Java Archive (JAR) and native library:
+    ```sh
+    ./configure
+    bazel build --config opt \
+      //tensorflow/java:tensorflow \
+      //tensorflow/java:libtensorflow_jni
+    ```
+
+The command above will produce two files in the `bazel-bin/tensorflow/java`
+directory:
+
+*   An archive of Java classes: `libtensorflow.jar`
+*   A native library: `libtensorflow_jni.so` on Linux, `libtensorflow_jni.dylib`
+    on OS X, or `tensorflow_jni.dll` on Windows.
+
+To compile Java code that uses the TensorFlow Java API, include
+`libtensorflow.jar` in the classpath. For example:
 
 ```sh
-# Configure the build (e.g. GPU support etc.), as per
-# https://www.tensorflow.org/get_started/os_setup#configure_the_installation
-./configure
-
-# Build the JAR and native library
-bazel build --config opt \
-  //tensorflow/java:tensorflow \
-  //tensorflow/java:libtensorflow_jni
+javac -cp bazel-bin/tensorflow/java/libtensorflow.jar ...
 ```
+
+To execute the compiled program, include `libtensorflow.jar` in the classpath
+and the native library in the library path. For example:
+
+```sh
+java -cp bazel-bin/tensorflow/java/libtensorflow.jar \
+  -Djava.library.path=bazel-bin/tensorflow/java \
+  ...
+```
+
+Installation on Windows requires the more experimental [bazel on
+Windows](https://bazel.build/versions/master/docs/windows.html). Details are
+omitted here, but find inspiration in the script used for building the release
+archive:
+[`tensorflow/tools/ci_build/windows/libtensorflow_cpu.sh`](https://www.tensorflow.org/code/tensorflow/tools/ci_build/windows/libtensorflow_cpu.sh).
 
 ### Maven
 
-To use the library in an external Java project, publish the library to a Maven
-repository.  For example, publish the library to the local Maven repository
-using the `mvn` tool (installed separately):
+Details of the release process for Maven Central are in
+[`maven/README.md`](https://www.tensorflow.org/code/tensorflow/java/maven/README.md).
+However, for development, you can push the library built from source to a local
+Maven repository with:
 
 ```sh
 bazel build -c opt //tensorflow/java:pom
@@ -58,45 +89,23 @@ mvn install:install-file \
   -DpomFile=../../bazel-bin/tensorflow/java/pom.xml
 ```
 
-Refer to the library using Maven coordinates.  For example, if you're using
-Maven then place this dependency into your `pom.xml` file (replacing
-0.12.head with the version of the TensorFlow runtime you wish to use).
+And then refer to this library in a project's `pom.xml` with: (replacing
+VERSION with the appropriate version of TensorFlow):
 
 ```xml
 <dependency>
   <groupId>org.tensorflow</groupId>
   <artifactId>libtensorflow</artifactId>
-  <version>0.12.head</version>
+  <version>VERSION</version>
 </dependency>
 ```
 
-## Example
+### Bazel
 
-### With bazel
-
-Add a dependency on `//tensorflow/java:tensorflow` to the `java_binary` or
-`java_library` rule. For example:
+If your project uses bazel for builds, add a dependency on
+`//tensorflow/java:tensorflow` to the `java_binary` or `java_library` rule. For
+example:
 
 ```sh
 bazel run -c opt //tensorflow/java/src/main/java/org/tensorflow/examples:label_image
 ```
-
-### With `javac`
-
--   Add `libtensorflow.jar` to classpath for compilation. For example:
-
-    ```sh
-    javac \
-      -cp ../../bazel-bin/tensorflow/java/libtensorflow.jar \
-      ./src/main/java/org/tensorflow/examples/LabelImage.java
-    ```
-
--   Make `libtensorflow.jar` and `libtensorflow_jni.so`
-    (`libtensorflow_jni.dylib` on OS X) available during execution. For example:
-
-    ```sh
-    java \
-      -Djava.library.path=../../bazel-bin/tensorflow/java \
-      -cp ../../bazel-bin/tensorflow/java/libtensorflow.jar:./src/main/java \
-      org.tensorflow.examples.LabelImage
-    ```

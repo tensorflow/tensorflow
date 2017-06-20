@@ -1,0 +1,195 @@
+<!--
+@license
+Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<link rel="import" href="../polymer/polymer.html">
+<link rel="import" href="../paper-button/paper-button.html">
+<link rel="import" href="../paper-dialog/paper-dialog.html">
+<link rel="import" href="../tf-dashboard-common/tf-multi-checkbox.html">
+<link rel="import" href="../tf-dashboard-common/scrollbar-style.html">
+
+<!--
+tf-runs-selector creates a set of checkboxes to display which runs are
+selected. It also displays tooltips.
+
+Properties in: none.
+Properties out:
+- selectedRuns: The array of run names that are currently checked by the user.
+
+-->
+<dom-module id="tf-runs-selector">
+  <template>
+    <div id="plumbing">
+      <tf-color-scale
+        runs="[[runs]]"
+        out-color-scale="{{colorScale}}"
+      ></tf-color-scale>
+    </div>
+    <paper-dialog with-backdrop id="logdir-dialog">
+      <h2>logdir</h2>
+      <div inner-h-t-m-l="{{_breakString(logdir)}}"></div>
+    </paper-dialog>
+    <div id="top-text">
+      <h3 id="tooltip-help" class="tooltip-container">
+        Runs<!--
+        - TODO(wchargin): Remove the "new" notice when we remove the old
+        - selector. This is just so that we can tell them apart.
+        -->&#x2003;<span
+          style="text-transform:uppercase;color:red;font-size:smaller"
+        >new</span>
+      </h3>
+    </div>
+    <tf-multi-checkbox
+      id="multiCheckbox"
+      names="[[runs]]"
+      out-selected="{{selectedRuns}}"
+      color-scale="[[colorScale]]"
+    ></tf-multi-checkbox>
+    <paper-button
+      class="x-button"
+      id="toggle-all"
+      on-tap="_toggleAll"
+    >
+    Toggle All Runs
+    </paper-button>
+    <template
+      is="dom-if"
+      if="[[logdir]]">
+      <div id="logdir">
+        <span id="clipped-logdir" inner-h-t-m-l="[[_clippedLogdir]]"></span><!--
+          We use HTML comments to remove spaces before the ellipsis.
+        --><template
+                     is="dom-if"
+                     if="[[_shouldShowExpandLogdirButton(logdir, _logdirClipLength)]]"><!--
+          --><a href="" on-click="_openLogdirDialog">…</a>
+        </template>
+      </div>
+    </template>
+    <style>
+      :host {
+        display: flex;
+        flex-direction: column;
+        padding-bottom: 10px;
+        box-sizing: border-box;
+      }
+      #top-text {
+        width: 100%;
+        flex-grow: 0;
+        flex-shrink: 0;
+        padding-right: 16px;
+        box-sizing: border-box;
+        color: var(--paper-grey-800);
+      }
+      tf-multi-checkbox {
+        display: flex;
+        flex-grow: 1;
+        flex-shrink: 1;
+      }
+      .x-button {
+        font-size: 13px;
+        background-color: var(--tb-ui-light-accent);
+        color: var(--tb-ui-dark-accent);
+      }
+      #tooltip-help {
+        color: var(--paper-grey-800);
+        margin: 0;
+        font-weight: normal;
+        font-size: 14px;
+        margin-bottom: 5px;
+      }
+      paper-button {
+        margin-left: 0;
+      }
+      #logdir {
+        color: var(--tb-ui-dark-accent);
+        font-size: 13px;
+        margin: 5px 0 0 0;
+        max-width: 288px;
+      }
+    </style>
+  </template>
+  <script>
+  import {RequestManager} from "../tf-backend/requestManager";
+  import {getRouter} from "../tf-backend/router";
+  import * as RunsStore from "../tf-backend/runsStore";
+
+  var requestManager = new RequestManager();
+  Polymer({
+    is: "tf-runs-selector",
+    properties: {
+      selectedRuns: {type: Array, notify: true},
+      // runs: an array of strings, representing the run names that may be chosen
+      runs: Array,
+      logdir: {
+        type: String,
+        notify: true,
+      },
+      // This is the potentially clipped portion of the logdir we show at the bottom of the sidebar.
+      _clippedLogdir: {
+        type: String,
+        computed: '_getClippedLogdir(logdir, _logdirClipLength)',
+      },
+      _logdirClipLength: {
+        type: Number,
+        value: 250,
+        readOnly: true,
+      },
+    },
+    ready: function() {
+      var updateRuns = function() {
+        this.set("runs", RunsStore.getRuns());
+      }.bind(this);
+      RunsStore.addListener(updateRuns);
+      updateRuns();
+
+      requestManager.request(getRouter().logdir()).then(logdirObject => {
+        this.set('logdir', logdirObject.logdir);
+      }).catch(e => {
+        // Fetching the logdir failed. Prevent the exception from logging to
+        // console. The console already logs a 404 network event.
+      });
+    },
+    _toggleAll: function() {
+      this.$.multiCheckbox.toggleAll();
+    },
+    // Break the string at natural points, including commas, equals, and slashes
+    _breakString: function(originalString) {
+      return originalString.replace(/([\/=\-_,])/g, "$1<wbr>");
+    },
+    _getClippedLogdir: function(logdir, logdirClipLength) {
+      if (logdir === undefined) {
+        // The logdir has not been set yet.
+        return undefined;
+      }
+
+      if (logdir.length > logdirClipLength) {
+        // Clip the logdir to avoid blocking the runs selector. Let the user view a more full
+        // version of the logdir.
+        return this._breakString(logdir.substring(0, logdirClipLength));
+      } else {
+        return this._breakString(logdir);
+      }
+    },
+    _openLogdirDialog: function(event) {
+      event.preventDefault();
+      this.$$('#logdir-dialog').open();
+    },
+    _shouldShowExpandLogdirButton(logdir, _logdirClipLength) {
+      return logdir && logdir.length > _logdirClipLength;
+    },
+  });
+  </script>
+</dom-module>

@@ -38,7 +38,7 @@ then
   exit 1
 fi
 
-./configure --prefix="${GENDIR}"
+./configure --prefix="${GENDIR}" --with-pic
 if [ $? -ne 0 ]
 then
   echo "./configure command failed."

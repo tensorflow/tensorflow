@@ -50,10 +50,15 @@ struct DenseUpdate<Eigen::ThreadPoolDevice, string, ASSIGN> {
                   update.data()[i].data(), update.data()[i].size());
         }
       };
-      // first element of the tensor seems as good a guess as any of the sizes
-      // of the strings contained within...
-      const int64 estimated_string_size =
-          std::max(update.data()[0].size(), sizeof(string));
+      int64 estimated_string_size;
+      if (update.size() > 0) {
+        // first element of the tensor seems as good a guess as any of the sizes
+        // of the strings contained within...
+        estimated_string_size =
+            std::max(update.data()[0].size(), sizeof(string));
+      } else {
+        estimated_string_size = sizeof(string);
+      }
       d.parallelFor(
           params.dimension(0),
           Eigen::TensorOpCost(estimated_string_size, estimated_string_size, 0),
@@ -121,6 +126,9 @@ class DenseUpdateOp : public OpKernel {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
+#ifdef TENSORFLOW_USE_SYCL
+typedef Eigen::SyclDevice SYCLDevice;
+#endif // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(type)                                     \
   REGISTER_KERNEL_BUILDER(                                         \
@@ -130,25 +138,6 @@ typedef Eigen::GpuDevice GPUDevice;
 TF_CALL_ALL_TYPES(REGISTER_KERNELS);
 TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
-
-#if TENSORFLOW_USE_SYCL
-typedef Eigen::SyclDevice SYCLDevice;
-#define REGISTER_SYCL_KERNEL(type)                                     \
-  REGISTER_KERNEL_BUILDER(                                             \
-                          Name("Assign")                               \
-                          .Device(DEVICE_SYCL)                         \
-                          .TypeConstraint<type>("T"),                  \
-                          AssignOpT<SYCLDevice, type>);                \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("AssignAdd").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      DenseUpdateOp<SYCLDevice, type, DenseUpdateType::ADD>);          \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name("AssignSub").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
-      DenseUpdateOp<SYCLDevice, type, DenseUpdateType::SUB>);
-
-REGISTER_SYCL_KERNEL(float);
-#undef REGISTER_SYCL_KERNEL
-#endif
 
 #if GOOGLE_CUDA
 // Only register 'Assign' on GPU for the subset of types also supported by
@@ -168,6 +157,16 @@ REGISTER_SYCL_KERNEL(float);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)                                \
+REGISTER_KERNEL_BUILDER(                                           \
+    Name("Assign").Device(DEVICE_SYCL).TypeConstraint<type>("T"),  \
+    AssignOpT<SYCLDevice, type>);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif // TENSORFLOW_USE_SYCL
 
 #define REGISTER_KERNELS(type)                                        \
   REGISTER_KERNEL_BUILDER(                                            \
@@ -208,4 +207,16 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // end GOOGLE_CUDA
 
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(type)                                         \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("AssignAdd").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      DenseUpdateOp<SYCLDevice, type, DenseUpdateType::ADD>);          \
+  REGISTER_KERNEL_BUILDER(                                             \
+      Name("AssignSub").Device(DEVICE_SYCL).TypeConstraint<type>("T"), \
+      DenseUpdateOp<SYCLDevice, type, DenseUpdateType::SUB>);
+
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "external/llvm/include/llvm/ADT/Triple.h"
 #include "external/llvm/include/llvm/ExecutionEngine/Orc/IRCompileLayer.h"
-#include "external/llvm/include/llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
+#include "external/llvm/include/llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "external/llvm/include/llvm/IR/Module.h"
 #include "external/llvm/include/llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/disassembler.h"
@@ -41,7 +41,7 @@ namespace cpu {
 // it's added to the JIT.
 class SimpleOrcJIT {
  public:
-  using ObjLayerT = llvm::orc::ObjectLinkingLayer<>;
+  using ObjLayerT = llvm::orc::RTDyldObjectLinkingLayer<>;
   using CompileLayerT = llvm::orc::IRCompileLayer<ObjLayerT>;
   using ModuleHandleT = CompileLayerT::ModuleSetHandleT;
 

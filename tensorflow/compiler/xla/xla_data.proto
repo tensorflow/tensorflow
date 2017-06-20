@@ -16,6 +16,7 @@ limitations under the License.
 syntax = "proto3";
 
 package xla;
+option cc_enable_arenas = true;
 
 // Primitive types are the individual values that can be held in rectangular
 // multidimensional arrays. A description of the rectangular multidimensional
@@ -178,6 +179,31 @@ message ComputationStats {
   double transcendental_count = 2;
 }
 
+// Symbolization metadata for HLO Instructions.
+//
+// This metadata is used for debugging XLA code generation, as well as
+// performance profiling of XLA-generated executables.
+message OpMetadata {
+  // The framework op name that generated this XLA op.
+  //
+  // Frameworks that build on top of XLA should mirror the names of their ops
+  // back to users by specifying the op_type. In this way, even if the
+  // framework's "ops" are implemented as multiple XLA HLO Ops, they can be
+  // grouped appropriately. (e.g. if a SoftMax layer is emitted into XLA as
+  // multiple ops, then each op should have the op_type be "SoftMax".)
+  string op_type = 1;
+  // The user-specified name of the op.
+  //
+  // This name is often unique within a computation. Note: some frameworks
+  // add auto-generated names if the user does not provide one.
+  string op_name = 2;
+  // Indicate a file and line that this op is associated to in a user's program.
+  //
+  // e.g. it could be be the file and line of user code that generated the op.
+  string source_file = 3;
+  int32 source_line = 4;
+}
+
 // Profile data from the execution of a computation.
 message ExecutionProfile {
   // Whether the executable was read from the compilation cache.
@@ -249,7 +275,7 @@ message ChannelHandle {
 //
 // Transfers to/from the client are encoded in literal form, and the structure
 // of the repeated fields is implied by the shape.
-message Literal {
+message LiteralProto {
   Shape shape = 1;
   repeated bool preds = 2;
   bytes u8s = 3;
@@ -259,7 +285,8 @@ message Literal {
   repeated uint64 u64s = 7;
   repeated float f32s = 8;
   repeated double f64s = 9;
-  repeated Literal tuple_literals = 10;
+  repeated LiteralProto tuple_literals = 10;
+  bytes f16s = 11;  // Note: the F16s are encoded in little endian byte order
 }
 
 message WindowDimension {
@@ -310,7 +337,7 @@ message Window {
 // field in OpRequest.
 
 message ConstantRequest {
-  Literal literal = 2;
+  LiteralProto literal = 2;
 }
 
 message GetTupleElementRequest {
@@ -322,6 +349,7 @@ message SliceRequest {
   ComputationDataHandle operand = 2;
   repeated int64 start_indices = 3;
   repeated int64 limit_indices = 4;
+  repeated int64 stride = 5;
 }
 
 message DynamicSliceRequest {
@@ -382,15 +410,18 @@ message InfeedRequest {
   Shape shape = 2;
 
   // Additional infeed configuration for the backend.
-  string config = 3;
+  bytes config = 3;
 }
 
 message OutfeedRequest {
+  // The shape of the data returned by reading the device's outfeed buffer.
+  Shape shape = 1;
+
   // Operand to the Outfeed. Supports tuple.
   ComputationDataHandle operand = 2;
 
   // Backend-specific information for how to perform the outfeed.
-  string outfeed_config = 3;
+  bytes outfeed_config = 3;
 }
 
 message CallRequest {
@@ -483,6 +514,13 @@ message ReshapeRequest {
   repeated int64 new_sizes = 4;
 }
 
+message TransposeRequest {
+  ComputationDataHandle operand = 2;
+
+  // The permutation of the operand's dimensions (in the range 0 to n-1).
+  repeated int64 dimensions = 3;
+}
+
 message ParameterRequest {
   Shape shape = 2;
   int64 parameter = 3;
@@ -555,6 +593,9 @@ enum UnaryOperation {
 
   // Elementwise, computes the sign of x.
   UNOP_SIGN = 10;
+
+  // Elementwise, tests if values are finite (not NaN or inf)
+  UNOP_IS_FINITE = 11;
 }
 
 message UnaryOpRequest {
@@ -684,6 +725,7 @@ message RecvRequest {
 
 message OpRequest {
   ComputationHandle computation = 1;
+  OpMetadata metadata = 33;
 
   oneof op {
     BinaryOpRequest binary_op_request = 2;
@@ -711,13 +753,14 @@ message OpRequest {
     SliceRequest slice_request = 24;
     TernaryOpRequest ternary_op_request = 25;
     TraceRequest trace_request = 26;
+    TransposeRequest transpose_request = 34;
     UnaryOpRequest unary_op_request = 27;
     VariadicOpRequest variadic_op_request = 28;
     WhileRequest while_request = 29;
     SendRequest send_request = 30;
     RecvRequest recv_request = 31;
     OutfeedRequest outfeed_request = 32;
-    // Next: 33
+    // Next: 35
   }
 }
 

@@ -1,25 +1,45 @@
 # Android TensorFlow support
 
-This directory contains components geared towards supporting TensorFlow on
-Android.
+This directory defines components (a native `.so` library and a Java JAR)
+geared towards supporting TensorFlow on Android. This includes:
 
-## Android Java Inference Interface for TensorFlow
+- The [TensorFlow Java API](../../java/README.md)
+- A `TensorFlowInferenceInterface` class that provides a smaller API
+  surface suitable for inference and summarizing performance of model execution.
 
-This library contains a Java API capable of loading TensorFlow graphs and
-performing inference on Android. See [TensorFlowImageClassifier.java](../../examples/android/src/org/tensorflow/demo/TensorFlowImageClassifier.java)
-in the [TensorFlow Android Camera Demo](../../examples/android) for an example.
-
-With both the native .so library and the Java JAR (or AAR which combines both),
-you will have everything you need to use TensorFlow for inference in your
-Android app. Note that training is not supported through this interface; for
-that you will have to use one of the other APIs.
+For example usage, see [TensorFlowImageClassifier.java](../../examples/android/src/org/tensorflow/demo/TensorFlowImageClassifier.java)
+in the [TensorFlow Android Demo](../../examples/android).
 
 For prebuilt libraries, see the
 [nightly Android build artifacts](https://ci.tensorflow.org/view/Nightly/job/nightly-android/)
 page for a recent build.
 
-To build the inference libraries yourself (if, for example, you want to support
-custom TensorFlow operators), pick your preferred approach below:
+The TensorFlow Inference Interface is also available as a
+[JCenter package](https://bintray.com/google/tensorflow/tensorflow-android) and
+can be included quite simply in your android project with a couple of lines in
+the project's `build.gradle` file:
+
+```
+allprojects {
+    repositories {
+        jcenter()
+    }
+}
+
+dependencies {
+    compile 'org.tensorflow:tensorflow-android:+'
+}
+```
+
+This will tell Gradle to use the
+[latest version](https://bintray.com/google/tensorflow/tensorflow-android/_latestVersion)
+of the TensorFlow AAR that has been released to
+[https://bintray.com/google/tensorflow/tensorflow-android](https://bintray.com/google/tensorflow/tensorflow-android).
+You may replace the `+` with an explicit version label if you wish to
+use a specific release of TensorFlow in your app.
+
+To build the libraries yourself (if, for example, you want to support custom
+TensorFlow operators), pick your preferred approach below:
 
 ### Bazel
 
@@ -61,8 +81,9 @@ For documentation on building a self-contained AAR file with cmake, see
 [tensorflow/contrib/android/cmake](cmake).
 
 
-## AssetManagerFileSystem:
+## AssetManagerFileSystem
 
-A TensorFlow filesystem supporting the Android asset manager. This may be
-useful when writing native (C/C++) code that is tightly coupled with TensorFlow
-(for typical usage the Inference Interface library above will be sufficient).
+This directory also contains a TensorFlow filesystem supporting the Android
+asset manager. This may be useful when writing native (C++) code that is tightly
+coupled with TensorFlow. For typical usage, the library above will be
+sufficient.

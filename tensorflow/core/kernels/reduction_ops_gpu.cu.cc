@@ -47,7 +47,7 @@ struct ReduceFunctor<GPUDevice, Reducer> {
 };
 
 template <typename T>
-struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T> > {
+struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T>> {
   template <typename OUT_T, typename IN_T, typename ReductionAxes>
   static void Reduce(const GPUDevice& d, OUT_T out, IN_T in,
                      const ReductionAxes& reduction_axes,
@@ -60,7 +60,7 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::MeanReducer<T> > {
          ++i) {
       num_coeffs_to_reduce *= in.dimension(reduction_axes[i]);
     }
-    T scale = T(1.0) / num_coeffs_to_reduce;
+    T scale = T(1.0 / num_coeffs_to_reduce);
     out.device(d) = (in * scale).sum(reduction_axes);
   }
 
@@ -108,6 +108,10 @@ DEFINE_FOR_ALL_REDUCERS(double);
 
 DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::SumReducer<complex64>);
 DEFINE_FOR_TYPE_AND_R(complex128, Eigen::internal::SumReducer<complex128>);
+DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::MeanReducer<complex64>);
+DEFINE_FOR_TYPE_AND_R(complex128, Eigen::internal::MeanReducer<complex128>);
+DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::ProdReducer<complex64>);
+DEFINE_FOR_TYPE_AND_R(complex128, Eigen::internal::ProdReducer<complex128>);
 DEFINE_FOR_TYPE_AND_R(bool, Eigen::internal::AndReducer);
 DEFINE_FOR_TYPE_AND_R(bool, Eigen::internal::OrReducer);
 #undef DEFINE_FOR_TYPE_AND_R

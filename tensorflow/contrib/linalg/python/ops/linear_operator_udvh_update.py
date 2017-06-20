@@ -61,31 +61,31 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
   ```python
   # Create a 3 x 3 diagonal linear operator.
   diag_operator = LinearOperatorDiag(
-      diag=[1., 2., 3.], is_non_singular=True, is_self_adjoint=True,
+      diag_update=[1., 2., 3.], is_non_singular=True, is_self_adjoint=True,
       is_positive_definite=True)
 
   # Perturb with a rank 2 perturbation
   operator = LinearOperatorUDVHUpdate(
       operator=diag_operator,
       u=[[1., 2.], [-1., 3.], [0., 0.]],
-      diag=[11., 12.],
+      diag_update=[11., 12.],
       v=[[1., 2.], [-1., 3.], [10., 10.]])
 
   operator.shape
   ==> [3, 3]
 
-  operator.log_determinant()
+  operator.log_abs_determinant()
   ==> scalar Tensor
 
   x = ... Shape [3, 4] Tensor
-  operator.apply(x)
+  operator.matmul(x)
   ==> Shape [3, 4] Tensor
   ```
 
   ### Shape compatibility
 
   This operator acts on [batch] matrix with compatible shape.
-  `x` is a batch matrix with compatible shape for `apply` and `solve` if
+  `x` is a batch matrix with compatible shape for `matmul` and `solve` if
 
   ```
   operator.shape = [B1,...,Bb] + [M, N],  with b >= 0
@@ -95,15 +95,15 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
   ### Performance
 
   Suppose `operator` is a `LinearOperatorUDVHUpdate` of shape `[M, N]`,
-  made from a rank `K` update of `base_operator` which performs `.apply(x)` on
-  `x` having `x.shape = [N, R]` with `O(L_apply*N*R)` complexity (and similarly
+  made from a rank `K` update of `base_operator` which performs `.matmul(x)` on
+  `x` having `x.shape = [N, R]` with `O(L_matmul*N*R)` complexity (and similarly
   for `solve`, `determinant`.  Then, if `x.shape = [N, R]`,
 
-  * `operator.apply(x)` is `O(L_apply*N*R + K*N*R)`
+  * `operator.matmul(x)` is `O(L_matmul*N*R + K*N*R)`
 
   and if `M = N`,
 
-  * `operator.solve(x)` is `O(L_apply*N*R + N*K*R + K^2*R + K^3)`
+  * `operator.solve(x)` is `O(L_matmul*N*R + N*K*R + K^2*R + K^3)`
   * `operator.determinant()` is `O(L_determinant + L_solve*N*K + K^2*N + K^3)`
 
   If instead `operator` and `x` have shape `[B1,...,Bb, M, N]` and
@@ -112,7 +112,8 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
   #### Matrix property hints
 
   This `LinearOperator` is initialized with boolean flags of the form `is_X`,
-  for `X = non_singular, self_adjoint, positive_definite, diag_positive, square`
+  for `X = non_singular, self_adjoint, positive_definite, diag_update_positive`
+  and `square`
   These have the following meaning
   * If `is_X == True`, callers should expect the operator to have the
     property `X`.  This is a promise that should be fulfilled, but is *not* a
@@ -126,9 +127,9 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
   def __init__(self,
                base_operator,
                u,
-               diag=None,
+               diag_update=None,
                v=None,
-               is_diag_positive=None,
+               is_diag_update_positive=None,
                is_non_singular=None,
                is_self_adjoint=None,
                is_positive_definite=None,
@@ -151,13 +152,14 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
         `LinearOperator`.  This is `L` above.
       u:  Shape `[B1,...,Bb, M, K]` `Tensor` of same `dtype` as `base_operator`.
         This is `U` above.
-      diag:  Optional shape `[B1,...,Bb, K]` `Tensor` with same `dtype` as
-        `base_operator`.  This is the diagonal of `D` above.
+      diag_update:  Optional shape `[B1,...,Bb, K]` `Tensor` with same `dtype`
+        as `base_operator`.  This is the diagonal of `D` above.
          Defaults to `D` being the identity operator.
       v:  Optional `Tensor` of same `dtype` as `u` and shape `[B1,...,Bb, N, K]`
          Defaults to `v = u`, in which case the perturbation is symmetric.
-         If `M != N`, then `v` must be set since the pertrubation is not square.
-      is_diag_positive:  Python `bool`.  If `True`, expect `diag > 0`.
+         If `M != N`, then `v` must be set since the perturbation is not square.
+      is_diag_update_positive:  Python `bool`.
+        If `True`, expect `diag_update > 0`.
       is_non_singular:  Expect that this operator is non-singular.
         Default is `None`, unless `is_positive_definite` is auto-set to be
         `True` (see below).
@@ -166,8 +168,10 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
         and `v = None` (meaning `u=v`), in which case this defaults to `True`.
       is_positive_definite:  Expect that this operator is positive definite.
         Default is `None`, unless `base_operator` is positive-definite
-        `v = None` (meaning `u=v`), and `is_diag_positive`, in which case this
-        defaults to `True`.
+        `v = None` (meaning `u=v`), and `is_diag_update_positive`, in which case
+        this defaults to `True`.
+        Note that we say an operator is positive definite when the quadratic
+        form `x^H A x` has positive real part for all nonzero `x`.
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
 
@@ -177,10 +181,10 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
     # TODO(langmore) support complex types.
     # Complex types are not allowed due to tf.cholesky() requiring float.
     # If complex dtypes are allowed, we update the following
-    # 1. is_diag_positive should still imply that `diag > 0`, but we need to
-    #    remind the user that this implies diag is real.  This is needed because
-    #    if diag has non-zero imaginary part, it will not be self-adjoint
-    #    positive definite.
+    # 1. is_diag_update_positive should still imply that `diag > 0`, but we need
+    #    to remind the user that this implies diag is real.  This is needed
+    #    because if diag has non-zero imaginary part, it will not be
+    #    self-adjoint positive definite.
     dtype = base_operator.dtype
     allowed_dtypes = [dtypes.float32, dtypes.float64]
     if dtype not in allowed_dtypes:
@@ -188,17 +192,17 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
           "Argument matrix must have dtype in %s.  Found: %s"
           % (allowed_dtypes, dtype))
 
-    if diag is None:
-      if is_diag_positive is False:
+    if diag_update is None:
+      if is_diag_update_positive is False:
         raise ValueError(
             "Default diagonal is the identity, which is positive.  However, "
-            "user set 'is_diag_positive' to False.")
-      is_diag_positive = True
+            "user set 'is_diag_update_positive' to False.")
+      is_diag_update_positive = True
 
     # In this case, we can use a Cholesky decomposition to help us solve/det.
     self._use_cholesky = (
         base_operator.is_positive_definite and base_operator.is_self_adjoint
-        and is_diag_positive
+        and is_diag_update_positive
         and v is None)
 
     # Possibly auto-set some characteristic flags from None to True.
@@ -223,7 +227,7 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
       is_positive_definite = True
       is_self_adjoint = True
 
-    values = base_operator.graph_parents + [u, diag, v]
+    values = base_operator.graph_parents + [u, diag_update, v]
     with ops.name_scope(name, values=values):
 
       # Create U and V.
@@ -233,14 +237,16 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
       else:
         self._v = ops.convert_to_tensor(v, name="v")
 
-      if diag is None:
-        self._diag = None
+      if diag_update is None:
+        self._diag_update = None
       else:
-        self._diag = ops.convert_to_tensor(diag, name="diag")
+        self._diag_update = ops.convert_to_tensor(
+            diag_update, name="diag_update")
 
       # Create base_operator L.
       self._base_operator = base_operator
-      graph_parents = base_operator.graph_parents + [self.u, self.diag, self.v]
+      graph_parents = base_operator.graph_parents + [
+          self.u, self._diag_update, self.v]
       graph_parents = [p for p in graph_parents if p is not None]
 
       super(LinearOperatorUDVHUpdate, self).__init__(
@@ -253,7 +259,12 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
           name=name)
 
       # Create the diagonal operator D.
-      self._set_diag_operators(diag, is_diag_positive)
+      self._set_diag_operators(diag_update, is_diag_update_positive)
+      self._is_diag_update_positive = is_diag_update_positive
+
+      contrib_tensor_util.assert_same_float_dtype(
+          (base_operator, self.u, self.v, self._diag_update))
+      self._check_shapes()
 
       # Pre-compute the so-called "capacitance" matrix
       #   C := D^{-1} + V^H L^{-1} U
@@ -261,16 +272,30 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
       if self._use_cholesky:
         self._chol_capacitance = linalg_ops.cholesky(self._capacitance)
 
-      contrib_tensor_util.assert_same_float_dtype(
-          (base_operator, self.u, self.v, self.diag))
+  def _check_shapes(self):
+    """Static check that shapes are compatible."""
+    # Broadcast shape also checks that u and v are compatible.
+    uv_shape = array_ops.broadcast_static_shape(
+        self.u.get_shape(), self.v.get_shape())
 
-  def _set_diag_operators(self, diag, is_diag_positive):
-    """Set attributes self._diag and self._diag_operator."""
-    if diag is not None:
+    batch_shape = array_ops.broadcast_static_shape(
+        self.base_operator.batch_shape, uv_shape[:-2])
+
+    self.base_operator.domain_dimension.assert_is_compatible_with(
+        uv_shape[-2])
+
+    if self._diag_update is not None:
+      uv_shape[-1].assert_is_compatible_with(self._diag_update.get_shape()[-1])
+      array_ops.broadcast_static_shape(
+          batch_shape, self._diag_update.get_shape()[:-1])
+
+  def _set_diag_operators(self, diag_update, is_diag_update_positive):
+    """Set attributes self._diag_update and self._diag_operator."""
+    if diag_update is not None:
       self._diag_operator = linear_operator_diag.LinearOperatorDiag(
-          self._diag, is_positive_definite=is_diag_positive)
+          self._diag_update, is_positive_definite=is_diag_update_positive)
       self._diag_inv_operator = linear_operator_diag.LinearOperatorDiag(
-          1. / self._diag, is_positive_definite=is_diag_positive)
+          1. / self._diag_update, is_positive_definite=is_diag_update_positive)
     else:
       if self.u.get_shape()[-1].value is not None:
         r = self.u.get_shape()[-1].value
@@ -291,9 +316,14 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
     return self._v
 
   @property
-  def diag(self):
+  def is_diag_update_positive(self):
+    """If this operator is `A = L + U D V^H`, this hints `D > 0` elementwise."""
+    return self._is_diag_update_positive
+
+  @property
+  def diag_update(self):
     """If this operator is `A = L + U D V^H`, this is the diagonal of `D`."""
-    return self._diag
+    return self._diag_update
 
   @property
   def diag_operator(self):
@@ -306,27 +336,34 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
     return self._base_operator
 
   def _shape(self):
-    return self.base_operator.shape
+    batch_shape = array_ops.broadcast_static_shape(
+        self.base_operator.batch_shape,
+        self.u.get_shape()[:-2])
+    return batch_shape.concatenate(self.base_operator.shape[-2:])
 
   def _shape_tensor(self):
-    return self.base_operator.shape_tensor()
+    batch_shape = array_ops.broadcast_dynamic_shape(
+        self.base_operator.batch_shape_tensor(),
+        array_ops.shape(self.u)[:-2])
+    return array_ops.concat(
+        [batch_shape, self.base_operator.shape_tensor()[-2:]], axis=0)
 
-  def _apply(self, x, adjoint=False):
+  def _matmul(self, x, adjoint=False, adjoint_arg=False):
     u = self.u
     v = self.v
     l = self.base_operator
     d = self.diag_operator
 
-    leading_term = l.apply(x, adjoint=adjoint)
+    leading_term = l.matmul(x, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
     if adjoint:
-      uh_x = math_ops.matmul(u, x, adjoint_a=True)
-      d_uh_x = d.apply(uh_x, adjoint=adjoint)
+      uh_x = math_ops.matmul(u, x, adjoint_a=True, adjoint_b=adjoint_arg)
+      d_uh_x = d.matmul(uh_x, adjoint=adjoint)
       v_d_uh_x = math_ops.matmul(v, d_uh_x)
       return leading_term + v_d_uh_x
     else:
-      vh_x = math_ops.matmul(v, x, adjoint_a=True)
-      d_vh_x = d.apply(vh_x, adjoint=adjoint)
+      vh_x = math_ops.matmul(v, x, adjoint_a=True, adjoint_b=adjoint_arg)
+      d_vh_x = d.matmul(vh_x, adjoint=adjoint)
       u_d_vh_x = math_ops.matmul(u, d_vh_x)
       return leading_term + u_d_vh_x
 
@@ -361,7 +398,7 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
 
     return log_abs_det_c + log_abs_det_d + log_abs_det_l
 
-  def _solve(self, rhs, adjoint=False):
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     if self.base_operator.is_non_singular is False:
       raise ValueError(
           "Solve not implemented unless this is a perturbation of a "
@@ -384,7 +421,7 @@ class LinearOperatorUDVHUpdate(linear_operator.LinearOperator):
       u = self.u
 
     # L^{-1} rhs
-    linv_rhs = l.solve(rhs, adjoint=adjoint)
+    linv_rhs = l.solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
     # V^H L^{-1} rhs
     vh_linv_rhs = math_ops.matmul(v, linv_rhs, adjoint_a=True)
     # C^{-1} V^H L^{-1} rhs

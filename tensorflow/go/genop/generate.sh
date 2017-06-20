@@ -20,11 +20,17 @@ go get github.com/golang/protobuf/proto
 go get github.com/golang/protobuf/protoc-gen-go
 
 cd $(dirname $0)
-TF_DIR=${GOPATH}/src/github.com/tensorflow/tensorflow
-PROTOC="${TF_DIR}/bazel-out/host/bin/external/protobuf/protoc"
+for g in $(echo "${GOPATH//:/ }"); do
+    TF_DIR="${g}/src/github.com/tensorflow/tensorflow"
+    PROTOC="${TF_DIR}/bazel-out/host/bin/external/protobuf/protoc"
+    if [ -x "${PROTOC}" ]; then
+        break
+    fi
+done
 
 if [ ! -x "${PROTOC}" ]
 then
+  set +e
   PATH_PROTOC=$(which protoc)
   if [ ! -x "${PATH_PROTOC}" ]
   then
@@ -34,6 +40,7 @@ then
     exit 1
   fi
   PROTOC=$PATH_PROTOC
+  set -e
 fi
 
 # Ensure that protoc-gen-go is available in $PATH

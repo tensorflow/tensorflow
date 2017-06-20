@@ -9,6 +9,8 @@ package(
     default_visibility = ["//tensorflow:__subpackages__"],
 )
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 py_library(
     name = "public_api",
     srcs = ["public_api.py"],
@@ -17,6 +19,7 @@ py_library(
 
 py_test(
     name = "public_api_test",
+    size = "small",
     srcs = ["public_api_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -33,6 +36,7 @@ py_library(
 
 py_test(
     name = "traverse_test",
+    size = "small",
     srcs = ["traverse_test.py"],
     srcs_version = "PY2AND3",
     deps = [

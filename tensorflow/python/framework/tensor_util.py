@@ -355,6 +355,10 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
       nparray = values.astype(dtype.as_numpy_dtype)
     else:
       nparray = values
+  elif callable(getattr(values, "__array__", None)):
+    # If a class has the __array__ method, then it is possible to convert
+    # to numpy array.
+    nparray = np.asarray(values, dtype=dtype)
   else:
     if values is None:
       raise ValueError("None values not supported.")
@@ -364,7 +368,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
       np_dt = dtype.as_numpy_dtype
     else:
       np_dt = None
-    if np.prod(shape) == 0:
+    # If shape is None, numpy.prod returns None when dtype is not set, but raises
+    # exception when dtype is set to np.int64
+    if shape is not None and np.prod(shape, dtype=np.int64) == 0:
       nparray = np.empty(shape, dtype=np_dt)
     else:
       _AssertCompatible(values, dtype)
@@ -410,7 +416,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
     shape_size = nparray.size
   else:
     shape = [int(dim) for dim in shape]
-    shape_size = np.prod(shape)
+    shape_size = np.prod(shape, dtype=np.int64)
     is_same_size = shape_size == nparray.size
 
     if verify_shape:
@@ -441,7 +447,22 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   # we flatten it conservatively.
   if numpy_dtype == dtypes.string and not isinstance(values, np.ndarray):
     proto_values = _FlattenToStrings(values)
-    tensor_proto.string_val.extend([compat.as_bytes(x) for x in proto_values])
+
+    # At this point, values may be a list of objects that we could not
+    # identify a common type for (hence it was inferred as
+    # np.object/dtypes.string).  If we are unable to convert it to a
+    # string, we raise a more helpful error message.
+    #
+    # Ideally, we'd be able to convert the elements of the list to a
+    # common type, but this type inference requires some thinking and
+    # so we defer it for now.
+    try:
+      str_values = [compat.as_bytes(x) for x in proto_values]
+    except TypeError:
+      raise TypeError("Failed to convert object of type %s to Tensor. "
+                      "Contents: %s. Consider casting elements to a "
+                      "supported type." % (type(values), values))
+    tensor_proto.string_val.extend(str_values)
     return tensor_proto
 
   # TensorFlow expects C order (a.k.a., eigen row major).
@@ -472,7 +493,7 @@ def MakeNdarray(tensor):
 
   """
   shape = [d.size for d in tensor.tensor_shape.dim]
-  num_elements = np.prod(shape)
+  num_elements = np.prod(shape, dtype=np.int64)
   tensor_dtype = dtypes.as_dtype(tensor.dtype)
   dtype = tensor_dtype.as_numpy_dtype
 
@@ -652,6 +673,13 @@ def _ConstantValue(tensor):
         return None
       values.append(value)
     return np.array(values)
+  elif tensor.op.type == "Fill":
+    fill_shape = tensor.shape
+    fill_value = constant_value(tensor.op.inputs[1])
+    if fill_shape.is_fully_defined() and fill_value is not None:
+      return np.full(fill_shape.as_list(), fill_value, dtype=fill_value.dtype)
+    else:
+      return None
   else:
     return None
 
@@ -749,3 +777,18 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
       ret = ret.merge_with(tensor_shape.TensorShape(
           [d if d != -1 else None for d in value]))
     return ret
+
+
+def is_tensor(x):  # pylint: disable=invalid-name
+  """Check whether `x` is of tensor type.
+
+  Check whether an object is a tensor. Equivalent to
+  `isinstance(x, [tf.Tensor, tf.SparseTensor, tf.Variable])`.
+
+  Args:
+    x: An python object to check.
+
+  Returns:
+    `True` if `x` is a tensor, `False` if not.
+  """
+  return isinstance(x, ops._TensorLike) or ops.is_dense_tensor_like(x)  # pylint: disable=protected-access

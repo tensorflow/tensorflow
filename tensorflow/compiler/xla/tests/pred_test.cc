@@ -18,9 +18,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -94,11 +97,51 @@ TEST_F(PredTest, ConstantR2Pred) {
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }
 
+TEST_F(PredTest, AnyR1True) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<bool>({true, false});
+  TF_ASSERT_OK(Any(a, &builder).status());
+  ComputeAndCompareR0<bool>(&builder, true, {});
+}
+
+TEST_F(PredTest, AnyR1False) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<bool>({false, false});
+  TF_ASSERT_OK(Any(a, &builder).status());
+  ComputeAndCompareR0<bool>(&builder, false, {});
+}
+
+TEST_F(PredTest, AnyR1VacuouslyFalse) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<bool>({});
+  TF_ASSERT_OK(Any(a, &builder).status());
+  ComputeAndCompareR0<bool>(&builder, false, {});
+}
+
+TEST_F(PredTest, AnyR2True) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR2<bool>({
+      {false, false, false}, {false, false, false}, {false, false, true},
+  });
+  TF_ASSERT_OK(Any(a, &builder).status());
+  ComputeAndCompareR0<bool>(&builder, true, {});
+}
+
+TEST_F(PredTest, AnyR2False) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR2<bool>({
+      {false, false, false}, {false, false, false}, {false, false, false},
+  });
+  TF_ASSERT_OK(Any(a, &builder).status());
+  ComputeAndCompareR0<bool>(&builder, false, {});
+}
+
 }  // namespace
 }  // namespace xla
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

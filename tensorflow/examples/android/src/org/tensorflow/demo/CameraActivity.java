@@ -151,14 +151,17 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
   }
 
   protected void setFragment() {
-    final Fragment fragment = CameraConnectionFragment.newInstance(
-        new CameraConnectionFragment.ConnectionCallback(){
-          @Override
-          public void onPreviewSizeChosen(final Size size, final int rotation) {
-            CameraActivity.this.onPreviewSizeChosen(size, rotation);
-          }
-        },
-        this, getLayoutId(), getDesiredPreviewFrameSize());
+    final Fragment fragment =
+        CameraConnectionFragment.newInstance(
+            new CameraConnectionFragment.ConnectionCallback() {
+              @Override
+              public void onPreviewSizeChosen(final Size size, final int rotation) {
+                CameraActivity.this.onPreviewSizeChosen(size, rotation);
+              }
+            },
+            this,
+            getLayoutId(),
+            getDesiredPreviewFrameSize());
 
     getFragmentManager()
         .beginTransaction()
@@ -212,5 +215,5 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   protected abstract void onPreviewSizeChosen(final Size size, final int rotation);
   protected abstract int getLayoutId();
-  protected abstract int getDesiredPreviewFrameSize();
+  protected abstract Size getDesiredPreviewFrameSize();
 }

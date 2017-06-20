@@ -26,7 +26,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/compile_only_service.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -51,9 +53,14 @@ class LocalClientOptions {
   LocalClientOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
 
+  // Sets the thread pool size for parallel execution of an individual operator.
+  LocalClientOptions& set_intra_op_parallelism_threads(int num_threads);
+  int intra_op_parallelism_threads() const;
+
  private:
   perftools::gputools::Platform* platform_ = nullptr;
   int number_of_replicas_ = -1;
+  int intra_op_parallelism_threads_ = -1;
 };
 
 class ClientLibrary {
@@ -76,6 +83,13 @@ class ClientLibrary {
   // access user computations from client.
   static LocalService* GetXlaService(perftools::gputools::Platform* platform);
 
+  // Singleton constructor-or-accessor for compile-only clients. Arguments:
+  //
+  //   platform : The platform the underlying XLA service should target. If
+  //     null then default platform is used.
+  static StatusOr<CompileOnlyClient*> GetOrCreateCompileOnlyClient(
+      perftools::gputools::Platform* platform = nullptr);
+
  private:
   // Returns the singleton instance of ClientLibrary.
   static ClientLibrary& Singleton();
@@ -90,10 +104,21 @@ class ClientLibrary {
     std::unique_ptr<LocalClient> client;
   };
 
+  struct CompileOnlyInstance {
+    // Service that is wrapped by the singleton client object.
+    std::unique_ptr<CompileOnlyService> service;
+    // Singleton client object.
+    std::unique_ptr<CompileOnlyClient> client;
+  };
+
   tensorflow::mutex service_mutex_;  // Guards the singleton creation state.
   std::unordered_map<perftools::gputools::Platform::Id,
                      std::unique_ptr<LocalInstance>>
-      instances_ GUARDED_BY(service_mutex_);
+      local_instances_ GUARDED_BY(service_mutex_);
+
+  std::unordered_map<perftools::gputools::Platform::Id,
+                     std::unique_ptr<CompileOnlyInstance>>
+      compile_only_instances_ GUARDED_BY(service_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ClientLibrary);
 };

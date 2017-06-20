@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import inspect
 import six
 
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_inspect
 
 
 def _assert_named_args(sentinel):
@@ -43,17 +43,18 @@ def _args(fn):
   if hasattr(fn, 'func') and hasattr(fn, 'keywords'):
     # Handle functools.partial and similar objects.
     return tuple([
-        arg for arg in inspect.getargspec(fn.func).args
+        arg for arg in tf_inspect.getargspec(fn.func).args
         if arg not in set(fn.keywords.keys())
     ])
   # Handle function.
-  return tuple(inspect.getargspec(fn).args)
+  return tuple(tf_inspect.getargspec(fn).args)
 
 
 _CANONICAL_LABELS_ARG = 'labels'
 _LABELS_ARGS = set((_CANONICAL_LABELS_ARG, 'label', 'targets', 'target'))
 _CANONICAL_PREDICTIONS_ARG = 'predictions'
-_PREDICTIONS_ARGS = set((_CANONICAL_PREDICTIONS_ARG, 'prediction'))
+_PREDICTIONS_ARGS = set((_CANONICAL_PREDICTIONS_ARG, 'prediction',
+                         'logits', 'logit'))
 _CANONICAL_WEIGHTS_ARG = 'weights'
 _WEIGHTS_ARGS = set((_CANONICAL_WEIGHTS_ARG, 'weight'))
 
@@ -400,7 +401,9 @@ class MetricSpec(object):
         if not isinstance(dict_or_tensor, dict):
           raise ValueError('MetricSpec with ' + name + '_key specified'
                            ' requires ' +
-                           name + 's dict, got %s' % dict_or_tensor)
+                           name + 's dict, got %s.\n' % dict_or_tensor +
+                           'You must not provide a %s_key if you ' % name +
+                           'only have a single Tensor as %ss.' % name)
         if key not in dict_or_tensor:
           raise KeyError(
               'Key \'%s\' missing from %s.' % (key, dict_or_tensor.keys()))
@@ -425,6 +428,6 @@ class MetricSpec(object):
           labels=label,
           predictions=prediction,
           weights=inputs[self.weight_key] if self.weight_key else None)
-    except:  # pylint: disable=bare-except
-      logging.error('Could not create metric ops for %s.' % self)
+    except Exception as ex:
+      logging.error('Could not create metric ops for %s, %s.' % (self, ex))
       raise

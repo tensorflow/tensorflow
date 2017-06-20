@@ -15,7 +15,7 @@
 
 """Utilities for dealing with Tensors.
 
-## Miscellaneous Utility Functions
+See @{$python/contrib.util} guide.
 
 @@constant_value
 @@make_tensor_proto

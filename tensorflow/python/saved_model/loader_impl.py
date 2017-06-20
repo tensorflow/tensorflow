@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import os
 
+from google.protobuf import message
 from google.protobuf import text_format
 
 from tensorflow.core.protobuf import meta_graph_pb2
@@ -54,28 +55,27 @@ def _parse_saved_model(export_dir):
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
 
-  # Ensure that the SavedModel exists at either path.
-  if not file_io.file_exists(path_to_pbtxt) and not file_io.file_exists(
-      path_to_pb):
-    raise IOError("SavedModel file does not exist at: %s" % export_dir)
-
-  saved_model = saved_model_pb2.SavedModel()
-
   # Parse the SavedModel protocol buffer.
-  try:
-    file_content = file_io.FileIO(path_to_pb, "rb").read()
-    saved_model.ParseFromString(file_content)
-    return saved_model
-  except Exception:  # pylint: disable=broad-except
-    # Pass for exceptions in order to try reading the file in text format.
-    pass
-
-  try:
-    file_content = file_io.FileIO(path_to_pbtxt, "rb").read()
-    text_format.Merge(file_content.decode("utf-8"), saved_model)
-  except text_format.ParseError as e:
-    raise IOError("Cannot parse file %s: %s." % (path_to_pbtxt, str(e)))
-  return saved_model
+  saved_model = saved_model_pb2.SavedModel()
+  if file_io.file_exists(path_to_pb):
+    try:
+      file_content = file_io.FileIO(path_to_pb, "rb").read()
+      saved_model.ParseFromString(file_content)
+      return saved_model
+    except message.DecodeError as e:
+      raise IOError("Cannot parse file %s: %s." % (path_to_pb, str(e)))
+  elif file_io.file_exists(path_to_pbtxt):
+    try:
+      file_content = file_io.FileIO(path_to_pbtxt, "rb").read()
+      text_format.Merge(file_content.decode("utf-8"), saved_model)
+      return saved_model
+    except text_format.ParseError as e:
+      raise IOError("Cannot parse file %s: %s." % (path_to_pbtxt, str(e)))
+  else:
+    raise IOError("SavedModel file does not exist at: %s/{%s|%s}" %
+                  (export_dir,
+                   constants.SAVED_MODEL_FILENAME_PBTXT,
+                   constants.SAVED_MODEL_FILENAME_PB))
 
 
 def _get_asset_tensors(export_dir, meta_graph_def_to_load):
@@ -195,46 +195,47 @@ def load(sess, tags, export_dir, **saver_kwargs):
   Raises:
     RuntimeError: MetaGraphDef associated with the tags cannot be found.
   """
-  # Build the SavedModel protocol buffer and find the requested meta graph def.
-  saved_model = _parse_saved_model(export_dir)
-  found_match = False
-  for meta_graph_def in saved_model.meta_graphs:
-    if set(meta_graph_def.meta_info_def.tags) == set(tags):
-      meta_graph_def_to_load = meta_graph_def
-      found_match = True
-      break
+  with sess.graph.as_default():
+    # Build the SavedModel protocol buffer and find requested meta graph def.
+    saved_model = _parse_saved_model(export_dir)
+    found_match = False
+    for meta_graph_def in saved_model.meta_graphs:
+      if set(meta_graph_def.meta_info_def.tags) == set(tags):
+        meta_graph_def_to_load = meta_graph_def
+        found_match = True
+        break
 
-  if not found_match:
-    raise RuntimeError("MetaGraphDef associated with tags " + str(tags).strip(
-        "[]") + " could not be found in SavedModel")
+    if not found_match:
+      raise RuntimeError("MetaGraphDef associated with tags " + str(tags).strip(
+          "[]") + " could not be found in SavedModel")
 
-  # Build a saver by importing the meta graph def to load.
-  saver = tf_saver.import_meta_graph(meta_graph_def_to_load, **saver_kwargs)
+    # Build a saver by importing the meta graph def to load.
+    saver = tf_saver.import_meta_graph(meta_graph_def_to_load, **saver_kwargs)
 
-  if saver:
-    # Build the checkpoint path where the variables are located.
-    variables_path = os.path.join(
-        compat.as_bytes(export_dir),
-        compat.as_bytes(constants.VARIABLES_DIRECTORY),
-        compat.as_bytes(constants.VARIABLES_FILENAME))
+    if saver:
+      # Build the checkpoint path where the variables are located.
+      variables_path = os.path.join(
+          compat.as_bytes(export_dir),
+          compat.as_bytes(constants.VARIABLES_DIRECTORY),
+          compat.as_bytes(constants.VARIABLES_FILENAME))
 
-    # Restore the variables using the built saver in the provided session.
-    saver.restore(sess, variables_path)
-  else:
-    tf_logging.info("The specified SavedModel has no variables; no "
-                    "checkpoints were restored.")
+      # Restore the variables using the built saver in the provided session.
+      saver.restore(sess, variables_path)
+    else:
+      tf_logging.info("The specified SavedModel has no variables; no "
+                      "checkpoints were restored.")
 
-  # Get asset tensors, if any.
-  asset_tensors_dictionary = _get_asset_tensors(export_dir,
-                                                meta_graph_def_to_load)
+    # Get asset tensors, if any.
+    asset_tensors_dictionary = _get_asset_tensors(export_dir,
+                                                  meta_graph_def_to_load)
 
-  main_op_tensor = _get_main_op_tensor(meta_graph_def_to_load)
-  if main_op_tensor is not None:
-    sess.run(fetches=[main_op_tensor], feed_dict=asset_tensors_dictionary)
-  else:
-    legacy_init_op_tensor = _get_legacy_init_op_tensor(meta_graph_def_to_load)
-    if legacy_init_op_tensor is not None:
-      sess.run(fetches=[legacy_init_op_tensor],
-               feed_dict=asset_tensors_dictionary)
+    main_op_tensor = _get_main_op_tensor(meta_graph_def_to_load)
+    if main_op_tensor is not None:
+      sess.run(fetches=[main_op_tensor], feed_dict=asset_tensors_dictionary)
+    else:
+      legacy_init_op_tensor = _get_legacy_init_op_tensor(meta_graph_def_to_load)
+      if legacy_init_op_tensor is not None:
+        sess.run(
+            fetches=[legacy_init_op_tensor], feed_dict=asset_tensors_dictionary)
 
-  return meta_graph_def_to_load
+    return meta_graph_def_to_load

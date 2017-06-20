@@ -1,14 +1,17 @@
 # TensorBoard
 
 TensorBoard is a suite of web applications for inspecting and understanding your
-TensorFlow runs and graphs. TensorBoard currently supports five visualizations:
-scalars, images, audio, histograms, and the graph.
+TensorFlow runs and graphs.
 
 This README gives an overview of key concepts in TensorBoard, as well as how to
 interpret the visualizations TensorBoard provides. For an in-depth example of
 using TensorBoard, see the tutorial: [TensorBoard: Visualizing
-Learning](https://www.tensorflow.org/versions/master/how_tos/summaries_and_tensorboard/index.html).
-For in-depth information on the Graph Visualizer, see this tutorial: [TensorBoard: Graph Visualization](https://www.tensorflow.org/versions/master/how_tos/graph_viz/index.html).
+Learning](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
+For in-depth information on the Graph Visualizer, see this tutorial: [TensorBoard: Graph Visualization](https://www.tensorflow.org/get_started/graph_viz).
+
+You may also want to watch
+[this video tutorial](https://www.youtube.com/watch?v=eBbEDRsCmv4) that walks
+through setting up and using TensorBoard.
 
 # Usage
 
@@ -16,13 +19,12 @@ Before running TensorBoard, make sure you have generated summary data in a log
 directory by creating a summary writer:
 
 ``` python
-# sess.graph_def is the graph definition; that enables the Graph Visualizer.
+# sess.graph contains the graph definition; that enables the Graph Visualizer.
 
 file_writer = tf.summary.FileWriter('/path/to/logs', sess.graph)
 ```
 
-For more details, see [this
-tutorial](http://www.tensorflow.org/how_tos/summaries_and_tensorboard/index.html#serializing-the-data).
+For more details, see [the TensorBoard tutorial](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
 Once you have event files, run TensorBoard and provide the log directory. If
 you're using a precompiled TensorFlow package (e.g. you installed via pip), run:
 
@@ -37,7 +39,8 @@ bazel build tensorflow/tensorboard:tensorboard
 ./bazel-bin/tensorflow/tensorboard/tensorboard --logdir=path/to/logs
 ```
 
-This should print that TensorBoard has started. Next, connect to http://localhost:6006.
+This should print that TensorBoard has started. Next, connect to
+http://localhost:6006.
 
 TensorBoard requires a `logdir` to read logs from. For info on configuring
 TensorBoard, run `tensorboard --help`.
@@ -50,19 +53,25 @@ work, but there may be bugs or performance issues.
 ### Summary Ops: How TensorBoard gets data from TensorFlow
 
 The first step in using TensorBoard is acquiring data from your TensorFlow run.
-For this, you need [summary
-ops](https://www.tensorflow.org/versions/r1.0/api_docs/python/train.html#summary-operations).
+For this, you need [summary ops](https://www.tensorflow.org/api_docs/python/tf/summary).
 Summary ops are ops, like
-[`tf.matmul`](https://www.tensorflow.org/versions/r1.0/api_docs/python/math_ops.html#matmul)
+[`tf.matmul`](https://www.tensorflow.org/versions/r1.2/api_docs/python/tf/matmul)
 or
-[`tf.nn.relu`](https://www.tensorflow.org/versions/r1.0/api_docs/python/nn.html#relu),
+[`tf.nn.relu`](https://www.tensorflow.org/versions/master/api_docs/python/tf/nn/relu),
 which means they take in tensors, produce tensors, and are evaluated from within
 a TensorFlow graph. However, summary ops have a twist: the Tensors they produce
 contain serialized protobufs, which are written to disk and sent to TensorBoard.
 To visualize the summary data in TensorBoard, you should evaluate the summary
 op, retrieve the result, and then write that result to disk using a
 summary.FileWriter. A full explanation, with examples, is in [the
-tutorial](https://www.tensorflow.org/versions/r1.0/how_tos/summaries_and_tensorboard/index.html).
+tutorial](https://www.tensorflow.org/get_started/summaries_and_tensorboard).
+
+The supported summary ops include:
+* tf.summary.scalar
+* tf.summary.image
+* tf.summary.audio
+* tf.summary.text
+* tf.summary.histogram
 
 ### Tags: Giving names to data
 
@@ -91,7 +100,7 @@ produce a consistent history of what happened.
 ### Runs: Comparing different executions of your model
 
 You may want to visually compare multiple executions of your model; for example,
-suppose you've changed the hyperparameters and want to see if its converging
+suppose you've changed the hyperparameters and want to see if it's converging
 faster. TensorBoard enables this through different "runs". When TensorBoard is
 passed a `logdir` at startup, it recursively walks the directory tree rooted at
 `logdir` looking for subdirectories that contain tfevents data. Every time it
@@ -121,9 +130,9 @@ tensorboard --logdir=name1:/path/to/logs/1,name2:/path/to/logs/2
 
 # The Visualizations
 
-### Events Dashboard
+### Scalar Dashboard
 
-TensorBoard's Events Dashboard visualizes scalar statistics that vary over time;
+TensorBoard's Scalar Dashboard visualizes scalar statistics that vary over time;
 for example, you might want to track the model's loss or learning rate. As
 described in *Key Concepts*, you can compare multiple runs, and the data is
 organized by tag. The line charts have the following interactions:
@@ -141,12 +150,20 @@ the run-selector on the left.
 Additionally, you can create new folders to organize tags by writing regular
 expressions in the box in the top-left of the dashboard.
 
+### Histogram Dashboard
+
+The HistogramDashboard displays how the statistical distribution of a Tensor
+has varied over time. It visualizes data recorded via `tf.summary.histogram`.
+Each chart shows temporal "slices" of data, where each slice is a histogram of
+the tensor at a given step. It's organized with the oldest timestep in the back,
+and the most recent timestep in front. By changing the Histogram Mode from
+"offset" to "overlay", the perspective will rotate so that every histogram slice
+is rendered as a line and overlaid with one another.
+
 ### Distribution Dashboard
 
-The Distribution Dashboard is for visualizing how the statistical distribution
-of a Tensor has varied over time. It visualizes data recorded via a
-tf.summary.histogram. Right now, its name is a bit of a misnomer, as it doesn't
-show histograms; instead, it shows some high-level statistics on a distribution.
+The Distribution Dashboard is another way of visualizing histogram data from
+`tf.summary.histogram`. It shows some high-level statistics on a distribution.
 Each line on the chart represents a percentile in the distribution over the
 data: for example, the bottom line shows how the minimum value has changed over
 time, and the line in the middle shows how the median has changed. Reading from
@@ -158,22 +175,20 @@ normal distribution: `[maximum, μ+1.5σ, μ+σ, μ+0.5σ, μ, μ-0.5σ, μ-σ, 
 minimum]` so that the colored regions, read from inside to outside, have widths
 `[σ, 2σ, 3σ]` respectively.
 
-This histogram visualization is a bit weird, and cannot meaningfully represent
-multimodal distributions. We are currently working on a true-histogram
-replacement.
 
 ### Image Dashboard
 
-The Image Dashboard can display pngs that were saved via a tf.summary.image. The
-dashboard is set up so that each row corresponds to a different tag, and each
-column corresponds to a run. Since the image dashboard supports arbitrary pngs,
-you can use this to embed custom visualizations (e.g. matplotlib scatterplots)
-into TensorBoard. This dashboard always shows you the latest image for each tag.
+The Image Dashboard can display pngs that were saved via a `tf.summary.image`.
+The dashboard is set up so that each row corresponds to a different tag, and
+each column corresponds to a run. Since the image dashboard supports arbitrary
+pngs, you can use this to embed custom visualizations (e.g. matplotlib
+scatterplots) into TensorBoard. This dashboard always shows you the latest image
+for each tag.
 
 ### Audio Dashboard
 
 The Audio Dashboard can embed playable audio widgets for audio saved via a
-tf.summary.audio. The dashboard is set up so that each row corresponds to a
+`tf.summary.audio`. The dashboard is set up so that each row corresponds to a
 different tag, and each column corresponds to a run. This dashboard always
 embeds the latest audio for each tag.
 
@@ -183,8 +198,21 @@ The Graph Explorer can visualize a TensorBoard graph, enabling inspection of the
 TensorFlow model. To get best use of the graph visualizer, you should use name
 scopes to hierarchically group the ops in your graph - otherwise, the graph may
 be difficult to decipher. For more information, including examples, see [the
-graph visualizer
-tutorial](https://www.tensorflow.org/versions/r1.0/how_tos/graph_viz/index.html#tensorboard-graph-visualization).
+graph visualizer tutorial](https://www.tensorflow.org/get_started/graph_viz).
+
+### Embedding Projector
+
+The Embedding Projector allows you to visualize high-dimensional data; for
+example, you may view your input data after it has been embedded in a high-
+dimensional space by your model. The embedding projector reads data from your
+model checkpoint file, and may be configured with additional metadata, like
+a vocabulary file or sprite images. For more details, see [the embedding
+projector tutorial](https://www.tensorflow.org/get_started/embedding_viz).
+
+### Text Dashboard
+
+The Text Dashboard displays text snippets saved via `tf.summary.text`. Markdown
+features including hyperlinks, lists, and tables are all supported.
 
 # Frequently Asked Questions
 
@@ -275,19 +303,14 @@ events. This behavior may be disabled with the flag
 
 ### How can I export data from TensorBoard?
 
-If you'd like to export data to visualize elsewhere (e.g. iPython Notebook),
-that's possible too. You can directly depend on the underlying classes that
-TensorBoard uses for loading data: `python/summary/event_accumulator.py` (for
-loading data from a single run) or `python/summary/event_multiplexer.py` (for
-loading data from multiple runs, and keeping it organized). These classes load
-groups of event files, discard data that was "orphaned" by TensorFlow crashes,
-and organize the data by tag.
+The Scalar Dashboard supports exporting data; you can click the "enable
+download links" option in the left-hand bar. Then, each plot will provide
+download links for the data it contains.
 
-As another option, there is a script
-(`tensorboard/scripts/serialize_tensorboard.py`) which will load a logdir just
-like TensorBoard does, but write all of the data out to disk as json instead of
-starting a server. This script is setup to make "fake TensorBoard backends" for
-testing, so it is a bit rough around the edges.
+If you need access to the full dataset, you can read the event files that
+TensorBoard consumes by using the [`summary_iterator`](https://github.com/tensorflow/tensorflow/blob/e7f333b5f8b3c53b21d149d8d14c0cebbde431aa/tensorflow/python/summary/summary_iterator.py#L313)
+method.
+
 
 ### Can I overlap multiple plots?
 
@@ -307,7 +330,9 @@ TensorBoard uses [reservoir
 sampling](https://en.wikipedia.org/wiki/Reservoir_sampling) to downsample your
 data so that it can be loaded into RAM. You can modify the number of elements it
 will keep per tag in
-[tensorboard/backend/server.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/backend/server.py).
+[tensorboard/backend/application.py](https://www.github.com/tensorflow/tensorflow/blob/r1.1/tensorflow/tensorboard/backend/application.py).
+See this [StackOverflow question](http://stackoverflow.com/questions/43702546/tensorboard-doesnt-show-all-data-points/)
+for some more information.
 
 ### I get a network security popup every time I run TensorBoard on a mac!
 

@@ -33,14 +33,9 @@ void AppendCpuCompilerFlags(std::vector<tensorflow::Flag>* flag_list);
 
 // The values of flags associated with XLA's cpu_compiler module.
 typedef struct {
-  // The LLVM optimization level for the CPU XLA backend.
-  // Valid range is from 0 to 3 where 0 means no optimizations.
-  int32 xla_cpu_llvm_opt_level;
-  string xla_cpu_llvm_cl_opts;  // Comma-separated list of command line options
-                                // to pass to LLVM.
   bool xla_cpu_embed_ir;  // Embed the LLVM IR module string in the resultant
                           // CpuExecutable
-  bool xla_cpu_parallel;  // Use the multi-threaded CPU backend.
+  string xla_cpu_dump_debug_json_to;  // Dump debug JSON to this directory.
 } CpuCompilerFlags;
 
 // Return a pointer to the CpuCompilerFlags struct;

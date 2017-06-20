@@ -198,7 +198,7 @@ class BatchNormBenchmark(test.Benchmark):
     if FLAGS.use_gpu:
       t1 = self._run_graph("gpu", shape, axes, 10, "op", True, True, 50)
       t2 = self._run_graph("gpu", shape, axes, 10, "py", True, True, 50)
-      t2 = self._run_graph("gpu", shape, axes, 10, "slow", True, True, 50)
+      t3 = self._run_graph("gpu", shape, axes, 10, "slow", True, True, 50)
       print_difference("op vs py", t1, t2)
       print_difference("py vs slow", t2, t3)
     print("Forward convolution (higher layers).")

@@ -34,4 +34,16 @@ REGISTER_KERNEL_BUILDER(Name("Minimum")
                         BinaryOp<CPUDevice, functor::minimum<int32>>);
 #endif
 
+#ifdef TENSORFLOW_USE_SYCL
+REGISTER(BinaryOp, SYCL, "Minimum", functor::minimum, float);
+
+REGISTER_KERNEL_BUILDER(Name("Minimum")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("x")
+                            .HostMemory("y")
+                            .HostMemory("z")
+                            .TypeConstraint<int32>("T"),
+                        BinaryOp<CPUDevice, functor::minimum<int32>>);
+#endif // TENSORFLOW_USE_SYCL
+
 }  // namespace tensorflow

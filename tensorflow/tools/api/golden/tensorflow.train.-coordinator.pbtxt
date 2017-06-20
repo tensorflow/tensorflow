@@ -1,0 +1,45 @@
+path: "tensorflow.train.Coordinator"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.coordinator.Coordinator\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "joined"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'clean_stop_exception_types\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "clear_stop"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "join"
+    argspec: "args=[\'self\', \'threads\', \'stop_grace_period_secs\', \'ignore_live_threads\'], varargs=None, keywords=None, defaults=[\'None\', \'120\', \'False\'], "
+  }
+  member_method {
+    name: "raise_requested_exception"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "register_thread"
+    argspec: "args=[\'self\', \'thread\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "request_stop"
+    argspec: "args=[\'self\', \'ex\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "should_stop"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "stop_on_exception"
+    argspec: "args=[], varargs=args, keywords=kwds, defaults=None"
+  }
+  member_method {
+    name: "wait_for_stop"
+    argspec: "args=[\'self\', \'timeout\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

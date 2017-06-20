@@ -16,9 +16,9 @@ limitations under the License.
 // XLA-specific Fill Op.
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/register_types.h"
 
@@ -50,6 +50,7 @@ class FillOp : public XlaOpKernel {
     // Convert the dims literal into a vector that we can pass to
     // ComputationBuilder.
     std::vector<int64> broadcast;
+    broadcast.reserve(dims_literal.shape().dimensions(0));
     for (int i = 0; i < dims_literal.shape().dimensions(0); ++i) {
       broadcast.push_back(xla::LiteralUtil::Get<int>(dims_literal, {i}));
     }
@@ -68,7 +69,7 @@ class FillOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("Fill", FillOp);
+REGISTER_XLA_OP(Name("Fill"), FillOp);
 
 }  // namespace
 }  // namespace tensorflow

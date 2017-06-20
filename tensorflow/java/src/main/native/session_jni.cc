@@ -57,6 +57,7 @@ void resolveHandles(JNIEnv* env, const char* type, jlongArray src_array,
 
 void resolveOutputs(JNIEnv* env, const char* type, jlongArray src_op,
                     jintArray src_index, TF_Output* dst, jint n) {
+  if (env->ExceptionCheck()) return;
   jint len = env->GetArrayLength(src_op);
   if (len != n) {
     throwException(env, kIllegalArgumentException,
@@ -96,10 +97,18 @@ typedef std::unique_ptr<TF_Buffer, decltype(&TF_MaybeDeleteBuffer)>
 unique_tf_buffer MakeUniqueBuffer(TF_Buffer* buf) {
   return unique_tf_buffer(buf, TF_MaybeDeleteBuffer);
 }
+
 }  // namespace
 
 JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate(
     JNIEnv* env, jclass clazz, jlong graph_handle) {
+  return Java_org_tensorflow_Session_allocate2(env, clazz, graph_handle,
+                                               nullptr, nullptr);
+}
+
+JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate2(
+    JNIEnv* env, jclass clazz, jlong graph_handle, jstring target,
+    jbyteArray config) {
   if (graph_handle == 0) {
     throwException(env, kNullPointerException, "Graph has been close()d");
     return 0;
@@ -107,7 +116,27 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate(
   TF_Graph* graph = reinterpret_cast<TF_Graph*>(graph_handle);
   TF_Status* status = TF_NewStatus();
   TF_SessionOptions* opts = TF_NewSessionOptions();
+  const char* ctarget = nullptr;
+  jbyte* cconfig = nullptr;
+  if (target != nullptr) {
+    ctarget = env->GetStringUTFChars(target, nullptr);
+  }
+  if (config != nullptr) {
+    cconfig = env->GetByteArrayElements(config, nullptr);
+    TF_SetConfig(opts, cconfig,
+                 static_cast<size_t>(env->GetArrayLength(config)), status);
+    if (!throwExceptionIfNotOK(env, status)) {
+      env->ReleaseByteArrayElements(config, cconfig, JNI_ABORT);
+      return 0;
+    }
+  }
   TF_Session* session = TF_NewSession(graph, opts, status);
+  if (config != nullptr) {
+    env->ReleaseByteArrayElements(config, cconfig, JNI_ABORT);
+  }
+  if (target != nullptr) {
+    env->ReleaseStringUTFChars(target, ctarget);
+  }
   TF_DeleteSessionOptions(opts);
   bool ok = throwExceptionIfNotOK(env, status);
   TF_DeleteStatus(status);
@@ -182,6 +211,7 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
   }
 
   if (!throwExceptionIfNotOK(env, status)) {
+    TF_DeleteStatus(status);
     return nullptr;
   }
   jlong* t = env->GetLongArrayElements(output_tensor_handles, nullptr);
@@ -197,5 +227,6 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Session_run(
     memcpy(elems, run_metadata->data, run_metadata->length);
     env->ReleaseByteArrayElements(ret, elems, JNI_COMMIT);
   }
+  TF_DeleteStatus(status);
   return ret;
 }

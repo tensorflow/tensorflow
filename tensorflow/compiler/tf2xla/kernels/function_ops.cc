@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -47,8 +47,8 @@ class PassOn : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP("_ListToArray", PassOn);
-REGISTER_XLA_OP("_ArrayToList", PassOn);
+REGISTER_XLA_OP(Name("_ListToArray"), PassOn);
+REGISTER_XLA_OP(Name("_ArrayToList"), PassOn);
 
 // TODO(phawkins): this is an almost exact copy of the SymbolicGradientOp
 // implementation from regular Tensorflow. Once XLA has been open sourced
@@ -68,7 +68,8 @@ class SymbolicGradientOp : public AsyncOpKernel {
                       done);
 
     OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(kGradientOp, def().attr(), &handle_), done);
+        ctx, lib->Instantiate(kGradientOp, AttrSlice(&def().attr()), &handle_),
+        done);
 
     FunctionLibraryRuntime::Options opts;
     opts.step_id = ctx->step_id();
@@ -104,7 +105,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
 };
 
-REGISTER_XLA_OP(kGradientOp, SymbolicGradientOp);
+REGISTER_XLA_OP(Name(kGradientOp), SymbolicGradientOp);
 
 }  // namespace
 }  // namespace tensorflow

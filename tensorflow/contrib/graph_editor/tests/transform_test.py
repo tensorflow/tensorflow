@@ -20,6 +20,7 @@ from __future__ import print_function
 import collections
 import numpy as np
 from tensorflow.contrib import graph_editor as ge
+from tensorflow.contrib.graph_editor.tests import match
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -100,12 +101,12 @@ class TransformTest(test.TestCase):
 
     graph = ops.Graph()
     transformer(self.graph, graph, "", "")
-    matcher0 = ge.OpMatcher("AddNoise").input_ops(
-        "Noise", ge.OpMatcher("Add").input_ops("Const", "Input"))
-    matcher1 = ge.OpMatcher("AddNoise_1").input_ops(
-        "Noise_1", ge.OpMatcher("Add_1").input_ops("Const_1", matcher0))
-    matcher2 = ge.OpMatcher("AddNoise_2").input_ops(
-        "Noise_2", ge.OpMatcher("Add_2").input_ops("Const_2", matcher1))
+    matcher0 = match.OpMatcher("AddNoise").input_ops(
+        "Noise", match.OpMatcher("Add").input_ops("Const", "Input"))
+    matcher1 = match.OpMatcher("AddNoise_1").input_ops(
+        "Noise_1", match.OpMatcher("Add_1").input_ops("Const_1", matcher0))
+    matcher2 = match.OpMatcher("AddNoise_2").input_ops(
+        "Noise_2", match.OpMatcher("Add_2").input_ops("Const_2", matcher1))
     top = ge.select_ops("^AddNoise_2$", graph=graph)[0]
     self.assertTrue(matcher2(top))
 

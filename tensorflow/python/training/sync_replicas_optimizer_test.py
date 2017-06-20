@@ -267,6 +267,7 @@ class SyncReplicasOptimizerTest(test.TestCase):
     # Starts worker 1.
     thread_1.start()
     thread_1.join()
+    thread_0.join()
 
     # The global step should now be 2 and the gradients should have been
     # applied again.
@@ -275,6 +276,31 @@ class SyncReplicasOptimizerTest(test.TestCase):
                         sessions[1].run(var_0_g_1))
     self.assertAllClose(-1.2 - (0.9 + 1.1) / 2 * 2.0,
                         sessions[1].run(var_1_g_1))
+
+
+class SyncReplicasOptimizerHookTest(test.TestCase):
+
+  def testErrorIfUsedBeforeMinimizeCalled(self):
+    opt = training.SyncReplicasOptimizer(
+        opt=gradient_descent.GradientDescentOptimizer(1.0),
+        replicas_to_aggregate=1,
+        total_num_replicas=1)
+    hook = opt.make_session_run_hook(True)
+    with self.assertRaisesRegexp(ValueError,
+                                 "apply_gradient should be called"):
+      hook.begin()
+
+  def testCanCreatedBeforeMinimizeCalled(self):
+    """This behavior is required to be integrated with Estimators."""
+    opt = training.SyncReplicasOptimizer(
+        opt=gradient_descent.GradientDescentOptimizer(1.0),
+        replicas_to_aggregate=1,
+        total_num_replicas=1)
+    hook = opt.make_session_run_hook(True)
+    v = variables.Variable([0.])
+    global_step = variables.Variable(0, name="global_step", trainable=False)
+    opt.minimize(v, global_step=global_step)
+    hook.begin()
 
 
 if __name__ == "__main__":

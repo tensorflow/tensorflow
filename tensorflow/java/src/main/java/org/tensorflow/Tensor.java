@@ -72,7 +72,8 @@ public final class Tensor implements AutoCloseable {
    * }</pre>
    *
    * @throws IllegalArgumentException if {@code obj} is not compatible with the TensorFlow type
-   *     system.
+   *     system, or if obj does not disambiguate between multiple DataTypes. In that case, consider
+   *     using {@link #create(DataType, long[], ByteBuffer)} instead.
    */
   public static Tensor create(Object obj) {
     Tensor t = new Tensor();
@@ -171,8 +172,7 @@ public final class Tensor implements AutoCloseable {
    *
    * <p>Creates a Tensor with the provided shape of any type where the tensor's data has been
    * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
-   * API</a>.
+   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C API</a>.
    *
    * @param dataType the tensor datatype.
    * @param shape the tensor shape.
@@ -489,13 +489,15 @@ public final class Tensor implements AutoCloseable {
     // assumes a fully-known shape
     int n = 1;
     for (int i = 0; i < shape.length; i++) {
-      n *= shape[i];
+      n *= (int) shape[i];
     }
     return n;
   }
 
   private static int elemByteSize(DataType dataType) {
     switch (dataType) {
+      case UINT8:
+        return 1;
       case FLOAT:
       case INT32:
         return 4;
@@ -506,9 +508,8 @@ public final class Tensor implements AutoCloseable {
         return 1;
       case STRING:
         throw new IllegalArgumentException("STRING tensors do not have a fixed element size");
-      default:
-        throw new IllegalArgumentException("DataType " + dataType + " is not supported yet");
     }
+    throw new IllegalArgumentException("DataType " + dataType + " is not supported yet");
   }
 
   private static DataType dataTypeOf(Object o) {

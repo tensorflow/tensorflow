@@ -58,34 +58,13 @@ StatusOr<std::unique_ptr<Literal>> Client::Transfer(
         "server provided response without a literal in "
         "TransferToClient request");
   }
-
-  return WrapUnique(response.release_literal());
-}
-
-Status Client::TransferInProcess(const GlobalData& data, void* destination) {
-  TransferToClientInProcessRequest request;
-  *request.mutable_data() = data.handle();
-  request.set_buffer(reinterpret_cast<uint64>(destination));
-  TransferToClientInProcessResponse response;
-
-  VLOG(1) << "making transfer in-process request";
-  VLOG(3) << "TransferToClientInProcessRequest: {" << request.DebugString()
-          << "}";
-  Status s = stub_->TransferToClientInProcess(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-  VLOG(3) << "TransferToClientInProcessResponse: {" << response.DebugString()
-          << "}";
-  return Status::OK();
+  return MakeUnique<Literal>(response.literal());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
     const Literal& literal, const DeviceHandle* device_handle) {
   TransferToServerRequest request;
-  *request.mutable_literal() = literal;
+  *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
     *request.mutable_device_handle() = *device_handle;
   }
@@ -113,7 +92,7 @@ StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
 Status Client::TransferToInfeed(const Literal& literal, int64 replica_id,
                                 const DeviceHandle* device_handle) {
   TransferToInfeedRequest request;
-  *request.mutable_literal() = literal;
+  *request.mutable_literal() = literal.ToProto();
   if (device_handle) {
     *request.mutable_device_handle() = *device_handle;
   }
@@ -130,6 +109,39 @@ Status Client::TransferToInfeed(const Literal& literal, int64 replica_id,
   }
   VLOG(3) << "TransferToInfeedResponse: {" << response.DebugString() << "}";
   return Status::OK();
+}
+
+StatusOr<std::unique_ptr<Literal>> Client::TransferFromOutfeed(
+    const Shape* shape_with_layout, int64 replica_id,
+    const DeviceHandle* device_handle) {
+  TransferFromOutfeedRequest request;
+  if (device_handle) {
+    *request.mutable_device_handle() = *device_handle;
+  }
+  request.set_replica_id(replica_id);
+  if (shape_with_layout != nullptr) {
+    *request.mutable_shape_with_layout() = *shape_with_layout;
+  }
+  TransferFromOutfeedResponse response;
+
+  VLOG(1) << "making transfer from outfeed request";
+  VLOG(3) << "TransferFromOutfeedRequest: {" << request.DebugString() << "}";
+  Status s = stub_->TransferFromOutfeed(&request, &response);
+  VLOG(1) << "done with request";
+
+  if (!s.ok()) {
+    return s;
+  }
+  VLOG(3) << "TransferFromOutfeedResponse: {" << response.DebugString() << "}";
+
+  if (!response.has_literal()) {
+    return FailedPrecondition(
+        "server provided response without a literal in "
+        "TransferToClient request");
+  }
+
+  Literal literal(response.literal());
+  return MakeUnique<Literal>(literal);
 }
 
 Status Client::ResetDevice() {
@@ -162,34 +174,6 @@ StatusOr<std::unique_ptr<Literal>> Client::ExecuteAndTransfer(
     shape_with_output_layout = &execution_options->shape_with_output_layout();
   }
   return Transfer(*data, shape_with_output_layout);
-}
-
-StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServerInProcess(
-    const Shape& shape, const void* buffer) {
-  TransferToServerInProcessRequest request;
-  request.set_buffer(reinterpret_cast<uint64>(buffer));
-  *request.mutable_shape() = shape;
-  TransferToServerInProcessResponse response;
-
-  VLOG(1) << "making transfer to server in-process request";
-  VLOG(3) << "TransferToServerInProcessRequest: {" << request.DebugString()
-          << "}";
-  Status s = stub_->TransferToServerInProcess(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-  VLOG(3) << "TransferToServerInProcessResponse: {" << response.DebugString()
-          << "}";
-
-  if (!response.has_data()) {
-    return FailedPrecondition(
-        "server provided response without a data handle in "
-        "TransferToServerInProcess request");
-  }
-
-  return MakeUnique<GlobalData>(stub_, response.data());
 }
 
 StatusOr<Computation> Client::LoadSnapshot(const SessionModule& module) {
@@ -269,7 +253,7 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
   }
 
   std::vector<std::unique_ptr<GlobalData>> outputs;
-  for (int64 i = 0; i < computations.size(); ++i) {
+  for (size_t i = 0; i < computations.size(); ++i) {
     outputs.push_back(
         MakeUnique<GlobalData>(stub_, response.responses(i).output()));
     if (computations[i].execution_profile != nullptr) {

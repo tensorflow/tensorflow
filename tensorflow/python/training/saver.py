@@ -58,8 +58,8 @@ from tensorflow.python.util import compat
 _VARIABLE_OPS = set(["Variable",
                      "VariableV2",
                      "AutoReloadVariable",
-                     "ReadVariableOp",
-                     "ResourceGather"])
+                     "VarHandleOp",
+                     "ReadVariableOp"])
 
 
 def _set_cpu0(device_string):
@@ -511,9 +511,7 @@ class BaseSaverBuilder(object):
           raise ValueError("At least two variables have the same name: %s" %
                            var.name)
         names_to_saveables[var.name] = var
-      elif ((isinstance(var, variables.Variable) or
-             isinstance(var, resource_variable_ops.ResourceVariable)) and
-            var._save_slice_info):
+      elif isinstance(var, variables.Variable) and var._save_slice_info:
         name = var._save_slice_info.full_name
         if name in names_to_saveables:
           if not isinstance(names_to_saveables[name], list):
@@ -573,8 +571,7 @@ class BaseSaverBuilder(object):
         slice_name = None
         # pylint: disable=protected-access
         for variable in op:
-          if (not isinstance(variable, variables.Variable) and
-              not isinstance(variable, resource_variable_ops.ResourceVariable)):
+          if not isinstance(variable, variables.Variable):
             raise ValueError("Slices must all be Variables: %s" % variable)
           if not variable._save_slice_info:
             raise ValueError("Slices must all be slices: %s" % variable)
@@ -659,7 +656,7 @@ class BaseSaverBuilder(object):
       restore_sequentially: A Bool, which if true, causes restore of different
         variables to happen sequentially within each device.
       filename: If known at graph construction time, filename used for variable
-        loading/saving.
+        loading/saving. If None, then the default name "model" will be used.
 
     Returns:
       A SaverDef proto.
@@ -677,7 +674,7 @@ class BaseSaverBuilder(object):
     with ops.name_scope(name, "save",
                         [saveable.op for saveable in saveables]) as name:
       # Add the Constant string tensor for the filename.
-      filename_tensor = constant_op.constant(filename)
+      filename_tensor = constant_op.constant(filename or "model")
 
       # Add the save ops.
       if sharded:
@@ -710,6 +707,33 @@ class BaseSaverBuilder(object):
         sharded=sharded,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
         version=self._write_version)
+
+
+def _get_saver_or_default():
+  """Returns the saver from SAVERS collection, or creates a default one.
+
+  This method is used by other members of the training module, such as
+  `Scaffold`, or `CheckpointSaverHook`.
+
+  Returns:
+    `Saver`.
+
+  Raises:
+    RuntimeError: If the SAVERS collection already has more than one items.
+  """
+  collection_key = ops.GraphKeys.SAVERS
+  savers = ops.get_collection(collection_key)
+  if savers:
+    if len(savers) > 1:
+      raise RuntimeError(
+          "More than one item in collection {}. "
+          "Please indicate which one to use by passing it to the constructor.".
+          format(collection_key))
+    return savers[0]
+  saver = Saver(sharded=True, allow_empty=True)
+  if saver is not None:
+    ops.add_to_collection(collection_key, saver)
+  return saver
 
 
 def _GetCheckpointFilename(save_dir, latest_filename):
@@ -792,14 +816,66 @@ def update_checkpoint_state(save_dir,
       'checkpoint'.
 
   Raises:
-    RuntimeError: If the save paths conflict.
+    RuntimeError: If any of the model checkpoint paths conflict with the file
+      containing CheckpointSate.
+  """
+  _update_checkpoint_state(
+      save_dir=save_dir,
+      model_checkpoint_path=model_checkpoint_path,
+      all_model_checkpoint_paths=all_model_checkpoint_paths,
+      latest_filename=latest_filename,
+      save_relative_paths=False)
+
+
+def _update_checkpoint_state(save_dir,
+                             model_checkpoint_path,
+                             all_model_checkpoint_paths=None,
+                             latest_filename=None,
+                             save_relative_paths=False):
+  """Updates the content of the 'checkpoint' file.
+
+  This updates the checkpoint file containing a CheckpointState
+  proto.
+
+  Args:
+    save_dir: Directory where the model was saved.
+    model_checkpoint_path: The checkpoint file.
+    all_model_checkpoint_paths: List of strings.  Paths to all not-yet-deleted
+      checkpoints, sorted from oldest to newest.  If this is a non-empty list,
+      the last element must be equal to model_checkpoint_path.  These paths
+      are also saved in the CheckpointState proto.
+    latest_filename: Optional name of the checkpoint file.  Default to
+      'checkpoint'.
+    save_relative_paths: If `True`, will write relative paths to the checkpoint
+      state file.
+
+  Raises:
+    RuntimeError: If any of the model checkpoint paths conflict with the file
+      containing CheckpointSate.
   """
   # Writes the "checkpoint" file for the coordinator for later restoration.
   coord_checkpoint_filename = _GetCheckpointFilename(save_dir, latest_filename)
-  ckpt = generate_checkpoint_state_proto(
-      save_dir,
-      model_checkpoint_path,
-      all_model_checkpoint_paths=all_model_checkpoint_paths)
+  if save_relative_paths:
+    if os.path.isabs(model_checkpoint_path):
+      rel_model_checkpoint_path = os.path.relpath(
+          model_checkpoint_path, save_dir)
+    else:
+      rel_model_checkpoint_path = model_checkpoint_path
+    rel_all_model_checkpoint_paths = []
+    for p in all_model_checkpoint_paths:
+      if os.path.isabs(p):
+        rel_all_model_checkpoint_paths.append(os.path.relpath(p, save_dir))
+      else:
+        rel_all_model_checkpoint_paths.append(p)
+    ckpt = generate_checkpoint_state_proto(
+        save_dir,
+        rel_model_checkpoint_path,
+        all_model_checkpoint_paths=rel_all_model_checkpoint_paths)
+  else:
+    ckpt = generate_checkpoint_state_proto(
+        save_dir,
+        model_checkpoint_path,
+        all_model_checkpoint_paths=all_model_checkpoint_paths)
 
   if coord_checkpoint_filename == ckpt.model_checkpoint_path:
     raise RuntimeError("Save path '%s' conflicts with path used for "
@@ -856,11 +932,11 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
           ckpt.all_model_checkpoint_paths[i] = os.path.join(checkpoint_dir, p)
   except errors.OpError as e:
     # It's ok if the file cannot be read
-    logging.warning(str(e))
+    logging.warning("%s: %s", type(e).__name__, e)
     logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
     return None
   except text_format.ParseError as e:
-    logging.warning(str(e))
+    logging.warning("%s: %s", type(e).__name__, e)
     logging.warning("%s: Checkpoint ignored", coord_checkpoint_filename)
     return None
   finally:
@@ -872,7 +948,7 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
 class Saver(object):
   """Saves and restores variables.
 
-  See [Variables](../../how_tos/variables/index.md)
+  See @{$variables$Variables}
   for an overview of variables, saving and restoring.
 
   The `Saver` class adds ops to save and restore variables to and from
@@ -941,17 +1017,6 @@ class Saver(object):
 
   If you create several savers, you can specify a different filename for the
   protocol buffer file in the call to `save()`.
-
-  @@__init__
-  @@save
-  @@restore
-
-  Other utility methods.
-
-  @@last_checkpoints
-  @@set_last_checkpoints_with_time
-  @@recover_last_checkpoints
-  @@as_saver_def
   """
 
   def __init__(self,
@@ -967,7 +1032,9 @@ class Saver(object):
                defer_build=False,
                allow_empty=False,
                write_version=saver_pb2.SaverDef.V2,
-               pad_step_number=False):
+               pad_step_number=False,
+               save_relative_paths=False,
+               filename=None):
     """Creates a `Saver`.
 
     The constructor adds ops to save and restore variables.
@@ -1040,6 +1107,11 @@ class Saver(object):
       pad_step_number: if True, pads the global step number in the checkpoint
         filepaths to some fixed width (8 by default).  This is turned off by
         default.
+      save_relative_paths: If `True`, will write relative paths to the
+        checkpoint state file. This is needed if the user wants to copy the
+        checkpoint directory and reload from the copied directory.
+      filename: If known at graph construction time, filename used for variable
+        loading/saving.
 
     Raises:
       TypeError: If `var_list` is invalid.
@@ -1063,11 +1135,13 @@ class Saver(object):
     self._is_empty = None
     self._write_version = write_version
     self._pad_step_number = pad_step_number
+    self._filename = filename
     if not defer_build:
       self.build()
     if self.saver_def:
       self._check_saver_def()
       self._write_version = self.saver_def.version
+    self._save_relative_paths = save_relative_paths
 
   def build(self):
     """Builds saver_def."""
@@ -1094,7 +1168,8 @@ class Saver(object):
           max_to_keep=self._max_to_keep,
           keep_checkpoint_every_n_hours=self._keep_checkpoint_every_n_hours,
           name=self._name,
-          restore_sequentially=self._restore_sequentially)
+          restore_sequentially=self._restore_sequentially,
+          filename=self._filename)
     elif self.saver_def and self._name:
       # Since self._name is used as a name_scope by builder(), we are
       # overloading the use of this field to represent the "import_scope" as
@@ -1223,11 +1298,23 @@ class Saver(object):
     Returns:
       A `SaverDef` protocol buffer.
     """
-    if (export_scope is None or
-        self._name.startswith(export_scope)):
+    if export_scope is None:
       return self.saver_def
-    else:
+
+    if not (self.saver_def.filename_tensor_name.startswith(export_scope) and
+            self.saver_def.save_tensor_name.startswith(export_scope) and
+            self.saver_def.restore_op_name.startswith(export_scope)):
       return None
+
+    saver_def = saver_pb2.SaverDef()
+    saver_def.CopyFrom(self.saver_def)
+    saver_def.filename_tensor_name = ops.strip_name_scope(
+        saver_def.filename_tensor_name, export_scope)
+    saver_def.save_tensor_name = ops.strip_name_scope(
+        saver_def.save_tensor_name, export_scope)
+    saver_def.restore_op_name = ops.strip_name_scope(
+        saver_def.restore_op_name, export_scope)
+    return saver_def
 
   @staticmethod
   def from_proto(saver_def, import_scope=None):
@@ -1376,24 +1463,31 @@ class Saver(object):
             "'latest_filename' collides with 'save_path': '%s' and '%s'" %
             (latest_filename, save_path))
 
-    if not gfile.IsDirectory(os.path.dirname(save_path)):
-      raise ValueError(
-          "Parent directory of {} doesn't exist, can't save.".format(save_path))
-
-    save_path = os.path.dirname(save_path)
     if not isinstance(sess, session.SessionInterface):
       raise TypeError("'sess' must be a Session; %s" % sess)
 
+    save_path_parent = os.path.dirname(save_path)
     if not self._is_empty:
-      model_checkpoint_path = sess.run(
-          self.saver_def.save_tensor_name,
-          {self.saver_def.filename_tensor_name: checkpoint_file})
-      model_checkpoint_path = compat.as_str(model_checkpoint_path)
-      if write_state:
-        self._MaybeDeleteOldCheckpoints(
-            model_checkpoint_path, meta_graph_suffix=meta_graph_suffix)
-        update_checkpoint_state(save_path, model_checkpoint_path,
-                                self.last_checkpoints, latest_filename)
+      try:
+        model_checkpoint_path = sess.run(
+            self.saver_def.save_tensor_name,
+            {self.saver_def.filename_tensor_name: checkpoint_file})
+        model_checkpoint_path = compat.as_str(model_checkpoint_path)
+        if write_state:
+          self._MaybeDeleteOldCheckpoints(
+              model_checkpoint_path, meta_graph_suffix=meta_graph_suffix)
+          _update_checkpoint_state(
+              save_dir=save_path_parent,
+              model_checkpoint_path=model_checkpoint_path,
+              all_model_checkpoint_paths=self.last_checkpoints,
+              latest_filename=latest_filename,
+              save_relative_paths=self._save_relative_paths)
+      except (errors.FailedPreconditionError, errors.NotFoundError) as exc:
+        if not gfile.IsDirectory(save_path_parent):
+          exc = ValueError(
+              "Parent directory of {} doesn't exist, can't save.".format(
+                  save_path))
+        raise exc
 
     if write_meta_graph:
       meta_graph_filename = self._MetaGraphFilename(
@@ -1411,7 +1505,8 @@ class Saver(object):
                         collection_list=None,
                         as_text=False,
                         export_scope=None,
-                        clear_devices=False):
+                        clear_devices=False,
+                        clear_extraneous_savers=False):
     """Writes `MetaGraphDef` to save_path/filename.
 
     Args:
@@ -1421,6 +1516,9 @@ class Saver(object):
       export_scope: Optional `string`. Name scope to remove.
       clear_devices: Whether or not to clear the device field for an `Operation`
         or `Tensor` during export.
+      clear_extraneous_savers: Remove any Saver-related information from the
+        graph (both Save/Restore ops and SaverDefs) that are not associated
+        with this Saver.
 
     Returns:
       A `MetaGraphDef` proto.
@@ -1432,7 +1530,8 @@ class Saver(object):
         collection_list=collection_list,
         as_text=as_text,
         export_scope=export_scope,
-        clear_devices=clear_devices)
+        clear_devices=clear_devices,
+        clear_extraneous_savers=clear_extraneous_savers)
 
   def restore(self, sess, save_path):
     """Restores previously saved variables.
@@ -1614,6 +1713,7 @@ def export_meta_graph(filename=None,
                       graph=None,
                       export_scope=None,
                       clear_devices=False,
+                      clear_extraneous_savers=False,
                       **kwargs):
   """Returns `MetaGraphDef` proto. Optionally writes it to filename.
 
@@ -1637,6 +1737,9 @@ def export_meta_graph(filename=None,
       is exported. graph_def and export_scope cannot both be specified.
     clear_devices: Whether or not to clear the device field for an `Operation`
       or `Tensor` during export.
+    clear_extraneous_savers: Remove any Saver-related information from the
+        graph (both Save/Restore ops and SaverDefs) that are not associated
+        with the provided SaverDef.
     **kwargs: Optional keyed arguments.
 
   Returns:
@@ -1655,6 +1758,7 @@ def export_meta_graph(filename=None,
       graph=graph,
       export_scope=export_scope,
       clear_devices=clear_devices,
+      clear_extraneous_savers=clear_extraneous_savers,
       **kwargs)
   return meta_graph_def
 

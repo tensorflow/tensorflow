@@ -19,15 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
 import time
 
 import numpy as np
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib import layers
 from tensorflow.python.client import session as session_lib
@@ -145,34 +139,6 @@ def GetShrunkInceptionShapes(shrink=10):
     yield i, f, o, s, p
 
 
-def NHWCToNCHW(input_tensor):
-  """Convert the input from NHWC format to NCHW.
-
-  Args:
-    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
-  Returns:
-    the converted tensor or a shape array
-  """
-  if isinstance(input_tensor, ops.Tensor):
-    return array_ops.transpose(input_tensor, [0, 3, 1, 2])
-  else:
-    return [input_tensor[0], input_tensor[3], input_tensor[1], input_tensor[2]]
-
-
-def NCHWToNHWC(input_tensor):
-  """Convert the input from NCHW format to NHWC.
-
-  Args:
-    input_tensor:  a 4-D tensor, or a 4-element array representing the same.
-  Returns:
-    the converted tensor or a shape array
-  """
-  if isinstance(input_tensor, ops.Tensor):
-    return array_ops.transpose(input_tensor, [0, 2, 3, 1])
-  else:
-    return [input_tensor[0], input_tensor[2], input_tensor[3], input_tensor[1]]
-
-
 def GetTestConfigs():
   """Get all the valid tests configs to run.
 
@@ -223,17 +189,17 @@ class Conv2DTest(test.TestCase):
     # numbers from 1.
     x1 = [f * 1.0 for f in range(1, total_size_1 + 1)]
     x2 = [f * 1.0 for f in range(1, total_size_2 + 1)]
-    with self.test_session(use_gpu=use_gpu) as sess:
+    with self.test_session(use_gpu=use_gpu):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
       strides = [1] + strides + [1]
       if data_format == "NCHW":
-        t1 = NHWCToNCHW(t1)
-        strides = NHWCToNCHW(strides)
+        t1 = test_util.NHWCToNCHW(t1)
+        strides = test_util.NHWCToNCHW(strides)
       conv = nn_ops.conv2d(
           t1, t2, strides=strides, padding=padding, data_format=data_format)
       if data_format == "NCHW":
-        conv = NCHWToNHWC(conv)
+        conv = test_util.NCHWToNHWC(conv)
 
       return conv
 
@@ -258,12 +224,12 @@ class Conv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=filter_in_sizes)
         strides = [1] + conv_strides + [1]
         if data_format == "NCHW":
-          t1 = NHWCToNCHW(t1)
-          strides = NHWCToNCHW(strides)
+          t1 = test_util.NHWCToNCHW(t1)
+          strides = test_util.NHWCToNCHW(strides)
         conv = nn_ops.conv2d(
             t1, t2, strides=strides, padding=padding, data_format=data_format)
         if data_format == "NCHW":
-          conv = NCHWToNHWC(conv)
+          conv = test_util.NCHWToNHWC(conv)
         return conv
 
     tensors = []
@@ -412,7 +378,7 @@ class Conv2DTest(test.TestCase):
         expected=[50, 60])
 
     # TODO this currently fails.
-    #self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
+    # self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
     #                   filter_in_sizes=[2, 2, 1, 1],
     #                   strides=[4, 4], padding="SAME",
     #                   expected=[72, 112, 392, 432])
@@ -433,18 +399,18 @@ class Conv2DTest(test.TestCase):
     x2 = [f * 1.0 for f in range(1, total_output_size + 1)]
     with self.test_session(use_gpu=use_gpu) as sess:
       if data_format == "NCHW":
-        input_sizes = NHWCToNCHW(input_sizes)
+        input_sizes = test_util.NHWCToNCHW(input_sizes)
       t0 = constant_op.constant(input_sizes, shape=[len(input_sizes)])
       t1 = constant_op.constant(x1, shape=filter_sizes)
       t2 = constant_op.constant(x2, shape=output_sizes)
       strides = [1] + strides + [1]
       if data_format == "NCHW":
-        t2 = NHWCToNCHW(t2)
-        strides = NHWCToNCHW(strides)
+        t2 = test_util.NHWCToNCHW(t2)
+        strides = test_util.NHWCToNCHW(strides)
       conv = nn_ops.conv2d_backprop_input(
           t0, t1, t2, strides=strides, padding=padding, data_format=data_format)
       if data_format == "NCHW":
-        conv = NCHWToNHWC(conv)
+        conv = test_util.NCHWToNHWC(conv)
       # "values" consists of two tensors for two backprops
       value = sess.run(conv)
       self.assertShapeEqual(value, conv)
@@ -458,9 +424,9 @@ class Conv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(data_format, use_gpu):
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.test_session(use_gpu=use_gpu):
         if data_format == "NCHW":
-          new_input_sizes = NHWCToNCHW(input_sizes)
+          new_input_sizes = test_util.NHWCToNCHW(input_sizes)
         else:
           new_input_sizes = input_sizes
         t0 = constant_op.constant(new_input_sizes, shape=[len(new_input_sizes)])
@@ -468,8 +434,8 @@ class Conv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes)
         strides = [1] + conv_strides + [1]
         if data_format == "NCHW":
-          t2 = NHWCToNCHW(t2)
-          strides = NHWCToNCHW(strides)
+          t2 = test_util.NHWCToNCHW(t2)
+          strides = test_util.NHWCToNCHW(strides)
         conv = nn_ops.conv2d_backprop_input(
             t0,
             t1,
@@ -478,7 +444,7 @@ class Conv2DTest(test.TestCase):
             padding=padding,
             data_format=data_format)
         if data_format == "NCHW":
-          conv = NCHWToNHWC(conv)
+          conv = test_util.NCHWToNHWC(conv)
         ret = conv.eval()
         self.assertShapeEqual(ret, conv)
         return ret
@@ -592,9 +558,9 @@ class Conv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=output_sizes, dtype=dtype)
         explicit_strides = [1] + strides + [1]
         if data_format == "NCHW":
-          t0 = NHWCToNCHW(t0)
-          t2 = NHWCToNCHW(t2)
-          explicit_strides = NHWCToNCHW(explicit_strides)
+          t0 = test_util.NHWCToNCHW(t0)
+          t2 = test_util.NHWCToNCHW(t2)
+          explicit_strides = test_util.NHWCToNCHW(explicit_strides)
         conv = nn_ops.conv2d_backprop_filter(
             t0,
             t1,
@@ -614,15 +580,15 @@ class Conv2DTest(test.TestCase):
     x2 = np.random.rand(*output_sizes).astype(np.float32)
 
     def _GetVal(data_format, use_gpu):
-      with self.test_session(use_gpu=use_gpu) as sess:
+      with self.test_session(use_gpu=use_gpu):
         t0 = constant_op.constant(x0, shape=input_sizes)
         t1 = constant_op.constant(filter_sizes, shape=[len(filter_sizes)])
         t2 = constant_op.constant(x2, shape=output_sizes)
         strides = [1] + conv_strides + [1]
         if data_format == "NCHW":
-          t0 = NHWCToNCHW(t0)
-          t2 = NHWCToNCHW(t2)
-          strides = NHWCToNCHW(strides)
+          t0 = test_util.NHWCToNCHW(t0)
+          t2 = test_util.NHWCToNCHW(t2)
+          strides = test_util.NHWCToNCHW(strides)
         conv = nn_ops.conv2d_backprop_filter(
             t0,
             t1,
@@ -745,8 +711,8 @@ class Conv2DTest(test.TestCase):
             filter_data, shape=filter_shape, dtype=dtype, name="filter")
         strides = [1, stride_rows, stride_cols, 1]
         if data_format == "NCHW":
-          new_input_tensor = NHWCToNCHW(input_tensor)
-          strides = NHWCToNCHW(strides)
+          new_input_tensor = test_util.NHWCToNCHW(input_tensor)
+          strides = test_util.NHWCToNCHW(strides)
         else:
           new_input_tensor = input_tensor
         conv = nn_ops.conv2d(
@@ -757,7 +723,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             name="conv")
         if data_format == "NCHW":
-          conv = NCHWToNHWC(conv)
+          conv = test_util.NCHWToNHWC(conv)
         self.assertEqual(output_shape, conv.get_shape())
         if test_input:
           jacob_t, jacob_n = gradient_checker.compute_gradient(input_tensor,
@@ -1228,8 +1194,14 @@ class SeparableConv2DTest(test.TestCase):
     x = [f * 0.5 for f in range(1, total_size + 1)]
     return constant_op.constant(x, shape=sizes)
 
-  def _VerifyValues(self, tensor_in_sizes, depthwise_filter_in_sizes,
-                    pointwise_filter_in_sizes, stride, padding, expected):
+  def _VerifyValues(self,
+                    tensor_in_sizes,
+                    depthwise_filter_in_sizes,
+                    pointwise_filter_in_sizes,
+                    stride,
+                    padding,
+                    expected,
+                    data_format="NHWC"):
     """Verifies the output values of the separable convolution function.
 
     Args:
@@ -1239,20 +1211,37 @@ class SeparableConv2DTest(test.TestCase):
       stride: Stride.
       padding: Padding type.
       expected: An array containing the expected operation outputs.
+      data_format: string data format for input tensor.
     """
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=True) as sess:
       t1 = self._InitValues(tensor_in_sizes)
       f1 = self._InitValues(depthwise_filter_in_sizes)
       f1.set_shape(depthwise_filter_in_sizes)
       f2 = self._InitValues(pointwise_filter_in_sizes)
+
+      real_t1 = t1
+      strides = [1, stride, stride, 1]
+      if data_format == "NCHW":
+        real_t1 = array_ops.transpose(t1, [0, 3, 1, 2])
+        strides = [1, 1, stride, stride]
+
       conv = nn_impl.separable_conv2d(
-          t1, f1, f2, strides=[1, stride, stride, 1], padding=padding)
+          real_t1,
+          f1,
+          f2,
+          strides=strides,
+          padding=padding,
+          data_format=data_format)
+
+      if data_format == "NCHW":
+        conv = array_ops.transpose(conv, [0, 2, 3, 1])
+
       value = sess.run(conv)
     print("value = ", value)
     self.assertArrayNear(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
 
-  def testSeparableConv2D(self):
+  def _testSeparableConv2D(self, data_format):
     # The output is the result of two convolutions:
     # First with tensor_in[1, 4, 4, 2] * filter1[2, 2, 2, 3].
     # Second with intermediate_out[1, 4, 4, 6] * filter2[1, 1, 6, 7].
@@ -1280,9 +1269,18 @@ class SeparableConv2DTest(test.TestCase):
         pointwise_filter_in_sizes=[1, 1, 6, 7],
         stride=1,
         padding="SAME",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format)
 
-  def testSeparableConv2DEqualInputOutputDepth(self):
+  def testSeparableConv2D(self):
+    self._testSeparableConv2D("NHWC")
+
+  def testSeparableConv2DNCHW(self):
+    if not test.is_gpu_available():
+      return
+    self._testSeparableConv2D("NCHW")
+
+  def _testSeparableConv2DEqualInputOutputDepth(self, data_format):
     # The output is the result of two convolutions:
     # First with tensor_in[1, 4, 4, 2] * filter1[2, 2, 3, 3].
     # Second with intermediate_out[1, 4, 4, 6] * filter2[1, 1, 6, 6].
@@ -1308,20 +1306,16 @@ class SeparableConv2DTest(test.TestCase):
         pointwise_filter_in_sizes=[1, 1, 6, 6],
         stride=1,
         padding="SAME",
-        expected=expected_output)
+        expected=expected_output,
+        data_format=data_format)
 
-  def testSeparableConv2DIllegalCases(self):
-    # Output depth less then input depth.
-    with self.assertRaisesRegexp(
-        ValueError,
-        "Refusing to perform an overparameterized separable convolution"):
-      self._VerifyValues(
-          tensor_in_sizes=[1, 4, 4, 2],
-          depthwise_filter_in_sizes=[2, 2, 2, 3],
-          pointwise_filter_in_sizes=[1, 1, 6, 5],
-          stride=1,
-          padding="SAME",
-          expected=None)
+  def testSeparableConv2DEqualInputOutputDepth(self):
+    self._testSeparableConv2DEqualInputOutputDepth("NHWC")
+
+  def testSeparableConv2DEqualInputOutputDepthNCHW(self):
+    if not test.is_gpu_available():
+      return
+    self._testSeparableConv2DEqualInputOutputDepth("NCHW")
 
 
 class DeepConv2DTest(test.TestCase):
@@ -1404,9 +1398,14 @@ class Conv2DBenchmark(test.Benchmark):
         print("conv_stack_iter_%d: %.4f" % (iter_index, wall_time))
 
 
-def GetInceptionFwdTest(input_size, filter_size, stride, padding):
+def GetInceptionFwdTest(input_size, filter_size, stride, padding,
+                        gpu_only=False):
 
   def Test(self):
+    if gpu_only and not test.is_gpu_available():
+      tf_logging.info("Skipping InceptionFwd %s", (input_size, filter_size,
+                                                   stride, padding))
+      return
     tf_logging.info("Testing InceptionFwd %s", (input_size, filter_size, stride,
                                                 padding))
     self._CompareFwdValues(input_size, filter_size, [stride, stride], padding)
@@ -1415,9 +1414,14 @@ def GetInceptionFwdTest(input_size, filter_size, stride, padding):
 
 
 def GetInceptionBackInputTest(input_size, filter_size, output_size, stride,
-                              padding):
+                              padding,
+                              gpu_only=False):
 
   def Test(self):
+    if gpu_only and not test.is_gpu_available():
+      tf_logging.info("Skipping InceptionBackInput %s",
+                      (input_size, filter_size, output_size, stride, padding))
+      return
     tf_logging.info("Testing InceptionBackInput %s",
                     (input_size, filter_size, output_size, stride, padding))
     self._CompareBackpropInput(input_size, filter_size, output_size,
@@ -1427,9 +1431,13 @@ def GetInceptionBackInputTest(input_size, filter_size, output_size, stride,
 
 
 def GetInceptionBackFilterTest(input_size, filter_size, output_size, strides,
-                               padding):
+                               padding, gpu_only=False):
 
   def Test(self):
+    if gpu_only and not test.is_gpu_available():
+      tf_logging.info("Skipping InceptionBackFilter %s",
+                      (input_size, filter_size, output_size, strides, padding))
+      return
     tf_logging.info("Testing InceptionBackFilter %s",
                     (input_size, filter_size, output_size, strides, padding))
     self._CompareBackFilter(input_size, filter_size, output_size, strides,
@@ -1450,4 +1458,21 @@ if __name__ == "__main__":
             GetInceptionBackFilterTest(input_size_, filter_size_, output_size_,
                                        [stride_, stride_], padding_))
 
+  # TODO(b/35359731)
+  # Fwd, BckInput, and BackFilter to test that for certain input parameter
+  # set, winograd nonfused algorithm will be excluded from conv autotune. If
+  # in such case, winograd nonfused algorithm is added as one option of the
+  # conv autotune, and cuDNN version is smaller than 7, the following tests
+  # will fail.
+  ishape = [1, 400, 400, 1]
+  fshape = [1, 1, 1, 256]
+  oshape = [1, 400, 400, 256]
+  setattr(Conv2DTest, "testInceptionFwd_No_Winograd_Nonfused",
+          GetInceptionFwdTest(ishape, fshape, 1, "SAME", gpu_only=True))
+  setattr(Conv2DTest, "testInceptionBackInput_No_Winograd_Nonfused",
+          GetInceptionBackInputTest(ishape, fshape, oshape, 1, "SAME",
+                                    gpu_only=True))
+  setattr(Conv2DTest, "testInceptionBackFilter_No_Winograd_Nonfused",
+          GetInceptionBackFilterTest(ishape, fshape, oshape, [1, 1], "SAME",
+                                     gpu_only=True))
   test.main()

@@ -109,8 +109,8 @@ Status ModelWeights::Initialize(OpKernelContext* const context) {
 
   for (int i = 0; i < sparse_weights_inputs.size(); ++i) {
     Tensor* delta_t;
-    sparse_weights_outputs.allocate(i, sparse_weights_inputs[i].shape(),
-                                    &delta_t);
+    TF_RETURN_IF_ERROR(sparse_weights_outputs.allocate(
+        i, sparse_weights_inputs[i].shape(), &delta_t));
     // Convert the input vector to a row matrix in internal representation.
     auto deltas = delta_t->shaped<float, 2>({1, delta_t->NumElements()});
     deltas.setZero();
@@ -127,7 +127,8 @@ Status ModelWeights::Initialize(OpKernelContext* const context) {
       std::vector<FeatureWeightsDenseStorage>* const feature_weights) {
     for (int i = 0; i < weight_inputs.size(); ++i) {
       Tensor* delta_t;
-      weight_outputs->allocate(i, weight_inputs[i].shape(), &delta_t);
+      TF_RETURN_IF_ERROR(
+          weight_outputs->allocate(i, weight_inputs[i].shape(), &delta_t));
       // Convert the input vector to a row matrix in internal representation.
       auto deltas = delta_t->shaped<float, 2>({1, delta_t->NumElements()});
       deltas.setZero();
@@ -136,12 +137,11 @@ Status ModelWeights::Initialize(OpKernelContext* const context) {
                                          {1, weight_inputs[i].NumElements()}),
                                      deltas});
     }
+    return Status::OK();
   };
 
-  initialize_weights(dense_weights_inputs, &dense_weights_outputs,
-                    &dense_weights_);
-
-  return Status::OK();
+  return initialize_weights(dense_weights_inputs, &dense_weights_outputs,
+                            &dense_weights_);
 }
 
 // Computes the example statistics for given example, and model. Defined here

@@ -14,9 +14,9 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Script to produce a tarball release of the C-library and associated C API
-# header file. Builds a docker container and then builds the C-library in
-# said container.
+# Script to produce a tarball release of the C-library, Java native library
+# and Java .jars.
+# Builds a docker container and then builds in said container.
 #
 # See libtensorflow_cpu.sh and libtensorflow_gpu.sh
 
@@ -29,9 +29,9 @@ DOCKER_IMAGE="tf-libtensorflow-cpu"
 DOCKER_FILE="Dockerfile.cpu"
 DOCKER_BINARY="docker"
 if [ "${TF_NEED_CUDA}" == "1" ]; then
-	DOCKER_IMAGE="tf-tensorflow-gpu"
-	DOCKER_BINARY="nvidia-docker"
-	DOCKER_FILE="Dockerfile.gpu"
+  DOCKER_IMAGE="tf-tensorflow-gpu"
+  DOCKER_BINARY="nvidia-docker"
+  DOCKER_FILE="Dockerfile.gpu"
 fi
 
 docker build \

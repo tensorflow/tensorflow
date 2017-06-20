@@ -24,12 +24,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_assignment.h"
-#include "tensorflow/compiler/xla/service/gpu/temp_buffer_offsets.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk_schedule.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -52,9 +50,8 @@ class GpuExecutable : public Executable {
   GpuExecutable(tensorflow::StringPiece ptx,
                 std::unique_ptr<ThunkSchedule> thunk_schedule,
                 std::unique_ptr<HloModule> hlo_module,
-                std::unique_ptr<HloModuleConfig> module_config,
                 std::unique_ptr<BufferAssignment> assignment,
-                std::unique_ptr<TempBufferOffsets> temp_buffer_offsets);
+                HloCostAnalysis::ShapeSizeFunction shape_size_function);
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -68,30 +65,30 @@ class GpuExecutable : public Executable {
   tensorflow::StringPiece ptx() const { return ptx_; }
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
-
-  Status ExecuteOnStream(
-      const ExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      ShapedBuffer* result_buffer,
       HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
-      const ExecutableRunOptions* run_options,
+      const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           arguments) override;
 
  private:
-  Status ExecuteThunks(perftools::gputools::Stream* stream,
+  // If `block_host_until_done` is false, execution will not block the host
+  // until the kernels have completed. This is used as an optimization for
+  // clients, such as Tensorflow, that use a single stream of execution for
+  // computations, and allow host-side deallocation from the allocator before
+  // GPU execution completes.
+  Status ExecuteThunks(const ServiceExecutableRunOptions* run_options,
                        const BufferAllocations& buffer_allocations,
+                       bool block_host_until_done,
                        HloExecutionProfile* hlo_execution_profile);
 
   // Returns the points-to set of the root instruction of the entry
@@ -116,10 +113,6 @@ class GpuExecutable : public Executable {
   // Owns the buffer data at runtime. It provides information to allocate
   // memory for every output/temp buffers.
   const std::unique_ptr<BufferAssignment> assignment_;
-
-  // Owns the mapping from temporary buffers to their offsets in the temp-buffer
-  // memory block.
-  const std::unique_ptr<TempBufferOffsets> temp_buffer_offsets_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuExecutable);
 };

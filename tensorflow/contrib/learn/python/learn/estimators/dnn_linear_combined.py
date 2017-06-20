@@ -20,13 +20,11 @@ from __future__ import division
 from __future__ import print_function
 
 import math
-import re
 import six
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -35,20 +33,28 @@ from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.summary import summary
+from tensorflow.python.training import sync_replicas_optimizer
+from tensorflow.python.training import training_util
 
-
-_CENTERED_BIAS_WEIGHT = "centered_bias_weight"
 
 # The default learning rates are a historical artifact of the initial
 # implementation, but seem a reasonable choice.
 _DNN_LEARNING_RATE = 0.05
 _LINEAR_LEARNING_RATE = 0.2
+
+
+_FIX_GLOBAL_STEP_INCREMENT_DATE = "2017-04-15"
+_FIX_GLOBAL_STEP_INCREMENT_INSTRUCTIONS = (
+    "Please set fix_global_step_increment_bug=True and update training steps "
+    "in your pipeline. See pydoc for details.")
 
 
 def _as_iterable(preds, output):
@@ -69,6 +75,14 @@ def _get_optimizer(optimizer):
     return optimizer
 
 
+def _check_no_sync_replicas_optimizer(optimizer):
+  if isinstance(optimizer, sync_replicas_optimizer.SyncReplicasOptimizer):
+    raise ValueError(
+        "SyncReplicasOptimizer is not supported in DNNLinearCombined model. "
+        "If you want to use this optimizer, please use either DNN or Linear "
+        "model.")
+
+
 def _linear_learning_rate(num_linear_feature_columns):
   """Returns the default learning rate of the linear model.
 
@@ -87,9 +101,13 @@ def _linear_learning_rate(num_linear_feature_columns):
 
 
 def _add_hidden_layer_summary(value, tag):
-  logging_ops.scalar_summary("%s/fraction_of_zero_values" % tag,
-                             nn.zero_fraction(value))
-  logging_ops.histogram_summary("%s/activation" % tag, value)
+  summary.scalar("%s/fraction_of_zero_values" % tag, nn.zero_fraction(value))
+  summary.histogram("%s/activation" % tag, value)
+
+
+def _add_layer_summary(value, tag):
+  summary.scalar("%s/fraction_of_zero_values" % tag, nn.zero_fraction(value))
+  summary.histogram("%s/activation" % tag, value)
 
 
 def _get_embedding_variable(column, collection_key, input_layer_scope):
@@ -149,12 +167,10 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
           DNN coordinate.
       * gradient_clip_norm: A float > 0. If provided, gradients are
           clipped to their global norm with this clipping ratio.
-      * num_ps_replicas: The number of parameter server replicas.
       * embedding_lr_multipliers: Optional. A dictionary from
           `EmbeddingColumn` to a `float` multiplier. Multiplier will be used to
           multiply with learning rate for the embedding variables.
-      * input_layer_min_slice_size: Optional. The min slice size of input layer
-          partitions. If not provided, will use the default of 64M.
+      * input_layer_partitioner: Optional. Partitioner for input layer.
     config: `RunConfig` object to configure the runtime settings.
 
   Returns:
@@ -162,7 +178,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
 
   Raises:
     ValueError: If both `linear_feature_columns` and `dnn_features_columns`
-      are empty at the same time.
+      are empty at the same time, or `input_layer_partitioner` is missing.
   """
   head = params["head"]
   linear_feature_columns = params.get("linear_feature_columns")
@@ -171,19 +187,28 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   dnn_feature_columns = params.get("dnn_feature_columns")
   dnn_optimizer = params.get("dnn_optimizer") or "Adagrad"
   dnn_hidden_units = params.get("dnn_hidden_units")
-  dnn_activation_fn = params.get("dnn_activation_fn")
+  dnn_activation_fn = params.get("dnn_activation_fn") or nn.relu
   dnn_dropout = params.get("dnn_dropout")
   gradient_clip_norm = params.get("gradient_clip_norm")
-  input_layer_min_slice_size = (
-      params.get("input_layer_min_slice_size") or 64 << 20)
   num_ps_replicas = config.num_ps_replicas if config else 0
+  input_layer_partitioner = params.get("input_layer_partitioner") or (
+      partitioned_variables.min_max_variable_partitioner(
+          max_partitions=num_ps_replicas,
+          min_slice_size=64 << 20))
   embedding_lr_multipliers = params.get("embedding_lr_multipliers", {})
+  fix_global_step_increment_bug = params.get(
+      "fix_global_step_increment_bug", True)
 
   if not linear_feature_columns and not dnn_feature_columns:
     raise ValueError(
         "Either linear_feature_columns or dnn_feature_columns must be defined.")
 
   features = _get_feature_dict(features)
+
+  linear_optimizer = _get_optimizer(linear_optimizer)
+  _check_no_sync_replicas_optimizer(linear_optimizer)
+  dnn_optimizer = _get_optimizer(dnn_optimizer)
+  _check_no_sync_replicas_optimizer(dnn_optimizer)
 
   # Build DNN Logits.
   dnn_parent_scope = "dnn"
@@ -193,7 +218,8 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   else:
     if not dnn_hidden_units:
       raise ValueError(
-          "dnn_hidden_units must be defined when dnn_feature_columns is specified.")
+          "dnn_hidden_units must be defined when dnn_feature_columns is "
+          "specified.")
     dnn_partitioner = (
         partitioned_variables.min_max_variable_partitioner(
             max_partitions=num_ps_replicas))
@@ -201,19 +227,24 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
         dnn_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=dnn_partitioner):
-      input_layer_partitioner = (
-          partitioned_variables.min_max_variable_partitioner(
-              max_partitions=num_ps_replicas,
-              min_slice_size=input_layer_min_slice_size))
       with variable_scope.variable_scope(
           "input_from_feature_columns",
           values=tuple(six.itervalues(features)),
           partitioner=input_layer_partitioner) as dnn_input_scope:
-        net = layers.input_from_feature_columns(
-            columns_to_tensors=features,
-            feature_columns=dnn_feature_columns,
-            weight_collections=[dnn_parent_scope],
-            scope=dnn_input_scope)
+        if all([
+            isinstance(fc, feature_column_lib._FeatureColumn)  # pylint: disable=protected-access
+            for fc in dnn_feature_columns
+        ]):
+          net = layers.input_from_feature_columns(
+              columns_to_tensors=features,
+              feature_columns=dnn_feature_columns,
+              weight_collections=[dnn_parent_scope],
+              scope=dnn_input_scope)
+        else:
+          net = fc_core.input_layer(
+              features=features,
+              feature_columns=dnn_feature_columns,
+              weight_collections=[dnn_parent_scope])
 
       for layer_id, num_hidden_units in enumerate(dnn_hidden_units):
         with variable_scope.variable_scope(
@@ -230,7 +261,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
                 net,
                 keep_prob=(1.0 - dnn_dropout))
         # TODO(b/31209633): Consider adding summary before dropout.
-        _add_hidden_layer_summary(net, dnn_hidden_layer_scope.name)
+        _add_layer_summary(net, dnn_hidden_layer_scope.name)
 
       with variable_scope.variable_scope(
           "logits",
@@ -241,7 +272,7 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
             activation_fn=None,
             variables_collections=[dnn_parent_scope],
             scope=dnn_logits_scope)
-      _add_hidden_layer_summary(dnn_logits, dnn_logits_scope.name)
+      _add_layer_summary(dnn_logits, dnn_logits_scope.name)
 
   # Build Linear logits.
   linear_parent_scope = "linear"
@@ -256,20 +287,30 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
         linear_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=linear_partitioner) as scope:
-      if joint_linear_weights:
-        linear_logits, _, _ = layers.joint_weighted_sum_from_feature_columns(
-            columns_to_tensors=features,
-            feature_columns=linear_feature_columns,
-            num_outputs=head.logits_dimension,
-            weight_collections=[linear_parent_scope],
-            scope=scope)
+      if all([isinstance(fc, feature_column_lib._FeatureColumn)  # pylint: disable=protected-access
+              for fc in linear_feature_columns]):
+        if joint_linear_weights:
+          linear_logits, _, _ = layers.joint_weighted_sum_from_feature_columns(
+              columns_to_tensors=features,
+              feature_columns=linear_feature_columns,
+              num_outputs=head.logits_dimension,
+              weight_collections=[linear_parent_scope],
+              scope=scope)
+        else:
+          linear_logits, _, _ = layers.weighted_sum_from_feature_columns(
+              columns_to_tensors=features,
+              feature_columns=linear_feature_columns,
+              num_outputs=head.logits_dimension,
+              weight_collections=[linear_parent_scope],
+              scope=scope)
       else:
-        linear_logits, _, _ = layers.weighted_sum_from_feature_columns(
-            columns_to_tensors=features,
+        linear_logits = fc_core.linear_model(
+            features=features,
             feature_columns=linear_feature_columns,
-            num_outputs=head.logits_dimension,
-            weight_collections=[linear_parent_scope],
-            scope=scope)
+            units=head.logits_dimension,
+            weight_collections=[linear_parent_scope])
+
+      _add_layer_summary(linear_logits, scope.name)
 
   # Combine logits and build full model.
   if dnn_logits is not None and linear_logits is not None:
@@ -282,13 +323,14 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
   def _make_training_op(training_loss):
     """Training op for the DNN linear combined model."""
     train_ops = []
+    global_step = training_util.get_global_step()
     if dnn_logits is not None:
       train_ops.append(
           optimizers.optimize_loss(
               loss=training_loss,
-              global_step=contrib_variables.get_global_step(),
+              global_step=global_step,
               learning_rate=_DNN_LEARNING_RATE,
-              optimizer=_get_optimizer(dnn_optimizer),
+              optimizer=dnn_optimizer,
               gradient_multipliers=_extract_embedding_lr_multipliers(  # pylint: disable=protected-access
                   embedding_lr_multipliers, dnn_parent_scope,
                   dnn_input_scope.name),
@@ -296,21 +338,28 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
               variables=ops.get_collection(dnn_parent_scope),
               name=dnn_parent_scope,
               # Empty summaries, because head already logs "loss" summary.
-              summaries=[]))
+              summaries=[],
+              increment_global_step=not fix_global_step_increment_bug))
     if linear_logits is not None:
       train_ops.append(
           optimizers.optimize_loss(
               loss=training_loss,
-              global_step=contrib_variables.get_global_step(),
+              global_step=global_step,
               learning_rate=_linear_learning_rate(len(linear_feature_columns)),
-              optimizer=_get_optimizer(linear_optimizer),
+              optimizer=linear_optimizer,
               clip_gradients=gradient_clip_norm,
               variables=ops.get_collection(linear_parent_scope),
               name=linear_parent_scope,
               # Empty summaries, because head already logs "loss" summary.
-              summaries=[]))
+              summaries=[],
+              increment_global_step=not fix_global_step_increment_bug))
 
-    return control_flow_ops.group(*train_ops)
+    train_op = control_flow_ops.group(*train_ops)
+    if fix_global_step_increment_bug:
+      with ops.control_dependencies([train_op]):
+        with ops.colocate_with(global_step):
+          return state_ops.assign_add(global_step, 1).op
+    return train_op
 
   return head.create_model_fn_ops(
       features=features,
@@ -320,23 +369,30 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
       logits=logits)
 
 
-class _DNNLinearCombinedEstimator(estimator.Estimator):
+class DNNLinearCombinedEstimator(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined training models.
 
-    Input of `fit`, `train`, and `evaluate` should have following features,
-      otherwise there will be a `KeyError`:
-        if `weight_column_name` is not `None`, a feature with
-          `key=weight_column_name` whose value is a `Tensor`.
-        for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
-        - if `column` is a `SparseColumn`, a feature with `key=column.name`
-          whose `value` is a `SparseTensor`.
-        - if `column` is a `WeightedSparseColumn`, two features: the first with
-          `key` the id column name, the second with `key` the weight column
-          name. Both features' `value` must be a `SparseTensor`.
-        - if `column` is a `RealValuedColumn, a feature with `key=column.name`
-          whose `value` is a `Tensor`.
+  Note: New users must set `fix_global_step_increment_bug=True` when creating an
+  estimator.
+
+  Input of `fit`, `train`, and `evaluate` should have following features,
+    otherwise there will be a `KeyError`:
+      if `weight_column_name` is not `None`, a feature with
+        `key=weight_column_name` whose value is a `Tensor`.
+      for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
+      - if `column` is a `SparseColumn`, a feature with `key=column.name`
+        whose `value` is a `SparseTensor`.
+      - if `column` is a `WeightedSparseColumn`, two features: the first with
+        `key` the id column name, the second with `key` the weight column
+        name. Both features' `value` must be a `SparseTensor`.
+      - if `column` is a `RealValuedColumn, a feature with `key=column.name`
+        whose `value` is a `Tensor`.
   """
 
+  @deprecated_arg_values(
+      _FIX_GLOBAL_STEP_INCREMENT_DATE,
+      _FIX_GLOBAL_STEP_INCREMENT_INSTRUCTIONS,
+      fix_global_step_increment_bug=False)
   def __init__(self,  # _joint_linear_weights pylint: disable=invalid-name
                head,
                model_dir=None,
@@ -346,13 +402,18 @@ class _DNNLinearCombinedEstimator(estimator.Estimator):
                dnn_feature_columns=None,
                dnn_optimizer=None,
                dnn_hidden_units=None,
-               dnn_activation_fn=nn.relu,
+               dnn_activation_fn=None,
                dnn_dropout=None,
                gradient_clip_norm=None,
                config=None,
                feature_engineering_fn=None,
-               embedding_lr_multipliers=None):
-    """Initializes a _DNNLinearCombinedEstimator instance.
+               embedding_lr_multipliers=None,
+               fix_global_step_increment_bug=False,
+               input_layer_partitioner=None):
+    """Initializes a DNNLinearCombinedEstimator instance.
+
+    Note: New users must set `fix_global_step_increment_bug=True` when creating
+    an estimator.
 
     Args:
       head: A _Head object.
@@ -384,12 +445,16 @@ class _DNNLinearCombinedEstimator(estimator.Estimator):
         tf.clip_by_global_norm for more details.
       config: RunConfig object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        labels which are the output of `input_fn` and
-                        returns features and labels which will be fed
-                        into the model.
+        labels which are the output of `input_fn` and returns features and
+        labels which will be fed into the model.
       embedding_lr_multipliers: Optional. A dictionary from `EmbeddingColumn` to
-          a `float` multiplier. Multiplier will be used to multiply with
-          learning rate for the embedding variables.
+        a `float` multiplier. Multiplier will be used to multiply with
+        learning rate for the embedding variables.
+      fix_global_step_increment_bug: If `False`, the estimator needs two fit
+        steps to optimize both linear and dnn parts. If `True`, this bug is
+        fixed. New users must set this to `True`, but the default value is
+        `False` for backwards compatibility.
+      input_layer_partitioner: Optional. Partitioner for input layer.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -400,7 +465,7 @@ class _DNNLinearCombinedEstimator(estimator.Estimator):
     if not linear_feature_columns + dnn_feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    super(_DNNLinearCombinedEstimator, self).__init__(
+    super(DNNLinearCombinedEstimator, self).__init__(
         model_fn=_dnn_linear_combined_model_fn,
         model_dir=model_dir,
         config=config,
@@ -416,12 +481,17 @@ class _DNNLinearCombinedEstimator(estimator.Estimator):
             "dnn_dropout": dnn_dropout,
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
+            "fix_global_step_increment_bug": fix_global_step_increment_bug,
+            "input_layer_partitioner": input_layer_partitioner
         },
         feature_engineering_fn=feature_engineering_fn)
 
 
 class DNNLinearCombinedClassifier(estimator.Estimator):
   """A classifier for TensorFlow Linear and DNN joined training models.
+
+  Note: New users must set `fix_global_step_increment_bug=True` when creating an
+  estimator.
 
   Example:
 
@@ -453,16 +523,44 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     ...
   def input_fn_eval: # returns x, y (where y represents label's class index).
     ...
+  def input_fn_predict: # returns x, None.
+    ...
   estimator.fit(input_fn=input_fn_train)
   estimator.evaluate(input_fn=input_fn_eval)
-  estimator.predict(x=x) # returns predicted labels (i.e. label's class index).
+  # predict_classes returns class indices.
+  estimator.predict_classes(input_fn=input_fn_predict)
+  ```
+
+  If the user specifies `label_keys` in constructor, labels must be strings from
+  the `label_keys` vocabulary. Example:
+
+  ```python
+  label_keys = ['label0', 'label1', 'label2']
+  estimator = DNNLinearCombinedClassifier(
+      n_classes=n_classes,
+      linear_feature_columns=[sparse_feature_a_x_sparse_feature_b],
+      dnn_feature_columns=[sparse_feature_a_emb, sparse_feature_b_emb],
+      dnn_hidden_units=[1000, 500, 100],
+      label_keys=label_keys)
+
+  def input_fn_train: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.fit(input_fn=input_fn_train)
+
+  def input_fn_eval: # returns x, y (where y is one of label_keys).
+    pass
+  estimator.evaluate(input_fn=input_fn_eval)
+  def input_fn_predict: # returns x, None
+  # predict_classes returns one of label_keys.
+  estimator.predict_classes(input_fn=input_fn_predict)
   ```
 
   Input of `fit` and `evaluate` should have following features,
     otherwise there will be a `KeyError`:
-      if `weight_column_name` is not `None`, a feature with
+
+  * if `weight_column_name` is not `None`, a feature with
         `key=weight_column_name` whose value is a `Tensor`.
-      for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
+  * for each `column` in `dnn_feature_columns` + `linear_feature_columns`:
       - if `column` is a `SparseColumn`, a feature with `key=column.name`
         whose `value` is a `SparseTensor`.
       - if `column` is a `WeightedSparseColumn`, two features: the first with
@@ -472,6 +570,10 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         whose `value` is a `Tensor`.
   """
 
+  @deprecated_arg_values(
+      _FIX_GLOBAL_STEP_INCREMENT_DATE,
+      _FIX_GLOBAL_STEP_INCREMENT_INSTRUCTIONS,
+      fix_global_step_increment_bug=False)
   def __init__(self,  # _joint_linear_weights pylint: disable=invalid-name
                model_dir=None,
                n_classes=2,
@@ -489,8 +591,13 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                config=None,
                feature_engineering_fn=None,
                embedding_lr_multipliers=None,
-               input_layer_min_slice_size=None):
+               input_layer_min_slice_size=None,
+               label_keys=None,
+               fix_global_step_increment_bug=False):
     """Constructs a DNNLinearCombinedClassifier instance.
+
+    Note: New users must set `fix_global_step_increment_bug=True` when creating
+    an estimator.
 
     Args:
       model_dir: Directory to save model parameters, graph and etc. This can
@@ -530,36 +637,45 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         residual after centered bias.
       config: RunConfig object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        labels which are the output of `input_fn` and
-                        returns features and labels which will be fed
-                        into the model.
+        labels which are the output of `input_fn` and returns features and
+        labels which will be fed into the model.
       embedding_lr_multipliers: Optional. A dictionary from `EmbeddingColumn` to
-          a `float` multiplier. Multiplier will be used to multiply with
-          learning rate for the embedding variables.
+        a `float` multiplier. Multiplier will be used to multiply with
+        learning rate for the embedding variables.
       input_layer_min_slice_size: Optional. The min slice size of input layer
-          partitions. If not provided, will use the default of 64M.
+        partitions. If not provided, will use the default of 64M.
+      label_keys: Optional list of strings with size `[n_classes]` defining the
+        label vocabulary. Only supported for `n_classes` > 2.
+      fix_global_step_increment_bug: If `False`, the estimator needs two fit
+        steps to optimize both linear and dnn parts. If `True`, this bug is
+        fixed. New users must set this to `True`, but it the default value is
+        `False` for backwards compatibility.
 
     Raises:
       ValueError: If `n_classes` < 2.
       ValueError: If both `linear_feature_columns` and `dnn_features_columns`
         are empty at the same time.
     """
-    if n_classes < 2:
-      raise ValueError("n_classes should be greater than 1. Given: {}".format(
-          n_classes))
-    self._linear_optimizer = linear_optimizer or "Ftrl"
+    head = head_lib.multi_class_head(
+        n_classes=n_classes,
+        weight_column_name=weight_column_name,
+        enable_centered_bias=enable_centered_bias,
+        label_keys=label_keys)
     linear_feature_columns = tuple(linear_feature_columns or [])
     dnn_feature_columns = tuple(dnn_feature_columns or [])
     self._feature_columns = linear_feature_columns + dnn_feature_columns
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    self._dnn_hidden_units = dnn_hidden_units
-    self._enable_centered_bias = enable_centered_bias
-    head = head_lib._multi_class_head(  # pylint: disable=protected-access
-        n_classes=n_classes,
-        weight_column_name=weight_column_name,
-        enable_centered_bias=enable_centered_bias)
+
+    # TODO(b/35922130): Replace with `input_layer_partitioner` arg.
+    input_layer_partitioner = None
+    if input_layer_min_slice_size is not None:
+      input_layer_partitioner = (
+          partitioned_variables.min_max_variable_partitioner(
+              max_partitions=config.num_ps_replicas if config else 0,
+              min_slice_size=input_layer_min_slice_size))
+
     super(DNNLinearCombinedClassifier, self).__init__(
         model_fn=_dnn_linear_combined_model_fn,
         model_dir=model_dir,
@@ -567,7 +683,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         params={
             "head": head,
             "linear_feature_columns": linear_feature_columns,
-            "linear_optimizer": self._linear_optimizer,
+            "linear_optimizer": linear_optimizer,
             "joint_linear_weights": _joint_linear_weights,
             "dnn_feature_columns": dnn_feature_columns,
             "dnn_optimizer": dnn_optimizer,
@@ -576,7 +692,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
             "dnn_dropout": dnn_dropout,
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
-            "input_layer_min_slice_size": input_layer_min_slice_size,
+            "input_layer_partitioner": input_layer_partitioner,
+            "fix_global_step_increment_bug": fix_global_step_increment_bug,
         },
         feature_engineering_fn=feature_engineering_fn)
 
@@ -687,6 +804,7 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
       return _as_iterable(preds, output=key)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -710,70 +828,12 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
 
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def dnn_weights_(self):
-    hiddenlayer_weights = [
-        self.get_variable_value("dnn/hiddenlayer_%d/weights" % i)
-        for i, _ in enumerate(self._dnn_hidden_units)
-    ]
-    logits_weights = [self.get_variable_value("dnn/logits/weights")]
-    return hiddenlayer_weights + logits_weights
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def linear_weights_(self):
-    values = {}
-    if isinstance(self._linear_optimizer, str):
-      optimizer_name = self._linear_optimizer
-    else:
-      optimizer_name = self._linear_optimizer.get_name()
-    optimizer_regex = r".*/"+optimizer_name + r"(_\d)?$"
-    for name in self.get_variable_names():
-      if (name.startswith("linear/") and
-          name != "linear/bias_weight" and
-          name != "linear/learning_rate" and
-          not re.match(optimizer_regex, name)):
-        values[name] = self.get_variable_value(name)
-    if len(values) == 1:
-      return values[list(values.keys())[0]]
-    return values
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def dnn_bias_(self):
-    hiddenlayer_bias = [self.get_variable_value("dnn/hiddenlayer_%d/biases" % i)
-                        for i, _ in enumerate(self._dnn_hidden_units)]
-    logits_bias = [self.get_variable_value("dnn/logits/biases")]
-    if not self._enable_centered_bias:
-      return hiddenlayer_bias + logits_bias
-    centered_bias = [self.get_variable_value(_CENTERED_BIAS_WEIGHT)]
-    return hiddenlayer_bias + logits_bias  + centered_bias
-
-  @property
-  @deprecated("2016-10-30",
-              "This method will be removed after the deprecation date. "
-              "To inspect variables, use get_variable_names() and "
-              "get_variable_value().")
-  def linear_bias_(self):
-    linear_bias = self.get_variable_value("linear/bias_weight")
-    if not self._enable_centered_bias:
-      return linear_bias
-    centered_bias = [self.get_variable_value(_CENTERED_BIAS_WEIGHT)]
-    return linear_bias  + centered_bias
-
 
 class DNNLinearCombinedRegressor(estimator.Estimator):
   """A regressor for TensorFlow Linear and DNN joined training models.
+
+  Note: New users must set `fix_global_step_increment_bug=True` when creating an
+  estimator.
 
   Example:
 
@@ -811,9 +871,11 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
     ...
   def input_fn_eval: # returns x, y
     ...
+  def input_fn_predict: # returns x, None
+    ...
   estimator.train(input_fn_train)
   estimator.evaluate(input_fn_eval)
-  estimator.predict(x)
+  estimator.predict(input_fn_predict)
   ```
 
   Input of `fit`, `train`, and `evaluate` should have following features,
@@ -830,6 +892,10 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         whose `value` is a `Tensor`.
   """
 
+  @deprecated_arg_values(
+      _FIX_GLOBAL_STEP_INCREMENT_DATE,
+      _FIX_GLOBAL_STEP_INCREMENT_INSTRUCTIONS,
+      fix_global_step_increment_bug=False)
   def __init__(self,  # _joint_linear_weights pylint: disable=invalid-name
                model_dir=None,
                weight_column_name=None,
@@ -847,8 +913,12 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                config=None,
                feature_engineering_fn=None,
                embedding_lr_multipliers=None,
-               input_layer_min_slice_size=None):
+               input_layer_min_slice_size=None,
+               fix_global_step_increment_bug=False):
     """Initializes a DNNLinearCombinedRegressor instance.
+
+    Note: New users must set `fix_global_step_increment_bug=True` when creating
+    an estimator.
 
     Args:
       model_dir: Directory to save model parameters, graph and etc. This can
@@ -887,15 +957,17 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         (typically, these have shape `[batch_size, label_dimension]`).
       config: RunConfig object to configure the runtime settings.
       feature_engineering_fn: Feature engineering function. Takes features and
-                        labels which are the output of `input_fn` and
-                        returns features and labels which will be fed
-                        into the model.
+        labels which are the output of `input_fn` and returns features and
+        labels which will be fed into the model.
       embedding_lr_multipliers: Optional. A dictionary from `EmbeddingColumn` to
-          a `float` multiplier. Multiplier will be used to multiply with
-          learning rate for the embedding variables.
+        a `float` multiplier. Multiplier will be used to multiply with
+        learning rate for the embedding variables.
       input_layer_min_slice_size: Optional. The min slice size of input layer
-          partitions. If not provided, will use the default of 64M.
-
+        partitions. If not provided, will use the default of 64M.
+      fix_global_step_increment_bug: If `False`, the estimator needs two fit
+        steps to optimize both linear and dnn parts. If `True`, this bug is
+        fixed. New users must set this to `True`, but it the default value is
+        `False` for backwards compatibility.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -907,7 +979,16 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
     if not self._feature_columns:
       raise ValueError("Either linear_feature_columns or dnn_feature_columns "
                        "must be defined.")
-    head = head_lib._regression_head(  # pylint: disable=protected-access
+
+    # TODO(b/35922130): Replace with `input_layer_partitioner` arg.
+    input_layer_partitioner = None
+    if input_layer_min_slice_size is not None:
+      input_layer_partitioner = (
+          partitioned_variables.min_max_variable_partitioner(
+              max_partitions=config.num_ps_replicas if config else 0,
+              min_slice_size=input_layer_min_slice_size))
+
+    head = head_lib.regression_head(
         weight_column_name=weight_column_name,
         label_dimension=label_dimension,
         enable_centered_bias=enable_centered_bias)
@@ -927,7 +1008,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
             "dnn_dropout": dnn_dropout,
             "gradient_clip_norm": gradient_clip_norm,
             "embedding_lr_multipliers": embedding_lr_multipliers,
-            "input_layer_min_slice_size": input_layer_min_slice_size,
+            "input_layer_partitioner": input_layer_partitioner,
+            "fix_global_step_increment_bug": fix_global_step_increment_bug,
         },
         feature_engineering_fn=feature_engineering_fn)
 
@@ -1041,6 +1123,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
       return (pred[key] for pred in preds)
     return preds[key]
 
+  @deprecated("2017-03-25", "Please use Estimator.export_savedmodel() instead.")
   def export(self,
              export_dir,
              input_fn=None,
@@ -1062,3 +1145,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         prediction_key=prediction_key.PredictionKey.SCORES,
         default_batch_size=default_batch_size,
         exports_to_keep=exports_to_keep)
+
+# Aliases
+# TODO(zakaria): Remove these aliases, See b/34751732
+_DNNLinearCombinedEstimator = DNNLinearCombinedEstimator

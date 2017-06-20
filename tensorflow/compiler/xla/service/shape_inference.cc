@@ -208,6 +208,16 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
             PrimitiveType_Name(arg.element_type()).c_str());
       }
       return arg;
+
+    case UNOP_IS_FINITE:
+      if (!ShapeUtil::ElementIsFloating(arg)) {
+        return InvalidArgument(
+            "expected element type in shape to be floating point for IsFinite "
+            "operation; got %s",
+            PrimitiveType_Name(arg.element_type()).c_str());
+      }
+      return ShapeUtil::ChangeElementType(arg, PRED);
+
     default:
       return InvalidArgument("unknown operation %s",
                              UnaryOperation_Name(operation).c_str());
@@ -217,7 +227,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 /* static */ StatusOr<Shape> ShapeInference::InferConcatOpShape(
     tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
     const int64 dimension) {
-  if (arg_shapes.size() == 0) {
+  if (arg_shapes.empty()) {
     return InvalidArgument("Concatenate expects at least one argument");
   }
   if (dimension < 0 || dimension >= ShapeUtil::Rank(*arg_shapes[0])) {
@@ -234,8 +244,11 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     }
     if (ShapeUtil::Rank(*arg_shape) != ShapeUtil::Rank(*shape)) {
       return InvalidArgument(
-          "cannot concatenate arrays with different ranks: %lld vs %lld",
-          ShapeUtil::Rank(*arg_shape), ShapeUtil::Rank(*shape));
+          "Cannot concatenate arrays with different ranks: %lld (%s) vs %lld "
+          "(%s)",
+          ShapeUtil::Rank(*arg_shape),
+          ShapeUtil::HumanString(*arg_shape).c_str(), ShapeUtil::Rank(*shape),
+          ShapeUtil::HumanString(*shape).c_str());
     }
     if (arg_shape->element_type() != shape->element_type()) {
       return InvalidArgument(
@@ -299,6 +312,10 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     return InvalidArgument(
         "the rank of the operand and the padding configuration do not match.");
   }
+  if (operand_shape.element_type() != padding_value_shape.element_type()) {
+    return InvalidArgument(
+        "the element types of the operands to pad do not match");
+  }
   std::vector<int64> dimensions(ShapeUtil::Rank(operand_shape));
   for (int64 i = 0; i < operand_shape.dimensions_size(); ++i) {
     dimensions[i] = operand_shape.dimensions(i) +
@@ -328,7 +345,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
 
   // Check if both element types are the same.
   if (lhs.element_type() != rhs.element_type()) {
-    return fail("element types mismatch");
+    return fail("element types do not match");
   }
 
   if (ShapeUtil::Rank(lhs) < 1 || ShapeUtil::Rank(lhs) > 2 ||
@@ -530,7 +547,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InferDegenerateDimensionBroadcastShape(operation, lhs, rhs);
   } else {
     // Ranks do not match, so perform InDim broadcasting using
-    // broadcast_dimensions. Scalar broadcasting is a special case of this).
+    // broadcast_dimensions. Scalar broadcasting is a special case of this.
     const Shape& larger_shape =
         ShapeUtil::Rank(lhs) > ShapeUtil::Rank(rhs) ? lhs : rhs;
     const Shape& smaller_shape =
@@ -623,26 +640,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   TF_DCHECK_OK(ShapeUtil::ValidateShape(ehs));
   switch (operation) {
     case TRIOP_CLAMP:
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(lhs, "lhs of ternary operation"));
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(rhs, "rhs of ternary operation"));
-      TF_RETURN_IF_ERROR(
-          ExpectNotTupleOrOpaque(ehs, "ehs of ternary operation"));
-      if (((ShapeUtil::Compatible(lhs, rhs) || ShapeUtil::Rank(lhs) == 0) &&
-           (ShapeUtil::Compatible(rhs, ehs) || ShapeUtil::Rank(ehs) == 0))) {
-        return rhs;
-      }
-      if (ShapeUtil::Rank(rhs) == 0) {
-        if (ShapeUtil::Compatible(lhs, ehs)) {
-          return lhs;
-        }
-        return ShapeUtil::Rank(ehs) == 0 ? lhs : ehs;
-      }
-      return Unimplemented("not yet implemented: %s, %s <clamp> %s",
-                           lhs.ShortDebugString().c_str(),
-                           ehs.ShortDebugString().c_str(),
-                           rhs.ShortDebugString().c_str());
+      return InferClampShape(lhs, rhs, ehs);
     case TRIOP_SELECT:
       return InferSelectShape(lhs, rhs, ehs);
     case TRIOP_UPDATE:
@@ -681,7 +679,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 /* static */ StatusOr<Shape> ShapeInference::InferMapShape(
     tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
     const ProgramShape& to_apply) {
-  if (arg_shapes.size() == 0) {
+  if (arg_shapes.empty()) {
     return InvalidArgument("Map expects at least one argument");
   }
 
@@ -1007,7 +1005,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 
 /* static */ StatusOr<Shape> ShapeInference::InferSliceShape(
     const Shape& arg, tensorflow::gtl::ArraySlice<int64> starts,
-    tensorflow::gtl::ArraySlice<int64> limits) {
+    tensorflow::gtl::ArraySlice<int64> limits,
+    tensorflow::gtl::ArraySlice<int64> strides) {
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(arg, "operand of slice"));
   VLOG(2) << tensorflow::strings::Printf(
       "slicing shape %s starts={%s} limits={%s}",
@@ -1030,13 +1029,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int64 dimension = 0; dimension < starts.size(); ++dimension) {
     int64 start_index = starts[dimension];
     int64 limit_index = limits[dimension];
+    int64 stride = strides[dimension];
     if (start_index < 0) {
       return InvalidArgument("negative start index to slice: %lld",
                              start_index);
     }
-    if (limit_index < 0) {
-      return InvalidArgument("negative limit index to slice: %lld",
-                             limit_index);
+    if (stride == 0) {
+      return InvalidArgument("Zero stride");
     }
     if (limit_index > arg.dimensions(dimension)) {
       return InvalidArgument(
@@ -1044,18 +1043,21 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
           "size (%lld)",
           limit_index, arg.dimensions(dimension));
     }
-    if (start_index > limit_index) {
-      return InvalidArgument(
-          "limit index (%lld) must be greater or equal to "
-          "start index (%lld) in slice",
-          limit_index, start_index);
-    }
     VLOG(2) << tensorflow::strings::Printf("starts[%lld] = %lld", dimension,
                                            start_index);
     VLOG(2) << tensorflow::strings::Printf("limits[%lld] = %lld", dimension,
                                            limit_index);
-
-    sizes.push_back(limits[dimension] - starts[dimension]);
+    if (stride > 0) {
+      if (start_index > limit_index) {
+        return InvalidArgument(
+            "limit index (%lld) must be greater or equal to "
+            "start index (%lld) in slice with positive stride",
+            limit_index, start_index);
+      }
+      sizes.push_back((limit_index - start_index + stride - 1) / stride);
+    } else {
+      return InvalidArgument("Negative strides not supported");
+    }
   }
 
   return ShapeUtil::MakeShape(arg.element_type(), sizes);
@@ -1089,9 +1091,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   const int64 start_num_dims = start_indices_shape.dimensions(0);
   if (ShapeUtil::Rank(operand_shape) != start_num_dims) {
     return InvalidArgument(
-        "dynamic slice start number of dimensions %lld must match rank %lld of "
-        "slice input",
-        start_num_dims, ShapeUtil::Rank(operand_shape));
+        "dynamic slice start number of dimensions %lld (%s) must match rank "
+        "%lld of slice input (%s)",
+        start_num_dims, ShapeUtil::HumanString(start_indices_shape).c_str(),
+        ShapeUtil::Rank(operand_shape),
+        ShapeUtil::HumanString(operand_shape).c_str());
   }
 
   if (slice_sizes.size() != ShapeUtil::Rank(operand_shape)) {
@@ -1103,7 +1107,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int64 dim = 0; dim < slice_sizes.size(); ++dim) {
     const int64 input_dim_size = operand_shape.dimensions(dim);
     const int64 slice_dim_size = slice_sizes[dim];
-    if (slice_dim_size <= 0) {
+    if (slice_dim_size < 0) {
       return InvalidArgument("negative size index to dynamic slice: %lld",
                              slice_dim_size);
     }
@@ -1150,9 +1154,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   const int64 start_num_dims = start_indices_shape.dimensions(0);
   if (ShapeUtil::Rank(operand_shape) != start_num_dims) {
     return InvalidArgument(
-        "dynamic update slice start number of dimensions %lld must match "
-        "rank %lld of slice input",
-        start_num_dims, ShapeUtil::Rank(operand_shape));
+        "dynamic slice start number of dimensions %lld (%s) must match rank "
+        "%lld of slice input (%s)",
+        start_num_dims, ShapeUtil::HumanString(start_indices_shape).c_str(),
+        ShapeUtil::Rank(operand_shape),
+        ShapeUtil::HumanString(operand_shape).c_str());
   }
 
   if (ShapeUtil::Rank(update_shape) != ShapeUtil::Rank(operand_shape)) {
@@ -1173,9 +1179,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   for (int64 dim = 0; dim < ShapeUtil::Rank(operand_shape); ++dim) {
     const int64 input_dim_size = operand_shape.dimensions(dim);
     const int64 update_dim_size = update_shape.dimensions(dim);
-    if (update_dim_size <= 0) {
+    if (update_dim_size < 0) {
       return InvalidArgument(
-          "size index %lld to dynamic update slice must be > 0",
+          "size index %lld to dynamic update slice must be >= 0",
           update_dim_size);
     }
     if (update_dim_size > input_dim_size) {
@@ -1322,6 +1328,41 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   return ShapeUtil::PermuteDimensions(InversePermutation(dimensions), operand);
 }
 
+// TODO(b/36794510): Make broadcast semantics more consistent, by supporting
+// "degenerate" cases, as with binary elementwise ops.
+/* static */ StatusOr<Shape> ShapeInference::InferClampShape(
+    const Shape& min, const Shape& operand, const Shape& max) {
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(min, "clamp min"));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(operand, "clamp operand"));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(max, "clamp max"));
+  if (!ShapeUtil::SameElementType(min, operand) ||
+      !ShapeUtil::SameElementType(max, operand)) {
+    return InvalidArgument("clamp op with different operand types: %s, %s, %s",
+                           ShapeUtil::HumanString(min).c_str(),
+                           ShapeUtil::HumanString(operand).c_str(),
+                           ShapeUtil::HumanString(max).c_str());
+  }
+  if (((ShapeUtil::Compatible(min, operand) || ShapeUtil::IsScalar(min)) &&
+       (ShapeUtil::Compatible(max, operand) || ShapeUtil::IsScalar(max)))) {
+    return operand;
+  }
+  if (ShapeUtil::IsScalar(operand)) {
+    if (ShapeUtil::Compatible(min, max)) {
+      return min;
+    } else if (ShapeUtil::IsScalar(min)) {
+      return max;
+    } else if (ShapeUtil::IsScalar(max)) {
+      return min;
+    }
+  }
+  return Unimplemented(
+      "not yet implemented: %s, %s <clamp> %s", min.ShortDebugString().c_str(),
+      max.ShortDebugString().c_str(), operand.ShortDebugString().c_str());
+}
+
+// TODO(b/36794510): Make broadcast semantics more consistent, by supporting
+// "degenerate" cases, as with binary elementwise ops, as well as scalar
+// broadcast from all operands, not just the predicate.
 /* static */ StatusOr<Shape> ShapeInference::InferSelectShape(
     const Shape& pred, const Shape& on_true, const Shape& on_false) {
   if (!ShapeUtil::Compatible(on_true, on_false)) {

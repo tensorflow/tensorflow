@@ -26,7 +26,12 @@ limitations under the License.
 
 namespace tensorflow {
 
+/// @defgroup core Core Tensorflow API
+
 class Output;
+
+/// @addtogroup core
+/// @{
 
 /// Represents a node in the computation graph.
 class Operation {
@@ -34,22 +39,22 @@ class Operation {
   Operation() : node_(nullptr) {}
   explicit Operation(Node* n);
 
-  int num_inputs() const { return node_->num_inputs(); }
-  DataType input_type(int o) const { return node_->input_type(o); }
-  Output input(int i) const;
+  int32 num_inputs() const { return node_->num_inputs(); }
+  DataType input_type(int32 o) const { return node_->input_type(o); }
+  Output input(int32 i) const;
 
-  int num_outputs() const { return node_->num_outputs(); }
-  DataType output_type(int o) const { return node_->output_type(o); }
-  Output output(int i) const;
+  int32 num_outputs() const { return node_->num_outputs(); }
+  DataType output_type(int32 o) const { return node_->output_type(o); }
+  Output output(int32 i) const;
 
   Node* node() const { return node_; }
 
-  uint64 hash(int64 index) const;
+  uint64 hash(int32 index) const;
 
   bool operator==(const Operation& other) const { return node_ == other.node_; }
 
  private:
-  typedef std::vector<std::pair<Node*, int64>> Inputs;
+  typedef std::vector<std::pair<Node*, int32>> Inputs;
   static Inputs GetInputs(Node* node);
 
   Inputs inputs_;
@@ -61,12 +66,12 @@ class Output {
  public:
   Output() = default;
   explicit Output(Node* n) : op_(n) {}
-  Output(Node* n, int64 index) : op_(n), index_(index) {}
-  Output(const Operation& op, int64 index) : op_(op), index_(index) {}
+  Output(Node* n, int32 index) : op_(n), index_(index) {}
+  Output(const Operation& op, int32 index) : op_(op), index_(index) {}
 
   Operation op() const { return op_; }
   Node* node() const { return op().node(); }
-  int64 index() const { return index_; }
+  int32 index() const { return index_; }
   DataType type() const { return op_.output_type(index_); }
   string name() const { return strings::StrCat(node()->name(), ":", index()); }
   bool operator==(const Output& other) const {
@@ -77,13 +82,14 @@ class Output {
 
  private:
   Operation op_ = Operation(nullptr);
-  int64 index_ = 0;
+  int32 index_ = 0;
 };
 
+/// Hash class that can be used for e.g. storing Outputs in an unordered_map
 struct OutputHash {
   std::size_t operator()(const Output& output) const {
     return Hash64Combine(std::hash<Node*>()(output.node()),
-                         std::hash<int64>()(output.index()));
+                         std::hash<int32>()(output.index()));
   }
 };
 
@@ -161,6 +167,7 @@ class Input {
     /// initializer list is indeed a valid multi-dimensional tensor.
     Initializer(const std::initializer_list<Initializer>& v);
 
+    // START_SKIP_DOXYGEN
     template <typename T, bool = std::is_convertible<T, string>::value>
     struct RealType {
       typedef string type;
@@ -170,6 +177,7 @@ class Input {
     struct RealType<T, false> {
       typedef T type;
     };
+    // END_SKIP_DOXYGEN
 
     TensorProto AsTensorProto() {
       TensorProto tensor_proto;
@@ -222,12 +230,12 @@ class Input {
 
   /// Constructor specifying a node name, index and datatype. This should only
   /// be used for specifying a backward edge, needed by control flow.
-  Input(const string& name, int i, DataType dt)
+  Input(const string& name, int32 i, DataType dt)
       : node_name_(name), index_(i), data_type_(dt) {}
 
   Node* node() const { return output_.node(); }
   string node_name() const { return node_name_; }
-  int index() const { return node_name_.empty() ? output_.index() : index_; }
+  int32 index() const { return node_name_.empty() ? output_.index() : index_; }
   DataType data_type() const { return data_type_; }
   Status status() const { return status_; }
   const Tensor& tensor() const { return tensor_; }
@@ -237,7 +245,7 @@ class Input {
   Output output_ = Output(Operation(nullptr), 0);
   Tensor tensor_;
   const string node_name_ = "";
-  int index_ = 0;
+  int32 index_ = 0;
   DataType data_type_ = DT_INVALID;
 };
 
@@ -283,6 +291,8 @@ class InputList {
  private:
   std::vector<Input> inputs_;
 };
+
+/// @}
 
 }  // namespace tensorflow
 

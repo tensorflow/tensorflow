@@ -25,6 +25,7 @@ REGISTER_OP_NO_GRADIENT("Shape");
 REGISTER_OP_NO_GRADIENT("Rank");
 REGISTER_OP_NO_GRADIENT("Size");
 REGISTER_OP_NO_GRADIENT("ZerosLike");
+REGISTER_OP_NO_GRADIENT("OnesLike");
 REGISTER_OP_NO_GRADIENT("Const");
 REGISTER_OP_NO_GRADIENT("EditDistance");
 REGISTER_OP_NO_GRADIENT("StopGradient");
@@ -247,6 +248,7 @@ Status ArrayToListGrad(const AttrSlice& attrs, FunctionDef* g) {
   int N;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &N));
   std::vector<string> dys;
+  dys.reserve(N);
   for (int i = 0; i < N; ++i) {
     dys.push_back(strings::StrCat("dy:", i));
   }

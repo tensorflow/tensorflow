@@ -108,6 +108,12 @@ class BinaryOpsTest(XLATestCase):
           expected=np.array([-75, -48, -21, 0], dtype=dtype))
 
       self._testBinary(
+          gen_nn_ops._elu_grad,
+          np.array([1, 2, 3, 4, 5, 6], dtype=dtype),
+          np.array([-.6, -.4, -.2, 0, .2, .4], dtype=dtype),
+          expected=np.array([0.4, 1.2, 2.4, 4, 5, 6], dtype=dtype))
+
+      self._testBinary(
           gen_nn_ops._relu_grad,
           np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=dtype),
           np.array([0, 0, 0, 0, 0, 0.1, 0.3, 0.5, 0.7, 0.9], dtype=dtype),
@@ -128,6 +134,20 @@ class BinaryOpsTest(XLATestCase):
               np.array([1.44019, 2.44019], dtype=dtype),
               np.array([[-0.067941, -0.112856, -0.063117, 0.243914],
                         [-0.367941, -0.212856, 0.036883, 0.543914]],
+                       dtype=dtype),
+          ],
+          equality_test=self.ListsAreClose)
+
+      self._testBinary(
+          gen_nn_ops._sparse_softmax_cross_entropy_with_logits,
+          np.array([[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8],
+                    [0.9, 1.0, 1.1, 1.2]], dtype=dtype),
+          np.array([2, 1, 7], dtype=np.int32),
+          expected=[
+              np.array([1.342536, 1.442536, np.nan], dtype=dtype),
+              np.array([[0.213838, 0.236328, -0.738817, 0.288651],
+                        [0.213838, -0.763672, 0.261183, 0.288651],
+                        [np.nan, np.nan, np.nan, np.nan]],
                        dtype=dtype),
           ],
           equality_test=self.ListsAreClose)

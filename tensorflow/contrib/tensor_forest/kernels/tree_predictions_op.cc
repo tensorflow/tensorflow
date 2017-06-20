@@ -33,12 +33,6 @@ using tensorforest::LEAF_NODE;
 using tensorforest::FREE_NODE;
 
 using tensorforest::CheckTensorBounds;
-using tensorforest::DataColumnTypes;
-using tensorforest::Sum;
-
-using shape_inference::DimensionHandle;
-using shape_inference::InferenceContext;
-using shape_inference::ShapeHandle;
 
 namespace {
 // Traverse the tree for every example from start to end. Put the resulting

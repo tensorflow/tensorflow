@@ -23,12 +23,12 @@ package(
 cc_library(
     name = "xla_compiler",
     srcs = [
-        "op_registrations.cc",
         "xla_compilation_device.cc",
         "xla_compiler.cc",
         "xla_context.cc",
         "xla_helpers.cc",
         "xla_op_kernel.cc",
+        "xla_op_registry.cc",
     ],
     hdrs = [
         "xla_compilation_device.h",
@@ -36,18 +36,21 @@ cc_library(
         "xla_context.h",
         "xla_helpers.h",
         "xla_op_kernel.h",
+        "xla_op_registry.h",
     ],
+    visibility = [":friends"],
     deps = [
         ":common",
         ":dump_graph",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/client",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:client_library",
+        "//tensorflow/compiler/xla/client:computation",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -89,6 +92,7 @@ cc_library(
 
 cc_test(
     name = "xla_compiler_test",
+    size = "small",
     srcs = ["xla_compiler_test.cc"],
     deps = [
         ":xla_compiler",
@@ -110,6 +114,7 @@ cc_test(
 
 cc_test(
     name = "str_util_test",
+    size = "small",
     srcs = [
         "str_util_test.cc",
     ],
@@ -123,6 +128,7 @@ cc_test(
 
 cc_test(
     name = "literal_util_test",
+    size = "small",
     srcs = [
         "literal_util_test.cc",
     ],

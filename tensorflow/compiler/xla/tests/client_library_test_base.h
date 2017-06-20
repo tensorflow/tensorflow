@@ -46,14 +46,22 @@ namespace xla {
 class ClientLibraryTestBase : public ::testing::Test {
  protected:
   explicit ClientLibraryTestBase(
-      perftools::gputools::Platform* platform = nullptr,
-      tensorflow::gtl::ArraySlice<string> disabled_pass_names = {});
+      perftools::gputools::Platform* platform = nullptr);
 
   // Returns the name of the test currently being run.
   string TestName() const;
 
   void SetFastMathDisabled(bool disabled) {
-    execution_options_.set_disable_fast_math(disabled);
+    execution_options_.mutable_debug_options()->set_xla_enable_fast_math(
+        !disabled);
+  }
+
+  void SetSeed(uint64 seed) { execution_options_.set_seed(seed); }
+
+  // Provides mutable access to the execution DebugOptions field; this lets
+  // tests tweak the options that will be used to compile/run the graph.
+  DebugOptions* mutable_debug_options() {
+    return execution_options_.mutable_debug_options();
   }
 
   // TODO(b/25566808): Add helper that populates a literal from a testdata file.
@@ -216,6 +224,16 @@ class ClientLibraryTestBase : public ::testing::Test {
       const int rows, const int cols, const int rows_padded,
       const int cols_padded);
 
+  // Create a parameter instruction that wraps a given value and then stores
+  // into "data_handle" the global handle for that parameter.
+  //
+  // "parameter_number" is the parameter number.
+  // "name" is the name of the parameter instruction.
+  template <typename NativeT>
+  std::unique_ptr<GlobalData> CreateR0Parameter(
+      NativeT value, int64 parameter_number, const string& name,
+      ComputationBuilder* builder, ComputationDataHandle* data_handle);
+
   // Create a parameter instruction that wraps the given values and then stores
   // into "data_handle" the global handle for that parameter.
   //
@@ -368,6 +386,17 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
       LiteralUtil::CreateR4FromArray4D<NativeT>(expected);
   ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
                                                   arguments, error);
+}
+
+template <typename NativeT>
+std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
+    NativeT value, int64 parameter_number, const string& name,
+    ComputationBuilder* builder, ComputationDataHandle* data_handle) {
+  std::unique_ptr<Literal> literal = LiteralUtil::CreateR0(value);
+  std::unique_ptr<GlobalData> data =
+      client_->TransferToServer(*literal).ConsumeValueOrDie();
+  *data_handle = builder->Parameter(parameter_number, literal->shape(), name);
+  return data;
 }
 
 template <typename NativeT>

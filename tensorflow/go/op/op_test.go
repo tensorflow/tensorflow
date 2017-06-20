@@ -1,22 +1,25 @@
-// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
+/*
+Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
 
 // Tests for the generated code of some operations.
 
 package op
 
 import (
+	"strings"
 	"testing"
 
 	tf "github.com/tensorflow/tensorflow/tensorflow/go"
@@ -30,4 +33,28 @@ func TestPlaceholder(t *testing.T) {
 	if _, err := s.Finalize(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestAddOperationFailure(t *testing.T) {
+	// Inspired from https://github.com/tensorflow/tensorflow/issues/9931
+	s := NewScope()
+
+	resize := ResizeArea(s, Placeholder(s, tf.Float), Const(s, []int64{80, 80}))
+	if err := s.Err(); err == nil {
+		t.Fatal("ResizeArea expects an int32 Tensor for size, should fail when an int64 is provided")
+	}
+	// And any use of resize should panic with an error message more informative than SIGSEGV
+	defer func() {
+		r := recover()
+		if r == nil {
+			return
+		}
+		s, ok := r.(string)
+		if ok && strings.Contains(s, "see Scope.Err() for details") {
+			return
+		}
+		t.Errorf("Expected panic string to Scope.Err(), found %T: %q", r, r)
+	}()
+	_ = resize.Shape()
+	t.Errorf("resize.Shape() should have paniced since the underlying Operation was not created")
 }

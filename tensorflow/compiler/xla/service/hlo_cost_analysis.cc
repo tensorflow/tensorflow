@@ -20,9 +20,42 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
+
+Status HloCostAnalysis::Preprocess(HloInstruction* hlo) {
+  // Set current instruction cost values to reasonable default values. Each
+  // handler can overwrite these values. In Postprocess, these value are
+  // accumulated and written to the per-instruction maps.
+  current_flop_count_ = 0;
+  current_transcendental_count_ = 0;
+
+  // The default element count for an instruction is the sum of elements in the
+  // operands and output. The default ShapeUtil::ByteSizeOf does not handle
+  // opaque types.
+  current_bytes_accessed_ = shape_size_(hlo->shape());
+  for (const HloInstruction* operand : hlo->operands()) {
+    current_bytes_accessed_ += shape_size_(operand->shape());
+  }
+
+  return Status::OK();
+}
+
+Status HloCostAnalysis::Postprocess(HloInstruction* hlo) {
+  // Accumulate cost values and write into per-instruction maps.
+  flop_count_ += current_flop_count_;
+  hlo_to_flop_count_[hlo] = current_flop_count_;
+
+  transcendental_count_ += current_transcendental_count_;
+  hlo_to_transcendental_count_[hlo] = current_transcendental_count_;
+
+  bytes_accessed_ += current_bytes_accessed_;
+  hlo_to_bytes_accessed_[hlo] = current_bytes_accessed_;
+
+  return Status::OK();
+}
 
 Status HloCostAnalysis::HandleElementwiseOp(HloInstruction* hlo_instruction) {
   const auto& shape = hlo_instruction->shape();
@@ -32,12 +65,11 @@ Status HloCostAnalysis::HandleElementwiseOp(HloInstruction* hlo_instruction) {
   auto opcode = hlo_instruction->opcode();
   // We treat the two opcodes (kExp, kPower) as transcendental operations.
   if (opcode == HloOpcode::kExp || opcode == HloOpcode::kPower) {
-    transcendental_count_ += computation_count;
+    current_transcendental_count_ = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
     // FLOPs.
-    hlo_to_flop_count_[hlo_instruction] = computation_count;
-    flop_count_ += computation_count;
+    current_flop_count_ = computation_count;
   }
   return Status::OK();
 }
@@ -69,16 +101,21 @@ Status HloCostAnalysis::HandleClamp(HloInstruction* clamp,
 }
 
 Status HloCostAnalysis::HandleParameter(HloInstruction* parameter) {
+  current_bytes_accessed_ = 0;
   return Status::OK();
 }
 
 Status HloCostAnalysis::HandleConstant(HloInstruction* constant,
                                        const Literal& literal) {
+  current_bytes_accessed_ = 0;
   return Status::OK();
 }
 
 Status HloCostAnalysis::HandleGetTupleElement(HloInstruction* get_tuple_element,
                                               HloInstruction* operand) {
+  // GetTupleElement forwards a pointer and does not touch each element in the
+  // output.
+  current_bytes_accessed_ = 0;
   return Status::OK();
 }
 
@@ -99,9 +136,9 @@ Status HloCostAnalysis::HandleSlice(HloInstruction* slice,
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleDynamicSlice(
-    HloInstruction* slice,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+Status HloCostAnalysis::HandleDynamicSlice(HloInstruction* dynamic_slice,
+                                           HloInstruction* operand,
+                                           HloInstruction* start_indices) {
   return Status::OK();
 }
 
@@ -114,6 +151,10 @@ Status HloCostAnalysis::HandleDynamicUpdateSlice(
 Status HloCostAnalysis::HandleTuple(
     HloInstruction* tuple,
     tensorflow::gtl::ArraySlice<HloInstruction*> operands) {
+  // The tuple instruction only gathers pointers from inputs (it doesn't iterate
+  // through them). The memory touched is then only the size of the output
+  // buffer.
+  current_bytes_accessed_ = shape_size_(tuple->shape());
   return Status::OK();
 }
 
@@ -125,8 +166,7 @@ Status HloCostAnalysis::HandleConcatenate(
 
 Status HloCostAnalysis::HandleConvert(HloInstruction* convert,
                                       HloInstruction* operand) {
-  flop_count_ += ShapeUtil::ElementsIn(operand->shape());
-  return Status::OK();
+  return HandleElementwiseOp(convert);
 }
 
 Status HloCostAnalysis::HandleCopy(HloInstruction* copy,
@@ -137,15 +177,24 @@ Status HloCostAnalysis::HandleCopy(HloInstruction* copy,
 Status HloCostAnalysis::HandleDot(HloInstruction* dot,
                                   HloInstruction* lhs_instruction,
                                   HloInstruction* rhs_instruction) {
+  const Shape& lhs_shape = lhs_instruction->shape();
+  const Shape& rhs_shape = rhs_instruction->shape();
+  // Count of elements along the reduction dimension (last dimension for the
+  // rhs).
+  int64 reduction_width = lhs_shape.dimensions(ShapeUtil::Rank(lhs_shape) - 1);
+
+  // First divide by reduction width before multiplying by rhs elements to avoid
+  // overflow.
+  int64 fma_count;
+  if (reduction_width == 0) {
+    fma_count = 0;
+  } else {
+    fma_count = (ShapeUtil::ElementsIn(lhs_shape) / reduction_width) *
+                ShapeUtil::ElementsIn(rhs_shape);
+  }
+
   // We count an FMA operation as 2 floating point operations.
-  // Multiplying the sizes of lhs, rhs, and result produces the square of the
-  // number of FMAs during the computation.
-  auto fma_count = std::sqrt(
-      static_cast<double>(ShapeUtil::ElementsIn(lhs_instruction->shape())) *
-      ShapeUtil::ElementsIn(rhs_instruction->shape()) *
-      ShapeUtil::ElementsIn(dot->shape()));
-  flop_count_ += 2 * fma_count;
-  hlo_to_flop_count_[dot] = 2 * fma_count;
+  current_flop_count_ = kFmaFlops * fma_count;
   return Status::OK();
 }
 
@@ -163,15 +212,14 @@ Status HloCostAnalysis::HandleMap(
     tensorflow::gtl::ArraySlice<HloInstruction*> /*static_operands*/) {
   // Compute the cost of the user function.
   HloInstruction* function_instruction = function->root_instruction();
-  HloCostAnalysis visitor;
+  HloCostAnalysis visitor(shape_size_);
   TF_RETURN_IF_ERROR(function_instruction->Accept(&visitor));
 
   // Compute the cost of all elements for this Map operation.
-  auto element_count = ShapeUtil::ElementsIn(map->shape());
-  transcendental_count_ += element_count * visitor.transcendental_count();
-  auto hlo_flop_count = element_count * visitor.flop_count();
-  hlo_to_flop_count_[map] = hlo_flop_count;
-  flop_count_ += hlo_flop_count;
+  int64 element_count = ShapeUtil::ElementsIn(map->shape());
+  current_transcendental_count_ =
+      element_count * visitor.transcendental_count();
+  current_flop_count_ = element_count * visitor.flop_count();
   return Status::OK();
 }
 
@@ -180,16 +228,15 @@ Status HloCostAnalysis::HandleReduce(
     tensorflow::gtl::ArraySlice<int64> dimensions, HloComputation* function) {
   // Compute the cost of the user function.
   HloInstruction* function_instruction = function->root_instruction();
-  HloCostAnalysis visitor;
+  HloCostAnalysis visitor(shape_size_);
   TF_RETURN_IF_ERROR(function_instruction->Accept(&visitor));
 
   // Compute the cost of all elements for this Reduce operation.
-  auto reduction_count = ShapeUtil::ElementsIn(arg->shape()) -
-                         ShapeUtil::ElementsIn(reduce->shape());
-  auto hlo_flop_count = reduction_count * visitor.flop_count();
-  hlo_to_flop_count_[reduce] = hlo_flop_count;
-  flop_count_ += hlo_flop_count;
-  transcendental_count_ += reduction_count * visitor.transcendental_count();
+  int64 reduction_count = ShapeUtil::ElementsIn(arg->shape()) -
+                          ShapeUtil::ElementsIn(reduce->shape());
+  current_flop_count_ = reduction_count * visitor.flop_count();
+  current_transcendental_count_ =
+      reduction_count * visitor.transcendental_count();
   return Status::OK();
 }
 
@@ -199,7 +246,7 @@ Status HloCostAnalysis::HandleReduceWindow(HloInstruction* reduce_window,
                                            HloComputation* function) {
   // Compute the cost of the user function.
   HloInstruction* function_instruction = function->root_instruction();
-  HloCostAnalysis visitor;
+  HloCostAnalysis visitor(shape_size_);
   TF_RETURN_IF_ERROR(function_instruction->Accept(&visitor));
 
   // Compute the cost of all elements for this ReduceWindow operation. For each
@@ -209,10 +256,8 @@ Status HloCostAnalysis::HandleReduceWindow(HloInstruction* reduce_window,
   for (const auto& dimension : window.dimensions()) {
     window_size *= dimension.size();
   }
-  auto hlo_flop_count = output_size * (window_size - 1) * visitor.flop_count();
-  hlo_to_flop_count_[reduce_window] = hlo_flop_count;
-  flop_count_ += hlo_flop_count;
-  transcendental_count_ +=
+  current_flop_count_ = output_size * (window_size - 1) * visitor.flop_count();
+  current_transcendental_count_ =
       output_size * (window_size - 1) * visitor.transcendental_count();
   return Status::OK();
 }
@@ -220,10 +265,10 @@ Status HloCostAnalysis::HandleReduceWindow(HloInstruction* reduce_window,
 Status HloCostAnalysis::HandleSelectAndScatter(HloInstruction* instruction) {
   // Compute the cost of the select and scatter function.
   HloInstruction* select = instruction->select()->root_instruction();
-  HloCostAnalysis select_visitor;
+  HloCostAnalysis select_visitor(shape_size_);
   TF_RETURN_IF_ERROR(select->Accept(&select_visitor));
   HloInstruction* scatter = instruction->scatter()->root_instruction();
-  HloCostAnalysis scatter_visitor;
+  HloCostAnalysis scatter_visitor(shape_size_);
   TF_RETURN_IF_ERROR(scatter->Accept(&scatter_visitor));
 
   // Compute the cost of all elements for this operation. For each scatter
@@ -235,12 +280,10 @@ Status HloCostAnalysis::HandleSelectAndScatter(HloInstruction* instruction) {
   for (const auto& dimension : instruction->window().dimensions()) {
     window_size *= dimension.size();
   }
-  auto hlo_flop_count =
+  current_flop_count_ =
       source_element_count * ((window_size - 1) * select_visitor.flop_count() +
                               scatter_visitor.flop_count());
-  hlo_to_flop_count_[instruction] = hlo_flop_count;
-  flop_count_ += hlo_flop_count;
-  transcendental_count_ +=
+  current_transcendental_count_ =
       source_element_count *
       ((window_size - 1) * select_visitor.transcendental_count() +
        scatter_visitor.transcendental_count());
@@ -248,6 +291,8 @@ Status HloCostAnalysis::HandleSelectAndScatter(HloInstruction* instruction) {
 }
 
 Status HloCostAnalysis::HandleBitcast(HloInstruction* bitcast) {
+  // A bitcast does no computation and touches no memory.
+  current_bytes_accessed_ = 0;
   return Status::OK();
 }
 
@@ -286,10 +331,7 @@ Status HloCostAnalysis::HandleConvolution(HloInstruction* convolution,
   const int64 fmas_per_output_element =
       ShapeUtil::ElementsIn(rhs_instruction->shape()) / output_features;
   const int64 output_elements = ShapeUtil::ElementsIn(convolution->shape());
-  const double hlo_flop_count = static_cast<double>(output_elements) *
-                                fmas_per_output_element * kFmaFlops;
-  flop_count_ += hlo_flop_count;
-  hlo_to_flop_count_[convolution] = hlo_flop_count;
+  current_flop_count_ = output_elements * fmas_per_output_element * kFmaFlops;
   return Status::OK();
 }
 
@@ -299,9 +341,7 @@ Status HloCostAnalysis::HandleCrossReplicaSum(HloInstruction* crs) {
   //
   // TODO(b/33004697): Compute correct cost here, taking the actual number of
   // replicas into account.
-  const double hlo_flop_count = ShapeUtil::ElementsIn(crs->shape());
-  flop_count_ += hlo_flop_count;
-  hlo_to_flop_count_[crs] = hlo_flop_count;
+  current_flop_count_ = ShapeUtil::ElementsIn(crs->shape());
   return Status::OK();
 }
 
@@ -310,27 +350,32 @@ Status HloCostAnalysis::HandleRng(HloInstruction* random,
   // TODO(b/26346211): Implement better estimates for the RNG cost, since the
   // cost changes with the implementation and the distribution. For now, assume
   // the cost of each RNG is same as a transcendental operation.
-  transcendental_count_ += ShapeUtil::ElementsIn(random->shape());
+  current_transcendental_count_ = ShapeUtil::ElementsIn(random->shape());
   return Status::OK();
 }
 
 Status HloCostAnalysis::HandleFusion(HloInstruction* fusion) {
   // Compute the cost of the fused expression.
   HloInstruction* fused_expression_root = fusion->fused_expression_root();
-  HloCostAnalysis visitor;
+  // Don't compute sizes inside of fused ops. We don't use the size here and the
+  // operations inside might not have a layout.
+  HloCostAnalysis visitor([](const Shape&) { return 0; });
   TF_RETURN_IF_ERROR(fused_expression_root->Accept(&visitor));
 
   // Attribute the cost of the fused expression to the fusion node.
-  transcendental_count_ += visitor.transcendental_count();
-  hlo_to_flop_count_[fusion] += visitor.flop_count();
-  flop_count_ += visitor.flop_count();
+  current_transcendental_count_ = visitor.transcendental_count();
+  current_flop_count_ = visitor.flop_count();
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleCall(
-    HloInstruction* call, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-    HloComputation* computation) {
-  return Unimplemented("call");
+Status HloCostAnalysis::HandleCall(HloInstruction* call) {
+  HloCostAnalysis computation_visitor(shape_size_);
+  TF_RETURN_IF_ERROR(call->to_apply()->Accept(&computation_visitor));
+
+  current_flop_count_ = computation_visitor.flop_count();
+  current_transcendental_count_ = computation_visitor.transcendental_count();
+  current_bytes_accessed_ = computation_visitor.bytes_accessed();
+  return Status::OK();
 }
 
 Status HloCostAnalysis::HandleCustomCall(
@@ -343,28 +388,49 @@ Status HloCostAnalysis::HandleCustomCall(
 Status HloCostAnalysis::HandleSort(HloInstruction* sort,
                                    HloInstruction* operand_instruction) {
   // The cost of sort is implementation dependent, so cannot determine at HLO
-  // level. Maybe just assume the comparison based N*log(N) sorting?
-  // TODO(b/26346211): Implement the cost model for sort.
-  return Unimplemented("HandleSort");
+  // level. Assume comparison based N*log(N) sorting.
+  int64 elements = ShapeUtil::ElementsIn(operand_instruction->shape());
+  current_flop_count_ = elements * tensorflow::Log2Ceiling(elements);
+  return Status::OK();
 }
 
-Status HloCostAnalysis::HandleWhile(HloInstruction* xla_while,
-                                    HloInstruction* init,
-                                    HloComputation* condition,
-                                    HloComputation* body) {
+Status HloCostAnalysis::HandleWhile(HloInstruction* xla_while) {
   // Since the number of iterations of the while node is not statically
-  // determined, we cannot analyze the computation cost of a while node.
-  // TODO(b/26346211): Add cost analysis for while node.
-  return Unimplemented("HandleWhile");
+  // determined, we cannot precisely compute the cost of a while node. For now
+  // compute the cost of a single iteration.
+  // TODO(b/26346211): Improve the cost analysis for while node.
+  HloCostAnalysis body_visitor(shape_size_);
+  TF_RETURN_IF_ERROR(xla_while->while_body()->Accept(&body_visitor));
+  HloCostAnalysis condition_visitor(shape_size_);
+  TF_RETURN_IF_ERROR(xla_while->while_condition()->Accept(&condition_visitor));
+
+  current_flop_count_ =
+      body_visitor.flop_count() + condition_visitor.flop_count();
+  current_transcendental_count_ = body_visitor.transcendental_count() +
+                                  condition_visitor.transcendental_count();
+  current_bytes_accessed_ =
+      body_visitor.bytes_accessed() + condition_visitor.bytes_accessed();
+
+  return Status::OK();
 }
 
 Status HloCostAnalysis::FinishVisit(HloInstruction* root) {
   return Status::OK();
 }
 
-double HloCostAnalysis::hlo_to_flop_count(const HloInstruction& hlo) const {
+int64 HloCostAnalysis::flop_count(const HloInstruction& hlo) const {
   auto it = hlo_to_flop_count_.find(&hlo);
-  return it == hlo_to_flop_count_.end() ? 0.0 : it->second;
+  return it == hlo_to_flop_count_.end() ? 0 : it->second;
+}
+
+int64 HloCostAnalysis::transcendental_count(const HloInstruction& hlo) const {
+  auto it = hlo_to_transcendental_count_.find(&hlo);
+  return it == hlo_to_transcendental_count_.end() ? 0 : it->second;
+}
+
+int64 HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
+  auto it = hlo_to_bytes_accessed_.find(&hlo);
+  return it == hlo_to_bytes_accessed_.end() ? 0 : it->second;
 }
 
 }  // namespace xla

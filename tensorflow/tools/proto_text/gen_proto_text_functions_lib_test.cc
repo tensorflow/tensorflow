@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
-#include "tensorflow/tools/proto_text/test.pb.h"
 #include "tensorflow/tools/proto_text/test.pb_text.h"
+#include "tensorflow/tools/proto_text/test.pb.h"
 
 namespace tensorflow {
 namespace test {

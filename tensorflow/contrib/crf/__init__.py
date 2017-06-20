@@ -14,7 +14,7 @@
 # ==============================================================================
 """Linear-chain CRF layer.
 
-## This package provides functions for building a linear-chain CRF layer.
+See the @{$python/contrib.crf} guide.
 
 @@crf_sequence_score
 @@crf_log_norm

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import errors
@@ -95,19 +96,11 @@ class Server(object):
   """An in-process TensorFlow server, for use in distributed training.
 
   A `tf.train.Server` instance encapsulates a set of devices and a
-  [`tf.Session`](../../api_docs/python/client.md#Session) target that
+  @{tf.Session} target that
   can participate in distributed training. A server belongs to a
-  cluster (specified by a [`tf.train.ClusterSpec`](#ClusterSpec)), and
+  cluster (specified by a @{tf.train.ClusterSpec}), and
   corresponds to a particular task in a named job. The server can
   communicate with any other server in the same cluster.
-
-  @@__init__
-  @@create_local_server
-  @@target
-  @@server_def
-
-  @@start
-  @@join
   """
 
   def __init__(self,
@@ -190,7 +183,7 @@ class Server(object):
     """Returns the target for a `tf.Session` to connect to this server.
 
     To create a
-    [`tf.Session`](../../api_docs/python/client.md#Session) that
+    @{tf.Session} that
     connects to this server, use the following snippet:
 
     ```python
@@ -233,7 +226,7 @@ class ClusterSpec(object):
 
   A `tf.train.ClusterSpec` represents the set of processes that
   participate in a distributed TensorFlow computation. Every
-  [`tf.train.Server`](#Server) is constructed in a particular cluster.
+  @{tf.train.Server} is constructed in a particular cluster.
 
   To create a cluster with two jobs and five tasks, you specify the
   mapping from job names to lists of network addresses (typically
@@ -257,9 +250,6 @@ class ClusterSpec(object):
                                   "ps": ["ps0.example.com:2222",
                                          "ps1.example.com:2222"]})
   ```
-
-  @@as_cluster_def
-  @@as_dict
   """
 
   def __init__(self, cluster):
@@ -287,14 +277,14 @@ class ClusterSpec(object):
                           "from integers to strings." % job_name)
         self._cluster_spec[job_name] = job_tasks
       self._make_cluster_def()
-    elif isinstance(cluster, tensorflow_server_pb2.ClusterDef):
+    elif isinstance(cluster, cluster_pb2.ClusterDef):
       self._cluster_def = cluster
       self._cluster_spec = {}
       for job_def in self._cluster_def.job:
         self._cluster_spec[job_def.name] = {
             i: t for i, t in job_def.tasks.items()}
     elif isinstance(cluster, ClusterSpec):
-      self._cluster_def = tensorflow_server_pb2.ClusterDef()
+      self._cluster_def = cluster_pb2.ClusterDef()
       self._cluster_def.MergeFrom(cluster.as_cluster_def())
       self._cluster_spec = {}
       for job_def in self._cluster_def.job:
@@ -421,7 +411,7 @@ class ClusterSpec(object):
     NOTE: For backwards compatibility, this method returns a list. If
     the given job was defined with a sparse set of task indices, the
     length of this list may not reflect the number of tasks defined in
-    this job. Use the [`num_tasks()`](#ClusterSpec.num_tasks) method
+    this job. Use the @{tf.train.ClusterSpec.num_tasks} method
     to find the number of tasks defined in a particular job.
 
     Args:
@@ -451,7 +441,7 @@ class ClusterSpec(object):
       TypeError: If `cluster_spec` is not a dictionary mapping strings to lists
         of strings.
     """
-    self._cluster_def = tensorflow_server_pb2.ClusterDef()
+    self._cluster_def = cluster_pb2.ClusterDef()
 
     # NOTE(mrry): Sort by job_name to produce deterministic protobufs.
     for job_name, tasks in sorted(self._cluster_spec.items()):

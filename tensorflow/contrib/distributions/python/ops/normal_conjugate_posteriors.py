@@ -18,9 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.distributions.python.ops.normal import Normal  # pylint: disable=line-too-long
-
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import normal
 
 
 def normal_conjugates_known_scale_posterior(prior, scale, s, n):
@@ -28,7 +27,7 @@ def normal_conjugates_known_scale_posterior(prior, scale, s, n):
 
   This model assumes that `n` observations (with sum `s`) come from a
   Normal with unknown mean `loc` (described by the Normal `prior`)
-  and known variance `scale^2`.  The "known scale posterior" is
+  and known variance `scale**2`. The "known scale posterior" is
   the distribution of the unknown `loc`.
 
   Accepts a prior Normal distribution object, having parameters
@@ -38,12 +37,12 @@ def normal_conjugates_known_scale_posterior(prior, scale, s, n):
   `n` (the number(s) of observations).
 
   Returns a posterior (also Normal) distribution object, with parameters
-  `(loc', scale'^2)`, where:
+  `(loc', scale'**2)`, where:
 
   ```
-  mu ~ N(mu', sigma'^2)
-  sigma'^2 = 1/(1/sigma0^2 + n/sigma^2),
-  mu' = (mu0/sigma0^2 + s/sigma^2) * sigma'^2.
+  mu ~ N(mu', sigma'**2)
+  sigma'**2 = 1/(1/sigma0**2 + n/sigma**2),
+  mu' = (mu0/sigma0**2 + s/sigma**2) * sigma'**2.
   ```
 
   Distribution parameters from `prior`, as well as `scale`, `s`, and `n`.
@@ -54,8 +53,8 @@ def normal_conjugates_known_scale_posterior(prior, scale, s, n):
       the prior distribution having parameters `(loc0, scale0)`.
     scale: tensor of type `dtype`, taking values `scale > 0`.
       The known stddev parameter(s).
-    s: Tensor of type `dtype`.  The sum(s) of observations.
-    n: Tensor of type `int`.  The number(s) of observations.
+    s: Tensor of type `dtype`. The sum(s) of observations.
+    n: Tensor of type `int`. The number(s) of observations.
 
   Returns:
     A new Normal posterior distribution object for the unknown observation
@@ -65,7 +64,7 @@ def normal_conjugates_known_scale_posterior(prior, scale, s, n):
     TypeError: if dtype of `s` does not match `dtype`, or `prior` is not a
       Normal object.
   """
-  if not isinstance(prior, Normal):
+  if not isinstance(prior, normal.Normal):
     raise TypeError("Expected prior to be an instance of type Normal")
 
   if s.dtype != prior.dtype:
@@ -77,7 +76,7 @@ def normal_conjugates_known_scale_posterior(prior, scale, s, n):
   scale0_2 = math_ops.square(prior.scale)
   scale_2 = math_ops.square(scale)
   scalep_2 = 1.0/(1/scale0_2 + n/scale_2)
-  return Normal(
+  return normal.Normal(
       loc=(prior.loc/scale0_2 + s/scale_2) * scalep_2,
       scale=math_ops.sqrt(scalep_2))
 
@@ -87,7 +86,7 @@ def normal_conjugates_known_scale_predictive(prior, scale, s, n):
 
   This model assumes that `n` observations (with sum `s`) come from a
   Normal with unknown mean `loc` (described by the Normal `prior`)
-  and known variance `scale^2`.  The "known scale predictive"
+  and known variance `scale**2`. The "known scale predictive"
   is the distribution of new observations, conditioned on the existing
   observations and our prior.
 
@@ -97,20 +96,20 @@ def normal_conjugates_known_scale_predictive(prior, scale, s, n):
   and statistical estimates `s` (the sum(s) of the observations) and
   `n` (the number(s) of observations).
 
-  Calculates the Normal distribution(s) `p(x | sigma^2)`:
+  Calculates the Normal distribution(s) `p(x | sigma**2)`:
 
   ```
-  p(x | sigma^2) = int N(x | mu, sigma^2) N(mu | prior.loc, prior.scale**2) dmu
-                 = N(x | prior.loc, 1/(sigma^2 + prior.scale**2))
+  p(x | sigma**2) = int N(x | mu, sigma**2)N(mu | prior.loc, prior.scale**2) dmu
+                  = N(x | prior.loc, 1 / (sigma**2 + prior.scale**2))
   ```
 
   Returns the predictive posterior distribution object, with parameters
-  `(loc', scale'^2)`, where:
+  `(loc', scale'**2)`, where:
 
   ```
-  sigma_n^2 = 1/(1/sigma0^2 + n/sigma^2),
-  mu' = (mu0/sigma0^2 + s/sigma^2) * sigma_n^2.
-  sigma'^2 = sigma_n^2 + sigma^2,
+  sigma_n**2 = 1/(1/sigma0**2 + n/sigma**2),
+  mu' = (mu0/sigma0**2 + s/sigma**2) * sigma_n**2.
+  sigma'**2 = sigma_n**2 + sigma**2,
   ```
 
   Distribution parameters from `prior`, as well as `scale`, `s`, and `n`.
@@ -121,8 +120,8 @@ def normal_conjugates_known_scale_predictive(prior, scale, s, n):
       the prior distribution having parameters `(loc0, scale0)`.
     scale: tensor of type `dtype`, taking values `scale > 0`.
       The known stddev parameter(s).
-    s: Tensor of type `dtype`.  The sum(s) of observations.
-    n: Tensor of type `int`.  The number(s) of observations.
+    s: Tensor of type `dtype`. The sum(s) of observations.
+    n: Tensor of type `int`. The number(s) of observations.
 
   Returns:
     A new Normal predictive distribution object.
@@ -131,7 +130,7 @@ def normal_conjugates_known_scale_predictive(prior, scale, s, n):
     TypeError: if dtype of `s` does not match `dtype`, or `prior` is not a
       Normal object.
   """
-  if not isinstance(prior, Normal):
+  if not isinstance(prior, normal.Normal):
     raise TypeError("Expected prior to be an instance of type Normal")
 
   if s.dtype != prior.dtype:
@@ -143,6 +142,6 @@ def normal_conjugates_known_scale_predictive(prior, scale, s, n):
   scale0_2 = math_ops.square(prior.scale)
   scale_2 = math_ops.square(scale)
   scalep_2 = 1.0/(1/scale0_2 + n/scale_2)
-  return Normal(
+  return normal.Normal(
       loc=(prior.loc/scale0_2 + s/scale_2) * scalep_2,
       scale=math_ops.sqrt(scalep_2 + scale_2))

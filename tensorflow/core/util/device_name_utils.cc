@@ -178,7 +178,7 @@ string DeviceNameUtils::ParsedNameToString(const ParsedName& pn) {
   if (pn.has_replica) strings::StrAppend(&buf, "/replica:", pn.replica);
   if (pn.has_task) strings::StrAppend(&buf, "/task:", pn.task);
   if (pn.has_type) {
-    strings::StrAppend(&buf, "/", pn.type, ":");
+    strings::StrAppend(&buf, "/device:", pn.type, ":");
     if (pn.has_id) {
       strings::StrAppend(&buf, pn.id);
     } else {

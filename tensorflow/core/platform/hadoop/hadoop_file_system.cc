@@ -27,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/platform/posix/error.h"
 #include "third_party/hadoop/hdfs.h"
 
-
 namespace tensorflow {
 
 template <typename R, typename... Args>
@@ -58,6 +57,7 @@ class LibHDFS {
   std::function<hdfsFS(hdfsBuilder*)> hdfsBuilderConnect;
   std::function<hdfsBuilder*()> hdfsNewBuilder;
   std::function<void(hdfsBuilder*, const char*)> hdfsBuilderSetNameNode;
+  std::function<int(const char*, char**)> hdfsConfGetStr;
   std::function<void(hdfsBuilder*, const char* kerbTicketCachePath)>
       hdfsBuilderSetKerbTicketCachePath;
   std::function<int(hdfsFS, hdfsFile)> hdfsCloseFile;
@@ -85,6 +85,7 @@ class LibHDFS {
       BIND_HDFS_FUNC(hdfsBuilderConnect);
       BIND_HDFS_FUNC(hdfsNewBuilder);
       BIND_HDFS_FUNC(hdfsBuilderSetNameNode);
+      BIND_HDFS_FUNC(hdfsConfGetStr);
       BIND_HDFS_FUNC(hdfsBuilderSetKerbTicketCachePath);
       BIND_HDFS_FUNC(hdfsCloseFile);
       BIND_HDFS_FUNC(hdfsPread);
@@ -103,12 +104,12 @@ class LibHDFS {
       return Status::OK();
     };
 
-    // libhdfs.so won't be in the standard locations. Use the path as specified
-    // in the libhdfs documentation.
+// libhdfs.so won't be in the standard locations. Use the path as specified
+// in the libhdfs documentation.
 #if defined(PLATFORM_WINDOWS)
-    const char *kLibHdfsDso = "hdfs.dll";
+    const char* kLibHdfsDso = "hdfs.dll";
 #else
-    const char *kLibHdfsDso = "libhdfs.so";
+    const char* kLibHdfsDso = "libhdfs.so";
 #endif
     char* hdfs_home = getenv("HADOOP_HDFS_HOME");
     if (hdfs_home == nullptr) {
@@ -119,11 +120,10 @@ class LibHDFS {
     string path = io::JoinPath(hdfs_home, "lib", "native", kLibHdfsDso);
     status_ = TryLoadAndBind(path.c_str(), &handle_);
     if (!status_.ok()) {
-      // try load libhdfs.so using dynamic loader's search path in case libhdfs.so
-      // is installed in non-standard location
+      // try load libhdfs.so using dynamic loader's search path in case
+      // libhdfs.so is installed in non-standard location
       status_ = TryLoadAndBind(kLibHdfsDso, &handle_);
     }
-    return;
   }
 
   Status status_;
@@ -147,6 +147,20 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   hdfsBuilder* builder = hdfs_->hdfsNewBuilder();
   if (scheme == "file") {
     hdfs_->hdfsBuilderSetNameNode(builder, nullptr);
+  } else if (scheme == "viewfs") {
+    char* defaultFS = nullptr;
+    hdfs_->hdfsConfGetStr("fs.defaultFS", &defaultFS);
+    StringPiece defaultScheme, defaultCluster, defaultPath;
+    io::ParseURI(defaultFS, &defaultScheme, &defaultCluster, &defaultPath);
+
+    if (scheme != defaultScheme || namenode != defaultCluster) {
+      return errors::Unimplemented(
+          "viewfs is only supported as a fs.defaultFS.");
+    }
+    // The default NameNode configuration will be used (from the XML
+    // configuration files). See:
+    // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
+    hdfs_->hdfsBuilderSetNameNode(builder, "default");
   } else {
     hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
   }
@@ -259,7 +273,7 @@ class HDFSWritableFile : public WritableFile {
 
   ~HDFSWritableFile() override {
     if (file_ != nullptr) {
-      Close();
+      Close().IgnoreError();
     }
   }
 
@@ -478,5 +492,6 @@ Status HadoopFileSystem::Stat(const string& fname, FileStatistics* stats) {
 }
 
 REGISTER_FILE_SYSTEM("hdfs", HadoopFileSystem);
+REGISTER_FILE_SYSTEM("viewfs", HadoopFileSystem);
 
 }  // namespace tensorflow

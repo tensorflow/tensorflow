@@ -113,6 +113,10 @@ Node* RandomGaussian(Graph* g, Node* input, DataType dtype);
 // Output dtype determined by alpha.
 Node* RandomGamma(Graph* g, Node* shape, Node* alpha);
 
+// Generates random poisson distribution with the given shape and lam[s].
+// Output dtype determined by lam.
+Node* RandomPoisson(Graph* g, Node* shape, Node* lam);
+
 // Generates random parameters from the truncated standard normal distribution
 // of the nput shape
 Node* TruncatedNormal(Graph* g, Node* input, DataType dtype);
@@ -169,12 +173,6 @@ Node* Cast(Graph* g, Node* in, DataType dst);
 
 // Perform gather op on params "in0" with indices "in1".
 Node* Gather(Graph* g, Node* in0, Node* in1);
-
-// Computes broadcasted shape from the given input shapes.
-Node* BroadcastArgs(Graph* g, Node* s0, Node* s1);
-
-// Computes the args needed broadcast gradient function.
-Node* BroadcastGradientArgs(Graph* g, Node* s0, Node* s1);
 
 // Gets a tensor stored in the session state.
 Node* GetSessionTensor(Graph* g, Node* in);

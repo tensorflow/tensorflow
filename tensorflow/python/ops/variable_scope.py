@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 import collections as collections_lib
-import contextlib
 import copy
 import functools
 import traceback
@@ -36,6 +35,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_contextlib
 
 __all__ = ["VariableScope", "get_variable_scope",
            "get_variable", "get_local_variable", "variable_scope",
@@ -280,6 +280,17 @@ class _VariableStore(object):
       raise ValueError(
           "Passed a custom_getter which is not callable: %s" % custom_getter)
 
+    # If a *_ref type is passed in an error would be triggered further down the
+    # stack. We prevent this using base_dtype to get a non-ref version of the
+    # type, before doing anything else. When _ref types are removed in favor of
+    # resources, this line can be removed.
+    try:
+      dtype = dtype.base_dtype
+    except AttributeError:
+      # .base_dtype not existing means that we will try and use the raw dtype
+      # which was passed in - this might be a NumPy type which is valid.
+      pass
+
     # This is the main logic of get_variable.  However, custom_getter
     # may override this logic.  So we save it as a callable and pass
     # it to custom_getter.
@@ -346,7 +357,7 @@ class _VariableStore(object):
           initializer=initializer, regularizer=regularizer,
           reuse=reuse, trainable=trainable, collections=collections,
           caching_device=caching_device, partitioner=partitioner,
-          validate_shape=validate_shape)
+          validate_shape=validate_shape, use_resource=use_resource)
     else:
       return _true_getter(
           name, shape=shape, dtype=dtype,
@@ -683,7 +694,10 @@ class _VariableStore(object):
         init_val = initializer
         variable_dtype = None
       else:
-        init_val = lambda: initializer(
+        # Instantiate initializer if provided initializer is a type object.
+        if isinstance(initializer, type(init_ops.Initializer)):
+          initializer = initializer(dtype=dtype)
+        init_val = lambda: initializer(  # pylint: disable=g-long-lambda
             shape.as_list(), dtype=dtype, partition_info=partition_info)
         variable_dtype = dtype.base_dtype
 
@@ -725,7 +739,6 @@ class _VariableStore(object):
 
     return v
 
-
   # Initialize variable when no initializer provided
   def _get_default_initializer(self, name, shape=None, dtype=dtypes.float32):
     """Provide a default initializer and a corresponding value.
@@ -754,7 +767,7 @@ class _VariableStore(object):
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
     else:
       raise ValueError("An initializer for variable %s of %s is required"
-          % (name, dtype.base_dtype))
+                       % (name, dtype.base_dtype))
 
     return initializer, initializing_from_value
 
@@ -766,9 +779,9 @@ def no_regularizer(_):
 
 
 class VariableScope(object):
-  """Variable scope object to carry defaults to provide to get_variable.
+  """Variable scope object to carry defaults to provide to `get_variable`.
 
-  Many of the arguments we need for get_variable in a variable store are most
+  Many of the arguments we need for `get_variable` in a variable store are most
   easily handled with a context. This object is used for the defaults.
 
   Attributes:
@@ -882,6 +895,19 @@ class VariableScope(object):
     """Set custom getter for this scope."""
     self._custom_getter = custom_getter
 
+  def get_collection(self, name):
+    """Get this scope's variables."""
+    scope = self._name + "/" if self._name else ""
+    return ops.get_collection(name, scope)
+
+  def trainable_variables(self):
+    """Get this scope's trainable variables."""
+    return self.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+
+  def global_variables(self):
+    """Get this scope's global variables."""
+    return self.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+
   def get_variable(self,
                    var_store,
                    name,
@@ -889,6 +915,7 @@ class VariableScope(object):
                    dtype=None,
                    initializer=None,
                    regularizer=None,
+                   reuse=None,
                    trainable=True,
                    collections=None,
                    caching_device=None,
@@ -905,6 +932,8 @@ class VariableScope(object):
       partitioner = self._partitioner
     if custom_getter is None:
       custom_getter = self._custom_getter
+    if reuse is None:
+      reuse = self._reuse
 
     full_name = self.name + "/" + name if self.name else name
     # Variable names only depend on variable_scope (full_name here),
@@ -927,7 +956,7 @@ class VariableScope(object):
 
       return var_store.get_variable(
           full_name, shape=shape, dtype=dtype, initializer=initializer,
-          regularizer=regularizer, reuse=self.reuse, trainable=trainable,
+          regularizer=regularizer, reuse=reuse, trainable=trainable,
           collections=collections, caching_device=caching_device,
           partitioner=partitioner, validate_shape=validate_shape,
           use_resource=use_resource, custom_getter=custom_getter)
@@ -956,6 +985,8 @@ class VariableScope(object):
       partitioner = self._partitioner
     if dtype is None:
       dtype = self._dtype
+    if use_resource is None:
+      use_resource = self._use_resource
 
     if self._custom_getter is not None:
       raise ValueError(
@@ -1037,7 +1068,7 @@ get_variable_or_local_docstring = (
 
 %sThis function prefixes the name with the current variable scope
 and performs reuse checks. See the
-[Variable Scope How To](../../how_tos/variable_scope/index.md)
+@{$variable_scope$Variable Scope How To}
 for an extensive description of how reusing works. Here is a basic example:
 
 ```python
@@ -1071,7 +1102,7 @@ Args:
   initializer: Initializer for the variable if one is created.
   regularizer: A (Tensor -> Tensor or None) function; the result of
     applying it on a newly created variable will be added to the collection
-    GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
+    @{tf.GraphKeys.REGULARIZATION_LOSSES} and can be used for regularization.
   %scollections: List of graph collections keys to add the Variable to.
     Defaults to `[%s]` (see `tf.Variable`).
   caching_device: Optional device string or function describing where the
@@ -1114,7 +1145,7 @@ get_variable.__doc__ = get_variable_or_local_docstring % (
     "Gets an existing variable with these parameters or create a new one.",
     "",
     "trainable: If `True` also add the variable to the graph collection\n"
-    "    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).\n",
+    "    `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).\n  ",
     "GraphKeys.GLOBAL_VARIABLES")
 
 
@@ -1230,7 +1261,7 @@ def _get_partitioned_variable(name,
   # pylint: enable=protected-access
 
 
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def _pure_variable_scope(name_or_scope,
                          reuse=None,
                          initializer=None,
@@ -1261,7 +1292,7 @@ def _pure_variable_scope(name_or_scope,
       well-defined semantics. Defaults to False (will later change to True).
 
   Yields:
-    A scope that can be to captured and reused.
+    A scope that can be captured and reused.
 
   Raises:
     ValueError: when trying to reuse within a create scope, or create within
@@ -1307,7 +1338,9 @@ def _pure_variable_scope(name_or_scope,
       if partitioner is not None:
         default_varscope[0].set_partitioner(partitioner)
       if custom_getter is not None:
-        default_varscope[0].set_custom_getter(custom_getter)
+        default_varscope[0].set_custom_getter(
+            _maybe_wrap_custom_getter(
+                custom_getter, name_or_scope.custom_getter))
       if dtype is not None:
         default_varscope[0].set_dtype(dtype)
       if use_resource is not None:
@@ -1338,7 +1371,8 @@ def _pure_variable_scope(name_or_scope,
       if partitioner is not None:
         default_varscope[0].set_partitioner(partitioner)
       if custom_getter is not None:
-        default_varscope[0].set_custom_getter(custom_getter)
+        default_varscope[0].set_custom_getter(
+            _maybe_wrap_custom_getter(custom_getter, old.custom_getter))
       if dtype is not None:
         default_varscope[0].set_dtype(dtype)
       if use_resource is not None:
@@ -1350,6 +1384,26 @@ def _pure_variable_scope(name_or_scope,
     if isinstance(name_or_scope, VariableScope):
       var_store.variable_scopes_count = old_subscopes
     default_varscope[0] = old
+
+
+def _maybe_wrap_custom_getter(custom_getter, old_getter):
+  """Wrap a call to a custom_getter to use the old_getter internally."""
+  if old_getter is None:
+    return custom_getter
+
+  # The new custom_getter should call the old one
+  def wrapped_custom_getter(getter, *args, **kwargs):
+    # Call:
+    #  custom_getter(
+    #    lambda: old_getter(true_getter, ...), *args, **kwargs)
+    # which means custom_getter will call old_getter, which
+    # will call the true_getter, perform any intermediate
+    # processing, and return the results to the current
+    # getter, which will also perform additional processing.
+    return custom_getter(
+        functools.partial(old_getter, getter),
+        *args, **kwargs)
+  return wrapped_custom_getter
 
 
 def _get_unique_variable_scope(prefix):
@@ -1366,7 +1420,7 @@ def _get_unique_variable_scope(prefix):
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def variable_scope(name_or_scope,
                    default_name=None,
                    values=None,
@@ -1390,7 +1444,7 @@ def variable_scope(name_or_scope,
 
   Variable scope allows to create new variables and to share already created
   ones while providing checks to not create or share by accident. For details,
-  see the [Variable Scope How To](../../how_tos/variable_scope/index.md),
+  see the @{$variable_scope$Variable Scope How To},
   here we present only a few basic examples.
 
   Simple example of how to create a new variable:
@@ -1444,6 +1498,14 @@ def variable_scope(name_or_scope,
   Note that the `reuse` flag is inherited: if we open a reusing scope,
   then all its sub-scopes become reusing as well.
 
+  A note about name scoping: Setting `reuse` does not impact the naming of other
+  ops such as mult. See related discussion on [github#6189](https://github.com/tensorflow/tensorflow/issues/6189)
+
+  Note that up to and including version 1.0, it was allowed (though
+  explicitly discouraged) to pass False to the reuse argument, yielding
+  undocumented behaviour slightly different from None. Starting at 1.1.0
+  passing None and False as reuse has exactly the same effect.
+
   Args:
     name_or_scope: `string` or `VariableScope`: the scope to open.
     default_name: The default name to use if the `name_or_scope` argument is
@@ -1468,11 +1530,15 @@ def variable_scope(name_or_scope,
 
   Raises:
     ValueError: when trying to reuse within a create scope, or create within
-      a reuse scope, or if reuse is not `None` or `True`.
+      a reuse scope.
     TypeError: when the types of some arguments are not appropriate.
   """
   if default_name is None and name_or_scope is None:
     raise TypeError("If default_name is None then name_or_scope is required")
+  if not (reuse is True or reuse is False or reuse is None):
+    raise ValueError("The reuse parameter must be True or False or None.")
+  if reuse is False:  # We don't allow non-inheriting scopes, False = None here.
+    reuse = None
   if values is None:
     values = []
   g = ops._get_graph_from_inputs(values)  # pylint: disable=protected-access
@@ -1535,7 +1601,7 @@ def variable_scope(name_or_scope,
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def variable_op_scope(values,
                       name_or_scope,
                       default_name=None,
@@ -1592,3 +1658,22 @@ def _compute_slice_dim_and_shape(full_shape, slicing):
   if slice_dim is None:
     slice_dim = 0
   return slice_dim, slice_shape
+
+
+def variable(initial_value=None,
+             trainable=True,
+             collections=None,
+             validate_shape=True,
+             caching_device=None,
+             name=None,
+             dtype=None):
+  if get_variable_scope().use_resource:
+    return resource_variable_ops.ResourceVariable(
+        initial_value=initial_value, trainable=trainable,
+        collections=collections, validate_shape=validate_shape,
+        caching_device=caching_device, name=name, dtype=dtype)
+  else:
+    return variables.Variable(
+        initial_value=initial_value, trainable=trainable,
+        collections=collections, validate_shape=validate_shape,
+        caching_device=caching_device, name=name, dtype=dtype)

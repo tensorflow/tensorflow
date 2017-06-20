@@ -14,9 +14,8 @@
 # limitations under the License.
 # ==============================================================================
 #
-# Script to produce a tarball release of the C-library and associated C API
-# header file. Intended to be run inside a docker container. See
-# libtensorflow_docker.sh
+# Script to produce binary releases for libtensorflow (C API, Java jars etc.).
+# Intended to be run inside a docker container. See libtensorflow_docker.sh
 
 set -ex
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

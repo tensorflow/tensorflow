@@ -15,14 +15,17 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
+#include <unistd.h>
 #include <string>
 
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/hlo_graph_dumper_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -45,6 +48,73 @@ namespace xla {
 namespace hlo_graph_dumper {
 namespace {
 
+// Node color schemes, used by NodeColorAttributes.
+enum ColorScheme {
+  kBlue,
+  kBrown,
+  kDarkBlue,
+  kDarkGreen,
+  kDarkRed,
+  kGray,
+  kGreen,
+  kOrange,
+  kPurple,
+  kRed,
+  kWhite,
+  kYellow,
+};
+
+// Given a ColorScheme, returns an attribute string for a node of that color.
+// Sets the node's fill, stroke, and text colors.
+//
+// Colors are from https://material.io/color.
+string NodeColorAttributes(ColorScheme color) {
+  using std::make_tuple;
+
+  const char *fill_color, *stroke_color, *font_color;
+  std::tie(fill_color, stroke_color, font_color) =
+      [color]() -> std::tuple<const char*, const char*, const char*> {
+    switch (color) {
+      case kBlue:
+        return make_tuple("#bbdefb", "#8aacc8", "black");
+      case kBrown:
+        return make_tuple("#bcaaa4", "#8c7b75", "black");
+      case kDarkBlue:
+        return make_tuple("#1565c0", "#003c8f", "white");
+      case kDarkGreen:
+        return make_tuple("#2e7d32", "#005005", "white");
+      case kDarkRed:
+        return make_tuple("#b71c1c", "#7f0000", "white");
+      case kGray:
+        return make_tuple("#cfd8dc", "#9ea7aa", "black");
+      case kGreen:
+        return make_tuple("#c8e6c9", "#97b498", "black");
+      case kOrange:
+        return make_tuple("#ffe0b2", "#cbae82", "black");
+      case kPurple:
+        return make_tuple("#e1bee7", "#af8eb5", "black");
+      case kRed:
+        return make_tuple("#ffcdd2", "#cb9ca1", "black");
+      case kWhite:
+        return make_tuple("white", "black", "black");
+      case kYellow:
+        return make_tuple("#fff9c4", "#cbc693", "black");
+    }
+  }();
+
+  return Printf(
+      "style=filled, fontcolor=\"%s\", color=\"%s\", fillcolor=\"%s\"",
+      font_color, stroke_color, fill_color);
+}
+
+// Replaces <> with &lt;&gt;, so that this string is safe(er) for use in a
+// graphviz HTML-like string.
+string HtmlLikeStringSanitize(tensorflow::StringPiece s) {
+  return tensorflow::str_util::StringReplace(
+      tensorflow::str_util::StringReplace(s, "<", "&lt;", /*replace_all=*/true),
+      ">", "&gt;", /*replace_all=*/true);
+}
+
 // Returns the dot graph identifier for the given instruction.
 string InstructionId(const HloInstruction* instruction) {
   return Printf("%lld", reinterpret_cast<uint64>(instruction));
@@ -53,68 +123,6 @@ string InstructionId(const HloInstruction* instruction) {
 // Returns the dot graph identifier for the given computation.
 string ComputationId(const HloComputation* computation) {
   return Printf("%lld", reinterpret_cast<uint64>(computation));
-}
-
-// Returns a compact string that represents the convolution dimension numbers.
-string ConvolutionDimensionNumbersToString(
-    const ConvolutionDimensionNumbers& dim_numbers) {
-  return Printf("B@%lld,Z@%lld,KIZ@%lld,KOZ@%lld",
-                dim_numbers.batch_dimension(), dim_numbers.feature_dimension(),
-                dim_numbers.kernel_input_feature_dimension(),
-                dim_numbers.kernel_output_feature_dimension());
-}
-
-// Returns a compact string that represents the non-trivial fields in the window
-// description. If there are no non-trivial fields, the empty string is
-// returned.
-string WindowToString(const Window& window) {
-  bool display_padding = false;
-  bool display_window_dilation = false;
-  bool display_base_dilation = false;
-  bool display_stride = false;
-  for (const WindowDimension& dimension : window.dimensions()) {
-    display_padding |=
-        dimension.padding_low() != 0 || dimension.padding_high() != 0;
-    display_window_dilation |= dimension.window_dilation() != 1;
-    display_base_dilation |= dimension.base_dilation() != 1;
-    display_stride |= dimension.stride() != 1;
-  }
-  std::vector<string> pieces = {};
-  if (display_padding) {
-    pieces.push_back("\\n");
-    pieces.push_back("padding=[");
-    for (const WindowDimension& dimension : window.dimensions()) {
-      pieces.push_back(StrCat("(", dimension.padding_low(), ",",
-                              dimension.padding_high(), ")"));
-      pieces.push_back(", ");
-    }
-    pieces.pop_back();
-    pieces.push_back("]");
-  }
-  // Make a convenient lambda that adds a simple int64 field in each
-  // WindowDimension.
-  auto add_field = [&pieces, &window](
-      const string& label,
-      tensorflow::protobuf_int64 (WindowDimension::*member)() const) {
-    pieces.push_back("\\n");
-    pieces.push_back(label + "=[");
-    for (const WindowDimension& dimension : window.dimensions()) {
-      pieces.push_back(StrCat(((&dimension)->*member)()));
-      pieces.push_back(", ");
-    }
-    pieces.pop_back();
-    pieces.push_back("]");
-  };
-  if (display_window_dilation) {
-    add_field("window_dilation", &WindowDimension::window_dilation);
-  }
-  if (display_base_dilation) {
-    add_field("base_dilation", &WindowDimension::base_dilation);
-  }
-  if (display_stride) {
-    add_field("stride", &WindowDimension::stride);
-  }
-  return Join(pieces, "");
 }
 
 // Returns the dot graph edges and nodes for the given instruction sequence.
@@ -135,7 +143,8 @@ string InstructionSequenceGraph(
   std::vector<HloInstruction*> param_instructions;
   for (auto& instruction : instructions) {
     if (instruction->opcode() == HloOpcode::kParameter) {
-      int64 param_number = instruction->parameter_number();
+      size_t param_number = instruction->parameter_number();
+
       if (param_instructions.size() < param_number + 1) {
         param_instructions.resize(param_number + 1, nullptr);
       }
@@ -160,25 +169,38 @@ string InstructionSequenceGraph(
       param_ports.push_back(
           Printf("<%s> %s", InstructionId(param).c_str(), label.c_str()));
     }
-    StrAppend(&graph_body, param_node_name,
-              " [shape=record,style=filled,fillcolor=\"lightblue1\",",
-              "label=\"{parameters | {", Join(param_ports, "|"), "}}\"];\n");
+    // (If we wanted the word "parameters" to be bold like the other op names,
+    // we'd have to make this into an HTML-like table.  It is possible but
+    // complicated; see http://www.graphviz.org/doc/info/shapes.html#html.)
+    StrAppend(&graph_body, param_node_name, " [shape=record ",
+              NodeColorAttributes(kOrange), "label=\"{parameters | {",
+              Join(param_ports, "|"), "}}\"];\n");
   }
 
   for (auto& instruction : instructions) {
-    string color = "peachpuff";
-    string shape = "ellipse";
-    string name = HloOpcodeString(instruction->opcode());
-    if (HloOpcode::kFusion == instruction->opcode()) {
-      name += ": " + FusionKindString(instruction->fusion_kind());
-    }
+    ColorScheme color = kYellow;
+    string shape = "box";
+    string name =
+        StrCat("<b>", HtmlLikeStringSanitize(instruction->ExtendedOpcodeStr()),
+               "</b> ", HtmlLikeStringSanitize(instruction->name()));
     if (HloOpcode::kConvolution == instruction->opcode()) {
-      name += ":\\n" + ConvolutionDimensionNumbersToString(
-                           instruction->convolution_dimension_numbers()) +
-              WindowToString(instruction->window());
+      StrAppend(
+          &name, "<br/>",
+          HtmlLikeStringSanitize(
+              instruction->ConvolutionDimensionNumbersToString()),
+          "<br/>",
+          HtmlLikeStringSanitize(window_util::ToString(instruction->window())));
     }
-    name += "\\n" + instruction->name();
-    std::vector<HloComputation*> called_computations;
+
+    if (!instruction->metadata().op_name().empty()) {
+      StrAppend(&name, "<br/>",
+                HtmlLikeStringSanitize(instruction->metadata().op_name()));
+    }
+    if (!instruction->metadata().source_file().empty() &&
+        instruction->metadata().source_line() != 0) {
+      StrAppend(&name, "<br/>", instruction->metadata().source_file(), ":",
+                instruction->metadata().source_line());
+    }
 
     // Pick different colors or shapes for instructions which are particularly
     // expensive (eg, dot) and those which are unusual in some way or unique
@@ -191,17 +213,15 @@ string InstructionSequenceGraph(
       case HloOpcode::kAdd:
       case HloOpcode::kCeil:
       case HloOpcode::kClamp:
-      case HloOpcode::kConcatenate:
       case HloOpcode::kConvert:
       case HloOpcode::kDivide:
-      case HloOpcode::kDynamicSlice:
-      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kEq:
       case HloOpcode::kExp:
       case HloOpcode::kFloor:
       case HloOpcode::kGe:
       case HloOpcode::kGt:
       case HloOpcode::kIndex:
+      case HloOpcode::kIsFinite:
       case HloOpcode::kLe:
       case HloOpcode::kLog:
       case HloOpcode::kLogicalAnd:
@@ -213,64 +233,49 @@ string InstructionSequenceGraph(
       case HloOpcode::kMultiply:
       case HloOpcode::kNe:
       case HloOpcode::kNegate:
-      case HloOpcode::kPad:
       case HloOpcode::kPower:
       case HloOpcode::kRemainder:
-      case HloOpcode::kReshape:
-      case HloOpcode::kReverse:
       case HloOpcode::kSelect:
       case HloOpcode::kSign:
       case HloOpcode::kSlice:
       case HloOpcode::kSort:
       case HloOpcode::kSubtract:
       case HloOpcode::kTanh:
-      case HloOpcode::kTuple:
-      case HloOpcode::kUpdate:
-        break;
-
-      case HloOpcode::kBroadcast:
-      case HloOpcode::kTranspose:
-        StrAppend(&name, "\\n", "dims={", Join(instruction->dimensions(), ","),
-                  "}");
-        break;
-      case HloOpcode::kGetTupleElement:
-        StrAppend(&name, "\\nindex=", instruction->tuple_index());
         break;
       case HloOpcode::kRng:
-        StrAppend(&name, "\\n",
+        StrAppend(&name, "<br/>",
                   RandomDistribution_Name(instruction->random_distribution()));
         break;
-      case HloOpcode::kConstant:
-        shape = "boxed";
-        color = "palegreen";
-        if (ShapeUtil::IsScalar(instruction->shape())) {
-          StrAppend(&name, "\\n", "value=", LiteralUtil::GetAsString(
-                                                instruction->literal(), {}));
-        }
+      case HloOpcode::kBroadcast:
+      case HloOpcode::kTranspose:
+        StrAppend(&name, "<br/>", "dims={",
+                  Join(instruction->dimensions(), ","), "}");
         break;
       case HloOpcode::kBitcast:
+      case HloOpcode::kTuple:
+      case HloOpcode::kTrace:
+        color = kWhite;
+        break;
+      case HloOpcode::kGetTupleElement:
+        color = kWhite;
+        StrAppend(&name, "<br/>index=", instruction->tuple_index());
+        break;
+      case HloOpcode::kConcatenate:
       case HloOpcode::kCopy:
-        color = "white";
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
+      case HloOpcode::kPad:
+      case HloOpcode::kReshape:
+      case HloOpcode::kReverse:
+      case HloOpcode::kUpdate:
+        color = kGreen;
         break;
-      case HloOpcode::kCall:
-        color = "tomato";
+      case HloOpcode::kConstant:
+        color = kBlue;
         break;
-      case HloOpcode::kCustomCall:
-        color = "tomato4";
-        StrAppend(&name, "\\n",
-                  "custom_call_target=", instruction->custom_call_target());
-        break;
+      case HloOpcode::kConvolution:
       case HloOpcode::kDot:
-        color = "slateblue";
-        break;
-      case HloOpcode::kSend:
-        color = "purple";
-        break;
-      case HloOpcode::kRecv:
-        color = "orange";
-        break;
-      case HloOpcode::kMap:
-        color = "palevioletred";
+        color = kDarkBlue;
         break;
       case HloOpcode::kParameter:
         // A single record node is created for all the parameter nodes with a
@@ -279,38 +284,54 @@ string InstructionSequenceGraph(
         continue;
       case HloOpcode::kReduce:
         StrAppend(&name, " dims=", Join(instruction->dimensions(), ","));
-        color = "lightsalmon";
+        color = kPurple;
         break;
       case HloOpcode::kSelectAndScatter:
       case HloOpcode::kReduceWindow:
-        color = "lightsalmon";
-        break;
-      case HloOpcode::kTrace:
-        color = "white";
+        color = kPurple;
         break;
       case HloOpcode::kWhile:
-        color = "forestgreen";
+        shape = "ellipse";
+        color = kDarkGreen;
         break;
+      case HloOpcode::kMap:
       case HloOpcode::kFusion:
-        color = "gray";
+        color = kGray;
         break;
-      case HloOpcode::kConvolution:
-        color = "red";
-        break;
-      case HloOpcode::kCrossReplicaSum:
-        color = "turquoise";
-        break;
+      case HloOpcode::kSend:
+      case HloOpcode::kRecv:
       case HloOpcode::kInfeed:
       case HloOpcode::kOutfeed:
-        color = "blue";
+      case HloOpcode::kCrossReplicaSum:
+        color = kBrown;
+        break;
+      case HloOpcode::kCall:
+        color = kDarkGreen;
+        break;
+      case HloOpcode::kCustomCall:
+        color = kDarkGreen;
+        StrAppend(&name, "<br/>",
+                  "custom_call_target=", instruction->custom_call_target());
         break;
     }
 
     // Create instruction node with appropriate label, shape, and color.
+    // label is interpreted as an HTML-like string, so newlines must be
+    // delimited with <br/>, rather than \n.
     string label =
-        StrCat(name, "\\n", ShapeUtil::HumanString(instruction->shape()));
+        StrCat(name, "<br/>", ShapeUtil::HumanString(instruction->shape()));
+
+    if (instruction->opcode() == HloOpcode::kConstant &&
+        ShapeUtil::IsEffectiveScalar(instruction->shape())) {
+      auto elem_idx = IndexUtil::LinearIndexToMultidimensionalIndex(
+          instruction->shape(), /*linear_index=*/0);
+      StrAppend(&label, " = {",
+                LiteralUtil::GetAsString(instruction->literal(), elem_idx),
+                "}");
+    }
+
     if (show_addresses) {
-      Appendf(&label, "\\n[%p]", instruction.get());
+      Appendf(&label, "<br/>[%p]", instruction.get());
     }
     if (show_layouts && LayoutUtil::HasLayout(instruction->shape())) {
       string layout_string;
@@ -322,24 +343,24 @@ string InstructionSequenceGraph(
         layout_string =
             Join(instruction->shape().layout().minor_to_major(), ",");
       }
-      StrAppend(&label, "\\nlayout={", layout_string, "}");
+      StrAppend(&label, "<br/>layout={", layout_string, "}");
     }
     if (hlo_execution_profile != nullptr) {
       auto hlo_cycles_executed =
           hlo_execution_profile->GetProfileResult(*instruction);
       auto total_cycles_executed =
-          hlo_execution_profile->total_cycles_executed();
+          hlo_execution_profile->total_cycles_executed(*instruction->parent());
       if (hlo_cycles_executed > 0 && total_cycles_executed > 0) {
-        Appendf(&label, "\\n%% of cycles executed=%.2f",
+        Appendf(&label, "<br/>%% of cycles executed=%.2f",
                 (static_cast<double>(hlo_cycles_executed) /
                  static_cast<double>(total_cycles_executed)) *
                     100);
       }
     }
-    Appendf(&graph_body,
-            "%s [label=\"%s\", shape=%s, style=filled, fillcolor=%s];\n",
+
+    Appendf(&graph_body, "%s [label=<%s>, shape=%s, %s];\n",
             InstructionId(instruction.get()).c_str(), label.c_str(),
-            shape.c_str(), color.c_str());
+            shape.c_str(), NodeColorAttributes(color).c_str());
 
     // Create edges from the instruction's operands to the instruction.
     int64 operand_number = 0;
@@ -369,7 +390,7 @@ string InstructionSequenceGraph(
           StrCat("cluster_", InstructionId(instruction.get()));
       StrAppend(&graph_body, "subgraph ", cluster_name, " {\n");
       StrAppend(&graph_body,
-                "label=\"fused expression\";\nstyle=filled;\n"
+                "label=<<b>fused expression</b>>;\nstyle=\"rounded,filled\";\n"
                 "color=lightgrey;\n");
       StrAppend(&graph_body, InstructionSequenceGraph(
                                  instruction->fused_instructions(),
@@ -385,7 +406,8 @@ string InstructionSequenceGraph(
     } else {
       // Add a dotted edge between the instruction and any computations that the
       // instruction calls.
-      for (auto* computation : instruction->MakeCalledComputationsSet()) {
+      for (const HloComputation* computation :
+           instruction->called_computations()) {
         string cluster_name = StrCat("cluster_", ComputationId(computation));
         string call_edge = Printf(
             "%s -> %s [ style=dashed; ltail=%s ];\n",
@@ -398,19 +420,39 @@ string InstructionSequenceGraph(
   return graph_body;
 }
 
+// DOT graphs accept a stylesheet as a URL.  So naturally, an inline stylesheet
+// is a data URI!
+//
+// We don't perform any escaping on this string, so be careful not to use double
+// quotes inside.
+static const char* dot_stylesheet = R"(
+data:text/css,
+@import url(https://fonts.googleapis.com/css?family=Roboto:400,700);
+svg text {
+  font-family: 'Roboto';
+  font-size: 12px;
+}
+)";
+
 string ComputationToDotGraph(const HloComputation& computation,
                              const string& label, bool show_addresses,
                              bool show_layouts,
                              const HloExecutionProfile* hlo_execution_profile) {
-  string graph_label = StrCat(label, "\\n", computation.name());
+  string graph_label = StrCat(label, "<br/>", computation.name());
   if (hlo_execution_profile != nullptr) {
-    auto cycles = hlo_execution_profile->total_cycles_executed();
-    Appendf(&graph_label, "\\ntotal cycles = %lld (%s)", cycles,
+    auto cycles = hlo_execution_profile->total_cycles_executed(computation);
+    Appendf(&graph_label, "<br/>total cycles = %lld (%s)", cycles,
             tensorflow::strings::HumanReadableNum(cycles).c_str());
   }
-  string graph =
-      Printf("digraph G {\nrankdir=TB;\ncompound=true;\nlabel=\"%s\"\n",
-             graph_label.c_str());
+  string graph = Printf(
+      R"(digraph G {
+rankdir=TB;
+compound=true;
+label=<<b>%s</b>>;
+labelloc=t;
+stylesheet="%s"
+)",
+      graph_label.c_str(), dot_stylesheet);
 
   // Emit embedded computations as subgraph clusters.
   std::vector<string> intercomputation_edges;
@@ -418,7 +460,9 @@ string ComputationToDotGraph(const HloComputation& computation,
     string graph_body = InstructionSequenceGraph(
         embedded->instructions(), show_addresses, show_layouts,
         &intercomputation_edges, hlo_execution_profile);
-    Appendf(&graph, "subgraph cluster_%s {\nlabel=\"%s\";\n%s}\n",
+    Appendf(&graph,
+            "subgraph cluster_%s "
+            "{\nstyle=rounded;label=<<b>%s</b>>;labelloc=t;\n%s}\n",
             ComputationId(embedded).c_str(), embedded->name().c_str(),
             graph_body.c_str());
   }
@@ -464,14 +508,34 @@ namespace {
 
 class FileGraphRenderer : public GraphRendererInterface {
  public:
-  string RenderGraph(const string& graph) override {
+  string RenderGraph(const string& graph, GraphKind graph_kind) override {
     static std::atomic<int> output_num(0);
     legacy_flags::HloGraphDumperFlags* flags =
         legacy_flags::GetHloGraphDumperFlags();
-    string path = StrCat(flags->xla_hlo_dump_graph_path, "hlo_graph_",
-                         output_num++, ".dot");
-    tensorflow::Status status =
-        tensorflow::WriteStringToFile(tensorflow::Env::Default(), path, graph);
+    string file_extension;
+    switch (graph_kind) {
+      case DOT_GRAPH:
+        file_extension = ".dot";
+        break;
+      case TF_GRAPHDEF:
+        file_extension = ".pbtxt";
+        break;
+    }
+    string path =
+        JoinPath(flags->xla_hlo_dump_graph_path,
+                 StrCat("hlo_graph_", output_num++, ".XXXXXX", file_extension));
+    auto status = Status::OK();
+    int fd = mkstemps(&path[0], file_extension.length());
+    if (fd < 0) {
+      status =
+          Status(tensorflow::error::Code::UNKNOWN,
+                 StrCat("Failed to create temporary file to dump HLO graph: ",
+                        strerror(errno)));
+    } else {
+      status = tensorflow::WriteStringToFile(tensorflow::Env::Default(), path,
+                                             graph);
+      close(fd);
+    }
     if (!status.ok()) {
       LOG(WARNING) << "Saving HLO graph failed: " << status;
     }
@@ -486,10 +550,26 @@ XLA_REGISTER_GRAPH_RENDERER(FileGraphRenderer, 0);
 string DumpGraph(const HloComputation& computation, const string& label,
                  bool show_addresses, bool show_layouts,
                  const HloExecutionProfile* hlo_execution_profile) {
-  string graph = ComputationToDotGraph(computation, label, show_addresses,
-                                       show_layouts, hlo_execution_profile);
-
-  string graph_url = GetGraphRenderer()->RenderGraph(graph);
+  string graph;
+  string graph_url;
+  legacy_flags::HloGraphDumperFlags* flags =
+      legacy_flags::GetHloGraphDumperFlags();
+  if (flags->xla_hlo_dump_as_graphdef) {
+    HloTfGraphBuilder builder;
+    TF_CHECK_OK(builder.AddComputation(computation));
+    CHECK(tensorflow::protobuf::TextFormat::PrintToString(builder.GetGraphDef(),
+                                                          &graph));
+    // TODO(b/37198616): Use the default registered renderers when all
+    // renderers support rendering GraphDefs. Always dump GraphDefs to files
+    // for now.
+    graph_url = FileGraphRenderer().RenderGraph(
+        graph, GraphRendererInterface::TF_GRAPHDEF);
+  } else {
+    graph = ComputationToDotGraph(computation, label, show_addresses,
+                                  show_layouts, hlo_execution_profile);
+    graph_url = GetGraphRenderer()->RenderGraph(
+        graph, GraphRendererInterface::DOT_GRAPH);
+  }
   LOG(INFO) << "computation " << computation.name() << " [" << label
             << "]: " << graph_url;
   return graph_url;

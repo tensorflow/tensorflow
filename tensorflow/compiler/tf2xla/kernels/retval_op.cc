@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -43,7 +43,7 @@ class RetvalOp : public XlaOpKernel {
     if (frame) {
       // If 'frame' is non-null, this is an inner function call inside a JIT
       // compilation.
-      frame->SetRetval(index_, input);
+      OP_REQUIRES_OK(ctx, frame->SetRetval(index_, input));
     } else {
       xla::ComputationDataHandle input = ctx->Input(0);
       const TensorShape input_shape = ctx->InputShape(0);
@@ -58,9 +58,9 @@ class RetvalOp : public XlaOpKernel {
       if (input_shape.num_elements() == 0 || is_constant.ValueOrDie()) {
         xla::Literal literal;
         OP_REQUIRES_OK(ctx, ctx->ConstantInput(0, &literal));
-        tc.AddConstRetval(index_, dtype_, literal);
+        OP_REQUIRES_OK(ctx, tc.AddConstRetval(index_, dtype_, literal));
       } else {
-        tc.AddRetval(index_, input);
+        tc.AddRetval(index_, dtype_, input);
       }
     }
   }
@@ -73,7 +73,7 @@ class RetvalOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RetvalOp);
 };
 
-REGISTER_XLA_OP("_Retval", RetvalOp);
+REGISTER_XLA_OP(Name("_Retval"), RetvalOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

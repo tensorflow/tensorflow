@@ -8,9 +8,18 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+)
+
 cc_library(
     name = "intel_binary_blob",
+    srcs = if_mkl([
+        "libdl.so.2",
+        "libmklml_intel.so",
+        "libiomp5.so",
+    ]),
     includes = ["."],
-    srcs = ["libmklml_intel.so", "libiomp5.so"],
     visibility = ["//visibility:public"],
 )

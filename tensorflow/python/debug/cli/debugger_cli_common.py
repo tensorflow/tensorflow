@@ -18,10 +18,12 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import os
 import re
 import sre_constants
 import traceback
 
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.platform import gfile
@@ -30,6 +32,7 @@ HELP_INDENT = "  "
 
 EXPLICIT_USER_EXIT = "explicit_user_exit"
 REGEX_MATCH_LINES_KEY = "regex_match_lines"
+INIT_SCROLL_POS_KEY = "init_scroll_pos"
 
 MAIN_MENU_KEY = "mm:"
 
@@ -88,7 +91,7 @@ class RichLine(object):
         attributes applied to the corresponding substrings.
     """
     ret = RichLine()
-    if isinstance(other, str):
+    if isinstance(other, six.string_types):
       ret.text = self.text + other
       ret.font_attr_segs = self.font_attr_segs[:]
       return ret
@@ -102,22 +105,30 @@ class RichLine(object):
     else:
       raise TypeError("%r cannot be concatenated with a RichLine" % other)
 
+  def __len__(self):
+    return len(self.text)
 
-def rich_text_lines_from_rich_line_list(rich_text_list):
-  """Convert a list of RichLine objects to a RichTextLines object.
+
+def rich_text_lines_from_rich_line_list(rich_text_list, annotations=None):
+  """Convert a list of RichLine objects or strings to a RichTextLines object.
 
   Args:
-    rich_text_list: a list of RichLine objects
+    rich_text_list: a list of RichLine objects or strings
+    annotations: annotatoins for the resultant RichTextLines object.
 
   Returns:
     A corresponding RichTextLines object.
   """
-  lines = [rl.text for rl in rich_text_list]
+  lines = []
   font_attr_segs = {}
   for i, rl in enumerate(rich_text_list):
-    if rl.font_attr_segs:
-      font_attr_segs[i] = rl.font_attr_segs
-  return RichTextLines(lines, font_attr_segs)
+    if isinstance(rl, RichLine):
+      lines.append(rl.text)
+      if rl.font_attr_segs:
+        font_attr_segs[i] = rl.font_attr_segs
+    else:
+      lines.append(rl)
+  return RichTextLines(lines, font_attr_segs, annotations=annotations)
 
 
 class RichTextLines(object):
@@ -166,7 +177,7 @@ class RichTextLines(object):
     """
     if isinstance(lines, list):
       self._lines = lines
-    elif isinstance(lines, str):
+    elif isinstance(lines, six.string_types):
       self._lines = [lines]
     else:
       raise ValueError("Unexpected type in lines: %s" % type(lines))
@@ -312,6 +323,9 @@ class RichTextLines(object):
     self._lines.append(line)
     if font_attr_segs:
       self._font_attr_segs[len(self._lines) - 1] = font_attr_segs
+
+  def append_rich_line(self, rich_line):
+    self.append(rich_line.text, rich_line.font_attr_segs)
 
   def prepend(self, line, font_attr_segs=None):
     """Prepend (i.e., add to the front) a single line of text.
@@ -594,7 +608,7 @@ class CommandHandlerRegistry(object):
       raise ValueError("handler is not callable")
 
     # Make sure that help info is a string.
-    if not isinstance(help_info, str):
+    if not isinstance(help_info, six.string_types):
       raise ValueError("help_info is not a str")
 
     # Process prefix aliases.
@@ -636,7 +650,7 @@ class CommandHandlerRegistry(object):
         3) the handler is found for the prefix, but it fails to return a
           RichTextLines or raise any exception.
       CommandLineExit:
-        If the command handler raises this type of exception, tihs method will
+        If the command handler raises this type of exception, this method will
         simply pass it along.
     """
     if not prefix:
@@ -826,7 +840,7 @@ class TabCompletionRegistry(object):
 
     Args:
       context_words: A list of context words belonging to the context being
-        registerd. It is a list of str, instead of a single string, to support
+        registered. It is a list of str, instead of a single string, to support
         synonym words triggering the same tab-completion context, e.g.,
         both "drink" and the short-hand "dr" can trigger the same context.
       comp_items: A list of completion items, as a list of str.
@@ -959,16 +973,51 @@ class TabCompletionRegistry(object):
 class CommandHistory(object):
   """Keeps command history and supports lookup."""
 
-  def __init__(self, limit=100):
+  _HISTORY_FILE_NAME = ".tfdbg_history"
+
+  def __init__(self, limit=100, history_file_path=None):
     """CommandHistory constructor.
 
     Args:
       limit: Maximum number of the most recent commands that this instance
         keeps track of, as an int.
+      history_file_path: (str) Manually specified path to history file. Used in
+        testing.
     """
 
     self._commands = []
     self._limit = limit
+    self._history_file_path = (
+        history_file_path or self._get_default_history_file_path())
+    self._load_history_from_file()
+
+  def _load_history_from_file(self):
+    if os.path.isfile(self._history_file_path):
+      try:
+        with open(self._history_file_path, "rt") as history_file:
+          commands = history_file.readlines()
+        self._commands = [command.strip() for command in commands
+                          if command.strip()]
+
+        # Limit the size of the history file.
+        if len(self._commands) > self._limit:
+          self._commands = self._commands[-self._limit:]
+          with open(self._history_file_path, "wt") as history_file:
+            for command in self._commands:
+              history_file.write(command + "\n")
+      except IOError:
+        print("WARNING: writing history file failed.")
+
+  def _add_command_to_history_file(self, command):
+    try:
+      with open(self._history_file_path, "at") as history_file:
+        history_file.write(command + "\n")
+    except IOError:
+      pass
+
+  @classmethod
+  def _get_default_history_file_path(cls):
+    return os.path.join(os.path.expanduser("~"), cls._HISTORY_FILE_NAME)
 
   def add_command(self, command):
     """Add a command to the command history.
@@ -980,13 +1029,19 @@ class CommandHistory(object):
       TypeError: if command is not a str.
     """
 
-    if not isinstance(command, str):
+    if self._commands and command == self._commands[-1]:
+      # Ignore repeating commands in a row.
+      return
+
+    if not isinstance(command, six.string_types):
       raise TypeError("Attempt to enter non-str entry to command history")
 
     self._commands.append(command)
 
     if len(self._commands) > self._limit:
       self._commands = self._commands[-self._limit:]
+
+    self._add_command_to_history_file(command)
 
   def most_recent_n(self, n):
     """Look up the n most recent commands.

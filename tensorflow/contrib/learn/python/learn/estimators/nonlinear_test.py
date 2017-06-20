@@ -19,12 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import random
-import sys
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, "getdlopenflags") and hasattr(sys, "setdlopenflags"):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn.datasets import base
@@ -50,13 +44,22 @@ class NonLinearTest(test.TestCase):
         n_classes=3,
         config=run_config.RunConfig(tf_random_seed=1))
     classifier.fit(iris.data, iris.target, max_steps=200)
-    weights = classifier.weights_
-    self.assertEqual(weights[0].shape, (4, 10))
-    self.assertEqual(weights[1].shape, (10, 20))
-    self.assertEqual(weights[2].shape, (20, 10))
-    self.assertEqual(weights[3].shape, (10, 3))
-    biases = classifier.bias_
-    self.assertEqual(len(biases), 4)
+    variable_names = classifier.get_variable_names()
+    self.assertEqual(
+        classifier.get_variable_value("dnn/hiddenlayer_0/weights").shape,
+        (4, 10))
+    self.assertEqual(
+        classifier.get_variable_value("dnn/hiddenlayer_1/weights").shape,
+        (10, 20))
+    self.assertEqual(
+        classifier.get_variable_value("dnn/hiddenlayer_2/weights").shape,
+        (20, 10))
+    self.assertEqual(
+        classifier.get_variable_value("dnn/logits/weights").shape, (10, 3))
+    self.assertIn("dnn/hiddenlayer_0/biases", variable_names)
+    self.assertIn("dnn/hiddenlayer_1/biases", variable_names)
+    self.assertIn("dnn/hiddenlayer_2/biases", variable_names)
+    self.assertIn("dnn/logits/biases", variable_names)
 
   def testBostonDNN(self):
     boston = base.load_boston()

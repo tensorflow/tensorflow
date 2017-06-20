@@ -65,6 +65,12 @@ class SoftsignTest(test.TestCase):
     print("softsign (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  def testWarnInts(self):
+    # NOTE(irving): Actually I don't know how to intercept the warning, but
+    # let's make sure it runs.  I promised I've looked, and there was a warning.
+    with self.test_session():
+      nn_ops.softsign(constant_op.constant(7)).eval()
+
 
 if __name__ == "__main__":
   test.main()

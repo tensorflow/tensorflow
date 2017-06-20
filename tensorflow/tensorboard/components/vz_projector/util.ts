@@ -42,6 +42,33 @@ export function shuffle<T>(array: T[]): T[] {
   return array;
 }
 
+export function range(count: number): number[] {
+  const rangeOutput: number[] = [];
+  for (let i = 0; i < count; i++) {
+    rangeOutput.push(i);
+  }
+  return rangeOutput;
+}
+
+export function classed(
+    element: HTMLElement, className: string, enabled: boolean) {
+  const classNames = element.className.split(' ');
+  if (enabled) {
+    if (className in classNames) {
+      return;
+    } else {
+      classNames.push(className);
+    }
+  } else {
+    const index = classNames.indexOf(className);
+    if (index === -1) {
+      return;
+    }
+    classNames.splice(index, 1);
+  }
+  element.className = classNames.join(' ');
+}
+
 /** Projects a 3d point into screen space */
 export function vector3DToScreenCoords(
     cam: THREE.Camera, w: number, h: number, v: THREE.Vector3): Point2D {
@@ -153,7 +180,7 @@ export function runAsyncTask<T>(
   let autoClear = (msgId == null);
   msgId = logging.setModalMessage(message, msgId);
   return new Promise<T>((resolve, reject) => {
-    d3.timer(() => {
+    setTimeout(() => {
       try {
         let result = task();
         // Clearing the old message.

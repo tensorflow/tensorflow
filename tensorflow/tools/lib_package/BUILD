@@ -1,12 +1,16 @@
-# Packaging the TensorFlow C API into a small, standalone archive for use with
-# language bindings and installations without Python.
-#
-# TODO(ashankar): Something similar for the JNI library for Java?
-# TODO(ashankar): Something similar for the C++ API (caveat: ABI compatibility)
+# Packaging for TensorFlow artifacts other than the Python API (pip whl).
+# This includes the C API, Java API, and protocol buffer files.
 
 package(default_visibility = ["//visibility:private"])
 
 load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
+
+genrule(
+    name = "libtensorflow_proto",
+    srcs = ["//tensorflow/core:protos_all_proto_srcs"],
+    outs = ["libtensorflow_proto.zip"],
+    cmd = "zip $@ $(SRCS)",
+)
 
 pkg_tar(
     name = "libtensorflow",
@@ -22,6 +26,21 @@ pkg_tar(
         ":clib",
         ":clicenses",
     ],
+)
+
+pkg_tar(
+    name = "libtensorflow_jni",
+    extension = "tar.gz",
+    files = [
+        "include/tensorflow/jni/LICENSE",
+        "//tensorflow/java:libtensorflow_jni",
+    ],
+    # Mark as "manual" till
+    # https://github.com/bazelbuild/bazel/issues/2352
+    # and https://github.com/bazelbuild/bazel/issues/1580
+    # are resolved, otherwise these rules break when built
+    # with Python 3.
+    tags = ["manual"],
 )
 
 pkg_tar(
@@ -65,25 +84,57 @@ genrule(
     srcs = [
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
+        "//third_party/fft2d:LICENSE",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
+        "@fft2d//:fft/readme.txt",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
-        "@grpc//:LICENSE",
         "@highwayhash//:LICENSE",
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
+        "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
-        "@nanopb_git//:LICENSE.txt",
         "@png_archive//:LICENSE",
         "@protobuf//:LICENSE",
+        "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
     ],
     outs = ["include/tensorflow/c/LICENSE"],
+    cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
+    tools = [":concat_licenses.sh"],
+)
+
+genrule(
+    name = "jnilicenses_generate",
+    srcs = [
+        "//third_party/hadoop:LICENSE.txt",
+        "//third_party/eigen3:LICENSE",
+        "//third_party/fft2d:LICENSE",
+        "@boringssl//:LICENSE",
+        "@com_googlesource_code_re2//:LICENSE",
+        "@curl//:COPYING",
+        "@eigen_archive//:COPYING.MPL2",
+        "@farmhash_archive//:COPYING",
+        "@fft2d//:fft/readme.txt",
+        "@gemmlowp//:LICENSE",
+        "@gif_archive//:COPYING",
+        "@highwayhash//:LICENSE",
+        "@jemalloc//:COPYING",
+        "@jpeg//:LICENSE.md",
+        "@libxsmm_archive//:LICENSE",
+        "@lmdb//:LICENSE",
+        "@local_config_sycl//sycl:LICENSE.text",
+        "@png_archive//:LICENSE",
+        "@protobuf//:LICENSE",
+        "@snappy//:COPYING",
+        "@zlib_archive//:zlib.h",
+    ],
+    outs = ["include/tensorflow/jni/LICENSE"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
 )
@@ -95,6 +146,25 @@ sh_test(
     data = [
         "libtensorflow_test.c",
         ":libtensorflow.tar.gz",
+    ],
+    # Mark as "manual" till
+    # https://github.com/bazelbuild/bazel/issues/2352
+    # and https://github.com/bazelbuild/bazel/issues/1580
+    # are resolved, otherwise these rules break when built
+    # with Python 3.
+    # Till then, this test is explicitly executed when building
+    # the release by tensorflow/tools/ci_build/builds/libtensorflow.sh
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "libtensorflow_java_test",
+    size = "small",
+    srcs = ["libtensorflow_java_test.sh"],
+    data = [
+        ":LibTensorFlowTest.java",
+        ":libtensorflow_jni.tar.gz",
+        "//tensorflow/java:libtensorflow.jar",
     ],
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352

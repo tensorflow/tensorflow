@@ -41,13 +41,39 @@ namespace se = ::perftools::gputools;
 
 namespace xla {
 
+BackendOptions& BackendOptions::set_platform(
+    perftools::gputools::Platform* platform) {
+  platform_ = platform;
+  return *this;
+}
+
+perftools::gputools::Platform* BackendOptions::platform() const {
+  return platform_;
+}
+
+BackendOptions& BackendOptions::set_number_of_replicas(int number_of_replicas) {
+  number_of_replicas_ = number_of_replicas;
+  return *this;
+}
+
+int BackendOptions::number_of_replicas() const { return number_of_replicas_; }
+
+BackendOptions& BackendOptions::set_intra_op_parallelism_threads(
+    int num_threads) {
+  intra_op_parallelism_threads_ = num_threads;
+  return *this;
+}
+
+int BackendOptions::intra_op_parallelism_threads() const {
+  return intra_op_parallelism_threads_;
+}
+
 // Define this in .cc file to avoid having to include eigen or forward declare
 // these types in the header.
 struct Backend::EigenThreadPoolWrapper {
-  explicit EigenThreadPoolWrapper()
-      : pool(new tensorflow::thread::ThreadPool(
-            tensorflow::Env::Default(), "XLAEigen",
-            tensorflow::port::NumSchedulableCPUs())),
+  explicit EigenThreadPoolWrapper(const int num_threads)
+      : pool(new tensorflow::thread::ThreadPool(tensorflow::Env::Default(),
+                                                "XLAEigen", num_threads)),
         wrapper(new tensorflow::EigenThreadPoolWrapper(pool.get())),
         device(new Eigen::ThreadPoolDevice(wrapper.get(),
                                            wrapper->NumThreads())) {}
@@ -58,20 +84,21 @@ struct Backend::EigenThreadPoolWrapper {
 };
 
 /* static */ StatusOr<std::unique_ptr<Backend>> Backend::CreateBackend(
-    perftools::gputools::Platform* platform, int64 replica_count) {
+    const BackendOptions& options) {
+  int64 replica_count = options.number_of_replicas();
   if (replica_count == -1) {
     legacy_flags::BackendFlags* flags = legacy_flags::GetBackendFlags();
     replica_count = flags->xla_replicas;
   }
+  perftools::gputools::Platform* platform = options.platform();
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto stream_executors,
                       PlatformUtil::GetStreamExecutors(platform));
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
-  std::unique_ptr<Backend> backend(new Backend(
-      replica_count, platform, compiler, stream_executors, transfer_manager));
-  TF_RETURN_IF_ERROR(backend->PoolStreams(kInitialStreamsToPool,
-                                          backend->default_stream_executor()));
+  std::unique_ptr<Backend> backend(
+      new Backend(replica_count, platform, compiler, stream_executors,
+                  transfer_manager, options.intra_op_parallelism_threads()));
   return std::move(backend);
 }
 
@@ -79,51 +106,36 @@ struct Backend::EigenThreadPoolWrapper {
 Backend::CreateDefaultBackend() {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
                       PlatformUtil::GetDefaultPlatform());
-  return CreateBackend(platform);
+  BackendOptions backend_options;
+  backend_options.set_platform(platform);
+  return CreateBackend(backend_options);
 }
 
-tensorflow::Status Backend::PoolStreams(int n, se::StreamExecutor* executor) {
-  std::vector<std::unique_ptr<se::Stream>> primed;
-  for (int i = 0; i < n; ++i) {
-    TF_ASSIGN_OR_RETURN(auto stream, AcquireStream(executor));
-    primed.emplace_back(std::move(stream));
-  }
-  for (int i = 0; i < n; ++i) {
-    ReleaseStream(std::move(primed.back()));
-    primed.pop_back();
-  }
-  return tensorflow::Status::OK();
+StatusOr<Backend::StreamPtr> Backend::BorrowStream(int device_ordinal) {
+  TF_ASSIGN_OR_RETURN(auto exec, stream_executor(device_ordinal));
+  return BorrowStream(exec);
 }
 
-StatusOr<std::unique_ptr<perftools::gputools::Stream>> Backend::AcquireStream(
-    perftools::gputools::StreamExecutor* executor) {
-  tensorflow::mutex_lock lock(mutex_);
-  auto& cached_streams = cached_streams_[executor];
-  if (!cached_streams.empty()) {
-    auto result = std::move(cached_streams.back());
-    cached_streams.pop_back();
-    return std::move(result);
+StatusOr<Backend::StreamPtr> Backend::BorrowStream(
+    se::StreamExecutor* executor) {
+  tensorflow::mutex_lock l(mu_);
+  if (0 == stream_pools_.count(executor)) {
+    stream_pools_.emplace(std::piecewise_construct,
+                          std::forward_as_tuple(executor),
+                          std::forward_as_tuple([executor]() {
+                            auto stream = MakeUnique<se::Stream>(executor);
+                            stream->Init();
+                            return stream;
+                          }));
   }
-
-  auto stream = MakeUnique<se::Stream>(executor);
-  if (!stream->Init().ok()) {
-    return InternalError("failed to initialize stream");
-  }
-  return std::move(stream);
-}
-
-void Backend::ReleaseStream(
-    std::unique_ptr<perftools::gputools::Stream> stream) {
-  tensorflow::mutex_lock lock(mutex_);
-  auto& streams = cached_streams_[stream->parent()];
-  streams.emplace_back(std::move(stream));
+  return stream_pools_.at(executor).Allocate();
 }
 
 Backend::Backend(
     int64 replica_count, perftools::gputools::Platform* platform,
     Compiler* compiler,
     tensorflow::gtl::ArraySlice<se::StreamExecutor*> stream_executors,
-    TransferManager* transfer_manager)
+    TransferManager* transfer_manager, int intra_op_parallelism_threads)
     : platform_(platform),
       compiler_(compiler),
       transfer_manager_(transfer_manager),
@@ -153,7 +165,11 @@ Backend::Backend(
     inter_op_thread_pool_.reset(new tensorflow::thread::ThreadPool(
         tensorflow::Env::Default(), "xla_inter_op",
         tensorflow::port::NumSchedulableCPUs()));
-    intra_op_thread_pool_wrapper_.reset(new EigenThreadPoolWrapper());
+    const int num_threads = intra_op_parallelism_threads > 0
+                                ? intra_op_parallelism_threads
+                                : tensorflow::port::NumSchedulableCPUs();
+    intra_op_thread_pool_wrapper_.reset(
+        new EigenThreadPoolWrapper(num_threads));
   }
 }
 
@@ -199,8 +215,17 @@ tensorflow::thread::ThreadPool* Backend::inter_op_thread_pool() const {
 
 const Eigen::ThreadPoolDevice* Backend::eigen_intra_op_thread_pool_device()
     const {
-  if (intra_op_thread_pool_wrapper_ == nullptr) return nullptr;
+  if (intra_op_thread_pool_wrapper_ == nullptr) {
+    return nullptr;
+  }
   return intra_op_thread_pool_wrapper_->device.get();
+}
+
+tensorflow::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
+  if (intra_op_thread_pool_wrapper_ == nullptr) {
+    return nullptr;
+  }
+  return intra_op_thread_pool_wrapper_->pool.get();
 }
 
 StatusOr<perftools::gputools::StreamExecutor*> Backend::stream_executor(

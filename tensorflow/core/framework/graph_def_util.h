@@ -62,7 +62,7 @@ Status AddDefaultAttrsToGraphDef(GraphDef* graph_def,
 // attr with a default was added). Note that this will not affect
 // attrs with non-default values, so you must run a
 // ValidateGraphDef...() function to see if the result is in fact
-// compatible. If not nulllptr, the op/attr pairs that were removed
+// compatible. If not nullptr, the op/attr pairs that were removed
 // are added to '*op_attr_removed'.
 //
 // Expected usage, for a producer that wants to prepare a graph for

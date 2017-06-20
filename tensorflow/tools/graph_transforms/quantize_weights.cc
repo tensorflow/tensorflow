@@ -70,6 +70,10 @@ Status QuantizeWeights(const GraphDef& input_graph_def,
           min = std::min(min, value);
           max = std::max(max, value);
         }
+        // Make sure the quantization range includes 0.0f. Not all quantized
+        // Ops behave properly if 0.0f is not in the range.
+        min = std::min(min, 0.0f);
+        max = std::max(0.0f, max);
         // min_value == max_value is a tricky case. It can occur for general
         // tensors, and of course for scalars. The quantized ops cannot deal
         // with this case, so we set max_value to something else.

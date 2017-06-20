@@ -57,7 +57,7 @@ class NcclManager {
   void AddToAllReduce(int num_devices, const string& key,
                       ncclRedOp_t reduction_op,
                       perftools::gputools::StreamExecutor* executor,
-                      EventMgr* event_mgr,
+                      int gpu_device_id, EventMgr* event_mgr,
                       perftools::gputools::Stream* tensor_stream,
                       const Tensor* in_t, Tensor* out_t,
                       const DoneCallback& done_callback);
@@ -66,12 +66,12 @@ class NcclManager {
   // to all receivers.
   void AddBroadcastSend(int num_devices, const string& key,
                         perftools::gputools::StreamExecutor* executor,
-                        EventMgr* event_mgr,
+                        int gpu_device_id, EventMgr* event_mgr,
                         perftools::gputools::Stream* tensor_stream,
                         const Tensor* in_t, DoneCallback done_callback);
   void AddBroadcastRecv(int num_devices, const string& key,
                         perftools::gputools::StreamExecutor* executor,
-                        EventMgr* event_mgr,
+                        int gpu_device_id, EventMgr* event_mgr,
                         perftools::gputools::Stream* tensor_stream,
                         Tensor* out_t, DoneCallback done_callback);
 

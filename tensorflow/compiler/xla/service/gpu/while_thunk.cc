@@ -22,10 +22,11 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-WhileThunk::WhileThunk(BufferAllocation::Index condition_result_buffer_index,
-                       std::unique_ptr<ThunkSequence> condition_thunk_sequence,
-                       std::unique_ptr<ThunkSequence> body_thunk_sequence,
-                       const HloInstruction* hlo)
+WhileThunk::WhileThunk(
+    const BufferAllocation::Slice& condition_result_buffer_index,
+    std::unique_ptr<ThunkSequence> condition_thunk_sequence,
+    std::unique_ptr<ThunkSequence> body_thunk_sequence,
+    const HloInstruction* hlo)
     : Thunk(Kind::kWhile, hlo),
       condition_result_buffer_index_(condition_result_buffer_index),
       condition_thunk_sequence_(MakeUnique<SequentialThunk>(

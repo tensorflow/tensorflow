@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/hexagon/hexagon_control_wrapper.h"
 
+#include "tensorflow/core/kernels/hexagon/hexagon_ops_definitions.h"
+
 #ifdef USE_HEXAGON_LIBS
 #include "tensorflow/core/platform/hexagon/soc_interface.h"
 #include "tensorflow/core/platform/profile_utils/cpu_utils.h"
@@ -22,35 +24,122 @@ limitations under the License.
 
 namespace tensorflow {
 
-const bool SHOW_DBG_IN_SOC = false;
+constexpr const char* const INPUT_OP_NAME = "INPUT";
+constexpr const char* const OUTPUT_OP_NAME = "OUTPUT";
+
+const bool DBG_DUMP_VERIFICATION_STRING = false;
+const int DBG_LEVEL = 0;  // -2: verbose, -1: debug, 0: info
 const bool DBG_USE_DUMMY_INPUT = false;
 const bool DBG_USE_SAMPLE_INPUT = false;
 const int64 FLAG_ENABLE_PANDA_BINARY_INPUT = 0x01;
+const bool DBG_DUMP_INPUT_TENSOR_AS_FLOAT_DATA = false;
+
+/* static */ GraphTransferInfo::NodeInfo* HexagonControlWrapper::FindNodeInfo(
+    const string& name, GraphTransferInfo* graph_transfer_info) {
+  for (GraphTransferInfo::NodeInfo& node_info :
+       *graph_transfer_info->mutable_node_info()) {
+    if (node_info.name() == name) {
+      return &node_info;
+    }
+  }
+  return nullptr;
+}
 
 #ifdef USE_HEXAGON_LIBS
 int HexagonControlWrapper::GetVersion() {
   return soc_interface_GetSocControllerVersion();
 }
 
-bool HexagonControlWrapper::Init() {
-  soc_interface_SetLogLevel(SHOW_DBG_IN_SOC ? -1 /* debug */ : 0 /* info */);
+bool HexagonControlWrapper::Init(const RemoteFusedGraphExecuteInfo& info) {
+  soc_interface_SetLogLevel(DBG_LEVEL);
   if (DBG_USE_SAMPLE_INPUT) {
     soc_interface_SetDebugFlag(FLAG_ENABLE_PANDA_BINARY_INPUT);
   }
+  if (info.serialized_executor_parameters().empty()) {
+    std::vector<std::pair<string, Tensor>> inputs;
+    std::vector<string> outputs;
+    RemoteFusedGraphExecuteUtils::BuildRemoteGraphInputsAndOutputsFromProto(
+        info, &inputs, &outputs);
+    graph_transferer_.LoadGraphFromProto(
+        HexagonOpsDefinitions::getInstance(), info.remote_graph(), inputs,
+        outputs,
+        false  // shape_inference_for_unknown_shape
+        );
+  } else {
+    // If graph transfer info is attached, just import it.
+    graph_transferer_.SetSerializedGraphTransferInfo(
+        info.serialized_executor_parameters());
+  }
+  execute_info_ = &info;
   return soc_interface_Init();
 }
 
 bool HexagonControlWrapper::Finalize() { return soc_interface_Finalize(); }
-bool HexagonControlWrapper::SetupGraph(
-    const GraphTransferer& graph_transferer) {
-  const GraphTransferInfo& graph_transfer_info =
-      graph_transferer.GetGraphTransferInfo();
+bool HexagonControlWrapper::SetupGraph() {
+  // Copy graph transfer info to modify to adapt hexnn library
+  GraphTransferInfo& graph_transfer_info =
+      graph_transferer_.GetMutableGraphTransferInfo();
+
+  // Overwrite op type of input nodes for hexagon
+  for (const GraphTransferInfo::GraphInputNodeInfo& graph_input :
+       graph_transfer_info.graph_input_node_info()) {
+    GraphTransferInfo::NodeInfo* node_info =
+        FindNodeInfo(graph_input.name(), &graph_transfer_info);
+    CHECK_NE(node_info, nullptr);
+    node_info->set_type_name(INPUT_OP_NAME);
+    node_info->set_soc_op_id(
+        HexagonOpsDefinitions::getInstance().GetOpIdFor(INPUT_OP_NAME, {}));
+  }
+
+  // Generate a new output node which is connected to graph output node
+  // TODO(satok): Support multiple output nodes
+  CHECK_EQ(graph_transfer_info.graph_output_node_info_size(), 1);
+  for (const GraphTransferInfo::GraphOutputNodeInfo& graph_output :
+       graph_transfer_info.graph_output_node_info()) {
+    const int new_output_node_id = graph_transfer_info.node_info_size() +
+                                   graph_transfer_info.const_node_info_size() +
+                                   2 /* offset for ids */;
+    // Register a new output node
+    GraphTransferInfo::NodeInfo& new_output_node_info =
+        *graph_transfer_info.add_node_info();
+    new_output_node_info.set_name(OUTPUT_OP_NAME);
+    new_output_node_info.set_node_id(new_output_node_id);
+    new_output_node_info.set_type_name(OUTPUT_OP_NAME);
+    new_output_node_info.set_soc_op_id(
+        HexagonOpsDefinitions::getInstance().GetOpIdFor(OUTPUT_OP_NAME, {}));
+    new_output_node_info.set_padding_id(0 /* PADDING_NA_ID */);
+    new_output_node_info.set_input_count(1);
+    new_output_node_info.set_output_count(0);
+
+    const TensorId tid = ParseTensorName(graph_output.name());
+    const string node_name = tid.first.ToString();
+    const int port = tid.second;
+    // Register node input for the new output node
+    const GraphTransferInfo::NodeInfo* node_info =
+        FindNodeInfo(node_name, &graph_transfer_info);
+    CHECK_NE(node_info, nullptr);
+    GraphTransferInfo::NodeInputInfo& node_input_info =
+        *graph_transfer_info.add_node_input_info();
+    node_input_info.set_node_id(new_output_node_id);
+    GraphTransferInfo::NodeInput& node_input =
+        *node_input_info.add_node_input();
+    node_input.set_node_id(node_info->node_id());
+    node_input.set_output_port(port);
+  }
+
+  if (DBG_DUMP_VERIFICATION_STRING) {
+    GraphTransferer gt;
+    gt.SetSerializedGraphTransferInfo(graph_transfer_info.SerializeAsString());
+    gt.DumpVerificationStringOfNodeTransferParams();
+  }
+
   int inputs_count = 0;
   int outputs_count = 0;
   for (const GraphTransferInfo::NodeInputInfo& input_params :
        graph_transfer_info.node_input_info()) {
     inputs_count += input_params.node_input_size();
   }
+
   for (const GraphTransferInfo::NodeOutputInfo& output_params :
        graph_transfer_info.node_output_info()) {
     outputs_count += output_params.max_byte_size_size();
@@ -127,7 +216,7 @@ bool HexagonControlWrapper::SetupGraph(
 
   // 2. Setup op nodes
   for (const GraphTransferInfo::NodeInfo& params :
-       graph_transferer.GetGraphTransferInfo().node_info()) {
+       graph_transfer_info.node_info()) {
     const int node_id = params.node_id();
     const int op_id = params.soc_op_id();
     CHECK(inputs_map.count(node_id) == 1);
@@ -143,7 +232,7 @@ bool HexagonControlWrapper::SetupGraph(
       const auto& output_ptr_and_count = outputs_map.at(node_id);
       output_ptr = std::get<0>(output_ptr_and_count);
       output_count = std::get<1>(output_ptr_and_count);
-      CHECK(output_count > 0);
+      // CHECK(output_count > 0);
     }
     int padding_id = -1;
     if (params.padding_id() == 0) {
@@ -202,7 +291,33 @@ bool HexagonControlWrapper::FillInputNode(const string& node_name,
 }
 
 bool HexagonControlWrapper::ReadOutputNode(
-    const string node_name, std::vector<ByteArray> *const outputs) {
+    const string& node_name, TensorAllocatorFunc tensor_allocator) {
+  CHECK_NE(execute_info_, nullptr);
+  TensorShape output_shape;
+  // TODO(satok): Switch shape corresponding to input shape
+  for (int i = 0; i < execute_info_->graph_output_node_name_size(); ++i) {
+    if (execute_info_->graph_output_node_name(i) == node_name) {
+      for (const TensorShapeProto::Dim& dim :
+           execute_info_->default_graph_output_tensor_shape(i).shape().dim()) {
+        output_shape.AddDim(dim.size());
+      }
+      break;
+    }
+  }
+  std::vector<IRemoteFusedGraphExecutor::ByteArray> outputs;
+  ReadOutputNode(node_name, &outputs);
+  CHECK_EQ(1, outputs.size());
+  IRemoteFusedGraphExecutor::ByteArray& output = outputs[0];
+  Tensor* output_tensor = tensor_allocator(output_shape);
+  CHECK(output_tensor->TotalBytes() >= std::get<1>(output))
+      << output_tensor->TotalBytes() << ", " << std::get<1>(output);
+  // TODO(satok): Avoid specifying float
+  std::memcpy(output_tensor->flat<float>().data(), std::get<0>(output),
+              std::get<1>(output));
+}
+
+bool HexagonControlWrapper::ReadOutputNode(
+    const string& node_name, std::vector<ByteArray>* const outputs) {
   CHECK(outputs != nullptr);
   ByteArray output;
   soc_interface_ReadOutputNodeFloat(node_name.c_str(), &std::get<0>(output),
@@ -219,17 +334,30 @@ bool HexagonControlWrapper::FillInputNode(const string& node_name,
   const ConstByteArray ba =
       ConstByteArray(reinterpret_cast<const uint8*>(tensor_data.data()),
                      tensor_data.size(), tensor.dtype());
+  if (DBG_DUMP_INPUT_TENSOR_AS_FLOAT_DATA) {
+    LOG(INFO) << "Input tensor data: element size = " << tensor.NumElements()
+              << ", byte syze = " << tensor.TotalBytes();
+    std::stringstream line;
+    for (int i = 0; i < tensor.NumElements(); ++i) {
+      line << tensor.flat<float>().data()[i] << ", ";
+      if ((i - 2) % 3 == 0 || i == tensor.NumElements() - 1) {
+        LOG(INFO) << "(" << ((i - 2) / 3) << ") " << line.str();
+        line.str("");
+        line.clear();
+      }
+    }
+  }
   FillInputNode(node_name, ba);
   return true;
 }
 
 #else
 int HexagonControlWrapper::GetVersion() { return -1; }
-bool HexagonControlWrapper::Init() { return false; }
-bool HexagonControlWrapper::Finalize() { return false; }
-bool HexagonControlWrapper::SetupGraph(const GraphTransferer &) {
+bool HexagonControlWrapper::Init(const RemoteFusedGraphExecuteInfo&) {
   return false;
 }
+bool HexagonControlWrapper::Finalize() { return false; }
+bool HexagonControlWrapper::SetupGraph() { return false; }
 bool HexagonControlWrapper::ExecuteGraph() { return false; }
 bool HexagonControlWrapper::TeardownGraph() { return false; }
 bool HexagonControlWrapper::FillInputNode(const string&, const ConstByteArray) {
@@ -238,7 +366,11 @@ bool HexagonControlWrapper::FillInputNode(const string&, const ConstByteArray) {
 bool HexagonControlWrapper::FillInputNode(const string&, const Tensor&) {
   return false;
 }
-bool HexagonControlWrapper::ReadOutputNode(const string,
+bool HexagonControlWrapper::ReadOutputNode(
+    const string& node_name, TensorAllocatorFunc tensor_allocator) {
+  return false;
+}
+bool HexagonControlWrapper::ReadOutputNode(const string&,
                                            std::vector<ByteArray>* const) {
   return false;
 }

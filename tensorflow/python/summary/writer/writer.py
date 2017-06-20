@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os.path
 import time
 
 from tensorflow.core.framework import graph_pb2
@@ -26,8 +27,12 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import plugin_asset
 from tensorflow.python.summary.writer.event_file_writer import EventFileWriter
+
+_PLUGINS_DIR = "plugins"
 
 
 class SummaryToEventTransformer(object):
@@ -36,14 +41,6 @@ class SummaryToEventTransformer(object):
   This API basically implements a number of endpoints (add_summary,
   add_session_log, etc). The endpoints all generate an event protobuf, which is
   passed to the contained event_writer.
-
-  @@__init__
-
-  @@add_summary
-  @@add_session_log
-  @@add_graph
-  @@add_meta_graph
-  @@add_run_metadata
   """
 
   def __init__(self, event_writer, graph=None, graph_def=None):
@@ -71,7 +68,7 @@ class SummaryToEventTransformer(object):
 
 
     Args:
-      event_writer: An EventWriter. Implements add_event method.
+      event_writer: An EventWriter. Implements add_event and get_logdir.
       graph: A `Graph` object, such as `sess.graph`.
       graph_def: DEPRECATED: Use the `graph` argument instead.
     """
@@ -83,12 +80,11 @@ class SummaryToEventTransformer(object):
       self.add_graph(graph=graph, graph_def=graph_def)
       # Also export the meta_graph_def in this case.
       # graph may itself be a graph_def due to positional arguments
-      maybe_graph_as_def = (
-          graph.as_graph_def(add_shapes=True) if isinstance(graph, ops.Graph)
-          else graph)
+      maybe_graph_as_def = (graph.as_graph_def(add_shapes=True)
+                            if isinstance(graph, ops.Graph) else graph)
       self.add_meta_graph(
-          meta_graph.create_meta_graph_def(
-              graph_def=graph_def or maybe_graph_as_def))
+          meta_graph.create_meta_graph_def(graph_def=graph_def or
+                                           maybe_graph_as_def))
 
   def add_summary(self, summary, global_step=None):
     """Adds a `Summary` protocol buffer to the event file.
@@ -97,8 +93,8 @@ class SummaryToEventTransformer(object):
     and adds it to the event file.
 
     You can pass the result of evaluating any summary op, using
-    [`Session.run()`](client.md#Session.run) or
-    [`Tensor.eval()`](framework.md#Tensor.eval), to this
+    @{tf.Session.run} or
+    @{tf.Tensor.eval}, to this
     function. Alternatively, you can pass a `tf.Summary` protocol
     buffer that you populate with your own data. The latter is
     commonly done to report evaluation results in event files.
@@ -166,6 +162,7 @@ class SummaryToEventTransformer(object):
 
       # Serialize the graph with additional info.
       true_graph_def = graph.as_graph_def(add_shapes=True)
+      self._write_plugin_assets(graph)
     elif (isinstance(graph, graph_pb2.GraphDef) or
           isinstance(graph_def, graph_pb2.GraphDef)):
       # The user passed a `GraphDef`.
@@ -186,6 +183,19 @@ class SummaryToEventTransformer(object):
     # Finally, add the graph_def to the summary writer.
     self._add_graph_def(true_graph_def, global_step)
 
+  def _write_plugin_assets(self, graph):
+    plugin_assets = plugin_asset.get_all_plugin_assets(graph)
+    logdir = self.event_writer.get_logdir()
+    for asset_container in plugin_assets:
+      plugin_name = asset_container.plugin_name
+      plugin_dir = os.path.join(logdir, _PLUGINS_DIR, plugin_name)
+      gfile.MakeDirs(plugin_dir)
+      assets = asset_container.assets()
+      for (asset_name, content) in assets.items():
+        asset_path = os.path.join(plugin_dir, asset_name)
+        with gfile.Open(asset_path, "w") as f:
+          f.write(content)
+
   def add_meta_graph(self, meta_graph_def, global_step=None):
     """Adds a `MetaGraphDef` to the event file.
 
@@ -193,7 +203,7 @@ class SummaryToEventTransformer(object):
     `saver.import_meta_graph()`.
 
     Args:
-      meta_graph_def: A `MetaGraphDef` object, often as retured by
+      meta_graph_def: A `MetaGraphDef` object, often as returned by
         `saver.export_meta_graph()`.
       global_step: Number. Optional global step counter to record with the
         graph.
@@ -202,8 +212,8 @@ class SummaryToEventTransformer(object):
       TypeError: If both `meta_graph_def` is not an instance of `MetaGraphDef`.
     """
     if not isinstance(meta_graph_def, meta_graph_pb2.MetaGraphDef):
-      raise TypeError("meta_graph_def must be type MetaGraphDef, saw type: %s"
-                      % type(meta_graph_def))
+      raise TypeError("meta_graph_def must be type MetaGraphDef, saw type: %s" %
+                      type(meta_graph_def))
     meta_graph_bytes = meta_graph_def.SerializeToString()
     event = event_pb2.Event(meta_graph_def=meta_graph_bytes)
     self._add_event(event, global_step)
@@ -247,18 +257,6 @@ class FileWriter(SummaryToEventTransformer):
   file contents asynchronously. This allows a training program to call methods
   to add data to the file directly from the training loop, without slowing down
   training.
-
-  @@__init__
-
-  @@add_summary
-  @@add_session_log
-  @@add_event
-  @@add_graph
-  @@add_run_metadata
-  @@get_logdir
-
-  @@flush
-  @@close
   """
 
   def __init__(self,
@@ -266,7 +264,8 @@ class FileWriter(SummaryToEventTransformer):
                graph=None,
                max_queue=10,
                flush_secs=120,
-               graph_def=None):
+               graph_def=None,
+               filename_suffix=None):
     """Creates a `FileWriter` and an event file.
 
     On construction the summary writer creates a new event file in `logdir`.
@@ -304,8 +303,11 @@ class FileWriter(SummaryToEventTransformer):
       flush_secs: Number. How often, in seconds, to flush the
         pending events and summaries to disk.
       graph_def: DEPRECATED: Use the `graph` argument instead.
+      filename_suffix: A string. Every event file's name is suffixed with
+        `suffix`.
     """
-    event_writer = EventFileWriter(logdir, max_queue, flush_secs)
+    event_writer = EventFileWriter(logdir, max_queue, flush_secs,
+                                   filename_suffix)
     super(FileWriter, self).__init__(event_writer, graph, graph_def)
 
   def get_logdir(self):

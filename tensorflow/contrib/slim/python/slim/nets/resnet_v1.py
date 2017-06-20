@@ -40,15 +40,16 @@ Typical use:
 ResNet-101 for image classification into 1000 classes:
 
    # inputs has shape [batch, 224, 224, 3]
-   with slim.arg_scope(resnet_v1.resnet_arg_scope(is_training)):
-      net, end_points = resnet_v1.resnet_v1_101(inputs, 1000)
+   with slim.arg_scope(resnet_v1.resnet_arg_scope()):
+      net, end_points = resnet_v1.resnet_v1_101(inputs, 1000, is_training=False)
 
 ResNet-101 for semantic segmentation into 21 classes:
 
    # inputs has shape [batch, 513, 513, 3]
-   with slim.arg_scope(resnet_v1.resnet_arg_scope(is_training)):
+   with slim.arg_scope(resnet_v1.resnet_arg_scope()):
       net, end_points = resnet_v1.resnet_v1_101(inputs,
                                                 21,
+                                                is_training=False,
                                                 global_pool=False,
                                                 output_stride=16)
 """
@@ -127,6 +128,7 @@ def bottleneck(inputs,
 def resnet_v1(inputs,
               blocks,
               num_classes=None,
+              is_training=None,
               global_pool=True,
               output_stride=None,
               include_root_block=True,
@@ -161,6 +163,8 @@ def resnet_v1(inputs,
       is a resnet_utils.Block object describing the units in the block.
     num_classes: Number of predicted classes for classification tasks. If None
       we return the features before the logit layer.
+    is_training: whether is training or not. If None, the value inherited from
+      the resnet_arg_scope is used. Specifying value None is deprecated.
     global_pool: If True, we perform global average pooling before computing the
       logits. Set to True for image classification, False for dense prediction.
     output_stride: If None, then the output will be computed at the nominal
@@ -192,55 +196,82 @@ def resnet_v1(inputs,
     with arg_scope(
         [layers.conv2d, bottleneck, resnet_utils.stack_blocks_dense],
         outputs_collections=end_points_collection):
-      net = inputs
-      if include_root_block:
-        if output_stride is not None:
-          if output_stride % 4 != 0:
-            raise ValueError('The output_stride needs to be a multiple of 4.')
-          output_stride /= 4
-        net = resnet_utils.conv2d_same(net, 64, 7, stride=2, scope='conv1')
-        net = layers_lib.max_pool2d(net, [3, 3], stride=2, scope='pool1')
-      net = resnet_utils.stack_blocks_dense(net, blocks, output_stride)
-      if global_pool:
-        # Global average pooling.
-        net = math_ops.reduce_mean(net, [1, 2], name='pool5', keep_dims=True)
-      if num_classes is not None:
-        net = layers.conv2d(
-            net,
-            num_classes, [1, 1],
-            activation_fn=None,
-            normalizer_fn=None,
-            scope='logits')
-      # Convert end_points_collection into a dictionary of end_points.
-      end_points = utils.convert_collection_to_dict(end_points_collection)
-      if num_classes is not None:
-        end_points['predictions'] = layers_lib.softmax(net, scope='predictions')
-      return net, end_points
-
-
+      if is_training is not None:
+        bn_scope = arg_scope([layers.batch_norm], is_training=is_training)
+      else:
+        bn_scope = arg_scope([])
+      with bn_scope:
+        net = inputs
+        if include_root_block:
+          if output_stride is not None:
+            if output_stride % 4 != 0:
+              raise ValueError('The output_stride needs to be a multiple of 4.')
+            output_stride /= 4
+          net = resnet_utils.conv2d_same(net, 64, 7, stride=2, scope='conv1')
+          net = layers_lib.max_pool2d(net, [3, 3], stride=2, scope='pool1')
+        net = resnet_utils.stack_blocks_dense(net, blocks, output_stride)
+        if global_pool:
+          # Global average pooling.
+          net = math_ops.reduce_mean(net, [1, 2], name='pool5', keep_dims=True)
+        if num_classes is not None:
+          net = layers.conv2d(
+              net,
+              num_classes, [1, 1],
+              activation_fn=None,
+              normalizer_fn=None,
+              scope='logits')
+        # Convert end_points_collection into a dictionary of end_points.
+        end_points = utils.convert_collection_to_dict(end_points_collection)
+        if num_classes is not None:
+          end_points['predictions'] = layers_lib.softmax(
+              net, scope='predictions')
+        return net, end_points
 resnet_v1.default_image_size = 224
+
+
+def resnet_v1_block(scope, base_depth, num_units, stride):
+  """Helper function for creating a resnet_v1 bottleneck block.
+
+  Args:
+    scope: The scope of the block.
+    base_depth: The depth of the bottleneck layer for each unit.
+    num_units: The number of units in the block.
+    stride: The stride of the block, implemented as a stride in the last unit.
+      All other units have stride=1.
+
+  Returns:
+    A resnet_v1 bottleneck block.
+  """
+  return resnet_utils.Block(scope, bottleneck, [{
+      'depth': base_depth * 4,
+      'depth_bottleneck': base_depth,
+      'stride': 1
+  }] * (num_units - 1) + [{
+      'depth': base_depth * 4,
+      'depth_bottleneck': base_depth,
+      'stride': stride
+  }])
 
 
 def resnet_v1_50(inputs,
                  num_classes=None,
+                 is_training=None,
                  global_pool=True,
                  output_stride=None,
                  reuse=None,
                  scope='resnet_v1_50'):
   """ResNet-50 model of [1]. See resnet_v1() for arg and return description."""
   blocks = [
-      resnet_utils.Block('block1', bottleneck,
-                         [(256, 64, 1)] * 2 + [(256, 64, 2)]),
-      resnet_utils.Block('block2', bottleneck,
-                         [(512, 128, 1)] * 3 + [(512, 128, 2)]),
-      resnet_utils.Block('block3', bottleneck,
-                         [(1024, 256, 1)] * 5 + [(1024, 256, 2)]),
-      resnet_utils.Block('block4', bottleneck, [(2048, 512, 1)] * 3)
+      resnet_v1_block('block1', base_depth=64, num_units=3, stride=2),
+      resnet_v1_block('block2', base_depth=128, num_units=4, stride=2),
+      resnet_v1_block('block3', base_depth=256, num_units=6, stride=2),
+      resnet_v1_block('block4', base_depth=512, num_units=3, stride=1),
   ]
   return resnet_v1(
       inputs,
       blocks,
       num_classes,
+      is_training,
       global_pool,
       output_stride,
       include_root_block=True,
@@ -250,24 +281,23 @@ def resnet_v1_50(inputs,
 
 def resnet_v1_101(inputs,
                   num_classes=None,
+                  is_training=None,
                   global_pool=True,
                   output_stride=None,
                   reuse=None,
                   scope='resnet_v1_101'):
   """ResNet-101 model of [1]. See resnet_v1() for arg and return description."""
   blocks = [
-      resnet_utils.Block('block1', bottleneck,
-                         [(256, 64, 1)] * 2 + [(256, 64, 2)]),
-      resnet_utils.Block('block2', bottleneck,
-                         [(512, 128, 1)] * 3 + [(512, 128, 2)]),
-      resnet_utils.Block('block3', bottleneck,
-                         [(1024, 256, 1)] * 22 + [(1024, 256, 2)]),
-      resnet_utils.Block('block4', bottleneck, [(2048, 512, 1)] * 3)
+      resnet_v1_block('block1', base_depth=64, num_units=3, stride=2),
+      resnet_v1_block('block2', base_depth=128, num_units=4, stride=2),
+      resnet_v1_block('block3', base_depth=256, num_units=23, stride=2),
+      resnet_v1_block('block4', base_depth=512, num_units=3, stride=1),
   ]
   return resnet_v1(
       inputs,
       blocks,
       num_classes,
+      is_training,
       global_pool,
       output_stride,
       include_root_block=True,
@@ -277,24 +307,23 @@ def resnet_v1_101(inputs,
 
 def resnet_v1_152(inputs,
                   num_classes=None,
+                  is_training=None,
                   global_pool=True,
                   output_stride=None,
                   reuse=None,
                   scope='resnet_v1_152'):
   """ResNet-152 model of [1]. See resnet_v1() for arg and return description."""
   blocks = [
-      resnet_utils.Block('block1', bottleneck,
-                         [(256, 64, 1)] * 2 + [(256, 64, 2)]),
-      resnet_utils.Block('block2', bottleneck,
-                         [(512, 128, 1)] * 7 + [(512, 128, 2)]),
-      resnet_utils.Block('block3', bottleneck,
-                         [(1024, 256, 1)] * 35 + [(1024, 256, 2)]),
-      resnet_utils.Block('block4', bottleneck, [(2048, 512, 1)] * 3)
+      resnet_v1_block('block1', base_depth=64, num_units=3, stride=2),
+      resnet_v1_block('block2', base_depth=128, num_units=8, stride=2),
+      resnet_v1_block('block3', base_depth=256, num_units=36, stride=2),
+      resnet_v1_block('block4', base_depth=512, num_units=3, stride=1),
   ]
   return resnet_v1(
       inputs,
       blocks,
       num_classes,
+      is_training,
       global_pool,
       output_stride,
       include_root_block=True,
@@ -304,24 +333,23 @@ def resnet_v1_152(inputs,
 
 def resnet_v1_200(inputs,
                   num_classes=None,
+                  is_training=None,
                   global_pool=True,
                   output_stride=None,
                   reuse=None,
                   scope='resnet_v1_200'):
   """ResNet-200 model of [2]. See resnet_v1() for arg and return description."""
   blocks = [
-      resnet_utils.Block('block1', bottleneck,
-                         [(256, 64, 1)] * 2 + [(256, 64, 2)]),
-      resnet_utils.Block('block2', bottleneck,
-                         [(512, 128, 1)] * 23 + [(512, 128, 2)]),
-      resnet_utils.Block('block3', bottleneck,
-                         [(1024, 256, 1)] * 35 + [(1024, 256, 2)]),
-      resnet_utils.Block('block4', bottleneck, [(2048, 512, 1)] * 3)
+      resnet_v1_block('block1', base_depth=64, num_units=3, stride=2),
+      resnet_v1_block('block2', base_depth=128, num_units=24, stride=2),
+      resnet_v1_block('block3', base_depth=256, num_units=36, stride=2),
+      resnet_v1_block('block4', base_depth=512, num_units=3, stride=1),
   ]
   return resnet_v1(
       inputs,
       blocks,
       num_classes,
+      is_training,
       global_pool,
       output_stride,
       include_root_block=True,

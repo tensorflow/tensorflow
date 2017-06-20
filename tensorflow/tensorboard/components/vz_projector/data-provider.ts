@@ -131,31 +131,88 @@ export function retrieveTensorAsBytes(
 }
 
 export function parseRawTensors(
-    content: string, callback: (ds: DataSet) => void) {
+    content: ArrayBuffer, callback: (ds: DataSet) => void) {
   parseTensors(content).then(data => {
     callback(new DataSet(data));
   });
 }
 
 export function parseRawMetadata(
-    contents: string, callback: (r: SpriteAndMetadataInfo) => void) {
+    contents: ArrayBuffer, callback: (r: SpriteAndMetadataInfo) => void) {
   parseMetadata(contents).then(result => callback(result));
+}
+
+/**
+ * Parse an ArrayBuffer in a streaming fashion line by line (or custom delim).
+ * Can handle very large files.
+ *
+ * @param content The array buffer.
+ * @param callback The callback called on each line.
+ * @param chunkSize The size of each read chunk, defaults to ~1MB. (optional)
+ * @param delim The delimiter used to split a line, defaults to '\n'. (optional)
+ * @returns A promise for when it is finished.
+ */
+function streamParse(
+    content: ArrayBuffer, callback: (line: string) => void, chunkSize = 1000000,
+    delim = '\n'): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let offset = 0;
+    let bufferSize = content.byteLength - 1;
+    let data = '';
+
+    function readHandler(str) {
+      offset += chunkSize;
+      let parts = str.split(delim);
+      let first = data + parts[0];
+      if (parts.length === 1) {
+        data = first;
+        readChunk(offset, chunkSize);
+        return;
+      }
+      data = parts[parts.length - 1];
+      callback(first);
+      for (let i = 1; i < parts.length - 1; i++) {
+        callback(parts[i]);
+      }
+      if (offset >= bufferSize) {
+        if (data) {
+          callback(data);
+        }
+        resolve();
+        return;
+      }
+      readChunk(offset, chunkSize);
+    }
+
+    function readChunk(offset: number, size: number) {
+      const contentChunk = content.slice(offset, offset + size);
+
+      const blob = new Blob([contentChunk]);
+      const file = new FileReader();
+      file.onload = (e: any) => readHandler(e.target.result);
+      file.readAsText(blob);
+    }
+
+    readChunk(offset, chunkSize);
+  });
 }
 
 /** Parses a tsv text file. */
 export function parseTensors(
-    content: string, delim = '\t'): Promise<DataPoint[]> {
-  let data: DataPoint[] = [];
-  let numDim: number;
-  return runAsyncTask('Parsing tensors...', () => {
-    let lines = content.split('\n');
-    lines.forEach(line => {
+    content: ArrayBuffer, valueDelim = '\t'): Promise<DataPoint[]> {
+  logging.setModalMessage('Parsing tensors...', TENSORS_MSG_ID);
+
+  return new Promise<DataPoint[]>((resolve, reject) => {
+    const data: DataPoint[] = [];
+    let numDim: number;
+
+    streamParse(content, (line: string) => {
       line = line.trim();
       if (line === '') {
         return;
       }
-      let row = line.split(delim);
-      let dataPoint: DataPoint = {
+      const row = line.split(valueDelim);
+      const dataPoint: DataPoint = {
         metadata: {},
         vector: null,
         index: data.length,
@@ -182,11 +239,10 @@ export function parseTensors(
             'Parsing failed. Found a vector with only one dimension?');
         throw Error('Parsing failed');
       }
+    }).then(() => {
+      logging.setModalMessage(null, TENSORS_MSG_ID);
+      resolve(data);
     });
-    return data;
-  }, TENSORS_MSG_ID).then(dataPoints => {
-    logging.setModalMessage(null, TENSORS_MSG_ID);
-    return dataPoints;
   });
 }
 
@@ -194,8 +250,8 @@ export function parseTensors(
 export function parseTensorsFromFloat32Array(data: Float32Array,
     dim: number): Promise<DataPoint[]> {
   return runAsyncTask('Parsing tensors...', () => {
-    let N = data.length / dim;
-    let dataPoints: DataPoint[] = [];
+    const N = data.length / dim;
+    const dataPoints: DataPoint[] = [];
     let offset = 0;
     for (let i = 0; i < N; ++i) {
       dataPoints.push({
@@ -215,7 +271,7 @@ export function parseTensorsFromFloat32Array(data: Float32Array,
 
 export function analyzeMetadata(
     columnNames, pointsMetadata: PointMetadata[]): ColumnStats[] {
-  let columnStats: ColumnStats[] = columnNames.map(name => {
+  const columnStats: ColumnStats[] = columnNames.map(name => {
     return {
       name: name,
       isNumeric: true,
@@ -224,12 +280,15 @@ export function analyzeMetadata(
       max: Number.NEGATIVE_INFINITY
     };
   });
-  let mapOfValues = columnNames.map(() => d3.map<number>());
+
+  const mapOfValues: [{[value: string]: number}] =
+      columnNames.map(() => new Object());
+
   pointsMetadata.forEach(metadata => {
     columnNames.forEach((name: string, colIndex: number) => {
-      let stats = columnStats[colIndex];
-      let map = mapOfValues[colIndex];
-      let value = metadata[name];
+      const stats = columnStats[colIndex];
+      const map = mapOfValues[colIndex];
+      const value = metadata[name];
 
       // Skip missing values.
       if (value == null) {
@@ -237,12 +296,12 @@ export function analyzeMetadata(
       }
 
       if (!stats.tooManyUniqueValues) {
-        if (map.has(value)) {
-          map.set(value, map.get(value) + 1);
+        if (value in map) {
+          map[value]++;
         } else {
-          map.set(value, 1);
+          map[value] = 1;
         }
-        if (map.size() > NUM_COLORS_COLOR_MAP) {
+        if (Object.keys(map).length > NUM_COLORS_COLOR_MAP) {
           stats.tooManyUniqueValues = true;
         }
       }
@@ -256,26 +315,40 @@ export function analyzeMetadata(
     });
   });
   columnStats.forEach((stats, colIndex) => {
-    stats.uniqueEntries = mapOfValues[colIndex].entries().map(e => {
-      return {label: e.key, count: e.value};
+    stats.uniqueEntries = Object.keys(mapOfValues[colIndex]).map(label => {
+      return {label, count: mapOfValues[colIndex][label]};
     });
   });
   return columnStats;
 }
 
-export function parseMetadata(content: string): Promise<SpriteAndMetadataInfo> {
-  return runAsyncTask('Parsing metadata...', () => {
-    let lines = content.split('\n').filter(line => line.trim().length > 0);
-    let hasHeader = lines[0].indexOf('\t') >= 0;
+export function parseMetadata(content: ArrayBuffer):
+    Promise<SpriteAndMetadataInfo> {
+  logging.setModalMessage('Parsing metadata...', METADATA_MSG_ID);
+
+  return new Promise<SpriteAndMetadataInfo>((resolve, reject) => {
     let pointsMetadata: PointMetadata[] = [];
-    // If the first row doesn't contain metadata keys, we assume that the values
-    // are labels.
+    let hasHeader = false;
+    let lineNumber = 0;
     let columnNames = ['label'];
-    if (hasHeader) {
-      columnNames = lines[0].split('\t');
-      lines = lines.slice(1);
-    }
-    lines.forEach((line: string) => {
+    streamParse(content, (line: string) => {
+      if (line.trim().length === 0) {
+        return;
+      }
+      if (lineNumber === 0) {
+        hasHeader = line.indexOf('\t') >= 0;
+
+        // If the first row doesn't contain metadata keys, we assume that the
+        // values are labels.
+        if (hasHeader) {
+          columnNames = line.split('\t');
+          lineNumber++;
+          return;
+        }
+      }
+
+      lineNumber++;
+
       let rowValues = line.split('\t');
       let metadata: PointMetadata = {};
       pointsMetadata.push(metadata);
@@ -285,14 +358,13 @@ export function parseMetadata(content: string): Promise<SpriteAndMetadataInfo> {
         value = (value === '' ? null : value);
         metadata[name] = value;
       });
+    }).then(() => {
+      logging.setModalMessage(null, METADATA_MSG_ID);
+      resolve({
+        stats: analyzeMetadata(columnNames, pointsMetadata),
+        pointsInfo: pointsMetadata
+      });
     });
-    return {
-      stats: analyzeMetadata(columnNames, pointsMetadata),
-      pointsInfo: pointsMetadata
-    } as SpriteAndMetadataInfo;
-  }, METADATA_MSG_ID).then(metadata => {
-    logging.setModalMessage(null, METADATA_MSG_ID);
-    return metadata;
   });
 }
 
@@ -313,14 +385,19 @@ export function retrieveSpriteAndMetadataInfo(metadataPath: string,
   if (metadataPath) {
     metadataPromise = new Promise<SpriteAndMetadataInfo>((resolve, reject) => {
       logging.setModalMessage('Fetching metadata...', METADATA_MSG_ID);
-      d3.text(metadataPath, (err: any, rawMetadata: string) => {
-        if (err) {
-          logging.setErrorMessage(err.responseText, 'fetching metadata');
-          reject(err);
-          return;
-        }
-        resolve(parseMetadata(rawMetadata));
-      });
+
+      const request = new XMLHttpRequest();
+      request.open('GET', metadataPath);
+      request.responseType = 'arraybuffer';
+
+      request.onerror = () => {
+        logging.setErrorMessage(request.responseText, 'fetching metadata');
+        reject();
+      };
+      request.onload = () => {
+        resolve(parseMetadata(request.response));
+      };
+      request.send(null);
     });
   }
   let spriteMsgId = null;
@@ -335,7 +412,7 @@ export function retrieveSpriteAndMetadataInfo(metadataPath: string,
     if (spriteMsgId) {
       logging.setModalMessage(null, spriteMsgId);
     }
-    let [metadata, spriteImage] = values;
+    const [metadata, spriteImage] = values;
 
     if (spriteImage && (spriteImage.height > MAX_SPRITE_IMAGE_SIZE_PX ||
                         spriteImage.width > MAX_SPRITE_IMAGE_SIZE_PX)) {

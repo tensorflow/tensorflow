@@ -60,14 +60,6 @@ class LinearOperatorTriLTest(
 
     return operator, mat, feed_dict
 
-  def test_assert_positive_definite(self):
-    # Singlular matrix with one positive eigenvalue and one negative eigenvalue.
-    with self.test_session():
-      tril = [[1., 0.], [1., -1.]]
-      operator = linalg.LinearOperatorTriL(tril)
-      with self.assertRaisesOpError("was not positive definite"):
-        operator.assert_positive_definite().run()
-
   def test_assert_non_singular(self):
     # Singlular matrix with one positive eigenvalue and one zero eigenvalue.
     with self.test_session():
@@ -87,6 +79,10 @@ class LinearOperatorTriLTest(
     self.assertTrue(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
     self.assertFalse(operator.is_self_adjoint)
+
+  def test_tril_must_have_at_least_two_dims_or_raises(self):
+    with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
+      linalg.LinearOperatorTriL([1.])
 
 
 if __name__ == "__main__":

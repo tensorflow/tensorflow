@@ -11,7 +11,10 @@ It will print a list of errors it finds that it can't fix. You can also run
 it on a directory tree:
 
 ```
-tf_upgrade.py --intree coolcode -outtree coolcode-upgraded
+# just upgrade the .py files
+tf_upgrade.py --intree coolcode --outtree coolcode-upgraded
+# after upgrade the .py files, then copy all the other files to the outtree
+tf_upgrade.py --intree coolcode --outtree coolcode-upgraded --copyotherfiles True
 ```
 
 In either case, it will also dump out a report e.g. which will detail changes
@@ -32,8 +35,8 @@ Renamed keyword argument from `squeeze_dims` to `axis`
 ## Caveats
 
 - Don't update parts of your code manually before running this script. In
-particular, functions that have had reordered arguments like `tf.concat`,
-`tf.split` will cause the script to incorrectly add keyword arguments that
+particular, functions that have had reordered arguments like `tf.concat`
+or `tf.split` will cause the script to incorrectly add keyword arguments that
 mismap arguments.
 
 - This script wouldn't actually reorder arguments. Instead, the script will add
@@ -46,6 +49,12 @@ a tensor of bools. If the script detects this, it will report this to stdout
 `tf.reverse(a, [False, True, True])` you will need to manually change it to
 `tf.reverse(a, [1, 2])`.
 
-
-
-
+- There are some syntaxes that are not handleable with this script as this
+script was designed to use only standard python packages. If the script fails
+with "A necessary keyword argument failed to be inserted." or
+"Failed to find keyword lexicographically. Fix manually.", you can try
+[@machrisaa's fork of this script](https://github.com/machrisaa/tf0to1).
+[@machrisaa](https://github.com/machrisaa) has used the
+[RedBaron Python refactoring engine](https://redbaron.readthedocs.io/en/latest/)
+which is able to localize syntactic elements more reliably than the built-in
+`ast` module this script is based upon.

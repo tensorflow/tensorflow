@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -41,9 +40,9 @@ class ResizeBilinearOpTest : public OpsTestBase {
     TF_EXPECT_OK(InitOp());
   }
 
-  const Tensor* AddRandomImageInput(const TensorShape& shape) {
-    CHECK_GT(input_types_.size(), inputs_.size())
-        << "Adding more inputs than types; perhaps you need to call MakeOp";
+  const Tensor* SetRandomImageInput(const TensorShape& shape) {
+    inputs_.clear();
+
     CHECK_EQ(shape.dims(), 4) << "All images must have 4 dimensions.";
     bool is_ref = IsRefType(input_types_[inputs_.size()]);
     Tensor* input = new Tensor(device_->GetAllocator(AllocatorAttributes()),
@@ -109,20 +108,35 @@ class ResizeBilinearOpTest : public OpsTestBase {
     }
   }
 
-  void TestResize(int input_width, int input_height, int channels,
-                  int output_width, int output_height) {
-    const TensorShape shape({1, input_width, input_height, channels});
-    const Tensor* input = AddRandomImageInput(shape);
+  void TestResize(int batch_size, int input_width, int input_height,
+                  int channels, int output_width, int output_height) {
+    const TensorShape shape({batch_size, input_width, input_height, channels});
+    const Tensor* input = SetRandomImageInput(shape);
     AddInputFromArray<int32>(TensorShape({2}), {output_width, output_height});
     TF_ASSERT_OK(RunOpKernel());
 
-    std::unique_ptr<Tensor> expected(
-        new Tensor(device_->GetAllocator(AllocatorAttributes()),
-                   DataTypeToEnum<float>::v(),
-                   TensorShape({1, output_width, output_height, channels})));
+    std::unique_ptr<Tensor> expected(new Tensor(
+        device_->GetAllocator(AllocatorAttributes()),
+        DataTypeToEnum<float>::v(),
+        TensorShape({batch_size, output_width, output_height, channels})));
     ResizeBilinearBaseline(input->tensor<float, 4>(),
                            expected->tensor<float, 4>());
     test::ExpectTensorEqual<float>(*expected, *GetOutput(0));
+  }
+
+  void RunManyRandomTests(int channels) {
+    for (int batch_size : {1, 2, 5}) {
+      for (int in_w : {2, 4, 7, 20, 165}) {
+        for (int in_h : {1, 3, 5, 8, 100, 233}) {
+          for (int target_height : {1, 2, 3, 50, 113}) {
+            for (int target_width : {target_height, target_height / 2 + 1}) {
+              TestResize(batch_size, in_w, in_h, channels, target_width,
+                         target_height);
+            }
+          }
+        }
+      }
+    }
   }
 };
 
@@ -137,6 +151,18 @@ class ResizeBilinearOpAlignCornersTest : public OpsTestBase {
     TF_EXPECT_OK(InitOp());
   }
 };
+
+TEST_F(ResizeBilinearOpTest, TestResizeRandomDataSeveralInputsSizes1Channel) {
+  RunManyRandomTests(1);
+}
+
+TEST_F(ResizeBilinearOpTest, TestResizeRandomDataSeveralInputsSizes3Channels) {
+  RunManyRandomTests(3);
+}
+
+TEST_F(ResizeBilinearOpTest, TestResizeRandomDataSeveralInputsSizes4Channels) {
+  RunManyRandomTests(4);
+}
 
 TEST_F(ResizeBilinearOpTest, TestBilinear2x2To1x1) {
   // Input:
@@ -154,7 +180,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To1x1) {
 }
 
 TEST_F(ResizeBilinearOpTest, TestBilinearRandom2x2To1x1) {
-  const Tensor* input = AddRandomImageInput(TensorShape({1, 2, 2, 1}));
+  const Tensor* input = SetRandomImageInput(TensorShape({1, 2, 2, 1}));
   AddInputFromArray<int32>(TensorShape({2}), {1, 1});
   TF_ASSERT_OK(RunOpKernel());
 
@@ -167,7 +193,7 @@ TEST_F(ResizeBilinearOpTest, TestBilinearRandom2x2To1x1) {
   ResizeBilinearBaseline(input->tensor<float, 4>(),
                          expected->tensor<float, 4>());
   EXPECT_EQ(input->flat<float>()(0), output->flat<float>()(0));
-  test::ExpectTensorEqual<float>(*expected.get(), *output);
+  test::ExpectTensorEqual<float>(*expected, *output);
 }
 
 TEST_F(ResizeBilinearOpAlignCornersTest, TestBilinearAlignCorners2x2To1x1) {
@@ -404,28 +430,28 @@ TEST_F(ResizeBilinearOpTest, TestBilinear2x2To4x4) {
 }
 
 // similar_size case
-TEST_F(ResizeBilinearOpTest, Test1_1c) { TestResize(183, 299, 1, 299, 299); }
-TEST_F(ResizeBilinearOpTest, Test1_3c) { TestResize(183, 299, 3, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test1_1c) { TestResize(1, 183, 299, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test1_3c) { TestResize(1, 183, 299, 3, 299, 299); }
 
 // Significantly smaller: scale_up case
-TEST_F(ResizeBilinearOpTest, Test2_1c) { TestResize(141, 186, 1, 299, 299); }
-TEST_F(ResizeBilinearOpTest, Test2_3c) { TestResize(141, 186, 3, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test2_1c) { TestResize(1, 141, 186, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test2_3c) { TestResize(1, 141, 186, 3, 299, 299); }
 
 // Significantly larger: scale_down case
-TEST_F(ResizeBilinearOpTest, Test3_1c) { TestResize(749, 603, 1, 299, 299); }
-TEST_F(ResizeBilinearOpTest, Test3_3c) { TestResize(749, 603, 3, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test3_1c) { TestResize(1, 749, 603, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test3_3c) { TestResize(1, 749, 603, 3, 299, 299); }
 
 // Exactly the same size
-TEST_F(ResizeBilinearOpTest, Test4_1c) { TestResize(299, 299, 1, 299, 299); }
-TEST_F(ResizeBilinearOpTest, Test4_3c) { TestResize(299, 299, 3, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test4_1c) { TestResize(1, 299, 299, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test4_3c) { TestResize(1, 299, 299, 3, 299, 299); }
 
 // Slightly smaller: similar_size case
-TEST_F(ResizeBilinearOpTest, Test5_1c) { TestResize(298, 297, 1, 299, 299); }
-TEST_F(ResizeBilinearOpTest, Test5_3c) { TestResize(298, 297, 3, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test5_1c) { TestResize(1, 298, 297, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test5_3c) { TestResize(1, 298, 297, 3, 299, 299); }
 
 // Slightly bigger: similar_size case
-TEST_F(ResizeBilinearOpTest, Test6_1c) { TestResize(304, 303, 1, 299, 299); }
-TEST_F(ResizeBilinearOpTest, Test6_3c) { TestResize(304, 303, 3, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test6_1c) { TestResize(1, 304, 303, 1, 299, 299); }
+TEST_F(ResizeBilinearOpTest, Test6_3c) { TestResize(1, 304, 303, 3, 299, 299); }
 
 TEST_F(ResizeBilinearOpTest, TestInvalidOutputSize) {
   AddInputFromArray<float>(TensorShape({1, 2, 2, 1}), {1, 2, 3, 4});

@@ -66,9 +66,23 @@ void StringToNumberOp<float>::Convert(const string& s, float* output_data,
 }
 
 template <>
+void StringToNumberOp<double>::Convert(const string& s, double* output_data,
+                                       OpKernelContext* context) {
+  OP_REQUIRES(context, strings::safe_strtod(s.c_str(), output_data),
+              errors::InvalidArgument(kErrorMessage, s));
+}
+
+template <>
 void StringToNumberOp<int32>::Convert(const string& s, int32* output_data,
                                       OpKernelContext* context) {
   OP_REQUIRES(context, strings::safe_strto32(s, output_data),
+              errors::InvalidArgument(kErrorMessage, s));
+}
+
+template <>
+void StringToNumberOp<int64>::Convert(const string& s, int64* output_data,
+                                      OpKernelContext* context) {
+  OP_REQUIRES(context, strings::safe_strto64(s, output_data),
               errors::InvalidArgument(kErrorMessage, s));
 }
 
@@ -79,7 +93,9 @@ void StringToNumberOp<int32>::Convert(const string& s, int32* output_data,
                               .TypeConstraint<type>("out_type"), \
                           StringToNumberOp<type>)
 REGISTER(float);
+REGISTER(double);
 REGISTER(int32);
+REGISTER(int64);
 #undef REGISTER
 
 }  // namespace tensorflow

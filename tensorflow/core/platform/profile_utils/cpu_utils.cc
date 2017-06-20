@@ -56,12 +56,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 /* static */ int64 CpuUtils::GetCycleCounterFrequencyImpl() {
 // TODO(satok): do not switch by macro here
 #if defined(__ANDROID__)
-#if defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
-  // This profiling tool only supports Ver 21 or upper on Android
   return GetCpuUtilsHelperSingletonInstance().CalculateCpuFrequency();
-#else  // defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
-  return INVALID_FREQUENCY;
-#endif
 #elif defined(__linux__)
   double bogomips;
   FILE* fp = popen("grep '^bogomips' /proc/cpuinfo | head -1", "r");
@@ -108,7 +103,8 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
     if (cpu_utils_helper_instance_ != nullptr) {
       LOG(FATAL) << "cpu_utils_helper_instance_ is already instantiated.";
     }
-#if defined(__ANDROID__) && defined(__ARM_ARCH_7A__) && (__ANDROID_API__ >= 21)
+#if defined(__ANDROID__) && (__ANDROID_API__ >= 21) && \
+    (defined(__ARM_ARCH_7A__) || defined(__aarch64__))
     cpu_utils_helper_instance_ = new AndroidArmV7ACpuUtilsHelper();
 #else
       cpu_utils_helper_instance_ = new DefaultCpuUtilsHelper();

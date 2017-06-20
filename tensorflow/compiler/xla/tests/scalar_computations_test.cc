@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -30,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -245,37 +247,183 @@ XLA_TEST_F(ScalarComputationsTest, RemTwoScalarsF32) {
   ComputeAndCompareR0<float>(&builder, 2.5f, {}, error_spec_);
 }
 
-XLA_TEST_F(ScalarComputationsTest, DivideTwoScalarsS32) {
-  ComputationBuilder builder(client_, TestName());
-  builder.Div(builder.ConstantR0<int32>(-5), builder.ConstantR0<int32>(2));
+struct DivS32Params {
+  int32 dividend;
+  int32 divisor;
+  int32 quotient;
+  int32 remainder;
+};
 
-  ComputeAndCompareR0<int32>(&builder, -2, {});
+void PrintTo(const DivS32Params& p, std::ostream* os) {
+  *os << "{" << p.dividend << ", " << p.divisor << ", " << p.quotient << ", "
+      << p.remainder << "}";
 }
 
-TEST_F(ScalarComputationsTest, RemainderTwoScalarsNegativeResultS32) {
-  ComputationBuilder builder(client_, TestName());
-  builder.Rem(builder.ConstantR0<int32>(-5), builder.ConstantR0<int32>(2));
+class DivS32Test : public ClientLibraryTestBase,
+                   public ::testing::WithParamInterface<DivS32Params> {};
 
-  ComputeAndCompareR0<int32>(&builder, -1, {});
+XLA_TEST_P(DivS32Test, DivideTwoScalarsS32) {
+  DivS32Params p = GetParam();
+  ComputationBuilder builder(client_, TestName());
+  builder.Div(builder.ConstantR0<int32>(p.dividend),
+              builder.ConstantR0<int32>(p.divisor));
+
+  ComputeAndCompareR0<int32>(&builder, p.quotient, {});
 }
 
-TEST_F(ScalarComputationsTest, RemainderTwoScalarsIntMinS32) {
+XLA_TEST_P(DivS32Test, RemainderTwoScalarsS32) {
+  DivS32Params p = GetParam();
   ComputationBuilder builder(client_, TestName());
-  builder.Rem(builder.ConstantR0<int32>(INT_MIN),
-              builder.ConstantR0<int32>(7919));
+  builder.Rem(builder.ConstantR0<int32>(p.dividend),
+              builder.ConstantR0<int32>(p.divisor));
 
-  ComputeAndCompareR0<int32>(&builder, -1309, {});
+  ComputeAndCompareR0<int32>(&builder, p.remainder, {});
 }
 
-TEST_F(ScalarComputationsTest, RemainderTwoScalarsIntMinVsIntMaxS32) {
+XLA_TEST_P(DivS32Test, DivideTwoScalarsNonConstS32) {
+  DivS32Params p = GetParam();
   ComputationBuilder builder(client_, TestName());
-  builder.Rem(builder.ConstantR0<int32>(INT_MIN),
-              builder.ConstantR0<int32>(INT_MAX));
+  ComputationDataHandle dividend;
+  ComputationDataHandle divisor;
+  auto dividendd =
+      CreateR0Parameter<int32>(p.dividend, 0, "dividend", &builder, &dividend);
+  auto divisord =
+      CreateR0Parameter<int32>(p.divisor, 1, "divisor", &builder, &divisor);
+  builder.Div(dividend, divisor);
 
-  ComputeAndCompareR0<int32>(&builder, -1, {});
+  ComputeAndCompareR0<int32>(&builder, p.quotient,
+                             {dividendd.get(), divisord.get()});
 }
 
-TEST_F(ScalarComputationsTest, RemainderTwoScalarsPositiveResultS32) {
+XLA_TEST_P(DivS32Test, RemainderTwoScalarsNonConstDivisorS32) {
+  DivS32Params p = GetParam();
+  ComputationBuilder builder(client_, TestName());
+  ComputationDataHandle dividend;
+  ComputationDataHandle divisor;
+  auto dividendd =
+      CreateR0Parameter<int32>(p.dividend, 0, "dividend", &builder, &dividend);
+  auto divisord =
+      CreateR0Parameter<int32>(p.divisor, 1, "divisor", &builder, &divisor);
+  builder.Rem(dividend, divisor);
+
+  ComputeAndCompareR0<int32>(&builder, p.remainder,
+                             {dividendd.get(), divisord.get()});
+}
+
+INSTANTIATE_TEST_CASE_P(
+    DivS32Test_Instantiation, DivS32Test,
+    ::testing::Values(
+        // Positive divisors.
+        DivS32Params{5, 2, 2, 1},      //
+        DivS32Params{-5, 2, -2, -1},   //
+        DivS32Params{17, 3, 5, 2},     //
+        DivS32Params{-17, 3, -5, -2},  //
+        // Negative divisors.
+        DivS32Params{5, -2, -2, 1},    //
+        DivS32Params{-5, -2, 2, -1},   //
+        DivS32Params{17, -3, -5, 2},   //
+        DivS32Params{-17, -3, 5, -2},  //
+        // Large positive divisors.
+        DivS32Params{INT32_MIN, 7919, -271181, -1309},             //
+        DivS32Params{INT32_MIN, INT32_MAX, -1, -1},                //
+        DivS32Params{INT32_MIN + 1, INT32_MAX, -1, 0},             //
+        DivS32Params{INT32_MIN + 2, INT32_MAX, 0, INT32_MIN + 2},  //
+        DivS32Params{INT32_MIN, 0x40000000, -2, 0},                //
+        DivS32Params{INT32_MIN + 1, 0x40000000, -1, -0x3fffffff},  //
+        // Large negative divisors.
+        DivS32Params{INT32_MIN, INT32_MIN, 1, 0},                  //
+        DivS32Params{INT32_MIN, INT32_MIN + 1, 1, -1},             //
+        DivS32Params{INT32_MIN + 1, INT32_MIN, 0, INT32_MIN + 1},  //
+        DivS32Params{INT32_MAX, INT32_MIN, 0, INT32_MAX},          //
+        DivS32Params{INT32_MAX, INT32_MIN + 1, -1, 0},             //
+        DivS32Params{INT32_MIN, -0x40000000, 2, 0},                //
+        DivS32Params{INT32_MIN + 1, -0x40000000, 1, -0x3fffffff}));
+
+TEST_F(ScalarComputationsTest, DivU32s) {
+  // clang-format off
+  // Some interesting values to test.
+  std::vector<uint32> vals = {
+    0, 1, 2, 17, 101, 3333, 0x7FFFFFFF, 0x80000000, UINT32_MAX - 1, UINT32_MAX};
+  // clang-format on
+
+  Computation div_computation;
+  {
+    ComputationBuilder builder(client_, TestName());
+
+    ComputationDataHandle dividend =
+        builder.Parameter(0, ShapeUtil::MakeShape(U32, {}), "dividend");
+    ComputationDataHandle divisor =
+        builder.Parameter(1, ShapeUtil::MakeShape(U32, {}), "divisor");
+    builder.Div(dividend, divisor);
+    TF_ASSIGN_OR_ASSERT_OK(div_computation, builder.Build());
+  }
+
+  for (uint32 divisor : vals) {
+    if (divisor != 0) {
+      for (uint32 dividend : vals) {
+        auto dividend_literal = LiteralUtil::CreateR0<uint32>(dividend);
+        auto divisor_literal = LiteralUtil::CreateR0<uint32>(divisor);
+        TF_ASSIGN_OR_ASSERT_OK(auto dividend_data,
+                               client_->TransferToServer(*dividend_literal));
+        TF_ASSIGN_OR_ASSERT_OK(auto divisor_data,
+                               client_->TransferToServer(*divisor_literal));
+        auto actual_literal =
+            client_
+                ->ExecuteAndTransfer(div_computation,
+                                     {dividend_data.get(), divisor_data.get()},
+                                     &execution_options_)
+                .ConsumeValueOrDie();
+        auto expected_literal =
+            LiteralUtil::CreateR0<uint32>(dividend / divisor);
+        LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
+      }
+    }
+  }
+}
+
+TEST_F(ScalarComputationsTest, RemU32s) {
+  // clang-format off
+  // Some interesting values to test.
+  std::vector<uint32> vals = {
+    0, 1, 2, 17, 101, 3333, 0x7FFFFFFF, 0x80000000, UINT32_MAX - 1, UINT32_MAX};
+  // clang-format on
+
+  Computation rem_computation;
+  {
+    ComputationBuilder builder(client_, TestName());
+
+    ComputationDataHandle dividend =
+        builder.Parameter(0, ShapeUtil::MakeShape(U32, {}), "dividend");
+    ComputationDataHandle divisor =
+        builder.Parameter(1, ShapeUtil::MakeShape(U32, {}), "divisor");
+    builder.Rem(dividend, divisor);
+    TF_ASSIGN_OR_ASSERT_OK(rem_computation, builder.Build());
+  }
+
+  for (uint32 divisor : vals) {
+    if (divisor != 0) {
+      for (uint32 dividend : vals) {
+        auto dividend_literal = LiteralUtil::CreateR0<uint32>(dividend);
+        auto divisor_literal = LiteralUtil::CreateR0<uint32>(divisor);
+        TF_ASSIGN_OR_ASSERT_OK(auto dividend_data,
+                               client_->TransferToServer(*dividend_literal));
+        TF_ASSIGN_OR_ASSERT_OK(auto divisor_data,
+                               client_->TransferToServer(*divisor_literal));
+        auto actual_literal =
+            client_
+                ->ExecuteAndTransfer(rem_computation,
+                                     {dividend_data.get(), divisor_data.get()},
+                                     &execution_options_)
+                .ConsumeValueOrDie();
+        auto expected_literal =
+            LiteralUtil::CreateR0<uint32>(dividend % divisor);
+        LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
+      }
+    }
+  }
+}
+
+TEST_F(ScalarComputationsTest, RemainderTwoScalarsNonConstDividendS32) {
   ComputationBuilder builder(client_, TestName());
   auto x = builder.Parameter(0, ShapeUtil::MakeShape(S32, {}), "x");
   builder.Rem(x, builder.ConstantR0<int32>(80000));
@@ -293,6 +441,13 @@ XLA_TEST_F(ScalarComputationsTest, DivideTwoScalarsU32) {
               builder.ConstantR0<uint32>(2));
 
   ComputeAndCompareR0<uint32>(&builder, 0x7FFFFFFF, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, RemTwoScalarsU32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Rem(builder.ConstantR0<uint32>(11), builder.ConstantR0<uint32>(3));
+
+  ComputeAndCompareR0<uint32>(&builder, 2, {});
 }
 
 TEST_F(ScalarComputationsTest, LogicalAnd) {
@@ -626,6 +781,7 @@ TEST_F(ScalarComputationsTest, SqrtF320) {
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);

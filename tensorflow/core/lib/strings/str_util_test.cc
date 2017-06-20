@@ -352,4 +352,37 @@ TEST(TitlecaseString, Basic) {
   ASSERT_EQ(s, "Dense");
 }
 
+TEST(StringReplace, Basic) {
+  EXPECT_EQ("XYZ_XYZ_XYZ", str_util::StringReplace("ABC_ABC_ABC", "ABC", "XYZ",
+                                                   /*replace_all=*/true));
+}
+
+TEST(StringReplace, OnlyFirst) {
+  EXPECT_EQ("XYZ_ABC_ABC", str_util::StringReplace("ABC_ABC_ABC", "ABC", "XYZ",
+                                                   /*replace_all=*/false));
+}
+
+TEST(StringReplace, IncreaseLength) {
+  EXPECT_EQ("a b c",
+            str_util::StringReplace("abc", "b", " b ", /*replace_all=*/true));
+}
+
+TEST(StringReplace, IncreaseLengthMultipleMatches) {
+  EXPECT_EQ("a b  b c",
+            str_util::StringReplace("abbc", "b", " b ", /*replace_all=*/true));
+}
+
+TEST(StringReplace, NoChange) {
+  EXPECT_EQ("abc",
+            str_util::StringReplace("abc", "d", "X", /*replace_all=*/true));
+}
+
+TEST(StringReplace, EmptyStringReplaceFirst) {
+  EXPECT_EQ("", str_util::StringReplace("", "a", "X", /*replace_all=*/false));
+}
+
+TEST(StringReplace, EmptyStringReplaceAll) {
+  EXPECT_EQ("", str_util::StringReplace("", "a", "X", /*replace_all=*/true));
+}
+
 }  // namespace tensorflow

@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 
 namespace tensorflow {
@@ -69,7 +69,7 @@ class LRNOp : public XlaOpKernel {
   float beta_;
 };
 
-REGISTER_XLA_OP("LRN", LRNOp);
+REGISTER_XLA_OP(Name("LRN"), LRNOp);
 
 class LRNGradOp : public XlaOpKernel {
  public:
@@ -167,7 +167,7 @@ class LRNGradOp : public XlaOpKernel {
   float beta_;
 };
 
-REGISTER_XLA_OP("LRNGrad", LRNGradOp);
+REGISTER_XLA_OP(Name("LRNGrad"), LRNGradOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

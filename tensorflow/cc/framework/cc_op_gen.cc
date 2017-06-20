@@ -57,6 +57,16 @@ string GetPath(const string& dot_h_fname) {
   return result;
 }
 
+// Converts: some/path/to/file.xx
+// to: file
+// (note that suffix is removed)
+string GetFilename(const string& path) {
+  size_t slash_pos = path.rfind('/');
+  if (slash_pos == path.npos) slash_pos = -1;
+  size_t dot_pos = path.rfind('.');
+  return path.substr(slash_pos + 1, dot_pos - (slash_pos + 1));
+}
+
 // Converts:
 //   cc/ops/gen_foo_ops.h
 // to:
@@ -75,6 +85,17 @@ string ToGuard(const string& path) {
   }
   guard += '_';
   return guard;
+}
+
+// Converts: some_name_xyz
+// to: Some Name Xyz
+string ToTitle(const string& name) {
+  string title = name;
+  for (int i = 0; i < title.size(); ++i) {
+    if (title[i] == '_') title[i] = ' ';
+  }
+  str_util::TitlecaseString(&title, " ");
+  return title;
 }
 
 // Change:     Into:
@@ -105,7 +126,11 @@ string PrintString(const string& str) {
   return strings::StrCat("\"", str_util::CEscape(str), "\"");
 }
 
-string PrintTensorShape(const TensorShape& shape) {
+string PrintTensorShape(const TensorShapeProto& shape_proto) {
+  PartialTensorShape shape(shape_proto);
+  if (shape.IsIdenticalTo(PartialTensorShape())) {
+    return "::tensorflow::PartialTensorShape() /* unknown */";
+  }
   string ret = "{";
   for (int d = 0; d < shape.dims(); ++d) {
     if (d > 0) strings::StrAppend(&ret, ", ");
@@ -167,7 +192,13 @@ string PrintTensor(const TensorProto& tensor_proto) {
   }
 }
 
-string PrintAttrValue(string op, const AttrValue& attr_value) {
+string PrintTensorProto(const TensorProto& proto) {
+  return strings::StrCat("Input::Initializer(", "{", PrintTensor(proto), "}, ",
+                         PrintTensorShape(proto.tensor_shape()),
+                         ").AsTensorProto()");
+}
+
+string PrintAttrValue(const string& op, const AttrValue& attr_value) {
   switch (attr_value.value_case()) {
     case AttrValue::kS:
       return PrintString(attr_value.s());
@@ -182,12 +213,9 @@ string PrintAttrValue(string op, const AttrValue& attr_value) {
     case AttrValue::kType:
       return EnumName_DataType(attr_value.type());
     case AttrValue::kShape:
-      return PrintTensorShape(TensorShape(attr_value.shape()));
+      return PrintTensorShape(attr_value.shape());
     case AttrValue::kTensor:
-      return strings::StrCat(
-          "Input::Initializer(", "{", PrintTensor(attr_value.tensor()), "}, ",
-          PrintTensorShape(TensorShape(attr_value.tensor().tensor_shape())),
-          ").AsTensorProto()");
+      return PrintTensorProto(attr_value.tensor());
     case AttrValue::kList: {
       string ret = "{";
       if (attr_value.list().s_size() > 0) {
@@ -220,8 +248,14 @@ string PrintAttrValue(string op, const AttrValue& attr_value) {
       } else if (attr_value.list().shape_size() > 0) {
         for (int i = 0; i < attr_value.list().shape_size(); ++i) {
           if (i > 0) strings::StrAppend(&ret, ", ");
-          strings::StrAppend(
-              &ret, PrintTensorShape(TensorShape(attr_value.list().shape(i))));
+          strings::StrAppend(&ret,
+                             PrintTensorShape(attr_value.list().shape(i)));
+        }
+      } else if (attr_value.list().tensor_size() > 0) {
+        for (int i = 0; i < attr_value.list().tensor_size(); ++i) {
+          if (i > 0) strings::StrAppend(&ret, ", ");
+          strings::StrAppend(&ret,
+                             PrintTensorProto(attr_value.list().tensor(i)));
         }
       }
       strings::StrAppend(&ret, "}");
@@ -271,8 +305,8 @@ std::pair<const char*, bool> AttrTypeName(StringPiece attr_type) {
           {"list(bool)", {"gtl::ArraySlice<bool>", true}},
           {"type", {"DataType", false}},
           {"list(type)", {"DataTypeSlice", true}},
-          {"shape", {"TensorShape", false}},
-          {"list(shape)", {"gtl::ArraySlice<TensorShape>", true}},
+          {"shape", {"PartialTensorShape", false}},
+          {"list(shape)", {"gtl::ArraySlice<PartialTensorShape>", true}},
           {"tensor", {"TensorProto", true}},
           {"list(tensor)", {"gtl::ArraySlice<TensorProto>", true}},
           {"func", {"NameAttrList", true}},
@@ -416,6 +450,7 @@ OpInfo::OpInfo(const OpDef& g_op_def, const OpDef& i_op_def,
   }
   strings::StrAppend(&comment, "\nArguments:\n* scope: A Scope object\n");
 
+  // Process inputs
   for (int i = 0; i < op_def.input_arg_size(); ++i) {
     const auto& arg(op_def.input_arg(i));
     arg_types.push_back(strings::StrCat(
@@ -430,30 +465,45 @@ OpInfo::OpInfo(const OpDef& g_op_def, const OpDef& i_op_def,
                          arg.description(), "\n");
     }
   }
+
+  // Process attrs
+  string required_attrs_comment;
+  string optional_attrs_comment;
   for (int i = 0; i < op_def.attr_size(); ++i) {
     const auto& attr(op_def.attr(i));
-    // If the attr is going to be inferred or is optional, don't add it as a
-    // required argument.
-    if ((inferred_input_attrs.find(attr.name()) !=
-         inferred_input_attrs.end()) ||
-        attr.has_default_value()) {
-      continue;
-    }
+    // Skip inferred arguments
+    if (inferred_input_attrs.count(attr.name()) > 0) continue;
+
     const auto entry = AttrTypeName(attr.type());
     const auto attr_type_name = entry.first;
     const bool use_const = entry.second;
+    string attr_name = AvoidCPPKeywords(attr.name());
 
-    arg_types.push_back(strings::StrCat(use_const ? "const " : "",
-                                        attr_type_name, use_const ? "&" : ""));
-    arg_names.push_back(AvoidCPPKeywords(attr.name()));
+    string attr_comment;
     if (!attr.description().empty()) {
-      strings::StrAppend(&comment, "* ", AvoidCPPKeywords(attr.name()), ":\n");
       // TODO(keveman): Word wrap and indent this, to handle multi-line
       // descriptions.
-      strings::StrAppend(&comment, "    ", attr.description(), "\n");
+      strings::StrAppend(&attr_comment, "* ", attr_name, ": ",
+                         attr.description(), "\n");
+    }
+    if (attr.has_default_value()) {
+      strings::StrAppend(&optional_attrs_comment, attr_comment);
+    } else {
+      strings::StrAppend(&required_attrs_comment, attr_comment);
+      arg_types.push_back(strings::StrCat(
+          use_const ? "const " : "", attr_type_name, use_const ? "&" : ""));
+      arg_names.push_back(attr_name);
     }
   }
 
+  strings::StrAppend(&comment, required_attrs_comment);
+
+  if (!optional_attrs_comment.empty()) {
+    strings::StrAppend(&comment, "\nOptional attributes (see `Attrs`):\n");
+    strings::StrAppend(&comment, optional_attrs_comment);
+  }
+
+  // Process outputs
   for (int i = 0; i < op_def.output_arg_size(); ++i) {
     const auto& arg = op_def.output_arg(i);
     bool is_list = ArgIsList(arg);
@@ -509,8 +559,6 @@ OpInfo::OpInfo(const OpDef& g_op_def, const OpDef& i_op_def,
 string OpInfo::GetOpAttrStruct() const {
   string struct_fields;
   string setters;
-  string attrs_comment =
-      strings::StrCat("Optional attribute setters for ", op_name, " :\n\n");
 
   for (int i = 0; i < op_def.attr_size(); ++i) {
     const auto& attr(op_def.attr(i));
@@ -531,13 +579,15 @@ string OpInfo::GetOpAttrStruct() const {
         strings::StrCat(camel_case_name, suffix, "(", use_const ? "const " : "",
                         attr_type_name, use_const ? "&" : "");
 
-    strings::StrAppend(&attrs_comment, attr_func_def, "): Defaults to ",
-                       SummarizeAttrValue(attr.default_value()), "\n");
+    string attr_comment;
     if (!attr.description().empty()) {
-      // TODO(keveman): Word wrap and indent this to handle multi-line
-      // description.
-      strings::StrAppend(&attrs_comment, "    ", attr.description(), "\n");
+      strings::StrAppend(&attr_comment, attr.description(), "\n\n");
     }
+    strings::StrAppend(&attr_comment, "Defaults to ",
+                       SummarizeAttrValue(attr.default_value()), "\n");
+    attr_comment = MakeComment(attr_comment, "    ");
+
+    strings::StrAppend(&setters, attr_comment);
     strings::StrAppend(&setters, "    Attrs ", attr_func_def, " x) {\n");
     strings::StrAppend(&setters, "      Attrs ret = *this;\n");
     strings::StrAppend(&setters, "      ret.", attr.name(), "_ = x;\n");
@@ -552,6 +602,8 @@ string OpInfo::GetOpAttrStruct() const {
     return "";
   }
 
+  string attrs_comment =
+      strings::StrCat("Optional attribute setters for ", op_name, "\n");
   string struct_decl = MakeComment(attrs_comment, "  ");
   strings::StrAppend(&struct_decl, "  struct Attrs {\n");
   strings::StrAppend(&struct_decl, setters, struct_fields);
@@ -678,7 +730,7 @@ void OpInfo::GetOutput(string* out) const {
     // One output, no need for NameRangeMap
     if (is_list_output[0]) {
       strings::StrAppend(out,
-                         "  for (int64 i = 0; i < ret->num_outputs(); ++i)\n");
+                         "  for (int32 i = 0; i < ret->num_outputs(); ++i)\n");
       strings::StrAppend(out, "    this->", output_names[0],
                          ".push_back(Output(ret, i));\n");
     } else {
@@ -688,11 +740,10 @@ void OpInfo::GetOutput(string* out) const {
     return;
   }
   strings::StrAppend(out, "  ::tensorflow::NameRangeMap _outputs_range;\n");
-  strings::StrAppend(
-      out,
-      "  ::tensorflow::Status _status_ = "
-      "::tensorflow::NameRangesForNode(ret->def(), ret->op_def(), "
-      "nullptr, &_outputs_range);\n");
+  strings::StrAppend(out,
+                     "  ::tensorflow::Status _status_ = "
+                     "::tensorflow::NameRangesForNode(*ret, ret->op_def(), "
+                     "nullptr, &_outputs_range);\n");
   strings::StrAppend(out, "  if (!_status_.ok()) {\n", "    ", scope_str,
                      ".UpdateStatus(_status_);\n", "    return;\n");
   strings::StrAppend(out, "  }\n\n");
@@ -701,7 +752,7 @@ void OpInfo::GetOutput(string* out) const {
     const string arg_range = strings::StrCat(
         "_outputs_range[\"", graph_op_def.output_arg(i).name(), "\"]");
     if (is_list_output[i]) {
-      strings::StrAppend(out, "  for (int64 i = ", arg_range, ".first; i < ",
+      strings::StrAppend(out, "  for (int32 i = ", arg_range, ".first; i < ",
                          arg_range, ".second; ++i)\n");
       strings::StrAppend(out, "    this->", output_names[i],
                          ".push_back(Output(ret, i));\n");
@@ -841,6 +892,10 @@ namespace ops {
 )include",
       "#include \"", op_header, "\"\n", namespace_begin);
 
+  const string filename = GetFilename(dot_h_fname);
+  const string doxygen = strings::StrCat("/// @defgroup ", filename, " ",
+                                         ToTitle(filename), "\n", "/// @{\n\n");
+
   TF_CHECK_OK(h->Append(
       strings::StrCat("// This file is MACHINE GENERATED! Do not edit.\n\n"
                       "#ifndef ",
@@ -850,6 +905,7 @@ namespace ops {
                       *op_header_guard, "\n\n")));
   TF_CHECK_OK(h->Append(header));
   TF_CHECK_OK(h->Append(namespace_begin));
+  TF_CHECK_OK(h->Append(doxygen));
   TF_CHECK_OK(cc->Append(cc_header));
 }
 
@@ -860,7 +916,9 @@ void FinishFiles(bool internal, WritableFile* h, WritableFile* cc,
 }  // namespace tensorflow
 )footer"
                                  :
-                                 R"footer(}  // namespace ops
+                                 R"footer(/// @}
+
+}  // namespace ops
 }  // namespace tensorflow
 )footer";
 
@@ -892,7 +950,7 @@ void WriteCCOps(const OpList& ops, const string& dot_h_fname,
   // Load the override map.
   OpGenOverrideMap override_map;
   if (!overrides_fnames.empty()) {
-    override_map.LoadFileList(env, overrides_fnames);
+    TF_CHECK_OK(override_map.LoadFileList(env, overrides_fnames));
   }
 
   // Write the initial boilerplate to the .h and .cc files.

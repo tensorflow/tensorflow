@@ -18,31 +18,27 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
 import tempfile
-
-# TODO: #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
 from tensorflow.contrib import lookup
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.layers.python.layers import target_column as target_column_lib
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import model_fn as model_fn_lib
+from tensorflow.contrib.learn.python.learn.estimators import prediction_key
+from tensorflow.contrib.learn.python.learn.estimators import rnn_common
 from tensorflow.contrib.learn.python.learn.estimators import run_config
 from tensorflow.contrib.learn.python.learn.estimators import state_saving_rnn_estimator as ssre
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -59,7 +55,7 @@ class PrepareInputsForRnnTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.initialize_all_tables())
+      sess.run(lookup_ops.tables_initializer())
       features_val = sess.run(features_by_time)
       self.assertAllEqual(expected, features_val)
 
@@ -249,13 +245,10 @@ class StateSavingRnnEstimatorTest(test.TestCase):
     seq_feature_name = 'seq_feature'
     sparse_seq_feature_name = 'wire_cast'
     ctx_feature_name = 'ctx_feature'
-    input_key_column_name = 'input_key_column'
     sequence_length = 4
     embedding_dimension = 8
 
     features = {
-        input_key_column_name:
-            constant_op.constant('input0'),
         sparse_seq_feature_name:
             sparse_tensor.SparseTensor(
                 indices=[[0, 0, 0], [0, 1, 0], [1, 0, 0], [1, 1, 0], [1, 1, 1],
@@ -289,10 +282,8 @@ class StateSavingRnnEstimatorTest(test.TestCase):
             ctx_feature_name, dimension=1)
     ]
 
-    expected_input_key = b'input0'
-
     expected_sequence = {
-        ssre.RNNKeys.LABELS_KEY:
+        rnn_common.RNNKeys.LABELS_KEY:
             np.array([5., 5., 5., 5.]),
         seq_feature_name:
             np.array([1., 1., 1., 1.]),
@@ -309,8 +300,8 @@ class StateSavingRnnEstimatorTest(test.TestCase):
 
     expected_context = {ctx_feature_name: 2.}
 
-    input_key, sequence, context = ssre._prepare_features_for_sqss(
-        features, labels, mode, input_key_column_name, sequence_feature_columns,
+    sequence, context = ssre._prepare_features_for_sqss(
+        features, labels, mode, sequence_feature_columns,
         context_feature_columns)
 
     def assert_equal(expected, got):
@@ -325,92 +316,34 @@ class StateSavingRnnEstimatorTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(variables.global_variables_initializer())
-      sess.run(data_flow_ops.initialize_all_tables())
-      actual_input_key, actual_sequence, actual_context = sess.run(
-          [input_key, sequence, context])
-      self.assertEqual(expected_input_key, actual_input_key)
+      sess.run(lookup_ops.tables_initializer())
+      actual_sequence, actual_context = sess.run(
+          [sequence, context])
       assert_equal(expected_sequence, actual_sequence)
       assert_equal(expected_context, actual_context)
 
-  def testMaskActivationsAndLabels(self):
-    """Test `mask_activations_and_labels`."""
-    batch_size = 4
-    padded_length = 6
-    num_classes = 4
-    np.random.seed(1234)
-    sequence_length = np.random.randint(0, padded_length + 1, batch_size)
-    activations = np.random.rand(batch_size, padded_length, num_classes)
-    labels = np.random.randint(0, num_classes, [batch_size, padded_length])
-    (activations_masked_t, labels_masked_t) = ssre.mask_activations_and_labels(
-        constant_op.constant(
-            activations, dtype=dtypes.float32),
-        constant_op.constant(
-            labels, dtype=dtypes.int32),
-        constant_op.constant(
-            sequence_length, dtype=dtypes.int32))
-
-    with self.test_session() as sess:
-      activations_masked, labels_masked = sess.run(
-          [activations_masked_t, labels_masked_t])
-
-    expected_activations_shape = [sum(sequence_length), num_classes]
-    np.testing.assert_equal(
-        expected_activations_shape, activations_masked.shape,
-        'Wrong activations shape. Expected {}; got {}.'.format(
-            expected_activations_shape, activations_masked.shape))
-
-    expected_labels_shape = [sum(sequence_length)]
-    np.testing.assert_equal(expected_labels_shape, labels_masked.shape,
-                            'Wrong labels shape. Expected {}; got {}.'.format(
-                                expected_labels_shape, labels_masked.shape))
-    masked_index = 0
-    for i in range(batch_size):
-      for j in range(sequence_length[i]):
-        actual_activations = activations_masked[masked_index]
-        expected_activations = activations[i, j, :]
-        np.testing.assert_almost_equal(
-            expected_activations,
-            actual_activations,
-            err_msg='Unexpected logit value at index [{}, {}, :].'
-            '  Expected {}; got {}.'.format(i, j, expected_activations,
-                                            actual_activations))
-
-        actual_labels = labels_masked[masked_index]
-        expected_labels = labels[i, j]
-        np.testing.assert_almost_equal(
-            expected_labels,
-            actual_labels,
-            err_msg='Unexpected logit value at index [{}, {}].'
-            ' Expected {}; got {}.'.format(i, j, expected_labels,
-                                           actual_labels))
-        masked_index += 1
-
   def _getModelFnOpsForMode(self, mode):
     """Helper for testGetRnnModelFn{Train,Eval,Infer}()."""
-    cell_size = 4
-    num_layers = 1
-    cell = ssre.lstm_cell(cell_size, num_layers)
+    num_units = [4]
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=cell_size)
+            'inputs', dimension=1)
     ]
     features = {
         'inputs': constant_op.constant([1., 2., 3.]),
-        'input_key_column': constant_op.constant('input0')
     }
     labels = constant_op.constant([1., 0., 1.])
     model_fn = ssre._get_rnn_model_fn(
-        cell=cell,
+        cell_type='basic_rnn',
         target_column=target_column_lib.multi_class_target(n_classes=2),
         optimizer='SGD',
         num_unroll=2,
-        num_layers=num_layers,
+        num_units=num_units,
         num_threads=1,
         queue_capacity=10,
         batch_size=1,
-        input_key_column_name='input_key_column',
         # Only CLASSIFICATION yields eval metrics to test for.
-        problem_type=ssre.ProblemType.CLASSIFICATION,
+        problem_type=constants.ProblemType.CLASSIFICATION,
         sequence_feature_columns=seq_columns,
         context_feature_columns=None,
         learning_rate=0.1)
@@ -444,38 +377,28 @@ class StateSavingRnnEstimatorTest(test.TestCase):
     self.assertFalse(model_fn_ops.eval_metric_ops)
 
   def testExport(self):
-    input_key_column_name = 'input0'
     input_feature_key = 'magic_input_feature_key'
     batch_size = 8
-    cell_size = 4
+    num_units = [4]
     sequence_length = 10
     num_unroll = 2
     num_classes = 2
 
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=cell_size)
+            'inputs', dimension=4)
     ]
 
     def get_input_fn(mode, seed):
 
       def input_fn():
-        input_key = string_ops.string_join([
-            'key_', string_ops.as_string(
-                random_ops.random_uniform(
-                    (),
-                    minval=0,
-                    maxval=10000000,
-                    dtype=dtypes.int32,
-                    seed=seed))
-        ])
         features = {}
         random_sequence = random_ops.random_uniform(
             [sequence_length + 1], 0, 2, dtype=dtypes.int32, seed=seed)
         labels = array_ops.slice(random_sequence, [0], [sequence_length])
         inputs = math_ops.to_float(
             array_ops.slice(random_sequence, [1], [sequence_length]))
-        features = {'inputs': inputs, input_key_column_name: input_key}
+        features = {'inputs': inputs}
 
         if mode == model_fn_lib.ModeKeys.INFER:
           input_examples = array_ops.placeholder(dtypes.string)
@@ -488,16 +411,17 @@ class StateSavingRnnEstimatorTest(test.TestCase):
     model_dir = tempfile.mkdtemp()
 
     def estimator_fn():
-      return ssre.multi_value_rnn_classifier(
-          num_classes=num_classes,
-          num_units=cell_size,
+      return ssre.StateSavingRnnEstimator(
+          constants.ProblemType.CLASSIFICATION,
+          num_units=num_units,
           num_unroll=num_unroll,
           batch_size=batch_size,
-          input_key_column_name=input_key_column_name,
           sequence_feature_columns=seq_columns,
+          num_classes=num_classes,
           predict_probabilities=True,
           model_dir=model_dir,
-          queue_capacity=2 + batch_size)
+          queue_capacity=2 + batch_size,
+          seed=1234)
 
     # Train a bit to create an exportable checkpoint.
     estimator_fn().fit(input_fn=get_input_fn(
@@ -516,6 +440,22 @@ class StateSavingRnnEstimatorTest(test.TestCase):
         input_feature_key=input_feature_key)
 
 
+# Smoke tests to ensure deprecated constructor functions still work.
+class LegacyConstructorTest(test.TestCase):
+
+  def _get_input_fn(self,
+                    sequence_length,
+                    seed=None):
+    def input_fn():
+      random_sequence = random_ops.random_uniform(
+          [sequence_length + 1], 0, 2, dtype=dtypes.int32, seed=seed)
+      labels = array_ops.slice(random_sequence, [0], [sequence_length])
+      inputs = math_ops.to_float(
+          array_ops.slice(random_sequence, [1], [sequence_length]))
+      return {'inputs': inputs}, labels
+    return input_fn
+
+
 # TODO(jtbates): move all tests below to a benchmark test.
 class StateSavingRNNEstimatorLearningTest(test.TestCase):
   """Learning tests for state saving RNN Estimators."""
@@ -527,10 +467,10 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     sequence_length = 64
     train_steps = 250
     eval_steps = 20
-    num_units = 4
+    num_rnn_layers = 1
+    num_units = [4] * num_rnn_layers
     learning_rate = 0.3
     loss_threshold = 0.035
-    input_key_column_name = 'input_key_column'
 
     def get_sin_input_fn(sequence_length, increment, seed=None):
 
@@ -542,30 +482,28 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
                               sequence_length + 1))
         inputs = array_ops.slice(sin_curves, [0], [sequence_length])
         labels = array_ops.slice(sin_curves, [1], [sequence_length])
-        input_key = string_ops.string_join([
-            'key_',
-            string_ops.as_string(math_ops.cast(10000 * start, dtypes.int32))
-        ])
-        return {'inputs': inputs, input_key_column_name: input_key}, labels
+        return {'inputs': inputs}, labels
 
       return input_fn
 
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=num_units)
+            'inputs', dimension=1)
     ]
     config = run_config.RunConfig(tf_random_seed=1234)
-    sequence_estimator = ssre.multi_value_rnn_regressor(
+    dropout_keep_probabilities = [0.9] * (num_rnn_layers + 1)
+    sequence_estimator = ssre.StateSavingRnnEstimator(
+        constants.ProblemType.LINEAR_REGRESSION,
         num_units=num_units,
+        cell_type='lstm',
         num_unroll=num_unroll,
         batch_size=batch_size,
-        input_key_column_name=input_key_column_name,
         sequence_feature_columns=seq_columns,
         learning_rate=learning_rate,
-        input_keep_probability=0.9,
-        output_keep_probability=0.9,
+        dropout_keep_probabilities=dropout_keep_probabilities,
         config=config,
-        queue_capacity=2 * batch_size)
+        queue_capacity=2 * batch_size,
+        seed=1234)
 
     train_input_fn = get_sin_input_fn(sequence_length, np.pi / 32, seed=1234)
     eval_input_fn = get_sin_input_fn(sequence_length, np.pi / 32, seed=4321)
@@ -587,12 +525,11 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     num_classes = 2
     num_unroll = 32
     sequence_length = 32
-    train_steps = 200
+    train_steps = 300
     eval_steps = 20
-    num_units = 4
+    num_units = [4]
     learning_rate = 0.5
     accuracy_threshold = 0.9
-    input_key_column_name = 'input_key_column'
 
     def get_shift_input_fn(sequence_length, seed=None):
 
@@ -602,35 +539,28 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
         labels = array_ops.slice(random_sequence, [0], [sequence_length])
         inputs = math_ops.to_float(
             array_ops.slice(random_sequence, [1], [sequence_length]))
-        input_key = string_ops.string_join([
-            'key_', string_ops.as_string(
-                random_ops.random_uniform(
-                    (),
-                    minval=0,
-                    maxval=10000000,
-                    dtype=dtypes.int32,
-                    seed=seed))
-        ])
-        return {'inputs': inputs, input_key_column_name: input_key}, labels
+        return {'inputs': inputs}, labels
 
       return input_fn
 
     seq_columns = [
         feature_column.real_valued_column(
-            'inputs', dimension=num_units)
+            'inputs', dimension=1)
     ]
     config = run_config.RunConfig(tf_random_seed=21212)
-    sequence_estimator = ssre.multi_value_rnn_classifier(
-        num_classes=num_classes,
+    sequence_estimator = ssre.StateSavingRnnEstimator(
+        constants.ProblemType.CLASSIFICATION,
         num_units=num_units,
+        cell_type='lstm',
         num_unroll=num_unroll,
         batch_size=batch_size,
-        input_key_column_name=input_key_column_name,
         sequence_feature_columns=seq_columns,
+        num_classes=num_classes,
         learning_rate=learning_rate,
         config=config,
         predict_probabilities=True,
-        queue_capacity=2 + batch_size)
+        queue_capacity=2 + batch_size,
+        seed=1234)
 
     train_input_fn = get_shift_input_fn(sequence_length, seed=12321)
     eval_input_fn = get_shift_input_fn(sequence_length, seed=32123)
@@ -650,11 +580,11 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     self.assertListEqual(
         sorted(list(prediction_dict.keys())),
         sorted([
-            ssre.RNNKeys.PREDICTIONS_KEY, ssre.RNNKeys.PROBABILITIES_KEY,
-            ssre._get_state_name(0)
+            prediction_key.PredictionKey.CLASSES,
+            prediction_key.PredictionKey.PROBABILITIES, ssre._get_state_name(0)
         ]))
-    predictions = prediction_dict[ssre.RNNKeys.PREDICTIONS_KEY]
-    probabilities = prediction_dict[ssre.RNNKeys.PROBABILITIES_KEY]
+    predictions = prediction_dict[prediction_key.PredictionKey.CLASSES]
+    probabilities = prediction_dict[prediction_key.PredictionKey.PROBABILITIES]
     self.assertListEqual(list(predictions.shape), [batch_size, sequence_length])
     self.assertListEqual(
         list(probabilities.shape), [batch_size, sequence_length, 2])
@@ -666,13 +596,12 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
     vocab = set(lyrics_list)
     batch_size = 16
     num_classes = len(vocab)
-    num_unroll = 5  # not a divisor of sequence_length
-    train_steps = 300
+    num_unroll = 7  # not a divisor of sequence_length
+    train_steps = 350
     eval_steps = 30
-    num_units = 4
+    num_units = [4]
     learning_rate = 0.4
-    accuracy_threshold = 0.70
-    input_key_column_name = 'input_key_column'
+    accuracy_threshold = 0.65
 
     def get_lyrics_input_fn(seed):
 
@@ -692,16 +621,7 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
             mapping=list(vocab), default_value=-1, name='lookup')
         labels = table.lookup(
             array_ops.slice(lyrics_list_concat, [start + 1], [sequence_length]))
-        input_key = string_ops.string_join([
-            'key_', string_ops.as_string(
-                random_ops.random_uniform(
-                    (),
-                    minval=0,
-                    maxval=10000000,
-                    dtype=dtypes.int32,
-                    seed=seed))
-        ])
-        return {'lyrics': inputs, input_key_column_name: input_key}, labels
+        return {'lyrics': inputs}, labels
 
       return input_fn
 
@@ -711,17 +631,19 @@ class StateSavingRNNEstimatorLearningTest(test.TestCase):
             dimension=8)
     ]
     config = run_config.RunConfig(tf_random_seed=21212)
-    sequence_estimator = ssre.multi_value_rnn_classifier(
-        num_classes=num_classes,
+    sequence_estimator = ssre.StateSavingRnnEstimator(
+        constants.ProblemType.CLASSIFICATION,
         num_units=num_units,
+        cell_type='basic_rnn',
         num_unroll=num_unroll,
         batch_size=batch_size,
-        input_key_column_name=input_key_column_name,
         sequence_feature_columns=sequence_feature_columns,
+        num_classes=num_classes,
         learning_rate=learning_rate,
         config=config,
         predict_probabilities=True,
-        queue_capacity=2 + batch_size)
+        queue_capacity=2 + batch_size,
+        seed=1234)
 
     train_input_fn = get_lyrics_input_fn(seed=12321)
     eval_input_fn = get_lyrics_input_fn(seed=32123)

@@ -22,20 +22,13 @@ import functools
 import itertools
 import json
 import os
-import sys
 import tempfile
-
-# pylint: disable=g-bad-todo
-# TODO(#6568): Remove this hack that makes dlopen() not crash.
-# pylint: enable=g-bad-todo
-# pylint: disable=g-import-not-at-top
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
+
+from google.protobuf import text_format
 
 from tensorflow.contrib import learn
 from tensorflow.contrib import lookup
@@ -43,11 +36,11 @@ from tensorflow.contrib.framework.python.ops import variables
 from tensorflow.contrib.layers.python.layers import feature_column as feature_column_lib
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import experiment
-from tensorflow.contrib.learn.python.learn import metric_spec
 from tensorflow.contrib.learn.python.learn import models
 from tensorflow.contrib.learn.python.learn import monitors as monitors_lib
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.estimators import _sklearn
+from tensorflow.contrib.learn.python.learn.estimators import constants
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import linear
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
@@ -59,8 +52,10 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -69,9 +64,10 @@ from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import basic_session_run_hooks
+from tensorflow.python.training import checkpoint_state_pb2
 from tensorflow.python.training import input as input_lib
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training import queue_runner_impl
+from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.util import compat
 
@@ -86,18 +82,6 @@ def boston_input_fn(num_epochs=None):
           constant_op.constant(boston.data), [-1, _BOSTON_INPUT_DIM]),
       num_epochs=num_epochs)
   labels = array_ops.reshape(constant_op.constant(boston.target), [-1, 1])
-  return features, labels
-
-
-def boston_input_fn_with_queue(num_epochs=None):
-  features, labels = boston_input_fn(num_epochs=num_epochs)
-
-  # Create a minimal queue runner.
-  fake_queue = data_flow_ops.FIFOQueue(30, dtypes.int32)
-  queue_runner = queue_runner_impl.QueueRunner(fake_queue,
-                                               [constant_op.constant(0)])
-  queue_runner_impl.add_queue_runner(queue_runner)
-
   return features, labels
 
 
@@ -235,6 +219,52 @@ def _build_estimator_for_export_tests(tmpdir):
   return est, serving_input_fn_with_asset
 
 
+def _build_estimator_for_resource_export_test():
+
+  def _input_fn():
+    iris = base.load_iris()
+    return {
+        'feature': constant_op.constant(iris.data, dtype=dtypes.float32)
+    }, constant_op.constant(
+        iris.target, shape=[150], dtype=dtypes.int32)
+
+  feature_columns = [
+      feature_column_lib.real_valued_column('feature', dimension=4)
+  ]
+
+  def resource_constant_model_fn(unused_features, unused_labels, mode):
+    """A model_fn that loads a constant from a resource and serves it."""
+    assert mode in (model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
+                    model_fn.ModeKeys.INFER)
+
+    const = constant_op.constant(-1, dtype=dtypes.int64)
+    table = lookup.MutableHashTable(
+        dtypes.string, dtypes.int64, const, name='LookupTableModel')
+    update_global_step = variables.get_global_step().assign_add(1)
+    if mode in (model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL):
+      key = constant_op.constant(['key'])
+      value = constant_op.constant([42], dtype=dtypes.int64)
+      train_op_1 = table.insert(key, value)
+      training_state = lookup.MutableHashTable(
+          dtypes.string, dtypes.int64, const, name='LookupTableTrainingState')
+      training_op_2 = training_state.insert(key, value)
+      return (const, const,
+              control_flow_ops.group(train_op_1, training_op_2,
+                                     update_global_step))
+    if mode == model_fn.ModeKeys.INFER:
+      key = constant_op.constant(['key'])
+      prediction = table.lookup(key)
+      return prediction, const, update_global_step
+
+  est = estimator.Estimator(model_fn=resource_constant_model_fn)
+  est.fit(input_fn=_input_fn, steps=1)
+
+  feature_spec = feature_column_lib.create_feature_spec_for_parsing(
+      feature_columns)
+  serving_input_fn = input_fn_utils.build_parsing_serving_input_fn(feature_spec)
+  return est, serving_input_fn
+
+
 class CheckCallsMonitor(monitors_lib.BaseMonitor):
 
   def __init__(self, expect_calls):
@@ -260,33 +290,93 @@ class CheckCallsMonitor(monitors_lib.BaseMonitor):
             self.begin_calls == self.expect_calls)
 
 
-class EstimatorTest(test.TestCase):
+def _model_fn_ops(
+    expected_features, expected_labels, actual_features, actual_labels, mode):
+  assert_ops = tuple([
+      check_ops.assert_equal(
+          expected_features[k], actual_features[k], name='assert_%s' % k)
+      for k in expected_features
+  ] + [
+      check_ops.assert_equal(
+          expected_labels, actual_labels, name='assert_labels')
+  ])
+  with ops.control_dependencies(assert_ops):
+    return model_fn.ModelFnOps(
+        mode=mode,
+        predictions=constant_op.constant(0.),
+        loss=constant_op.constant(0.),
+        train_op=variables.get_global_step().assign_add(1))
 
-  def testExperimentIntegration(self):
-    exp = experiment.Experiment(
-        estimator=estimator.Estimator(model_fn=linear_model_fn),
-        train_input_fn=boston_input_fn,
-        eval_input_fn=boston_input_fn)
-    exp.test()
+
+def _make_input_fn(features, labels):
+  def _input_fn():
+    return {
+        k: constant_op.constant(v)
+        for k, v in six.iteritems(features)
+    }, constant_op.constant(labels)
+  return _input_fn
+
+
+class EstimatorModelFnTest(test.TestCase):
 
   def testModelFnArgs(self):
-    expected_param = {'some_param': 'some_value'}
+    features = {'x': 42., 'y': 43.}
+    labels = 44.
+    expected_params = {'some_param': 'some_value'}
     expected_config = run_config.RunConfig()
     expected_config.i_am_test = True
 
-    def _argument_checker(features, labels, mode, params, config):
-      _, _ = features, labels
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    # `features` and `labels` are passed by position, `arg0` and `arg1` here.
+    def _model_fn(arg0, arg1, mode, params, config):
+      model_fn_call_count[0] += 1
+      self.assertItemsEqual(features.keys(), arg0.keys())
       self.assertEqual(model_fn.ModeKeys.TRAIN, mode)
-      self.assertEqual(expected_param, params)
+      self.assertEqual(expected_params, params)
       self.assertTrue(config.i_am_test)
-      return constant_op.constant(0.), constant_op.constant(
-          0.), constant_op.constant(0.)
+      return _model_fn_ops(features, labels, arg0, arg1, mode)
 
     est = estimator.Estimator(
-        model_fn=_argument_checker,
-        params=expected_param,
+        model_fn=_model_fn, params=expected_params, config=expected_config)
+    self.assertEqual(0, model_fn_call_count[0])
+    est.fit(input_fn=_make_input_fn(features, labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
+
+  def testPartialModelFnArgs(self):
+    features = {'x': 42., 'y': 43.}
+    labels = 44.
+    expected_params = {'some_param': 'some_value'}
+    expected_config = run_config.RunConfig()
+    expected_config.i_am_test = True
+    expected_foo = 45.
+    expected_bar = 46.
+
+    # TODO(ptucker): We have to roll our own mock since Estimator._get_arguments
+    # doesn't work with mock fns.
+    model_fn_call_count = [0]
+
+    # `features` and `labels` are passed by position, `arg0` and `arg1` here.
+    def _model_fn(arg0, arg1, foo, mode, params, config, bar):
+      model_fn_call_count[0] += 1
+      self.assertEqual(expected_foo, foo)
+      self.assertEqual(expected_bar, bar)
+      self.assertItemsEqual(features.keys(), arg0.keys())
+      self.assertEqual(model_fn.ModeKeys.TRAIN, mode)
+      self.assertEqual(expected_params, params)
+      self.assertTrue(config.i_am_test)
+      return _model_fn_ops(features, labels, arg0, arg1, mode)
+    partial_model_fn = functools.partial(
+        _model_fn, foo=expected_foo, bar=expected_bar)
+
+    est = estimator.Estimator(
+        model_fn=partial_model_fn, params=expected_params,
         config=expected_config)
-    est.fit(input_fn=boston_input_fn, steps=1)
+    self.assertEqual(0, model_fn_call_count[0])
+    est.fit(input_fn=_make_input_fn(features, labels), steps=1)
+    self.assertEqual(1, model_fn_call_count[0])
 
   def testModelFnWithModelDir(self):
     expected_param = {'some_param': 'some_value'}
@@ -297,8 +387,8 @@ class EstimatorTest(test.TestCase):
       self.assertEqual(model_fn.ModeKeys.TRAIN, mode)
       self.assertEqual(expected_param, params)
       self.assertEqual(model_dir, expected_model_dir)
-      return constant_op.constant(0.), constant_op.constant(
-          0.), constant_op.constant(0.)
+      return (constant_op.constant(0.), constant_op.constant(0.),
+              variables.get_global_step().assign_add(1))
     est = estimator.Estimator(model_fn=_argument_checker,
                               params=expected_param,
                               model_dir=expected_model_dir)
@@ -309,11 +399,13 @@ class EstimatorTest(test.TestCase):
     def _invalid_model_fn(features, labels):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
-      loss = 100.0 - w
+      update_global_step = variables.get_global_step().assign_add(1)
+      with ops.control_dependencies([update_global_step]):
+        loss = 100.0 - w
       return None, loss, None
 
     est = estimator.Estimator(model_fn=_invalid_model_fn)
-    with self.assertRaisesRegexp(ValueError, 'Missing training_op'):
+    with self.assertRaisesRegexp(ValueError, 'Missing train_op'):
       est.fit(input_fn=boston_input_fn, steps=1)
 
   def testInvalidModelFn_no_loss(self):
@@ -322,7 +414,9 @@ class EstimatorTest(test.TestCase):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
       loss = 100.0 - w
-      train_op = w.assign_add(loss / 100.0)
+      update_global_step = variables.get_global_step().assign_add(1)
+      with ops.control_dependencies([update_global_step]):
+        train_op = w.assign_add(loss / 100.0)
       predictions = loss
       if mode == model_fn.ModeKeys.EVAL:
         loss = None
@@ -339,7 +433,9 @@ class EstimatorTest(test.TestCase):
       # pylint: disable=unused-argument
       w = variables_lib.Variable(42.0, 'weight')
       loss = 100.0 - w
-      train_op = w.assign_add(loss / 100.0)
+      update_global_step = variables.get_global_step().assign_add(1)
+      with ops.control_dependencies([update_global_step]):
+        train_op = w.assign_add(loss / 100.0)
       return None, loss, train_op
 
     est = estimator.Estimator(model_fn=_invalid_model_fn)
@@ -354,7 +450,7 @@ class EstimatorTest(test.TestCase):
               boston_input_fn, num_epochs=1),
           as_iterable=True)
 
-  def testModelFnScaffold(self):
+  def testModelFnScaffoldInTraining(self):
     self.is_init_fn_called = False
 
     def _init_fn(scaffold, session):
@@ -367,12 +463,60 @@ class EstimatorTest(test.TestCase):
           mode=mode,
           predictions=constant_op.constant(0.),
           loss=constant_op.constant(0.),
-          train_op=constant_op.constant(0.),
+          train_op=variables.get_global_step().assign_add(1),
           scaffold=monitored_session.Scaffold(init_fn=_init_fn))
 
     est = estimator.Estimator(model_fn=_model_fn_scaffold)
     est.fit(input_fn=boston_input_fn, steps=1)
     self.assertTrue(self.is_init_fn_called)
+
+  def testModelFnScaffoldSaverUsage(self):
+
+    def _model_fn_scaffold(features, labels, mode):
+      _, _ = features, labels
+      variables_lib.Variable(1., 'weight')
+      real_saver = saver_lib.Saver()
+      self.mock_saver = test.mock.Mock(
+          wraps=real_saver, saver_def=real_saver.saver_def)
+      return model_fn.ModelFnOps(
+          mode=mode,
+          predictions=constant_op.constant([[1.]]),
+          loss=constant_op.constant(0.),
+          train_op=variables.get_global_step().assign_add(1),
+          scaffold=monitored_session.Scaffold(saver=self.mock_saver))
+
+    def input_fn():
+      return {
+          'x': constant_op.constant([[1.]]),
+      }, constant_op.constant([[1.]])
+
+    est = estimator.Estimator(model_fn=_model_fn_scaffold)
+    est.fit(input_fn=input_fn, steps=1)
+    self.assertTrue(self.mock_saver.save.called)
+    est.evaluate(input_fn=input_fn, steps=1)
+    self.assertTrue(self.mock_saver.restore.called)
+    est.predict(input_fn=input_fn)
+    self.assertTrue(self.mock_saver.restore.called)
+    def serving_input_fn():
+      serialized_tf_example = array_ops.placeholder(dtype=dtypes.string,
+                                                    shape=[None],
+                                                    name='input_example_tensor')
+      features, labels = input_fn()
+      return input_fn_utils.InputFnOps(
+          features, labels, {'examples': serialized_tf_example})
+
+    est.export_savedmodel(est.model_dir + '/export', serving_input_fn)
+    self.assertTrue(self.mock_saver.restore.called)
+
+
+class EstimatorTest(test.TestCase):
+
+  def testExperimentIntegration(self):
+    exp = experiment.Experiment(
+        estimator=estimator.Estimator(model_fn=linear_model_fn),
+        train_input_fn=boston_input_fn,
+        eval_input_fn=boston_input_fn)
+    exp.test()
 
   def testCheckpointSaverHookSuppressesTheDefaultOne(self):
     saver_hook = test.mock.Mock(
@@ -402,6 +546,44 @@ class EstimatorTest(test.TestCase):
     est.fit(input_fn=test_input.config_test_input_fn, steps=1)
     # If input_fn ran, it will have given us the random seed set on the graph.
     self.assertEquals(test_random_seed, test_input.random_seed)
+
+  def testRunConfigModelDir(self):
+    config = run_config.RunConfig(model_dir='test_dir')
+    est = estimator.Estimator(model_fn=linear_model_fn,
+                              config=config)
+    self.assertEqual('test_dir', est.config.model_dir)
+    self.assertEqual('test_dir', est.model_dir)
+
+  def testModelDirAndRunConfigModelDir(self):
+    config = run_config.RunConfig(model_dir='test_dir')
+    est = estimator.Estimator(model_fn=linear_model_fn,
+                              config=config,
+                              model_dir='test_dir')
+    self.assertEqual('test_dir', est.config.model_dir)
+
+    with self.assertRaisesRegexp(
+        ValueError,
+        'model_dir are set both in constructor and RunConfig, '
+        'but with different'):
+      estimator.Estimator(model_fn=linear_model_fn,
+                          config=config,
+                          model_dir='different_dir')
+
+  def testModelDirIsCopiedToRunConfig(self):
+    config = run_config.RunConfig()
+    self.assertIsNone(config.model_dir)
+
+    est = estimator.Estimator(model_fn=linear_model_fn,
+                              model_dir='test_dir',
+                              config=config)
+    self.assertEqual('test_dir', est.config.model_dir)
+    self.assertEqual('test_dir', est.model_dir)
+
+  def testModelDirAsTempDir(self):
+    with test.mock.patch.object(tempfile, 'mkdtemp', return_value='temp_dir'):
+      est = estimator.Estimator(model_fn=linear_model_fn)
+      self.assertEqual('temp_dir', est.config.model_dir)
+      self.assertEqual('temp_dir', est.model_dir)
 
   def testCheckInputs(self):
     est = estimator.SKCompat(estimator.Estimator(model_fn=linear_model_fn))
@@ -469,32 +651,6 @@ class EstimatorTest(test.TestCase):
     with self.assertRaises(learn.NotFittedError):
       est.predict(x=boston.data)
 
-  def testContinueTrainingDictionaryInput(self):
-    boston = base.load_boston()
-    output_dir = tempfile.mkdtemp()
-    est = estimator.Estimator(model_fn=linear_model_fn, model_dir=output_dir)
-    boston_input = {'input': boston.data}
-    float64_target = {'labels': boston.target.astype(np.float64)}
-    est.fit(x=boston_input, y=float64_target, steps=50)
-    scores = est.evaluate(
-        x=boston_input,
-        y=float64_target,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
-    del est
-    # Create another estimator object with the same output dir.
-    est2 = estimator.Estimator(model_fn=linear_model_fn, model_dir=output_dir)
-
-    # Check we can evaluate and predict.
-    scores2 = est2.evaluate(
-        x=boston_input,
-        y=float64_target,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
-    self.assertAllClose(scores2['MSE'], scores['MSE'])
-    predictions = np.array(list(est2.predict(x=boston_input)))
-    other_score = _sklearn.mean_squared_error(predictions,
-                                              float64_target['labels'])
-    self.assertAllClose(other_score, scores['MSE'])
-
   def testContinueTraining(self):
     boston = base.load_boston()
     output_dir = tempfile.mkdtemp()
@@ -531,97 +687,44 @@ class EstimatorTest(test.TestCase):
         metrics={'MSE': metric_ops.streaming_mean_squared_error})
     self.assertLess(scores3['MSE'], scores['MSE'])
 
+  def test_checkpoint_contains_relative_paths(self):
+    tmpdir = tempfile.mkdtemp()
+    est = estimator.Estimator(
+        model_dir=tmpdir,
+        model_fn=linear_model_fn_with_model_fn_ops)
+    est.fit(input_fn=boston_input_fn, steps=5)
+
+    checkpoint_file_content = file_io.read_file_to_string(
+        os.path.join(tmpdir, 'checkpoint'))
+    ckpt = checkpoint_state_pb2.CheckpointState()
+    text_format.Merge(checkpoint_file_content, ckpt)
+    self.assertEqual(ckpt.model_checkpoint_path, 'model.ckpt-5')
+    self.assertAllEqual(
+        ['model.ckpt-1', 'model.ckpt-5'], ckpt.all_model_checkpoint_paths)
+
+  def test_train_save_copy_reload(self):
+    tmpdir = tempfile.mkdtemp()
+    model_dir1 = os.path.join(tmpdir, 'model_dir1')
+    est1 = estimator.Estimator(
+        model_dir=model_dir1,
+        model_fn=linear_model_fn_with_model_fn_ops)
+    est1.fit(input_fn=boston_input_fn, steps=5)
+
+    model_dir2 = os.path.join(tmpdir, 'model_dir2')
+    os.renames(model_dir1, model_dir2)
+    est2 = estimator.Estimator(
+        model_dir=model_dir2,
+        model_fn=linear_model_fn_with_model_fn_ops)
+    self.assertEqual(5, est2.get_variable_value('global_step'))
+    est2.fit(input_fn=boston_input_fn, steps=5)
+    self.assertEqual(10, est2.get_variable_value('global_step'))
+
   def testEstimatorParams(self):
     boston = base.load_boston()
     est = estimator.SKCompat(
         estimator.Estimator(
             model_fn=linear_model_params_fn, params={'learning_rate': 0.01}))
     est.fit(x=boston.data, y=boston.target, steps=100)
-
-  def testBostonAll(self):
-    boston = base.load_boston()
-    est = estimator.SKCompat(estimator.Estimator(model_fn=linear_model_fn))
-    float64_labels = boston.target.astype(np.float64)
-    est.fit(x=boston.data, y=float64_labels, steps=100)
-    scores = est.score(
-        x=boston.data,
-        y=float64_labels,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
-    predictions = np.array(list(est.predict(x=boston.data)))
-    other_score = _sklearn.mean_squared_error(predictions, boston.target)
-    self.assertAllClose(scores['MSE'], other_score)
-    self.assertTrue('global_step' in scores)
-    self.assertEqual(100, scores['global_step'])
-
-  def testBostonAllDictionaryInput(self):
-    boston = base.load_boston()
-    est = estimator.Estimator(model_fn=linear_model_fn)
-    boston_input = {'input': boston.data}
-    float64_target = {'labels': boston.target.astype(np.float64)}
-    est.fit(x=boston_input, y=float64_target, steps=100)
-    scores = est.evaluate(
-        x=boston_input,
-        y=float64_target,
-        metrics={'MSE': metric_ops.streaming_mean_squared_error})
-    predictions = np.array(list(est.predict(x=boston_input)))
-    other_score = _sklearn.mean_squared_error(predictions, boston.target)
-    self.assertAllClose(other_score, scores['MSE'])
-    self.assertTrue('global_step' in scores)
-    self.assertEqual(scores['global_step'], 100)
-
-  def testIrisAll(self):
-    iris = base.load_iris()
-    est = estimator.SKCompat(
-        estimator.Estimator(model_fn=logistic_model_no_mode_fn))
-    est.fit(iris.data, iris.target, steps=100)
-    scores = est.score(
-        x=iris.data,
-        y=iris.target,
-        metrics={('accuracy', 'class'): metric_ops.streaming_accuracy})
-    predictions = est.predict(x=iris.data)
-    predictions_class = est.predict(x=iris.data, outputs=['class'])['class']
-    self.assertEqual(predictions['prob'].shape[0], iris.target.shape[0])
-    self.assertAllClose(predictions['class'], predictions_class)
-    self.assertAllClose(
-        predictions['class'], np.argmax(
-            predictions['prob'], axis=1))
-    other_score = _sklearn.accuracy_score(iris.target, predictions['class'])
-    self.assertAllClose(scores['accuracy'], other_score)
-    self.assertTrue('global_step' in scores)
-    self.assertEqual(100, scores['global_step'])
-
-  def testIrisAllDictionaryInput(self):
-    iris = base.load_iris()
-    est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
-    iris_data = {'input': iris.data}
-    iris_target = {'labels': iris.target}
-    est.fit(iris_data, iris_target, steps=100)
-    scores = est.evaluate(
-        x=iris_data,
-        y=iris_target,
-        metrics={('accuracy', 'class'): metric_ops.streaming_accuracy})
-    predictions = list(est.predict(x=iris_data))
-    predictions_class = list(est.predict(x=iris_data, outputs=['class']))
-    self.assertEqual(len(predictions), iris.target.shape[0])
-    classes_batch = np.array([p['class'] for p in predictions])
-    self.assertAllClose(classes_batch,
-                        np.array([p['class'] for p in predictions_class]))
-    self.assertAllClose(
-        classes_batch,
-        np.argmax(
-            np.array([p['prob'] for p in predictions]), axis=1))
-    other_score = _sklearn.accuracy_score(iris.target, classes_batch)
-    self.assertAllClose(other_score, scores['accuracy'])
-    self.assertTrue('global_step' in scores)
-    self.assertEqual(scores['global_step'], 100)
-
-  def testIrisInputFn(self):
-    iris = base.load_iris()
-    est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
-    est.fit(input_fn=iris_input_fn, steps=100)
-    _ = est.evaluate(input_fn=iris_input_fn, steps=1)
-    predictions = list(est.predict(x=iris.data))
-    self.assertEqual(len(predictions), iris.target.shape[0])
 
   def testHooksNotChanged(self):
     est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
@@ -632,23 +735,6 @@ class EstimatorTest(test.TestCase):
     est.fit(input_fn=iris_input_fn, steps=100, monitors=my_array)
     _ = est.evaluate(input_fn=iris_input_fn, steps=1, hooks=my_array)
     self.assertEqual(my_array, [])
-
-  def testIrisInputFnLabelsDict(self):
-    iris = base.load_iris()
-    est = estimator.Estimator(model_fn=logistic_model_no_mode_fn)
-    est.fit(input_fn=iris_input_fn_labels_dict, steps=100)
-    _ = est.evaluate(
-        input_fn=iris_input_fn_labels_dict,
-        steps=1,
-        metrics={
-            'accuracy':
-                metric_spec.MetricSpec(
-                    metric_fn=metric_ops.streaming_accuracy,
-                    prediction_key='class',
-                    label_key='labels')
-        })
-    predictions = list(est.predict(x=iris.data))
-    self.assertEqual(len(predictions), iris.target.shape[0])
 
   def testIrisIterator(self):
     iris = base.load_iris()
@@ -691,11 +777,6 @@ class EstimatorTest(test.TestCase):
     y_iter = ([np.int32(v)] for v in iris.target)
     est.fit(x_iter, y_iter, steps=100)
 
-  def testTrainInputFn(self):
-    est = estimator.Estimator(model_fn=linear_model_fn)
-    est.fit(input_fn=boston_input_fn, steps=1)
-    _ = est.evaluate(input_fn=boston_eval_fn, steps=1)
-
   def testTrainStepsIsIncremental(self):
     est = estimator.Estimator(model_fn=linear_model_fn)
     est.fit(input_fn=boston_input_fn, steps=10)
@@ -715,36 +796,6 @@ class EstimatorTest(test.TestCase):
     boston = base.load_boston()
     est.fit(input_fn=boston_input_fn, steps=1)
     output = list(est.predict(x=boston.data, batch_size=10))
-    self.assertEqual(len(output), boston.target.shape[0])
-
-  def testPredictInputFn(self):
-    est = estimator.Estimator(model_fn=linear_model_fn)
-    boston = base.load_boston()
-    est.fit(input_fn=boston_input_fn, steps=1)
-    input_fn = functools.partial(boston_input_fn, num_epochs=1)
-    output = list(est.predict(input_fn=input_fn))
-    self.assertEqual(len(output), boston.target.shape[0])
-
-  def testPredictInputFnWithQueue(self):
-    est = estimator.Estimator(model_fn=linear_model_fn)
-    boston = base.load_boston()
-    est.fit(input_fn=boston_input_fn, steps=1)
-    input_fn = functools.partial(boston_input_fn_with_queue, num_epochs=2)
-    output = list(est.predict(input_fn=input_fn))
-    self.assertEqual(len(output), boston.target.shape[0] * 2)
-
-  def testPredictConstInputFn(self):
-    est = estimator.Estimator(model_fn=linear_model_fn)
-    boston = base.load_boston()
-    est.fit(input_fn=boston_input_fn, steps=1)
-
-    def input_fn():
-      features = array_ops.reshape(
-          constant_op.constant(boston.data), [-1, _BOSTON_INPUT_DIM])
-      labels = array_ops.reshape(constant_op.constant(boston.target), [-1, 1])
-      return features, labels
-
-    output = list(est.predict(input_fn=input_fn))
     self.assertEqual(len(output), boston.target.shape[0])
 
   def testWithModelFnOps(self):
@@ -904,6 +955,53 @@ class EstimatorTest(test.TestCase):
         self.assertTrue('input_example_tensor' in graph_ops)
         self.assertTrue('ParseExample/ParseExample' in graph_ops)
         self.assertTrue('linear/linear/feature/matmul' in graph_ops)
+        self.assertSameElements(
+            ['bogus_lookup', 'feature'],
+            graph.get_collection(
+                constants.COLLECTION_DEF_KEY_FOR_INPUT_FEATURE_KEYS))
+
+    # cleanup
+    gfile.DeleteRecursively(tmpdir)
+
+  def test_export_savedmodel_with_resource(self):
+    tmpdir = tempfile.mkdtemp()
+    est, serving_input_fn = _build_estimator_for_resource_export_test()
+
+    export_dir_base = os.path.join(
+        compat.as_bytes(tmpdir), compat.as_bytes('export'))
+    export_dir = est.export_savedmodel(export_dir_base, serving_input_fn)
+
+    self.assertTrue(gfile.Exists(export_dir_base))
+    self.assertTrue(gfile.Exists(export_dir))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir), compat.as_bytes(
+                    'saved_model.pb'))))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir), compat.as_bytes('variables'))))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir),
+                compat.as_bytes('variables/variables.index'))))
+    self.assertTrue(
+        gfile.Exists(
+            os.path.join(
+                compat.as_bytes(export_dir),
+                compat.as_bytes('variables/variables.data-00000-of-00001'))))
+
+    # Restore, to validate that the export was well-formed.
+    with ops.Graph().as_default() as graph:
+      with session_lib.Session(graph=graph) as sess:
+        loader.load(sess, [tag_constants.SERVING], export_dir)
+        graph_ops = [x.name for x in graph.get_operations()]
+        self.assertTrue('input_example_tensor' in graph_ops)
+        self.assertTrue('ParseExample/ParseExample' in graph_ops)
+        self.assertTrue('LookupTableModel' in graph_ops)
+        self.assertFalse('LookupTableTrainingState' in graph_ops)
 
     # cleanup
     gfile.DeleteRecursively(tmpdir)
@@ -986,7 +1084,8 @@ class InferRealValuedColumnsTest(test.TestCase):
         ValueError, 'on integer or non floating types are not supported'):
       # pylint: disable=g-long-lambda
       estimator.infer_real_valued_columns_from_input_fn(
-          lambda: (constant_op.constant(False, shape=[7, 8], dtype=dtypes.bool), None))
+          lambda: (constant_op.constant(False, shape=[7, 8], dtype=dtypes.bool),
+                   None))
 
   def testStringInput(self):
     with self.assertRaisesRegexp(
@@ -1001,7 +1100,9 @@ class InferRealValuedColumnsTest(test.TestCase):
       # pylint: disable=g-long-lambda
       estimator.infer_real_valued_columns_from_input_fn(
           lambda: (
-              constant_op.constant([['%d.0' % i for i in xrange(8)] for _ in xrange(7)]),
+              constant_op.constant([['%d.0' % i
+                                     for i in xrange(8)]
+                                    for _ in xrange(7)]),
               None))
 
   def testBostonInputFn(self):

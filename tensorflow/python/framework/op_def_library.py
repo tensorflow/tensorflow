@@ -19,8 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-
 import six
 
 from tensorflow.core.framework import attr_value_pb2
@@ -33,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_contextlib
 
 
 def _Attr(op_def, name):
@@ -241,7 +240,7 @@ class _OpInfo(object):
 
 
 # pylint: disable=g-doc-return-or-yield
-@contextlib.contextmanager
+@tf_contextlib.contextmanager
 def _MaybeColocateWith(inputs):
   """A context manager for (maybe) colocating with a list of input tensors.
 
@@ -329,7 +328,7 @@ class OpDefLibrary(object):
       # Need to flatten all the arguments into a list.
       # pylint: disable=protected-access
       g = ops._get_graph_from_inputs(_Flatten(keywords.values()))
-      # pyline: enable=protected-access
+      # pylint: enable=protected-access
     except AssertionError as e:
       raise RuntimeError(
           "Cannot determine graph for Op '%s' due to: %s"
@@ -618,8 +617,8 @@ class OpDefLibrary(object):
         if input_arg.is_ref:
           if not all(x._is_ref_dtype for x in types):  # pylint: disable=protected-access
             raise TypeError(
-                "Input '%s' of '%s' Op requires l-value input" %
-                (input_name, op_type_name))
+                ("'%s' Op requires that input '%s' be a mutable tensor " +
+                "(e.g.: a tf.Variable)") % (op_type_name, input_name))
           input_types.extend(types)
         else:
           input_types.extend(base_types)

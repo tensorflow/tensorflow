@@ -230,11 +230,9 @@ Status WindowsFileSystem::NewRandomAccessFile(
   result->reset();
 
   // Open the file for read-only random access
-  // Random access is to disable read-ahead as the system reads too much data
   // Open in async mode which makes Windows allow more parallelism even
   // if we need to do sync I/O on top of it.
-  DWORD file_flags = FILE_ATTRIBUTE_READONLY | FILE_FLAG_RANDOM_ACCESS |
-      FILE_FLAG_OVERLAPPED;
+  DWORD file_flags = FILE_ATTRIBUTE_READONLY | FILE_FLAG_OVERLAPPED;
   // Shared access is necessary for tests to pass
   // almost all tests would work with a possible exception of fault_injection.
   DWORD share_mode = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
@@ -306,8 +304,8 @@ Status WindowsFileSystem::NewReadOnlyMemoryRegionFromFile(
   result->reset();
   Status s = Status::OK();
 
-  // Open the file for read-only random access
-  DWORD file_flags = FILE_ATTRIBUTE_READONLY | FILE_FLAG_RANDOM_ACCESS;
+  // Open the file for read-only
+  DWORD file_flags = FILE_ATTRIBUTE_READONLY;
 
   // Open in async mode which makes Windows allow more parallelism even
   // if we need to do sync I/O on top of it.

@@ -88,7 +88,7 @@ class Barrier : public ResourceBase {
   template <typename T>
   void TryInsertMany(const Tensor& keys, int component_index,
                      const Tensor& values, OpKernelContext* ctx,
-                     DoneCallback callback) {
+                     const DoneCallback& callback) {
     TensorShape element_shape = values.shape();
     OP_REQUIRES_ASYNC(
         ctx, keys.NumElements() == 0 || element_shape.num_elements() > 0,
@@ -195,7 +195,8 @@ class Barrier : public ResourceBase {
   }
 
   void TryTakeMany(int num_elements, bool allow_small_batch, int64 timeout,
-                   OpKernelContext* ctx, IndicesKeysValuesCallback callback) {
+                   OpKernelContext* ctx,
+                   const IndicesKeysValuesCallback& callback) {
     int num_elements_to_deliver = num_elements;
     {
       mutex_lock lock(mu_);
@@ -247,7 +248,7 @@ class Barrier : public ResourceBase {
   }
 
   void Close(OpKernelContext* ctx, bool cancel_pending_enqueues,
-             DoneCallback callback) {
+             const DoneCallback& callback) {
     mutex_lock lock(mu_);
     // We're allowed to close twice if the first close wasn't a
     // cancel but the second one is.
@@ -399,7 +400,8 @@ class Barrier : public ResourceBase {
   }
 
   void CloseQueueLocked(OpKernelContext* ctx, bool cancel_pending_enqueues,
-                        DoneCallback callback) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                        const DoneCallback& callback)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
     // CloseQueueLocked may only be called with mu_ held.
     if (!cancel_pending_enqueues && queue_closed_) {
       callback();

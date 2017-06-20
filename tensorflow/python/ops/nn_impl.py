@@ -182,12 +182,13 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
 
   The usual cross-entropy cost is defined as:
 
-    targets * -log(sigmoid(logits)) + (1 - targets) * -log(1 - sigmoid(logits))
+      targets * -log(sigmoid(logits)) +
+          (1 - targets) * -log(1 - sigmoid(logits))
 
   The argument `pos_weight` is used as a multiplier for the positive targets:
 
-    targets * -log(sigmoid(logits)) * pos_weight +
-        (1 - targets) * -log(1 - sigmoid(logits))
+      targets * -log(sigmoid(logits)) * pos_weight +
+          (1 - targets) * -log(1 - sigmoid(logits))
 
   For brevity, let `x = logits`, `z = targets`, `q = pos_weight`.
   The loss is:
@@ -300,9 +301,8 @@ def zero_fraction(value, name=None):
   This is useful in summaries to measure and report sparsity.  For example,
 
   ```python
-      z = tf.Relu(...)
-      summ = tf.contrib.deprecated.scalar_summary('sparsity',
-      tf.nn.zero_fraction(z))
+      z = tf.nn.relu(...)
+      summ = tf.summary.scalar('sparsity', tf.nn.zero_fraction(z))
   ```
 
   Args:
@@ -320,10 +320,16 @@ def zero_fraction(value, name=None):
 
 
 # pylint: disable=redefined-builtin
-def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
+def depthwise_conv2d(input,
+                     filter,
+                     strides,
+                     padding,
+                     rate=None,
+                     name=None,
+                     data_format=None):
   """Depthwise 2-D convolution.
 
-  Given an input tensor of shape `[batch, in_height, in_width, in_channels]`
+  Given a 4D input tensor ('NHWC' or 'NCHW' data formats)
   and a filter tensor of shape
   `[filter_height, filter_width, in_channels, channel_multiplier]`
   containing `in_channels` convolutional filters of depth 1, `depthwise_conv2d`
@@ -344,21 +350,22 @@ def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
   to 1.
 
   Args:
-    input: 4-D with shape `[batch, in_height, in_width, in_channels]`.
+    input: 4-D with shape according to `data_format`.
     filter: 4-D with shape
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
     strides: 1-D of size 4.  The stride of the sliding window for each
       dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
-      See the [comment
-        here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the @{tf.nn.convolution$comment here}
     rate: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
     name: A name for this operation (optional).
+    data_format: The data format for input. Either "NHWC" (default) or "NCHW".
 
   Returns:
-    A 4-D `Tensor` of shape
+    A 4-D `Tensor` with shape according to `data_format`.  E.g., for
+    "NHWC" format, shape is
     `[batch, out_height, out_width, in_channels * channel_multiplier].`
   """
   with ops.name_scope(name, "depthwise", [input, filter]) as name:
@@ -373,6 +380,7 @@ def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
           filter=filter,
           strides=strides,
           padding=padding,
+          data_format=data_format,
           name=name)
 
     return nn_ops.with_space_to_batch(
@@ -380,6 +388,7 @@ def depthwise_conv2d(input, filter, strides, padding, rate=None, name=None):
         filter_shape=array_ops.shape(filter),
         dilation_rate=rate,
         padding=padding,
+        data_format=data_format,
         op=op)
 
 
@@ -393,7 +402,8 @@ def separable_conv2d(input,
                      strides,
                      padding,
                      rate=None,
-                     name=None):
+                     name=None,
+                     data_format=None):
   """2-D convolution with separable filters.
 
   Performs a depthwise convolution that acts separately on channels followed by
@@ -417,7 +427,7 @@ def separable_conv2d(input,
   to 1.
 
   Args:
-    input: 4-D `Tensor` with shape `[batch, in_height, in_width, in_channels]`.
+    input: 4-D `Tensor` with shape according to `data_format`.
     depthwise_filter: 4-D `Tensor` with shape
       `[filter_height, filter_width, in_channels, channel_multiplier]`.
       Contains `in_channels` convolutional filters of depth 1.
@@ -427,19 +437,17 @@ def separable_conv2d(input,
     strides: 1-D of size 4.  The strides for the depthwise convolution for
       each dimension of `input`.
     padding: A string, either `'VALID'` or `'SAME'`.  The padding algorithm.
-      See the [comment
-        here](https://www.tensorflow.org/api_docs/python/nn.html#convolution)
+      See the @{tf.nn.convolution$comment here}
     rate: 1-D of size 2. The dilation rate in which we sample input values
       across the `height` and `width` dimensions in atrous convolution. If it is
       greater than 1, then all values of strides must be 1.
     name: A name for this operation (optional).
+    data_format: The data format for input. Either "NHWC" (default) or "NCHW".
 
   Returns:
-    A 4-D `Tensor` of shape `[batch, out_height, out_width, out_channels]`.
-
-  Raises:
-    ValueError: If channel_multiplier * in_channels > out_channels,
-      which means that the separable convolution is overparameterized.
+    A 4-D `Tensor` with shape according to 'data_format'. For
+      example, with data_format="NHWC", shape is [batch, out_height,
+      out_width, out_channels].
   """
   with ops.name_scope(name, "separable_conv2d",
                       [input, depthwise_filter, pointwise_filter]) as name:
@@ -453,21 +461,8 @@ def separable_conv2d(input,
     pointwise_filter_shape[0].assert_is_compatible_with(1)
     pointwise_filter_shape[1].assert_is_compatible_with(1)
 
-    channel_multiplier = depthwise_filter.get_shape().with_rank(4)[3]
-    in_channels = input.get_shape().with_rank(4)[3]
-    out_channels = pointwise_filter_shape[3]
-
     if rate is None:
       rate = [1, 1]
-
-    # If any of channel numbers is unknown, then the comparison below returns
-    # None. See TensorShape.__gt__().
-    if channel_multiplier * in_channels > out_channels:
-      raise ValueError("Refusing to perform an overparameterized separable "
-                       "convolution: channel_multiplier * in_channels = "
-                       "%d * %d = %d > %d = out_channels" %
-                       (channel_multiplier, in_channels,
-                        channel_multiplier * in_channels, out_channels))
 
     # The layout of the ops in the graph are expected to be as follows:
     # depthwise_conv2d  // Conv2D op corresponding to native deptwise conv.
@@ -479,6 +474,7 @@ def separable_conv2d(input,
           filter=depthwise_filter,
           strides=strides,
           padding=padding,
+          data_format=data_format,
           name="depthwise")
 
     depthwise = nn_ops.with_space_to_batch(
@@ -486,10 +482,15 @@ def separable_conv2d(input,
         filter_shape=array_ops.shape(depthwise_filter),
         dilation_rate=rate,
         padding=padding,
+        data_format=data_format,
         op=op)
 
     return nn_ops.conv2d(
-        depthwise, pointwise_filter, [1, 1, 1, 1], padding="VALID", name=name)
+        depthwise,
+        pointwise_filter, [1, 1, 1, 1],
+        padding="VALID",
+        data_format=data_format,
+        name=name)
 
 
 # pylint: enable=redefined-builtin,line-too-long
@@ -616,18 +617,22 @@ def moments(x, axes, shift=None, name=None, keep_dims=False):
           math_ops.reduce_mean(y, axes, keep_dims=True))
     else:
       shift = math_ops.cast(shift, y.dtype)
-    counts, m_ss, v_ss, shift = sufficient_statistics(
-        y, axes, shift=shift, keep_dims=keep_dims, name=name)
-    # Reshape shift as needed.
-    shift = array_ops.reshape(shift, array_ops.shape(m_ss))
-    shift.set_shape(m_ss.get_shape())
-    with ops.control_dependencies([counts, m_ss, v_ss]):
-      mean, variance = normalize_moments(counts, m_ss, v_ss, shift, name=name)
-      if x.dtype == dtypes.float16:
-        return (math_ops.cast(mean, dtypes.float16),
-                math_ops.cast(variance, dtypes.float16))
-      else:
-        return (mean, variance)
+    shifted_mean = math_ops.reduce_mean(
+        math_ops.subtract(y, shift), axes, keep_dims=True, name="shifted_mean")
+    variance = math_ops.subtract(
+        math_ops.reduce_mean(
+            math_ops.squared_difference(y, shift), axes, keep_dims=True),
+        math_ops.square(shifted_mean),
+        name="variance")
+    mean = math_ops.add(shifted_mean, shift, name="mean")
+    if not keep_dims:
+      mean = array_ops.squeeze(mean, axes)
+      variance = array_ops.squeeze(variance, axes)
+    if x.dtype == dtypes.float16:
+      return (math_ops.cast(mean, dtypes.float16), math_ops.cast(
+          variance, dtypes.float16))
+    else:
+      return (mean, variance)
 
 
 def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
@@ -897,7 +902,8 @@ def _compute_sampled_logits(weights,
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
         objects whose concatenation along dimension 0 has shape
         `[num_classes, dim]`.  The (possibly-partitioned) class embeddings.
-    biases: A `Tensor` of shape `[num_classes]`.  The class biases.
+    biases: A `Tensor` of shape `[num_classes]`.  The (possibly-partitioned)
+        class biases.
     labels: A `Tensor` of type `int64` and shape `[batch_size,
         num_true]`. The target classes.  Note that this format differs from
         the `labels` argument of `nn.softmax_cross_entropy_with_logits`.
@@ -950,8 +956,10 @@ def _compute_sampled_logits(weights,
           range_max=num_classes)
     # NOTE: pylint cannot tell that 'sampled_values' is a sequence
     # pylint: disable=unpacking-non-sequence
-    sampled, true_expected_count, sampled_expected_count = sampled_values
+    sampled, true_expected_count, sampled_expected_count = (
+        array_ops.stop_gradient(s) for s in sampled_values)
     # pylint: enable=unpacking-non-sequence
+    sampled = math_ops.cast(sampled, dtypes.int64)
 
     # labels_flat is a [batch_size * num_true] tensor
     # sampled is a [num_sampled] int tensor
@@ -960,7 +968,8 @@ def _compute_sampled_logits(weights,
     # weights shape is [num_classes, dim]
     all_w = embedding_ops.embedding_lookup(
         weights, all_ids, partition_strategy=partition_strategy)
-    all_b = embedding_ops.embedding_lookup(biases, all_ids)
+    all_b = embedding_ops.embedding_lookup(
+        biases, all_ids, partition_strategy=partition_strategy)
     # true_w shape is [batch_size * num_true, dim]
     # true_b is a [batch_size * num_true] tensor
     true_w = array_ops.slice(
@@ -1056,12 +1065,36 @@ def nce_loss(weights,
   unnormalized statistical
   models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
   Also see our [Candidate Sampling Algorithms
-  Reference](../../extras/candidate_sampling.pdf)
+  Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
+
+  A common use case is to use this method for training, and calculate the full
+  sigmoid loss for evaluation or inference. In this case, you must set
+  `partition_strategy="div"` for the two losses to be consistent, as in the
+  following example:
+
+  ```python
+  if mode == "train":
+    loss = tf.nn.nce_loss(
+        weights=weights,
+        biases=biases,
+        labels=labels,
+        inputs=inputs,
+        ...,
+        partition_strategy="div")
+  elif mode == "eval":
+    logits = tf.matmul(inputs, tf.transpose(weights))
+    logits = tf.nn.bias_add(logits, biases)
+    labels_one_hot = tf.one_hot(labels, n_classes)
+    loss = tf.nn.sigmoid_cross_entropy_with_logits(
+        labels=labels_one_hot,
+        logits=logits)
+    loss = tf.reduce_sum(loss, axis=1)
+  ```
 
   Note: By default this uses a log-uniform (Zipfian) distribution for sampling,
   so your labels must be sorted in order of decreasing frequency to achieve
   good results.  For more details, see
-  [log_uniform_candidate_sampler](#log_uniform_candidate_sampler).
+  @{tf.nn.log_uniform_candidate_sampler}.
 
   Note: In the case where `num_true` > 1, we assign to each target class
   the target probability 1 / `num_true` so that the target probabilities
@@ -1093,7 +1126,7 @@ def nce_loss(weights,
         `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
         learning to generate log-odds instead of log probabilities.  See
         our [Candidate Sampling Algorithms Reference]
-        (../../extras/candidate_sampling.pdf).
+        (https://www.tensorflow.org/extras/candidate_sampling.pdf).
         Default is False.
     partition_strategy: A string specifying the partitioning strategy, relevant
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
@@ -1142,11 +1175,31 @@ def sampled_softmax_loss(weights,
   This operation is for training only.  It is generally an underestimate of
   the full softmax loss.
 
-  At inference time, you can compute full softmax probabilities with the
-  expression `tf.nn.softmax(tf.matmul(inputs, tf.transpose(weights)) + biases)`.
+  A common use case is to use this method for training, and calculate the full
+  softmax loss for evaluation or inference. In this case, you must set
+  `partition_strategy="div"` for the two losses to be consistent, as in the
+  following example:
+
+  ```python
+  if mode == "train":
+    loss = tf.nn.sampled_softmax_loss(
+        weights=weights,
+        biases=biases,
+        labels=labels,
+        inputs=inputs,
+        ...,
+        partition_strategy="div")
+  elif mode == "eval":
+    logits = tf.matmul(inputs, tf.transpose(weights))
+    logits = tf.nn.bias_add(logits, biases)
+    labels_one_hot = tf.one_hot(labels, n_classes)
+    loss = tf.nn.softmax_cross_entropy_with_logits(
+        labels=labels_one_hot,
+        logits=logits)
+  ```
 
   See our [Candidate Sampling Algorithms Reference]
-  (../../extras/candidate_sampling.pdf)
+  (https://www.tensorflow.org/extras/candidate_sampling.pdf)
 
   Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
   ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.

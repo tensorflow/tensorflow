@@ -7,7 +7,9 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-py_library(
+load("//tensorflow:tensorflow.bzl", "py_test")
+
+py_binary(
     name = "grpc_tensorflow_server",
     srcs = [
         "grpc_tensorflow_server.py",

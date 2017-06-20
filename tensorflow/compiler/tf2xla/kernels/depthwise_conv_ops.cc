@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -172,15 +172,14 @@ class DepthwiseConv2dNativeOp : public XlaOpKernel {
     } else {
       // These will be used to define the bounds of each slice.
       // Within the loop, the input_channel index will be modified.
-      gtl::InlinedVector<int64, 4> filter_begin;
-      gtl::InlinedVector<int64, 4> filter_limits;
-      gtl::InlinedVector<int64, 4> input_begin;
-      gtl::InlinedVector<int64, 4> input_limits;
+      gtl::InlinedVector<int64, 4> filter_begin(4, 0);
+      gtl::InlinedVector<int64, 4> filter_limits(4);
+      gtl::InlinedVector<int64, 4> input_begin(4, 0);
+      gtl::InlinedVector<int64, 4> input_limits(4);
+      gtl::InlinedVector<int64, 4> strides(4, 1);
       for (int i = 0; i < 4; ++i) {
-        filter_begin.push_back(0);
-        filter_limits.push_back(filter_shape.dim_size(i));
-        input_begin.push_back(0);
-        input_limits.push_back(input_shape.dim_size(i));
+        filter_limits[i] = filter_shape.dim_size(i);
+        input_limits[i] = input_shape.dim_size(i);
       }
 
       std::vector<int64> strides_for_tla{strides_[1], strides_[2]};
@@ -209,9 +208,9 @@ class DepthwiseConv2dNativeOp : public XlaOpKernel {
         input_limits[3] = i + 1;
 
         xla::ComputationDataHandle filter_slice =
-            b.Slice(filter, filter_begin, filter_limits);
+            b.Slice(filter, filter_begin, filter_limits, strides);
         xla::ComputationDataHandle input_slice =
-            b.Slice(input, input_begin, input_limits);
+            b.Slice(input, input_begin, input_limits, strides);
         convs.push_back(b.ConvWithGeneralDimensions(
             input_slice, filter_slice, strides_for_tla, xla_padding, dims));
       }
@@ -229,7 +228,8 @@ class DepthwiseConv2dNativeOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(DepthwiseConv2dNativeOp);
 };
 
-REGISTER_XLA_OP("DepthwiseConv2dNative", DepthwiseConv2dNativeOp);
+REGISTER_XLA_OP(Name("DepthwiseConv2dNative").TypeConstraint("T", kFloatTypes),
+                DepthwiseConv2dNativeOp);
 
 }  // namespace
 }  // namespace tensorflow

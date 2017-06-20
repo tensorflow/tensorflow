@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/backend.h"
+#include "tensorflow/compiler/xla/service/pool.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -39,12 +40,9 @@ namespace xla {
 // the stream when destructed.
 class AsyncExecution {
  public:
-  AsyncExecution(
-      Backend* backend,
-      std::vector<std::unique_ptr<perftools::gputools::Stream>> streams,
-      const ExecutionProfile& profile, GlobalDataHandle result);
+  AsyncExecution(Backend* backend, std::vector<Backend::StreamPtr> streams,
+                 const ExecutionProfile& profile, GlobalDataHandle result);
 
-  ~AsyncExecution();
   tensorflow::Status BlockUntilDone() const;
 
   const GlobalDataHandle& result() const { return result_; }
@@ -56,7 +54,7 @@ class AsyncExecution {
   Backend* backend_;
 
   // Stream on which the execution is launched.
-  std::vector<std::unique_ptr<perftools::gputools::Stream>> streams_;
+  std::vector<Backend::StreamPtr> streams_;
 
   // Profile object of the execution to be returned to the user.
   ExecutionProfile profile_;
@@ -73,10 +71,10 @@ class ExecutionTracker {
 
   // Registers an execution with its backend, streams, and data handle to the
   // execution result. Returns a handle for the registered execution.
-  ExecutionHandle Register(
-      Backend* backend,
-      std::vector<std::unique_ptr<perftools::gputools::Stream>> stream,
-      const ExecutionProfile& profile, GlobalDataHandle data);
+  ExecutionHandle Register(Backend* backend,
+                           std::vector<Backend::StreamPtr> stream,
+                           const ExecutionProfile& profile,
+                           GlobalDataHandle data);
 
   // Unregisters the execution for the given handle.
   tensorflow::Status Unregister(const ExecutionHandle& handle);

@@ -74,6 +74,8 @@ string HloOpcodeString(HloOpcode opcode) {
       return "index";
     case HloOpcode::kInfeed:
       return "infeed";
+    case HloOpcode::kIsFinite:
+      return "is-finite";
     case HloOpcode::kLe:
       return "less-than-or-equal-to";
     case HloOpcode::kLog:
@@ -157,6 +159,19 @@ bool HloOpcodeIsComparison(HloOpcode opcode) {
     case HloOpcode::kLt:
     case HloOpcode::kEq:
     case HloOpcode::kNe:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool HloOpcodeIsVariadic(HloOpcode opcode) {
+  switch (opcode) {
+    case HloOpcode::kCall:
+    case HloOpcode::kConcatenate:
+    case HloOpcode::kFusion:
+    case HloOpcode::kMap:
+    case HloOpcode::kTuple:
       return true;
     default:
       return false;

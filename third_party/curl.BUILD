@@ -5,6 +5,26 @@ licenses(["notice"])  # MIT/X derivative license
 
 exports_files(["COPYING"])
 
+CURL_WIN_COPTS = [
+    "/I%prefix%/curl/lib",
+    "/DHAVE_CONFIG_H",
+    "/DCURL_DISABLE_FTP",
+    "/DCURL_DISABLE_NTLM",
+    "/DHAVE_LIBZ",
+    "/DHAVE_ZLIB_H",
+    # Defining _USING_V110_SDK71_ is hackery to defeat curl's incorrect
+    # detection of what OS releases we can build on with VC 2012. This
+    # may not be needed (or may have to change) if the WINVER setting
+    # changes in //third_party/msvc/vc_12_0/CROSSTOOL.
+    "/D_USING_V110_SDK71_",
+]
+
+CURL_WIN_SRCS = [
+    "lib/asyn-thread.c",
+    "lib/inet_ntop.c",
+    "lib/system_win32.c",
+]
+
 cc_library(
     name = "curl",
     srcs = [
@@ -204,17 +224,14 @@ cc_library(
         "lib/wildcard.h",
         "lib/x509asn1.h",
     ] + select({
-        ":darwin": [
+        "@%ws%//tensorflow:darwin": [
             "lib/vtls/darwinssl.c",
         ],
-        ":ios": [
+        "@%ws%//tensorflow:ios": [
             "lib/vtls/darwinssl.c",
         ],
-        ":windows": [
-            "lib/asyn-thread.c",
-            "lib/inet_ntop.c",
-            "lib/system_win32.c",
-        ],
+        "@%ws%//tensorflow:windows": CURL_WIN_SRCS,
+        "@%ws%//tensorflow:windows_msvc": CURL_WIN_SRCS,
         "//conditions:default": [
             "lib/vtls/openssl.c",
         ],
@@ -231,21 +248,10 @@ cc_library(
         "include/curl/typecheck-gcc.h",
     ],
     copts = select({
-        ":windows": [
-            "/Iexternal/curl/lib",
-            "/DHAVE_CONFIG_H",
-            "/DCURL_DISABLE_FTP",
-            "/DCURL_DISABLE_NTLM",
-            "/DHAVE_LIBZ",
-            "/DHAVE_ZLIB_H",
-            # Defining _USING_V110_SDK71_ is hackery to defeat curl's incorrect
-            # detection of what OS releases we can build on with VC 2012. This
-            # may not be needed (or may have to change) if the WINVER setting
-            # changes in //third_party/msvc/vc_12_0/CROSSTOOL.
-            "/D_USING_V110_SDK71_",
-        ],
+        "@%ws%//tensorflow:windows": CURL_WIN_COPTS,
+        "@%ws%//tensorflow:windows_msvc": CURL_WIN_COPTS,
         "//conditions:default": [
-            "-Iexternal/curl/lib",
+            "-I%prefix%/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_FTP",
@@ -255,10 +261,14 @@ cc_library(
             "-Wno-string-plus-int",
         ],
     }) + select({
-        ":darwin": [
+        "@%ws%//tensorflow:darwin": [
             "-fno-constant-cfstrings",
         ],
-        ":windows": [
+        "@%ws%//tensorflow:windows": [
+            # See curl.h for discussion of write size and Windows
+            "/DCURL_MAX_WRITE_SIZE=16384",
+        ],
+        "@%ws%//tensorflow:windows_msvc": [
             # See curl.h for discussion of write size and Windows
             "/DCURL_MAX_WRITE_SIZE=16384",
         ],
@@ -268,18 +278,21 @@ cc_library(
     }),
     includes = ["include"],
     linkopts = select({
-        ":android": [
+        "@%ws%//tensorflow:android": [
             "-pie",
         ],
-        ":darwin": [
+        "@%ws%//tensorflow:darwin": [
             "-Wl,-framework",
             "-Wl,CoreFoundation",
             "-Wl,-framework",
             "-Wl,Security",
         ],
-        ":ios": [],
-        ":windows": [
-            "ws2_32.lib",
+        "@%ws%//tensorflow:ios": [],
+        "@%ws%//tensorflow:windows": [
+            "-Wl,ws2_32.lib",
+        ],
+        "@%ws%//tensorflow:windows_msvc": [
+            "-Wl,ws2_32.lib",
         ],
         "//conditions:default": [
             "-lrt",
@@ -289,13 +302,20 @@ cc_library(
     deps = [
         "@zlib_archive//:zlib",
     ] + select({
-        ":ios": [],
-        ":windows": [],
+        "@%ws%//tensorflow:ios": [],
+        "@%ws%//tensorflow:windows": [],
+        "@%ws%//tensorflow:windows_msvc": [],
         "//conditions:default": [
             "@boringssl//:ssl",
         ],
     }),
 )
+
+CURL_BIN_WIN_COPTS = [
+    "/I%prefix%/curl/lib",
+    "/DHAVE_CONFIG_H",
+    "/DCURL_DISABLE_LIBCURL_OPTION",
+]
 
 cc_binary(
     name = "curl_bin",
@@ -386,13 +406,10 @@ cc_binary(
         "src/tool_xattr.h",
     ],
     copts = select({
-        ":windows": [
-            "/Iexternal/curl/lib",
-            "/DHAVE_CONFIG_H",
-            "/DCURL_DISABLE_LIBCURL_OPTION",
-        ],
+        "@%ws%//tensorflow:windows": CURL_BIN_WIN_COPTS,
+        "@%ws%//tensorflow:windows_msvc": CURL_BIN_WIN_COPTS,
         "//conditions:default": [
-            "-Iexternal/curl/lib",
+            "-I%prefix%/curl/lib",
             "-D_GNU_SOURCE",
             "-DHAVE_CONFIG_H",
             "-DCURL_DISABLE_LIBCURL_OPTION",
@@ -656,24 +673,4 @@ genrule(
         "#endif  // EXTERNAL_CURL_INCLUDE_CURL_CONFIG_H_",
         "EOF",
     ]),
-)
-
-config_setting(
-    name = "ios",
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-)
-
-config_setting(
-    name = "darwin",
-    values = {"cpu": "darwin"},
-)
-
-config_setting(
-    name = "windows",
-    values = {"cpu": "x64_windows_msvc"},
-)
-
-config_setting(
-    name = "android",
-    values = {"crosstool_top": "//external:android/crosstool"},
 )

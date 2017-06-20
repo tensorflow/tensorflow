@@ -21,61 +21,86 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import base64
 import gzip
 import json
-import numbers
 import os
 import shutil
+import socket
 import tempfile
 import threading
 
-import numpy as np
 from six import BytesIO
 from six.moves import http_client
-from six.moves import xrange  # pylint: disable=redefined-builtin
+import tensorflow as tf
 
 from werkzeug import serving
-from google.protobuf import text_format
 
-from tensorflow.contrib.tensorboard.plugins.projector.projector_config_pb2 import ProjectorConfig
-from tensorflow.core.framework import graph_pb2
-from tensorflow.core.framework import summary_pb2
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.core.protobuf import saver_pb2
-from tensorflow.core.util import event_pb2
-from tensorflow.python.client import session
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import variables
-from tensorflow.python.platform import gfile
-from tensorflow.python.platform import resource_loader
-from tensorflow.python.platform import test
-from tensorflow.python.summary import event_multiplexer
-from tensorflow.python.summary.writer import writer as writer_lib
-from tensorflow.python.training import saver as saver_lib
+from tensorflow.tensorboard import main as tensorboard
 from tensorflow.tensorboard.backend import application
-from tensorflow.tensorboard.plugins.projector import plugin as projector_plugin
+from tensorflow.tensorboard.backend.event_processing import event_multiplexer
+from tensorflow.tensorboard.plugins import base_plugin
 
 
-class TensorboardServerTest(test.TestCase):
+class FakePlugin(base_plugin.TBPlugin):
+  """A plugin with no functionality."""
+
+  def __init__(self, plugin_name, is_active_value, routes_mapping):
+    """Constructs a fake plugin.
+
+    Args:
+      plugin_name: The name of this plugin.
+      is_active_value: Whether the plugin is active.
+      routes_mapping: A dictionary mapping from route (string URL path) to the
+        method called when a user issues a request to that route.
+    """
+    self.plugin_name = plugin_name
+    self._is_active_value = is_active_value
+    self._routes_mapping = routes_mapping
+
+  def get_plugin_apps(self, multiplexer, logdir):
+    """Returns a mapping from routes to handlers offered by this plugin.
+
+    Args:
+      multiplexer: The event multiplexer.
+      logdir: The path to the directory containing logs.
+
+    Returns:
+      A dictionary mapping from routes to handlers offered by this plugin.
+    """
+    return self._routes_mapping
+
+  def is_active(self):
+    """Returns whether this plugin is active.
+
+    Returns:
+      A boolean. Whether this plugin is active.
+    """
+    return self._is_active_value
+
+
+class TensorboardServerTest(tf.test.TestCase):
   _only_use_meta_graph = False  # Server data contains only a GraphDef
 
-  # Number of scalar-containing events to make.
-  _SCALAR_COUNT = 99
-
   def setUp(self):
-    self.temp_dir = self._GenerateTestData()
-    multiplexer = event_multiplexer.EventMultiplexer(
+    self.logdir = self.get_temp_dir()
+
+    self._GenerateTestData(run_name='run1')
+    self._multiplexer = event_multiplexer.EventMultiplexer(
         size_guidance=application.DEFAULT_SIZE_GUIDANCE,
         purge_orphaned_data=True)
-    plugins = {'projector': projector_plugin.ProjectorPlugin()}
+    plugins = [
+        FakePlugin(plugin_name='foo', is_active_value=True, routes_mapping={}),
+        FakePlugin(plugin_name='bar', is_active_value=False, routes_mapping={})
+    ]
     app = application.TensorBoardWSGIApp(
-        self.temp_dir, plugins, multiplexer, reload_interval=0)
-    self._server = serving.BaseWSGIServer('localhost', 0, app)
-    # 0 to pick an unused port.
+        self.logdir, plugins, self._multiplexer, reload_interval=0)
+    try:
+      self._server = serving.BaseWSGIServer('localhost', 0, app)
+      # 0 to pick an unused port.
+    except IOError:
+      # BaseWSGIServer has a preference for IPv4. If that didn't work, try again
+      # with an explicit IPv6 address.
+      self._server = serving.BaseWSGIServer('::1', 0, app)
     self._server_thread = threading.Thread(target=self._server.serve_forever)
     self._server_thread.daemon = True
     self._server_thread.start()
@@ -118,39 +143,75 @@ class TensorboardServerTest(test.TestCase):
     response = self._get('/asdf')
     self.assertEqual(response.status, 404)
 
-  def testDirectoryTraversal(self):
-    """Attempt a directory traversal attack."""
-    response = self._get('/..' * 30 + '/etc/passwd')
-    self.assertEqual(response.status, 400)
-
   def testLogdir(self):
     """Test the format of the data/logdir endpoint."""
     parsed_object = self._getJson('/data/logdir')
-    self.assertEqual(parsed_object, {'logdir': self.temp_dir})
+    self.assertEqual(parsed_object, {'logdir': self.logdir})
+
+  def testPluginsListing(self):
+    """Test the format of the data/plugins_listing endpoint."""
+    parsed_object = self._getJson('/data/plugins_listing')
+    # Plugin foo is active. Plugin bar is not.
+    self.assertEqual(parsed_object, {'foo': True, 'bar': False})
 
   def testRuns(self):
     """Test the format of the /data/runs endpoint."""
     run_json = self._getJson('/data/runs')
+    self.assertEqual(run_json, ['run1'])
 
-    # Don't check the actual timestamp since it's time-dependent.
-    self.assertTrue(
-        isinstance(run_json['run1']['firstEventTimestamp'], numbers.Number))
-    del run_json['run1']['firstEventTimestamp']
-    self.assertEqual(
-        run_json,
-        {
-            'run1': {
-                'compressedHistograms': ['histogram'],
-                'scalars': ['simple_values'],
-                'histograms': ['histogram'],
-                'images': ['image'],
-                'audio': ['audio'],
-                # if only_use_meta_graph, the graph is from the metagraph
-                'graph': True,
-                'meta_graph': self._only_use_meta_graph,
-                'run_metadata': ['test run']
-            }
-        })
+  def testRunsAppendOnly(self):
+    """Test that new runs appear after old ones in /data/runs."""
+    # We use three runs: the 'run1' that we already created in our
+    # `setUp` method, plus runs with names lexicographically before and
+    # after it (so that just sorting by name doesn't have a chance of
+    # working).
+    fake_wall_times = {
+        'run1': 1234.0,
+        'avocado': 2345.0,
+        'zebra': 3456.0,
+        'mysterious': None,
+    }
+
+    stubs = tf.test.StubOutForTesting()
+    # pylint: disable=invalid-name
+    def FirstEventTimestamp_stub(multiplexer_self, run_name):
+      del multiplexer_self
+      matches = [candidate_name
+                 for candidate_name in fake_wall_times
+                 if run_name.endswith(candidate_name)]
+      self.assertEqual(len(matches), 1, '%s (%s)' % (matches, run_name))
+      wall_time = fake_wall_times[matches[0]]
+      if wall_time is None:
+        raise ValueError('No event timestamp could be found')
+      else:
+        return wall_time
+    # pylint: enable=invalid-name
+
+    stubs.SmartSet(self._multiplexer,
+                   'FirstEventTimestamp',
+                   FirstEventTimestamp_stub)
+
+    def add_run(run_name):
+      self._GenerateTestData(run_name)
+      self._multiplexer.AddRunsFromDirectory(self.logdir)
+      self._multiplexer.Reload()
+
+    # Add one run: it should come last.
+    add_run('avocado')
+    self.assertEqual(self._getJson('/data/runs'),
+                     ['run1', 'avocado'])
+
+    # Add another run: it should come last, too.
+    add_run('zebra')
+    self.assertEqual(self._getJson('/data/runs'),
+                     ['run1', 'avocado', 'zebra'])
+
+    # And maybe there's a run for which we somehow have no timestamp.
+    add_run('mysterious')
+    self.assertEqual(self._getJson('/data/runs'),
+                     ['run1', 'avocado', 'zebra', 'mysterious'])
+
+    stubs.UnsetAll()
 
   def testApplicationPaths_getCached(self):
     """Test the format of the /data/runs endpoint."""
@@ -168,13 +229,7 @@ class TensorboardServerTest(test.TestCase):
 
   def testDataPaths_disableAllCaching(self):
     """Test the format of the /data/runs endpoint."""
-    for path in ('/data/runs', '/data/logdir',
-                 '/data/scalars?run=run1&tag=simple_values',
-                 '/data/scalars?run=run1&tag=simple_values&format=csv',
-                 '/data/images?run=run1&tag=image',
-                 '/data/individualImage?run=run1&tag=image&index=0',
-                 '/data/audio?run=run1&tag=audio',
-                 '/data/run_metadata?run=run1&tag=test%20run'):
+    for path in ('/data/runs', '/data/logdir'):
       connection = http_client.HTTPConnection('localhost',
                                               self._server.server_address[1])
       connection.request('GET', path)
@@ -184,246 +239,107 @@ class TensorboardServerTest(test.TestCase):
       response.read()
       connection.close()
 
-  def testHistograms(self):
-    """Test the format of /data/histograms."""
-    self.assertEqual(
-        self._getJson('/data/histograms?tag=histogram&run=run1'),
-        [[0, 0, [0, 2.0, 3.0, 6.0, 5.0, [0.0, 1.0, 2.0], [1.0, 1.0, 1.0]]]])
-
-  def testImages(self):
-    """Test listing images and retrieving an individual image."""
-    image_json = self._getJson('/data/images?tag=image&run=run1')
-    image_query = image_json[0]['query']
-    # We don't care about the format of the image query.
-    del image_json[0]['query']
-    self.assertEqual(image_json, [{
-        'wall_time': 0,
-        'step': 0,
-        'height': 1,
-        'width': 1
-    }])
-    response = self._get('/data/individualImage?%s' % image_query)
-    self.assertEqual(response.status, 200)
-
-  def testAudio(self):
-    """Test listing audio and retrieving an individual audio clip."""
-    audio_json = self._getJson('/data/audio?tag=audio&run=run1')
-    audio_query = audio_json[0]['query']
-    # We don't care about the format of the audio query.
-    del audio_json[0]['query']
-    self.assertEqual(audio_json, [{
-        'wall_time': 0,
-        'step': 0,
-        'content_type': 'audio/wav'
-    }])
-    response = self._get('/data/individualAudio?%s' % audio_query)
-    self.assertEqual(response.status, 200)
-
-  def testGraph(self):
-    """Test retrieving the graph definition."""
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs')
-    self.assertEqual(response.status, 200)
-    graph_pbtxt = response.read()
-    # Parse the graph from pbtxt into a graph message.
-    graph = graph_pb2.GraphDef()
-    graph = text_format.Parse(graph_pbtxt, graph)
-    self.assertEqual(len(graph.node), 2)
-    self.assertEqual(graph.node[0].name, 'a')
-    self.assertEqual(graph.node[1].name, 'b')
-    # Make sure the second node has an attribute that was filtered out because
-    # it was too large and was added to the "too large" attributes list.
-    self.assertEqual(list(graph.node[1].attr.keys()), ['_very_large_attrs'])
-    self.assertEqual(graph.node[1].attr['_very_large_attrs'].list.s,
-                     [b'very_large_attr'])
-
-  def testProjectorRunsWithEmbeddings(self):
-    """Test the format of /runs endpoint of the projector plugin."""
-    run_json = self._getJson('/data/plugin/projector/runs')
-    self.assertEqual(run_json, ['run1'])
-
-  def testProjectorInfo(self):
-    """Test the format of /info endpoint of the projector plugin."""
-    info_json = self._getJson('/data/plugin/projector/info?run=run1')
-    self.assertItemsEqual(info_json['embeddings'], [{
-        'tensorShape': [1, 2],
-        'tensorName': 'var1'
-    }, {
-        'tensorShape': [10, 10],
-        'tensorName': 'var2'
-    }, {
-        'tensorShape': [100, 100],
-        'tensorName': 'var3'
-    }])
-
-  def testProjectorTensor(self):
-    """Test the format of /tensor endpoint of the projector plugin."""
-    url = '/data/plugin/projector/tensor?run=run1&name=var1'
-    tensor_bytes = self._get(url).read()
-    tensor = np.reshape(np.fromstring(tensor_bytes, dtype='float32'), [1, 2])
-    expected_tensor = np.array([[6, 6]], dtype='float32')
-    self.assertTrue(np.array_equal(tensor, expected_tensor))
-
-  def testAcceptGzip_compressesResponse(self):
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs',
-                         {'Accept-Encoding': 'gzip'})
-    self.assertEqual(response.status, 200)
-    self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
-    pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
-    graph = text_format.Parse(pbtxt, graph_pb2.GraphDef())
-    self.assertEqual(len(graph.node), 2)
-
-  def testAcceptAnyEncoding_compressesResponse(self):
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs',
-                         {'Accept-Encoding': '*'})
-    self.assertEqual(response.status, 200)
-    self.assertEqual(response.getheader('Content-Encoding'), 'gzip')
-    pbtxt = gzip.GzipFile('', 'rb', 9, BytesIO(response.read())).read()
-    graph = text_format.Parse(pbtxt, graph_pb2.GraphDef())
-    self.assertEqual(len(graph.node), 2)
-
-  def testAcceptDoodleEncoding_doesNotCompressResponse(self):
-    response = self._get('/data/graph?run=run1&limit_attr_size=1024'
-                         '&large_attrs_key=_very_large_attrs',
-                         {'Accept-Encoding': 'doodle'})
-    self.assertEqual(response.status, 200)
-    self.assertIsNone(response.getheader('Content-Encoding'))
-    graph = text_format.Parse(response.read(), graph_pb2.GraphDef())
-    self.assertEqual(len(graph.node), 2)
-
-  def testAcceptGzip_doesNotCompressImage(self):
-    response = self._get('/data/individualImage?run=run1&tag=image&index=0',
-                         {'Accept-Encoding': 'gzip'})
-    self.assertEqual(response.status, 200)
-    self.assertEqual(response.getheader('Content-Encoding'), None)
-
-  def testRunMetadata(self):
-    """Test retrieving the run metadata information."""
-    response = self._get('/data/run_metadata?run=run1&tag=test%20run')
-    self.assertEqual(response.status, 200)
-    run_metadata_pbtxt = response.read()
-    # Parse from pbtxt into a message.
-    run_metadata = config_pb2.RunMetadata()
-    text_format.Parse(run_metadata_pbtxt, run_metadata)
-    self.assertEqual(len(run_metadata.step_stats.dev_stats), 1)
-    self.assertEqual(run_metadata.step_stats.dev_stats[0].device, 'test device')
-
-  def _GenerateTestData(self):
+  def _GenerateTestData(self, run_name):
     """Generates the test data directory.
 
-    The test data has a single run named run1 which contains:
-     - a histogram
-     - an image at timestamp and step 0
-     - scalar events containing the value i at step 10 * i and wall time
-         100 * i, for i in [1, _SCALAR_COUNT).
-     - a graph definition
+    The test data has a single run of the given name, containing:
+      - a graph definition and metagraph definition
 
-    Returns:
-      temp_dir: The directory the test data is generated under.
+    Arguments:
+      run_name: the directory under self.logdir into which to write
+        events
     """
-    temp_dir = tempfile.mkdtemp(prefix=self.get_temp_dir())
-    self.addCleanup(shutil.rmtree, temp_dir)
-    run1_path = os.path.join(temp_dir, 'run1')
-    os.makedirs(run1_path)
-    writer = writer_lib.FileWriter(run1_path)
+    run_path = os.path.join(self.logdir, run_name)
+    os.makedirs(run_path)
 
-    histogram_value = summary_pb2.HistogramProto(
-        min=0,
-        max=2,
-        num=3,
-        sum=6,
-        sum_squares=5,
-        bucket_limit=[0, 1, 2],
-        bucket=[1, 1, 1])
+    writer = tf.summary.FileWriter(run_path)
+
     # Add a simple graph event.
-    graph_def = graph_pb2.GraphDef()
+    graph_def = tf.GraphDef()
     node1 = graph_def.node.add()
     node1.name = 'a'
     node2 = graph_def.node.add()
     node2.name = 'b'
     node2.attr['very_large_attr'].s = b'a' * 2048  # 2 KB attribute
 
-    meta_graph_def = meta_graph_pb2.MetaGraphDef(graph_def=graph_def)
+    meta_graph_def = tf.MetaGraphDef(graph_def=graph_def)
 
     if self._only_use_meta_graph:
       writer.add_meta_graph(meta_graph_def)
     else:
       writer.add_graph(graph_def)
 
-    # Add a simple run metadata event.
-    run_metadata = config_pb2.RunMetadata()
-    device_stats = run_metadata.step_stats.dev_stats.add()
-    device_stats.device = 'test device'
-    writer.add_run_metadata(run_metadata, 'test run')
-
-    # 1x1 transparent GIF.
-    encoded_image = base64.b64decode(
-        'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7')
-    image_value = summary_pb2.Summary.Image(
-        height=1, width=1, colorspace=1, encoded_image_string=encoded_image)
-
-    audio_value = summary_pb2.Summary.Audio(
-        sample_rate=44100,
-        length_frames=22050,
-        num_channels=2,
-        encoded_audio_string=b'',
-        content_type='audio/wav')
-    writer.add_event(
-        event_pb2.Event(
-            wall_time=0,
-            step=0,
-            summary=summary_pb2.Summary(value=[
-                summary_pb2.Summary.Value(
-                    tag='histogram', histo=histogram_value),
-                summary_pb2.Summary.Value(
-                    tag='image', image=image_value), summary_pb2.Summary.Value(
-                        tag='audio', audio=audio_value)
-            ])))
-
-    # Write 100 simple values.
-    for i in xrange(1, self._SCALAR_COUNT + 1):
-      writer.add_event(
-          event_pb2.Event(
-              # We use different values for wall time, step, and the value so we
-              # can tell them apart.
-              wall_time=100 * i,
-              step=10 * i,
-              summary=summary_pb2.Summary(value=[
-                  summary_pb2.Summary.Value(
-                      tag='simple_values', simple_value=i)
-              ])))
     writer.flush()
     writer.close()
 
-    # We assume that the projector is a registered plugin.
-    self._GenerateProjectorTestData(run1_path)
 
-    return temp_dir
+class TensorboardServerPluginNameTest(tf.test.TestCase):
 
-  def _GenerateProjectorTestData(self, run_path):
-    # Write a projector config file in run1.
-    config_path = os.path.join(run_path, 'projector_config.pbtxt')
-    config = ProjectorConfig()
-    embedding = config.embeddings.add()
-    # Add an embedding by its canonical tensor name.
-    embedding.tensor_name = 'var1:0'
-    config_pbtxt = text_format.MessageToString(config)
-    with gfile.GFile(config_path, 'w') as f:
-      f.write(config_pbtxt)
+  def _test(self, name, should_be_okay):
+    temp_dir = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    self.addCleanup(shutil.rmtree, temp_dir)
+    multiplexer = event_multiplexer.EventMultiplexer(
+        size_guidance=application.DEFAULT_SIZE_GUIDANCE,
+        purge_orphaned_data=True)
+    plugins = [
+        FakePlugin(plugin_name='foo', is_active_value=True, routes_mapping={}),
+        FakePlugin(plugin_name=name, is_active_value=True, routes_mapping={}),
+        FakePlugin(plugin_name='bar', is_active_value=False, routes_mapping={})
+    ]
+    if should_be_okay:
+      application.TensorBoardWSGIApp(
+          temp_dir, plugins, multiplexer, reload_interval=0)
+    else:
+      with self.assertRaisesRegexp(ValueError, r'invalid name'):
+        application.TensorBoardWSGIApp(
+            temp_dir, plugins, multiplexer, reload_interval=0)
 
-    # Write a checkpoint with some dummy variables.
-    with ops.Graph().as_default():
-      sess = session.Session()
-      checkpoint_path = os.path.join(run_path, 'model')
-      variable_scope.get_variable(
-          'var1', [1, 2], initializer=init_ops.constant_initializer(6.0))
-      variable_scope.get_variable('var2', [10, 10])
-      variable_scope.get_variable('var3', [100, 100])
-      sess.run(variables.global_variables_initializer())
-      saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
-      saver.save(sess, checkpoint_path)
+  def testEmptyName(self):
+    self._test('', False)
+
+  def testNameWithSlashes(self):
+    self._test('scalars/data', False)
+
+  def testNameWithSpaces(self):
+    self._test('my favorite plugin', False)
+
+  def testSimpleName(self):
+    self._test('scalars', True)
+
+  def testComprehensiveName(self):
+    self._test('Scalar-Dashboard_3000.1', True)
+
+
+class TensorboardServerPluginRouteTest(tf.test.TestCase):
+
+  def _test(self, route, should_be_okay):
+    temp_dir = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    self.addCleanup(shutil.rmtree, temp_dir)
+    multiplexer = event_multiplexer.EventMultiplexer(
+        size_guidance=application.DEFAULT_SIZE_GUIDANCE,
+        purge_orphaned_data=True)
+    plugins = [
+        FakePlugin(
+            plugin_name='foo',
+            is_active_value=True,
+            routes_mapping={route: lambda environ, start_response: None}),
+    ]
+    if should_be_okay:
+      application.TensorBoardWSGIApp(
+          temp_dir, plugins, multiplexer, reload_interval=0)
+    else:
+      with self.assertRaisesRegexp(ValueError, r'invalid route'):
+        application.TensorBoardWSGIApp(
+            temp_dir, plugins, multiplexer, reload_interval=0)
+
+  def testNormalRoute(self):
+    self._test('/runs', True)
+
+  def testEmptyRoute(self):
+    self._test('', False)
+
+  def testSlashlessRoute(self):
+    self._test('runaway', False)
 
 
 class TensorboardServerUsingMetagraphOnlyTest(TensorboardServerTest):
@@ -431,7 +347,7 @@ class TensorboardServerUsingMetagraphOnlyTest(TensorboardServerTest):
   _only_use_meta_graph = True  # Server data contains only a MetaGraphDef
 
 
-class ParseEventFilesSpecTest(test.TestCase):
+class ParseEventFilesSpecTest(tf.test.TestCase):
 
   def testRunName(self):
     logdir = 'lol:/cat'
@@ -484,12 +400,114 @@ class ParseEventFilesSpecTest(test.TestCase):
     self.assertEqual(application.parse_event_files_spec(logdir), expected)
 
 
-class TensorBoardAssetsTest(test.TestCase):
+class TensorBoardAssetsTest(tf.test.TestCase):
 
   def testTagFound(self):
-    tag = resource_loader.load_resource('tensorboard/TAG')
+    tag = application.get_tensorboard_tag()
     self.assertTrue(tag)
+    app = application.standard_tensorboard_wsgi('', True, 60, [])
+    self.assertEqual(app.tag, tag)
+
+
+class TensorBoardPluginsTest(tf.test.TestCase):
+
+  def testPluginsAdded(self):
+
+    def foo_handler():
+      pass
+
+    def bar_handler():
+      pass
+
+    plugins = [
+        FakePlugin(
+            plugin_name='foo',
+            is_active_value=True,
+            routes_mapping={'/foo_route': foo_handler}),
+        FakePlugin(
+            plugin_name='bar',
+            is_active_value=True,
+            routes_mapping={'/bar_route': bar_handler}),
+    ]
+
+    # The application should have added routes for both plugins.
+    app = application.standard_tensorboard_wsgi('', True, 60, plugins)
+
+    # The routes are prefixed with /data/plugin/[plugin name].
+    self.assertDictContainsSubset({
+        '/data/plugin/foo/foo_route': foo_handler,
+        '/data/plugin/bar/bar_route': bar_handler,
+    }, app.data_applications)
+
+
+class TensorboardSimpleServerConstructionTest(tf.test.TestCase):
+  """Tests that the default HTTP server is constructed without error.
+
+  Mostly useful for IPv4/IPv6 testing. This test should run with only IPv4, only
+  IPv6, and both IPv4 and IPv6 enabled.
+  """
+
+  class _StubApplication(object):
+    tag = ''
+
+  def testMakeServerBlankHost(self):
+    # Test that we can bind to all interfaces without throwing an error
+    server, url = tensorboard.make_simple_server(
+        self._StubApplication(),
+        host='',
+        port=0)  # Grab any available port
+    self.assertTrue(server)
+    self.assertTrue(url)
+
+  def testSpecifiedHost(self):
+    one_passed = False
+    try:
+      _, url = tensorboard.make_simple_server(
+          self._StubApplication(),
+          host='127.0.0.1',
+          port=0)
+      self.assertStartsWith(actual=url, expected_start='http://127.0.0.1:')
+      one_passed = True
+    except socket.error:
+      # IPv4 is not supported
+      pass
+    try:
+      _, url = tensorboard.make_simple_server(
+          self._StubApplication(),
+          host='::1',
+          port=0)
+      self.assertStartsWith(actual=url, expected_start='http://[::1]:')
+      one_passed = True
+    except socket.error:
+      # IPv6 is not supported
+      pass
+    self.assertTrue(one_passed)  # We expect either IPv4 or IPv6 to be supported
+
+
+class TensorBoardApplcationConstructionTest(tf.test.TestCase):
+
+  def testExceptions(self):
+    logdir = '/fake/foo'
+    multiplexer = event_multiplexer.EventMultiplexer()
+
+    # Fails if there is an unnamed plugin
+    with self.assertRaises(ValueError):
+      # This plugin lacks a name.
+      plugins = [
+          FakePlugin(plugin_name=None, is_active_value=True, routes_mapping={})
+      ]
+      application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
+
+    # Fails if there are two plugins with same name
+    with self.assertRaises(ValueError):
+      plugins = [
+          FakePlugin(
+              plugin_name='foo', is_active_value=True, routes_mapping={}),
+          FakePlugin(
+              plugin_name='foo', is_active_value=True, routes_mapping={}),
+      ]
+      application.TensorBoardWSGIApp(logdir, plugins, multiplexer, 0)
 
 
 if __name__ == '__main__':
-  test.main()
+  tf.test.main()

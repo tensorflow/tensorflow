@@ -26,7 +26,7 @@ CC="${CC}"
 TAR="${TAR}"
 
 [ -z "${CC}" ] && CC="/usr/bin/gcc"
-[ -z "${TAR}"] && TAR="tar"
+[ -z "${TAR}" ] && TAR="tar"
 
 # bazel tests run with ${PWD} set to the root of the bazel workspace
 TARFILE="${PWD}/tensorflow/tools/lib_package/libtensorflow.tar.gz"
@@ -47,5 +47,5 @@ ${CC} ${CFILE} -Itensorflow/include -Ltensorflow/lib -ltensorflow -oa.out
 # The tests for GPU require CUDA libraries to be accessible, which
 # are in DYLD_LIBRARY_PATH in the test harness for OS X.
 export DYLD_LIBRARY_PATH=tensorflow/lib:${DYLD_LIBRARY_PATH}
-export LD_LIBRARY_PATH=tensorflow/lib
+export LD_LIBRARY_PATH=tensorflow/lib:${LD_LIBRARY_PATH}
 ./a.out

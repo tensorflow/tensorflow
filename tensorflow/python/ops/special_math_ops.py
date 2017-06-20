@@ -29,73 +29,61 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
 def lbeta(x, name='lbeta'):
-  r"""Computes `ln(|Beta(x)|)`, reducing along the last dimension.
+  r"""Computes \\(ln(|Beta(x)|)\\), reducing along the last dimension.
 
   Given one-dimensional `z = [z_0,...,z_{K-1}]`, we define
 
-  ```Beta(z) = \prod_j Gamma(z_j) / Gamma(\sum_j z_j)```
+  $$Beta(z) = \prod_j Gamma(z_j) / Gamma(\sum_j z_j)$$
 
   And for `n + 1` dimensional `x` with shape `[N1, ..., Nn, K]`, we define
-  `lbeta(x)[i1, ..., in] = Log(|Beta(x[i1, ..., in, :])|)`.  In other words,
-  the last dimension is treated as the `z` vector.
+  $$lbeta(x)[i1, ..., in] = Log(|Beta(x[i1, ..., in, :])|)$$.
+
+  In other words, the last dimension is treated as the `z` vector.
 
   Note that if `z = [u, v]`, then
-  `Beta(z) = int_0^1 t^{u-1} (1 - t)^{v-1} dt`, which defines the traditional
-  bivariate beta function.
+  \\(Beta(z) = int_0^1 t^{u-1} (1 - t)^{v-1} dt\\), which defines the
+  traditional bivariate beta function.
+
+  If the last dimension is empty, we follow the convention that the sum over
+  the empty set is zero, and the product is one.
 
   Args:
-    x: A rank `n + 1` `Tensor` with type `float`, or `double`.
+    x: A rank `n + 1` `Tensor`, `n >= 0` with type `float`, or `double`.
     name: A name for the operation (optional).
 
   Returns:
-    The logarithm of `|Beta(x)|` reducing along the last dimension.
-
-  Raises:
-    ValueError:  If `x` is empty with rank one or less.
+    The logarithm of \\(|Beta(x)|\\) reducing along the last dimension.
   """
+  # In the event that the last dimension has zero entries, we return -inf.
+  # This is consistent with a convention that the sum over the empty set 0, and
+  # the product is 1.
+  # This is standard.  See https://en.wikipedia.org/wiki/Empty_set.
   with ops.name_scope(name, values=[x]):
     x = ops.convert_to_tensor(x, name='x')
-    x = control_flow_ops.with_dependencies(
-        [check_ops.assert_rank_at_least(x, 1)], x)
 
-    is_empty = math_ops.equal(0, array_ops.size(x))
+    # Note reduce_sum([]) = 0.
+    log_prod_gamma_x = math_ops.reduce_sum(
+        math_ops.lgamma(x), reduction_indices=[-1])
 
-    def nonempty_lbeta():
-      log_prod_gamma_x = math_ops.reduce_sum(
-          math_ops.lgamma(x), reduction_indices=[-1])
-      sum_x = math_ops.reduce_sum(x, reduction_indices=[-1])
-      log_gamma_sum_x = math_ops.lgamma(sum_x)
-      result = log_prod_gamma_x - log_gamma_sum_x
-      return result
+    # Note lgamma(0) = infinity, so if x = []
+    # log_gamma_sum_x = lgamma(0) = infinity, and
+    # log_prod_gamma_x = lgamma(1) = 0,
+    # so result = -infinity
+    sum_x = math_ops.reduce_sum(x, axis=[-1])
+    log_gamma_sum_x = math_ops.lgamma(sum_x)
+    result = log_prod_gamma_x - log_gamma_sum_x
 
-    def empty_lbeta():
-      # If x is empty, return version with one less dimension.
-      # Can only do this if rank >= 2.
-      assertion = check_ops.assert_rank_at_least(x, 2)
-      with ops.control_dependencies([assertion]):
-        return array_ops.squeeze(x, squeeze_dims=[0])
-
-    static_size = x.get_shape().num_elements()
-    if static_size is not None:
-      if static_size > 0:
-        return nonempty_lbeta()
-      else:
-        return empty_lbeta()
-    else:
-      return control_flow_ops.cond(is_empty, empty_lbeta, nonempty_lbeta)
+    return result
 
 
 def einsum(equation, *inputs):
-  """
-  A generalized contraction between tensors of arbitrary dimension.
+  """A generalized contraction between tensors of arbitrary dimension.
 
   This function returns a tensor whose elements are defined by `equation`,
   which is written in a shorthand form inspired by the Einstein summation
@@ -139,6 +127,7 @@ def einsum(equation, *inputs):
   ```
 
   This function behaves like `numpy.einsum`, but does not support:
+
   * Ellipses (subscripts like `ij...,jk...->ik...`)
   * Subscripts where an axis appears more than once for a single input
     (e.g. `ijj,k->ik`).
@@ -147,7 +136,7 @@ def einsum(equation, *inputs):
   Args:
     equation: a `str` describing the contraction, in the same format as
       `numpy.einsum`.
-    inputs: the inputs to contract (each one a `Tensor`), whose shapes should
+    *inputs: the inputs to contract (each one a `Tensor`), whose shapes should
       be consistent with `equation`.
 
   Returns:
@@ -163,7 +152,7 @@ def einsum(equation, *inputs):
       - the input shapes are inconsistent along a particular axis.
   """
   if '...' in equation:
-    raise ValueError("Subscripts with ellipses are not yet supported.")
+    raise ValueError('Subscripts with ellipses are not yet supported.')
 
   match = re.match('([a-z,]+)(->[a-z]*)?', equation)
   if not match:
@@ -190,8 +179,8 @@ def einsum(equation, *inputs):
         counts[ax] += 1
 
     output_axis_labels = ''.join(sorted(
-      ax for ax in indices
-      if counts[ax] == 1
+        ax for ax in indices
+        if counts[ax] == 1
     ))
 
   for a in axis_labels:
@@ -318,44 +307,28 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
     # into a single axis, and combine multiple summed axes into a
     # single axis.
 
-    t0_shape = tuple(x.value for x in t0.get_shape())
+    t0_shape = _get_shape(t0)
     num_broadcast_elements_t0 = _total_size(
         t0_shape[len(preserved_axes):-len(axes_to_sum)])
     num_summed_elements = _total_size(t0_shape[-len(axes_to_sum):])
-    new_shape = t0_shape[:len(preserved_axes)] + (num_broadcast_elements_t0,
-                                                  num_summed_elements)
+    new_shape = (t0_shape[:len(preserved_axes)]
+                 + [num_broadcast_elements_t0, num_summed_elements])
     t0 = _reshape_if_necessary(t0, new_shape)
 
-    t1_shape = tuple(x.value for x in t1.get_shape())
+    t1_shape = _get_shape(t1)
     num_broadcast_elements_t1 = _total_size(
         t1_shape[len(preserved_axes)+len(axes_to_sum):])
-    new_shape = t1_shape[:len(preserved_axes)] + (num_summed_elements,
-                                                  num_broadcast_elements_t1)
+    new_shape = (t1_shape[:len(preserved_axes)]
+                 + [num_summed_elements, num_broadcast_elements_t1])
     t1 = _reshape_if_necessary(t1, new_shape)
 
     product = math_ops.matmul(t0, t1)
 
     # Undo compaction of broadcast axes
     uncompacted_shape = (
-        t0_shape[:len(preserved_axes)+len(broadcast_axes[0])] +
-        t1_shape[len(t1_shape)-len(broadcast_axes[1]):]
+        t0_shape[:len(preserved_axes)+len(broadcast_axes[0])]
+        + t1_shape[len(t1_shape)-len(broadcast_axes[1]):]
     )
-
-    # Check the number of None values and replace them with Tensors containing
-    # corresponding dimensions if there exist two or more None values
-    num_none_dims = sum(1 for d in uncompacted_shape if d is None)
-    if num_none_dims > 1:
-      uncompacted_shape = list(uncompacted_shape)
-      for i in xrange(len(uncompacted_shape)):
-        if uncompacted_shape[i] is None:
-          if i < len(preserved_axes) + len(broadcast_axes[0]):
-            uncompacted_shape[i] = array_ops.shape(inputs[0])[i]
-          else:
-            idx = (i - len(preserved_axes) - len(broadcast_axes[0])
-                   + len(t1_shape) - len(broadcast_axes[1]))
-            uncompacted_shape[i] = array_ops.shape(inputs[1])[idx]
-      uncompacted_shape = tuple(uncompacted_shape)
-
     product = _reshape_if_necessary(product, uncompacted_shape)
 
     product_axes = (
@@ -386,13 +359,28 @@ def _reshape_if_necessary(tensor, new_shape):
     return array_ops.reshape(tensor, new_shape)
 
 
+def _get_shape(tensor):
+  """Like get_shape().as_list(), but explicitly queries the shape of a tensor
+  if necessary to ensure that the returned value contains no unknown value."""
+
+  shape = tensor.get_shape().as_list()
+  none_indices = [i for i, d in enumerate(shape) if d is None]
+  if none_indices:
+    # Query the shape if shape contains None values
+    shape_tensor = array_ops.shape(tensor)
+    for i in none_indices:
+      shape[i] = shape_tensor[i]
+  return shape
+
+
 def _total_size(shape_values):
-  """Given list of tensor shape values, returns total size or -1 if unknown."""
+  """Given list of tensor shape values, returns total size.
+  If shape_values contains tensor values (which are results of
+  array_ops.shape), then it returns a scalar tensor.
+  If not, it returns an integer."""
+
   result = 1
   for val in shape_values:
-    if val is None:
-      return -1
-    assert isinstance(val, int)
     result *= val
   return result
 
@@ -436,7 +424,7 @@ def _exponential_space_einsum(equation, *inputs):
   missing_idx = set(idx_out).difference(idx_all)
   if missing_idx:
     raise ValueError(
-        'Unknown ouput axes: %s' % missing_idx
+        'Unknown output axes: %s' % missing_idx
     )
 
   axis_order = {}

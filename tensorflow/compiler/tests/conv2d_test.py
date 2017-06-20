@@ -310,7 +310,7 @@ class Conv2DBackpropFilterTest(XLATestCase):
             data_format="NHWC")
 
       value = sess.run(tensor, {t1: x1, t2: x2})
-      self.assertArrayNear(expected, np.ravel(value), 1e-5)
+      self.assertArrayNear(expected, np.ravel(value), 1e-3)
 
   def testConv2D1x1Filter(self):
     expected_output = [8056, 8432, 8312, 8704, 8568, 8976]

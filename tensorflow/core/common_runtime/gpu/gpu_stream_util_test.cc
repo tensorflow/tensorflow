@@ -36,7 +36,7 @@ class GpuStreamUtilTest : public OpsTestBase {
 TEST_F(GpuStreamUtilTest, BogusOpts) {
   auto root = Scope::NewRootScope().ExitOnError();
   Graph g(OpRegistry::Global());
-  root.ToGraph(&g);
+  TF_ASSERT_OK(root.ToGraph(&g));
   std::unordered_map<int, int> node_to_stream_id;
   gpu_stream_util::AssignStreamsOpts opts;
   Status status;
@@ -56,7 +56,7 @@ TEST_F(GpuStreamUtilTest, BogusOpts) {
 TEST_F(GpuStreamUtilTest, EmptyGraph) {
   auto root = Scope::NewRootScope().ExitOnError();
   Graph g(OpRegistry::Global());
-  root.ToGraph(&g);
+  TF_ASSERT_OK(root.ToGraph(&g));
   std::unordered_map<int, int> node_to_stream_id;
   gpu_stream_util::AssignStreamsOpts opts;
   TF_ASSERT_OK(gpu_stream_util::AssignStreams(&g, opts, &node_to_stream_id));

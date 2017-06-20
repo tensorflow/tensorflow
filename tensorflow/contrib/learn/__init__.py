@@ -14,11 +14,9 @@
 # ==============================================================================
 
 # TODO(ptucker,ipolosukhin): Improve descriptions.
-"""High level API for learning with TensorFlow.
+"""High level API for learning.
 
-## Estimators
-
-Train and evaluate TensorFlow models.
+See the @{$python/contrib.learn} guide.
 
 @@BaseEstimator
 @@Estimator
@@ -30,21 +28,32 @@ Train and evaluate TensorFlow models.
 @@MetricSpec
 @@PredictionKey
 @@DNNClassifier
+@@DNNEstimator
 @@DNNRegressor
 @@DNNLinearCombinedRegressor
+@@DNNLinearCombinedEstimator
 @@DNNLinearCombinedClassifier
+@@DynamicRnnEstimator
 @@LinearClassifier
+@@LinearEstimator
 @@LinearRegressor
 @@LogisticRegressor
+@@StateSavingRnnEstimator
+@@SVM
+@@SKCompat
 
-## Distributed training utilities
+@@Head
+@@multi_class_head
+@@multi_label_head
+@@binary_svm_head
+@@regression_head
+@@poisson_regression_head
+@@multi_head
+@@no_op_train_fn
+
 @@Experiment
 @@ExportStrategy
 @@TaskType
-
-## Graph actions
-
-Perform various training, evaluation, and inference actions on a graph.
 
 @@NanLossDuringTrainingError
 @@RunConfig
@@ -53,10 +62,6 @@ Perform various training, evaluation, and inference actions on a graph.
 @@run_feeds
 @@run_n
 @@train
-
-## Input processing
-
-Queue and read batched input data.
 
 @@extract_dask_data
 @@extract_dask_labels
@@ -69,10 +74,10 @@ Queue and read batched input data.
 @@read_batch_features
 @@read_batch_record_features
 
-Export utilities
-
-@@build_parsing_serving_input_fn
+@@InputFnOps
 @@ProblemType
+@@build_parsing_serving_input_fn
+@@make_export_strategy
 """
 
 from __future__ import absolute_import
@@ -83,9 +88,11 @@ from __future__ import print_function
 from tensorflow.contrib.learn.python.learn import *
 # pylint: enable=wildcard-import
 
+from tensorflow.contrib.learn.python.learn import learn_runner_lib as learn_runner
+
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['datasets', 'head', 'io', 'models',
+_allowed_symbols = ['datasets', 'head', 'io', 'learn_runner', 'models',
                     'monitors', 'NotFittedError', 'ops', 'preprocessing',
                     'utils', 'graph_actions']
 

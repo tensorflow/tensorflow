@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/dump_ir_pass.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/utils.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 
 #include "external/llvm/include/llvm/ADT/STLExtras.h"
@@ -53,6 +54,7 @@ limitations under the License.
 #include "external/llvm/include/llvm/Transforms/IPO/AlwaysInliner.h"
 #include "external/llvm/include/llvm/Transforms/IPO/PassManagerBuilder.h"
 
+#include "external/llvm/include/llvm/Transforms/IPO/Internalize.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -68,29 +70,64 @@ namespace {
 // Default inline threshold value to use in llvm.
 const int kDefaultInlineThreshold = 1100;
 
-// Information about a GPU architecture for the backend.
-struct GpuBackendInfo {
-  string libdevice_name;
-  string sm_name;
-};
-
-// Maps supported CUDA compute capability to a libdevice file to link for this
-// capability.
-std::map<string, GpuBackendInfo> gpu_info_map = {
-    {"compute_20", {"libdevice.compute_20.10.bc", "sm_20"}},
-    {"compute_30", {"libdevice.compute_30.10.bc", "sm_30"}},
-    {"compute_35", {"libdevice.compute_35.10.bc", "sm_35"}},
-
-    // NVIDIA does not provide a separate libdevice for CC 3.7, but we can use
-    // the one for 3.5.
-    {"compute_37", {"libdevice.compute_35.10.bc", "sm_37"}},
-};
-
-// Validate the --gpu_architecture command-line flag.
-static void ValidateGPUArchitecture(const string& value) {
-  if (!gpu_info_map.count(value)) {
-    LOG(FATAL) << "value for --gpu_architecture must be compute_{20,30,35,37}";
+// Gets the libdevice filename for a particular compute capability.  When
+// presented with a GPU we don't recognize, we just return the libdevice from
+// compute_20.
+static string GetLibdeviceFilename(std::pair<int, int> compute_capability) {
+  // There are only four libdevice files: compute_{20,30,35,50}.  Each GPU
+  // version gets mapped to one of these.  Note in particular that sm_60 and
+  // sm_61 map to libdevice.compute_30.
+  static auto* m = new std::map<std::pair<int, int>, int>({{{2, 0}, 20},
+                                                           {{2, 1}, 20},
+                                                           {{3, 0}, 30},
+                                                           {{3, 2}, 30},
+                                                           {{3, 5}, 35},
+                                                           {{3, 7}, 35},
+                                                           {{5, 0}, 50},
+                                                           {{5, 2}, 50},
+                                                           {{5, 3}, 50},
+                                                           {{6, 0}, 30},
+                                                           {{6, 1}, 30},
+                                                           {{6, 2}, 30}});
+  int libdevice_version = 20;
+  auto it = m->find(compute_capability);
+  if (it != m->end()) {
+    libdevice_version = it->second;
+  } else {
+    LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
+                 << ", " << compute_capability.second << ") ."
+                 << "Defaulting to libdevice for compute_" << libdevice_version;
   }
+  return tensorflow::strings::StrCat("libdevice.compute_", libdevice_version,
+                                     ".10.bc");
+}
+
+// Gets the GPU name as it's known to LLVM for a given compute capability.  If
+// we see an unrecognized compute capability, we return "sm_20".
+static string GetSmName(std::pair<int, int> compute_capability) {
+  static auto* m = new std::map<std::pair<int, int>, int>({{{2, 0}, 20},
+                                                           {{2, 1}, 21},
+                                                           {{3, 0}, 30},
+                                                           {{3, 2}, 32},
+                                                           {{3, 5}, 35},
+                                                           {{3, 7}, 37},
+                                                           {{5, 0}, 50},
+                                                           {{5, 2}, 52},
+                                                           {{5, 3}, 53},
+                                                           {{6, 0}, 60},
+                                                           {{6, 1}, 61},
+                                                           {{6, 2}, 62}});
+  int sm_version = 20;
+  auto it = m->find(compute_capability);
+  if (it != m->end()) {
+    sm_version = it->second;
+  } else {
+    LOG(WARNING) << "Unknown compute capability (" << compute_capability.first
+                 << ", " << compute_capability.second << ") ."
+                 << "Defaulting to telling LLVM that we're compiling for sm_"
+                 << sm_version;
+  }
+  return tensorflow::strings::StrCat("sm_", sm_version);
 }
 
 // Convenience function for producing a name of a temporary compilation product
@@ -135,8 +172,10 @@ std::unique_ptr<llvm::TargetMachine> GetTargetMachine(
   }
 
   TargetOptions target_options = InitTargetOptionsFromCodeGenFlags();
-  // Set options from hlo_module_config (specifically, fast-math flags).
-  llvm_ir::SetTargetOptions(hlo_module_config, &target_options);
+  llvm_ir::SetTargetOptions(
+      /*fast_math_enabled=*/hlo_module_config.debug_options()
+          .xla_enable_fast_math(),
+      &target_options);
 
   // Enable FMA synthesis if desired.
   legacy_flags::GpuBackendLibFlags* flags =
@@ -270,39 +309,41 @@ bool CouldNeedLibdevice(const llvm::Module& module) {
 }
 
 // Links libdevice into the given module if the module needs libdevice.
-tensorflow::Status LinkLibdeviceIfNecessary(const string& libdevice_dir_path,
-                                            llvm::Module* module) {
+tensorflow::Status LinkLibdeviceIfNecessary(
+    llvm::Module* module, std::pair<int, int> compute_capability,
+    const string& libdevice_dir_path) {
   if (!CouldNeedLibdevice(*module)) {
     return tensorflow::Status::OK();
   }
 
   llvm::Linker linker(*module);
-  legacy_flags::GpuBackendLibFlags* flags =
-      legacy_flags::GetGpuBackendLibFlags();
-  ValidateGPUArchitecture(flags->gpu_architecture);
-  string libdevice_bc_filename =
-      gpu_info_map[flags->gpu_architecture].libdevice_name;
-  string libdevice_bc_fullpath =
-      tensorflow::io::JoinPath(libdevice_dir_path, libdevice_bc_filename);
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->FileExists(libdevice_bc_fullpath));
+  string libdevice_path = tensorflow::io::JoinPath(
+      libdevice_dir_path, GetLibdeviceFilename(compute_capability));
+  TF_RETURN_IF_ERROR(tensorflow::Env::Default()->FileExists(libdevice_path));
+  VLOG(1) << "Linking with libdevice from: " << libdevice_path;
   std::unique_ptr<llvm::Module> libdevice_module =
-      LoadIRModule(libdevice_bc_fullpath, &module->getContext());
-  VLOG(1) << "Linking with libdevice from: " << libdevice_bc_fullpath;
-  if (linker.linkInModule(std::move(libdevice_module),
-                          llvm::Linker::Flags::InternalizeLinkedSymbols |
-                              llvm::Linker::Flags::LinkOnlyNeeded)) {
-    LOG(FATAL) << "Error linking libdevice from " << libdevice_bc_fullpath;
+      LoadIRModule(libdevice_path, &module->getContext());
+  if (linker.linkInModule(
+          std::move(libdevice_module), llvm::Linker::Flags::LinkOnlyNeeded,
+          [](Module& M, const StringSet<>& GVS) {
+            internalizeModule(M, [&M, &GVS](const GlobalValue& GV) {
+              return !GV.hasName() || (GVS.count(GV.getName()) == 0);
+            });
+          })) {
+    return tensorflow::errors::Internal(tensorflow::strings::StrCat(
+        "Error linking libdevice from ", libdevice_path));
   }
   return tensorflow::Status::OK();
 }
 
 StatusOr<string> CompileModuleToPtx(llvm::Module* module,
+                                    std::pair<int, int> compute_capability,
                                     const HloModuleConfig& hlo_module_config,
                                     const string& libdevice_dir_path) {
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
-  TF_RETURN_IF_ERROR(LinkLibdeviceIfNecessary(libdevice_dir_path, module));
+  TF_RETURN_IF_ERROR(
+      LinkLibdeviceIfNecessary(module, compute_capability, libdevice_dir_path));
 
   legacy_flags::GpuBackendLibFlags* flags =
       legacy_flags::GetGpuBackendLibFlags();
@@ -351,17 +392,14 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
   // Figure out the exact name of the processor as known to the NVPTX backend
   // from the gpu_architecture flag.
-  ValidateGPUArchitecture(flags->gpu_architecture);
-  string cpu_name = gpu_info_map[flags->gpu_architecture].sm_name;
-
-  std::unique_ptr<llvm::TargetMachine> target_machine =
-      GetTargetMachine(target_triple, cpu_name, hlo_module_config);
+  std::unique_ptr<llvm::TargetMachine> target_machine = GetTargetMachine(
+      target_triple, GetSmName(compute_capability), hlo_module_config);
   module_passes.add(llvm::createTargetTransformInfoWrapperPass(
       target_machine->getTargetIRAnalysis()));
 
   // The LLVM IR verifier performs sanity checking on the IR. This helps
   // discover problems and report them in a meaningful manner, rather than let
-  // later passes report obscure assertions becasue of unfulfilled invariants.
+  // later passes report obscure assertions because of unfulfilled invariants.
   module_passes.add(llvm::createVerifierPass());
 
   // Create the function-level pass manager. It needs data layout information
@@ -370,9 +408,9 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
   AddOptimizationPasses(flags->opt_level, /*size_level=*/0,
                         target_machine.get(), &module_passes, &function_passes);
-  // Loop unrolling exposes more opportunites for SROA. Therefore, we run SROA
+  // Loop unrolling exposes more opportunities for SROA. Therefore, we run SROA
   // again after the standard optimization passes [http://b/13329423].
-  // TODO(jingyue): SROA may further expose more optimization opportunites, such
+  // TODO(jingyue): SROA may further expose more optimization opportunities, such
   // as more precise alias analysis and more function inlining (SROA may change
   // the inlining cost of a function). For now, running SROA already emits good
   // enough code for the evaluated benchmarks. We may want to run more
@@ -466,6 +504,7 @@ void GPUBackendInit() {
 }  // namespace
 
 StatusOr<string> CompileToPtx(llvm::Module* module,
+                              std::pair<int, int> compute_capability,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
   static std::once_flag backend_init_flag;
@@ -477,7 +516,8 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
         "Compile module " + llvm_ir::AsString(module->getName()),
         /*vlog_level=*/2);
     TF_ASSIGN_OR_RETURN(
-        ptx, CompileModuleToPtx(module, hlo_module_config, libdevice_dir_path));
+        ptx, CompileModuleToPtx(module, compute_capability, hlo_module_config,
+                                libdevice_dir_path));
   }
   return ptx;
 }

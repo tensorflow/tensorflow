@@ -64,37 +64,31 @@ set -e
 pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3.5 install --upgrade protobuf==3.0.0
+pip3.5 install --upgrade protobuf==3.3.0
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
 
 # Install numpy, scipy and scikit-learn required by the builds
-pip3.5 install --upgrade numpy
 
-set +e
-SCIPY_VERSION="0.17.1"
-scipy_ver_flat=$(echo $SCIPY_VERSION | sed 's/\.//g' | sed 's/^0*//g')
-local_scipy_ver=$(python3.5 -c "import scipy; print(scipy.__version__)")
-local_scipy_ver_flat=$(echo $local_scipy_ver | sed 's/\.//g' | sed 's/^0*//g')
-if [[ -z $local_scipy_ver_flat ]]; then
-  local_scipy_ver_flat=0
-fi
-if (( $local_scipy_ver_flat < $scipy_ver_flat )); then
-  set -e
-  wget -q https://pypi.python.org/packages/91/f3/0052c245d53eb5f0e13b7215811e52af3791a8a7d31771605697c28466a0/scipy-0.17.1-cp35-cp35m-manylinux1_x86_64.whl#md5=8e77756904c81a6f79ed10e3abf0c544
-  pip3.5 install --upgrade scipy-0.17.1-cp35-cp35m-manylinux1_x86_64.whl
-  rm -f scipy-0.17.1-cp35-cp35m-manylinux1_x86_64.whl
-fi
+# numpy needs to be installed from source to fix segfaults. See:
+# https://github.com/tensorflow/tensorflow/issues/6968
+# This workaround isn't needed for Ubuntu 16.04 or later.
+pip3.5 install --no-binary=:all: --upgrade numpy==1.12.0
 
-set -e
-pip3.5 install --upgrade scikit-learn
+pip3.5 install scipy==0.18.1
+
+pip3.5 install scikit-learn==0.18.1
+
+# pandas required by tf.learn/inflow
+pip3 install pandas==0.19.2
 
 # Install recent-enough version of wheel for Python 3.5 wheel builds
 pip3.5 install wheel==0.29.0
 
-pip3.5 install --upgrade pandas==0.18.1
-
 pip3.5 install portpicker
 
 pip3.5 install werkzeug
+
+pip3.5 install backports.weakref==1.0rc1
+

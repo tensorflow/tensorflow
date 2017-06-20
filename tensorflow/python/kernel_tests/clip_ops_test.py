@@ -37,6 +37,16 @@ class ClipTest(test.TestCase):
 
     self.assertAllClose(np_ans, tf_ans)
 
+  def testClipByValueBadShape(self):
+    with self.test_session():
+      x = constant_op.constant([-5.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3, 1])
+      # Use a nonsensical shape.
+      clip = constant_op.constant([1.0, 2.0])
+      with self.assertRaises(ValueError):
+        _ = clip_ops.clip_by_value(x, -clip, clip)
+      with self.assertRaises(ValueError):
+        _ = clip_ops.clip_by_value(x, 1.0, clip)
+
   def testClipByValueNonFinite(self):
     with self.test_session():
       x = constant_op.constant([float('NaN'), float('Inf'), -float('Inf')])
@@ -64,6 +74,14 @@ class ClipTest(test.TestCase):
 
     self.assertAllClose(np_ans, tf_ans)
     self.assertAllClose(np_ans, tf_ans_tensor)
+
+  def testClipByNormBadShape(self):
+    with self.test_session():
+      x = constant_op.constant([-3.0, 0.0, 0.0, 4.0, 0.0, 0.0], shape=[2, 3, 1])
+      # Use a nonsensical shape.
+      clip = constant_op.constant([1.0, 2.0])
+      with self.assertRaises(ValueError):
+        _ = clip_ops.clip_by_norm(x, clip)
 
   def testClipByNormNotClipped(self):
     # No norm clipping when clip_norm >= 5

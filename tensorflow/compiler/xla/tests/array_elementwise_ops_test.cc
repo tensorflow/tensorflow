@@ -27,14 +27,17 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/legacy_flags/user_computation_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -80,6 +83,50 @@ TEST_F(ArrayElementwiseOpTest, NegConstantS32) {
                              {1, 0, -1, -324, std::numeric_limits<int32>::min(),
                               -std::numeric_limits<int32>::max()},
                              {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
+  ComputationBuilder builder(client_, TestName());
+  auto a = builder.ConstantR1<float>({});
+  auto result = builder.IsFinite(a);
+
+  ComputeAndCompareR1<bool>(&builder, {}, {});
+}
+
+// A non-canonical quiet NaN value.
+static const float kNonCanonicalNaN = tensorflow::bit_cast<float>(0x7FD01234);
+
+XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteScalarF32) {
+  ComputationBuilder builder(client_, TestName());
+  auto result = builder.IsFinite(builder.ConstantR0<float>(NAN));
+  ComputeAndCompareR0<bool>(&builder, false, {});
+
+  EXPECT_TRUE(std::isnan(kNonCanonicalNaN));
+  auto result_non_canonical =
+      builder.IsFinite(builder.ConstantR0<float>(kNonCanonicalNaN));
+  ComputeAndCompareR0<bool>(&builder, false, {});
+
+  const float inf = std::numeric_limits<float>::infinity();
+  auto result_inf = builder.IsFinite(builder.ConstantR0<float>(inf));
+  ComputeAndCompareR0<bool>(&builder, false, {});
+
+  auto result_neg_inf = builder.IsFinite(builder.ConstantR0<float>(-inf));
+  ComputeAndCompareR0<bool>(&builder, false, {});
+
+  auto result_zero = builder.IsFinite(builder.ConstantR0<float>(0.0f));
+  ComputeAndCompareR0<bool>(&builder, true, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteR1F32s) {
+  ComputationBuilder builder(client_, TestName());
+  const float inf = std::numeric_limits<float>::infinity();
+  EXPECT_TRUE(std::isnan(kNonCanonicalNaN));
+  auto a = builder.ConstantR1<float>(
+      {{NAN, 7.0f, kNonCanonicalNaN, -1.0f, inf, -inf}});
+  auto result = builder.IsFinite(a);
+
+  ComputeAndCompareR1<bool>(&builder, {false, true, false, true, false, false},
+                            {});
 }
 
 TEST_F(ArrayElementwiseOpTest, AddTwoConstantF32s) {
@@ -195,6 +242,150 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantZeroElementF32s) {
   auto add = builder.Div(a, b);
 
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
+}
+
+TEST_F(ArrayElementwiseOpTest, DivS32s) {
+  // clang-format off
+  // Some interesting values to test.
+  std::vector<int32> vals = {
+    INT32_MIN, INT32_MIN + 1, INT32_MIN + 2, -0x40000000, -0x3fffffff,
+    -271181, -1309, -17, -10, -5, -3, -2, -1, 0, 1, 2, 3, 5, 10, 17, 26, 101,
+    7919, 0x40000000, INT32_MAX - 2, INT32_MAX - 1, INT32_MAX};
+  // clang-format on
+
+  std::vector<int32> dividends, divisors, quotients, remainders;
+  for (int32 divisor : vals) {
+    if (divisor != 0) {
+      for (int32 dividend : vals) {
+        // Avoid integer overflow.
+        if (dividend != INT32_MIN || divisor != -1) {
+          dividends.push_back(dividend);
+          divisors.push_back(divisor);
+          quotients.push_back(dividend / divisor);
+          remainders.push_back(dividend % divisor);
+        }
+      }
+    }
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    ComputationDataHandle divisor;
+    auto dividend_data =
+        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
+    auto divisor_data =
+        CreateR1Parameter<int32>(divisors, 1, "divisor", &builder, &divisor);
+    builder.Div(dividend, divisor);
+
+    ComputeAndCompareR1<int32>(&builder, quotients,
+                               {dividend_data.get(), divisor_data.get()});
+  }
+
+  // Test with a compile-time constant divisor.
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    auto dividend_data =
+        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
+    builder.Div(dividend, builder.ConstantR1<int32>(divisors));
+
+    ComputeAndCompareR1<int32>(&builder, quotients, {dividend_data.get()});
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    ComputationDataHandle divisor;
+    auto dividend_data =
+        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
+    auto divisor_data =
+        CreateR1Parameter<int32>(divisors, 1, "divisor", &builder, &divisor);
+    builder.Rem(dividend, divisor);
+
+    ComputeAndCompareR1<int32>(&builder, remainders,
+                               {dividend_data.get(), divisor_data.get()});
+  }
+
+  // Test with a compile-time constant divisor.
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    auto dividend_data =
+        CreateR1Parameter<int32>(dividends, 0, "dividend", &builder, &dividend);
+    builder.Rem(dividend, builder.ConstantR1<int32>(divisors));
+
+    ComputeAndCompareR1<int32>(&builder, remainders, {dividend_data.get()});
+  }
+}
+
+TEST_F(ArrayElementwiseOpTest, DivU32s) {
+  // clang-format off
+  // Some interesting values to test.
+  std::vector<uint32> vals = {
+    0, 1, 2, 17, 101, 3333, 0x7FFFFFFF, 0xABCDEF12, 0xCAFEBEEF, 0x80000000,
+    0x80000001, UINT32_MAX - 2, UINT32_MAX - 1, UINT32_MAX};
+  // clang-format on
+
+  std::vector<uint32> dividends, divisors, quotients, remainders;
+  for (uint32 divisor : vals) {
+    if (divisor != 0) {
+      for (uint32 dividend : vals) {
+        dividends.push_back(dividend);
+        divisors.push_back(divisor);
+        quotients.push_back(dividend / divisor);
+        remainders.push_back(dividend % divisor);
+      }
+    }
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    ComputationDataHandle divisor;
+    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
+                                                   &builder, &dividend);
+    auto divisor_data =
+        CreateR1Parameter<uint32>(divisors, 1, "divisor", &builder, &divisor);
+    builder.Div(dividend, divisor);
+
+    ComputeAndCompareR1<uint32>(&builder, quotients,
+                                {dividend_data.get(), divisor_data.get()});
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
+                                                   &builder, &dividend);
+    builder.Div(dividend, builder.ConstantR1<uint32>(divisors));
+
+    ComputeAndCompareR1<uint32>(&builder, quotients, {dividend_data.get()});
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    ComputationDataHandle divisor;
+    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
+                                                   &builder, &dividend);
+    auto divisor_data =
+        CreateR1Parameter<uint32>(divisors, 1, "divisor", &builder, &divisor);
+    builder.Rem(dividend, divisor);
+
+    ComputeAndCompareR1<uint32>(&builder, remainders,
+                                {dividend_data.get(), divisor_data.get()});
+  }
+
+  {
+    ComputationBuilder builder(client_, TestName());
+    ComputationDataHandle dividend;
+    auto dividend_data = CreateR1Parameter<uint32>(dividends, 0, "dividend",
+                                                   &builder, &dividend);
+    builder.Rem(dividend, builder.ConstantR1<uint32>(divisors));
+
+    ComputeAndCompareR1<uint32>(&builder, remainders, {dividend_data.get()});
+  }
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, RemF32s) {
@@ -441,6 +632,18 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareEqZeroElementS32s) {
   ComputeAndCompareR1<bool>(&builder, {}, {});
 }
 
+TEST_F(ArrayElementwiseOpTest, CompareNeF32s) {
+  // Disable fast-math because we're operating on NaNs.
+  SetFastMathDisabled(true);
+
+  ComputationBuilder builder(client_, TestName());
+  auto lhs = builder.ConstantR1<float>({-2.5f, 25.5f, 2.25f, NAN, 6.0f});
+  auto rhs = builder.ConstantR1<float>({10.0f, 25.5f, 1.0f, 10.0f, NAN});
+  auto compare = builder.Ne(lhs, rhs);
+
+  ComputeAndCompareR1<bool>(&builder, {true, false, true, true, true}, {});
+}
+
 TEST_F(ArrayElementwiseOpTest, CompareNeS32s) {
   const int32 min = std::numeric_limits<int32>::min();
   const int32 max = std::numeric_limits<int32>::max();
@@ -575,12 +778,14 @@ TEST_F(ArrayElementwiseOpTest, CompareLtU32s) {
 TEST_F(ArrayElementwiseOpTest, PowF32s) {
   SetFastMathDisabled(true);
   ComputationBuilder builder(client_, TestName());
-  auto lhs = builder.ConstantR1<float>({4.0f, 2.0f, 2.0f, NAN, 6.0f});
-  auto rhs = builder.ConstantR1<float>({2.0f, -2.0f, 3.0f, 10.0f, NAN});
+  auto lhs =
+      builder.ConstantR1<float>({4.0f, 2.0f, 2.0f, NAN, 6.0f, -2.0f, -2.0f});
+  auto rhs =
+      builder.ConstantR1<float>({2.0f, -2.0f, 3.0f, 10.0f, NAN, 3.0f, 4.0f});
   auto minimum = builder.Pow(lhs, rhs);
 
-  ComputeAndCompareR1<float>(&builder, {16.0f, 0.25f, 8.0f, NAN, NAN}, {},
-                             error_spec_);
+  ComputeAndCompareR1<float>(
+      &builder, {16.0f, 0.25f, 8.0f, NAN, NAN, -8.0f, 16.0f}, {}, error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, PowZeroElementF32s) {
@@ -625,6 +830,7 @@ TEST_P(ArrayElementwiseOpTestParamCount, SquareManyValues) {
   const int count = GetParam();
   ComputationBuilder builder(client_, TestName());
   std::vector<float> values;
+  values.reserve(count);
   for (int i = 0; i < count; ++i) {
     values.push_back(i / static_cast<float>(count));
   }
@@ -632,6 +838,7 @@ TEST_P(ArrayElementwiseOpTestParamCount, SquareManyValues) {
   auto exp = builder.Pow(x, builder.ConstantR0<float>(2.0f));
 
   std::vector<float> expected;
+  expected.reserve(values.size());
   for (float value : values) {
     expected.push_back(value * value);
   }
@@ -1584,7 +1791,7 @@ TEST_F(ArrayElementwiseOpTest, R4PlusR1InDim1) {
   ComputeAndCompareR4<float>(&builder, *expected_4d, {}, error_spec_);
 }
 
-TEST_F(ArrayElementwiseOpTest, R4_32x64x2x2_Plus_R1_64) {
+TEST_F(ArrayElementwiseOpTest, R4_16x16x2x2_Plus_R1_16) {
   constexpr int d0 = 16;
   constexpr int d1 = 16;
   constexpr int d2 = 2;
@@ -1622,9 +1829,9 @@ TEST_F(ArrayElementwiseOpTest, CannotAddOpaques) {
   auto concatenated = builder.Add(x, x);
   StatusOr<Computation> computation_status = builder.Build();
   ASSERT_FALSE(computation_status.ok());
-  EXPECT_MATCH(computation_status.status().ToString(),
-               testing::ContainsRegex(
-                   "Expected non-opaque argument for lhs of binary operation"));
+  EXPECT_THAT(computation_status.status().ToString(),
+              ::testing::ContainsRegex(
+                  "Expected non-opaque argument for lhs of binary operation"));
 }
 
 // Regression test for b/31927799. "slice - y" is fused and requires implicit
@@ -1638,7 +1845,7 @@ TEST_F(ArrayElementwiseOpTest, ImplictBroadcastInFusedExpressions) {
 
   auto x = builder.Parameter(0, x_literal->shape(), "x");
   auto y = builder.Parameter(1, y_literal->shape(), "y");
-  auto slice = builder.Slice(x, {1}, {2});
+  auto slice = builder.Slice(x, {1}, {2}, {1});
   builder.Sub(slice, y);
 
   ComputeAndCompareR1<float>(&builder, {-2, -3}, {x_data.get(), y_data.get()},
@@ -1654,7 +1861,9 @@ INSTANTIATE_TEST_CASE_P(ArrayElementwiseOpTestParamCount,
 
 int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
+  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
   xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
+  xla::legacy_flags::AppendUserComputationFlags(&flag_list);
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
   if (!parse_result) {
