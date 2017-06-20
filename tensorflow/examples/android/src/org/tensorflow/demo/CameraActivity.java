@@ -19,7 +19,13 @@ package org.tensorflow.demo;
 import android.Manifest;
 import android.app.Activity;
 import android.app.Fragment;
+import android.content.Context;
 import android.content.pm.PackageManager;
+import android.hardware.Camera;
+import android.hardware.camera2.CameraAccessException;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
+import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image.Plane;
 import android.media.ImageReader.OnImageAvailableListener;
 import android.os.Build;
@@ -32,9 +38,8 @@ import android.view.WindowManager;
 import android.widget.Toast;
 import java.nio.ByteBuffer;
 import org.tensorflow.demo.env.Logger;
-import org.tensorflow.demo.R;
 
-public abstract class CameraActivity extends Activity implements OnImageAvailableListener {
+public abstract class CameraActivity extends Activity implements OnImageAvailableListener, Camera.PreviewCallback {
   private static final Logger LOGGER = new Logger();
 
   private static final int PERMISSIONS_REQUEST = 1;
@@ -46,6 +51,7 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
 
   private Handler handler;
   private HandlerThread handlerThread;
+  private boolean useCamera2API;
 
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
@@ -150,18 +156,68 @@ public abstract class CameraActivity extends Activity implements OnImageAvailabl
     }
   }
 
+  // Returns true if the device supports the required hardware level, or better.
+  boolean isHardwareLevelSupported(CameraCharacteristics characteristics, int requiredLevel) {
+    int deviceLevel = characteristics.get(CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL);
+    if (deviceLevel == CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_LEGACY) {
+      return requiredLevel == deviceLevel;
+    }
+    // deviceLevel is not LEGACY, can use numerical sort
+    return requiredLevel <= deviceLevel;
+  }
+
+  private String chooseCamera() {
+    final CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+    try {
+      for (final String cameraId : manager.getCameraIdList()) {
+        final CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);
+
+        // We don't use a front facing camera in this sample.
+        final Integer facing = characteristics.get(CameraCharacteristics.LENS_FACING);
+        if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT) {
+          continue;
+        }
+
+        final StreamConfigurationMap map =
+            characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
+
+        if (map == null) {
+          continue;
+        }
+
+        useCamera2API = isHardwareLevelSupported(characteristics, CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+        return cameraId;
+      }
+    } catch (CameraAccessException e) {
+      LOGGER.e(e, "Not allowed to access camera");
+    }
+
+    return null;
+  }
+
   protected void setFragment() {
-    final Fragment fragment =
-        CameraConnectionFragment.newInstance(
-            new CameraConnectionFragment.ConnectionCallback() {
-              @Override
-              public void onPreviewSizeChosen(final Size size, final int rotation) {
-                CameraActivity.this.onPreviewSizeChosen(size, rotation);
-              }
-            },
-            this,
-            getLayoutId(),
-            getDesiredPreviewFrameSize());
+    String cameraId = chooseCamera();
+
+    Fragment fragment;
+    if (useCamera2API) {
+      CameraConnectionFragment camera2Fragment =
+          CameraConnectionFragment.newInstance(
+              new CameraConnectionFragment.ConnectionCallback() {
+                @Override
+                public void onPreviewSizeChosen(final Size size, final int rotation) {
+                  CameraActivity.this.onPreviewSizeChosen(size, rotation);
+                }
+              },
+              this,
+              getLayoutId(),
+              getDesiredPreviewFrameSize());
+
+      camera2Fragment.setCamera(cameraId);
+      fragment = camera2Fragment;
+    } else {
+      fragment = new LegacyCameraConnectionFragment(
+          this, getLayoutId());
+    }
 
     getFragmentManager()
         .beginTransaction()
