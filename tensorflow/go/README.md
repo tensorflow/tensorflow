@@ -26,6 +26,8 @@ Construct and execute TensorFlow graphs in Go.
     curl -L \
       "https://storage.googleapis.com/tensorflow/libtensorflow/libtensorflow-${TF_TYPE}-$(go env GOOS)-x86_64-1.1.0.tar.gz" |
     sudo tar -C /usr/local -xz
+    export LIBRARY_PATH=$LIBRARY_PATH:/usr/local/lib
+    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
     ```
 
 2.  `go get` this package (and run tests):
