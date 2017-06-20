@@ -170,6 +170,17 @@ bool CompareShapes(const Shape& lhs, const Shape& rhs, bool compare_layouts) {
   }
   return MakeShapeWithMonotonicDim0MajorLayout(shape.element_type(), dims);
 }
+
+/* static */ Shape ShapeUtil::ShapeWithoutPadding(const Shape& shape) {
+  Shape result = shape;
+  ForEachMutableSubshape(&result, [](Shape* subshape, const ShapeIndex& index) {
+    auto layout = subshape->mutable_layout();
+    layout->clear_padding_value();
+    layout->clear_padded_dimensions();
+  });
+  return result;
+}
+
 /* static */ void ShapeUtil::PopulateShape(
     PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
     Shape* shape) {

@@ -382,15 +382,9 @@ Status LayoutAssignment::AddMandatoryConstraints(
       // instruction.
       // TODO(b/31425034): Change infeeds to be more like parameters, with
       // shapes in the ComputationLayout.
-      Shape infeed_shape = instruction->shape();
-      // TODO(b/62477016): When the infeed does not set padding anymore, this
-      // can be removed.
-      ShapeUtil::ForEachMutableSubshape(
-          &infeed_shape, [](Shape* subshape, const ShapeIndex& index) {
-            auto layout = subshape->mutable_layout();
-            layout->clear_padding_value();
-            layout->clear_padded_dimensions();
-          });
+      // TODO(b/62477016): When the infeed does not set padding anymore, the
+      // call to ShapeWithoutPadding can be removed.
+      Shape infeed_shape = ShapeUtil::ShapeWithoutPadding(instruction->shape());
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(infeed_shape, instruction.get()));
     } else if (instruction->opcode() == HloOpcode::kOutfeed) {

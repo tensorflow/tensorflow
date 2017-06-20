@@ -221,6 +221,9 @@ class ShapeUtil {
   // elements with a different shape.
   static Shape NormalizeShapeToMonotonicDim0MajorLayout(const Shape& shape);
 
+  // Returns a new shape that has all padding values cleared.
+  static Shape ShapeWithoutPadding(const Shape& shape);
+
   // As MakeShape, but the object to write to is passed in.
   static void PopulateShape(PrimitiveType element_type,
                             tensorflow::gtl::ArraySlice<int64> dimensions,
