@@ -370,6 +370,19 @@ Status HloCostAnalysis::HandleFusion(HloInstruction* fusion) {
   HloCostAnalysis visitor([](const Shape&) { return 0; });
   TF_RETURN_IF_ERROR(fused_expression_root->Accept(&visitor));
 
+  // If a fusion node produces a tuple, it also produces the operands of that
+  // tuple.
+  current_bytes_accessed_ = 0;
+  ShapeUtil::ForEachSubshape(
+      fusion->shape(),
+      [this](const Shape& subshape, const ShapeIndex& /*shape_index*/) {
+        current_bytes_accessed_ += shape_size_(subshape);
+      });
+
+  for (const HloInstruction* operand : fusion->operands()) {
+    current_bytes_accessed_ += shape_size_(operand->shape());
+  }
+
   // Attribute the cost of the fused expression to the fusion node.
   current_transcendental_count_ = visitor.transcendental_count();
   current_flop_count_ = visitor.flop_count();
