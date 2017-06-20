@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -248,7 +249,8 @@ void AutoParallel::BuildGraph(GraphDef* graph) {
   for (const auto& fetch : item_->fetch) {
     AddNodeControl(fetch, {control->name()}, graph);
   }
-  *(graph->mutable_library()) = item_->graph.library();
+  *graph->mutable_library() = item_->graph.library();
+  *graph->mutable_versions() = item_->graph.versions();
   LOG(INFO) << "Parallelized graph size: " << graph->node_size();
 }
 

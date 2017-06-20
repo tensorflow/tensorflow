@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -101,8 +102,14 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   }
   TopologicalSort(optimized_graph);
-  // Copy the graph version.
-  *optimized_graph->mutable_versions() = item.graph.versions();
+
+  // Make sure that the optimizers preserved the graph version and library.
+  DCHECK_GE(optimized_graph->library().function_size(),
+            item.graph.library().function_size());
+  DCHECK_GE(optimized_graph->library().gradient_size(),
+            item.graph.library().gradient_size());
+  DCHECK_EQ(optimized_graph->versions().producer(),
+            item.graph.versions().producer());
 
   return Status::OK();
 }

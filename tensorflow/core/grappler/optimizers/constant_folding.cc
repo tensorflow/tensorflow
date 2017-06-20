@@ -18,11 +18,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -642,6 +644,10 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   TF_RETURN_IF_ERROR(FoldGraph(output));
   TF_RETURN_IF_ERROR(SimplifyGraph(output));
   LOG(INFO) << "Optimized graph size: " << output->node_size();
+
+  *output->mutable_library() = item.graph.library();
+  *output->mutable_versions() = item.graph.versions();
+
   return Status::OK();
 }
 
