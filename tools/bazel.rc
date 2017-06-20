@@ -6,6 +6,8 @@ build:cuda_clang --define=using_cuda=true --define=using_cuda_clang=true
 
 build:win-cuda --define=using_cuda=true --define=using_cuda_nvcc=true
 
+build:rocm --define=using_rocm=true
+
 build:mkl --define=using_mkl=true
 
 build:sycl --crosstool_top=@local_config_sycl//crosstool:toolchain
