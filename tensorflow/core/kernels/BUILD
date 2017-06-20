@@ -1945,14 +1945,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "lmdb_reader_op",
-    prefix = "lmdb_reader_op",
-    deps = IO_DEPS + [
-        "@lmdb",
-    ],
-)
-
-tf_kernel_library(
     name = "matching_files_op",
     prefix = "matching_files_op",
     deps = IO_DEPS,
