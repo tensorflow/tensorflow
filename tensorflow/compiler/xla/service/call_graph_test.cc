@@ -314,6 +314,37 @@ TEST_F(CallGraphTest, ComplexGraph) {
   EXPECT_LT(index_of(cond_computation), index_of(a_computation));
   EXPECT_LT(index_of(c_computation), index_of(b_computation));
   EXPECT_LT(index_of(b_computation), index_of(a_computation));
+
+  // Verify dominance relations between computation in the graph.
+
+  // Entry dominates everybody, and is dominated by no one except itself.
+  EXPECT_TRUE(call_graph->Dominates(entry_computation, entry_computation));
+  EXPECT_TRUE(call_graph->Dominates(entry_computation, a_computation));
+  EXPECT_TRUE(call_graph->Dominates(entry_computation, b_computation));
+  EXPECT_TRUE(call_graph->Dominates(entry_computation, c_computation));
+  EXPECT_TRUE(call_graph->Dominates(entry_computation, cond_computation));
+  EXPECT_FALSE(call_graph->Dominates(a_computation, entry_computation));
+  EXPECT_FALSE(call_graph->Dominates(b_computation, entry_computation));
+  EXPECT_FALSE(call_graph->Dominates(c_computation, entry_computation));
+  EXPECT_FALSE(call_graph->Dominates(cond_computation, entry_computation));
+
+  // 'a' only dominates 'b' and 'c'.
+  EXPECT_TRUE(call_graph->Dominates(a_computation, a_computation));
+  EXPECT_TRUE(call_graph->Dominates(a_computation, b_computation));
+  EXPECT_TRUE(call_graph->Dominates(a_computation, c_computation));
+  EXPECT_FALSE(call_graph->Dominates(b_computation, a_computation));
+  EXPECT_FALSE(call_graph->Dominates(c_computation, a_computation));
+  EXPECT_FALSE(call_graph->Dominates(a_computation, cond_computation));
+
+  EXPECT_TRUE(call_graph->Dominates(b_computation, b_computation));
+  EXPECT_FALSE(call_graph->Dominates(b_computation, c_computation));
+  EXPECT_FALSE(call_graph->Dominates(b_computation, cond_computation));
+
+  EXPECT_TRUE(call_graph->Dominates(c_computation, c_computation));
+  EXPECT_FALSE(call_graph->Dominates(c_computation, cond_computation));
+  EXPECT_FALSE(call_graph->Dominates(cond_computation, c_computation));
+
+  EXPECT_TRUE(call_graph->Dominates(cond_computation, cond_computation));
 }
 
 TEST_F(CallGraphTest, VisitSingletonComputation) {

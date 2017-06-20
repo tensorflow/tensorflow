@@ -155,6 +155,68 @@ TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   EXPECT_FALSE(ordering.ExecutesBefore(y, c));
 }
 
+TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
+  // Tests the ordering of instructions in the body and condition of a while
+  // instruction. HLO code:
+  //
+  // body(F32[]) %param):
+  //   %negate = Negate(%param)
+  //
+  // condition(F32[] %param):
+  //   %convert = Convert<PRED>(%param)
+  //
+  // entry:
+  //   %constant = Constant(1.0)
+  //   return While(%constant, body, condition)
+  //
+  auto module = CreateNewModule();
+  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+
+  auto body_builder = HloComputation::Builder("body");
+  auto body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "body_param"));
+  auto negate = body_builder.AddInstruction(HloInstruction::CreateUnary(
+      scalar_shape, HloOpcode::kNegate, body_param));
+  HloComputation* body = module->AddEmbeddedComputation(body_builder.Build());
+
+  auto cond_builder = HloComputation::Builder("condition");
+  auto cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "cond_param"));
+  auto convert = cond_builder.AddInstruction(HloInstruction::CreateConvert(
+      ShapeUtil::MakeShape(xla::PRED, {}), cond_param));
+  HloComputation* condition =
+      module->AddEmbeddedComputation(cond_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto xla_while = builder.AddInstruction(
+      HloInstruction::CreateWhile(scalar_shape, condition, body, constant));
+  module->AddEntryComputation(builder.Build());
+
+  DependencyHloOrdering ordering(module.get());
+  EXPECT_TRUE(ordering.ExecutesBefore(constant, xla_while));
+  EXPECT_TRUE(ordering.ExecutesBefore(constant, cond_param));
+  EXPECT_TRUE(ordering.ExecutesBefore(constant, convert));
+  EXPECT_TRUE(ordering.ExecutesBefore(constant, body_param));
+  EXPECT_TRUE(ordering.ExecutesBefore(constant, negate));
+
+  // The while should be unordered relative to the body and condition
+  // instructions.
+  EXPECT_FALSE(ordering.ExecutesBefore(xla_while, body_param));
+  EXPECT_FALSE(ordering.ExecutesBefore(xla_while, cond_param));
+  EXPECT_FALSE(ordering.ExecutesBefore(body_param, xla_while));
+  EXPECT_FALSE(ordering.ExecutesBefore(cond_param, xla_while));
+
+  // Condition instructions should be ordered before body instructions.
+  EXPECT_TRUE(ordering.ExecutesBefore(cond_param, body_param));
+  EXPECT_TRUE(ordering.ExecutesBefore(convert, body_param));
+  EXPECT_TRUE(ordering.ExecutesBefore(cond_param, negate));
+  EXPECT_TRUE(ordering.ExecutesBefore(convert, negate));
+
+  EXPECT_FALSE(ordering.ExecutesBefore(body_param, cond_param));
+}
+
 class MinimumMemoryForSequenceTest : public HloTestBase {};
 
 TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {

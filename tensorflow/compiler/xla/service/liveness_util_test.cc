@@ -122,10 +122,10 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseSameShape) {
 
   BuildModuleAndRunAnalysis(builder.Build());
 
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(param, {}, exp, {}, *points_to_analysis_));
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(exp, {}, log, {}, *points_to_analysis_));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(param, {}, exp, {},
+                                            points_to_analysis_.get()));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(exp, {}, log, {},
+                                            points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
@@ -143,9 +143,9 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
   BuildModuleAndRunAnalysis(builder.Build());
 
   EXPECT_FALSE(CanShareOperandBufferWithUser(param0, {}, result, {},
-                                             *points_to_analysis_));
+                                             points_to_analysis_.get()));
   EXPECT_FALSE(CanShareOperandBufferWithUser(param1, {}, result, {},
-                                             *points_to_analysis_));
+                                             points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, CopyShares) {
@@ -161,10 +161,10 @@ TEST_F(CanShareOperandBufferWithUserTest, CopyShares) {
 
   BuildModuleAndRunAnalysis(builder.Build());
 
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(param, {}, exp, {}, *points_to_analysis_));
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(exp, {}, copy, {}, *points_to_analysis_));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(param, {}, exp, {},
+                                            points_to_analysis_.get()));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(exp, {}, copy, {},
+                                            points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
@@ -197,9 +197,9 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
 
   // The fusion instruction can share with tuple element 1.
   EXPECT_FALSE(CanShareOperandBufferWithUser(tuple, {0}, fusion, {},
-                                             *points_to_analysis_));
+                                             points_to_analysis_.get()));
   EXPECT_TRUE(CanShareOperandBufferWithUser(tuple, {1}, fusion, {},
-                                            *points_to_analysis_));
+                                            points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
@@ -221,12 +221,12 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
 
   // The DynamicUpdateSlice instruction can share with the data operand, but not
   // with update or starts.
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(data, {}, dus, {}, *points_to_analysis_));
-  EXPECT_FALSE(
-      CanShareOperandBufferWithUser(update, {}, dus, {}, *points_to_analysis_));
-  EXPECT_FALSE(
-      CanShareOperandBufferWithUser(starts, {}, dus, {}, *points_to_analysis_));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(data, {}, dus, {},
+                                            points_to_analysis_.get()));
+  EXPECT_FALSE(CanShareOperandBufferWithUser(update, {}, dus, {},
+                                             points_to_analysis_.get()));
+  EXPECT_FALSE(CanShareOperandBufferWithUser(starts, {}, dus, {},
+                                             points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
@@ -256,7 +256,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
 
   // Output fused dot add should be able to share buffer with 'add_operand'.
   EXPECT_TRUE(CanShareOperandBufferWithUser(add_operand, {}, fusion, {},
-                                            *points_to_analysis_));
+                                            points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, FusedTransposeDotAdd) {
@@ -292,7 +292,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedTransposeDotAdd) {
 
   // Output fused transpose-dot-add should be share buffer with 'add_operand'.
   EXPECT_TRUE(CanShareOperandBufferWithUser(add_operand, {}, fusion, {},
-                                            *points_to_analysis_));
+                                            points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
@@ -320,7 +320,7 @@ TEST_F(CanShareOperandBufferWithUserTest, OutputFusionCantAliasOperandBuffer) {
 
   // Output fused operand->reverse->add cannot alias operand buffer 'operand'.
   EXPECT_FALSE(CanShareOperandBufferWithUser(operand, {}, fusion, {},
-                                             *points_to_analysis_));
+                                             points_to_analysis_.get()));
 }
 
 TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
@@ -360,8 +360,8 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
   RunAnalysis();
 
   // The While instruction can share with the data operand.
-  EXPECT_TRUE(
-      CanShareOperandBufferWithUser(data, {}, whil, {}, *points_to_analysis_));
+  EXPECT_TRUE(CanShareOperandBufferWithUser(data, {}, whil, {},
+                                            points_to_analysis_.get()));
 }
 
 }  // namespace

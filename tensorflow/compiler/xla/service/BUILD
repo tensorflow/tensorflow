@@ -1189,6 +1189,7 @@ cc_library(
     deps = [
         ":call_graph",
         ":hlo",
+        ":hlo_ordering",
         ":liveness_util",
         "//tensorflow/compiler/xla:shape_tree",
         "//tensorflow/compiler/xla:shape_util",
