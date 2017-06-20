@@ -17,8 +17,8 @@ _TRISYCL_INCLUDE_DIR = "TRISYCL_INCLUDE_DIR"
 _PYTHON_LIB_PATH = "PYTHON_LIB_PATH"
 
 def _enable_sycl(repository_ctx):
-  if "TF_NEED_OPENCL" in repository_ctx.os.environ:
-    enable_sycl = repository_ctx.os.environ["TF_NEED_OPENCL"].strip()
+  if "TF_NEED_OPENCL_SYCL" in repository_ctx.os.environ:
+    enable_sycl = repository_ctx.os.environ["TF_NEED_OPENCL_SYCL"].strip()
     return enable_sycl == "1"
   return False
 
